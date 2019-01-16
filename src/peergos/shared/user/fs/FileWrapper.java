@@ -245,55 +245,6 @@ public class FileWrapper {
         });
     }
 
-    public CompletableFuture<FileWrapper> addReadOnlySharingLinkTo(FileWrapper file, NetworkAccess network, SafeRandom random,
-                                                                   Fragmenter fragmenter) {
-        return addSharingLinkTo(file, network, random, fragmenter, CapabilityStore.READ_SHARING_FILE_PREFIX,
-                CapabilityStore.READ_CAPABILITY_SIZE, CapabilityStore.SHARING_READ_FILE_MAX_SIZE);
-    }
-
-    public CompletableFuture<FileWrapper> addEditSharingLinkTo(FileWrapper file, NetworkAccess network, SafeRandom random,
-                                                               Fragmenter fragmenter) {
-        return addSharingLinkTo(file, network, random, fragmenter, CapabilityStore.EDIT_SHARING_FILE_PREFIX,
-                CapabilityStore.EDIT_CAPABILITY_SIZE, CapabilityStore.SHARING_EDIT_FILE_MAX_SIZE);
-    }
-
-    public CompletableFuture<FileWrapper> addSharingLinkTo(FileWrapper file, NetworkAccess network, SafeRandom random,
-                                                           Fragmenter fragmenter, String sharingPrefix,
-                                                           int capabilitySize, int sharingFileMaxSize) {
-        ensureUnmodified();
-        if (!this.isDirectory() || !this.isWritable()) {
-            CompletableFuture<FileWrapper> error = new CompletableFuture<>();
-            error.completeExceptionally(new IllegalArgumentException("Can only add link to a writable directory!"));
-            return error;
-        }
-
-        return this.getChildren(network)
-                .thenCompose(children -> {
-                    List<FileWrapper> capabilityCacheFiles = children.stream()
-                            .filter(f -> f.getName().startsWith(sharingPrefix))
-                            .collect(Collectors.toList());
-                    List<FileWrapper> sharingFiles = capabilityCacheFiles.stream()
-                            .sorted(Comparator.comparingInt(f -> Integer.parseInt(f.getFileProperties().name
-                                    .substring(sharingPrefix.length()))))
-                            .collect(Collectors.toList());
-                    FileWrapper currentSharingFile = sharingFiles.isEmpty() ? null : sharingFiles.get(sharingFiles.size() - 1);
-                    byte[] serializedCapability = file.pointer.capability.readOnly().toCbor().toByteArray();
-                    if (serializedCapability.length != capabilitySize)
-                        throw new IllegalArgumentException("Unexpected Capability length:" + serializedCapability.length);
-                    AsyncReader.ArrayBacked newCapability = new AsyncReader.ArrayBacked(serializedCapability);
-                    if (currentSharingFile != null
-                            && currentSharingFile.getFileProperties().size + capabilitySize <= sharingFileMaxSize) {
-                        long size = currentSharingFile.getSize();
-                        return uploadFileSection(currentSharingFile.props.name, newCapability, size, size + serializedCapability.length,
-                                Optional.of(currentSharingFile.pointer.capability.rBaseKey), true, network, random, x -> {}, fragmenter);
-                    } else {
-                        int sharingFileIndex = currentSharingFile == null ? 0 : sharingFiles.size();
-                        String capStoreFilename = sharingPrefix + sharingFileIndex;
-                        return uploadFileSection(capStoreFilename, newCapability, 0, serializedCapability.length,
-                                Optional.empty(), false, network, random, x -> {}, fragmenter);
-                    }
-                });
-    }
 
     @JsMethod
     public String toLink() {

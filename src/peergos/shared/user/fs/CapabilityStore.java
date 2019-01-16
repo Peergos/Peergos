@@ -25,17 +25,17 @@ import java.util.stream.*;
  * Each of these cache files is just a serialized CapabilitiesFromUser
  */
 public class CapabilityStore {
-    public static final int READ_CAPABILITY_SIZE = 162; // fp.toCbor().toByteArray() DOESN'T INCLUDE .secret
-    public static final int EDIT_CAPABILITY_SIZE = 162;
+    private static final int READ_CAPABILITY_SIZE = 162; // fp.toCbor().toByteArray() DOESN'T INCLUDE .secret
+    private static final int EDIT_CAPABILITY_SIZE = 162;
     private static final int CAPS_PER_FILE = 10000;
-    public static final int SHARING_READ_FILE_MAX_SIZE = READ_CAPABILITY_SIZE * CAPS_PER_FILE;
-    public static final int SHARING_EDIT_FILE_MAX_SIZE = EDIT_CAPABILITY_SIZE * CAPS_PER_FILE;
+    private static final int SHARING_READ_FILE_MAX_SIZE = READ_CAPABILITY_SIZE * CAPS_PER_FILE;
+    private static final int SHARING_EDIT_FILE_MAX_SIZE = EDIT_CAPABILITY_SIZE * CAPS_PER_FILE;
 
     private static final String CAPABILITY_CACHE_DIR = ".capabilitycache";
     private static final String CAPABILITY_READ = ".r.";
     private static final String CAPABILITY_EDIT = ".w.";
-    public static final String READ_SHARING_FILE_PREFIX = "sharing" + CAPABILITY_READ;
-    public static final String EDIT_SHARING_FILE_PREFIX = "sharing" + CAPABILITY_EDIT;
+    private static final String READ_SHARING_FILE_PREFIX = "sharing" + CAPABILITY_READ;
+    private static final String EDIT_SHARING_FILE_PREFIX = "sharing" + CAPABILITY_EDIT;
 
     private static final Comparator<FileWrapper> readOnlyCapabilitiesInIndexOrder =
             Comparator.comparingInt(f -> filenameToIndex(f.getName(), READ_SHARING_FILE_PREFIX));
@@ -55,6 +55,57 @@ public class CapabilityStore {
 
     private static boolean isEditCapFile(String filename) {
         return filename.startsWith(EDIT_SHARING_FILE_PREFIX);
+    }
+
+
+    public static CompletableFuture<FileWrapper> addReadOnlySharingLinkTo(FileWrapper sharedDir, AbsoluteCapability capability, NetworkAccess network, SafeRandom random,
+                                                                   Fragmenter fragmenter) {
+        return addSharingLinkTo(sharedDir, capability.readOnly(), network, random, fragmenter, CapabilityStore.READ_SHARING_FILE_PREFIX,
+                CapabilityStore.READ_CAPABILITY_SIZE, CapabilityStore.SHARING_READ_FILE_MAX_SIZE);
+    }
+
+    public static CompletableFuture<FileWrapper> addEditSharingLinkTo(FileWrapper sharedDir, AbsoluteCapability capability, NetworkAccess network, SafeRandom random,
+                                                               Fragmenter fragmenter) {
+        //Kev currently using readonly capability
+        return addSharingLinkTo(sharedDir, capability.readOnly(), network, random, fragmenter, CapabilityStore.EDIT_SHARING_FILE_PREFIX,
+                CapabilityStore.EDIT_CAPABILITY_SIZE, CapabilityStore.SHARING_EDIT_FILE_MAX_SIZE);
+    }
+
+    public static CompletableFuture<FileWrapper> addSharingLinkTo(FileWrapper sharedDir, AbsoluteCapability capability, NetworkAccess network, SafeRandom random,
+                                                           Fragmenter fragmenter, String sharingPrefix,
+                                                           int capabilitySize, int sharingFileMaxSize) {
+        if (!sharedDir.isDirectory() || !sharedDir.isWritable()) {
+            CompletableFuture<FileWrapper> error = new CompletableFuture<>();
+            error.completeExceptionally(new IllegalArgumentException("Can only add link to a writable directory!"));
+            return error;
+        }
+
+        return sharedDir.getChildren(network)
+                .thenCompose(children -> {
+                    List<FileWrapper> capabilityCacheFiles = children.stream()
+                            .filter(f -> f.getName().startsWith(sharingPrefix))
+                            .collect(Collectors.toList());
+                    List<FileWrapper> sharingFiles = capabilityCacheFiles.stream()
+                            .sorted(Comparator.comparingInt(f -> Integer.parseInt(f.getFileProperties().name
+                                    .substring(sharingPrefix.length()))))
+                            .collect(Collectors.toList());
+                    FileWrapper currentSharingFile = sharingFiles.isEmpty() ? null : sharingFiles.get(sharingFiles.size() - 1);
+                    byte[] serializedCapability = capability.toCbor().toByteArray();
+                    if (serializedCapability.length != capabilitySize)
+                        throw new IllegalArgumentException("Unexpected Capability length:" + serializedCapability.length);
+                    AsyncReader.ArrayBacked newCapability = new AsyncReader.ArrayBacked(serializedCapability);
+                    if (currentSharingFile != null
+                            && currentSharingFile.getFileProperties().size + capabilitySize <= sharingFileMaxSize) {
+                        long size = currentSharingFile.getSize();
+                        return sharedDir.uploadFileSection(currentSharingFile.getFileProperties().name, newCapability, size, size + serializedCapability.length,
+                                Optional.of(currentSharingFile.getPointer().capability.rBaseKey), true, network, random, x -> {}, fragmenter);
+                    } else {
+                        int sharingFileIndex = currentSharingFile == null ? 0 : sharingFiles.size();
+                        String capStoreFilename = sharingPrefix + sharingFileIndex;
+                        return sharedDir.uploadFileSection(capStoreFilename, newCapability, 0, serializedCapability.length,
+                                Optional.empty(), false, network, random, x -> {}, fragmenter);
+                    }
+                });
     }
 
     /**

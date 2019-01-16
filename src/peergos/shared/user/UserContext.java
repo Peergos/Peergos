@@ -922,7 +922,7 @@ public class UserContext {
     }
 
     public CompletableFuture<Boolean> shareReadAccessWithAll(FileWrapper file, Set<String> readersToAdd) {
-        BiFunction<FileWrapper, FileWrapper, CompletableFuture<Boolean>> sharingFunction = (sharedDir, fileWrapper) -> sharedDir.addReadOnlySharingLinkTo(fileWrapper, network, crypto.random, fragmenter)
+        BiFunction<FileWrapper, FileWrapper, CompletableFuture<Boolean>> sharingFunction = (sharedDir, fileWrapper) -> CapabilityStore.addReadOnlySharingLinkTo(sharedDir, fileWrapper.getPointer().capability, network, crypto.random, fragmenter)
                 .thenCompose(ee -> CompletableFuture.completedFuture(true));
         return Futures.reduceAll(readersToAdd,
                 true,
@@ -939,7 +939,7 @@ public class UserContext {
 
     public CompletableFuture<Boolean> shareWriteAccessWithAll(FileWrapper file, Set<String> writersToAdd) {
         BiFunction<FileWrapper, FileWrapper, CompletableFuture<Boolean>> sharingFunction =
-                (sharedDir, fileWrapper) -> sharedDir.addEditSharingLinkTo(fileWrapper, network, crypto.random, fragmenter)
+                (sharedDir, fileWrapper) -> CapabilityStore.addEditSharingLinkTo(sharedDir, fileWrapper.getPointer().capability, network, crypto.random, fragmenter)
                         .thenCompose(ee -> CompletableFuture.completedFuture(true));
 
         return Futures.reduceAll(writersToAdd,
