@@ -37,10 +37,10 @@ public class CapabilityStore {
     private static final String READ_SHARING_FILE_PREFIX = "sharing" + CAPABILITY_READ;
     private static final String EDIT_SHARING_FILE_PREFIX = "sharing" + CAPABILITY_EDIT;
 
-    private static final Comparator<FileWrapper> readOnlyCapabilitiesInIndexOrder =
+    private static final Comparator<FileWrapper> indexOrderRead =
             Comparator.comparingInt(f -> filenameToIndex(f.getName(), READ_SHARING_FILE_PREFIX));
 
-    private static final Comparator<FileWrapper> editCapabilitiesInIndexOrder =
+    private static final Comparator<FileWrapper> indexOrderEdit =
             Comparator.comparingInt(f -> filenameToIndex(f.getName(), EDIT_SHARING_FILE_PREFIX));
 
     private static int filenameToIndex(String filename, String capabilityType) {
@@ -57,6 +57,15 @@ public class CapabilityStore {
         return filename.startsWith(EDIT_SHARING_FILE_PREFIX);
     }
 
+    private static Function<Set<FileWrapper>, List<FileWrapper>> editSharingFilesFilter = files ->
+            files.stream().filter(f -> isEditCapFile(f.getName()))
+                    .sorted(indexOrderEdit)
+                    .collect(Collectors.toList());
+
+    private static Function<Set<FileWrapper>, List<FileWrapper>> readOnlySharingFilesFilter = files ->
+            files.stream().filter(f -> isReadCapFile(f.getName()))
+                    .sorted(indexOrderRead)
+                    .collect(Collectors.toList());
 
     public static CompletableFuture<FileWrapper> addReadOnlySharingLinkTo(FileWrapper sharedDir, AbsoluteCapability capability, NetworkAccess network, SafeRandom random,
                                                                    Fragmenter fragmenter) {
@@ -126,11 +135,6 @@ public class CapabilityStore {
                                                                                      SafeRandom random,
                                                                                      Fragmenter fragmenter,
                                                                                      boolean saveCache) {
-        Function<Set<FileWrapper>, List<FileWrapper>> readOnlySharingFilesFilter = files ->
-                files.stream().filter(f -> isReadCapFile(f.getName()))
-                        .sorted(readOnlyCapabilitiesInIndexOrder)
-                        .collect(Collectors.toList());
-
         return loadSharingLinks( homeDirSupplier, friendSharedDir,
                 friendName, network, random,
                 fragmenter, saveCache, readOnlySharingFilesFilter, CAPABILITY_READ, READ_CAPABILITY_SIZE, SHARING_READ_FILE_MAX_SIZE);
@@ -154,10 +158,6 @@ public class CapabilityStore {
                                                                                       SafeRandom random,
                                                                                       Fragmenter fragmenter,
                                                                                       boolean saveCache) {
-        Function<Set<FileWrapper>, List<FileWrapper>> editSharingFilesFilter = files ->
-                files.stream().filter(f -> isEditCapFile(f.getName()))
-                        .sorted(editCapabilitiesInIndexOrder)
-                        .collect(Collectors.toList());
 
         return loadSharingLinks( homeDirSupplier, friendSharedDir,
                 friendName, network, random,
@@ -236,7 +236,7 @@ public class CapabilityStore {
                                                                                               boolean saveCache) {
         Function<Set<FileWrapper>, List<FileWrapper>> readOnlySharingFilesFilter = files ->
                 files.stream().filter(f -> isReadCapFile(f.getName()))
-                        .sorted(readOnlyCapabilitiesInIndexOrder)
+                        .sorted(indexOrderRead)
                         .collect(Collectors.toList());
 
         return loadSharingLinksFromIndex( homeDirSupplier,
@@ -255,7 +255,7 @@ public class CapabilityStore {
                                                                                                boolean saveCache) {
         Function<Set<FileWrapper>, List<FileWrapper>> editSharingFilesFilter = files ->
                 files.stream().filter(f -> isEditCapFile(f.getName()))
-                        .sorted(editCapabilitiesInIndexOrder)
+                        .sorted(indexOrderEdit)
                         .collect(Collectors.toList());
 
         return loadSharingLinksFromIndex( homeDirSupplier,
@@ -316,7 +316,9 @@ public class CapabilityStore {
     private static CompletableFuture<Long> getCapabilityCount(String filenamePrefix, FileWrapper friendSharedDir,
                                                               NetworkAccess network) {
         return friendSharedDir.getChildren(network)
-                .thenApply(capFiles -> capFiles.stream().filter(f -> f.getName().startsWith(filenamePrefix)).mapToLong(f -> f.getFileProperties().size).sum() / READ_CAPABILITY_SIZE);
+                .thenApply(capFiles -> capFiles.stream()
+                    .filter(f -> f.getName().startsWith(filenamePrefix))
+                    .mapToLong(f -> f.getFileProperties().size).sum() / READ_CAPABILITY_SIZE);
     }
 
     public static CompletableFuture<List<CapabilityWithPath>> readSharingFile(String ownerName,
@@ -378,10 +380,10 @@ public class CapabilityStore {
     }
 
     private static CompletableFuture<Optional<FileWrapper>> getSharingCacheFile(String friendName,
-                                                                         Supplier<CompletableFuture<FileWrapper>> getHome,
-                                                                         NetworkAccess network,
-                                                                         SafeRandom random,
-                                                                        String capabilityType) {
+                                                                                Supplier<CompletableFuture<FileWrapper>> getHome,
+                                                                                NetworkAccess network,
+                                                                                SafeRandom random,
+                                                                                String capabilityType) {
         return getCapabilityCacheDir(getHome, network, random)
                 .thenCompose(cacheDir -> cacheDir.getChild(friendName + capabilityType, network));
     }
