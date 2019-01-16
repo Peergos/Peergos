@@ -62,7 +62,7 @@ public class PeergosNetworkUtils {
     }
 
 
-    public static void shareAndUnshareFile(NetworkAccess sharerNode, NetworkAccess shareeNode, int shareeCount, Random random) throws Exception {
+    public static void shareAndUnshareFileForReadAccess(NetworkAccess sharerNode, NetworkAccess shareeNode, int shareeCount, Random random) throws Exception {
         Assert.assertTrue(0 < shareeCount);
         //sign up a user on sharerNode
 
@@ -105,7 +105,7 @@ public class PeergosNetworkUtils {
 
         // share the file from sharer to each of the sharees
         FileWrapper u1File = sharerUser.getByPath(sharerUser.username + "/" + filename).get().get();
-        sharerUser.shareWith(Paths.get(sharerUser.username, filename), shareeUsers.stream().map(u -> u.username).collect(Collectors.toSet())).get();
+        sharerUser.shareReadAccessWith(Paths.get(sharerUser.username, filename), shareeUsers.stream().map(u -> u.username).collect(Collectors.toSet())).get();
 
         // check other users can read the file
         for (UserContext userContext : shareeUsers) {
@@ -129,7 +129,7 @@ public class PeergosNetworkUtils {
         UserContext userToUnshareWith = shareeUsers.stream().findFirst().get();
 
         // unshare with a single user
-        sharerUser.unShare(Paths.get(sharerUser.username, filename), userToUnshareWith.username).get();
+        sharerUser.unShareReadAccess(Paths.get(sharerUser.username, filename), userToUnshareWith.username).get();
 
         List<UserContext> updatedShareeUsers = shareeUsers.stream()
                 .map(e -> {
@@ -177,7 +177,7 @@ public class PeergosNetworkUtils {
         Assert.assertTrue(Arrays.equals(newFileContents, ArrayOps.concat(originalFileContents, suffix)));
     }
 
-    public static void shareAndUnshareFolder(NetworkAccess sharerNode, NetworkAccess shareeNode, int shareeCount, Random random) throws Exception {
+    public static void shareAndUnshareFolderForReadAccess(NetworkAccess sharerNode, NetworkAccess shareeNode, int shareeCount, Random random) throws Exception {
         Assert.assertTrue(0 < shareeCount);
 
         String sharerUsername = generateUsername(random);
@@ -216,7 +216,7 @@ public class PeergosNetworkUtils {
         String originalFilePath = sharer.username + "/" + folderName + "/" + filename;
 
         // file is uploaded, do the actual sharing
-        boolean finished = sharer.shareWithAll(updatedFolder, shareeUsers.stream().map(c -> c.username).collect(Collectors.toSet())).get();
+        boolean finished = sharer.shareReadAccessWithAll(updatedFolder, shareeUsers.stream().map(c -> c.username).collect(Collectors.toSet())).get();
 
         // check each user can see the shared folder and directory
         for (UserContext sharee : shareeUsers) {
@@ -242,7 +242,7 @@ public class PeergosNetworkUtils {
 
         for (int i = 0; i < updatedSharees.size(); i++) {
             UserContext user = updatedSharees.get(i);
-            sharer.unShare(Paths.get(sharer.username, folderName), user.username).get();
+            sharer.unShareReadAccess(Paths.get(sharer.username, folderName), user.username).get();
 
             Optional<FileWrapper> updatedSharedFolder = user.getByPath(updatedSharer.username + "/" + folderName).get();
 
