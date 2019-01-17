@@ -64,8 +64,6 @@ public class Playground {
             CommittedWriterData existing = WriterData.getWriterData(context.signer.publicKeyHash, ownedKey, network.mutable, network.dhtClient).get();
             if (existing.props.tree.isPresent())
                 continue;
-            SecretSigningKey signingKey = context.getUserRoot().get().getEntryWriterKey().get();
-            SigningPrivateKeyAndPublicHash writer = new SigningPrivateKeyAndPublicHash(ownedKey, signingKey);
             // Do something risky
         }
     }

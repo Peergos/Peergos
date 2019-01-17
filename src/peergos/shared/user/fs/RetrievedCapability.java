@@ -43,7 +43,7 @@ public class RetrievedCapability {
                         // remove from parent
                         if (parentCap != null)
                             ((DirAccess) parentRetrievedCapability.fileAccess)
-                                    .removeChild(this, parentCap, network);
+                                    .removeChild(this, parentCap, Optional.of(signer), network);
                         result.complete(true);
                     }), network.dhtClient);
             return result;
@@ -57,7 +57,7 @@ public class RetrievedCapability {
                         // remove from parent
                         if (parentCap != null)
                             ((DirAccess) parentRetrievedCapability.fileAccess)
-                                    .removeChild(this, parentCap, network);
+                                    .removeChild(this, parentCap, Optional.of(signer), network);
                         result.complete(removed);
                     }), network.dhtClient);
             return result;

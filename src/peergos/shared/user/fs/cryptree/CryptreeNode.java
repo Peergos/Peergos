@@ -35,7 +35,16 @@ public interface CryptreeNode extends Cborable {
 
     FileProperties getProperties(SymmetricKey parentKey);
 
+    Optional<SymmetricLinkToSigner> getWriterLink();
+
+    default SigningPrivateKeyAndPublicHash getSigner(SymmetricKey wBaseKey, Optional<SigningPrivateKeyAndPublicHash> entrySigner) {
+        return getWriterLink().map(link -> link.target(wBaseKey))
+                .orElseGet(() -> entrySigner.orElseThrow(() ->
+                        new IllegalStateException("No link to private signing key present on directory!")));
+    }
+
     CompletableFuture<? extends CryptreeNode> updateProperties(WritableAbsoluteCapability us,
+                                                               Optional<SigningPrivateKeyAndPublicHash> entryWriter,
                                                                FileProperties newProps,
                                                                NetworkAccess network);
 
@@ -44,6 +53,7 @@ public interface CryptreeNode extends Cborable {
     CompletableFuture<? extends CryptreeNode> copyTo(AbsoluteCapability us,
                                                      SymmetricKey newBaseKey,
                                                      WritableAbsoluteCapability newParentCap,
+                                                     Optional<SigningPrivateKeyAndPublicHash> newEntryWriter,
                                                      SymmetricKey parentparentKey,
                                                      byte[] newMapKey,
                                                      NetworkAccess network,
@@ -59,7 +69,7 @@ public interface CryptreeNode extends Cborable {
 
         RelativeCapability relCap = parentLink.toCapability(baseKey);
         return network.retrieveAllMetadata(Arrays.asList(new AbsoluteCapability(owner, writer, relCap.getMapKey(),
-                relCap.rBaseKey, Optional.empty(), Optional.empty()))).thenApply(res -> {
+                relCap.rBaseKey, Optional.empty()))).thenApply(res -> {
             RetrievedCapability retrievedCapability = res.stream().findAny().get();
             return retrievedCapability;
         });

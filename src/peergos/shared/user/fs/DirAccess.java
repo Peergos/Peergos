@@ -168,7 +168,13 @@ public class DirAccess implements CryptreeNode {
     }
 
     @Override
+    public Optional<SymmetricLinkToSigner> getWriterLink() {
+        return writerLink;
+    }
+
+    @Override
     public CompletableFuture<DirAccess> updateProperties(WritableAbsoluteCapability us,
+                                                         Optional<SigningPrivateKeyAndPublicHash> entryWriter,
                                                          FileProperties newProps,
                                                          NetworkAccess network) {
         SymmetricKey metaKey;
@@ -181,20 +187,22 @@ public class DirAccess implements CryptreeNode {
                 children, moreFolderContents, writerLink
         );
         return Transaction.call(us.owner,
-                tid -> network.uploadChunk(updated, us.owner, us.getMapKey(), us.signer(), tid)
+                tid -> network.uploadChunk(updated, us.owner, us.getMapKey(), getSigner(us.wBaseKey.get(), entryWriter), tid)
                         .thenApply(b -> updated),
                 network.dhtClient);
     }
 
     public CompletableFuture<DirAccess> addChildAndCommit(RelativeCapability targetCAP,
                                                           WritableAbsoluteCapability us,
+                                                          Optional<SigningPrivateKeyAndPublicHash> entryWriter,
                                                           NetworkAccess network,
                                                           SafeRandom random) {
-        return addChildrenAndCommit(Arrays.asList(targetCAP), us, network, random);
+        return addChildrenAndCommit(Arrays.asList(targetCAP), us, entryWriter, network, random);
     }
 
     public CompletableFuture<DirAccess> addChildrenAndCommit(List<RelativeCapability> targetCAPs,
                                                              WritableAbsoluteCapability us,
+                                                             Optional<SigningPrivateKeyAndPublicHash> entryWriter,
                                                              NetworkAccess network,
                                                              SafeRandom random) {
         // Make sure subsequent blobs use a different transaction to obscure linkage of different parts of this dir
@@ -204,29 +212,30 @@ public class DirAccess implements CryptreeNode {
                 if (nextMetablob.size() >= 1) {
                     AbsoluteCapability nextPointer = nextMetablob.get(0).capability;
                     DirAccess nextBlob = (DirAccess) nextMetablob.get(0).fileAccess;
-                    return nextBlob.addChildrenAndCommit(targetCAPs, nextPointer.toWritable(us.wBaseKey.get(), us.getSigningPair()), network, random);
+                    return nextBlob.addChildrenAndCommit(targetCAPs, nextPointer.toWritable(us.wBaseKey.get()), entryWriter, network, random);
                 } else {
                     // first fill this directory, then overflow into a new one
                     int freeSlots = MAX_CHILD_LINKS_PER_BLOB - children.size();
                     List<RelativeCapability> addToUs = targetCAPs.subList(0, freeSlots);
                     List<RelativeCapability> addToNext = targetCAPs.subList(freeSlots, targetCAPs.size());
-                    return addChildrenAndCommit(addToUs, us, network, random)
+                    return addChildrenAndCommit(addToUs, us, entryWriter, network, random)
                             .thenCompose(newUs -> {
                                 // create and upload new metadata blob
                                 SymmetricKey nextSubfoldersKey = SymmetricKey.random();
                                 SymmetricKey ourParentKey = base2parent.target(us.rBaseKey);
                                 RelativeCapability parentCap = parentLink.toCapability(ourParentKey);
-                                DirAccess next = DirAccess.create(MaybeMultihash.empty(), nextSubfoldersKey, FileProperties.EMPTY,
+                                DirAccess next = DirAccess.create(MaybeMultihash.empty(), nextSubfoldersKey, null, Optional.empty(), FileProperties.EMPTY,
                                         parentCap, ourParentKey);
                                 byte[] nextMapKey = random.randomBytes(32);
-                                WritableAbsoluteCapability nextPointer = new WritableAbsoluteCapability(us.owner, us.writer, nextMapKey, nextSubfoldersKey, us.wBaseKey.get(), us.signer.get());
-                                return next.addChildrenAndCommit(addToNext, nextPointer, network, random)
+                                WritableAbsoluteCapability nextPointer = new WritableAbsoluteCapability(us.owner,
+                                        us.writer, nextMapKey, nextSubfoldersKey, us.wBaseKey.get());
+                                return next.addChildrenAndCommit(addToNext, nextPointer, entryWriter, network, random)
                                         .thenCompose(nextBlob -> {
                                             // re-upload us with the link to the next DirAccess
                                             DirAccess withNext = newUs.withNextBlob(Optional.of(
                                                     EncryptedCapability.create(us.rBaseKey, us.relativise(nextPointer))));
                                             return Transaction.call(us.owner,
-                                                    tid -> withNext.commit(us, network, tid),
+                                                    tid -> withNext.commit(us, entryWriter, network, tid),
                                                     network.dhtClient);
                                         });
                             });
@@ -238,7 +247,7 @@ public class DirAccess implements CryptreeNode {
 
             return Transaction.call(us.owner,
                     tid -> withChildren(encryptChildren(us.rBaseKey, newFiles))
-                            .commit(us, network, tid),
+                            .commit(us, entryWriter, network, tid),
                     network.dhtClient);
         }
     }
@@ -252,16 +261,20 @@ public class DirAccess implements CryptreeNode {
     }
 
     public CompletableFuture<DirAccess> updateChildLink(WritableAbsoluteCapability ourPointer,
+                                                        Optional<SigningPrivateKeyAndPublicHash> entryWriter,
                                                         RetrievedCapability original,
                                                         RetrievedCapability modified,
                                                         NetworkAccess network,
                                                         SafeRandom random) {
-        return removeChild(original, ourPointer, network)
-                .thenCompose(res -> res.addChildAndCommit(ourPointer.relativise((WritableAbsoluteCapability) modified.capability), ourPointer, network, random));
+        return removeChild(original, ourPointer, entryWriter, network)
+                .thenCompose(res ->
+                        res.addChildAndCommit(ourPointer.relativise((WritableAbsoluteCapability) modified.capability),
+                                ourPointer, entryWriter, network, random));
     }
 
     public CompletableFuture<DirAccess> removeChild(RetrievedCapability childRetrievedPointer,
                                                     WritableAbsoluteCapability ourPointer,
+                                                    Optional<SigningPrivateKeyAndPublicHash> entryWriter,
                                                     NetworkAccess network) {
         List<RelativeCapability> newSubfolders = getChildren(ourPointer.rBaseKey).stream().filter(e -> {
             boolean keep = true;
@@ -272,7 +285,7 @@ public class DirAccess implements CryptreeNode {
         }).collect(Collectors.toList());
         return Transaction.call(ourPointer.owner,
                 tid -> withChildren(encryptChildren(ourPointer.rBaseKey, newSubfolders))
-                        .commit(ourPointer, network, tid),
+                        .commit(ourPointer, entryWriter, network, tid),
                 network.dhtClient);
     }
 
@@ -322,38 +335,43 @@ public class DirAccess implements CryptreeNode {
     public CompletableFuture<RelativeCapability> mkdir(String name,
                                                        NetworkAccess network,
                                                        WritableAbsoluteCapability us,
+                                                       Optional<SigningPrivateKeyAndPublicHash> entryWriter,
                                                        SymmetricKey optionalBaseKey,
-                                                       boolean isSystemFolder, SafeRandom random) {
+                                                       boolean isSystemFolder,
+                                                       SafeRandom random) {
         SymmetricKey dirReadKey = optionalBaseKey != null ? optionalBaseKey : SymmetricKey.random();
         SymmetricKey dirWriteKey = SymmetricKey.random();
         byte[] dirMapKey = random.randomBytes(32); // root will be stored under this in the tree
         SymmetricKey ourParentKey = this.getParentKey(us.rBaseKey);
         RelativeCapability ourCap = new RelativeCapability(us.getMapKey(), ourParentKey, null);
-        DirAccess child = DirAccess.create(MaybeMultihash.empty(), dirReadKey, new FileProperties(name, "", 0, LocalDateTime.now(),
-                isSystemFolder, Optional.empty()), ourCap, null);
+        DirAccess child = DirAccess.create(MaybeMultihash.empty(), dirReadKey, dirWriteKey, Optional.empty(),
+                new FileProperties(name, "", 0, LocalDateTime.now(), isSystemFolder,
+                        Optional.empty()), ourCap, null);
 
         SymmetricLink toChildWriteKey = SymmetricLink.fromPair(us.wBaseKey.get(), dirWriteKey);
         // Use two transactions to not expose the child linkage
         return Transaction.call(us.owner,
-                tid -> network.uploadChunk(child, us.owner, dirMapKey, us.getSigningPair(), tid), network.dhtClient)
+                tid -> network.uploadChunk(child, us.owner, dirMapKey, getSigner(us.wBaseKey.get(), entryWriter), tid), network.dhtClient)
                 .thenCompose(resultHash -> {
                     RelativeCapability subdirPointer = new RelativeCapability(dirMapKey, dirReadKey, toChildWriteKey);
-                    return addChildAndCommit(subdirPointer, us, network, random)
+                    return addChildAndCommit(subdirPointer, us, entryWriter, network, random)
                             .thenApply(modified -> new RelativeCapability(dirMapKey, dirReadKey, toChildWriteKey));
                 });
     }
 
     public CompletableFuture<DirAccess> commit(WritableAbsoluteCapability us,
+                                               Optional<SigningPrivateKeyAndPublicHash> entryWriter,
                                                NetworkAccess network,
                                                TransactionId tid) {
-        return network.uploadChunk(this, us.owner, us.getMapKey(), us.getSigningPair(), tid)
+        return network.uploadChunk(this, us.owner, us.getMapKey(), getSigner(us.wBaseKey.get(), entryWriter), tid)
                 .thenApply(this::withHash);
     }
 
     @Override
     public CompletableFuture<DirAccess> copyTo(AbsoluteCapability us,
-                                               SymmetricKey newBaseKey,
+                                               SymmetricKey newReadBaseKey,
                                                WritableAbsoluteCapability newParentCap,
+                                               Optional<SigningPrivateKeyAndPublicHash> newEntryWriter,
                                                SymmetricKey parentparentKey,
                                                byte[] newMapKey,
                                                NetworkAccess network,
@@ -361,10 +379,11 @@ public class DirAccess implements CryptreeNode {
         SymmetricKey newWriteBaseKey = SymmetricKey.random();
         SymmetricKey parentKey = getParentKey(us.rBaseKey);
         FileProperties props = getProperties(parentKey);
-        DirAccess da = DirAccess.create(MaybeMultihash.empty(), newBaseKey, props,
-                new RelativeCapability(Optional.empty(), newParentCap.getMapKey(), parentparentKey, Optional.empty(), Optional.empty()), parentKey);
-        SymmetricKey ourNewParentKey = da.getParentKey(newBaseKey);
-        WritableAbsoluteCapability ourNewCap = new WritableAbsoluteCapability(newParentCap.owner, newParentCap.writer, newMapKey, newBaseKey, newWriteBaseKey, newParentCap.signer().secret);
+        Optional<SigningPrivateKeyAndPublicHash> newSigner = Optional.empty();
+        DirAccess da = DirAccess.create(MaybeMultihash.empty(), newReadBaseKey, newWriteBaseKey, newSigner, props,
+                new RelativeCapability(Optional.empty(), newParentCap.getMapKey(), parentparentKey, Optional.empty()), parentKey);
+        SymmetricKey ourNewParentKey = da.getParentKey(newReadBaseKey);
+        WritableAbsoluteCapability ourNewCap = new WritableAbsoluteCapability(newParentCap.owner, newParentCap.writer, newMapKey, newReadBaseKey, newWriteBaseKey);
 
         return this.getChildren(network, us).thenCompose(RFPs -> {
             // upload new metadata blob for each child and re-add child
@@ -373,18 +392,18 @@ public class DirAccess implements CryptreeNode {
                 SymmetricKey newChildWriteKey = SymmetricKey.random();
                 byte[] newChildMapKey = random.randomBytes(32);
                 WritableAbsoluteCapability newChildCap = new WritableAbsoluteCapability(ourNewCap.owner,
-                        ourNewCap.writer, newChildMapKey, newChildReadKey, newChildWriteKey, ourNewCap.signer().secret);
+                        ourNewCap.writer, newChildMapKey, newChildReadKey, newChildWriteKey);
                 return rfp.fileAccess.copyTo(rfp.capability, newChildReadKey,
-                        ourNewCap, ourNewParentKey, newChildMapKey, network, random)
+                        ourNewCap, newEntryWriter, ourNewParentKey, newChildMapKey, network, random)
                         .thenCompose(newChildFileAccess -> {
                             return dirFuture.thenCompose(dirAccess ->
-                                    dirAccess.addChildAndCommit(ourNewCap.relativise(newChildCap), ourNewCap, network, random));
+                                    dirAccess.addChildAndCommit(ourNewCap.relativise(newChildCap), ourNewCap, newEntryWriter, network, random));
                         });
             }, (a, b) -> a.thenCompose(x -> b)); // TODO Think about this combiner function
             return reduce;
         }).thenCompose(finalDir -> Transaction.call(newParentCap.owner,
                 tid -> finalDir.commit(new WritableAbsoluteCapability(newParentCap.owner, newParentCap.writer, newMapKey,
-                        newBaseKey, newWriteBaseKey, newParentCap.signer.get()), network, tid),
+                        newReadBaseKey, newWriteBaseKey), newEntryWriter, network, tid),
                 network.dhtClient));
     }
 
@@ -395,6 +414,8 @@ public class DirAccess implements CryptreeNode {
 
     public static DirAccess create(MaybeMultihash lastCommittedHash,
                                    SymmetricKey rBaseKey,
+                                   SymmetricKey wBaseKey,
+                                   Optional<SigningPrivateKeyAndPublicHash> signingPair,
                                    FileProperties props,
                                    RelativeCapability parentCap,
                                    SymmetricKey parentKey) {
@@ -404,6 +425,7 @@ public class DirAccess implements CryptreeNode {
         EncryptedCapability parentLink = parentCap == null ?
                 null :
                 EncryptedCapability.create(parentKey, parentCap);
+        Optional<SymmetricLinkToSigner> writerLink = signingPair.map(pair -> SymmetricLinkToSigner.fromPair(wBaseKey, pair));
         return new DirAccess(
                 lastCommittedHash,
                 CryptreeNode.CURRENT_DIR_VERSION,
@@ -413,7 +435,7 @@ public class DirAccess implements CryptreeNode {
                 PaddedCipherText.build(metaKey, props, META_DATA_PADDING_BLOCKSIZE),
                 encryptChildren(rBaseKey, Collections.emptyList()),
                 Optional.empty(),
-                Optional.empty()
+                writerLink
         );
     }
 }

@@ -35,6 +35,6 @@ public class EncryptedCapability implements Cborable {
     }
 
     public static EncryptedCapability create(SymmetricKey from, SymmetricKey to, Optional<PublicKeyHash> writer, byte[] mapKey) {
-        return create(from, new RelativeCapability(writer, mapKey, to, Optional.empty(), Optional.empty()));
+        return create(from, new RelativeCapability(writer, mapKey, to, Optional.empty()));
     }
 }

@@ -81,7 +81,7 @@ public class PeergosNetworkUtils {
         List<FollowRequestWithCipherText> sharerRequests = sharerUser.processFollowRequests().get();
         for (FollowRequestWithCipherText u1Request : sharerRequests) {
             AbsoluteCapability pointer = u1Request.req.entry.get().pointer;
-            Assert.assertTrue("Read only capabilities are shared", ! pointer.signer.isPresent() && ! pointer.wBaseKey.isPresent());
+            Assert.assertTrue("Read only capabilities are shared", ! pointer.wBaseKey.isPresent());
             boolean accept = true;
             boolean reciprocate = true;
             sharerUser.sendReplyFollowRequest(u1Request, accept, reciprocate).get();
