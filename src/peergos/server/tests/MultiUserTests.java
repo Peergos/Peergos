@@ -69,17 +69,18 @@ public class MultiUserTests {
     }
 
     @Test
-    public void safeCopyOfFriends() throws Exception {
-
+    public void safeCopyOfFriendsReadAccess() throws Exception {
         TriFunction<UserContext, UserContext, String, CompletableFuture<Boolean>> readAccessSharingFunction =
                 (u1, u2, filename) ->
         u1.shareReadAccessWith(Paths.get(u1.username, filename), Collections.singleton(u2.username));
+        safeCopyOfFriends(readAccessSharingFunction);
+    }
 
+    @Test
+    public void safeCopyOfFriendsWriteAccess() throws Exception {
         TriFunction<UserContext, UserContext, String, CompletableFuture<Boolean>> writeAccessSharingFunction =
                 (u1, u2, filename) ->
                         u1.shareWriteAccessWith(Paths.get(u1.username, filename), Collections.singleton(u2.username));
-
-        safeCopyOfFriends(readAccessSharingFunction);
         safeCopyOfFriends(writeAccessSharingFunction);
     }
 
@@ -133,16 +134,18 @@ public class MultiUserTests {
 
 
     @Test
-    public void shareTwoFilesWithSameName() throws Exception {
+    public void shareTwoFilesWithSameNameReadAccess() throws Exception {
         TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> readAccessSharingFunction =
                 (u1, userContexts, path) ->
                         u1.shareReadAccessWith(path, userContexts.stream().map(u -> u.username).collect(Collectors.toSet()));
+        shareTwoFilesWithSameName(readAccessSharingFunction);
+    }
 
+    @Test
+    public void shareTwoFilesWithSameNameWriteAccess() throws Exception {
         TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> writeAccessSharingFunction =
                 (u1, userContexts, path) ->
                         u1.shareWriteAccessWith(path, userContexts.stream().map(u -> u.username).collect(Collectors.toSet()));
-
-        shareTwoFilesWithSameName(readAccessSharingFunction);
         shareTwoFilesWithSameName(writeAccessSharingFunction);
     }
 
@@ -218,7 +221,7 @@ public class MultiUserTests {
     }
 
     @Test
-    public void cleanRenamedFiles() throws Exception {
+    public void cleanRenamedFilesReadAccess() throws Exception {
 
         TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> readAccessSharingFunction =
                 (u1, friends, path) ->
@@ -227,6 +230,12 @@ public class MultiUserTests {
         TriFunction<UserContext, UserContext, Path, CompletableFuture<Boolean>> readAccessUnSharingFunction =
                 (u1, u2, path) -> u1.unShareReadAccess(path, u2.username);
 
+        cleanRenamedFiles(readAccessSharingFunction, readAccessUnSharingFunction);
+    }
+
+    @Test
+    public void cleanRenamedFilesWriteAccess() throws Exception {
+
         TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> writeAccessSharingFunction =
                 (u1, friends, path) ->
                         u1.shareWriteAccessWith(path, friends.stream().map(u -> u.username).collect(Collectors.toSet()));
@@ -234,9 +243,7 @@ public class MultiUserTests {
         TriFunction<UserContext, UserContext, Path, CompletableFuture<Boolean>> writeAccessUnSharingFunction =
                 (u1, u2, path) -> u1.unShareWriteAccess(path, u2.username);
 
-        cleanRenamedFiles(readAccessSharingFunction, readAccessUnSharingFunction);
         cleanRenamedFiles(writeAccessSharingFunction, writeAccessUnSharingFunction);
-
     }
 
     private void cleanRenamedFiles(
