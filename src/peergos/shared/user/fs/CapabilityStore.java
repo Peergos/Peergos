@@ -305,20 +305,20 @@ public class CapabilityStore {
 
     public static CompletableFuture<Long> getReadOnlyCapabilityCount(FileWrapper friendSharedDir,
                                                                      NetworkAccess network) {
-        return getCapabilityCount(READ_SHARING_FILE_PREFIX, friendSharedDir, network);
+        return getCapabilityCount(READ_SHARING_FILE_PREFIX, READ_CAPABILITY_SIZE, friendSharedDir, network);
     }
 
     public static CompletableFuture<Long> getEditableCapabilityCount(FileWrapper friendSharedDir,
                                                                      NetworkAccess network) {
-        return getCapabilityCount(EDIT_SHARING_FILE_PREFIX, friendSharedDir, network);
+        return getCapabilityCount(EDIT_SHARING_FILE_PREFIX, EDIT_CAPABILITY_SIZE, friendSharedDir, network);
     }
 
-    private static CompletableFuture<Long> getCapabilityCount(String filenamePrefix, FileWrapper friendSharedDir,
+    private static CompletableFuture<Long> getCapabilityCount(String filenamePrefix, int capabilitySize, FileWrapper friendSharedDir,
                                                               NetworkAccess network) {
         return friendSharedDir.getChildren(network)
                 .thenApply(capFiles -> capFiles.stream()
                     .filter(f -> f.getName().startsWith(filenamePrefix))
-                    .mapToLong(f -> f.getFileProperties().size).sum() / READ_CAPABILITY_SIZE);
+                    .mapToLong(f -> f.getFileProperties().size).sum() / capabilitySize);
     }
 
     public static CompletableFuture<List<CapabilityWithPath>> readSharingFile(String ownerName,
@@ -341,7 +341,7 @@ public class CapabilityStore {
             int currentFileSize = (int) file.getSize();
             List<CompletableFuture<Optional<CapabilityWithPath>>> capabilities = IntStream.range(offsetIndex, currentFileSize / capabilitySize)
                     .mapToObj(e -> e * capabilitySize)
-                    .map(offset -> readSharingRecord(ownerName, owner, reader, offset, network))
+                    .map(offset -> readSharingRecord(ownerName, owner, reader, offset, capabilitySize, network))
                     .collect(Collectors.toList());
 
             return Futures.combineAllInOrder(capabilities).thenApply(optList -> optList.stream()
@@ -355,10 +355,11 @@ public class CapabilityStore {
                                                                                      PublicKeyHash owner,
                                                                                      AsyncReader reader,
                                                                                      int offset,
+                                                                                     int capabilitySize,
                                                                                      NetworkAccess network) {
-        byte[] serialisedFilePointer = new byte[READ_CAPABILITY_SIZE];
+        byte[] serialisedFilePointer = new byte[capabilitySize];
         return reader.seek( 0, offset).thenCompose( currentPos ->
-                currentPos.readIntoArray(serialisedFilePointer, 0, READ_CAPABILITY_SIZE)
+                currentPos.readIntoArray(serialisedFilePointer, 0, capabilitySize)
                         .thenCompose(bytesRead -> {
                             AbsoluteCapability pointer = AbsoluteCapability.fromCbor(CborObject.fromByteArray(serialisedFilePointer));
                             EntryPoint entry = new EntryPoint(pointer, ownerName);
