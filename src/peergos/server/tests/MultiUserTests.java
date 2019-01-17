@@ -222,34 +222,6 @@ public class MultiUserTests {
 
     @Test
     public void cleanRenamedFilesReadAccess() throws Exception {
-
-        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> readAccessSharingFunction =
-                (u1, friends, path) ->
-                        u1.shareReadAccessWith(path, friends.stream().map(u -> u.username).collect(Collectors.toSet()));
-
-        TriFunction<UserContext, UserContext, Path, CompletableFuture<Boolean>> readAccessUnSharingFunction =
-                (u1, u2, path) -> u1.unShareReadAccess(path, u2.username);
-
-        cleanRenamedFiles(readAccessSharingFunction, readAccessUnSharingFunction);
-    }
-
-    @Test
-    public void cleanRenamedFilesWriteAccess() throws Exception {
-
-        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> writeAccessSharingFunction =
-                (u1, friends, path) ->
-                        u1.shareWriteAccessWith(path, friends.stream().map(u -> u.username).collect(Collectors.toSet()));
-
-        TriFunction<UserContext, UserContext, Path, CompletableFuture<Boolean>> writeAccessUnSharingFunction =
-                (u1, u2, path) -> u1.unShareWriteAccess(path, u2.username);
-
-        cleanRenamedFiles(writeAccessSharingFunction, writeAccessUnSharingFunction);
-    }
-
-    private void cleanRenamedFiles(
-            TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> sharingFunction,
-            TriFunction<UserContext, UserContext, Path, CompletableFuture<Boolean>> unSharingFunction
-    ) throws Exception {
         String username = random();
         String password = random();
         UserContext u1 = PeergosNetworkUtils.ensureSignedUp(username, password, network.clear(), crypto);
@@ -286,7 +258,7 @@ public class MultiUserTests {
         // share the file from "a" to each of the others
         String originalPath = u1.username + "/" + filename;
         FileWrapper u1File = u1.getByPath(originalPath).get().get();
-        sharingFunction.apply(u1, friends, Paths.get(u1.username, filename)).get();
+        u1.shareReadAccessWith(Paths.get(u1.username, filename), friends.stream().map(u -> u.username).collect(Collectors.toSet()));
 
         // check other users can read the file
         for (UserContext friend : friends) {
@@ -309,7 +281,7 @@ public class MultiUserTests {
         SymmetricKey priorMetaKey = priorFileAccess.getMetaKey(priorPointer.rBaseKey);
 
         // unshare with a single user
-        unSharingFunction.apply(u1, userToUnshareWith, Paths.get(u1.username, filename)).get();
+        u1.unShareReadAccess(Paths.get(u1.username, filename), userToUnshareWith.username);
 
         String newname = "newname.txt";
         FileWrapper updatedParent = u1.getByPath(originalPath).get().get()
