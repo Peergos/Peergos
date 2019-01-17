@@ -6,6 +6,7 @@ import org.junit.runners.*;
 import peergos.server.storage.ResetableFileInputStream;
 import peergos.server.util.Args;
 import peergos.server.util.PeergosNetworkUtils;
+import peergos.server.util.TriFunction;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
@@ -21,6 +22,8 @@ import java.io.*;
 import java.net.*;
 import java.nio.file.*;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.function.BiFunction;
 import java.util.stream.*;
 
 import static org.junit.Assert.assertTrue;
@@ -61,12 +64,27 @@ public class MultiUserTests {
     }
 
     @Test
-    public void shareAndUnshareFile() throws Exception {
-        PeergosNetworkUtils.shareAndUnshareFile(network, network, userCount, random);
+    public void shareAndUnshareFileForReadAccess() throws Exception {
+        PeergosNetworkUtils.shareAndUnshareFileForReadAccess(network, network, userCount, random);
     }
 
     @Test
-    public void safeCopyOfFriendsFile() throws Exception {
+    public void safeCopyOfFriendsReadAccess() throws Exception {
+        TriFunction<UserContext, UserContext, String, CompletableFuture<Boolean>> readAccessSharingFunction =
+                (u1, u2, filename) ->
+        u1.shareReadAccessWith(Paths.get(u1.username, filename), Collections.singleton(u2.username));
+        safeCopyOfFriends(readAccessSharingFunction);
+    }
+
+    @Test
+    public void safeCopyOfFriendsWriteAccess() throws Exception {
+        TriFunction<UserContext, UserContext, String, CompletableFuture<Boolean>> writeAccessSharingFunction =
+                (u1, u2, filename) ->
+                        u1.shareWriteAccessWith(Paths.get(u1.username, filename), Collections.singleton(u2.username));
+        safeCopyOfFriends(writeAccessSharingFunction);
+    }
+
+    private void safeCopyOfFriends(TriFunction<UserContext, UserContext, String, CompletableFuture<Boolean>> sharingFunction) throws Exception {
         UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
         UserContext u2 = PeergosNetworkUtils.ensureSignedUp(random(), "b", network.clear(), crypto);
 
@@ -94,7 +112,7 @@ public class MultiUserTests {
 
         // share the file from "a" to each of the others
         FileWrapper u1File = u1.getByPath(u1.username + "/" + filename).get().get();
-        u1.shareWith(Paths.get(u1.username, filename), Collections.singleton(u2.username)).get();
+        sharingFunction.apply(u1, u2, filename).get();
 
         // check other user can read the file
         FileWrapper sharedFile = u2.getByPath(u1.username + "/" + filename).get().get();
@@ -114,8 +132,24 @@ public class MultiUserTests {
         Assert.assertTrue("Different data key", ! UserTests.getDataKey(copy).equals(UserTests.getDataKey(u1File)));
     }
 
+
     @Test
-    public void shareTwoFilesWithSameName() throws Exception {
+    public void shareTwoFilesWithSameNameReadAccess() throws Exception {
+        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> readAccessSharingFunction =
+                (u1, userContexts, path) ->
+                        u1.shareReadAccessWith(path, userContexts.stream().map(u -> u.username).collect(Collectors.toSet()));
+        shareTwoFilesWithSameName(readAccessSharingFunction);
+    }
+
+    @Test
+    public void shareTwoFilesWithSameNameWriteAccess() throws Exception {
+        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> writeAccessSharingFunction =
+                (u1, userContexts, path) ->
+                        u1.shareWriteAccessWith(path, userContexts.stream().map(u -> u.username).collect(Collectors.toSet()));
+        shareTwoFilesWithSameName(writeAccessSharingFunction);
+    }
+
+    private void shareTwoFilesWithSameName(TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> sharingFunction) throws Exception {
         UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
 
         // send follow requests from each other user to "a"
@@ -154,9 +188,11 @@ public class MultiUserTests {
                 u1.network, u1.crypto.random,l -> {}, u1.fragmenter()).get();
 
         // share the file from "a" to each of the others
-        u1.shareWith(Paths.get(u1.username, filename), userContexts.stream().map(u -> u.username).collect(Collectors.toSet())).get();
+        //        sharingFunction.apply(u1, u2, filenameu1.shareReadAccessWith(Paths.get(u1.username, filename), userContexts.stream().map(u -> u.username).collect(Collectors.toSet())).get();
 
-        u1.shareWith(Paths.get(u1.username, "subdir", filename), userContexts.stream().map(u -> u.username).collect(Collectors.toSet())).get();
+        sharingFunction.apply(u1, userContexts, Paths.get(u1.username, filename)).get();
+
+        sharingFunction.apply(u1, userContexts, Paths.get(u1.username, "subdir", filename)).get();
 
         // check other users can read the file
         for (UserContext userContext : userContexts) {
@@ -185,7 +221,7 @@ public class MultiUserTests {
     }
 
     @Test
-    public void cleanRenamedFiles() throws Exception {
+    public void cleanRenamedFilesReadAccess() throws Exception {
         String username = random();
         String password = random();
         UserContext u1 = PeergosNetworkUtils.ensureSignedUp(username, password, network.clear(), crypto);
@@ -222,7 +258,7 @@ public class MultiUserTests {
         // share the file from "a" to each of the others
         String originalPath = u1.username + "/" + filename;
         FileWrapper u1File = u1.getByPath(originalPath).get().get();
-        u1.shareWith(Paths.get(u1.username, filename), friends.stream().map(u -> u.username).collect(Collectors.toSet())).get();
+        u1.shareReadAccessWith(Paths.get(u1.username, filename), friends.stream().map(u -> u.username).collect(Collectors.toSet()));
 
         // check other users can read the file
         for (UserContext friend : friends) {
@@ -245,7 +281,7 @@ public class MultiUserTests {
         SymmetricKey priorMetaKey = priorFileAccess.getMetaKey(priorPointer.rBaseKey);
 
         // unshare with a single user
-        u1.unShare(Paths.get(u1.username, filename), userToUnshareWith.username).get();
+        u1.unShareReadAccess(Paths.get(u1.username, filename), userToUnshareWith.username);
 
         String newname = "newname.txt";
         FileWrapper updatedParent = u1.getByPath(originalPath).get().get()
@@ -318,8 +354,8 @@ public class MultiUserTests {
     }
 
     @Test
-    public void shareAndUnshareFolder() throws Exception {
-        PeergosNetworkUtils.shareAndUnshareFolder(network, network, 4, random);
+    public void shareAndUnshareFolderForReadAccess() throws Exception {
+        PeergosNetworkUtils.shareAndUnshareFolderForReadAccess(network, network, 4, random);
     }
 
     @Test
