@@ -351,10 +351,11 @@ public class FileWrapper {
         if (globalRoot.isPresent())
             return globalRoot.get().getChildren("/", network);
         if (isReadable()) {
-            SigningPrivateKeyAndPublicHash childsEntryWriter = pointer.fileAccess.getSigner(pointer.capability.wBaseKey.get(), entryWriter);
+            Optional<SigningPrivateKeyAndPublicHash> childsEntryWriter = pointer.capability.wBaseKey
+                    .map(wBase -> pointer.fileAccess.getSigner(wBase, entryWriter));
             return retrieveChildren(network).thenApply(childrenRFPs -> {
                 Set<FileWrapper> newChildren = childrenRFPs.stream()
-                        .map(x -> new FileWrapper(x, Optional.of(childsEntryWriter), ownername))
+                        .map(x -> new FileWrapper(x, childsEntryWriter, ownername))
                         .collect(Collectors.toSet());
                 return newChildren.stream().collect(Collectors.toSet());
             });
