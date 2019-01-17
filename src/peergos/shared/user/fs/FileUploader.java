@@ -3,6 +3,7 @@ import java.util.logging.*;
 
 import jsinterop.annotations.*;
 import peergos.shared.*;
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.*;
@@ -119,7 +120,7 @@ public class FileUploader implements AutoCloseable {
             List<Fragment> fragments = encryptedChunk.generateFragments(fragmenter);
             LOG.info(StringUtils.format("Uploading chunk with %d fragments\n", fragments.size()));
             SymmetricKey chunkKey = chunk.chunk.key();
-            CipherText encryptedNextChunkLocation = CipherText.build(chunkKey, nextChunkLocation);
+            CipherText encryptedNextChunkLocation = CipherText.build(chunkKey, new CborObject.CborByteArray(nextChunkLocation.getMapKey()));
             return Transaction.call(chunk.location.owner, tid -> network
                             .uploadFragments(fragments, chunk.location.owner, writer, monitor, fragmenter.storageIncreaseFactor(), tid)
                             .thenCompose(hashes -> {
