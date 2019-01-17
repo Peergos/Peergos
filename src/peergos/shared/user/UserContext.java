@@ -252,6 +252,7 @@ public class UserContext {
                                     SHARED_DIR_NAME,
                                     network,
                                     (WritableAbsoluteCapability) userRoot.capability,
+                                    Optional.of(signer),
                                     null,
                                     true,
                                     crypto.random)
@@ -551,13 +552,14 @@ public class UserContext {
 
             // and authorise the writer key
             SigningPrivateKeyAndPublicHash writerWithHash = new SigningPrivateKeyAndPublicHash(writerHash, writer.secretSigningKey);
-            WritableAbsoluteCapability rootPointer = new WritableAbsoluteCapability(owner.publicKeyHash, writerHash, rootMapKey, rootRKey, rootWKey, writer.secretSigningKey);
+            WritableAbsoluteCapability rootPointer = new WritableAbsoluteCapability(owner.publicKeyHash, writerHash, rootMapKey, rootRKey, rootWKey);
             EntryPoint entry = new EntryPoint(rootPointer, this.username);
             return addOwnedKeyAndCommit(entry.pointer.writer, tid)
                     .thenCompose(x -> {
                         long t2 = System.currentTimeMillis();
-                        DirAccess root = DirAccess.create(MaybeMultihash.empty(), rootRKey, new FileProperties(directoryName, "",
-                                0, LocalDateTime.now(), false, Optional.empty()), (RelativeCapability) null,null);
+                        DirAccess root = DirAccess.create(MaybeMultihash.empty(), rootRKey, rootWKey, Optional.of(writerWithHash),
+                                new FileProperties(directoryName, "", 0, LocalDateTime.now(),
+                                        false, Optional.empty()), (RelativeCapability) null,null);
                         LOG.info("Uploading entry point directory");
                         return network.uploadChunk(root, this.signer.publicKeyHash, rootMapKey, writerWithHash, tid).thenApply(chunkHash -> {
                             long t3 = System.currentTimeMillis();
@@ -729,7 +731,7 @@ public class UserContext {
                     return sharing.mkdir(theirUsername, network, initialRequest.key.get(), true, crypto.random)
                             .thenCompose(friendRoot -> {
                                 // add a note to our static data so we know who we sent the read access to
-                                EntryPoint entry = new EntryPoint(friendRoot.readOnly()
+                                EntryPoint entry = new EntryPoint(friendRoot
                                         .withWritingKey(sharing.writer())
                                         .toAbsolute(sharing.getPointer().capability.readOnly()),
                                         username);
@@ -806,7 +808,7 @@ public class UserContext {
                         return sharing.mkdir(targetUsername, network, null, true, crypto.random).thenCompose(friendRoot -> {
 
                             // if they accept the request we will add a note to our static data so we know who we sent the read access to
-                            EntryPoint entry = new EntryPoint(friendRoot.readOnly()
+                            EntryPoint entry = new EntryPoint(friendRoot
                                     .withWritingKey(sharing.writer())
                                     .toAbsolute(sharing.getPointer().capability.readOnly()), username);
 

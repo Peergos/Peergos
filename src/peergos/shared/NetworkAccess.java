@@ -248,7 +248,8 @@ public class NetworkAccess {
 
     public CompletableFuture<Optional<FileWrapper>> retrieveEntryPoint(EntryPoint e) {
         return downloadEntryPoint(e)
-                .thenApply(faOpt ->faOpt.map(fa -> new FileWrapper(new RetrievedCapability(e.pointer, fa), e.ownerName)))
+                .thenApply(faOpt ->faOpt.map(fa -> new FileWrapper(Optional.empty(),
+                        new RetrievedCapability(e.pointer, fa), Optional.empty(), e.ownerName)))
                 .exceptionally(t -> Optional.empty());
     }
 

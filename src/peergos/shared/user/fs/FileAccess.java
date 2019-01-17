@@ -96,7 +96,13 @@ public class FileAccess implements CryptreeNode {
     }
 
     @Override
+    public Optional<SymmetricLinkToSigner> getWriterLink() {
+        return writerLink;
+    }
+
+    @Override
     public CompletableFuture<FileAccess> updateProperties(WritableAbsoluteCapability us,
+                                                          Optional<SigningPrivateKeyAndPublicHash> entryWriter,
                                                           FileProperties newProps,
                                                           NetworkAccess network) {
         SymmetricKey metaKey = this.getMetaKey(us.rBaseKey);
@@ -112,12 +118,13 @@ public class FileAccess implements CryptreeNode {
         FileAccess fa = new FileAccess(lastCommittedHash, version, toMeta, this.parent2data, encryptedProperties,
                 this.retriever, this.parentLink, writerLink);
         return Transaction.call(us.owner, tid ->
-                network.uploadChunk(fa, us.owner, us.getMapKey(), us.signer(), tid)
+                network.uploadChunk(fa, us.owner, us.getMapKey(), getSigner(us.wBaseKey.get(), entryWriter), tid)
                         .thenApply(b -> fa),
                 network.dhtClient);
     }
 
     public CompletableFuture<FileAccess> markDirty(WritableAbsoluteCapability us,
+                                                   Optional<SigningPrivateKeyAndPublicHash> entryWriter,
                                                    SymmetricKey newBaseKey,
                                                    NetworkAccess network) {
         // keep the same metakey and data key, just marked as dirty
@@ -132,7 +139,7 @@ public class FileAccess implements CryptreeNode {
         FileAccess fa = new FileAccess(committedHash(), version, newParentToMeta, newParentToData, properties,
                 this.retriever, newParentLink, writerLink);
         return Transaction.call(us.owner, tid ->
-                network.uploadChunk(fa, us.owner, us.getMapKey(), us.signer(), tid)
+                network.uploadChunk(fa, us.owner, us.getMapKey(), getSigner(us.wBaseKey.get(), entryWriter), tid)
                         .thenApply(x -> fa),
                 network.dhtClient);
     }
@@ -146,6 +153,7 @@ public class FileAccess implements CryptreeNode {
     public CompletableFuture<? extends FileAccess> copyTo(AbsoluteCapability us,
                                                           SymmetricKey newBaseKey,
                                                           WritableAbsoluteCapability newParentCap,
+                                                          Optional<SigningPrivateKeyAndPublicHash> newEntryWriter,
                                                           SymmetricKey parentparentKey,
                                                           byte[] newMapKey,
                                                           NetworkAccess network,
@@ -156,7 +164,7 @@ public class FileAccess implements CryptreeNode {
                 isDirectory ? SymmetricKey.random() : getDataKey(us.rBaseKey),
                 props, this.retriever, newParentCap.getLocation(), parentparentKey);
         return Transaction.call(newParentCap.owner,
-                tid -> network.uploadChunk(fa, newParentCap.owner, newMapKey, newParentCap.getSigningPair(), tid)
+                tid -> network.uploadChunk(fa, newParentCap.owner, newMapKey, fa.getSigner(newParentCap.wBaseKey.get(), newEntryWriter), tid)
                         .thenApply(b -> fa),
                 network.dhtClient);
     }

@@ -445,7 +445,7 @@ public abstract class UserTests {
         CryptreeNode fileAccess = file.getPointer().fileAccess;
         RelativeCapability toParent = fileAccess.getParentLink().toCapability(fileAccess.getParentKey(cap.rBaseKey));
         Assert.assertTrue("parent link shouldn't include write access",
-                ! toParent.wBaseKeyLink.isPresent() && ! toParent.signer.isPresent());
+                ! toParent.wBaseKeyLink.isPresent());
         Assert.assertTrue("parent link shouldn't include public write key",
                 ! toParent.writer.isPresent());
 
@@ -454,7 +454,7 @@ public abstract class UserTests {
         List<RelativeCapability> children = ((DirAccess) homePointer.fileAccess).getChildren(homePointer.capability.rBaseKey);
         for (RelativeCapability child : children) {
             Assert.assertTrue("child pointer is minimal",
-                    ! child.signer.isPresent() && ! child.writer.isPresent() && child.wBaseKeyLink.isPresent());
+                    ! child.writer.isPresent() && child.wBaseKeyLink.isPresent());
         }
     }
 
@@ -880,7 +880,7 @@ public abstract class UserTests {
         CryptreeNode fileAccess = directory.getPointer().fileAccess;
         RelativeCapability toParent = fileAccess.getParentLink().toCapability(fileAccess.getParentKey(cap.rBaseKey));
         Assert.assertTrue("parent link shouldn't include write access",
-                ! toParent.wBaseKeyLink.isPresent() && ! toParent.signer.isPresent());
+                ! toParent.wBaseKeyLink.isPresent());
         Assert.assertTrue("parent link shouldn't include public write key",
                 ! toParent.writer.isPresent());
 
