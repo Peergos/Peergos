@@ -68,7 +68,7 @@ public interface CryptreeNode extends Cborable {
             return CompletableFuture.completedFuture(null);
 
         RelativeCapability relCap = parentLink.toCapability(baseKey);
-        return network.retrieveAllMetadata(Arrays.asList(new AbsoluteCapability(owner, writer, relCap.getMapKey(),
+        return network.retrieveAllMetadata(Arrays.asList(new AbsoluteCapability(owner, relCap.writer.orElse(writer), relCap.getMapKey(),
                 relCap.rBaseKey, Optional.empty()))).thenApply(res -> {
             RetrievedCapability retrievedCapability = res.stream().findAny().get();
             return retrievedCapability;

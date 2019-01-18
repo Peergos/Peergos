@@ -919,7 +919,9 @@ public class UserContext {
     }
 
     public CompletableFuture<Boolean> shareReadAccessWithAll(FileWrapper file, Set<String> readersToAdd) {
-        BiFunction<FileWrapper, FileWrapper, CompletableFuture<Boolean>> sharingFunction = (sharedDir, fileWrapper) -> CapabilityStore.addReadOnlySharingLinkTo(sharedDir, fileWrapper.getPointer().capability, network, crypto.random, fragmenter)
+        BiFunction<FileWrapper, FileWrapper, CompletableFuture<Boolean>> sharingFunction = (sharedDir, fileWrapper) ->
+                CapabilityStore.addReadOnlySharingLinkTo(sharedDir, fileWrapper.getPointer().capability.readOnly(),
+                        network, crypto.random, fragmenter)
                 .thenCompose(ee -> CompletableFuture.completedFuture(true));
         return Futures.reduceAll(readersToAdd,
                 true,
@@ -935,20 +937,48 @@ public class UserContext {
     }
 
     public CompletableFuture<Boolean> shareWriteAccessWithAll(FileWrapper file, Set<String> writersToAdd) {
-        BiFunction<FileWrapper, FileWrapper, CompletableFuture<Boolean>> sharingFunction =
-                (sharedDir, fileWrapper) -> CapabilityStore.addEditSharingLinkTo(sharedDir, fileWrapper.getPointer().capability, network, crypto.random, fragmenter)
-                        .thenCompose(ee -> CompletableFuture.completedFuture(true));
+        return file.getPath(network).thenCompose(path -> {
+            String parentPath = Paths.get(path).getParent().toString();
+            return getByPath(parentPath).thenCompose(parentOpt -> {
+                AbsoluteCapability parentCap = parentOpt.get().getPointer().capability;
+                PublicKeyHash parentWriter = parentCap.writer;
+                return WriterData.getWriterData(parentCap.owner, parentWriter, network.mutable, network.dhtClient).thenCompose(parentWriterData -> {
+                    SigningPrivateKeyAndPublicHash parentSigner = parentOpt.get().signingPair();
+                    SigningKeyPair newSignerPair = SigningKeyPair.random(crypto.random, crypto.signer);
+                    return Transaction.call(signer.publicKeyHash,
+                            tid -> network.dhtClient.putSigningKey(
+                            parentSigner.secret.signatureOnly(newSignerPair.publicSigningKey.serialize()),
+                            parentCap.owner, parentCap.writer, newSignerPair.publicSigningKey, tid).thenCompose(newSignerHash -> {
+                        Set<PublicKeyHash> ownedKeys = new HashSet<>(parentWriterData.props.ownedKeys);
+                        ownedKeys.add(newSignerHash);
+                        WriterData updatedParentWD = parentWriterData.props.withOwnedKeys(ownedKeys);
+                        SigningPrivateKeyAndPublicHash newSigner = new SigningPrivateKeyAndPublicHash(newSignerHash, newSignerPair.secretSigningKey);
+                        return Transaction.call(signer.publicKeyHash,
+                                tid2 -> updatedParentWD.commit(signer.publicKeyHash, parentSigner, parentWriterData.hash, network, x -> {}, tid2).thenCompose(cwd ->
 
-        return Futures.reduceAll(writersToAdd,
-                true,
-                (x, username) -> shareAccessWith(file, username, sharingFunction),
-                (a, b) -> a && b).thenCompose( result -> {
-            if(!result) {
-                CompletableFuture<Boolean> res = new CompletableFuture<>();
-                res.complete(false);
-                return res;
-            }
-            return updatedSharedWithCache(file, writersToAdd, SharedWithCache.Access.WRITE);
+                                        file.changeSigningKey(newSigner, parentOpt.get(), network, crypto.random).thenCompose(fw -> {
+
+                                            BiFunction<FileWrapper, FileWrapper, CompletableFuture<Boolean>> sharingFunction =
+                                                    (sharedDir, fileToShare) -> CapabilityStore.addEditSharingLinkTo(sharedDir,
+                                                            fw.writableFilePointer(), network, crypto.random, fragmenter)
+                                                            .thenCompose(ee -> CompletableFuture.completedFuture(true));
+
+                                            return Futures.reduceAll(writersToAdd,
+                                                    true,
+                                                    (x, username) -> shareAccessWith(file, username, sharingFunction),
+                                                    (a, b) -> a && b).thenCompose(result -> {
+                                                if (!result) {
+                                                    CompletableFuture<Boolean> res = new CompletableFuture<>();
+                                                    res.complete(false);
+                                                    return res;
+                                                }
+                                                return updatedSharedWithCache(file, writersToAdd, SharedWithCache.Access.WRITE);
+                                            });
+                                        })
+                                ), network.dhtClient);
+                    }), network.dhtClient);
+                });
+            });
         });
     }
 
