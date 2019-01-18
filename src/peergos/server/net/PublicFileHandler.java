@@ -86,11 +86,13 @@ public class PublicFileHandler implements HttpHandler {
             FileWrapper file = fileOpt.get();
 
             if (file.isDirectory()) {
+                String fullPath = httpExchange.getRequestURI().getPath();
+                String canonicalFullPath = fullPath + (! fullPath.endsWith("/") ? "/" : "");
                 Set<FileWrapper> children = file.getChildren(network).get();
                 StringBuilder resp = new StringBuilder();
                 resp.append("<!DOCTYPE html><html lang=\"en\">");
                 resp.append("<body>");
-                children.forEach(child -> resp.append("<a href=\""+child.getName()+"\">" + child.getName() + "</a><br/>"));
+                children.forEach(child -> resp.append("<a href=\""+canonicalFullPath + child.getName()+"\">" + child.getName() + "</a><br/>"));
                 resp.append("</body>");
                 resp.append("</html>");
 
