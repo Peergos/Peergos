@@ -11,7 +11,12 @@ import java.util.concurrent.*;
 
 public interface FileRetriever extends Cborable {
 
-    Optional<Location> getNext(SymmetricKey dataKey);
+    /**
+     *
+     * @param dataKey
+     * @return the map key of the next chunk in this file
+     */
+    Optional<byte[]> getNext(SymmetricKey dataKey);
 
     byte[] getNonce();
 
@@ -32,7 +37,7 @@ public interface FileRetriever extends Cborable {
                                                                          NetworkAccess network,
                                                                          ProgressConsumer<Long> monitor);
 
-    CompletableFuture<Optional<Location>> getLocationAt(Location startLocation,
+    CompletableFuture<Optional<byte[]>> getLocationAt(Location startLocation,
                                                         long offset,
                                                         SymmetricKey dataKey,
                                                         NetworkAccess network);

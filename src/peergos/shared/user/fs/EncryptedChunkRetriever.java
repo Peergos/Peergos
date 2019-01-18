@@ -45,7 +45,7 @@ public class EncryptedChunkRetriever implements FileRetriever {
                                                   ProgressConsumer<Long> monitor) {
         return getChunkInputStream(network, random, dataKey, 0, fileSize, ourLocation, ourExistingHash, monitor)
                 .thenApply(chunk -> {
-                    Location nextChunkPointer = this.getNext(dataKey).orElse(null);
+                    Location nextChunkPointer = this.getNext(dataKey).map(ourLocation::withMapKey).orElse(null);
                     return new LazyInputStreamCombiner(0,
                             chunk.get().chunk.data(), nextChunkPointer,
                             chunk.get().chunk.data(), nextChunkPointer,
@@ -73,10 +73,11 @@ public class EncryptedChunkRetriever implements FileRetriever {
                 return CompletableFuture.completedFuture(Optional.of(result));
             });
         }
-        Optional<Location> next = getNext(dataKey);
+        Optional<byte[]> next = getNext(dataKey);
         if (! next.isPresent())
             return CompletableFuture.completedFuture(Optional.empty());
-        return network.getMetadata(next.get()).thenCompose(meta -> {
+        Location ourLoc = ourLocation.withMapKey(next.get());
+        return network.getMetadata(ourLoc).thenCompose(meta -> {
             if (!meta.isPresent())
                 return CompletableFuture.completedFuture(Optional.empty());
 
@@ -84,27 +85,27 @@ public class EncryptedChunkRetriever implements FileRetriever {
             FileRetriever retriever = access.retriever();
             return retriever.getEncryptedChunk(bytesRemainingUntilStart - Chunk.MAX_SIZE,
                     truncateTo - Chunk.MAX_SIZE, retriever.getNonce(), dataKey,
-                    next.get(), access.committedHash(), network, monitor);
+                    ourLoc, access.committedHash(), network, monitor);
         });
     }
 
-    public CompletableFuture<Optional<Location>> getLocationAt(Location startLocation, long offset, SymmetricKey dataKey, NetworkAccess network) {
+    public CompletableFuture<Optional<byte[]>> getLocationAt(Location startLocation, long offset, SymmetricKey dataKey, NetworkAccess network) {
         if (offset < Chunk.MAX_SIZE)
-            return CompletableFuture.completedFuture(Optional.of(startLocation));
-        Optional<Location> next = getNext(dataKey);
+            return CompletableFuture.completedFuture(Optional.of(startLocation.getMapKey()));
+        Optional<byte[]> next = getNext(dataKey);
         if (! next.isPresent())
             return CompletableFuture.completedFuture(Optional.empty());
         if (offset < 2*Chunk.MAX_SIZE)
             return CompletableFuture.completedFuture(next); // chunk at this location hasn't been written yet, only referenced by previous chunk
-        return network.getMetadata(next.get())
+        return network.getMetadata(startLocation.withMapKey(next.get()))
                 .thenCompose(meta -> meta.isPresent() ?
-                        ((FileAccess)meta.get()).retriever().getLocationAt(next.get(), offset - Chunk.MAX_SIZE, dataKey, network) :
+                        ((FileAccess)meta.get()).retriever().getLocationAt(startLocation.withMapKey(next.get()), offset - Chunk.MAX_SIZE, dataKey, network) :
                         CompletableFuture.completedFuture(Optional.empty())
                 );
     }
 
-    public Optional<Location> getNext(SymmetricKey dataKey) {
-        return this.nextChunk.map(c -> c.decrypt(dataKey, Location::fromCbor));
+    public Optional<byte[]> getNext(SymmetricKey dataKey) {
+        return this.nextChunk.map(c -> c.decrypt(dataKey, cbor -> ((CborObject.CborByteArray)cbor).value));
     }
 
     public byte[] getNonce() {
@@ -123,9 +124,9 @@ public class EncryptedChunkRetriever implements FileRetriever {
             if (! fullEncryptedChunk.isPresent()) {
                 return getLocationAt(ourLocation, startIndex, dataKey, network).thenApply(unwrittenChunkLocation ->
                         ! unwrittenChunkLocation.isPresent() ? Optional.empty() :
-                                Optional.of(new LocatedChunk(unwrittenChunkLocation.get(), MaybeMultihash.empty(),
+                                Optional.of(new LocatedChunk(ourLocation.withMapKey(unwrittenChunkLocation.get()), MaybeMultihash.empty(),
                                         new Chunk(new byte[Math.min(Chunk.MAX_SIZE, (int) (truncateTo - startIndex))],
-                                                dataKey, unwrittenChunkLocation.get().getMapKey(),
+                                                dataKey, unwrittenChunkLocation.get(),
                                                 dataKey.createNonce()))));
             }
 

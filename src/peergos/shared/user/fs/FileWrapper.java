@@ -629,7 +629,8 @@ public class FileWrapper {
                         child.getLocation(), child.pointer.fileAccess.committedHash(), monitor)
                         .thenCompose(currentLocation -> {
                                     CompletableFuture<Optional<Location>> locationAt = retriever
-                                            .getLocationAt(child.getLocation(), startIndex + Chunk.MAX_SIZE, dataKey, network);
+                                            .getLocationAt(child.getLocation(), startIndex + Chunk.MAX_SIZE, dataKey, network)
+                                            .thenApply(x -> x.map(m -> getLocation().withMapKey(m)));
                                     return locationAt.thenCompose(location ->
                                             CompletableFuture.completedFuture(new Pair<>(currentLocation, location)));
                                 }
