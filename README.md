@@ -117,15 +117,30 @@ You need to have ant-optional installed:
 ```shell
 sudo apt-get install ant-optional
 ```
-To run tests, IPFS daemon must be running on 127.0.0.1 interface. data.service.sh can be used in build servers to automate installing, running and terminating a given ipfs version. 
+Running tests will install the correct version of IPFS automatically, run the daemon, and terminate it afterwards. 
 ```shell
 ant test
 ```
 
 Usage
 -----
-Instructions for self hosting will be written once it is supported. 
+Instructions for self hosting will be updated once it is supported. 
 
+In the meantime you can experiment (BEWARE: we occasionally need to delete the data on this test network, so don't use it as your only copy of anything) with running your own Peergos server in our demo network by downloading a release from https://demo.peergos.net/public/peergos/releases
+
+or
+
+https://demo.peergos.net/#pQd8rmrEhBN1Lq5xTE7FRhfuc9ZasczuJX6msfcGiHEREQJWBgNZdemC/pQd8rmrEhBN1HfWok6UQWTS29DLGA8sjJdzXqs5z7fudsywKLZhFXYbQ/DGypN6uTfHNGeefjY2zLXwCsFeE4CzR4irN4TUkEMbTU/5Pf7SuySq5tU9nZoHfFDKpjWAYntDaEQ1sx4cvtMRP21SsHCMqD
+
+You will need Java >= 8 installed. 
+
+Run Peergos with:
+```
+java -jar PeergosServer.jar -peergos -pki-node-id QmXZXGXsNhxh2LiWFsa7CLHeRWJS5wb8RHxcTvQhvCzAeu -peergos.identity.hash zdpuArqSqUUncNsLSRVvUhdcT3GKAeA5yhDkPNSMf1bkEujsk -logToConsole true
+```
+You can then access the web interface over http:/localhost:8000/
+
+Note that whichever Peergos server you sign up through will be storing your data (we plan to enable migration later), so if you don't intend on leaving your Peergos server running permanently, then we recommend signing up on https://demo.peergos.net and then you can log in through a local Peergos instance and all your data will magically end up on the demo.peergos.net server. 
 
 ### Development Notes
 The ``ant compile`` target will only compile sources in src/peergos/{client,server,shared} folders.
