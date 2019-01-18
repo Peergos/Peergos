@@ -278,6 +278,51 @@ public class PeergosNetworkUtils {
         }
     }
 
+    public static void shareFolderForWriteAccess(NetworkAccess sharerNode, NetworkAccess shareeNode, int shareeCount, Random random) throws Exception {
+        Assert.assertTrue(0 < shareeCount);
+
+        String sharerUsername = generateUsername(random);
+        UserContext sharer = PeergosNetworkUtils.ensureSignedUp(sharerUsername, sharerUsername, sharerNode, crypto);
+
+        List<UserContext> shareeUsers = getUserContextsForNode(shareeNode, random, shareeCount);
+
+        for (UserContext sharee : shareeUsers)
+            sharee.sendFollowRequest(sharer.username, SymmetricKey.random()).get();
+
+        List<FollowRequestWithCipherText> sharerRequests = sharer.processFollowRequests().get();
+        for (FollowRequestWithCipherText u1Request : sharerRequests) {
+            boolean accept = true;
+            boolean reciprocate = true;
+            sharer.sendReplyFollowRequest(u1Request, accept, reciprocate).get();
+        }
+
+        for (UserContext user : shareeUsers) {
+            user.processFollowRequests().get();
+        }
+
+        // friends are now connected
+        // share a directory from u1 to the others
+        FileWrapper u1Root = sharer.getUserRoot().get();
+        String folderName = "afolder";
+        u1Root.mkdir(folderName, sharer.network, SymmetricKey.random(), false, sharer.crypto.random).get();
+        String path = Paths.get(sharerUsername, folderName).toString();
+        System.out.println("PATH "+ path);
+        FileWrapper folder = sharer.getByPath(path).get().get();
+
+        // file is uploaded, do the actual sharing
+        boolean finished = sharer.shareWriteAccessWithAll(folder, shareeUsers.stream().map(c -> c.username).collect(Collectors.toSet())).get();
+
+        // check each user can see the shared folder, and write to it
+        for (UserContext sharee : shareeUsers) {
+            FileWrapper sharedFolder = sharee.getByPath(sharer.username + "/" + folderName).get().orElseThrow(() -> new AssertionError("shared folder is present after sharing"));
+            Assert.assertEquals(sharedFolder.getFileProperties().name, folderName);
+
+            sharedFolder.mkdir(sharee.username, shareeNode, false, crypto.random).get();
+        }
+
+        Set<FileWrapper> children = sharer.getByPath(path).get().get().getChildren(sharerNode).get();
+        Assert.assertTrue(children.size() == shareeCount);
+    }
 
     public static void publicLinkToFile(Random random, NetworkAccess writerNode, NetworkAccess readerNode) throws Exception {
         String username = generateUsername(random);

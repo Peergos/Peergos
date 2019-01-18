@@ -875,10 +875,10 @@ public class FileWrapper {
         ensureUnmodified();
         WritableAbsoluteCapability cap = (WritableAbsoluteCapability)getPointer().capability;
         SymmetricLinkToSigner signerLink = SymmetricLinkToSigner.fromPair(cap.wBaseKey.get(), signer);
-        EncryptedCapability newParentLink = EncryptedCapability.create(cap.rBaseKey, parent.getParentKey(),
+        CryptreeNode fileAccess = getPointer().fileAccess;
+        EncryptedCapability newParentLink = EncryptedCapability.create(fileAccess.getParentKey(cap.rBaseKey), parent.getParentKey(),
                 Optional.of(parent.writer()), parent.getLocation().getMapKey());
 
-        CryptreeNode fileAccess = getPointer().fileAccess;
         CryptreeNode newFileAccess = fileAccess.withWriterLink(signerLink).withParentLink(newParentLink);
         RetrievedCapability newRetrievedCapability = new RetrievedCapability(cap.withSigner(signer.publicKeyHash), newFileAccess);
 
