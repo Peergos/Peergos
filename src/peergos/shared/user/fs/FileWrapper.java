@@ -888,13 +888,43 @@ public class FileWrapper {
 
             return Transaction.call(owner(),
                     tid -> network.uploadChunk(newFileAccess, owner(), getPointer().capability.getMapKey(), signer, tid)
+                            .thenCompose(z -> {
+                                Optional<byte[]> nextMapKey = fileAccess.retriever.getNext(fileAccess.getDataKey(cap.rBaseKey));
+                                if(! nextMapKey.isPresent() )
+                                    return CompletableFuture.completedFuture(true);;
+                                return copyAllChunks(owner(), cap.writer, nextMapKey.get(), cap.rBaseKey, signer, tid, network);
+                            })
                             .thenCompose(y -> ((DirAccess)parent.getPointer().fileAccess).updateChildLink(parent.writableFilePointer(),
-                                        parent.entryWriter,
-                                        getPointer(),
-                                        newRetrievedCapability, network, random))
+                                    parent.entryWriter,
+                                    getPointer(),
+                                    newRetrievedCapability, network, random))
                             .thenApply(x -> new FileWrapper(newRetrievedCapability, Optional.of(signer), ownername)),
                     network.dhtClient);
         }
+    }
+
+    private static CompletableFuture<Boolean> copyAllChunks(PublicKeyHash owner,
+                                                            PublicKeyHash currentWriter,
+                                                            byte[] mapKey,
+                                                            SymmetricKey baseReadKey,
+                                                            SigningPrivateKeyAndPublicHash targetSigner,
+                                                            TransactionId tid,
+                                                            NetworkAccess network) {
+
+        return network.getMetadata(new Location(owner, currentWriter, mapKey))
+                .thenCompose(mOpt -> {
+                    if(! mOpt.isPresent()) {
+                        return CompletableFuture.completedFuture(true);
+                    }
+                    return network.uploadChunk(mOpt.get(), owner, mapKey, targetSigner, tid)
+                            .thenCompose(b -> {
+                                FileAccess chunk = ((FileAccess)mOpt.get());
+                                Optional<byte[]> nextChunkMapKey = chunk.retriever.getNext(chunk.getDataKey(baseReadKey));
+                                if (! nextChunkMapKey.isPresent())
+                                    return CompletableFuture.completedFuture(true);
+                                return copyAllChunks(owner, currentWriter, nextChunkMapKey.get(), baseReadKey, targetSigner, tid, network);
+                            });
+                });
     }
 
     /**
