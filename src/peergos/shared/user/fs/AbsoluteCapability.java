@@ -84,6 +84,10 @@ public class AbsoluteCapability implements Cborable {
         return new AbsoluteCapability(owner, writer, mapKey, rBaseKey, Optional.empty());
     }
 
+    public AbsoluteCapability withMapKey(byte[] newMapKey) {
+        return new AbsoluteCapability(owner, writer, newMapKey, rBaseKey, wBaseKey);
+    }
+
     public AbsoluteCapability withBaseKey(SymmetricKey newBaseKey) {
         return new AbsoluteCapability(owner, writer, mapKey, newBaseKey, wBaseKey);
     }

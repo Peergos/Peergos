@@ -873,56 +873,55 @@ public class FileWrapper {
                                                            NetworkAccess network,
                                                            SafeRandom random) {
         ensureUnmodified();
-        if (this.isDirectory()) {
-            DirAccess fileAccess = (DirAccess) getPointer().fileAccess;
-            throw new IllegalStateException("Unimplemetned granting write access to directory!");
-        } else {
-            FileAccess fileAccess = (FileAccess) getPointer().fileAccess;
-            SymmetricLinkToSigner signerLink = SymmetricLinkToSigner.fromPair(getPointer().capability.wBaseKey.get(),
-                    signer);
-            WritableAbsoluteCapability cap = (WritableAbsoluteCapability)getPointer().capability;
-            EncryptedCapability newParentLink = EncryptedCapability.create(cap.rBaseKey, parent.getParentKey(),
-                    Optional.of(parent.writer()), parent.getLocation().getMapKey());
-            FileAccess newFileAccess = fileAccess.withWriterLink(signerLink).withParentLink(newParentLink);
-            RetrievedCapability newRetrievedCapability = new RetrievedCapability(cap.withSigner(signer.publicKeyHash), newFileAccess);
+        WritableAbsoluteCapability cap = (WritableAbsoluteCapability)getPointer().capability;
+        SymmetricLinkToSigner signerLink = SymmetricLinkToSigner.fromPair(cap.wBaseKey.get(), signer);
+        EncryptedCapability newParentLink = EncryptedCapability.create(cap.rBaseKey, parent.getParentKey(),
+                Optional.of(parent.writer()), parent.getLocation().getMapKey());
 
-            return Transaction.call(owner(),
-                    tid -> network.uploadChunk(newFileAccess, owner(), getPointer().capability.getMapKey(), signer, tid)
-                            .thenCompose(z -> {
-                                Optional<byte[]> nextMapKey = fileAccess.getNextChunkLocation(cap.rBaseKey);
-                                if(! nextMapKey.isPresent() )
-                                    return CompletableFuture.completedFuture(true);;
-                                return copyAllChunks(owner(), cap.writer, nextMapKey.get(), cap.rBaseKey, signer, tid, network);
-                            })
-                            .thenCompose(y -> ((DirAccess)parent.getPointer().fileAccess).updateChildLink(parent.writableFilePointer(),
-                                    parent.entryWriter,
-                                    getPointer(),
-                                    newRetrievedCapability, network, random))
-                            .thenApply(x -> new FileWrapper(newRetrievedCapability, Optional.of(signer), ownername)),
-                    network.dhtClient);
-        }
+        CryptreeNode fileAccess = getPointer().fileAccess;
+        CryptreeNode newFileAccess = fileAccess.withWriterLink(signerLink).withParentLink(newParentLink);
+        RetrievedCapability newRetrievedCapability = new RetrievedCapability(cap.withSigner(signer.publicKeyHash), newFileAccess);
+
+        return Transaction.call(owner(),
+                tid -> network.uploadChunk(newFileAccess, owner(), getPointer().capability.getMapKey(), signer, tid)
+                        .thenCompose(z -> copyAllChunks(false, cap, signer, tid, network))
+                        .thenCompose(y -> ((DirAccess)parent.getPointer().fileAccess).updateChildLink(parent.writableFilePointer(),
+                                parent.entryWriter,
+                                getPointer(),
+                                newRetrievedCapability, network, random))
+                        .thenApply(x -> new FileWrapper(newRetrievedCapability, Optional.of(signer), ownername)),
+                network.dhtClient);
     }
 
-    private static CompletableFuture<Boolean> copyAllChunks(PublicKeyHash owner,
-                                                            PublicKeyHash currentWriter,
-                                                            byte[] mapKey,
-                                                            SymmetricKey baseReadKey,
+    private static CompletableFuture<Boolean> copyAllChunks(boolean includeFirst,
+                                                            AbsoluteCapability currentCap,
                                                             SigningPrivateKeyAndPublicHash targetSigner,
                                                             TransactionId tid,
                                                             NetworkAccess network) {
 
-        return network.getMetadata(new Location(owner, currentWriter, mapKey))
+        return network.getMetadata(currentCap.getLocation())
                 .thenCompose(mOpt -> {
-                    if(! mOpt.isPresent()) {
+                    if (! mOpt.isPresent()) {
                         return CompletableFuture.completedFuture(true);
                     }
-                    return network.uploadChunk(mOpt.get(), owner, mapKey, targetSigner, tid)
+                    return (includeFirst ?
+                            network.uploadChunk(mOpt.get(), currentCap.owner, currentCap.getMapKey(), targetSigner, tid) :
+                            CompletableFuture.completedFuture(true))
                             .thenCompose(b -> {
-                                FileAccess chunk = ((FileAccess)mOpt.get());
-                                Optional<byte[]> nextChunkMapKey = chunk.getNextChunkLocation(baseReadKey);
+                                CryptreeNode chunk = mOpt.get();
+                                Optional<byte[]> nextChunkMapKey = chunk.getNextChunkLocation(currentCap.rBaseKey);
                                 if (! nextChunkMapKey.isPresent())
                                     return CompletableFuture.completedFuture(true);
-                                return copyAllChunks(owner, currentWriter, nextChunkMapKey.get(), baseReadKey, targetSigner, tid, network);
+                                return copyAllChunks(true, currentCap.withMapKey(nextChunkMapKey.get()), targetSigner, tid, network);
+                            })
+                            .thenCompose(b -> {
+                                if (! (mOpt.get() instanceof DirAccess))
+                                    return CompletableFuture.completedFuture(true);
+                                Set<AbsoluteCapability> childCaps = ((DirAccess) mOpt.get()).getChildrenCapabilities(currentCap);
+                                return Futures.reduceAll(childCaps,
+                                        true,
+                                        (x, cap) -> copyAllChunks(true, cap, targetSigner, tid, network),
+                                        (x, y) -> x && y);
                             });
                 });
     }
