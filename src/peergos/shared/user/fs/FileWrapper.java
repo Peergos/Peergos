@@ -875,7 +875,7 @@ public class FileWrapper {
         ensureUnmodified();
         if (this.isDirectory()) {
             DirAccess fileAccess = (DirAccess) getPointer().fileAccess;
-            return null;
+            throw new IllegalStateException("Unimplemetned granting write access to directory!");
         } else {
             FileAccess fileAccess = (FileAccess) getPointer().fileAccess;
             SymmetricLinkToSigner signerLink = SymmetricLinkToSigner.fromPair(getPointer().capability.wBaseKey.get(),
@@ -889,7 +889,7 @@ public class FileWrapper {
             return Transaction.call(owner(),
                     tid -> network.uploadChunk(newFileAccess, owner(), getPointer().capability.getMapKey(), signer, tid)
                             .thenCompose(z -> {
-                                Optional<byte[]> nextMapKey = fileAccess.retriever.getNext(fileAccess.getDataKey(cap.rBaseKey));
+                                Optional<byte[]> nextMapKey = fileAccess.getNextChunkLocation(cap.rBaseKey);
                                 if(! nextMapKey.isPresent() )
                                     return CompletableFuture.completedFuture(true);;
                                 return copyAllChunks(owner(), cap.writer, nextMapKey.get(), cap.rBaseKey, signer, tid, network);
@@ -919,7 +919,7 @@ public class FileWrapper {
                     return network.uploadChunk(mOpt.get(), owner, mapKey, targetSigner, tid)
                             .thenCompose(b -> {
                                 FileAccess chunk = ((FileAccess)mOpt.get());
-                                Optional<byte[]> nextChunkMapKey = chunk.retriever.getNext(chunk.getDataKey(baseReadKey));
+                                Optional<byte[]> nextChunkMapKey = chunk.getNextChunkLocation(baseReadKey);
                                 if (! nextChunkMapKey.isPresent())
                                     return CompletableFuture.completedFuture(true);
                                 return copyAllChunks(owner, currentWriter, nextChunkMapKey.get(), baseReadKey, targetSigner, tid, network);

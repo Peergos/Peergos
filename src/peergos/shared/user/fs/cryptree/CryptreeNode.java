@@ -50,6 +50,13 @@ public interface CryptreeNode extends Cborable {
 
     boolean isDirty(SymmetricKey baseKey);
 
+    /**
+     *
+     * @param rBaseKey
+     * @return the mapkey of the next chunk of this file or folder if present
+     */
+    Optional<byte[]> getNextChunkLocation(SymmetricKey rBaseKey);
+
     CompletableFuture<? extends CryptreeNode> copyTo(AbsoluteCapability us,
                                                      SymmetricKey newBaseKey,
                                                      WritableAbsoluteCapability newParentCap,
