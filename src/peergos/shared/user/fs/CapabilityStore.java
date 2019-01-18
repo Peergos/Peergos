@@ -69,7 +69,7 @@ public class CapabilityStore {
 
     public static CompletableFuture<FileWrapper> addReadOnlySharingLinkTo(FileWrapper sharedDir, AbsoluteCapability capability, NetworkAccess network, SafeRandom random,
                                                                    Fragmenter fragmenter) {
-        return addSharingLinkTo(sharedDir, capability, network, random, fragmenter, CapabilityStore.READ_SHARING_FILE_PREFIX,
+        return addSharingLinkTo(sharedDir, capability.readOnly(), network, random, fragmenter, CapabilityStore.READ_SHARING_FILE_PREFIX,
                 CapabilityStore.READ_CAPABILITY_SIZE, CapabilityStore.SHARING_READ_FILE_MAX_SIZE);
     }
 

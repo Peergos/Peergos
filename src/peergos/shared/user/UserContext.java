@@ -921,7 +921,7 @@ public class UserContext {
 
     public CompletableFuture<Boolean> shareReadAccessWithAll(FileWrapper file, Set<String> readersToAdd) {
         BiFunction<FileWrapper, FileWrapper, CompletableFuture<Boolean>> sharingFunction = (sharedDir, fileWrapper) ->
-                CapabilityStore.addReadOnlySharingLinkTo(sharedDir, fileWrapper.getPointer().capability.readOnly(),
+                CapabilityStore.addReadOnlySharingLinkTo(sharedDir, fileWrapper.getPointer().capability,
                         network, crypto.random, fragmenter)
                 .thenCompose(ee -> CompletableFuture.completedFuture(true));
         return Futures.reduceAll(readersToAdd,
