@@ -47,18 +47,18 @@ Architecture
 1.0 Layers of architecture
  - 1: Peer-to-peer and data layer - [IPFS](https://ipfs.io) provides the data storage, routing and retrieval. A User must have at least one peergos instance storing their data for it to be available. 
  - 2: Authorization Layer - a key pair (IPNS) controls who is able to modify parts of the file system (every write is signed)
- - 3: Data storage - under a given IPNS key there is a merkle-btree of encrypted chunks under random labels, without any cross links visible to the network (the network can't deduce the size of files)
- - 4: Encryption - Strong encryption is done on the user's machine using [TweetNaCl](http://tweetnacl.cr.yp.to/), with each 5MiB chunk of a file being encryped independently. 
+ - 3: Data storage - under a given IPNS key there is a [merkle-champ](https://en.wikipedia.org/wiki/Hash_array_mapped_trie) of encrypted chunks under random labels, without any cross links visible to the network (the network can't deduce the size of files)
+ - 4: Encryption - Strong encryption is done on the user's machine using [TweetNaCl](http://tweetnacl.cr.yp.to/), with each 5MiB chunk of a file being encrypted independently. 
  - 5: Social layer implementing the concept of following or being friends with another user, without exposing the friend network to anyone.
  - 5: Sharing - Secure cryptographic sharing of files with friends.
 
 2.0 Language
  - The IPFS layer is currently coded in Go
  - The server is coded to run on JVM to get portability and speed, predominantly Java
- - The web interface is mostly coded in Java and cross compiled to Javascript, with the exception of the tweetnacl, scrypt and sha25 libraries, and a small amount of GUI code in JS for Vue.js. 
+ - The web interface is mostly coded in Java and cross compiled to Javascript, with the exception of the tweetnacl, scrypt and sha256 libraries, and a small amount of GUI code in JS for Vue.js. 
 
 3.0 Nodes
- - The Core nodes are highly reliable nodes. They store the username <--> public key mapping and the encrypted pending follow requests. Eventually we hope to put this small amount of data in a blockchain for full decentralization.
+ - There is a pki node which ensures unique usernames. This data is mirrored on every peergos server. Eventually we might put this small amount of data in a blockchain for full decentralization.
  - A new node contacts any public Peergos server to join the network
 
 4.0 Trust
@@ -77,23 +77,17 @@ Architecture
  - Files that haven't been shared with another user are already resistant to quantum computer based attacks. This is because the operations to decrypt them from logging in, to seeing plain text, include only hashing and symmetric encryption, both of which are currently believed to not be significantly weakened with a quantum computer. 
  - Files that have been shared between users are, currently, vulnerable to a large enough quantum computer if an attacker is able to log the initial follow requests sent between the users (before the user retrieves and deletes them). This will be replaced with a post-quantum asymmetric algorithm as soon as a clear candidate arrives.  
 
-6.0 Incentives
- - Users will be able to earn storage space by donating storage space (through [FileCoin](http://filecoin.io/))
-
-7.0 Repair after node disappearance
- - User's client is responsible for ensuring enough fragments of their files remain (another incentive to stay online)
- - For paying users, we can keep a copy of the (encrypted) fragments on our servers to 100% guarantee no data loss
-
-8.0 Friend network
- - Anyone can send anyone else a "friend request". This amounts to "following" someone and is a one way protocol. This is stored in the core codes, but the core nodes cannot see who is sending the friend request. 
+6.0 Friend network
+ - Anyone can send anyone else a "friend request". This amounts to "following" someone and is a one way protocol. This is stored in the target user's server, but the server cannot see who is sending the friend request (it is cryptographically blinded). 
  - The target user can respond to friend requests with their own friend request to make it bi-directional (the usual concept of a friend). 
- - There is no way for the core nodes to deduce the friendship graph (who is friends with who). The plan is to send follow requests over Tor/I2P/Riffle, so even an adversary monitoring the network in realtime couldn't deduce the friendship graph
-
-9.0 Sharing of a file (with another user, or publicly)
+ - Once tor is integrated, there will be no way for an attacker (or us) to deduce the friendship graph (who is friends with who). 
+ 
+7.0 Sharing of a file (with another user, through a secret link, or publicly)
  - Once user A is being followed by user B, then A can share files with user B (B can revoke their following at any time)
  - File access control is based on [cryptree](https://raw.githubusercontent.com/ianopolous/Peergos/master/papers/wuala-cryptree.pdf) system used by Wuala
  - sharing of a text file with another user could constitute a secure email
- - a public link can be generated to a file or a folder which can be shared with anyone through any medium. A public link is of the form https://demo.peergos.net/#KEY_MATERIAL which has the property that even a public link doesn't leak the file contents to the network, as the key material after the # is not sent to the server, but interpreted locally in the browser.
+ - a link can be generated to a file or a folder which can be shared with anyone through any medium. A link is of the form https://demo.peergos.net/#KEY_MATERIAL which has the property that even the link doesn't leak the file contents to the network, as the key material after the # is not sent to the server, but interpreted locally in the browser.
+ - a user can publish a capability to a file or folder they control which makes it publicly visible
 
 Development
 --------
