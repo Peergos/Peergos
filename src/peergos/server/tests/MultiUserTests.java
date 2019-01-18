@@ -6,7 +6,7 @@ import org.junit.runners.*;
 import peergos.server.storage.ResetableFileInputStream;
 import peergos.server.util.Args;
 import peergos.server.util.PeergosNetworkUtils;
-import peergos.server.util.TriFunction;
+import peergos.shared.util.TriFunction;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
@@ -23,7 +23,6 @@ import java.net.*;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
-import java.util.function.BiFunction;
 import java.util.stream.*;
 
 import static org.junit.Assert.assertTrue;

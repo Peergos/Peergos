@@ -1,4 +1,4 @@
-package peergos.server.util;
+package peergos.shared.util;
 
 import java.util.Objects;
 import java.util.function.Function;
