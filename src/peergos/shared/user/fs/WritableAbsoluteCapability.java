@@ -27,4 +27,8 @@ public class WritableAbsoluteCapability extends AbsoluteCapability {
     public WritableAbsoluteCapability withBaseKey(SymmetricKey newBaseKey) {
         return new WritableAbsoluteCapability(owner, writer, getMapKey(), newBaseKey, wBaseKey.get());
     }
+
+    public WritableAbsoluteCapability withSigner(PublicKeyHash newSigner) {
+        return new WritableAbsoluteCapability(owner, newSigner, getMapKey(), rBaseKey, wBaseKey.get());
+    }
 }

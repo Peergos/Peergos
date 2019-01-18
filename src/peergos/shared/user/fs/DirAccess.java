@@ -252,9 +252,14 @@ public class DirAccess implements CryptreeNode {
         }
     }
 
+    @Override
+    public Optional<byte[]> getNextChunkLocation(SymmetricKey rBaseKey) {
+        return moreFolderContents.map(c -> c.toCapability(rBaseKey).getMapKey());
+    }
+
     private CompletableFuture<List<RetrievedCapability>> getNextMetablob(AbsoluteCapability us,
                                                                          NetworkAccess network) {
-        if (!moreFolderContents.isPresent())
+        if (! moreFolderContents.isPresent())
             return CompletableFuture.completedFuture(Collections.emptyList());
         RelativeCapability cap = moreFolderContents.get().toCapability(us.rBaseKey);
         return network.retrieveAllMetadata(Arrays.asList(cap.toAbsolute(us)));

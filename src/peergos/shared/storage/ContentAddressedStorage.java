@@ -78,10 +78,18 @@ public interface ContentAddressedStorage {
     CompletableFuture<Optional<Integer>> getSize(Multihash block);
 
     default CompletableFuture<PublicKeyHash> putSigningKey(byte[] signature,
-                                                           PublicKeyHash authKeyHash,
+                                                           PublicKeyHash owner,
                                                            PublicSigningKey newKey,
                                                            TransactionId tid) {
-        return put(authKeyHash, authKeyHash, signature, newKey.toCbor().toByteArray(), tid)
+        return putSigningKey(signature, owner, owner, newKey, tid);
+    }
+
+    default CompletableFuture<PublicKeyHash> putSigningKey(byte[] signature,
+                                                           PublicKeyHash owner,
+                                                           PublicKeyHash writer,
+                                                           PublicSigningKey newKey,
+                                                           TransactionId tid) {
+        return put(owner, writer, signature, newKey.toCbor().toByteArray(), tid)
                 .thenApply(PublicKeyHash::new);
     }
 

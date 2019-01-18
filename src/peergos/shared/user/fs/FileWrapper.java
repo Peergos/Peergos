@@ -9,6 +9,8 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.storage.Transaction;
+import peergos.shared.storage.TransactionId;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.*;
@@ -811,13 +813,13 @@ public class FileWrapper {
                 });
     }
 
-    private WritableAbsoluteCapability writableFilePointer() {
+    public WritableAbsoluteCapability writableFilePointer() {
         if (! isWritable())
             throw new IllegalStateException("File is not writable!");
         return (WritableAbsoluteCapability) pointer.capability;
     }
 
-    private SigningPrivateKeyAndPublicHash signingPair() {
+    public SigningPrivateKeyAndPublicHash signingPair() {
         if (! isWritable())
             throw new IllegalStateException("File is not writable!");
         return pointer.fileAccess.getSigner(pointer.capability.wBaseKey.get(), entryWriter);
@@ -864,6 +866,65 @@ public class FileWrapper {
                         .thenApply(b -> target));
             }
         });
+    }
+
+    public CompletableFuture<FileWrapper> changeSigningKey(SigningPrivateKeyAndPublicHash signer,
+                                                           FileWrapper parent,
+                                                           NetworkAccess network,
+                                                           SafeRandom random) {
+        ensureUnmodified();
+        if (this.isDirectory()) {
+            DirAccess fileAccess = (DirAccess) getPointer().fileAccess;
+            throw new IllegalStateException("Unimplemetned granting write access to directory!");
+        } else {
+            FileAccess fileAccess = (FileAccess) getPointer().fileAccess;
+            SymmetricLinkToSigner signerLink = SymmetricLinkToSigner.fromPair(getPointer().capability.wBaseKey.get(),
+                    signer);
+            WritableAbsoluteCapability cap = (WritableAbsoluteCapability)getPointer().capability;
+            EncryptedCapability newParentLink = EncryptedCapability.create(cap.rBaseKey, parent.getParentKey(),
+                    Optional.of(parent.writer()), parent.getLocation().getMapKey());
+            FileAccess newFileAccess = fileAccess.withWriterLink(signerLink).withParentLink(newParentLink);
+            RetrievedCapability newRetrievedCapability = new RetrievedCapability(cap.withSigner(signer.publicKeyHash), newFileAccess);
+
+            return Transaction.call(owner(),
+                    tid -> network.uploadChunk(newFileAccess, owner(), getPointer().capability.getMapKey(), signer, tid)
+                            .thenCompose(z -> {
+                                Optional<byte[]> nextMapKey = fileAccess.getNextChunkLocation(cap.rBaseKey);
+                                if(! nextMapKey.isPresent() )
+                                    return CompletableFuture.completedFuture(true);;
+                                return copyAllChunks(owner(), cap.writer, nextMapKey.get(), cap.rBaseKey, signer, tid, network);
+                            })
+                            .thenCompose(y -> ((DirAccess)parent.getPointer().fileAccess).updateChildLink(parent.writableFilePointer(),
+                                    parent.entryWriter,
+                                    getPointer(),
+                                    newRetrievedCapability, network, random))
+                            .thenApply(x -> new FileWrapper(newRetrievedCapability, Optional.of(signer), ownername)),
+                    network.dhtClient);
+        }
+    }
+
+    private static CompletableFuture<Boolean> copyAllChunks(PublicKeyHash owner,
+                                                            PublicKeyHash currentWriter,
+                                                            byte[] mapKey,
+                                                            SymmetricKey baseReadKey,
+                                                            SigningPrivateKeyAndPublicHash targetSigner,
+                                                            TransactionId tid,
+                                                            NetworkAccess network) {
+
+        return network.getMetadata(new Location(owner, currentWriter, mapKey))
+                .thenCompose(mOpt -> {
+                    if(! mOpt.isPresent()) {
+                        return CompletableFuture.completedFuture(true);
+                    }
+                    return network.uploadChunk(mOpt.get(), owner, mapKey, targetSigner, tid)
+                            .thenCompose(b -> {
+                                FileAccess chunk = ((FileAccess)mOpt.get());
+                                Optional<byte[]> nextChunkMapKey = chunk.getNextChunkLocation(baseReadKey);
+                                if (! nextChunkMapKey.isPresent())
+                                    return CompletableFuture.completedFuture(true);
+                                return copyAllChunks(owner, currentWriter, nextChunkMapKey.get(), baseReadKey, targetSigner, tid, network);
+                            });
+                });
     }
 
     /**

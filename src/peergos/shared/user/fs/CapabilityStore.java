@@ -26,7 +26,7 @@ import java.util.stream.*;
  */
 public class CapabilityStore {
     private static final int READ_CAPABILITY_SIZE = 162; // fp.toCbor().toByteArray() DOESN'T INCLUDE .secret
-    private static final int EDIT_CAPABILITY_SIZE = 162;
+    private static final int EDIT_CAPABILITY_SIZE = 201;
     private static final int CAPS_PER_FILE = 10000;
     private static final int SHARING_READ_FILE_MAX_SIZE = READ_CAPABILITY_SIZE * CAPS_PER_FILE;
     private static final int SHARING_EDIT_FILE_MAX_SIZE = EDIT_CAPABILITY_SIZE * CAPS_PER_FILE;
@@ -73,16 +73,16 @@ public class CapabilityStore {
                 CapabilityStore.READ_CAPABILITY_SIZE, CapabilityStore.SHARING_READ_FILE_MAX_SIZE);
     }
 
-    public static CompletableFuture<FileWrapper> addEditSharingLinkTo(FileWrapper sharedDir, AbsoluteCapability capability, NetworkAccess network, SafeRandom random,
+    public static CompletableFuture<FileWrapper> addEditSharingLinkTo(FileWrapper sharedDir, WritableAbsoluteCapability capability, NetworkAccess network, SafeRandom random,
                                                                Fragmenter fragmenter) {
-        //Kev currently using readonly capability
-        return addSharingLinkTo(sharedDir, capability.readOnly(), network, random, fragmenter, CapabilityStore.EDIT_SHARING_FILE_PREFIX,
+        return addSharingLinkTo(sharedDir, capability, network, random, fragmenter, CapabilityStore.EDIT_SHARING_FILE_PREFIX,
                 CapabilityStore.EDIT_CAPABILITY_SIZE, CapabilityStore.SHARING_EDIT_FILE_MAX_SIZE);
     }
 
-    public static CompletableFuture<FileWrapper> addSharingLinkTo(FileWrapper sharedDir, AbsoluteCapability capability, NetworkAccess network, SafeRandom random,
-                                                           Fragmenter fragmenter, String sharingPrefix,
-                                                           int capabilitySize, int sharingFileMaxSize) {
+    public static CompletableFuture<FileWrapper> addSharingLinkTo(FileWrapper sharedDir, AbsoluteCapability capability,
+                                                                  NetworkAccess network, SafeRandom random,
+                                                                  Fragmenter fragmenter, String sharingPrefix,
+                                                                  int capabilitySize, int sharingFileMaxSize) {
         if (!sharedDir.isDirectory() || !sharedDir.isWritable()) {
             CompletableFuture<FileWrapper> error = new CompletableFuture<>();
             error.completeExceptionally(new IllegalArgumentException("Can only add link to a writable directory!"));

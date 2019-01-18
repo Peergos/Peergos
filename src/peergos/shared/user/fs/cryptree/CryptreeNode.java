@@ -50,6 +50,13 @@ public interface CryptreeNode extends Cborable {
 
     boolean isDirty(SymmetricKey baseKey);
 
+    /**
+     *
+     * @param rBaseKey
+     * @return the mapkey of the next chunk of this file or folder if present
+     */
+    Optional<byte[]> getNextChunkLocation(SymmetricKey rBaseKey);
+
     CompletableFuture<? extends CryptreeNode> copyTo(AbsoluteCapability us,
                                                      SymmetricKey newBaseKey,
                                                      WritableAbsoluteCapability newParentCap,
@@ -68,7 +75,7 @@ public interface CryptreeNode extends Cborable {
             return CompletableFuture.completedFuture(null);
 
         RelativeCapability relCap = parentLink.toCapability(baseKey);
-        return network.retrieveAllMetadata(Arrays.asList(new AbsoluteCapability(owner, writer, relCap.getMapKey(),
+        return network.retrieveAllMetadata(Arrays.asList(new AbsoluteCapability(owner, relCap.writer.orElse(writer), relCap.getMapKey(),
                 relCap.rBaseKey, Optional.empty()))).thenApply(res -> {
             RetrievedCapability retrievedCapability = res.stream().findAny().get();
             return retrievedCapability;
