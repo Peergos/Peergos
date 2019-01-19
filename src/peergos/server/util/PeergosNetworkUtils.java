@@ -303,7 +303,7 @@ public class PeergosNetworkUtils {
         // friends are now connected
         // share a directory from u1 to the others
         FileWrapper u1Root = sharer.getUserRoot().get();
-        String folderName = "afolder";
+        String folderName = "awritefolder";
         u1Root.mkdir(folderName, sharer.network, SymmetricKey.random(), false, sharer.crypto.random).get();
         String path = Paths.get(sharerUsername, folderName).toString();
         System.out.println("PATH "+ path);
