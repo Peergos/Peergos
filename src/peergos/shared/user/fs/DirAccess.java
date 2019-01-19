@@ -98,6 +98,18 @@ public class DirAccess implements CryptreeNode {
         return false;
     }
 
+    @Override
+    public DirAccess withWriterLink(SymmetricLinkToSigner newWriterLink) {
+        return new DirAccess(MaybeMultihash.empty(), version, base2parent, parent2meta, parentLink,
+                properties, children, moreFolderContents, Optional.of(newWriterLink));
+    }
+
+    @Override
+    public DirAccess withParentLink(EncryptedCapability newParentLink) {
+        return new DirAccess(MaybeMultihash.empty(), version, base2parent, parent2meta, newParentLink,
+                properties, children, moreFolderContents, writerLink);
+    }
+
     public DirAccess withNextBlob(Optional<EncryptedCapability> moreFolderContents) {
         return new DirAccess(MaybeMultihash.empty(), version, base2parent, parent2meta, parentLink, properties,
                 children, moreFolderContents, writerLink);
@@ -329,6 +341,12 @@ public class DirAccess implements CryptreeNode {
     public Set<Location> getChildrenLocations(AbsoluteCapability us) {
         return getChildren(us.rBaseKey).stream()
                 .map(cap -> cap.getLocation(us.owner, us.writer))
+                .collect(Collectors.toSet());
+    }
+
+    public Set<AbsoluteCapability> getChildrenCapabilities(AbsoluteCapability us) {
+        return getChildren(us.rBaseKey).stream()
+                .map(cap -> cap.toAbsolute(us))
                 .collect(Collectors.toSet());
     }
 

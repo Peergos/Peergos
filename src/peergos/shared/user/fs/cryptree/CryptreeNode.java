@@ -50,6 +50,10 @@ public interface CryptreeNode extends Cborable {
 
     boolean isDirty(SymmetricKey baseKey);
 
+    CryptreeNode withWriterLink(SymmetricLinkToSigner newWriterLink);
+
+    CryptreeNode withParentLink(EncryptedCapability newParentLink);
+
     /**
      *
      * @param rBaseKey

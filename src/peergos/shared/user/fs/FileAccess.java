@@ -100,11 +100,13 @@ public class FileAccess implements CryptreeNode {
         return retriever;
     }
 
+    @Override
     public FileAccess withWriterLink(SymmetricLinkToSigner newWriterLink) {
-        return new FileAccess(lastCommittedHash, version, parent2meta, parent2data,
+        return new FileAccess(MaybeMultihash.empty(), version, parent2meta, parent2data,
                 properties, retriever, parentLink, Optional.of(newWriterLink));
     }
 
+    @Override
     public FileAccess withParentLink(EncryptedCapability newParentLink) {
         return new FileAccess(MaybeMultihash.empty(), version, parent2meta, parent2data, properties, retriever,
                 newParentLink, writerLink);

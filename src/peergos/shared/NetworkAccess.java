@@ -328,6 +328,15 @@ public class NetworkAccess {
         }
     }
 
+    public CompletableFuture<Multihash> addPreexistingChunk(CryptreeNode metadata,
+                                                            PublicKeyHash owner,
+                                                            byte[] mapKey,
+                                                            SigningPrivateKeyAndPublicHash writer,
+                                                            TransactionId tid) {
+        return tree.put(owner, writer, mapKey, metadata.committedHash(), metadata.committedHash().get(), tid)
+                .thenApply(res -> metadata.committedHash().get());
+    }
+
     public CompletableFuture<Optional<CryptreeNode>> getMetadata(Location loc) {
         if (loc == null)
             return CompletableFuture.completedFuture(Optional.empty());

@@ -354,7 +354,12 @@ public class MultiUserTests {
 
     @Test
     public void shareAndUnshareFolderForReadAccess() throws Exception {
-        PeergosNetworkUtils.shareAndUnshareFolderForReadAccess(network, network, 4, random);
+        PeergosNetworkUtils.shareAndUnshareFolderForReadAccess(network, network, 2, random);
+    }
+
+    @Test
+    public void shareFolderForWriteAccess() throws Exception {
+        PeergosNetworkUtils.shareFolderForWriteAccess(network, network, 2, random);
     }
 
     @Test
