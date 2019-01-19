@@ -951,7 +951,7 @@ public class FileWrapper {
                                 Optional<byte[]> nextChunkMapKey = chunk.getNextChunkLocation(currentCap.rBaseKey);
                                 if (! nextChunkMapKey.isPresent())
                                     return CompletableFuture.completedFuture(true);
-                                return copyAllChunks(true, currentCap.withMapKey(nextChunkMapKey.get()), targetSigner, tid, network);
+                                return deleteAllChunks(currentCap.withMapKey(nextChunkMapKey.get()), targetSigner, tid, network);
                             })
                             .thenCompose(b -> {
                                 if (! (mOpt.get() instanceof DirAccess))
@@ -959,7 +959,7 @@ public class FileWrapper {
                                 Set<AbsoluteCapability> childCaps = ((DirAccess) mOpt.get()).getChildrenCapabilities(currentCap);
                                 return Futures.reduceAll(childCaps,
                                         true,
-                                        (x, cap) -> copyAllChunks(true, cap, targetSigner, tid, network),
+                                        (x, cap) -> deleteAllChunks(cap, targetSigner, tid, network),
                                         (x, y) -> x && y);
                             });
                 });
