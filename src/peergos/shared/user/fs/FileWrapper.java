@@ -893,6 +893,15 @@ public class FileWrapper {
                 network.dhtClient);
     }
 
+    /** This copies all the cryptree nodes from one signing key to another for a file or subtree
+     *
+     * @param includeFirst
+     * @param currentCap
+     * @param targetSigner
+     * @param tid
+     * @param network
+     * @return
+     */
     private static CompletableFuture<Boolean> copyAllChunks(boolean includeFirst,
                                                             AbsoluteCapability currentCap,
                                                             SigningPrivateKeyAndPublicHash targetSigner,
@@ -905,7 +914,7 @@ public class FileWrapper {
                         return CompletableFuture.completedFuture(true);
                     }
                     return (includeFirst ?
-                            network.uploadChunk(mOpt.get(), currentCap.owner, currentCap.getMapKey(), targetSigner, tid) :
+                            network.addPreexistingChunk(mOpt.get(), currentCap.owner, currentCap.getMapKey(), targetSigner, tid) :
                             CompletableFuture.completedFuture(true))
                             .thenCompose(b -> {
                                 CryptreeNode chunk = mOpt.get();
