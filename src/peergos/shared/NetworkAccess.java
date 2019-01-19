@@ -337,6 +337,15 @@ public class NetworkAccess {
                 .thenApply(res -> metadata.committedHash().get());
     }
 
+    public CompletableFuture<Multihash> deleteChunk(CryptreeNode metadata,
+                                                    PublicKeyHash owner,
+                                                    byte[] mapKey,
+                                                    SigningPrivateKeyAndPublicHash writer,
+                                                    TransactionId tid) {
+        return tree.remove(owner, writer, mapKey, metadata.committedHash(), tid)
+                .thenApply(res -> metadata.committedHash().get());
+    }
+
     public CompletableFuture<Optional<CryptreeNode>> getMetadata(Location loc) {
         if (loc == null)
             return CompletableFuture.completedFuture(Optional.empty());

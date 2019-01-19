@@ -889,6 +889,7 @@ public class FileWrapper {
                                 parent.entryWriter,
                                 getPointer(),
                                 newRetrievedCapability, network, random))
+                        .thenCompose(x -> deleteAllChunks(cap, parent.signingPair(), tid, network))
                         .thenApply(x -> new FileWrapper(newRetrievedCapability, Optional.of(signer), ownername)),
                 network.dhtClient);
     }
@@ -930,6 +931,35 @@ public class FileWrapper {
                                 return Futures.reduceAll(childCaps,
                                         true,
                                         (x, cap) -> copyAllChunks(true, cap, targetSigner, tid, network),
+                                        (x, y) -> x && y);
+                            });
+                });
+    }
+
+    private static CompletableFuture<Boolean> deleteAllChunks(AbsoluteCapability currentCap,
+                                                              SigningPrivateKeyAndPublicHash signer,
+                                                              TransactionId tid,
+                                                              NetworkAccess network) {
+        return network.getMetadata(currentCap.getLocation())
+                .thenCompose(mOpt -> {
+                    if (! mOpt.isPresent()) {
+                        return CompletableFuture.completedFuture(true);
+                    }
+                    return network.deleteChunk(mOpt.get(), currentCap.owner, currentCap.getMapKey(), signer, tid)
+                            .thenCompose(b -> {
+                                CryptreeNode chunk = mOpt.get();
+                                Optional<byte[]> nextChunkMapKey = chunk.getNextChunkLocation(currentCap.rBaseKey);
+                                if (! nextChunkMapKey.isPresent())
+                                    return CompletableFuture.completedFuture(true);
+                                return deleteAllChunks(currentCap.withMapKey(nextChunkMapKey.get()), signer, tid, network);
+                            })
+                            .thenCompose(b -> {
+                                if (! (mOpt.get() instanceof DirAccess))
+                                    return CompletableFuture.completedFuture(true);
+                                Set<AbsoluteCapability> childCaps = ((DirAccess) mOpt.get()).getChildrenCapabilities(currentCap);
+                                return Futures.reduceAll(childCaps,
+                                        true,
+                                        (x, cap) -> deleteAllChunks(cap, signer, tid, network),
                                         (x, y) -> x && y);
                             });
                 });
