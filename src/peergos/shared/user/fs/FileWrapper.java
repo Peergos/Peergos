@@ -202,7 +202,7 @@ public class FileWrapper {
                         return x;
                     });
         } else {
-            // create a new rBaseKey == parentKey and mark the metaDataKey as dirty
+            // create a new rBaseKey == parentKey
             SymmetricKey parentKey = SymmetricKey.random();
             return ((FileAccess) pointer.fileAccess).markDirty(writableFilePointer(), entryWriter, parentKey, network).thenCompose(newFileAccess -> {
                 RetrievedCapability newPointer = new RetrievedCapability(this.pointer.capability.withBaseKey(parentKey), newFileAccess);
