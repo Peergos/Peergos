@@ -34,12 +34,11 @@ public class RetrievedCapability {
         if (! capability.isWritable())
             return CompletableFuture.completedFuture(false);
         WritableAbsoluteCapability parentCap = parentRetrievedCapability != null ?
-                (WritableAbsoluteCapability) parentRetrievedCapability.capability :
-                null;
+                (WritableAbsoluteCapability) parentRetrievedCapability.capability : null;
         if (! fileAccess.isDirectory()) {
             CompletableFuture<Boolean> result = new CompletableFuture<>();
             Transaction.call(this.capability.owner,
-                    tid -> network.tree.remove(this.capability.owner, signer, this.capability.getMapKey(), fileAccess.committedHash(), tid).thenAccept(removed -> {
+                    tid -> FileWrapper.deleteAllChunks(this.capability, signer, tid, network).thenAccept(removed -> {
                         // remove from parent
                         if (parentCap != null)
                             ((DirAccess) parentRetrievedCapability.fileAccess)
@@ -53,7 +52,7 @@ public class RetrievedCapability {
                 file.remove(network, null, signer);
             CompletableFuture<Boolean> result = new CompletableFuture<>();
             Transaction.call(this.capability.owner,
-                    tid -> network.tree.remove(this.capability.owner, signer, this.capability.getMapKey(), fileAccess.committedHash(), tid).thenAccept(removed -> {
+                    tid -> FileWrapper.deleteAllChunks(this.capability, signer, tid, network).thenAccept(removed -> {
                         // remove from parent
                         if (parentCap != null)
                             ((DirAccess) parentRetrievedCapability.fileAccess)

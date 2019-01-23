@@ -220,6 +220,65 @@ public class MultiUserTests {
     }
 
     @Test
+    public void deleteFileSharedWithWriteAccess() throws Exception {
+        UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
+
+        // send follow requests from each other user to "a"
+        List<UserContext> userContexts = getUserContexts(1);
+        for (UserContext userContext : userContexts) {
+            userContext.sendFollowRequest(u1.username, SymmetricKey.random()).get();
+        }
+
+        // make "a" reciprocate all the follow requests
+        List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
+        for (FollowRequestWithCipherText u1Request : u1Requests) {
+            boolean accept = true;
+            boolean reciprocate = true;
+            u1.sendReplyFollowRequest(u1Request, accept, reciprocate).get();
+        }
+
+        // complete the friendship connection
+        for (UserContext userContext : userContexts) {
+            userContext.processFollowRequests().get();//needed for side effect
+        }
+
+        // upload a file to "a"'s space
+        FileWrapper u1Root = u1.getUserRoot().get();
+        String filename = "somefile.txt";
+        byte[] data1 = "Hello Peergos friend!".getBytes();
+        AsyncReader file1Reader = new AsyncReader.ArrayBacked(data1);
+        FileWrapper uploaded = u1Root.uploadFile(filename, file1Reader, data1.length,
+                u1.network, u1.crypto.random,l -> {}, u1.fragmenter()).get();
+
+        u1.shareWriteAccessWith(Paths.get(u1.username, filename), userContexts.stream().map(u -> u.username).collect(Collectors.toSet()));
+
+        // check other users can read the file
+        for (UserContext userContext : userContexts) {
+            Optional<FileWrapper> sharedFile = userContext.getByPath(u1.username + "/" + filename).get();
+            Assert.assertTrue("shared file present", sharedFile.isPresent());
+
+            AsyncReader inputStream = sharedFile.get().getInputStream(userContext.network,
+                    userContext.crypto.random, l -> {}).get();
+
+            byte[] fileContents = Serialize.readFully(inputStream, sharedFile.get().getFileProperties().size).get();
+            Assert.assertTrue("shared file contents correct", Arrays.equals(data1, fileContents));
+        }
+        //delete file
+        Optional<FileWrapper> theFile = u1.getByPath(u1.username + "/" + filename).get();
+        Optional<FileWrapper> rootFolder = u1.getByPath(u1.username).get();
+
+        u1.remove(theFile.get(), rootFolder.get()).get();
+        Optional<FileWrapper> removedFile = u1.getByPath(u1.username + "/" + filename).get();
+        Assert.assertTrue("file removed", ! removedFile.isPresent());
+
+        for (UserContext userContext : userContexts) {
+            Optional<FileWrapper> sharedFile = userContext.getByPath(u1.username + "/" + filename).get();
+            Assert.assertTrue("shared file removed", ! sharedFile.isPresent());
+        }
+
+    }
+
+    @Test
     public void cleanRenamedFilesReadAccess() throws Exception {
         String username = random();
         String password = random();

@@ -1,4 +1,5 @@
 package peergos.shared.user.fs;
+import java.nio.file.Paths;
 import java.util.logging.*;
 
 import jsinterop.annotations.*;
@@ -893,7 +894,7 @@ public class FileWrapper {
                         .thenApply(x -> new FileWrapper(newRetrievedCapability, Optional.of(signer), ownername)),
                 network.dhtClient);
     }
-
+    
     /** This copies all the cryptree nodes from one signing key to another for a file or subtree
      *
      * @param includeFirst
@@ -936,7 +937,7 @@ public class FileWrapper {
                 });
     }
 
-    private static CompletableFuture<Boolean> deleteAllChunks(AbsoluteCapability currentCap,
+    public static CompletableFuture<Boolean> deleteAllChunks(AbsoluteCapability currentCap,
                                                               SigningPrivateKeyAndPublicHash signer,
                                                               TransactionId tid,
                                                               NetworkAccess network) {
@@ -970,7 +971,6 @@ public class FileWrapper {
      * @param parent
      * @return updated parent
      */
-    @JsMethod
     public CompletableFuture<FileWrapper> remove(NetworkAccess network, FileWrapper parent) {
         ensureUnmodified();
         Supplier<CompletableFuture<Boolean>> supplier = () -> new RetrievedCapability(writableFilePointer(), pointer.fileAccess)
@@ -979,9 +979,30 @@ public class FileWrapper {
         if (parent != null) {
             return parent.removeChild(this, network)
                     .thenCompose(updated -> supplier.get()
+                            .thenCompose( result -> removeSigningKey(network, updated))
                             .thenApply(x -> updated));
         }
         return supplier.get().thenApply(x -> parent);
+    }
+
+    public CompletableFuture<Boolean> removeSigningKey(NetworkAccess network, FileWrapper parent) {
+        AbsoluteCapability parentCap = parent.getPointer().capability;
+        if(parentCap.writer.equals(pointer.capability.writer))
+            return CompletableFuture.completedFuture(true);
+
+        PublicKeyHash parentWriter = parentCap.writer;
+        return WriterData.getWriterData(parentCap.owner, parentWriter, network.mutable, network.dhtClient)
+                .thenCompose(parentWriterData -> {
+            SigningPrivateKeyAndPublicHash parentSigner = parent.signingPair();
+
+            Set<PublicKeyHash> ownedKeys = new HashSet<>(parentWriterData.props.ownedKeys);
+            ownedKeys.remove(pointer.capability.writer);
+            WriterData updatedParentWD = parentWriterData.props.withOwnedKeys(ownedKeys);
+            return Transaction.call(parentCap.owner, tid ->
+                    updatedParentWD.commit(parentCap.owner, parentSigner,
+                            parentWriterData.hash, network, x -> { }, tid).thenApply(cwd -> true), network.dhtClient);
+
+        });
     }
 
     public CompletableFuture<? extends AsyncReader> getInputStream(NetworkAccess network, SafeRandom random,

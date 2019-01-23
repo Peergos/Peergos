@@ -44,6 +44,12 @@ public class SharedWithCache {
         cache.computeIfAbsent(path, k -> new HashSet<>()).addAll(names);
     }
 
+    public void clearSharedWith(String path) {
+        String fullPath = path.startsWith("/") ? path : "/" + path;
+        sharedWithReadAccessCache.computeIfPresent(fullPath, (k, v) -> new HashSet<>());
+        sharedWithWriteAccessCache.computeIfPresent(fullPath, (k, v) -> new HashSet<>());
+    }
+
     public void removeSharedWith(Access access, String path, Set<String> names) {
         if(access == Access.READ) {
             removeCacheEntry(sharedWithReadAccessCache, path, names);
