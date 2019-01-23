@@ -6,6 +6,7 @@ import org.junit.runners.*;
 import peergos.server.storage.ResetableFileInputStream;
 import peergos.server.util.Args;
 import peergos.server.util.PeergosNetworkUtils;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.util.TriFunction;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
@@ -264,10 +265,13 @@ public class MultiUserTests {
             Assert.assertTrue("shared file contents correct", Arrays.equals(data1, fileContents));
         }
         //delete file
-        Optional<FileWrapper> theFile = u1.getByPath(u1.username + "/" + filename).get();
-        Optional<FileWrapper> rootFolder = u1.getByPath(u1.username).get();
+        FileWrapper theFile = u1.getByPath(u1.username + "/" + filename).get().get();
+        FileWrapper rootFolder = u1.getByPath(u1.username).get().get();
 
-        u1.remove(theFile.get(), rootFolder.get()).get();
+        Set<PublicKeyHash> keysOwnedByRootSigner = WriterData.getDirectOwnedKeys(theFile.owner(), rootFolder.writer(), network.mutable, network.dhtClient);
+        Assert.assertTrue("New writer key present", keysOwnedByRootSigner.contains(theFile.writer()));
+
+        theFile.remove(rootFolder, network).get();
         Optional<FileWrapper> removedFile = u1.getByPath(u1.username + "/" + filename).get();
         Assert.assertTrue("file removed", ! removedFile.isPresent());
 
@@ -275,7 +279,8 @@ public class MultiUserTests {
             Optional<FileWrapper> sharedFile = userContext.getByPath(u1.username + "/" + filename).get();
             Assert.assertTrue("shared file removed", ! sharedFile.isPresent());
         }
-
+        Set<PublicKeyHash> updatedKeysOwnedByRootSigner = WriterData.getDirectOwnedKeys(theFile.owner(), rootFolder.writer(), network.mutable, network.dhtClient);
+        Assert.assertTrue("New writer key not present", ! updatedKeysOwnedByRootSigner.contains(theFile.writer()));
     }
 
     @Test

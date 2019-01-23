@@ -124,40 +124,10 @@ public class UserContext {
     }
 
     @JsMethod
-    public CompletableFuture<FileWrapper> remove(FileWrapper fileToDelete, FileWrapper parent) {
-        return remove(fileToDelete.getName(), parent.getName());
-    }
-
-    /*
-    We make sure to get the latest version of both the file and parent directory
-     */
-    private CompletableFuture<FileWrapper> remove(String filename, String directory) {
-        CompletableFuture<FileWrapper> result = new CompletableFuture<>();
-        return getByPath(directory).thenCompose( parent -> {
-            if(!parent.isPresent()) {
-                result.completeExceptionally(new IllegalArgumentException("Directory not found: " + directory));
-                return result;
-            }
-            String path = directory + "/" + filename;
-            return getByPath(path).thenCompose( file -> {
-                    if(file.isPresent()) {
-                        return file.get().remove(network, parent.get()).thenApply(parentDir -> {
-                            sharedWithCache.clearSharedWith(path);
-                            return parentDir;
-                        });
-                    } else {
-                        result.completeExceptionally(new IllegalArgumentException("File not found: " + filename));
-                        return result;
-                    }
-            });
-        });
-    }
-
-    @JsMethod
-     public CompletableFuture<Boolean> unShareReadAccess(FileWrapper file, String readerToRemove) {
+    public CompletableFuture<Boolean> unShareReadAccess(FileWrapper file, String readerToRemove) {
 
         return file.getPath(network).thenCompose(pathString ->
-            unShareReadAccess(Paths.get(pathString), Collections.singleton(readerToRemove))
+                unShareReadAccess(Paths.get(pathString), Collections.singleton(readerToRemove))
         );
     }
 
@@ -1157,7 +1127,7 @@ public class UserContext {
                         byte[] keyFromResponse = freq.key.map(k -> k.serialize()).orElse(null);
                         if (keyFromResponse == null || !Arrays.equals(keyFromResponse, ourKeyForThem)) {
                             // They didn't reciprocate (follow us)
-                            CompletableFuture<FileWrapper> removeDir = ourDirForThem.remove(network, sharing);
+                            CompletableFuture<FileWrapper> removeDir = ourDirForThem.remove(sharing, network);
                             // remove entry point as well
                             CompletableFuture<CommittedWriterData> cleanStatic = removeFromStaticData(ourDirForThem);
 
@@ -1351,7 +1321,7 @@ public class UserContext {
         // remove /$us/shared/$them
         return getSharingFolder()
                 .thenCompose(sharing -> getByPath("/"+this.username+"/shared/"+username)
-                        .thenCompose(dir -> dir.get().remove(network, sharing)
+                        .thenCompose(dir -> dir.get().remove(sharing, network)
                                 // remove our static data entry storing that we've granted them access
                                 .thenCompose(b -> removeFromStaticData(dir.get()))));
     }

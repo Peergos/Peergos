@@ -81,7 +81,7 @@ public class QuotaTests {
             home = home.uploadFile(filename, new AsyncReader.ArrayBacked(data), data.length,
                     network, crypto.random, x -> {}, context.fragmenter()).get();
             FileWrapper file = context.getByPath("/" + username + "/" + filename).get().get();
-            home = file.remove(network, home).get();
+            home = file.remove(home, network).get();
         }
     }
 
@@ -100,7 +100,7 @@ public class QuotaTests {
         home = home.uploadFile(filename, new AsyncReader.ArrayBacked(data), data.length,
                 network, crypto.random, x -> {}, context.fragmenter()).get();
         FileWrapper file = context.getByPath("/" + username + "/" + filename).get().get();
-        file.remove(network, home).get();
+        file.remove(home, network).get();
     }
 
     @Test
@@ -123,6 +123,6 @@ public class QuotaTests {
                     }, context.fragmenter()).get();
             Assert.fail();
         } catch (Exception e) {}
-        file.remove(network, home).get();
+        file.remove(home, network).get();
     }
 }

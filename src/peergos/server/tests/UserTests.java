@@ -810,7 +810,7 @@ public abstract class UserTests {
         assertTrue("retrieved same data", dataEquals);
 
         //delete the file
-        fileWrapper.remove(context.network, updatedRoot2).get();
+        fileWrapper.remove(updatedRoot2, context.network).get();
 
         //re-create user-context
         UserContext context2 = PeergosNetworkUtils.ensureSignedUp(username, password, network.clear(), crypto);
@@ -911,7 +911,7 @@ public abstract class UserTests {
                 ! toParent.writer.isPresent());
 
         //remove the directory
-        directory.remove(context.network, updatedUserRoot).get();
+        directory.remove(updatedUserRoot, context.network).get();
 
         //ensure folder directory not  present
         boolean isPresent = context.getUserRoot().get().getChildren(context.network)
