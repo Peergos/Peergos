@@ -746,6 +746,7 @@ public class FileWrapper {
         });
     }
 
+    @JsMethod
     public CompletableFuture<FileWrapper> rename(String newFilename, NetworkAccess network, FileWrapper parent) {
         return rename(newFilename, network, parent, false);
     }
@@ -975,6 +976,7 @@ public class FileWrapper {
      * @param network
      * @return updated parent
      */
+    @JsMethod
     public CompletableFuture<FileWrapper> remove(FileWrapper parent, NetworkAccess network) {
         ensureUnmodified();
         if (! pointer.capability.isWritable())

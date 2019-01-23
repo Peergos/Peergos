@@ -292,7 +292,7 @@ public abstract class UserTests {
         FileWrapper parent = context.getUserRoot().get();
         FileWrapper file = context.getByPath(parent.getName() + "/" + filename).get().get();
 
-        context.rename(newname, file, parent).get();
+        file.rename(newname, context.network, parent).get();
 
         FileWrapper updatedRoot = context.getUserRoot().get();
         FileWrapper updatedFile = context.getByPath(updatedRoot.getName() + "/" + newname).get().get();
