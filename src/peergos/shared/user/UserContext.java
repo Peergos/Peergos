@@ -107,6 +107,23 @@ public class UserContext {
     }
 
     @JsMethod
+    public CompletableFuture<FileWrapper> rename(String newFilename, FileWrapper file, FileWrapper directory) {
+        return getByPath(directory.getName()).thenCompose( parentDir -> {
+            FileWrapper parent = parentDir.get();
+            return file.rename(newFilename, network, parent, false).thenApply(updatedFile -> {
+                String path = "/" + parent.getName() + "/" + updatedFile.getName();
+                Set<String> currentReadSharedWith = sharedWithCache.getSharedWith(SharedWithCache.Access.READ, path);
+                Set<String> currentWriteSharedWith = sharedWithCache.getSharedWith(SharedWithCache.Access.WRITE, path);
+                sharedWithCache.clearSharedWith(path);
+                String newPath = "/" + parent.getName() + "/" + newFilename;
+                sharedWithCache.addSharedWith(SharedWithCache.Access.READ, newPath, currentReadSharedWith);
+                sharedWithCache.addSharedWith(SharedWithCache.Access.WRITE, newPath, currentWriteSharedWith);
+                return updatedFile;
+            });
+        });
+    }
+
+    @JsMethod
     public CompletableFuture<FileWrapper> remove(FileWrapper fileToDelete, FileWrapper parent) {
         return remove(fileToDelete.getName(), parent.getName());
     }

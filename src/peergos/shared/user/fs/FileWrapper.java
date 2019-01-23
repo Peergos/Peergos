@@ -741,7 +741,6 @@ public class FileWrapper {
         });
     }
 
-    @JsMethod
     public CompletableFuture<FileWrapper> rename(String newFilename, NetworkAccess network, FileWrapper parent) {
         return rename(newFilename, network, parent, false);
     }
@@ -894,7 +893,7 @@ public class FileWrapper {
                         .thenApply(x -> new FileWrapper(newRetrievedCapability, Optional.of(signer), ownername)),
                 network.dhtClient);
     }
-    
+
     /** This copies all the cryptree nodes from one signing key to another for a file or subtree
      *
      * @param includeFirst

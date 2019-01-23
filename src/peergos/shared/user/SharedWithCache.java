@@ -1,6 +1,5 @@
 package peergos.shared.user;
 
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -15,6 +14,10 @@ public class SharedWithCache {
 
     public SharedWithCache() {
 
+    }
+
+    private String canonicalisePath(String path) {
+        return path.startsWith("/") ? path : "/" + path;
     }
 
     public Set<String> getSharedWith(Access access, String path) {
@@ -41,13 +44,12 @@ public class SharedWithCache {
     }
 
     private synchronized void addCacheEntry(Map<String, Set<String>> cache, String path, Set<String> names) {
-        cache.computeIfAbsent(path, k -> new HashSet<>()).addAll(names);
+        cache.computeIfAbsent(canonicalisePath(path), k -> new HashSet<>()).addAll(names);
     }
 
     public void clearSharedWith(String path) {
-        String fullPath = path.startsWith("/") ? path : "/" + path;
-        sharedWithReadAccessCache.computeIfPresent(fullPath, (k, v) -> new HashSet<>());
-        sharedWithWriteAccessCache.computeIfPresent(fullPath, (k, v) -> new HashSet<>());
+        sharedWithReadAccessCache.computeIfPresent(canonicalisePath(path), (k, v) -> new HashSet<>());
+        sharedWithWriteAccessCache.computeIfPresent(canonicalisePath(path), (k, v) -> new HashSet<>());
     }
 
     public void removeSharedWith(Access access, String path, Set<String> names) {
@@ -59,7 +61,7 @@ public class SharedWithCache {
     }
 
     private synchronized void removeCacheEntry(Map<String, Set<String>> cache, String path, Set<String> names) {
-        cache.computeIfAbsent(path, k -> new HashSet<>()).removeAll(names);
+        cache.computeIfAbsent(canonicalisePath(path), k -> new HashSet<>()).removeAll(names);
     }
 
 }

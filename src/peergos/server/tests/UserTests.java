@@ -274,6 +274,32 @@ public abstract class UserTests {
     }
 
     @Test
+    public void renameFile() throws Exception {
+        String username = generateUsername();
+        String password = "test";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        FileWrapper userRoot = context.getUserRoot().get();
+
+        String filename = "somedata.txt";
+        // write empty file
+        byte[] data = new byte[0];
+        userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
+                context.crypto.random, l -> {}, context.fragmenter()).get();
+        checkFileContents(data, context.getUserRoot().get().getDescendentByPath(filename, context.network).get().get(), context);
+
+        //rename
+        String newname = "newname.txt";
+        FileWrapper parent = context.getUserRoot().get();
+        FileWrapper file = context.getByPath(parent.getName() + "/" + filename).get().get();
+
+        context.rename(newname, file, parent).get();
+
+        FileWrapper updatedRoot = context.getUserRoot().get();
+        FileWrapper updatedFile = context.getByPath(updatedRoot.getName() + "/" + newname).get().get();
+        checkFileContents(data, updatedFile, context);
+    }
+
+    @Test
     public void concurrentWritesToDir() throws Exception {
         String username = generateUsername();
         String password = "test01";
