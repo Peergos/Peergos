@@ -107,10 +107,10 @@ public class UserContext {
     }
 
     @JsMethod
-     public CompletableFuture<Boolean> unShareReadAccess(FileWrapper file, String readerToRemove) {
+    public CompletableFuture<Boolean> unShareReadAccess(FileWrapper file, String readerToRemove) {
 
         return file.getPath(network).thenCompose(pathString ->
-            unShareReadAccess(Paths.get(pathString), Collections.singleton(readerToRemove))
+                unShareReadAccess(Paths.get(pathString), Collections.singleton(readerToRemove))
         );
     }
 
@@ -1110,7 +1110,7 @@ public class UserContext {
                         byte[] keyFromResponse = freq.key.map(k -> k.serialize()).orElse(null);
                         if (keyFromResponse == null || !Arrays.equals(keyFromResponse, ourKeyForThem)) {
                             // They didn't reciprocate (follow us)
-                            CompletableFuture<FileWrapper> removeDir = ourDirForThem.remove(network, sharing);
+                            CompletableFuture<FileWrapper> removeDir = ourDirForThem.remove(sharing, network);
                             // remove entry point as well
                             CompletableFuture<CommittedWriterData> cleanStatic = removeFromStaticData(ourDirForThem);
 
@@ -1304,7 +1304,7 @@ public class UserContext {
         // remove /$us/shared/$them
         return getSharingFolder()
                 .thenCompose(sharing -> getByPath("/"+this.username+"/shared/"+username)
-                        .thenCompose(dir -> dir.get().remove(network, sharing)
+                        .thenCompose(dir -> dir.get().remove(sharing, network)
                                 // remove our static data entry storing that we've granted them access
                                 .thenCompose(b -> removeFromStaticData(dir.get()))));
     }

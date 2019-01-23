@@ -1,4 +1,5 @@
 package peergos.shared.user.fs;
+import java.nio.file.Paths;
 import java.util.logging.*;
 
 import jsinterop.annotations.*;
@@ -223,6 +224,12 @@ public class FileWrapper {
                 .thenApply(children -> children.stream().anyMatch(c -> c.props.name.equals(name)));
     }
 
+    /**
+     *
+     * @param child
+     * @param network
+     * @return Updated version of this directory without the child
+     */
     public CompletableFuture<FileWrapper> removeChild(FileWrapper child, NetworkAccess network) {
         setModified();
         return ((DirAccess) pointer.fileAccess)
@@ -250,7 +257,6 @@ public class FileWrapper {
                     .thenApply(dirAccess -> new FileWrapper(this.pointer.withCryptree(dirAccess), entryWriter, ownername));
         });
     }
-
 
     @JsMethod
     public String toLink() {
@@ -765,7 +771,7 @@ public class FileWrapper {
                         return CompletableFuture.completedFuture(parent);
 
                     return ((overwrite && existing.isPresent()) ?
-                            existing.get().remove(network, parent) :
+                            existing.get().remove(parent, network) :
                             CompletableFuture.completedFuture(parent)
                     ).thenCompose(res -> {
 
@@ -935,10 +941,10 @@ public class FileWrapper {
                 });
     }
 
-    private static CompletableFuture<Boolean> deleteAllChunks(AbsoluteCapability currentCap,
-                                                              SigningPrivateKeyAndPublicHash signer,
-                                                              TransactionId tid,
-                                                              NetworkAccess network) {
+    public static CompletableFuture<Boolean> deleteAllChunks(AbsoluteCapability currentCap,
+                                                             SigningPrivateKeyAndPublicHash signer,
+                                                             TransactionId tid,
+                                                             NetworkAccess network) {
         return network.getMetadata(currentCap.getLocation())
                 .thenCompose(mOpt -> {
                     if (! mOpt.isPresent()) {
@@ -965,22 +971,41 @@ public class FileWrapper {
     }
 
     /**
-     * @param network
      * @param parent
+     * @param network
      * @return updated parent
      */
     @JsMethod
-    public CompletableFuture<FileWrapper> remove(NetworkAccess network, FileWrapper parent) {
+    public CompletableFuture<FileWrapper> remove(FileWrapper parent, NetworkAccess network) {
         ensureUnmodified();
-        Supplier<CompletableFuture<Boolean>> supplier = () -> new RetrievedCapability(writableFilePointer(), pointer.fileAccess)
-                .remove(network, null, signingPair());
+        if (! pointer.capability.isWritable())
+            return Futures.errored(new IllegalStateException("Cannot delete file without write access to it"));
 
-        if (parent != null) {
-            return parent.removeChild(this, network)
-                    .thenCompose(updated -> supplier.get()
-                            .thenApply(x -> updated));
-        }
-        return supplier.get().thenApply(x -> parent);
+        return parent.removeChild(this, network)
+                .thenCompose(updatedParent -> Transaction.call(owner(),
+                        tid -> FileWrapper.deleteAllChunks(pointer.capability, signingPair(), tid, network), network.dhtClient)
+                        .thenCompose(b -> removeSigningKey(updatedParent.writableFilePointer(), updatedParent.signingPair(), network))
+                        .thenApply(b -> updatedParent));
+    }
+
+    public CompletableFuture<Boolean> removeSigningKey(AbsoluteCapability parentCap,
+                                                       SigningPrivateKeyAndPublicHash parentSigner,
+                                                       NetworkAccess network) {
+        if (parentCap.writer.equals(pointer.capability.writer))
+            return CompletableFuture.completedFuture(true);
+
+        PublicKeyHash parentWriter = parentCap.writer;
+        return WriterData.getWriterData(parentCap.owner, parentWriter, network.mutable, network.dhtClient)
+                .thenCompose(parentWriterData -> {
+
+            Set<PublicKeyHash> ownedKeys = new HashSet<>(parentWriterData.props.ownedKeys);
+            ownedKeys.remove(pointer.capability.writer);
+            WriterData updatedParentWD = parentWriterData.props.withOwnedKeys(ownedKeys);
+            return Transaction.call(parentCap.owner, tid ->
+                    updatedParentWD.commit(parentCap.owner, parentSigner,
+                            parentWriterData.hash, network, x -> { }, tid).thenApply(cwd -> true), network.dhtClient);
+
+        });
     }
 
     public CompletableFuture<? extends AsyncReader> getInputStream(NetworkAccess network, SafeRandom random,

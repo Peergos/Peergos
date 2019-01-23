@@ -274,6 +274,32 @@ public abstract class UserTests {
     }
 
     @Test
+    public void renameFile() throws Exception {
+        String username = generateUsername();
+        String password = "test";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        FileWrapper userRoot = context.getUserRoot().get();
+
+        String filename = "somedata.txt";
+        // write empty file
+        byte[] data = new byte[0];
+        userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
+                context.crypto.random, l -> {}, context.fragmenter()).get();
+        checkFileContents(data, context.getUserRoot().get().getDescendentByPath(filename, context.network).get().get(), context);
+
+        //rename
+        String newname = "newname.txt";
+        FileWrapper parent = context.getUserRoot().get();
+        FileWrapper file = context.getByPath(parent.getName() + "/" + filename).get().get();
+
+        file.rename(newname, context.network, parent).get();
+
+        FileWrapper updatedRoot = context.getUserRoot().get();
+        FileWrapper updatedFile = context.getByPath(updatedRoot.getName() + "/" + newname).get().get();
+        checkFileContents(data, updatedFile, context);
+    }
+
+    @Test
     public void concurrentWritesToDir() throws Exception {
         String username = generateUsername();
         String password = "test01";
@@ -784,7 +810,7 @@ public abstract class UserTests {
         assertTrue("retrieved same data", dataEquals);
 
         //delete the file
-        fileWrapper.remove(context.network, updatedRoot2).get();
+        fileWrapper.remove(updatedRoot2, context.network).get();
 
         //re-create user-context
         UserContext context2 = PeergosNetworkUtils.ensureSignedUp(username, password, network.clear(), crypto);
@@ -885,7 +911,7 @@ public abstract class UserTests {
                 ! toParent.writer.isPresent());
 
         //remove the directory
-        directory.remove(context.network, updatedUserRoot).get();
+        directory.remove(updatedUserRoot, context.network).get();
 
         //ensure folder directory not  present
         boolean isPresent = context.getUserRoot().get().getChildren(context.network)
