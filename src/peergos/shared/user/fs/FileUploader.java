@@ -23,7 +23,7 @@ public class FileUploader implements AutoCloseable {
     private final String name;
     private final long offset, length;
     private final FileProperties props;
-    private final SymmetricKey baseKey, metaKey;
+    private final SymmetricKey baseKey;
     private final long nchunks;
     private final Location parentLocation;
     private final SymmetricKey parentparentKey;
@@ -34,7 +34,7 @@ public class FileUploader implements AutoCloseable {
     @JsConstructor
     public FileUploader(String name, String mimeType, AsyncReader fileData,
                         int offsetHi, int offsetLow, int lengthHi, int lengthLow,
-                        SymmetricKey baseKey, SymmetricKey metaKey,
+                        SymmetricKey baseKey,
                         Location parentLocation, SymmetricKey parentparentKey,
                         ProgressConsumer<Long> monitor,
                         FileProperties fileProperties, Fragmenter fragmenter) {
@@ -56,17 +56,16 @@ public class FileUploader implements AutoCloseable {
         this.length = length;
         this.reader = fileData;
         this.baseKey = baseKey;
-        this.metaKey = metaKey;
         this.parentLocation = parentLocation;
         this.parentparentKey = parentparentKey;
         this.monitor = monitor;
     }
 
     public FileUploader(String name, String mimeType, AsyncReader fileData, long offset, long length,
-                        SymmetricKey baseKey, SymmetricKey metaKey, Location parentLocation, SymmetricKey parentparentKey,
+                        SymmetricKey baseKey, Location parentLocation, SymmetricKey parentparentKey,
                         ProgressConsumer<Long> monitor, FileProperties fileProperties, Fragmenter fragmenter) {
         this(name, mimeType, fileData, (int)(offset >> 32), (int) offset, (int) (length >> 32), (int) length,
-                baseKey, metaKey, parentLocation, parentparentKey, monitor, fileProperties, fragmenter);
+                baseKey, parentLocation, parentparentKey, monitor, fileProperties, fragmenter);
     }
 
     public CompletableFuture<Location> uploadChunk(NetworkAccess network,
@@ -86,8 +85,8 @@ public class FileUploader implements AutoCloseable {
         int length =  isLastChunk ? (int)(fileLength -  position) : Chunk.MAX_SIZE;
         byte[] data = new byte[length];
         return reader.readIntoArray(data, 0, data.length).thenCompose(b -> {
-            byte[] nonce = metaKey.createNonce();
-            Chunk chunk = new Chunk(data, metaKey, currentLocation.getMapKey(), nonce);
+            byte[] nonce = baseKey.createNonce();
+            Chunk chunk = new Chunk(data, baseKey, currentLocation.getMapKey(), nonce);
             LocatedChunk locatedChunk = new LocatedChunk(new Location(owner, writer.publicKeyHash, chunk.mapKey()), ourExistingHash, chunk);
             byte[] mapKey = random.randomBytes(32);
             Location nextLocation = new Location(owner, writer.publicKeyHash, mapKey);
@@ -127,7 +126,7 @@ public class FileUploader implements AutoCloseable {
                                 FileRetriever retriever =
                                         new EncryptedChunkRetriever(chunk.chunk.nonce(), encryptedChunk.getAuth(),
                                                 hashes, Optional.of(encryptedNextChunkLocation), fragmenter);
-                                FileAccess metaBlob = FileAccess.create(chunk.existingHash, baseKey, SymmetricKey.random(),
+                                FileAccess metaBlob = FileAccess.create(chunk.existingHash, baseKey,
                                         chunkKey, props, retriever, parentLocation, parentparentKey);
                                 return network.uploadChunk(metaBlob, chunk.location.owner,
                                         chunk.chunk.mapKey(), writer, tid);

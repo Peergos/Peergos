@@ -202,7 +202,7 @@ public class FileWrapper {
                         return x;
                     });
         } else {
-            // create a new rBaseKey == parentKey and mark the metaDataKey as dirty
+            // create a new rBaseKey == parentKey
             SymmetricKey parentKey = SymmetricKey.random();
             return ((FileAccess) pointer.fileAccess).markDirty(writableFilePointer(), entryWriter, parentKey, network).thenCompose(newFileAccess -> {
                 RetrievedCapability newPointer = new RetrievedCapability(this.pointer.capability.withBaseKey(parentKey), newFileAccess);
@@ -480,7 +480,6 @@ public class FileWrapper {
             }
             SymmetricKey fileWriteKey = SymmetricKey.random();
             SymmetricKey fileKey = baseKey.orElseGet(SymmetricKey::random);
-            SymmetricKey fileMetaKey = SymmetricKey.random();
             SymmetricKey rootRKey = pointer.capability.rBaseKey;
             DirAccess dirAccess = (DirAccess) pointer.fileAccess;
             SymmetricKey dirParentKey = dirAccess.getParentKey(rootRKey);
@@ -493,7 +492,7 @@ public class FileWrapper {
                                         FileProperties fileProps = new FileProperties(filename, mimeType, endIndex,
                                                 LocalDateTime.now(), isHidden, Optional.of(thumbData));
                                         FileUploader chunks = new FileUploader(filename, mimeType, resetReader,
-                                                startIndex, endIndex, fileKey, fileMetaKey, parentLocation, dirParentKey, monitor, fileProps,
+                                                startIndex, endIndex, fileKey, parentLocation, dirParentKey, monitor, fileProps,
                                                 fragmenter);
                                         byte[] mapKey = random.randomBytes(32);
                                         Location nextChunkLocation = new Location(getLocation().owner, getLocation().writer, mapKey);

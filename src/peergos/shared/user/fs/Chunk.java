@@ -21,9 +21,7 @@ public class Chunk {
     }
 
     public CompletableFuture<EncryptedChunk> encrypt() {
-        return dataKey.encryptAsync(data, nonce).thenApply(encryptedBytes -> {
-            return new EncryptedChunk(encryptedBytes);
-        });
+        return dataKey.encryptAsync(data, nonce).thenApply(EncryptedChunk::new);
     }
 
     public SymmetricKey key() {
