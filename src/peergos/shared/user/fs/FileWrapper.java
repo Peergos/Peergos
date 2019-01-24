@@ -950,8 +950,8 @@ public class FileWrapper {
                     if (! mOpt.isPresent()) {
                         return CompletableFuture.completedFuture(true);
                     }
-                    return network.deleteChunk(mOpt.get(), currentCap.owner, currentCap.getMapKey(),
-                            mOpt.get().getSigner(currentCap.wBaseKey.get(), Optional.of(signer)), tid)
+                    SigningPrivateKeyAndPublicHash ourSigner = mOpt.get().getSigner(currentCap.wBaseKey.get(), Optional.of(signer));
+                    return network.deleteChunk(mOpt.get(), currentCap.owner, currentCap.getMapKey(), ourSigner, tid)
                             .thenCompose(b -> {
                                 CryptreeNode chunk = mOpt.get();
                                 Optional<byte[]> nextChunkMapKey = chunk.getNextChunkLocation(currentCap.rBaseKey);
@@ -967,7 +967,8 @@ public class FileWrapper {
                                         true,
                                         (x, cap) -> deleteAllChunks((WritableAbsoluteCapability) cap, signer, tid, network),
                                         (x, y) -> x && y);
-                            });
+                            })
+                            .thenCompose(b -> removeSigningKey(currentCap.writer, signer, currentCap.owner, network));
                 });
     }
 
@@ -982,28 +983,30 @@ public class FileWrapper {
         if (! pointer.capability.isWritable())
             return Futures.errored(new IllegalStateException("Cannot delete file without write access to it"));
 
-        return parent.removeChild(this, network)
+        boolean writableParent = parent.isWritable();
+        return (writableParent ? parent.removeChild(this, network) : CompletableFuture.completedFuture(parent))
                 .thenCompose(updatedParent -> Transaction.call(owner(),
-                        tid -> FileWrapper.deleteAllChunks(writableFilePointer(), signingPair(), tid, network), network.dhtClient)
-                        .thenCompose(b -> removeSigningKey(updatedParent.writableFilePointer(), updatedParent.signingPair(), network))
+                        tid -> FileWrapper.deleteAllChunks(writableFilePointer(),
+                                writableParent ? parent.signingPair() : signingPair(), tid, network), network.dhtClient)
                         .thenApply(b -> updatedParent));
     }
 
-    public CompletableFuture<Boolean> removeSigningKey(AbsoluteCapability parentCap,
-                                                       SigningPrivateKeyAndPublicHash parentSigner,
-                                                       NetworkAccess network) {
-        if (parentCap.writer.equals(pointer.capability.writer))
+    public static CompletableFuture<Boolean> removeSigningKey(PublicKeyHash signerToRemove,
+                                                              SigningPrivateKeyAndPublicHash parentSigner,
+                                                              PublicKeyHash owner,
+                                                              NetworkAccess network) {
+        if (parentSigner.publicKeyHash.equals(signerToRemove))
             return CompletableFuture.completedFuture(true);
 
-        PublicKeyHash parentWriter = parentCap.writer;
-        return WriterData.getWriterData(parentCap.owner, parentWriter, network.mutable, network.dhtClient)
+        PublicKeyHash parentWriter = parentSigner.publicKeyHash;
+        return WriterData.getWriterData(owner, parentWriter, network.mutable, network.dhtClient)
                 .thenCompose(parentWriterData -> {
 
             Set<PublicKeyHash> ownedKeys = new HashSet<>(parentWriterData.props.ownedKeys);
-            ownedKeys.remove(pointer.capability.writer);
+            ownedKeys.remove(signerToRemove);
             WriterData updatedParentWD = parentWriterData.props.withOwnedKeys(ownedKeys);
-            return Transaction.call(parentCap.owner, tid ->
-                    updatedParentWD.commit(parentCap.owner, parentSigner,
+            return Transaction.call(owner, tid ->
+                    updatedParentWD.commit(owner, parentSigner,
                             parentWriterData.hash, network, x -> { }, tid).thenApply(cwd -> true), network.dhtClient);
 
         });
