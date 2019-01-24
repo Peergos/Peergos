@@ -1156,6 +1156,10 @@ public class UserContext {
         return entrie.getChildren(path, network);
     }
 
+    public CompletableFuture<Optional<FileWrapper>> getByPath(Path path) {
+        return getByPath(path.toString());
+    }
+
     @JsMethod
     public CompletableFuture<Optional<FileWrapper>> getByPath(String path) {
         if (path.equals("/"))
