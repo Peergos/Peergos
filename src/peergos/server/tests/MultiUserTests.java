@@ -272,6 +272,10 @@ public class MultiUserTests {
         //delete file
         FileWrapper theFile = u1.getByPath(filePath).get().get();
         FileWrapper parentFolder = u1.getByPath(subdirPath).get().get();
+        FileWrapper metaOnlyParent = theFile.retrieveParent(network).get().get();
+
+        Assert.assertTrue("Following parent link results in read only parent",
+                ! metaOnlyParent.isWritable() && ! metaOnlyParent.isReadable());
 
         Set<PublicKeyHash> keysOwnedByRootSigner = WriterData.getDirectOwnedKeys(theFile.owner(), parentFolder.writer(), network.mutable, network.dhtClient);
         Assert.assertTrue("New writer key present", keysOwnedByRootSigner.contains(theFile.writer()));
