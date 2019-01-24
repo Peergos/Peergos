@@ -453,6 +453,21 @@ public class FileWrapper {
                 overwriteExisting, network, random, monitor, fragmenter);
     }
 
+    /**
+     *
+     * @param filename
+     * @param fileData
+     * @param isHidden
+     * @param startIndex
+     * @param endIndex
+     * @param baseKey The desired base key for the uploaded file. If absent a random key is generated.
+     * @param overwriteExisting
+     * @param network
+     * @param random
+     * @param monitor A way to report back progress in number of bytes of file written
+     * @param fragmenter
+     * @return The updated version of this directory after the upload
+     */
     public CompletableFuture<FileWrapper> uploadFileSection(String filename,
                                                             AsyncReader fileData,
                                                             boolean isHidden,
