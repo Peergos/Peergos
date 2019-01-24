@@ -522,9 +522,7 @@ public class UserContext {
                                         existingUser.getRoot(),
                                         updatedUser.getRoot(),
                                         newAlgorithm,
-                                        network,
-                                        x -> {
-                                        }
+                                        network
                                 )).thenCompose(writerData -> {
                                     SigningPrivateKeyAndPublicHash newUser =
                                             new SigningPrivateKeyAndPublicHash(newSignerHash, updatedUser.getUser().secretSigningKey);
@@ -605,7 +603,7 @@ public class UserContext {
             ).collect(Collectors.toSet());
 
             WriterData writerData = wd.props.withOwnedKeys(updated);
-            return writerData.commit(signer.publicKeyHash, signer, wd.hash, network, x -> {}, tid);
+            return writerData.commit(signer.publicKeyHash, signer, wd.hash, network, tid);
         });
     }
 
@@ -613,7 +611,7 @@ public class UserContext {
         return userData.runWithLock(wd -> {
             WriterData writerData = wd.props.addNamedKey(keyName, owned);
             return Transaction.call(signer.publicKeyHash,
-                    tid -> writerData.commit(signer.publicKeyHash, signer, wd.hash, network, x -> {}, tid),
+                    tid -> writerData.commit(signer.publicKeyHash, signer, wd.hash, network, tid),
                     network.dhtClient);
         });
     }
@@ -634,7 +632,7 @@ public class UserContext {
                                     champ.thenCompose(c -> c.put(signer.publicKeyHash, signer, path.getBytes(),
                                             MaybeMultihash.empty(), capHash, tid))
                                             .thenCompose(newRoot -> wd.props.withPublicRoot(newRoot)
-                                                    .commit(signer.publicKeyHash, signer, wd.hash, network, x -> {}, tid)));
+                                                    .commit(signer.publicKeyHash, signer, wd.hash, network, tid)));
                 },
                 network.dhtClient)));
     }
@@ -927,8 +925,9 @@ public class UserContext {
                     SigningPrivateKeyAndPublicHash parentSigner = parentOpt.get().signingPair();
                     SigningKeyPair newSignerPair = SigningKeyPair.random(crypto.random, crypto.signer);
 
-                    TriFunction<TransactionId, WriterData, SigningPrivateKeyAndPublicHash, CompletableFuture<Boolean>> func = (tid2, updatedParentWD, newSigner) -> updatedParentWD.commit(signer.publicKeyHash, parentSigner, parentWriterData.hash, network, x -> {
-                    }, tid2).thenCompose(cwd ->
+                    TriFunction<TransactionId, WriterData, SigningPrivateKeyAndPublicHash, CompletableFuture<Boolean>> func =
+                            (tid2, updatedParentWD, newSigner) -> updatedParentWD.commit(signer.publicKeyHash,
+                                    parentSigner, parentWriterData.hash, network, tid2).thenCompose(cwd ->
 
                             file.changeSigningKey(newSigner, parentOpt.get(), network, crypto.random).thenCompose(fw -> {
 
@@ -1015,14 +1014,14 @@ public class UserContext {
             });
             return Transaction.call(signer.publicKeyHash,
                     tid -> wd.props.withStaticData(updated)
-                            .commit(signer.publicKeyHash, signer, wd.hash, network, x -> {}, tid),
+                            .commit(signer.publicKeyHash, signer, wd.hash, network, tid),
                     network.dhtClient
             );
         }).thenCompose(res -> addEntryPoint(username, root, entry, network, crypto.random, fragmenter));
     }
 
     private CompletableFuture<CommittedWriterData> removeFromStaticData(FileWrapper fileWrapper) {
-        return userData.runWithLock(wd -> wd.props.removeFromStaticData(fileWrapper, rootKey, signer, wd.hash, network, x -> {}));
+        return userData.runWithLock(wd -> wd.props.removeFromStaticData(fileWrapper, rootKey, signer, wd.hash, network));
     }
 
     private CompletableFuture<List<BlindFollowRequest>> getFollowRequests() {

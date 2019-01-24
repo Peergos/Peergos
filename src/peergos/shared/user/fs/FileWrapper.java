@@ -1007,7 +1007,7 @@ public class FileWrapper {
             WriterData updatedParentWD = parentWriterData.props.withOwnedKeys(ownedKeys);
             return Transaction.call(owner, tid ->
                     updatedParentWD.commit(owner, parentSigner,
-                            parentWriterData.hash, network, x -> { }, tid).thenApply(cwd -> true), network.dhtClient);
+                            parentWriterData.hash, network, tid).thenApply(cwd -> true), network.dhtClient);
 
         });
     }

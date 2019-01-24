@@ -82,7 +82,7 @@ public class MutableTreeImpl implements MutableTree {
                     .thenApply(newRoot -> LOGGING ? log(newRoot, "TREE.put (" + ArrayOps.bytesToHex(mapKey)
                             + ", " + value + ") => CAS(" + holder.tree + ", " + newRoot + ")") : newRoot)
                     .thenCompose(newTreeRoot -> holder.withChamp(newTreeRoot)
-                            .commit(owner, writer, committed.hash, mutable, dht, x -> {}, tid));
+                            .commit(owner, writer, committed.hash, mutable, dht, tid));
         }).thenApply(x -> true);
     }
 
@@ -117,7 +117,7 @@ public class MutableTreeImpl implements MutableTree {
                     .thenApply(pair -> LOGGING ? log(pair, "TREE.rm ("
                             + ArrayOps.bytesToHex(mapKey) + "  => " + pair) : pair)
                     .thenCompose(newTreeRoot -> holder.withChamp(newTreeRoot)
-                            .commit(owner, writer, committed.hash, mutable, dht, x -> {}, tid));
+                            .commit(owner, writer, committed.hash, mutable, dht, tid));
 
         }).thenApply(x -> true);
     }

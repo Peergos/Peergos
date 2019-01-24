@@ -129,8 +129,7 @@ public class WriterData implements Cborable {
                                                                        SymmetricKey rootKey,
                                                                        SigningPrivateKeyAndPublicHash signer,
                                                                        MaybeMultihash currentHash,
-                                                                       NetworkAccess network,
-                                                                       Consumer<CommittedWriterData> updater) {
+                                                                       NetworkAccess network) {
         AbsoluteCapability pointer = fileWrapper.getPointer().capability;
 
         return staticData.map(sd -> {
@@ -143,11 +142,10 @@ public class WriterData implements Cborable {
             if (isRemoved) {
                 return Transaction.call(fileWrapper.owner(),
                         tid -> withStaticData(Optional.of(new UserStaticData(updated, rootKey)))
-                                .commit(fileWrapper.owner(), signer, currentHash, network, updater, tid),
+                                .commit(fileWrapper.owner(), signer, currentHash, network, tid),
                         network.dhtClient);
             }
             CommittedWriterData committed = committed(currentHash);
-            updater.accept(committed);
             return CompletableFuture.completedFuture(committed);
         }).orElse(CompletableFuture.completedFuture(committed(currentHash)));
     }
@@ -159,12 +157,11 @@ public class WriterData implements Cborable {
                                                              SymmetricKey currentKey,
                                                              SymmetricKey newKey,
                                                              SecretGenerationAlgorithm newAlgorithm,
-                                                             NetworkAccess network,
-                                                             Consumer<CommittedWriterData> updater) {
+                                                             NetworkAccess network) {
         return Transaction.call(oldSigner.publicKeyHash, tid -> {
             // auth new key by adding to existing writer data first
             WriterData tmp = addOwnedKey(signer.publicKeyHash);
-            return tmp.commit(oldSigner.publicKeyHash, oldSigner, currentHash, network, x -> {}, tid)
+            return tmp.commit(oldSigner.publicKeyHash, oldSigner, currentHash, network, tid)
                     .thenCompose(tmpCommited -> {
                         Optional<UserStaticData> newEntryPoints = staticData
                                 .map(sd -> new UserStaticData(sd.getEntryPoints(currentKey), newKey));
@@ -180,7 +177,7 @@ public class WriterData implements Cborable {
                                     namedOwnedKeys,
                                     newEntryPoints,
                                     tree);
-                            return updated.commit(oldSigner.publicKeyHash, signer, MaybeMultihash.empty(), network, updater, tid);
+                            return updated.commit(oldSigner.publicKeyHash, signer, MaybeMultihash.empty(), network, tid);
                         });
                     });
         }, network.dhtClient);
@@ -190,9 +187,8 @@ public class WriterData implements Cborable {
                                                          SigningPrivateKeyAndPublicHash signer,
                                                          MaybeMultihash currentHash,
                                                          NetworkAccess network,
-                                                         Consumer<CommittedWriterData> updater,
                                                          TransactionId tid) {
-        return commit(owner, signer, currentHash, network.mutable, network.dhtClient, updater, tid);
+        return commit(owner, signer, currentHash, network.mutable, network.dhtClient, tid);
     }
 
     public CompletableFuture<CommittedWriterData> commit(PublicKeyHash owner,
@@ -200,7 +196,6 @@ public class WriterData implements Cborable {
                                                          MaybeMultihash currentHash,
                                                          MutablePointers mutable,
                                                          ContentAddressedStorage immutable,
-                                                         Consumer<CommittedWriterData> updater,
                                                          TransactionId tid) {
         byte[] raw = serialize();
 
@@ -210,7 +205,6 @@ public class WriterData implements Cborable {
                     if (newHash.equals(currentHash)) {
                         // nothing has changed
                         CommittedWriterData committed = committed(newHash);
-                        updater.accept(committed);
                         return CompletableFuture.completedFuture(committed);
                     }
                     HashCasPair cas = new HashCasPair(currentHash, newHash);
@@ -220,7 +214,6 @@ public class WriterData implements Cborable {
                                 if (!res)
                                     throw new IllegalStateException("Corenode Crypto CAS failed!");
                                 CommittedWriterData committed = committed(newHash);
-                                updater.accept(committed);
                                 return committed;
                             });
                 });
