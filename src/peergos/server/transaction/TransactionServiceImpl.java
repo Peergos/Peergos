@@ -76,12 +76,11 @@ public class TransactionServiceImpl implements TransactionService {
     @Override
     public CompletableFuture<Set<Transaction>> getOpenTransactions() {
         return transactionDirUpdater.updated()
-                .thenCompose(dirWrapper ->
-                        dirWrapper.getChildren(networkAccess)
-                                .thenCompose(children -> {
-                                    List<CompletableFuture<Transaction>> collect = children.stream().map(this::read).collect(Collectors.toList());
-                                    return Futures.combineAll(collect);
-                                })
+                .thenCompose(dirWrapper -> dirWrapper.getChildren(networkAccess)
+                        .thenCompose(children -> {
+                            List<CompletableFuture<Transaction>> collect = children.stream().map(this::read).collect(Collectors.toList());
+                            return Futures.combineAll(collect);
+                        })
                 );
     }
 

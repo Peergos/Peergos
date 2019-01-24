@@ -5,6 +5,7 @@ import peergos.shared.cbor.CborObject;
 import peergos.shared.cbor.Cborable;
 import peergos.shared.crypto.SigningPrivateKeyAndPublicHash;
 import peergos.shared.crypto.hash.PublicKeyHash;
+import peergos.shared.storage.IpfsTransaction;
 import peergos.shared.storage.TransactionId;
 import peergos.shared.user.fs.Location;
 import peergos.shared.user.fs.cryptree.CryptreeNode;
@@ -50,17 +51,20 @@ public class FileUploadTransaction implements Transaction {
             throw new IllegalStateException("Invalid location " + invalid.get());
     }
 
+
     private CompletableFuture<Boolean> clear(NetworkAccess networkAccess, Location location) {
-        return networkAccess.getMetadata(location)
-                .thenCompose(mOpt -> {
-                    if (!mOpt.isPresent()) {
-                        return CompletableFuture.completedFuture(true);
-                    }
-                    CryptreeNode metadata = mOpt.get();
-                    TransactionId ipfsTxionId = TransactionId.build(name());
-                    return networkAccess.deleteChunk(metadata, location.owner, location.getMapKey(), writer, ipfsTxionId)
-                            .thenApply(e -> true);
-                });
+        Function<TransactionId, CompletableFuture<Boolean>> clearAll = tid -> networkAccess.getMetadata(location)
+                    .thenCompose(mOpt -> {
+                        if (!mOpt.isPresent()) {
+                            return CompletableFuture.completedFuture(true);
+                        }
+                        CryptreeNode metadata = mOpt.get();
+
+                        return networkAccess.deleteChunk(metadata, location.owner, location.getMapKey(), writer, tid)
+                                .thenApply(e -> true);
+                    });
+
+        return IpfsTransaction.call(owner, clearAll, networkAccess.dhtClient);
     }
 
     public CompletableFuture<Boolean> clear(NetworkAccess networkAccess) {
