@@ -941,7 +941,7 @@ public class FileWrapper {
                 });
     }
 
-    public static CompletableFuture<Boolean> deleteAllChunks(AbsoluteCapability currentCap,
+    public static CompletableFuture<Boolean> deleteAllChunks(WritableAbsoluteCapability currentCap,
                                                              SigningPrivateKeyAndPublicHash signer,
                                                              TransactionId tid,
                                                              NetworkAccess network) {
@@ -950,7 +950,8 @@ public class FileWrapper {
                     if (! mOpt.isPresent()) {
                         return CompletableFuture.completedFuture(true);
                     }
-                    return network.deleteChunk(mOpt.get(), currentCap.owner, currentCap.getMapKey(), signer, tid)
+                    return network.deleteChunk(mOpt.get(), currentCap.owner, currentCap.getMapKey(),
+                            mOpt.get().getSigner(currentCap.wBaseKey.get(), Optional.of(signer)), tid)
                             .thenCompose(b -> {
                                 CryptreeNode chunk = mOpt.get();
                                 Optional<byte[]> nextChunkMapKey = chunk.getNextChunkLocation(currentCap.rBaseKey);
@@ -964,7 +965,7 @@ public class FileWrapper {
                                 Set<AbsoluteCapability> childCaps = ((DirAccess) mOpt.get()).getChildrenCapabilities(currentCap);
                                 return Futures.reduceAll(childCaps,
                                         true,
-                                        (x, cap) -> deleteAllChunks(cap, signer, tid, network),
+                                        (x, cap) -> deleteAllChunks((WritableAbsoluteCapability) cap, signer, tid, network),
                                         (x, y) -> x && y);
                             });
                 });
@@ -983,7 +984,7 @@ public class FileWrapper {
 
         return parent.removeChild(this, network)
                 .thenCompose(updatedParent -> Transaction.call(owner(),
-                        tid -> FileWrapper.deleteAllChunks(pointer.capability, signingPair(), tid, network), network.dhtClient)
+                        tid -> FileWrapper.deleteAllChunks(writableFilePointer(), signingPair(), tid, network), network.dhtClient)
                         .thenCompose(b -> removeSigningKey(updatedParent.writableFilePointer(), updatedParent.signingPair(), network))
                         .thenApply(b -> updatedParent));
     }

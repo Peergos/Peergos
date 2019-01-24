@@ -248,14 +248,19 @@ public class MultiUserTests {
         String filename = "somefile.txt";
         byte[] data1 = "Hello Peergos friend!".getBytes();
         AsyncReader file1Reader = new AsyncReader.ArrayBacked(data1);
-        FileWrapper uploaded = u1Root.uploadFile(filename, file1Reader, data1.length,
+        String subdirName = "subdir";
+        u1Root.mkdir(subdirName, network, false, crypto.random).get();
+        Path subdirPath = Paths.get(u1.username, subdirName);
+        FileWrapper subdir = u1.getByPath(subdirPath).get().get();
+        FileWrapper uploaded = subdir.uploadFile(filename, file1Reader, data1.length,
                 u1.network, u1.crypto.random,l -> {}, u1.fragmenter()).get();
 
-        u1.shareWriteAccessWith(Paths.get(u1.username, filename), userContexts.stream().map(u -> u.username).collect(Collectors.toSet()));
+        Path filePath = Paths.get(u1.username, subdirName, filename);
+        u1.shareWriteAccessWith(filePath, userContexts.stream().map(u -> u.username).collect(Collectors.toSet()));
 
         // check other users can read the file
         for (UserContext userContext : userContexts) {
-            Optional<FileWrapper> sharedFile = userContext.getByPath(u1.username + "/" + filename).get();
+            Optional<FileWrapper> sharedFile = userContext.getByPath(filePath).get();
             Assert.assertTrue("shared file present", sharedFile.isPresent());
 
             AsyncReader inputStream = sharedFile.get().getInputStream(userContext.network,
@@ -265,21 +270,21 @@ public class MultiUserTests {
             Assert.assertTrue("shared file contents correct", Arrays.equals(data1, fileContents));
         }
         //delete file
-        FileWrapper theFile = u1.getByPath(u1.username + "/" + filename).get().get();
-        FileWrapper rootFolder = u1.getByPath(u1.username).get().get();
+        FileWrapper theFile = u1.getByPath(filePath).get().get();
+        FileWrapper parentFolder = u1.getByPath(subdirPath).get().get();
 
-        Set<PublicKeyHash> keysOwnedByRootSigner = WriterData.getDirectOwnedKeys(theFile.owner(), rootFolder.writer(), network.mutable, network.dhtClient);
+        Set<PublicKeyHash> keysOwnedByRootSigner = WriterData.getDirectOwnedKeys(theFile.owner(), parentFolder.writer(), network.mutable, network.dhtClient);
         Assert.assertTrue("New writer key present", keysOwnedByRootSigner.contains(theFile.writer()));
 
-        theFile.remove(rootFolder, network).get();
-        Optional<FileWrapper> removedFile = u1.getByPath(u1.username + "/" + filename).get();
+        parentFolder.remove(u1.getUserRoot().get(), network).get();
+        Optional<FileWrapper> removedFile = u1.getByPath(filePath).get();
         Assert.assertTrue("file removed", ! removedFile.isPresent());
 
         for (UserContext userContext : userContexts) {
-            Optional<FileWrapper> sharedFile = userContext.getByPath(u1.username + "/" + filename).get();
+            Optional<FileWrapper> sharedFile = userContext.getByPath(filePath).get();
             Assert.assertTrue("shared file removed", ! sharedFile.isPresent());
         }
-        Set<PublicKeyHash> updatedKeysOwnedByRootSigner = WriterData.getDirectOwnedKeys(theFile.owner(), rootFolder.writer(), network.mutable, network.dhtClient);
+        Set<PublicKeyHash> updatedKeysOwnedByRootSigner = WriterData.getDirectOwnedKeys(theFile.owner(), parentFolder.writer(), network.mutable, network.dhtClient);
         Assert.assertTrue("New writer key not present", ! updatedKeysOwnedByRootSigner.contains(theFile.writer()));
     }
 
