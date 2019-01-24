@@ -60,13 +60,13 @@ public class CorenodeTests {
                 SigningKeyPair writer = SigningKeyPair.random(crypto.random, crypto.signer);
                 PublicKeyHash ownerHash = ContentAddressedStorage.hashKey(owner.publicSigningKey);
                 PublicKeyHash writerHash = ContentAddressedStorage.hashKey(owner.publicSigningKey);
-                Transaction.call(ownerHash,
+                IpfsTransaction.call(ownerHash,
                         tid -> network.dhtClient.putSigningKey(
                             owner.secretSigningKey.signatureOnly(owner.publicSigningKey.serialize()),
                                     ownerHash,
                             owner.publicSigningKey, tid),
                         network.dhtClient).get();
-                Transaction.call(ownerHash,
+                IpfsTransaction.call(ownerHash,
                         tid -> network.dhtClient.putSigningKey(
                         owner.secretSigningKey.signatureOnly(writer.publicSigningKey.serialize()),
                         ownerHash, writer.publicSigningKey, tid), network.dhtClient).get();

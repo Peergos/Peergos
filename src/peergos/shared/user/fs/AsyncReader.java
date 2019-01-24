@@ -3,6 +3,7 @@ package peergos.shared.user.fs;
 import jsinterop.annotations.*;
 
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @JsType
 public interface AsyncReader extends AutoCloseable {
@@ -18,7 +19,7 @@ public interface AsyncReader extends AutoCloseable {
      */
     CompletableFuture<Integer> readIntoArray(byte[] res, int offset, int length);
 
-    /**
+    /**Files
      *  reset to original starting position
      * @return
      */
@@ -61,5 +62,9 @@ public interface AsyncReader extends AutoCloseable {
         @Override
         public void close() {
         }
+    }
+
+    static AsyncReader build(byte[] data) {
+        return new ArrayBacked(data);
     }
 }

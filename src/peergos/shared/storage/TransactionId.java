@@ -11,4 +11,8 @@ public final class TransactionId {
     public String toString() {
         return id;
     }
+
+    public static TransactionId build(String id) {
+        return new TransactionId(id);
+    }
 }

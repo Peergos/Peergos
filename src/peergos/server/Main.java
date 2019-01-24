@@ -104,7 +104,7 @@ public class Main {
                     String pkiPassword = args.getArg("pki.keygen.password");
                     SigningKeyPair pkiKeys = UserUtil.generateUser(pkiUsername, pkiPassword, crypto.hasher, crypto.symmetricProvider,
                             crypto.random, crypto.signer, crypto.boxer, SecretGenerationAlgorithm.getDefault()).get().getUser();
-                    Transaction.call(peergosPublicHash,
+                    IpfsTransaction.call(peergosPublicHash,
                             tid -> dht.putSigningKey(peergosIdentityKeys.secretSigningKey.signatureOnly(
                                     pkiKeys.publicSigningKey.serialize()),
                                     peergosPublicHash,
@@ -163,7 +163,7 @@ public class Main {
                     if (!existingPkiKey.isPresent() || existingPkiKey.get().equals(pkiPublicHash)) {
                         context.addNamedOwnedKeyAndCommit("pki", pkiPublicHash).get();
                         // write pki public key to ipfs
-                        Transaction.call(peergosPublicHash,
+                        IpfsTransaction.call(peergosPublicHash,
                                 tid -> network.dhtClient.putSigningKey(peergosIdentityKeys.secretSigningKey
                                 .signatureOnly(pkiPublic.serialize()), peergosPublicHash, pkiPublic, tid),
                                 network.dhtClient).get();

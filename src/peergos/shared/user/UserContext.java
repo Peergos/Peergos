@@ -226,7 +226,7 @@ public class UserContext {
                             LOG.info("Couldn't register username");
                             throw new IllegalStateException("Couldn't register username: " + username);
                         }
-                        return Transaction.call(signerHash, tid -> network.dhtClient.putSigningKey(
+                        return IpfsTransaction.call(signerHash, tid -> network.dhtClient.putSigningKey(
                                 secretSigningKey.signatureOnly(publicSigningKey.serialize()),
                                 signerHash,
                                 publicSigningKey, tid).thenCompose(returnedSignerHash -> {
@@ -507,7 +507,7 @@ public class UserContext {
                             .thenCompose(updatedUser -> {
                                 PublicSigningKey newPublicSigningKey = updatedUser.getUser().publicSigningKey;
                                 PublicKeyHash existingOwner = ContentAddressedStorage.hashKey(existingUser.getUser().publicSigningKey);
-                                return Transaction.call(existingOwner,
+                                return IpfsTransaction.call(existingOwner,
                                         tid -> network.dhtClient.putSigningKey(
                                                 existingUser.getUser().secretSigningKey.signatureOnly(newPublicSigningKey.serialize()),
                                                 existingOwner,
@@ -546,7 +546,7 @@ public class UserContext {
         long t1 = System.currentTimeMillis();
         SigningKeyPair writer = SigningKeyPair.random(crypto.random, crypto.signer);
         LOG.info("Random User generation took " + (System.currentTimeMillis()-t1) + " mS");
-        return Transaction.call(owner.publicKeyHash, tid -> network.dhtClient.putSigningKey(
+        return IpfsTransaction.call(owner.publicKeyHash, tid -> network.dhtClient.putSigningKey(
                 owner.secret.signatureOnly(writer.publicSigningKey.serialize()),
                 owner.publicKeyHash,
                 writer.publicSigningKey,
@@ -610,14 +610,14 @@ public class UserContext {
     public CompletableFuture<CommittedWriterData> addNamedOwnedKeyAndCommit(String keyName, PublicKeyHash owned) {
         return userData.runWithLock(wd -> {
             WriterData writerData = wd.props.addNamedKey(keyName, owned);
-            return Transaction.call(signer.publicKeyHash,
+            return IpfsTransaction.call(signer.publicKeyHash,
                     tid -> writerData.commit(signer.publicKeyHash, signer, wd.hash, network, tid),
                     network.dhtClient);
         });
     }
 
     public CompletableFuture<CommittedWriterData> makePublic(FileWrapper file) {
-        return userData.runWithLock(wd -> file.getPath(network).thenCompose(path -> Transaction.call(signer.publicKeyHash,
+        return userData.runWithLock(wd -> file.getPath(network).thenCompose(path -> IpfsTransaction.call(signer.publicKeyHash,
                 tid -> {
                     Optional<Multihash> publicData = wd.props.publicData;
 
@@ -950,7 +950,7 @@ public class UserContext {
                             })
                     );
 
-                    return Transaction.call(signer.publicKeyHash,
+                    return IpfsTransaction.call(signer.publicKeyHash,
                             tid -> network.dhtClient.putSigningKey(
                             parentSigner.secret.signatureOnly(newSignerPair.publicSigningKey.serialize()),
                             parentCap.owner, parentCap.writer, newSignerPair.publicSigningKey, tid).thenCompose(newSignerHash -> {
@@ -1012,7 +1012,7 @@ public class UserContext {
                 entryPoints.add(entry);
                 return new UserStaticData(entryPoints, rootKey);
             });
-            return Transaction.call(signer.publicKeyHash,
+            return IpfsTransaction.call(signer.publicKeyHash,
                     tid -> wd.props.withStaticData(updated)
                             .commit(signer.publicKeyHash, signer, wd.hash, network, tid),
                     network.dhtClient

@@ -5,6 +5,7 @@ import peergos.shared.io.ipfs.multihash.*;
 
 import java.io.*;
 import java.util.*;
+import java.util.function.Function;
 import java.util.stream.*;
 
 import static peergos.shared.cbor.CborConstants.TYPE_BYTE_STRING;
@@ -122,6 +123,25 @@ public interface CborObject extends Cborable {
 
         public Cborable get(String key) {
             return values.get(new CborString(key));
+        }
+        public <T> T getObject(String key, Function<Cborable, T> fromCbor) {
+            return fromCbor.apply(get(key));
+        }
+
+        public String getString(String key) {
+            return ((CborString) get(key)).value;
+        }
+
+        public long getLong(String key) {
+            return ((CborLong) get(key)).value;
+        }
+
+        public <T> List<T> getList(String key, Function<Cborable, T> fromCbor) {
+            CborList cborList = (CborList) get(key);
+            return cborList.value
+                    .stream()
+                    .map(fromCbor)
+                    .collect(Collectors.toList());
         }
 
         @Override

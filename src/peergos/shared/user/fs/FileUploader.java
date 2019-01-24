@@ -120,7 +120,7 @@ public class FileUploader implements AutoCloseable {
             LOG.info(StringUtils.format("Uploading chunk with %d fragments\n", fragments.size()));
             SymmetricKey chunkKey = chunk.chunk.key();
             CipherText encryptedNextChunkLocation = CipherText.build(chunkKey, new CborObject.CborByteArray(nextChunkLocation.getMapKey()));
-            return Transaction.call(chunk.location.owner, tid -> network
+            return IpfsTransaction.call(chunk.location.owner, tid -> network
                             .uploadFragments(fragments, chunk.location.owner, writer, monitor, fragmenter.storageIncreaseFactor(), tid)
                             .thenCompose(hashes -> {
                                 FileRetriever retriever =

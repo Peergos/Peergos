@@ -5,12 +5,11 @@ import java.util.logging.*;
 import jsinterop.annotations.*;
 import peergos.shared.*;
 import peergos.shared.crypto.*;
-import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.multihash.*;
-import peergos.shared.storage.Transaction;
+import peergos.shared.storage.IpfsTransaction;
 import peergos.shared.storage.TransactionId;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.cryptree.*;
@@ -902,7 +901,7 @@ public class FileWrapper {
         CryptreeNode newFileAccess = fileAccess.withWriterLink(signerLink).withParentLink(newParentLink);
         RetrievedCapability newRetrievedCapability = new RetrievedCapability(cap.withSigner(signer.publicKeyHash), newFileAccess);
 
-        return Transaction.call(owner(),
+        return IpfsTransaction.call(owner(),
                 tid -> network.uploadChunk(newFileAccess, owner(), getPointer().capability.getMapKey(), signer, tid)
                         .thenCompose(z -> copyAllChunks(false, cap, signer, tid, network))
                         .thenCompose(y -> ((DirAccess)parent.getPointer().fileAccess).updateChildLink(parent.writableFilePointer(),

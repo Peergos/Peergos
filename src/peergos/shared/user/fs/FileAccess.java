@@ -125,7 +125,7 @@ public class FileAccess implements CryptreeNode {
         PaddedCipherText encryptedProperties = PaddedCipherText.build(metaKey, newProps, META_DATA_PADDING_BLOCKSIZE);
         FileAccess fa = new FileAccess(lastCommittedHash, version, this.parent2data, encryptedProperties,
                 this.retriever, this.parentLink, writerLink);
-        return Transaction.call(us.owner, tid ->
+        return IpfsTransaction.call(us.owner, tid ->
                 network.uploadChunk(fa, us.owner, us.getMapKey(), getSigner(us.wBaseKey.get(), entryWriter), tid)
                         .thenApply(b -> fa),
                 network.dhtClient);
@@ -144,7 +144,7 @@ public class FileAccess implements CryptreeNode {
         PaddedCipherText newProperties = PaddedCipherText.build(newBaseKey, getProperties(us.rBaseKey), META_DATA_PADDING_BLOCKSIZE);
         FileAccess fa = new FileAccess(committedHash(), version, newParentToData, newProperties,
                 this.retriever, newParentLink, writerLink);
-        return Transaction.call(us.owner, tid ->
+        return IpfsTransaction.call(us.owner, tid ->
                 network.uploadChunk(fa, us.owner, us.getMapKey(), getSigner(us.wBaseKey.get(), entryWriter), tid)
                         .thenApply(x -> fa),
                 network.dhtClient);
@@ -169,7 +169,7 @@ public class FileAccess implements CryptreeNode {
         FileAccess fa = FileAccess.create(MaybeMultihash.empty(), newBaseKey,
                 isDirectory ? SymmetricKey.random() : getDataKey(us.rBaseKey),
                 props, this.retriever, newParentCap.getLocation(), parentparentKey);
-        return Transaction.call(newParentCap.owner,
+        return IpfsTransaction.call(newParentCap.owner,
                 tid -> network.uploadChunk(fa, newParentCap.owner, newMapKey, fa.getSigner(newParentCap.wBaseKey.get(), newEntryWriter), tid)
                         .thenApply(b -> fa),
                 network.dhtClient);
