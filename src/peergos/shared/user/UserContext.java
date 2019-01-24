@@ -291,7 +291,7 @@ public class UserContext {
         CommittedWriterData committed = new CommittedWriterData(MaybeMultihash.empty(), empty);
         CompletableFuture<CommittedWriterData> userData = CompletableFuture.completedFuture(committed);
         UserContext context = new UserContext(null, null, null, null, network.clear(), crypto, userData, TrieNodeImpl.empty());
-        return context.addEntryPoint(null, null, context.entrie, entry, network, crypto.random, Fragmenter.getInstance()).thenApply(trieNode -> {
+        return context.addEntryPoint(null, context.entrie, entry, network, crypto.random, Fragmenter.getInstance()).thenApply(trieNode -> {
             context.entrie = trieNode;
             return context;
         });
@@ -1018,8 +1018,7 @@ public class UserContext {
                             .commit(signer.publicKeyHash, signer, wd.hash, network, x -> {}, tid),
                     network.dhtClient
             );
-        }).thenCompose(res -> getUserRoot()
-                .thenCompose(ourRoot -> addEntryPoint(username, ourRoot, root, entry, network, crypto.random, fragmenter)));
+        }).thenCompose(res -> addEntryPoint(username, root, entry, network, crypto.random, fragmenter));
     }
 
     private CompletableFuture<CommittedWriterData> removeFromStaticData(FileWrapper fileWrapper) {
@@ -1162,7 +1161,7 @@ public class UserContext {
                 .stream()
                 .filter(e -> e.ownerName.equals(ourName))
                 .collect(Collectors.toList());
-        return Futures.reduceAll(ourFileSystemEntries, root, (t, e) -> addEntryPoint(ourName, null, t, e, network, random, fragmenter), (a, b) -> a)
+        return Futures.reduceAll(ourFileSystemEntries, root, (t, e) -> addEntryPoint(ourName, t, e, network, random, fragmenter), (a, b) -> a)
                 .exceptionally(Futures::logError);
     }
 
@@ -1184,7 +1183,7 @@ public class UserContext {
                 .collect(Collectors.toList());
 
         // need to to retrieve all the entry points of our friends
-        return Futures.reduceAll(notOurFileSystemEntries, ourRoot, (t, e) -> addEntryPoint(ourName, null, t, e, network, random, fragmenter), (a, b) -> a)
+        return Futures.reduceAll(notOurFileSystemEntries, ourRoot, (t, e) -> addEntryPoint(ourName, t, e, network, random, fragmenter), (a, b) -> a)
                 .exceptionally(Futures::logError);
     }
 
@@ -1213,7 +1212,6 @@ public class UserContext {
     }
 
     private static CompletableFuture<TrieNode> addEntryPoint(String ourName,
-                                                             FileWrapper ourRoot,
                                                              TrieNode root,
                                                              EntryPoint e,
                                                              NetworkAccess network,
