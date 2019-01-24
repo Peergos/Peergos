@@ -43,7 +43,7 @@ public class UserContext {
     private final SymmetricKey rootKey;
     public final Fragmenter fragmenter;
 
-    private CompletableFuture<CommittedWriterData> userData;
+    private final AsyncLock<CommittedWriterData> userData;
     private SharedWithCache sharedWithCache;
 
     // The root of the global filesystem as viewed by this context
@@ -85,7 +85,7 @@ public class UserContext {
         this.network = network;
         this.crypto = crypto;
         this.fragmenter = fragmenter;
-        this.userData = userData;
+        this.userData = new AsyncLock<>(userData);
         this.entrie = entrie;
         this.sharedWithCache = new SharedWithCache();
     }
@@ -333,8 +333,7 @@ public class UserContext {
 
     private CompletableFuture<UserContext> init(SymmetricKey rootKey, Consumer<String> progressCallback) {
         progressCallback.accept("Retrieving Friends");
-        CompletableFuture<CommittedWriterData> lock = new CompletableFuture<>();
-        return addToUserDataQueue(lock)
+        return userData.getValue()
                 .thenCompose(wd -> createFileTree(entrie, username, rootKey, wd.props, network, crypto.random, fragmenter)
                         .thenCompose(root -> {
                             this.entrie = root;
@@ -342,7 +341,6 @@ public class UserContext {
                                     .thenCompose(sharedOpt -> {
                                         if (!sharedOpt.isPresent())
                                             throw new IllegalStateException("Couldn't find shared folder!");
-                                        lock.complete(wd);
                                         return buildSharedWithCache(sharedOpt.get(), this::getUserRoot).thenApply(res -> res);
                                     }).thenApply(res -> this);
                         }));
@@ -492,7 +490,8 @@ public class UserContext {
                 });
     }
 
-    public CompletableFuture<UserContext> changePassword(String oldPassword, String newPassword,
+    public CompletableFuture<UserContext> changePassword(String oldPassword,
+                                                         String newPassword,
                                                          SecretGenerationAlgorithm existingAlgorithm,
                                                          SecretGenerationAlgorithm newAlgorithm) {
         // set claim expiry to two months from now
@@ -505,46 +504,42 @@ public class UserContext {
                         throw new IllegalArgumentException("Incorrect existing password during change password attempt!");
                     return UserUtil.generateUser(username, newPassword, crypto.hasher, crypto.symmetricProvider,
                             crypto.random, crypto.signer, crypto.boxer, newAlgorithm)
-                            .thenCompose(updatedUser ->{
-                                CompletableFuture<CommittedWriterData> lock = new CompletableFuture<>();
-                                return addToUserDataQueue(lock)
-                                        .thenCompose(wd -> {
-                                            PublicSigningKey newPublicSigningKey = updatedUser.getUser().publicSigningKey;
-                                            PublicKeyHash existingOwner = ContentAddressedStorage.hashKey(existingUser.getUser().publicSigningKey);
-                                            return Transaction.call(existingOwner,
-                                                    tid -> network.dhtClient.putSigningKey(
-                                                            existingUser.getUser().secretSigningKey.signatureOnly(newPublicSigningKey.serialize()),
-                                                            existingOwner,
-                                                            newPublicSigningKey,
-                                                            tid),
-                                                    network.dhtClient
-                                            ).thenCompose(newSignerHash -> wd.props.changeKeys(
-                                                    signer,
-                                                    new SigningPrivateKeyAndPublicHash(newSignerHash, updatedUser.getUser().secretSigningKey),
-                                                    wd.hash,
-                                                    updatedUser.getBoxingPair().publicBoxingKey,
-                                                    existingUser.getRoot(),
-                                                    updatedUser.getRoot(),
-                                                    newAlgorithm,
-                                                    network,
-                                                    lock::complete
-                                                    ).thenCompose(userData -> {
-                                                        SigningPrivateKeyAndPublicHash newUser =
-                                                                new SigningPrivateKeyAndPublicHash(newSignerHash, updatedUser.getUser().secretSigningKey);
-                                                        return network.coreNode.getChain(username).thenCompose(existing -> {
-                                                            List<Multihash> storage = existing.get(existing.size() - 1).claim.storageProviders;
-                                                            List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createChain(signer, newUser, username, expiry, storage);
-                                                            return network.coreNode.updateChain(username, claimChain)
-                                                                    .thenCompose(updatedChain -> {
-                                                                        if (!updatedChain)
-                                                                            throw new IllegalStateException("Couldn't register new public keys during password change!");
+                            .thenCompose(updatedUser -> {
+                                PublicSigningKey newPublicSigningKey = updatedUser.getUser().publicSigningKey;
+                                PublicKeyHash existingOwner = ContentAddressedStorage.hashKey(existingUser.getUser().publicSigningKey);
+                                return Transaction.call(existingOwner,
+                                        tid -> network.dhtClient.putSigningKey(
+                                                existingUser.getUser().secretSigningKey.signatureOnly(newPublicSigningKey.serialize()),
+                                                existingOwner,
+                                                newPublicSigningKey,
+                                                tid),
+                                        network.dhtClient
+                                ).thenCompose(newSignerHash -> userData.runWithLock(wd -> wd.props.changeKeys(
+                                        signer,
+                                        new SigningPrivateKeyAndPublicHash(newSignerHash, updatedUser.getUser().secretSigningKey),
+                                        wd.hash,
+                                        updatedUser.getBoxingPair().publicBoxingKey,
+                                        existingUser.getRoot(),
+                                        updatedUser.getRoot(),
+                                        newAlgorithm,
+                                        network,
+                                        x -> {
+                                        }
+                                )).thenCompose(writerData -> {
+                                    SigningPrivateKeyAndPublicHash newUser =
+                                            new SigningPrivateKeyAndPublicHash(newSignerHash, updatedUser.getUser().secretSigningKey);
+                                    return network.coreNode.getChain(username).thenCompose(existing -> {
+                                        List<Multihash> storage = existing.get(existing.size() - 1).claim.storageProviders;
+                                        List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createChain(signer, newUser, username, expiry, storage);
+                                        return network.coreNode.updateChain(username, claimChain)
+                                                .thenCompose(updatedChain -> {
+                                                    if (!updatedChain)
+                                                        throw new IllegalStateException("Couldn't register new public keys during password change!");
 
-                                                                        return UserContext.ensureSignedUp(username, newPassword, network, crypto);
-                                                                    });
-                                                        });
-                                                    })
-                                            );
-                                        });
+                                                    return UserContext.ensureSignedUp(username, newPassword, network, crypto);
+                                                });
+                                    });
+                                }));
                             });
                 });
     }
@@ -602,58 +597,46 @@ public class UserContext {
                                         .thenApply(boxer -> Optional.of(new Pair<>(signerOpt.get(), boxer))))));
     }
 
-    private synchronized CompletableFuture<CommittedWriterData> addToUserDataQueue(CompletableFuture<CommittedWriterData> replacement) {
-        CompletableFuture<CommittedWriterData> existing = this.userData;
-        this.userData = replacement;
-        return existing;
-    }
-
     private CompletableFuture<CommittedWriterData> addOwnedKeyAndCommit(PublicKeyHash owned, TransactionId tid) {
-        CompletableFuture<CommittedWriterData> lock = new CompletableFuture<>();
-        return addToUserDataQueue(lock)
-                .thenCompose(wd -> {
-                    Set<PublicKeyHash> updated = Stream.concat(
-                            wd.props.ownedKeys.stream(),
-                            Stream.of(owned)
-                    ).collect(Collectors.toSet());
+        return userData.runWithLock(wd -> {
+            Set<PublicKeyHash> updated = Stream.concat(
+                    wd.props.ownedKeys.stream(),
+                    Stream.of(owned)
+            ).collect(Collectors.toSet());
 
-                    WriterData writerData = wd.props.withOwnedKeys(updated);
-                    return writerData.commit(signer.publicKeyHash, signer, wd.hash, network, lock::complete, tid);
-                });
+            WriterData writerData = wd.props.withOwnedKeys(updated);
+            return writerData.commit(signer.publicKeyHash, signer, wd.hash, network, x -> {}, tid);
+        });
     }
 
     public CompletableFuture<CommittedWriterData> addNamedOwnedKeyAndCommit(String keyName, PublicKeyHash owned) {
-        CompletableFuture<CommittedWriterData> lock = new CompletableFuture<>();
-        return addToUserDataQueue(lock)
-                .thenCompose(wd -> {
-                    WriterData writerData = wd.props.addNamedKey(keyName, owned);
-                    return Transaction.call(signer.publicKeyHash,
-                            tid -> writerData.commit(signer.publicKeyHash, signer, wd.hash, network, lock::complete, tid),
-                            network.dhtClient);
-                });
+        return userData.runWithLock(wd -> {
+            WriterData writerData = wd.props.addNamedKey(keyName, owned);
+            return Transaction.call(signer.publicKeyHash,
+                    tid -> writerData.commit(signer.publicKeyHash, signer, wd.hash, network, x -> {}, tid),
+                    network.dhtClient);
+        });
     }
 
     public CompletableFuture<CommittedWriterData> makePublic(FileWrapper file) {
-        CompletableFuture<CommittedWriterData> lock = new CompletableFuture<>();
-        return addToUserDataQueue(lock)
-                .thenCompose(wd -> file.getPath(network).thenCompose(path -> Transaction.call(signer.publicKeyHash,
-                        tid -> {
-                            Optional<Multihash> publicData = wd.props.publicData;
+        return userData.runWithLock(wd -> file.getPath(network).thenCompose(path -> Transaction.call(signer.publicKeyHash,
+                tid -> {
+                    Optional<Multihash> publicData = wd.props.publicData;
 
-                            Function<ByteArrayWrapper, byte[]> hasher = x -> Hash.sha256(x.data);
-                            CompletableFuture<ChampWrapper> champ = publicData.isPresent() ?
-                                    ChampWrapper.create(publicData.get(), hasher, network.dhtClient) :
-                                    ChampWrapper.create(signer.publicKeyHash, signer, hasher, tid, network.dhtClient);
+                    Function<ByteArrayWrapper, byte[]> hasher = x -> Hash.sha256(x.data);
+                    CompletableFuture<ChampWrapper> champ = publicData.isPresent() ?
+                            ChampWrapper.create(publicData.get(), hasher, network.dhtClient) :
+                            ChampWrapper.create(signer.publicKeyHash, signer, hasher, tid, network.dhtClient);
 
-                            AbsoluteCapability cap = file.getPointer().capability.readOnly();
-                            return network.dhtClient.put(signer.publicKeyHash, signer, cap.serialize(), tid)
-                                    .thenCompose(capHash ->
-                                            champ.thenCompose(c -> c.put(signer.publicKeyHash, signer, path.getBytes(),
-                                                    MaybeMultihash.empty(), capHash, tid))
-                                    .thenCompose(newRoot -> wd.props.withPublicRoot(newRoot)
-                                            .commit(signer.publicKeyHash, signer, wd.hash, network, lock::complete, tid)));
-                        },
-                        network.dhtClient)));
+                    AbsoluteCapability cap = file.getPointer().capability.readOnly();
+                    return network.dhtClient.put(signer.publicKeyHash, signer, cap.serialize(), tid)
+                            .thenCompose(capHash ->
+                                    champ.thenCompose(c -> c.put(signer.publicKeyHash, signer, path.getBytes(),
+                                            MaybeMultihash.empty(), capHash, tid))
+                                            .thenCompose(newRoot -> wd.props.withPublicRoot(newRoot)
+                                                    .commit(signer.publicKeyHash, signer, wd.hash, network, x -> {}, tid)));
+                },
+                network.dhtClient)));
     }
 
     @JsMethod
@@ -688,16 +671,13 @@ public class UserContext {
     }
 
     private CompletableFuture<Set<String>> getFollowers(SymmetricKey rootKey) {
-        CompletableFuture<CommittedWriterData> lock = new CompletableFuture<>();
-        return addToUserDataQueue(lock).thenApply(wd -> {
-            lock.complete(wd);
-            return wd.props.staticData.get()
-                    .getEntryPoints(rootKey)
-                    .stream()
-                    .map(e -> e.ownerName)
-                    .filter(name -> ! name.equals(username))
-                    .collect(Collectors.toSet());
-        });
+        return userData.getValue()
+                .thenApply(wd -> wd.props.staticData.get()
+                        .getEntryPoints(rootKey)
+                        .stream()
+                        .map(e -> e.ownerName)
+                        .filter(name -> ! name.equals(username))
+                        .collect(Collectors.toSet()));
     }
 
     @JsMethod
@@ -1027,8 +1007,7 @@ public class UserContext {
     }
 
     private synchronized CompletableFuture<TrieNode> addToStaticDataAndCommit(TrieNode root, EntryPoint entry) {
-        CompletableFuture<CommittedWriterData> lock = new CompletableFuture<>();
-        return addToUserDataQueue(lock).thenCompose(wd -> {
+        return userData.runWithLock(wd -> {
             Optional<UserStaticData> updated = wd.props.staticData.map(sd -> {
                 List<EntryPoint> entryPoints = sd.getEntryPoints(rootKey);
                 entryPoints.add(entry);
@@ -1036,21 +1015,15 @@ public class UserContext {
             });
             return Transaction.call(signer.publicKeyHash,
                     tid -> wd.props.withStaticData(updated)
-                            .commit(signer.publicKeyHash, signer, wd.hash, network, lock::complete, tid),
+                            .commit(signer.publicKeyHash, signer, wd.hash, network, x -> {}, tid),
                     network.dhtClient
-            ).thenCompose(res -> getUserRoot()
-                    .thenCompose(ourRoot -> addEntryPoint(username, ourRoot, root, entry, network, crypto.random, fragmenter))
-            ).exceptionally(t -> {
-                lock.complete(wd);
-                return root;
-            });
-        });
+            );
+        }).thenCompose(res -> getUserRoot()
+                .thenCompose(ourRoot -> addEntryPoint(username, ourRoot, root, entry, network, crypto.random, fragmenter)));
     }
 
     private CompletableFuture<CommittedWriterData> removeFromStaticData(FileWrapper fileWrapper) {
-        CompletableFuture<CommittedWriterData> lock = new CompletableFuture<>();
-        return addToUserDataQueue(lock)
-                .thenCompose(wd -> wd.props.removeFromStaticData(fileWrapper, rootKey, signer, wd.hash, network, lock::complete));
+        return userData.runWithLock(wd -> wd.props.removeFromStaticData(fileWrapper, rootKey, signer, wd.hash, network, x -> {}));
     }
 
     private CompletableFuture<List<BlindFollowRequest>> getFollowRequests() {
