@@ -16,10 +16,10 @@ Centralized Alpha
  
 Decentralized writes + Self-hostable storage
 ------------
- - Each user stores an ipfs node id (cid) in their PKI which is the server responsible for storing their data
- - Implement MutablePointers and SocialNetwork in terms of ipfs p2p stream
- - Mirror core node PKI on every node for private friend lookups
- - Implement cornode in terms of ipfs p2p stream to allow self hosting in ipfs itself
+ - &#10004;Each user stores an ipfs node id (cid) in their PKI which is the server responsible for storing their data
+ - &#10004;Implement MutablePointers and SocialNetwork in terms of ipfs p2p stream
+ - &#10004;Mirror core node PKI on every node for private friend lookups
+ - &#10004;Implement corenode in terms of ipfs p2p stream to allow self hosting in ipfs itself
 
 Keymail
 ------------
