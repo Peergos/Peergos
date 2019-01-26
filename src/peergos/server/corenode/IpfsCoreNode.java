@@ -175,7 +175,7 @@ public class IpfsCoreNode implements CoreNode {
                     return Transaction.call(peergosIdentity,
                             tid -> champ.put(signer.publicKeyHash, signer, username.getBytes(), existing, mergedChainHash, tid)
                                     .thenCompose(newPkiRoot -> current.props.withChamp(newPkiRoot)
-                                            .commit(peergosIdentity, signer, currentRoot, mutable, ipfs, c -> {}, tid)),
+                                            .commit(peergosIdentity, signer, currentRoot, mutable, ipfs, tid)),
                             ipfs
                     ).thenApply(committed -> {
                         if (existingChain.isEmpty())
