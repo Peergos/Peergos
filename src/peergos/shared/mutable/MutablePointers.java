@@ -14,17 +14,17 @@ public interface MutablePointers {
 
     /** Update the hash that a public key maps to (doing a cas with the existing value)
      *
-     * @param owner
-     * @param writer
+     * @param owner The owner of this signing key
+     * @param writer The public signing key
      * @param writerSignedBtreeRootHash the signed serialization of the HashCasPair
-     * @return
+     * @return True when sucessfully completed
      */
     CompletableFuture<Boolean> setPointer(PublicKeyHash owner, PublicKeyHash writer, byte[] writerSignedBtreeRootHash);
 
     /** Get the current hash a public key maps to
      *
-     * @param writer
-     * @return
+     * @param writer The public signing key
+     * @return The signed cas of the pointer from its previous value to its current value
      */
     CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash owner, PublicKeyHash writer);
 
