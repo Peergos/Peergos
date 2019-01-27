@@ -14,21 +14,21 @@ public interface CoreNode {
     /**
      *
      * @param username
-     * @return the key chain proving the claim of the requested username
+     * @return the key chain proving the claim of the requested username and the ipfs node id of their storage
      */
     CompletableFuture<List<UserPublicKeyLink>> getChain(String username);
 
     /** Claim a username, or change the public key owning a username
      *
      * @param username
-     * @param chain
-     * @return
+     * @param chain The changed links of the chain
+     * @return True if successfully updated
      */
     CompletableFuture<Boolean> updateChain(String username, List<UserPublicKeyLink> chain);
 
     /**
      *
-     * @param key
+     * @param key the hash of the public identity key of a user
      * @return the username claimed by a given public key
      */
     CompletableFuture<String> getUsername(PublicKeyHash key);
