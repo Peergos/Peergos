@@ -11,7 +11,7 @@ The name Peergos comes from the Greek word Πύργος (Pyrgos), which means st
 
 There is a single machine demo running at [https://demo.peergos.net](https://demo.peergos.net). 
 
-You can read more detail about our features and architecture in our [book](https://peergos.github.io/book).
+You can read more detail about our features and architecture in our [book](https://book.peergos.org).
 
 The slides of a talk introducing Peergos are [here](https://speakerdeck.com/ianopolous/peergos-architecture) and [videos here](https://www.youtube.com/watch?v=h54pShffxvI) and [here](https://www.youtube.com/watch?v=dCLboQDlzds).
 
