@@ -72,12 +72,11 @@ public class UserPublicKeyLink implements Cborable{
     public static UserPublicKeyLink fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("Invalid cbor for UserPublicKeyLink: " + cbor);
-        SortedMap<CborObject, ? extends Cborable> values = ((CborObject.CborMap) cbor).values;
-        PublicKeyHash owner = PublicKeyHash.fromCbor(values.get(new CborObject.CborString("owner")));
-        Claim claim  = Claim.fromCbor(values.get(new CborObject.CborString("claim")));
-        CborObject.CborString proofKey = new CborObject.CborString("keychange");
-        Optional<byte[]> keyChangeProof = values.containsKey(proofKey) ?
-                Optional.of(((CborObject.CborByteArray)values.get(proofKey)).value) : Optional.empty();
+        CborObject.CborMap map = (CborObject.CborMap) cbor;
+
+        PublicKeyHash owner = PublicKeyHash.fromCbor(map.get("owner"));
+        Claim claim  = Claim.fromCbor(map.get("claim"));
+        Optional<byte[]> keyChangeProof = Optional.ofNullable(((CborObject.CborByteArray)map.get("keychange")).value);
         return new UserPublicKeyLink(owner, claim, keyChangeProof);
     }
 
