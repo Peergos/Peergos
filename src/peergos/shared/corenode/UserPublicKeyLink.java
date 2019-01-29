@@ -76,7 +76,8 @@ public class UserPublicKeyLink implements Cborable{
 
         PublicKeyHash owner = PublicKeyHash.fromCbor(map.get("owner"));
         Claim claim  = Claim.fromCbor(map.get("claim"));
-        Optional<byte[]> keyChangeProof = Optional.ofNullable(((CborObject.CborByteArray)map.get("keychange")).value);
+        Optional<byte[]> keyChangeProof = Optional.ofNullable(map.get("keychange"))
+                .map(c -> ((CborObject.CborByteArray)c).value);
         return new UserPublicKeyLink(owner, claim, keyChangeProof);
     }
 
