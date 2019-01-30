@@ -100,18 +100,18 @@ public class DirAccess implements CryptreeNode {
 
     @Override
     public DirAccess withWriterLink(SymmetricLinkToSigner newWriterLink) {
-        return new DirAccess(MaybeMultihash.empty(), version, base2parent, parent2meta, parentLink,
+        return new DirAccess(lastCommittedHash, version, base2parent, parent2meta, parentLink,
                 properties, children, moreFolderContents, Optional.of(newWriterLink));
     }
 
     @Override
     public DirAccess withParentLink(EncryptedCapability newParentLink) {
-        return new DirAccess(MaybeMultihash.empty(), version, base2parent, parent2meta, newParentLink,
+        return new DirAccess(lastCommittedHash, version, base2parent, parent2meta, newParentLink,
                 properties, children, moreFolderContents, writerLink);
     }
 
     public DirAccess withNextBlob(Optional<EncryptedCapability> moreFolderContents) {
-        return new DirAccess(MaybeMultihash.empty(), version, base2parent, parent2meta, parentLink, properties,
+        return new DirAccess(lastCommittedHash, version, base2parent, parent2meta, parentLink, properties,
                 children, moreFolderContents, writerLink);
     }
 
@@ -235,7 +235,7 @@ public class DirAccess implements CryptreeNode {
                                 // create and upload new metadata blob
                                 SymmetricKey nextSubfoldersKey = SymmetricKey.random();
                                 SymmetricKey ourParentKey = base2parent.target(us.rBaseKey);
-                                RelativeCapability parentCap = parentLink.toCapability(ourParentKey);
+                                RelativeCapability parentCap = parentLink == null ? null : parentLink.toCapability(ourParentKey);
                                 DirAccess next = DirAccess.create(MaybeMultihash.empty(), nextSubfoldersKey, null, Optional.empty(), FileProperties.EMPTY,
                                         parentCap, ourParentKey);
                                 byte[] nextMapKey = random.randomBytes(32);
@@ -344,6 +344,7 @@ public class DirAccess implements CryptreeNode {
                 .collect(Collectors.toSet());
     }
 
+    @Override
     public Set<AbsoluteCapability> getChildrenCapabilities(AbsoluteCapability us) {
         return getChildren(us.rBaseKey).stream()
                 .map(cap -> cap.toAbsolute(us))

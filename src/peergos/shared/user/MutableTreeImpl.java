@@ -62,7 +62,7 @@ public class MutableTreeImpl implements MutableTree {
         // and whoever commits first will win. We also need to retrieve the writer data again from the network after
         // a previous transaction has completed (another node/user may have updated the mapping)
         return pending.computeIfAbsent(writer, w -> new AsyncLock<>(getWriterData(owner, w)))
-                .runWithLock(x -> getWriterData(owner, writer).thenCompose(updater));
+                .runWithLock(current -> updater.apply(current), () -> getWriterData(owner, writer));
     }
 
     @Override
@@ -89,7 +89,7 @@ public class MutableTreeImpl implements MutableTree {
     @Override
     public CompletableFuture<MaybeMultihash> get(PublicKeyHash owner, PublicKeyHash writer, byte[] mapKey) {
         return getCurrentWriterData(owner, writer, x -> CompletableFuture.completedFuture(x))
-                .thenCompose(committed -> {
+                .thenCompose(old -> getWriterData(owner, writer).thenCompose(committed -> {
                     WriterData holder = committed.props;
                     if (! holder.tree.isPresent())
                         throw new IllegalStateException("Tree root not present for " + writer);
@@ -97,7 +97,7 @@ public class MutableTreeImpl implements MutableTree {
                             .thenApply(maybe -> LOGGING ?
                                     log(maybe, "TREE.get (" + ArrayOps.bytesToHex(mapKey)
                                             + ", root="+holder.tree.get()+" => " + maybe) : maybe);
-                });
+                }));
     }
 
     @Override
