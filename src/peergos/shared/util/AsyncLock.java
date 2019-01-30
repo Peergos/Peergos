@@ -16,25 +16,35 @@ public class AsyncLock<T> {
         this.queueHead = initialValue;
     }
 
+    public synchronized CompletableFuture<T> runWithLock(Function<T, CompletionStage<T>> processor) {
+        return runWithLock(processor, () -> queueHead);
+    }
+
     /**
      *
-     * @param updater
-     * @return A future completed with the result from updater, or exceptionally completed on error
+     * @param processor
+     * @param updater a method to get a fresh value which is called if updater completes exceptionally
+     * @return A future completed with the result from a computation, or exceptionally completed on error
      */
-    public synchronized CompletableFuture<T> runWithLock(Function<T, CompletionStage<T>> updater) {
+    public synchronized CompletableFuture<T> runWithLock(Function<T, CompletionStage<T>> processor, Supplier<CompletableFuture<T>> updater) {
         CompletableFuture<T> existing = queueHead;
         CompletableFuture<T> newHead = new CompletableFuture<>();
         this.queueHead = newHead;
 
         CompletableFuture<T> result = new CompletableFuture<>();
-        existing.thenCompose(current -> updater.apply(current)
+        existing.thenCompose(current -> processor.apply(current)
                 .thenApply(res -> newHead.complete(res) && result.complete(res))
-                .exceptionally(t -> newHead.complete(current) && result.completeExceptionally(t)));
+                .exceptionally(t -> {
+                    updater.get().thenCompose(processor)
+                            .thenApply(res -> newHead.complete(res) && result.complete(res))
+                            .exceptionally(e -> newHead.complete(current) && result.completeExceptionally(e));
+                    return true;
+                }));
 
         return result;
     }
 
     public synchronized CompletableFuture<T> getValue() {
-        return runWithLock(v -> CompletableFuture.completedFuture(v));
+        return runWithLock(CompletableFuture::completedFuture);
     }
 }

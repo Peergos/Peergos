@@ -344,6 +344,7 @@ public class DirAccess implements CryptreeNode {
                 .collect(Collectors.toSet());
     }
 
+    @Override
     public Set<AbsoluteCapability> getChildrenCapabilities(AbsoluteCapability us) {
         return getChildren(us.rBaseKey).stream()
                 .map(cap -> cap.toAbsolute(us))

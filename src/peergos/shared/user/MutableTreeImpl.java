@@ -62,7 +62,7 @@ public class MutableTreeImpl implements MutableTree {
         // and whoever commits first will win. We also need to retrieve the writer data again from the network after
         // a previous transaction has completed (another node/user may have updated the mapping)
         return pending.computeIfAbsent(writer, w -> new AsyncLock<>(getWriterData(owner, w)))
-                .runWithLock(x -> getWriterData(owner, writer).thenCompose(updater));
+                .runWithLock(current -> updater.apply(current), () -> getWriterData(owner, writer));
     }
 
     @Override

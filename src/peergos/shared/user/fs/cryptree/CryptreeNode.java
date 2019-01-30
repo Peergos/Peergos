@@ -43,6 +43,10 @@ public interface CryptreeNode extends Cborable {
                         new IllegalStateException("No link to private signing key present on directory!")));
     }
 
+    default Set<AbsoluteCapability> getChildrenCapabilities(AbsoluteCapability us) {
+        return Collections.emptySet();
+    }
+
     CompletableFuture<? extends CryptreeNode> updateProperties(WritableAbsoluteCapability us,
                                                                Optional<SigningPrivateKeyAndPublicHash> entryWriter,
                                                                FileProperties newProps,
