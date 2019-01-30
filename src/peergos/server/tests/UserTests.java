@@ -684,11 +684,14 @@ public abstract class UserTests {
         String password = "test01";
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         List<String> names = new ArrayList<>();
-        IntStream.range(0, 2000).forEach(i -> names.add(randomString()));
+        int nChildren = 2000;
+        IntStream.range(0, nChildren).forEach(i -> names.add(randomString()));
 
         for (String filename: names) {
             context.getUserRoot().get().mkdir(filename, context.network, false, context.crypto.random);
         }
+        Set<FileWrapper> children = context.getUserRoot().get().getChildren(context.network).get();
+        Assert.assertTrue("All children present", children.size() == nChildren);
     }
 
     public static void checkFileContents(byte[] expected, FileWrapper f, UserContext context) throws Exception {
