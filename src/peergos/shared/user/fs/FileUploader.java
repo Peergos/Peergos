@@ -71,16 +71,13 @@ public class FileUploader implements AutoCloseable {
                 baseKey, parentLocation, parentparentKey, monitor, fileProperties, fragmenter, locations);
     }
 
-    public CompletableFuture<Location> uploadChunk(NetworkAccess network,
-                                                   SafeRandom random,
-                                                   PublicKeyHash owner,
-                                                   SigningPrivateKeyAndPublicHash writer,
-                                                   long chunkIndex,
-                                                   Location currentLocation,
-                                                   MaybeMultihash ourExistingHash,
-                                                   ProgressConsumer<Long> monitor) {
-	    LOG.info("uploading chunk: "+chunkIndex + " of "+name);
-
+    public CompletableFuture<Boolean> uploadChunk(NetworkAccess network,
+                                                  PublicKeyHash owner,
+                                                  SigningPrivateKeyAndPublicHash writer,
+                                                  long chunkIndex,
+                                                  MaybeMultihash ourExistingHash,
+                                                  ProgressConsumer<Long> monitor) {
+        LOG.info("uploading chunk: "+chunkIndex + " of "+name);
         long position = chunkIndex * Chunk.MAX_SIZE;
 
         long fileLength = length;
@@ -89,29 +86,26 @@ public class FileUploader implements AutoCloseable {
         byte[] data = new byte[length];
         return reader.readIntoArray(data, 0, data.length).thenCompose(b -> {
             byte[] nonce = baseKey.createNonce();
-            Chunk chunk = new Chunk(data, baseKey, currentLocation.getMapKey(), nonce);
+            byte[] mapKey = locations.get((int) chunkIndex).getMapKey();
+            Chunk chunk = new Chunk(data, baseKey, mapKey, nonce);
             LocatedChunk locatedChunk = new LocatedChunk(new Location(owner, writer.publicKeyHash, chunk.mapKey()), ourExistingHash, chunk);
-            byte[] mapKey = random.randomBytes(32);
-            Location nextLocation = new Location(owner, writer.publicKeyHash, mapKey);
+            Location nextLocation = new Location(owner, writer.publicKeyHash, locations.get((int) chunkIndex + 1).getMapKey());
             return uploadChunk(writer, props, parentLocation, parentparentKey, baseKey, locatedChunk,
-                    fragmenter, nextLocation, network, monitor).thenApply(c -> nextLocation);
+                    fragmenter, nextLocation, network, monitor).thenApply(c -> true);
         });
     }
 
-    public CompletableFuture<Location> upload(NetworkAccess network,
-                                              SafeRandom random,
-                                              PublicKeyHash owner,
-                                              SigningPrivateKeyAndPublicHash writer,
-                                              Location currentChunk) {
+    public CompletableFuture<Boolean> upload(NetworkAccess network,
+                                             PublicKeyHash owner,
+                                             SigningPrivateKeyAndPublicHash writer) {
         long t1 = System.currentTimeMillis();
-        Location originalChunk = currentChunk;
 
         List<Integer> input = IntStream.range(0, (int) nchunks).mapToObj(i -> Integer.valueOf(i)).collect(Collectors.toList());
-        return Futures.reduceAll(input, currentChunk, (loc, i) -> uploadChunk(network, random, owner, writer, i,
-                loc, MaybeMultihash.empty(), monitor), (a, b) -> b)
-                .thenApply(loc -> {
+        return Futures.reduceAll(input, true, (loc, i) -> uploadChunk(network, owner, writer, i,
+                MaybeMultihash.empty(), monitor), (a, b) -> a && b)
+                .thenApply(x -> {
                     LOG.info("File encryption, erasure coding and upload took: " +(System.currentTimeMillis()-t1) + " mS");
-                    return originalChunk;
+                    return x;
                 });
     }
 

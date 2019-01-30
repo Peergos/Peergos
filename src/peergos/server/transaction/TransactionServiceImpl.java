@@ -42,7 +42,8 @@ public class TransactionServiceImpl implements TransactionService {
         byte[] data = transaction.serialize();
         AsyncReader asyncReader = AsyncReader.build(data);
         return transactionDirUpdater.updated().thenCompose(dirWrapper ->
-                dirWrapper.uploadFile(transaction.name(), asyncReader, data.length, networkAccess, random, VOID_PROGRESS, fragmenter)
+                dirWrapper.uploadFile(transaction.name(), asyncReader, data.length, networkAccess, random, VOID_PROGRESS,
+                        fragmenter, dirWrapper.generateLocationsForChild(1, random))
                         .thenApply(e -> true));
     }
 

@@ -372,8 +372,10 @@ public class FileWrapper {
      * @param fragmenter
      * @return updated parent dir
      */
-    public CompletableFuture<FileWrapper> clean(NetworkAccess network, SafeRandom random,
-                                                FileWrapper parent, peergos.shared.user.fs.Fragmenter fragmenter) {
+    public CompletableFuture<FileWrapper> clean(NetworkAccess network,
+                                                SafeRandom random,
+                                                FileWrapper parent,
+                                                Fragmenter fragmenter) {
         if (!isDirty())
             return CompletableFuture.completedFuture(this);
         if (isDirectory()) {
@@ -387,8 +389,9 @@ public class FileWrapper {
                 new Random().nextBytes(tmp);
                 String tmpFilename = ArrayOps.bytesToHex(tmp) + ".tmp";
 
+
                 CompletableFuture<FileWrapper> reuploaded = parent.uploadFileSection(tmpFilename, in, 0, props.size,
-                        Optional.of(baseKey), true, network, random, l -> {}, fragmenter);
+                        Optional.of(baseKey), true, network, random, l -> {}, fragmenter, parent.generateLocationsForChild(props.getNumberOfChunks(), random));
                 return reuploaded.thenCompose(upload -> upload.getDescendentByPath(tmpFilename, network)
                         .thenCompose(tmpChild -> tmpChild.get().rename(props.name, network, upload, true))
                         .thenApply(res -> {
@@ -397,6 +400,13 @@ public class FileWrapper {
                         }));
             });
         }
+    }
+
+    public List<Location> generateLocationsForChild(int numberOfChunks,
+                                                    SafeRandom random) {
+        return IntStream.range(0, numberOfChunks + 1) //have to have one extra location
+                .mapToObj(e -> new Location(owner(), writer(), random.randomBytes(32)))
+                .collect(Collectors.toList());
     }
 
     @JsMethod
@@ -456,17 +466,6 @@ public class FileWrapper {
                                                             List<Location> locations) {
         return uploadFileSection(filename, fileData, false, startIndex, endIndex, baseKey,
                 overwriteExisting, network, random, monitor, fragmenter, locations);
-    }
-
-
-    private Location generate(SafeRandom random) {
-        return new Location(owner(), writer(), random.randomBytes(32));
-    }
-    public List<Location> generateLocations(int numberOfChunks,
-                                             SafeRandom random) {
-        return IntStream.range(0, numberOfChunks+1) //have to have one extra location
-                .mapToObj(e -> generate(random))
-                .collect(Collectors.toList());
     }
 
     /**
@@ -533,11 +532,11 @@ public class FileWrapper {
                                                 startIndex, endIndex, fileKey, parentLocation, dirParentKey, monitor, fileProps,
                                                 fragmenter, locations);
                                         SigningPrivateKeyAndPublicHash signer = signingPair();
-                                        return chunks.upload(network, random, parentLocation.owner, signer, locations.get(1))
+                                        return chunks.upload(network, parentLocation.owner, signer)
                                                 .thenCompose(fileLocation -> {
                                                     WritableAbsoluteCapability fileWriteCap =
-                                                            new WritableAbsoluteCapability(owner(), fileLocation.writer,
-                                                                    fileLocation.getMapKey(), fileKey, fileWriteKey);
+                                                            new WritableAbsoluteCapability(owner(), signer.publicKeyHash,
+                                                                    locations.get(0).getMapKey(), fileKey, fileWriteKey);
                                                     return addChildPointer(filename, fileWriteCap, network, random, 2);
                                                 });
                                     }))
@@ -897,7 +896,7 @@ public class FileWrapper {
             } else {
                 return getInputStream(network, random, x -> {})
                         .thenCompose(stream -> target.uploadFileSection(getName(), stream, 0, getSize(),
-                                Optional.empty(), false, network, random, x -> {}, fragmenter)
+                                Optional.empty(), false, network, random, x -> {}, fragmenter, target.generateLocationsForChild(props.getNumberOfChunks(), random))
                         .thenApply(b -> target));
             }
         });

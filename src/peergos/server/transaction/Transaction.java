@@ -18,10 +18,9 @@ public interface Transaction extends Cborable {
     String name();
 
     /**
-     * Asynchronously clear data associated with this transaction
+     * Clear data associated with this transaction
      */
     CompletableFuture<Boolean> clear(NetworkAccess networkAccess);
-
 
     static Transaction deserialize(byte[] data) {
         CborObject cborObject = CborObject.fromByteArray(data);
@@ -39,7 +38,6 @@ public interface Transaction extends Cborable {
     enum Type {
         FILE_UPLOAD
     }
-
 
     @JsMethod
     static Transaction buildFileUploadTransaction(String path,
