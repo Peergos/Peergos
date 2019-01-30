@@ -106,11 +106,10 @@ public class UserContext {
         return new TransactionServiceImpl(network, crypto.random, fragmenter(), () -> getTransactionsDir);
     }
 
-
+    @JsMethod
     public TransactionService getTransactionService() {
         return transactionService;
     }
-    
 
     @JsMethod
     public boolean isShared(FileWrapper file) {

@@ -30,6 +30,7 @@ public class FileUploader implements AutoCloseable {
     private final ProgressConsumer<Long> monitor;
     private final Fragmenter fragmenter;
     private final AsyncReader reader; // resettable input stream
+    private final List<Location> locations;
 
     @JsConstructor
     public FileUploader(String name, String mimeType, AsyncReader fileData,
@@ -37,7 +38,8 @@ public class FileUploader implements AutoCloseable {
                         SymmetricKey baseKey,
                         Location parentLocation, SymmetricKey parentparentKey,
                         ProgressConsumer<Long> monitor,
-                        FileProperties fileProperties, Fragmenter fragmenter) {
+                        FileProperties fileProperties, Fragmenter fragmenter,
+                        List<Location> locations) {
         long length = lengthLow + ((lengthHi & 0xFFFFFFFFL) << 32);
         if (fileProperties == null)
             this.props = new FileProperties(name, mimeType, length, LocalDateTime.now(), false, Optional.empty());
@@ -59,13 +61,14 @@ public class FileUploader implements AutoCloseable {
         this.parentLocation = parentLocation;
         this.parentparentKey = parentparentKey;
         this.monitor = monitor;
+        this.locations = locations;
     }
 
     public FileUploader(String name, String mimeType, AsyncReader fileData, long offset, long length,
                         SymmetricKey baseKey, Location parentLocation, SymmetricKey parentparentKey,
-                        ProgressConsumer<Long> monitor, FileProperties fileProperties, Fragmenter fragmenter) {
+                        ProgressConsumer<Long> monitor, FileProperties fileProperties, Fragmenter fragmenter, List<Location> locations) {
         this(name, mimeType, fileData, (int)(offset >> 32), (int) offset, (int) (length >> 32), (int) length,
-                baseKey, parentLocation, parentparentKey, monitor, fileProperties, fragmenter);
+                baseKey, parentLocation, parentparentKey, monitor, fileProperties, fragmenter, locations);
     }
 
     public CompletableFuture<Location> uploadChunk(NetworkAccess network,

@@ -3,6 +3,7 @@ import java.nio.file.Paths;
 import java.util.logging.*;
 
 import jsinterop.annotations.*;
+import peergos.server.transaction.FileUploadTransaction;
 import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
@@ -403,9 +404,10 @@ public class FileWrapper {
                                                        int lengthHi, int lengthLow,
                                                        boolean overwriteExisting,
                                                        NetworkAccess network, SafeRandom random,
-                                                       ProgressConsumer<Long> monitor, Fragmenter fragmenter) {
+                                                       ProgressConsumer<Long> monitor, Fragmenter fragmenter,
+                                                       List<Location> locations) {
         return uploadFileSection(filename, fileData, 0, lengthLow + ((lengthHi & 0xFFFFFFFFL) << 32),
-                Optional.empty(), overwriteExisting, network, random, monitor, fragmenter);
+                Optional.empty(), overwriteExisting, network, random, monitor, fragmenter, locations);
     }
 
     public CompletableFuture<FileWrapper> uploadFile(String filename,
@@ -414,9 +416,10 @@ public class FileWrapper {
                                                      NetworkAccess network,
                                                      SafeRandom random,
                                                      ProgressConsumer<Long> monitor,
-                                                     Fragmenter fragmenter) {
+                                                     Fragmenter fragmenter,
+                                                     List<Location> locations) {
         return uploadFileSection(filename, fileData, 0, length, Optional.empty(),
-                true, network, random, monitor, fragmenter);
+                true, network, random, monitor, fragmenter, locations);
     }
 
     public CompletableFuture<FileWrapper> uploadFile(String filename,
@@ -427,15 +430,17 @@ public class FileWrapper {
                                                      NetworkAccess network,
                                                      SafeRandom random,
                                                      ProgressConsumer<Long> monitor,
-                                                     Fragmenter fragmenter) {
+                                                     Fragmenter fragmenter,
+                                                     List<Location> locations) {
         return uploadFileSection(filename, fileData, isHidden, 0, length, Optional.empty(),
-                overwriteExisting, network, random, monitor, fragmenter);
+                overwriteExisting, network, random, monitor, fragmenter, locations);
     }
 
     public CompletableFuture<FileWrapper> uploadFileSection(String filename, AsyncReader fileData, long startIndex, long endIndex,
                                                             NetworkAccess network, SafeRandom random,
-                                                            ProgressConsumer<Long> monitor, Fragmenter fragmenter) {
-        return uploadFileSection(filename, fileData, startIndex, endIndex, Optional.empty(), true, network, random, monitor, fragmenter);
+                                                            ProgressConsumer<Long> monitor, Fragmenter fragmenter,
+                                                            List<Location> locations) {
+        return uploadFileSection(filename, fileData, startIndex, endIndex, Optional.empty(), true, network, random, monitor, fragmenter, locations);
     }
 
     public CompletableFuture<FileWrapper> uploadFileSection(String filename,
@@ -447,10 +452,21 @@ public class FileWrapper {
                                                             NetworkAccess network,
                                                             SafeRandom random,
                                                             ProgressConsumer<Long> monitor,
-                                                            Fragmenter fragmenter) {
-        
+                                                            Fragmenter fragmenter,
+                                                            List<Location> locations) {
         return uploadFileSection(filename, fileData, false, startIndex, endIndex, baseKey,
-                overwriteExisting, network, random, monitor, fragmenter);
+                overwriteExisting, network, random, monitor, fragmenter, locations);
+    }
+
+
+    private Location generate(SafeRandom random) {
+        return new Location(owner(), writer(), random.randomBytes(32));
+    }
+    public List<Location> generateLocations(int numberOfChunks,
+                                             SafeRandom random) {
+        return IntStream.range(0, numberOfChunks+1) //have to have one extra location
+                .mapToObj(e -> generate(random))
+                .collect(Collectors.toList());
     }
 
     /**
@@ -478,7 +494,8 @@ public class FileWrapper {
                                                             NetworkAccess network,
                                                             SafeRandom random,
                                                             ProgressConsumer<Long> monitor,
-                                                            Fragmenter fragmenter) {
+                                                            Fragmenter fragmenter,
+                                                            List<Location> locations) {
         if (!isLegalName(filename)) {
             CompletableFuture<FileWrapper> res = new CompletableFuture<>();
             res.completeExceptionally(new IllegalStateException("Illegal filename: " + filename));
@@ -514,11 +531,9 @@ public class FileWrapper {
                                                 LocalDateTime.now(), isHidden, Optional.of(thumbData));
                                         FileUploader chunks = new FileUploader(filename, mimeType, resetReader,
                                                 startIndex, endIndex, fileKey, parentLocation, dirParentKey, monitor, fileProps,
-                                                fragmenter);
-                                        byte[] mapKey = random.randomBytes(32);
-                                        Location nextChunkLocation = new Location(getLocation().owner, getLocation().writer, mapKey);
+                                                fragmenter, locations);
                                         SigningPrivateKeyAndPublicHash signer = signingPair();
-                                        return chunks.upload(network, random, parentLocation.owner, signer, nextChunkLocation)
+                                        return chunks.upload(network, random, parentLocation.owner, signer, locations.get(1))
                                                 .thenCompose(fileLocation -> {
                                                     WritableAbsoluteCapability fileWriteCap =
                                                             new WritableAbsoluteCapability(owner(), fileLocation.writer,
@@ -1000,7 +1015,7 @@ public class FileWrapper {
 
         boolean writableParent = parent.isWritable();
         return (writableParent ? parent.removeChild(this, network) : CompletableFuture.completedFuture(parent))
-                .thenCompose(updatedParent -> Transaction.call(owner(),
+                .thenCompose(updatedParent -> IpfsTransaction.call(owner(),
                         tid -> FileWrapper.deleteAllChunks(writableFilePointer(),
                                 writableParent ? parent.signingPair() : signingPair(), tid, network), network.dhtClient)
                         .thenApply(b -> updatedParent));
@@ -1020,7 +1035,7 @@ public class FileWrapper {
             Set<PublicKeyHash> ownedKeys = new HashSet<>(parentWriterData.props.ownedKeys);
             ownedKeys.remove(signerToRemove);
             WriterData updatedParentWD = parentWriterData.props.withOwnedKeys(ownedKeys);
-            return Transaction.call(owner, tid ->
+            return IpfsTransaction.call(owner, tid ->
                     updatedParentWD.commit(owner, parentSigner,
                             parentWriterData.hash, network, tid).thenApply(cwd -> true), network.dhtClient);
 

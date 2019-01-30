@@ -1,5 +1,6 @@
 package peergos.server.transaction;
 
+import jsinterop.annotations.JsMethod;
 import peergos.shared.util.Futures;
 
 import java.util.List;
@@ -9,8 +10,10 @@ import java.util.stream.Collectors;
 
 public interface TransactionService {
 
+    @JsMethod
     CompletableFuture<Boolean> open(Transaction transaction);
 
+    @JsMethod
     CompletableFuture<Boolean> close(Transaction transaction);
 
     /**
@@ -30,7 +33,7 @@ public interface TransactionService {
 
         return getOpenTransactions().thenCompose(openTransactions -> {
             List<CompletableFuture<Boolean>> futures = openTransactions.stream()
-                    .filter(Transaction::hasTimedOut)
+                    .filter(e -> false) // TODO
                     .map(this::clearAndClose)
                     .collect(Collectors.toList());
 

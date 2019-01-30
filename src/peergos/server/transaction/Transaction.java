@@ -1,8 +1,11 @@
 package peergos.server.transaction;
 
+import jsinterop.annotations.JsMethod;
 import peergos.shared.NetworkAccess;
 import peergos.shared.cbor.CborObject;
 import peergos.shared.cbor.Cborable;
+import peergos.shared.crypto.SigningPrivateKeyAndPublicHash;
+import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.user.fs.Location;
 
 import java.util.List;
@@ -12,8 +15,6 @@ public interface Transaction extends Cborable {
 
     long startTimeEpochMillis();
 
-    long timeoutMs();
-
     String name();
 
     /**
@@ -21,11 +22,6 @@ public interface Transaction extends Cborable {
      */
     CompletableFuture<Boolean> clear(NetworkAccess networkAccess);
 
-
-    default boolean hasTimedOut() {
-        long now = System.currentTimeMillis();
-        return (now - startTimeEpochMillis()) > timeoutMs();
-    }
 
     static Transaction deserialize(byte[] data) {
         CborObject cborObject = CborObject.fromByteArray(data);
@@ -42,5 +38,14 @@ public interface Transaction extends Cborable {
 
     enum Type {
         FILE_UPLOAD
+    }
+
+
+    @JsMethod
+    static Transaction buildFileUploadTransaction(String path,
+                                                  SigningPrivateKeyAndPublicHash writer,
+                                                  List<Location> locations) {
+        long startTimeEpochMillis = System.currentTimeMillis();
+        return new FileUploadTransaction(startTimeEpochMillis, path, writer, locations);
     }
 }

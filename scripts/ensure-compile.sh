@@ -6,13 +6,13 @@
 ## ln -s $(git rev-parse --show-toplevel)/scripts/ensure-compile.sh $(git rev-parse --show-toplevel)/.git/hooks/pre-commit
 ##
 
-echo "********************************"
-echo " Checking if project compiles.."
-echo "********************************"
-
-if ! ant compile;
-then 
-    echo "Project failed to compile"
-    exit 1
-fi
-
+#echo "********************************"
+#echo " Checking if project compiles.."
+#echo "********************************"
+#
+#if ! ant compile;
+#then 
+#    echo "Project failed to compile"
+#    exit 1
+#fi
+#

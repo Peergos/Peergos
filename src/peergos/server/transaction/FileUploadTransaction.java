@@ -17,38 +17,33 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public class FileUploadTransaction implements Transaction {
-    private final long startTimeEpochMillis, timeoutMs;
+    private final long startTimeEpochMillis;
     private final String path;
     //  common to whole file
-    PublicKeyHash owner;
     SigningPrivateKeyAndPublicHash writer;
     private List<Location> locations;
 
     public FileUploadTransaction(long startTimeEpochMillis,
-                                 long timeoutMs, String path,
-                                 PublicKeyHash owner,
+                                 String path,
                                  SigningPrivateKeyAndPublicHash writer,
                                  List<Location> locations) {
+        if (! isValid(locations))
+            throw new IllegalStateException("All locations for transaction must have the same owner and writer");
+
         this.startTimeEpochMillis = startTimeEpochMillis;
-        this.timeoutMs = timeoutMs;
         this.path = path;
-        this.owner = owner;
         this.writer = writer;
         this.locations = locations;
-        ensureValid();
-
     }
 
-    private boolean isValid(Location location) {
-        return location.owner.equals(owner) && location.writer.equals(writer.publicKeyHash);
-    }
-
-    private void ensureValid() {
-        Optional<Location> invalid = locations.stream()
-                .filter(e -> !isValid(e))
-                .findFirst();
-        if (invalid.isPresent())
-            throw new IllegalStateException("Invalid location " + invalid.get());
+    private boolean isValid(List<Location>  locations) {
+        long distinctOWners = locations.stream().map(e -> e.owner).distinct().count();
+        if (distinctOWners != 1)
+            return false;
+        long distinctWriters = locations.stream().map(e -> e.writer).distinct().count();
+        if (distinctWriters != 1)
+            return false;
+        return true;
     }
 
 
@@ -64,7 +59,7 @@ public class FileUploadTransaction implements Transaction {
                                 .thenApply(e -> true);
                     });
 
-        return IpfsTransaction.call(owner, clearAll, networkAccess.dhtClient);
+        return IpfsTransaction.call(location.owner, clearAll, networkAccess.dhtClient);
     }
 
     public CompletableFuture<Boolean> clear(NetworkAccess networkAccess) {
@@ -85,18 +80,11 @@ public class FileUploadTransaction implements Transaction {
     }
 
     @Override
-    public long timeoutMs() {
-        return timeoutMs;
-    }
-
-    @Override
     public CborObject toCbor() {
         Map<String, Cborable> map = new HashMap<>();
         map.put("type", new CborObject.CborString(Type.FILE_UPLOAD.name()));
         map.put("path", new CborObject.CborString(path));
-        map.put("timeoutMs", new CborObject.CborLong(timeoutMs()));
         map.put("startTimeEpochMs", new CborObject.CborLong(startTimeEpochMillis()));
-        map.put("owner", owner);
         map.put("writer", writer);
         CborObject.CborList mapKeys = new CborObject.CborList(
                 locations.stream()
@@ -124,9 +112,7 @@ public class FileUploadTransaction implements Transaction {
 
         return new FileUploadTransaction(
                 map.getLong("startTimeEpochMs"),
-                map.getLong("timeoutMs"),
                 map.getString("path"),
-                owner,
                 writer,
                 locations);
     }
