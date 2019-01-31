@@ -383,14 +383,14 @@ public class FileWrapper {
         } else {
             FileProperties props = getFileProperties();
             SymmetricKey baseKey = pointer.capability.rBaseKey;
-            // stream download and re-encrypt with new metaKey
+            // stream download and re-encrypt with new dataKey
             return getInputStream(network, random, l -> {}).thenCompose(in -> {
                 byte[] tmp = new byte[16];
                 new Random().nextBytes(tmp);
                 String tmpFilename = ArrayOps.bytesToHex(tmp) + ".tmp";
 
 
-                CompletableFuture<FileWrapper> reuploaded = parent.uploadFileSection(tmpFilename, in, 0, props.size,
+                CompletableFuture<FileWrapper> reuploaded = parent.uploadFileSection(tmpFilename, in, false, 0, props.size,
                         Optional.of(baseKey), true, network, random, l -> {}, fragmenter, parent.generateLocationsForChild(props.getNumberOfChunks(), random));
                 return reuploaded.thenCompose(upload -> upload.getDescendentByPath(tmpFilename, network)
                         .thenCompose(tmpChild -> tmpChild.get().rename(props.name, network, upload, true))
@@ -416,56 +416,20 @@ public class FileWrapper {
                                                        NetworkAccess network, SafeRandom random,
                                                        ProgressConsumer<Long> monitor, Fragmenter fragmenter,
                                                        List<Location> locations) {
-        return uploadFileSection(filename, fileData, 0, lengthLow + ((lengthHi & 0xFFFFFFFFL) << 32),
+        return uploadFileSection(filename, fileData, false, 0, lengthLow + ((lengthHi & 0xFFFFFFFFL) << 32),
                 Optional.empty(), overwriteExisting, network, random, monitor, fragmenter, locations);
     }
 
-    public CompletableFuture<FileWrapper> uploadFile(String filename,
-                                                     AsyncReader fileData,
-                                                     long length,
-                                                     NetworkAccess network,
-                                                     SafeRandom random,
-                                                     ProgressConsumer<Long> monitor,
-                                                     Fragmenter fragmenter,
-                                                     List<Location> locations) {
-        return uploadFileSection(filename, fileData, 0, length, Optional.empty(),
+    public CompletableFuture<FileWrapper> uploadOrOverwriteFile(String filename,
+                                                                AsyncReader fileData,
+                                                                long length,
+                                                                NetworkAccess network,
+                                                                SafeRandom random,
+                                                                ProgressConsumer<Long> monitor,
+                                                                Fragmenter fragmenter,
+                                                                List<Location> locations) {
+        return uploadFileSection(filename, fileData, false, 0, length, Optional.empty(),
                 true, network, random, monitor, fragmenter, locations);
-    }
-
-    public CompletableFuture<FileWrapper> uploadFile(String filename,
-                                                     AsyncReader fileData,
-                                                     boolean isHidden,
-                                                     long length,
-                                                     boolean overwriteExisting,
-                                                     NetworkAccess network,
-                                                     SafeRandom random,
-                                                     ProgressConsumer<Long> monitor,
-                                                     Fragmenter fragmenter,
-                                                     List<Location> locations) {
-        return uploadFileSection(filename, fileData, isHidden, 0, length, Optional.empty(),
-                overwriteExisting, network, random, monitor, fragmenter, locations);
-    }
-
-    public CompletableFuture<FileWrapper> uploadFileSection(String filename, AsyncReader fileData, long startIndex, long endIndex,
-                                                            NetworkAccess network, SafeRandom random,
-                                                            ProgressConsumer<Long> monitor, Fragmenter fragmenter,
-                                                            List<Location> locations) {
-        return uploadFileSection(filename, fileData, startIndex, endIndex, Optional.empty(), true, network, random, monitor, fragmenter, locations);
-    }
-
-    public CompletableFuture<FileWrapper> uploadFileSection(String filename,
-                                                            AsyncReader fileData,
-                                                            long startIndex,
-                                                            long endIndex,
-                                                            Optional<SymmetricKey> baseKey,
-                                                            boolean overwriteExisting,
-                                                            NetworkAccess network,
-                                                            SafeRandom random,
-                                                            ProgressConsumer<Long> monitor,
-                                                            Fragmenter fragmenter,
-                                                            List<Location> locations) {
-        return uploadFileSection(filename, fileData, false, startIndex, endIndex, baseKey,
-                overwriteExisting, network, random, monitor, fragmenter, locations);
     }
 
     /**
@@ -904,7 +868,7 @@ public class FileWrapper {
                         });
             } else {
                 return getInputStream(network, random, x -> {})
-                        .thenCompose(stream -> target.uploadFileSection(getName(), stream, 0, getSize(),
+                        .thenCompose(stream -> target.uploadFileSection(getName(), stream, false, 0, getSize(),
                                 Optional.empty(), false, network, random, x -> {}, fragmenter, target.generateLocationsForChild(props.getNumberOfChunks(), random))
                         .thenApply(b -> target));
             }

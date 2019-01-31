@@ -109,7 +109,7 @@ public class Uploader {
             try {
                 ResetableFileInputStream fileData = new ResetableFileInputStream(file);
                 await(context.getByPath(targetParent.toString())).get()
-                        .uploadFile(file.getName(), fileData, file.length(),
+                        .uploadOrOverwriteFile(file.getName(), fileData, file.length(),
                                 context.network, context.crypto.random, c -> {}, context.fragmenter).get();
             } catch (Exception e) {
                 System.err.println("Error uploading " + source);

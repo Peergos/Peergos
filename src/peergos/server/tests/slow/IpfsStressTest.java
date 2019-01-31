@@ -95,7 +95,7 @@ public class IpfsStressTest {
     public static void generateFile(UserContext context, Path parentPath, String name, Random rnd) throws Exception {
         int size = rnd.nextInt(15*1024*1024);
         context.getByPath(parentPath.toString()).get().get()
-                .uploadFile(name, new AsyncReader.ArrayBacked(randomData(rnd, size)), size,
+                .uploadOrOverwriteFile(name, new AsyncReader.ArrayBacked(randomData(rnd, size)), size,
                         context.network, context.crypto.random, x -> {}, context.fragmenter).get();
     }
 

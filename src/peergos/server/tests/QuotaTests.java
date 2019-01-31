@@ -57,11 +57,11 @@ public class QuotaTests {
         FileWrapper home = context.getByPath(Paths.get(username).toString()).get().get();
         byte[] data = new byte[1024*1024];
         random.nextBytes(data);
-        FileWrapper newHome = home.uploadFile("file-1", new AsyncReader.ArrayBacked(data), data.length,
+        FileWrapper newHome = home.uploadOrOverwriteFile("file-1", new AsyncReader.ArrayBacked(data), data.length,
                 network, crypto.random, x -> { }, context.fragmenter()).get();
 
         try {
-            newHome.uploadFile("file-2", new AsyncReader.ArrayBacked(data), data.length, network, crypto.random, x -> {
+            newHome.uploadOrOverwriteFile("file-2", new AsyncReader.ArrayBacked(data), data.length, network, crypto.random, x -> {
             }, context.fragmenter()).get();
             Assert.fail("Quota wasn't enforced");
         } catch (Exception e) {}
@@ -78,7 +78,7 @@ public class QuotaTests {
         random.nextBytes(data);
         for (int i=0; i < 5; i++) {
             String filename = "file-1";
-            home = home.uploadFile(filename, new AsyncReader.ArrayBacked(data), data.length,
+            home = home.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length,
                     network, crypto.random, x -> {}, context.fragmenter()).get();
             FileWrapper file = context.getByPath("/" + username + "/" + filename).get().get();
             home = file.remove(home, network).get();
@@ -97,7 +97,7 @@ public class QuotaTests {
         byte[] data = new byte[2 * 1024 * 1024 - used - 4 * 1024];
         random.nextBytes(data);
         String filename = "file-1";
-        home = home.uploadFile(filename, new AsyncReader.ArrayBacked(data), data.length,
+        home = home.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length,
                 network, crypto.random, x -> {}, context.fragmenter()).get();
         FileWrapper file = context.getByPath("/" + username + "/" + filename).get().get();
         file.remove(home, network).get();
@@ -114,11 +114,11 @@ public class QuotaTests {
         byte[] data = new byte[2 * 1024 * 1024 - 18 * 1024];
         random.nextBytes(data);
         String filename = "file-1";
-        home = home.uploadFile(filename, new AsyncReader.ArrayBacked(data), data.length,
+        home = home.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length,
                 network, crypto.random, x -> {}, context.fragmenter()).get();
         FileWrapper file = context.getByPath("/" + username + "/" + filename).get().get();
         try {
-            home = home.uploadFile("file-2", new AsyncReader.ArrayBacked(data), data.length,
+            home = home.uploadOrOverwriteFile("file-2", new AsyncReader.ArrayBacked(data), data.length,
                     network, crypto.random, x -> {
                     }, context.fragmenter()).get();
             Assert.fail();

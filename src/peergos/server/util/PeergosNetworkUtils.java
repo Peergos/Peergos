@@ -99,7 +99,7 @@ public class PeergosNetworkUtils {
         byte[] originalFileContents = "Hello Peergos friend!".getBytes();
         Files.write(f.toPath(), originalFileContents);
         ResetableFileInputStream resetableFileInputStream = new ResetableFileInputStream(f);
-        FileWrapper uploaded = u1Root.uploadFile(filename, resetableFileInputStream, f.length(),
+        FileWrapper uploaded = u1Root.uploadOrOverwriteFile(filename, resetableFileInputStream, f.length(),
                 sharerUser.network, sharerUser.crypto.random, l -> {
                 }, sharerUser.fragmenter()).get();
 
@@ -210,7 +210,7 @@ public class PeergosNetworkUtils {
         String filename = "somefile.txt";
         byte[] originalFileContents = "Hello Peergos friend!".getBytes();
         AsyncReader resetableFileInputStream = new AsyncReader.ArrayBacked(originalFileContents);
-        FileWrapper updatedFolder = folder.uploadFile(filename, resetableFileInputStream, originalFileContents.length, sharer.network,
+        FileWrapper updatedFolder = folder.uploadOrOverwriteFile(filename, resetableFileInputStream, originalFileContents.length, sharer.network,
                 sharer.crypto.random, l -> {
                 }, sharer.fragmenter()).get();
         String originalFilePath = sharer.username + "/" + folderName + "/" + filename;
@@ -334,7 +334,8 @@ public class PeergosNetworkUtils {
         byte[] data = new byte[128*1024];
         random.nextBytes(data);
         long t1 = System.currentTimeMillis();
-        userRoot.uploadFileSection(filename, new AsyncReader.ArrayBacked(data), 0, data.length, context.network, context.crypto.random, l -> {}, context.fragmenter()).get();
+        userRoot.uploadFileSection(filename, new AsyncReader.ArrayBacked(data), false, 0, data.length, Optional.empty(),
+                true, context.network, context.crypto.random, l -> {}, context.fragmenter(), locs).get();
         long t2 = System.currentTimeMillis();
         String path = "/" + username + "/" + filename;
         FileWrapper file = context.getByPath(path).get().get();

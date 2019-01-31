@@ -1,23 +1,16 @@
 package peergos.server.transaction;
 
 import peergos.shared.NetworkAccess;
-import peergos.shared.crypto.SigningPrivateKeyAndPublicHash;
-import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.crypto.random.SafeRandom;
-import peergos.shared.storage.TransactionId;
 import peergos.shared.user.FileWrapperUpdater;
 import peergos.shared.user.fs.*;
-import peergos.shared.user.fs.cryptree.CryptreeNode;
 import peergos.shared.util.Futures;
 import peergos.shared.util.ProgressConsumer;
 import peergos.shared.util.Serialize;
 
-import java.util.Collection;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 public class TransactionServiceImpl implements TransactionService {
@@ -42,7 +35,7 @@ public class TransactionServiceImpl implements TransactionService {
         byte[] data = transaction.serialize();
         AsyncReader asyncReader = AsyncReader.build(data);
         return transactionDirUpdater.updated().thenCompose(dirWrapper ->
-                dirWrapper.uploadFile(transaction.name(), asyncReader, data.length, networkAccess, random, VOID_PROGRESS,
+                dirWrapper.uploadOrOverwriteFile(transaction.name(), asyncReader, data.length, networkAccess, random, VOID_PROGRESS,
                         fragmenter, dirWrapper.generateLocationsForChild(1, random))
                         .thenApply(e -> true));
     }

@@ -412,7 +412,7 @@ public class CapabilityStore {
         byte[] data = capabilitiesFromUser.serialize();
         AsyncReader.ArrayBacked dataReader = new AsyncReader.ArrayBacked(data);
         return getCapabilityCacheDir(homeDirSupplier, network, random)
-                .thenCompose(cacheDir -> cacheDir.uploadFile(friendName + capabilityType, dataReader, true, (long) data.length,
+                .thenCompose(cacheDir -> cacheDir.uploadOrOverwriteFile(friendName + capabilityType, dataReader, true, (long) data.length,
                 true, network, random, x-> {}, fragmenter).thenApply(x -> capabilitiesFromUser));
     }
 

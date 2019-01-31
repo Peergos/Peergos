@@ -107,7 +107,7 @@ public class MultiUserTests {
         String filename = "somefile.txt";
         byte[] data = UserTests.randomData(10*1024*1024);
 
-        FileWrapper uploaded = u1Root.uploadFile(filename, new AsyncReader.ArrayBacked(data), data.length,
+        FileWrapper uploaded = u1Root.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length,
                 u1.network, u1.crypto.random,l -> {}, u1.fragmenter()).get();
 
         // share the file from "a" to each of the others
@@ -176,7 +176,7 @@ public class MultiUserTests {
         String filename = "somefile.txt";
         byte[] data1 = "Hello Peergos friend!".getBytes();
         AsyncReader file1Reader = new AsyncReader.ArrayBacked(data1);
-        FileWrapper uploaded = u1Root.uploadFile(filename, file1Reader, data1.length,
+        FileWrapper uploaded = u1Root.uploadOrOverwriteFile(filename, file1Reader, data1.length,
                 u1.network, u1.crypto.random,l -> {}, u1.fragmenter()).get();
 
         // upload a different file with the same name in a sub folder
@@ -184,7 +184,7 @@ public class MultiUserTests {
         FileWrapper subdir = u1.getByPath("/" + u1.username + "/subdir").get().get();
         byte[] data2 = "Goodbye Peergos friend!".getBytes();
         AsyncReader file2Reader = new AsyncReader.ArrayBacked(data2);
-        subdir.uploadFile(filename, file2Reader, data2.length,
+        subdir.uploadOrOverwriteFile(filename, file2Reader, data2.length,
                 u1.network, u1.crypto.random,l -> {}, u1.fragmenter()).get();
 
         // share the file from "a" to each of the others
@@ -252,7 +252,7 @@ public class MultiUserTests {
         u1Root.mkdir(subdirName, network, false, crypto.random).get();
         Path subdirPath = Paths.get(u1.username, subdirName);
         FileWrapper subdir = u1.getByPath(subdirPath).get().get();
-        FileWrapper uploaded = subdir.uploadFile(filename, file1Reader, data1.length,
+        FileWrapper uploaded = subdir.uploadOrOverwriteFile(filename, file1Reader, data1.length,
                 u1.network, u1.crypto.random,l -> {}, u1.fragmenter()).get();
 
         Path filePath = Paths.get(u1.username, subdirName, filename);
@@ -324,7 +324,7 @@ public class MultiUserTests {
         byte[] originalFileContents = "Hello Peergos friend!".getBytes();
         Files.write(f.toPath(), originalFileContents);
         ResetableFileInputStream resetableFileInputStream = new ResetableFileInputStream(f);
-        FileWrapper uploaded = u1Root.uploadFile(filename, resetableFileInputStream, f.length(),
+        FileWrapper uploaded = u1Root.uploadOrOverwriteFile(filename, resetableFileInputStream, f.length(),
                 u1.network, u1.crypto.random,l -> {}, u1.fragmenter()).get();
 
         // share the file from "a" to each of the others
