@@ -285,6 +285,11 @@ public class FileWrapper {
         return new Location(pointer.capability.owner, pointer.capability.writer, pointer.capability.getMapKey());
     }
 
+    public Location getNextChunkLocation() {
+        return new Location(pointer.capability.owner, pointer.capability.writer,
+                pointer.fileAccess.getNextChunkLocation(pointer.capability.rBaseKey).get());
+    }
+
     public Set<Location> getChildrenLocations() {
         ensureUnmodified();
         if (!this.isDirectory())
@@ -391,7 +396,7 @@ public class FileWrapper {
 
 
                 CompletableFuture<FileWrapper> reuploaded = parent.uploadFileSection(tmpFilename, in, false, 0, props.size,
-                        Optional.of(baseKey), true, network, random, l -> {}, fragmenter, parent.generateLocationsForChild(props.getNumberOfChunks(), random));
+                        Optional.of(baseKey), true, network, random, l -> {}, fragmenter, parent.generateChildLocations(props.getNumberOfChunks(), random));
                 return reuploaded.thenCompose(upload -> upload.getDescendentByPath(tmpFilename, network)
                         .thenCompose(tmpChild -> tmpChild.get().rename(props.name, network, upload, true))
                         .thenApply(res -> {
@@ -402,8 +407,13 @@ public class FileWrapper {
         }
     }
 
-    public List<Location> generateLocationsForChild(int numberOfChunks,
-                                                    SafeRandom random) {
+    public List<Location> generateChildLocationsFromSize(long fileSize,
+                                                         SafeRandom random) {
+        return generateChildLocations((int)((fileSize + Chunk.MAX_SIZE - 1)/Chunk.MAX_SIZE), random);
+    }
+
+    public List<Location> generateChildLocations(int numberOfChunks,
+                                                 SafeRandom random) {
         return IntStream.range(0, numberOfChunks + 1) //have to have one extra location
                 .mapToObj(e -> new Location(owner(), writer(), random.randomBytes(32)))
                 .collect(Collectors.toList());
@@ -869,7 +879,7 @@ public class FileWrapper {
             } else {
                 return getInputStream(network, random, x -> {})
                         .thenCompose(stream -> target.uploadFileSection(getName(), stream, false, 0, getSize(),
-                                Optional.empty(), false, network, random, x -> {}, fragmenter, target.generateLocationsForChild(props.getNumberOfChunks(), random))
+                                Optional.empty(), false, network, random, x -> {}, fragmenter, target.generateChildLocations(props.getNumberOfChunks(), random))
                         .thenApply(b -> target));
             }
         });

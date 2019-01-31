@@ -108,7 +108,8 @@ public class MultiUserTests {
         byte[] data = UserTests.randomData(10*1024*1024);
 
         FileWrapper uploaded = u1Root.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length,
-                u1.network, u1.crypto.random,l -> {}, u1.fragmenter()).get();
+                u1.network, u1.crypto.random,l -> {}, u1.fragmenter(),
+                u1Root.generateChildLocationsFromSize(data.length, u1.crypto.random)).get();
 
         // share the file from "a" to each of the others
         FileWrapper u1File = u1.getByPath(u1.username + "/" + filename).get().get();
@@ -177,7 +178,8 @@ public class MultiUserTests {
         byte[] data1 = "Hello Peergos friend!".getBytes();
         AsyncReader file1Reader = new AsyncReader.ArrayBacked(data1);
         FileWrapper uploaded = u1Root.uploadOrOverwriteFile(filename, file1Reader, data1.length,
-                u1.network, u1.crypto.random,l -> {}, u1.fragmenter()).get();
+                u1.network, u1.crypto.random,l -> {}, u1.fragmenter(),
+                u1Root.generateChildLocationsFromSize(data1.length, u1.crypto.random)).get();
 
         // upload a different file with the same name in a sub folder
         uploaded.mkdir("subdir", network, false, crypto.random).get();
@@ -185,7 +187,8 @@ public class MultiUserTests {
         byte[] data2 = "Goodbye Peergos friend!".getBytes();
         AsyncReader file2Reader = new AsyncReader.ArrayBacked(data2);
         subdir.uploadOrOverwriteFile(filename, file2Reader, data2.length,
-                u1.network, u1.crypto.random,l -> {}, u1.fragmenter()).get();
+                u1.network, u1.crypto.random,l -> {}, u1.fragmenter(),
+                u1Root.generateChildLocationsFromSize(data2.length, u1.crypto.random)).get();
 
         // share the file from "a" to each of the others
         //        sharingFunction.apply(u1, u2, filenameu1.shareReadAccessWith(Paths.get(u1.username, filename), userContexts.stream().map(u -> u.username).collect(Collectors.toSet())).get();
@@ -253,7 +256,8 @@ public class MultiUserTests {
         Path subdirPath = Paths.get(u1.username, subdirName);
         FileWrapper subdir = u1.getByPath(subdirPath).get().get();
         FileWrapper uploaded = subdir.uploadOrOverwriteFile(filename, file1Reader, data1.length,
-                u1.network, u1.crypto.random,l -> {}, u1.fragmenter()).get();
+                u1.network, u1.crypto.random,l -> {}, u1.fragmenter(),
+                subdir.generateChildLocationsFromSize(data1.length, u1.crypto.random)).get();
 
         Path filePath = Paths.get(u1.username, subdirName, filename);
         u1.shareWriteAccessWith(filePath, userContexts.stream().map(u -> u.username).collect(Collectors.toSet()));
@@ -325,7 +329,8 @@ public class MultiUserTests {
         Files.write(f.toPath(), originalFileContents);
         ResetableFileInputStream resetableFileInputStream = new ResetableFileInputStream(f);
         FileWrapper uploaded = u1Root.uploadOrOverwriteFile(filename, resetableFileInputStream, f.length(),
-                u1.network, u1.crypto.random,l -> {}, u1.fragmenter()).get();
+                u1.network, u1.crypto.random,l -> {}, u1.fragmenter(),
+                u1Root.generateChildLocationsFromSize(originalFileContents.length, u1.crypto.random)).get();
 
         // share the file from "a" to each of the others
         String originalPath = u1.username + "/" + filename;
@@ -412,8 +417,9 @@ public class MultiUserTests {
         byte[] suffix = "Some new data at the end".getBytes();
         AsyncReader suffixStream = new AsyncReader.ArrayBacked(suffix);
         FileWrapper parent = u1New.getByPath(u1New.username).get().get();
-        parent.uploadFileSection(newname, suffixStream, originalFileContents.length, originalFileContents.length + suffix.length,
-                Optional.empty(), true, u1New.network, u1New.crypto.random, l -> {}, u1New.fragmenter()).get();
+        parent.uploadFileSection(newname, suffixStream, false, originalFileContents.length,
+                originalFileContents.length + suffix.length, Optional.empty(), true,
+                u1New.network, u1New.crypto.random, l -> {}, u1New.fragmenter(), null).get();
         AsyncReader extendedContents = u1New.getByPath(u1.username + "/" + newname).get().get()
                 .getInputStream(u1New.network, u1New.crypto.random, l -> {}).get();
         byte[] newFileContents = Serialize.readFully(extendedContents, originalFileContents.length + suffix.length).get();
