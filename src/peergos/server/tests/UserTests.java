@@ -422,40 +422,6 @@ public abstract class UserTests {
     }
 
     @Test
-    public void duplicateConcurrentWritesToDir() throws Exception {
-        String username = generateUsername();
-        String password = "test01";
-        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
-
-        // write empty file
-        int concurrency = 8;
-        int fileSize = 1024;
-        String prefix = "afile";
-        String suffix = "bin";
-        String filename = prefix + "." + suffix;
-
-        ForkJoinPool pool = new ForkJoinPool(concurrency);
-        Set<CompletableFuture<Boolean>> futs = IntStream.range(0, concurrency)
-                .mapToObj(i -> CompletableFuture.supplyAsync(() -> {
-                    byte[] data = randomData(fileSize);
-                    FileWrapper userRoot = context.getUserRoot().join();
-                    FileWrapper result = userRoot.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data),
-                            data.length, context.network, context.crypto.random, l -> {}, context.fragmenter(),
-                            userRoot.generateChildLocationsFromSize(fileSize, context.crypto.random)).join();
-                    return true;
-                }, pool)).collect(Collectors.toSet());
-
-        boolean success = Futures.combineAll(futs).get().stream().reduce(true, (a, b) -> a && b);
-
-        Set<FileWrapper> files = context.getUserRoot().get().getChildren(context.network).get();
-        Set<String> names = files.stream().filter(f -> ! f.getFileProperties().isHidden).map(f -> f.getName()).collect(Collectors.toSet());
-        Set<String> expectedNames = Stream.concat(IntStream.range(1, concurrency)
-                .mapToObj(i -> prefix + "[" + i + "]." + suffix), Stream.of(filename))
-                .collect(Collectors.toSet());
-        Assert.assertTrue("All children present and accounted for: " + names, names.equals(expectedNames));
-    }
-
-    @Test
     public void smallFileWrite() throws Exception {
         String username = generateUsername();
         String password = "test01";

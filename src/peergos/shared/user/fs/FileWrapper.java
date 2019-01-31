@@ -555,22 +555,7 @@ public class FileWrapper {
                                         result.complete(res);
                                     });
                         }
-                        String safeName = nextSafeReplacementFilename(filename, childNames);
-                        // rename file in place as we've already uploaded it
-                        return network.getMetadata(childPointer.getLocation()).thenCompose(renameOpt -> {
-                            CryptreeNode fileToRename = renameOpt.get();
-                            RetrievedCapability updatedChildPointer =
-                                    new RetrievedCapability(childPointer, fileToRename);
-                            FileWrapper toRename = new FileWrapper(Optional.empty(),
-                                    updatedChildPointer, entryWriter, ownername);
-                            return toRename.rename(safeName, network, us).thenCompose(usAgain ->
-                                    ((DirAccess) usAgain.pointer.fileAccess)
-                                            .addChildAndCommit(writableFilePointer().relativise(childPointer), writableFilePointer(), entryWriter, network, random)
-                                            .thenAccept(uploadResult -> {
-                                                setModified();
-                                                result.complete(this.withCryptreeNode(uploadResult));
-                                            }));
-                        });
+                        throw new IllegalStateException("File upload aborted: file already exists!");
                     });
                 }).exceptionally(ex -> {
                     if ((e instanceof MutableTree.CasException ||
@@ -590,20 +575,6 @@ public class FileWrapper {
             return null;
         });
         return result;
-    }
-
-    private static String nextSafeReplacementFilename(String desired, Set<String> existing) {
-        if (! existing.contains(desired))
-            return desired;
-        for (int counter = 1; counter < 1000; counter++) {
-            int dot = desired.lastIndexOf(".");
-            String candidate = dot >= 0 ?
-                    desired.substring(0, dot) + "[" + counter + "]" + desired.substring(dot) :
-                    desired + "[" + counter + "]";
-            if (! existing.contains(candidate))
-                return candidate;
-        }
-        throw new IllegalStateException("Too many concurrent writes trying to add a file of the same name!");
     }
 
     public CompletableFuture<FileWrapper> updateExistingChild(String existingChildName, AsyncReader fileData,
