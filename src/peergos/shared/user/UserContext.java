@@ -98,10 +98,10 @@ public class UserContext {
     }
 
     private TransactionService buildTransactionService() {
-        CompletableFuture<FileWrapper> getTransactionsDir = this.getUserRoot()
-                .thenCompose(root -> root.getChild(TRANSACTIONS_DIR_NAME, network))
-                        .thenApply(opt -> opt.orElseThrow(() -> new IllegalStateException("Could not find transactions directory")));
-        return new TransactionServiceImpl(network, crypto.random, fragmenter(), () -> getTransactionsDir);
+        Supplier<CompletableFuture<FileWrapper>> getTransactionsDir =
+                () -> getByPath(Paths.get(username, TRANSACTIONS_DIR_NAME).toString())
+                        .thenApply(Optional::get);
+        return new TransactionServiceImpl(network, crypto.random, fragmenter(), getTransactionsDir::get);
     }
 
     @JsMethod
@@ -278,14 +278,7 @@ public class UserContext {
                         long t1 = System.currentTimeMillis();
                         return context.createEntryDirectory(signer, username).thenCompose(userRoot -> {
                             LOG.info("Creating root directory took " + (System.currentTimeMillis() - t1) + " mS");
-                            return ((DirAccess) userRoot.fileAccess).mkdir(
-                                    SHARED_DIR_NAME,
-                                    network,
-                                    (WritableAbsoluteCapability) userRoot.capability,
-                                    Optional.of(signer),
-                                    null,
-                                    true,
-                                    crypto.random)
+                            return context.createSpecialDirectories()
                                     .thenCompose(x -> signIn(username, userWithRoot, network.clear(), crypto, progressCallback));
                         });
                     });
@@ -295,6 +288,13 @@ public class UserContext {
                                 CompletableFuture.completedFuture(true))
                         .thenApply(b -> context))
                 .exceptionally(Futures::logError);
+    }
+
+    private CompletableFuture<UserContext> createSpecialDirectories() {
+        return Futures.combineAll(Arrays.asList(
+        getUserRoot().thenCompose(root -> root.mkdir(SHARED_DIR_NAME, network, true, crypto.random)),
+        getUserRoot().thenCompose(root -> root.mkdir(TRANSACTIONS_DIR_NAME, network, true, crypto.random))))
+                .thenApply(x -> this);
     }
 
     @JsMethod
@@ -597,7 +597,10 @@ public class UserContext {
                             LOG.info("Committing static data took " + (System.currentTimeMillis() - t3) + " mS");
                             return new RetrievedCapability(rootPointer, root.withHash(chunkHash));
                         });
-                    }).thenCompose(x -> addToStaticDataAndCommit(entry).thenApply(y -> x));
+                    }).thenCompose(x -> addToStaticDataAndCommit(entry).thenApply(y -> {
+                        this.entrie = y;
+                        return x;
+                    }));
         }), network.dhtClient);
     }
 

@@ -26,13 +26,12 @@ public interface Transaction extends Cborable {
     static Transaction deserialize(byte[] data) {
         CborObject cborObject = CborObject.fromByteArray(data);
         CborObject.CborMap map =  (CborObject.CborMap) cborObject;
-        Type type = Type.valueOf(map.get("type").toString());
+        Type type = Type.valueOf(map.getString("type"));
         switch (type)  {
             case FILE_UPLOAD:
-                return FileUploadTransaction.deserialize(map);
+                return FileUploadTransaction.fromCbor(map);
             default:
                 throw new IllegalStateException("Unimplemented type "+ type);
-
         }
     }
 
@@ -41,7 +40,7 @@ public interface Transaction extends Cborable {
     }
 
     @JsMethod
-    static CompletableFuture<Transaction> buildFileUploadTransaction(String path,
+    static CompletableFuture<FileUploadTransaction> buildFileUploadTransaction(String path,
                                                                      int fileSizeLo,
                                                                      int fileSizeHi,
                                                                      AsyncReader fileData,
@@ -51,7 +50,7 @@ public interface Transaction extends Cborable {
                 fileData, writer, locations);
     }
 
-    static CompletableFuture<Transaction> buildFileUploadTransaction(String path,
+    static CompletableFuture<FileUploadTransaction> buildFileUploadTransaction(String path,
                                                                      long fileSize,
                                                                      AsyncReader fileData,
                                                                      SigningPrivateKeyAndPublicHash writer,

@@ -14,8 +14,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 public class TransactionServiceImpl implements TransactionService {
-    private static ProgressConsumer<Long> VOID_PROGRESS = l -> {
-    };
+    private static ProgressConsumer<Long> VOID_PROGRESS = l -> {};
 
     private final FileWrapperUpdater transactionDirUpdater;
     private final NetworkAccess networkAccess;

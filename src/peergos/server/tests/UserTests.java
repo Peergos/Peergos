@@ -19,6 +19,7 @@ import peergos.server.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.user.fs.cryptree.*;
+import peergos.shared.user.fs.transaction.*;
 import peergos.shared.util.*;
 import peergos.shared.util.Exceptions;
 
@@ -451,6 +452,75 @@ public abstract class UserTests {
             Assert.assertTrue("child pointer is minimal",
                     ! child.writer.isPresent() && child.wBaseKeyLink.isPresent());
         }
+    }
+
+    static class ThrowingStream implements AsyncReader {
+        private final byte[] data;
+        private int index = 0;
+        private final int throwAtIndex;
+
+        public ThrowingStream(byte[] data, int throwAtIndex) {
+            this.data = data;
+            this.throwAtIndex = throwAtIndex;
+        }
+
+        @Override
+        public CompletableFuture<AsyncReader> seek(int high32, int low32) {
+            if (high32 != 0)
+                throw new IllegalArgumentException("Cannot have arrays larger than 4GiB!");
+            if (index + low32 > throwAtIndex)
+                throw new RuntimeException("Simulated IO Error");
+            index += low32;
+            return CompletableFuture.completedFuture(this);
+        }
+
+        @Override
+        public CompletableFuture<Integer> readIntoArray(byte[] res, int offset, int length) {
+            if (index + length > throwAtIndex)
+                throw new RuntimeException("Simulated IO Error");
+            System.arraycopy(data, index, res, offset, length);
+            index += length;
+            return CompletableFuture.completedFuture(length);
+        }
+
+        @Override
+        public CompletableFuture<AsyncReader> reset() {
+            index = 0;
+            return CompletableFuture.completedFuture(this);
+        }
+
+        @Override
+        public void close() {}
+    }
+
+    @Test
+    public void cleanupFailedUpload() throws Exception {
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        FileWrapper userRoot = context.getUserRoot().get();
+
+        String filename = "small.txt";
+        byte[] data = new byte[2*5*1024*1024];
+        ThrowingStream throwingReader = new ThrowingStream(data, 5 * 1024 * 1024);
+        Path filePath = Paths.get(username, filename);
+        FileUploadTransaction transaction = Transaction.buildFileUploadTransaction(filePath.toString(), data.length,
+                AsyncReader.build(data), userRoot.signingPair(), userRoot.generateChildLocationsFromSize(data.length,
+                        context.crypto.random)).join();
+        int prior = context.getTotalSpaceUsed(context.signer.publicKeyHash, context.signer.publicKeyHash).get().intValue();
+
+        context.getTransactionService().open(transaction).join();
+        try {
+            userRoot.uploadOrOverwriteFile(filename, throwingReader, data.length, context.network,
+                    context.crypto.random, l -> {}, context.fragmenter(), transaction.getLocations()).get();
+        } catch (Exception e) {}
+        int during = context.getTotalSpaceUsed(context.signer.publicKeyHash, context.signer.publicKeyHash).get().intValue();
+        Assert.assertTrue("One chunk uploaded", during > 5 * 1024*1024);
+
+        Set<Transaction> pending = context.getTransactionService().getOpenTransactions().join();
+        pending.forEach(t -> context.getTransactionService().clearAndClose(t).join());
+        int post = context.getTotalSpaceUsed(context.signer.publicKeyHash, context.signer.publicKeyHash).get().intValue();
+        Assert.assertTrue("Space from failed upload reclaimed", post < prior + 1000); //TODO these should be equal figure out why not
     }
 
     @Test
