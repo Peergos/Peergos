@@ -758,13 +758,14 @@ public abstract class UserTests {
         String name = randomString();
         byte[] data = randomData(10*1024*1024); // 2 chunks to test block chaining
 
-        AsyncReader resetableFileInputStream = new AsyncReader.ArrayBacked(data);
+        AsyncReader fileData = new AsyncReader.ArrayBacked(data);
 
-        FileWrapper updatedRoot = userRoot.uploadOrOverwriteFile(name, resetableFileInputStream, data.length,
+        FileWrapper updatedRoot = userRoot.uploadOrOverwriteFile(name, fileData, data.length,
                 context.network, context.crypto.random, (l) -> {}, context.fragmenter(),
                 userRoot.generateChildLocationsFromSize(data.length, context.crypto.random)).get();
         String otherName = name + ".other";
-        FileWrapper updatedRoot2 = updatedRoot.uploadOrOverwriteFile(otherName, resetableFileInputStream,
+
+        FileWrapper updatedRoot2 = updatedRoot.uploadOrOverwriteFile(otherName, fileData.reset().join(),
                 data.length, context.network, context.crypto.random, (l) -> {}, context.fragmenter(),
                 userRoot.generateChildLocationsFromSize(data.length, context.crypto.random)).get();
 

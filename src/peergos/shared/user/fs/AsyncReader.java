@@ -48,7 +48,11 @@ public interface AsyncReader extends AutoCloseable {
 
         @Override
         public CompletableFuture<Integer> readIntoArray(byte[] res, int offset, int length) {
-            System.arraycopy(data, index, res, offset, length);
+            try {
+                System.arraycopy(data, index, res, offset, length);
+            } catch (ArrayIndexOutOfBoundsException e) {
+                System.out.println();
+            }
             index += length;
             return CompletableFuture.completedFuture(length);
         }
