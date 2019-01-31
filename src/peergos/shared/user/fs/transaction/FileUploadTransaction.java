@@ -5,6 +5,7 @@ import peergos.shared.cbor.CborObject;
 import peergos.shared.cbor.Cborable;
 import peergos.shared.crypto.SigningPrivateKeyAndPublicHash;
 import peergos.shared.crypto.hash.PublicKeyHash;
+import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.IpfsTransaction;
 import peergos.shared.storage.TransactionId;
 import peergos.shared.user.fs.Location;
@@ -19,12 +20,14 @@ import java.util.stream.Collectors;
 public class FileUploadTransaction implements Transaction {
     private final long startTimeEpochMillis;
     private final String path;
+    private final Multihash fileHash;
     //  common to whole file
     SigningPrivateKeyAndPublicHash writer;
     private List<Location> locations;
 
     public FileUploadTransaction(long startTimeEpochMillis,
                                  String path,
+                                 Multihash fileHash,
                                  SigningPrivateKeyAndPublicHash writer,
                                  List<Location> locations) {
         if (! isValid(locations))
@@ -32,6 +35,7 @@ public class FileUploadTransaction implements Transaction {
 
         this.startTimeEpochMillis = startTimeEpochMillis;
         this.path = path;
+        this.fileHash = fileHash;
         this.writer = writer;
         this.locations = locations;
     }
@@ -84,6 +88,7 @@ public class FileUploadTransaction implements Transaction {
         Map<String, Cborable> map = new HashMap<>();
         map.put("type", new CborObject.CborString(Type.FILE_UPLOAD.name()));
         map.put("path", new CborObject.CborString(path));
+        map.put("hash", new CborObject.CborByteArray(fileHash.toBytes()));
         map.put("startTimeEpochMs", new CborObject.CborLong(startTimeEpochMillis()));
         map.put("writer", writer);
         CborObject.CborList mapKeys = new CborObject.CborList(
@@ -103,6 +108,7 @@ public class FileUploadTransaction implements Transaction {
             throw new IllegalStateException("Cannot deserialize transaction: wrong type " + type);
 
         PublicKeyHash owner = map.getObject("owner", PublicKeyHash::fromCbor);
+        Multihash fileHash = map.getObject("hash", c -> Multihash.decode(((CborObject.CborByteArray) c).value));
         SigningPrivateKeyAndPublicHash writer = map.getObject("writer", SigningPrivateKeyAndPublicHash::fromCbor);
         List<byte[]> mapKeys = map.getList("mapKeys", (cborable -> ((CborObject.CborByteArray) cborable).value));
 
@@ -113,6 +119,7 @@ public class FileUploadTransaction implements Transaction {
         return new FileUploadTransaction(
                 map.getLong("startTimeEpochMs"),
                 map.getString("path"),
+                fileHash,
                 writer,
                 locations);
     }
