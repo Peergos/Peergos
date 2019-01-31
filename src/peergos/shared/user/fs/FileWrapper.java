@@ -407,9 +407,14 @@ public class FileWrapper {
         }
     }
 
-    public List<Location> generateChildLocationsFromSize(long fileSize,
-                                                         SafeRandom random) {
-        return generateChildLocations((int)((fileSize + Chunk.MAX_SIZE - 1)/Chunk.MAX_SIZE), random);
+    public static int getNumberOfChunks(long size) {
+        if (size == 0)
+            return 1;
+        return (int)((size + Chunk.MAX_SIZE - 1)/Chunk.MAX_SIZE);
+    }
+
+    public List<Location> generateChildLocationsFromSize(long fileSize, SafeRandom random) {
+        return generateChildLocations(getNumberOfChunks(fileSize), random);
     }
 
     public List<Location> generateChildLocations(int numberOfChunks,

@@ -80,7 +80,8 @@ public abstract class UserTests {
                                    ProgressConsumer<Long> monitor,
                                    Fragmenter fragmenter) {
         return parent.uploadFileSection(filename, fileData, false, startIndex, endIndex, Optional.empty(),
-                true, network, random, monitor, fragmenter, null);
+                true, network, random, monitor, fragmenter,
+                parent.generateChildLocationsFromSize(endIndex - startIndex, random));
     }
 
     @Test

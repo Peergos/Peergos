@@ -56,7 +56,7 @@ public class FileProperties implements Cborable {
     }
 
     public int getNumberOfChunks() {
-        return (int) ((size + Chunk.MAX_SIZE - 1) / Chunk.MAX_SIZE);
+        return FileWrapper.getNumberOfChunks(size);
     }
 
     @Override
