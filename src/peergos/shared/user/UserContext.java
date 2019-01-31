@@ -280,33 +280,23 @@ public class UserContext {
                         long t1 = System.currentTimeMillis();
                         return context.createEntryDirectory(signer, username).thenCompose(userRoot -> {
                             LOG.info("Creating root directory took " + (System.currentTimeMillis() - t1) + " mS");
-
-                            return context.makeSystemDir((DirAccess) userRoot.fileAccess,
-                                    SHARED_DIR_NAME, (WritableAbsoluteCapability) userRoot.capability)
-                                    .thenCompose(x -> context.makeSystemDir((DirAccess) userRoot.fileAccess,
-                                            TRANSACTIONS_DIR_NAME, (WritableAbsoluteCapability) userRoot.capability))
+                            return ((DirAccess) userRoot.fileAccess).mkdir(
+                                    SHARED_DIR_NAME,
+                                    network,
+                                    (WritableAbsoluteCapability) userRoot.capability,
+                                    Optional.of(signer),
+                                    null,
+                                    true,
+                                    crypto.random)
                                     .thenCompose(x -> signIn(username, userWithRoot, network.clear(), crypto, progressCallback));
                         });
                     });
                 }).thenCompose(context -> network.coreNode.getUsernames(PEERGOS_USERNAME)
-                        .thenCompose(usernames -> usernames.contains(PEERGOS_USERNAME) && !username.equals(PEERGOS_USERNAME) ?
+                        .thenCompose(usernames -> usernames.contains(PEERGOS_USERNAME) && ! username.equals(PEERGOS_USERNAME) ?
                                 context.sendInitialFollowRequest(PEERGOS_USERNAME) :
                                 CompletableFuture.completedFuture(true))
                         .thenApply(b -> context))
                 .exceptionally(Futures::logError);
-    }
-
-    private CompletableFuture<RelativeCapability> makeSystemDir(DirAccess dirAccess, String dirName,
-                                                                WritableAbsoluteCapability capability) {
-
-        return dirAccess.mkdir(
-                dirName,
-                network,
-                capability,
-                Optional.of(signer),
-                null,
-                true,
-                crypto.random);
     }
 
     @JsMethod

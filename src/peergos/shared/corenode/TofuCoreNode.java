@@ -52,8 +52,9 @@ public class TofuCoreNode implements CoreNode {
                 .thenCompose(home -> {
                     byte[] data = tofu.serialize();
                     AsyncReader.ArrayBacked dataReader = new AsyncReader.ArrayBacked(data);
-                    return home.updateExistingChild(KEY_STORE_NAME, dataReader, 0, (long) data.length,
-                            context.network, context.crypto.random, x -> {}, context.fragmenter());
+                    return home.uploadOrOverwriteFile(KEY_STORE_NAME, dataReader, (long) data.length,
+                            context.network, context.crypto.random, x -> {}, context.fragmenter(),
+                            home.generateChildLocationsFromSize(data.length, context.crypto.random));
                 }).thenApply(x -> true);
     }
 

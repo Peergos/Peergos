@@ -7,7 +7,6 @@ import peergos.server.util.Logging;
 import org.junit.*;
 import static org.junit.Assert.*;
 
-import peergos.server.storage.*;
 import peergos.server.util.PeergosNetworkUtils;
 import peergos.shared.*;
 import peergos.shared.crypto.*;
