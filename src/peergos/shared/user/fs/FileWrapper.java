@@ -627,6 +627,15 @@ public class FileWrapper {
         throw new IllegalStateException("Too many concurrent writes trying to add a file of the same name!");
     }
 
+    public CompletableFuture<FileWrapper> updateExistingChild(String existingChildName, AsyncReader fileData,
+                                                               long inputStartIndex, long endIndex,
+                                                               NetworkAccess network, SafeRandom random,
+                                                               ProgressConsumer<Long> monitor, Fragmenter fragmenter) {
+        return getDescendentByPath(existingChildName, network)
+                .thenCompose(childOpt -> updateExistingChild(childOpt.get(), fileData, inputStartIndex, endIndex,
+                        network, random, monitor, fragmenter));
+    }
+
     private CompletableFuture<FileWrapper> updateExistingChild(FileWrapper existingChild, AsyncReader fileData,
                                                                long inputStartIndex, long endIndex,
                                                                NetworkAccess network, SafeRandom random,
