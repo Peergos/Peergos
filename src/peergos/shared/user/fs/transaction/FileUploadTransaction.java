@@ -1,4 +1,4 @@
-package peergos.server.transaction;
+package peergos.shared.user.fs.transaction;
 
 import peergos.shared.NetworkAccess;
 import peergos.shared.cbor.CborObject;

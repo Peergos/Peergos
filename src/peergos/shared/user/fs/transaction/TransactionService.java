@@ -1,4 +1,4 @@
-package peergos.server.transaction;
+package peergos.shared.user.fs.transaction;
 
 import jsinterop.annotations.JsMethod;
 import peergos.shared.util.Futures;

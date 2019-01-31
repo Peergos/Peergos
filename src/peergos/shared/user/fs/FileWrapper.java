@@ -1,9 +1,7 @@
 package peergos.shared.user.fs;
-import java.nio.file.Paths;
 import java.util.logging.*;
 
 import jsinterop.annotations.*;
-import peergos.server.transaction.FileUploadTransaction;
 import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;

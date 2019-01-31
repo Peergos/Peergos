@@ -1,11 +1,10 @@
-package peergos.server.transaction;
+package peergos.shared.user.fs.transaction;
 
 import jsinterop.annotations.JsMethod;
 import peergos.shared.NetworkAccess;
 import peergos.shared.cbor.CborObject;
 import peergos.shared.cbor.Cborable;
 import peergos.shared.crypto.SigningPrivateKeyAndPublicHash;
-import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.user.fs.Location;
 
 import java.util.List;

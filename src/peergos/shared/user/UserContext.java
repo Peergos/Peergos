@@ -2,10 +2,8 @@ package peergos.shared.user;
 
 import java.util.logging.*;
 
-import peergos.server.transaction.FileUploadTransaction;
-import peergos.server.transaction.Transaction;
-import peergos.server.transaction.TransactionService;
-import peergos.server.transaction.TransactionServiceImpl;
+import peergos.shared.user.fs.transaction.TransactionService;
+import peergos.shared.user.fs.transaction.TransactionServiceImpl;
 import peergos.shared.util.TriFunction;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
