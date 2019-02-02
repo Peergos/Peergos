@@ -96,7 +96,7 @@ public class PeergosNetworkUtils {
         FileWrapper u1Root = sharerUser.getUserRoot().get();
         String filename = "somefile.txt";
         File f = File.createTempFile("peergos", "");
-        byte[] originalFileContents = "Hello Peergos friend!".getBytes();
+        byte[] originalFileContents = sharerUser.crypto.random.randomBytes(10*1024*1024);
         Files.write(f.toPath(), originalFileContents);
         ResetableFileInputStream resetableFileInputStream = new ResetableFileInputStream(f);
         FileWrapper uploaded = u1Root.uploadOrOverwriteFile(filename, resetableFileInputStream, f.length(),
@@ -156,6 +156,7 @@ public class PeergosNetworkUtils {
             String path = sharerUser.username + "/" + filename;
             Optional<FileWrapper> sharedFile = userContext.getByPath(path).get();
             Assert.assertTrue("path '" + path + "' is still available", sharedFile.isPresent());
+            checkFileContents(originalFileContents, sharedFile.get(), userContext);
         }
 
         // test that u1 can still access the original file
