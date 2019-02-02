@@ -291,9 +291,10 @@ public class UserContext {
     }
 
     private CompletableFuture<UserContext> createSpecialDirectories() {
-        return Futures.combineAll(Arrays.asList(
-        getUserRoot().thenCompose(root -> root.mkdir(SHARED_DIR_NAME, network, true, crypto.random)),
-        getUserRoot().thenCompose(root -> root.mkdir(TRANSACTIONS_DIR_NAME, network, true, crypto.random))))
+        return Futures.combineAll(Arrays.asList(SHARED_DIR_NAME, TRANSACTIONS_DIR_NAME)
+                .stream()
+                .map(dirName -> getUserRoot().thenCompose(root -> root.mkdir(dirName, network, true, crypto.random)))
+                .collect(Collectors.toList()))
                 .thenApply(x -> this);
     }
 
