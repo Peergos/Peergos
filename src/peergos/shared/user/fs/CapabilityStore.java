@@ -106,13 +106,18 @@ public class CapabilityStore {
                     if (currentSharingFile != null
                             && currentSharingFile.getFileProperties().size + capabilitySize <= sharingFileMaxSize) {
                         long size = currentSharingFile.getSize();
-                        return sharedDir.uploadFileSection(currentSharingFile.getFileProperties().name, newCapability, size, size + serializedCapability.length,
-                                Optional.of(currentSharingFile.getPointer().capability.rBaseKey), true, network, random, x -> {}, fragmenter);
+                        List<Location> existingLocation = Arrays.asList(currentSharingFile.getLocation(), currentSharingFile.getNextChunkLocation());
+                        return sharedDir.uploadFileSection(currentSharingFile.getFileProperties().name, newCapability,
+                                false, size, size + serializedCapability.length,
+                                Optional.of(currentSharingFile.getPointer().capability.rBaseKey),
+                                true, network, random, x -> {}, fragmenter,
+                                existingLocation);
                     } else {
                         int sharingFileIndex = currentSharingFile == null ? 0 : sharingFiles.size();
                         String capStoreFilename = sharingPrefix + sharingFileIndex;
-                        return sharedDir.uploadFileSection(capStoreFilename, newCapability, 0, serializedCapability.length,
-                                Optional.empty(), false, network, random, x -> {}, fragmenter);
+                        return sharedDir.uploadFileSection(capStoreFilename, newCapability, false,
+                                0, serializedCapability.length, Optional.empty(), false,
+                                network, random, x -> {}, fragmenter, sharedDir.generateChildLocations(1, random));
                     }
                 });
     }
@@ -412,8 +417,9 @@ public class CapabilityStore {
         byte[] data = capabilitiesFromUser.serialize();
         AsyncReader.ArrayBacked dataReader = new AsyncReader.ArrayBacked(data);
         return getCapabilityCacheDir(homeDirSupplier, network, random)
-                .thenCompose(cacheDir -> cacheDir.uploadFile(friendName + capabilityType, dataReader, true, (long) data.length,
-                true, network, random, x-> {}, fragmenter).thenApply(x -> capabilitiesFromUser));
+                .thenCompose(cacheDir -> cacheDir.uploadOrOverwriteFile(friendName + capabilityType, dataReader,
+                        (long) data.length, network, random, x-> {}, fragmenter, cacheDir.generateChildLocationsFromSize(data.length, random))
+                        .thenApply(x -> capabilitiesFromUser));
     }
 
     private static CompletableFuture<CapabilitiesFromUser> readRetrievedCapabilityCache(FileWrapper cacheFile, NetworkAccess network, SafeRandom random) {

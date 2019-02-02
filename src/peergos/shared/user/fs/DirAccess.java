@@ -198,7 +198,7 @@ public class DirAccess implements CryptreeNode {
                 encryptedProperties,
                 children, moreFolderContents, writerLink
         );
-        return Transaction.call(us.owner,
+        return IpfsTransaction.call(us.owner,
                 tid -> network.uploadChunk(updated, us.owner, us.getMapKey(), getSigner(us.wBaseKey.get(), entryWriter), tid)
                         .thenApply(b -> updated),
                 network.dhtClient);
@@ -246,7 +246,7 @@ public class DirAccess implements CryptreeNode {
                                             // re-upload us with the link to the next DirAccess
                                             DirAccess withNext = newUs.withNextBlob(Optional.of(
                                                     EncryptedCapability.create(us.rBaseKey, us.relativise(nextPointer))));
-                                            return Transaction.call(us.owner,
+                                            return IpfsTransaction.call(us.owner,
                                                     tid -> withNext.commit(us, entryWriter, network, tid),
                                                     network.dhtClient);
                                         });
@@ -257,7 +257,7 @@ public class DirAccess implements CryptreeNode {
             ArrayList<RelativeCapability> newFiles = new ArrayList<>(children);
             newFiles.addAll(targetCAPs);
 
-            return Transaction.call(us.owner,
+            return IpfsTransaction.call(us.owner,
                     tid -> withChildren(encryptChildren(us.rBaseKey, newFiles))
                             .commit(us, entryWriter, network, tid),
                     network.dhtClient);
@@ -300,7 +300,7 @@ public class DirAccess implements CryptreeNode {
                         keep = false;
             return keep;
         }).collect(Collectors.toList());
-        return Transaction.call(ourPointer.owner,
+        return IpfsTransaction.call(ourPointer.owner,
                 tid -> withChildren(encryptChildren(ourPointer.rBaseKey, newSubfolders))
                         .commit(ourPointer, entryWriter, network, tid),
                 network.dhtClient);
@@ -374,7 +374,7 @@ public class DirAccess implements CryptreeNode {
 
         SymmetricLink toChildWriteKey = SymmetricLink.fromPair(us.wBaseKey.get(), dirWriteKey);
         // Use two transactions to not expose the child linkage
-        return Transaction.call(us.owner,
+        return IpfsTransaction.call(us.owner,
                 tid -> network.uploadChunk(child, us.owner, dirMapKey, getSigner(us.wBaseKey.get(), entryWriter), tid), network.dhtClient)
                 .thenCompose(resultHash -> {
                     RelativeCapability subdirPointer = new RelativeCapability(dirMapKey, dirReadKey, toChildWriteKey);
@@ -425,7 +425,7 @@ public class DirAccess implements CryptreeNode {
                         });
             }, (a, b) -> a.thenCompose(x -> b)); // TODO Think about this combiner function
             return reduce;
-        }).thenCompose(finalDir -> Transaction.call(newParentCap.owner,
+        }).thenCompose(finalDir -> IpfsTransaction.call(newParentCap.owner,
                 tid -> finalDir.commit(new WritableAbsoluteCapability(newParentCap.owner, newParentCap.writer, newMapKey,
                         newReadBaseKey, newWriteBaseKey), newEntryWriter, network, tid),
                 network.dhtClient));

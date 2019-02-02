@@ -5,7 +5,7 @@ import peergos.shared.crypto.hash.*;
 import java.util.concurrent.*;
 import java.util.function.*;
 
-public class Transaction {
+public class IpfsTransaction {
 
     /** Run a series of operations under a transaction, ensuring that it is closed correctly
      *

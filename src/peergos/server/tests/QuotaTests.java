@@ -57,12 +57,14 @@ public class QuotaTests {
         FileWrapper home = context.getByPath(Paths.get(username).toString()).get().get();
         byte[] data = new byte[1024*1024];
         random.nextBytes(data);
-        FileWrapper newHome = home.uploadFile("file-1", new AsyncReader.ArrayBacked(data), data.length,
-                network, crypto.random, x -> { }, context.fragmenter()).get();
+        FileWrapper newHome = home.uploadOrOverwriteFile("file-1", new AsyncReader.ArrayBacked(data), data.length,
+                network, crypto.random, x -> {}, context.fragmenter(),
+                home.generateChildLocationsFromSize(data.length, crypto.random)).get();
 
         try {
-            newHome.uploadFile("file-2", new AsyncReader.ArrayBacked(data), data.length, network, crypto.random, x -> {
-            }, context.fragmenter()).get();
+            newHome.uploadOrOverwriteFile("file-2", new AsyncReader.ArrayBacked(data), data.length, network,
+                    crypto.random, x -> {}, context.fragmenter(),
+                    newHome.generateChildLocationsFromSize(data.length, crypto.random)).get();
             Assert.fail("Quota wasn't enforced");
         } catch (Exception e) {}
     }
@@ -78,8 +80,9 @@ public class QuotaTests {
         random.nextBytes(data);
         for (int i=0; i < 5; i++) {
             String filename = "file-1";
-            home = home.uploadFile(filename, new AsyncReader.ArrayBacked(data), data.length,
-                    network, crypto.random, x -> {}, context.fragmenter()).get();
+            home = home.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length,
+                    network, crypto.random, x -> {}, context.fragmenter(),
+                    home.generateChildLocationsFromSize(data.length, crypto.random)).get();
             FileWrapper file = context.getByPath("/" + username + "/" + filename).get().get();
             home = file.remove(home, network).get();
         }
@@ -97,8 +100,9 @@ public class QuotaTests {
         byte[] data = new byte[2 * 1024 * 1024 - used - 4 * 1024];
         random.nextBytes(data);
         String filename = "file-1";
-        home = home.uploadFile(filename, new AsyncReader.ArrayBacked(data), data.length,
-                network, crypto.random, x -> {}, context.fragmenter()).get();
+        home = home.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length,
+                network, crypto.random, x -> {}, context.fragmenter(),
+                home.generateChildLocationsFromSize(data.length, crypto.random)).get();
         FileWrapper file = context.getByPath("/" + username + "/" + filename).get().get();
         file.remove(home, network).get();
     }
@@ -111,16 +115,17 @@ public class QuotaTests {
         UserContext context = ensureSignedUp(username, password, network, crypto);
         FileWrapper home = context.getByPath(Paths.get(username).toString()).get().get();
         // signing up uses just over 14k and the quota is 2 MiB, so use within 1 KiB of our quota
-        byte[] data = new byte[2 * 1024 * 1024 - 18 * 1024];
+        byte[] data = new byte[2 * 1024 * 1024 - 19 * 1024];
         random.nextBytes(data);
         String filename = "file-1";
-        home = home.uploadFile(filename, new AsyncReader.ArrayBacked(data), data.length,
-                network, crypto.random, x -> {}, context.fragmenter()).get();
+        home = home.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length,
+                network, crypto.random, x -> {}, context.fragmenter(),
+                home.generateChildLocationsFromSize(data.length, crypto.random)).get();
         FileWrapper file = context.getByPath("/" + username + "/" + filename).get().get();
         try {
-            home = home.uploadFile("file-2", new AsyncReader.ArrayBacked(data), data.length,
-                    network, crypto.random, x -> {
-                    }, context.fragmenter()).get();
+            home = home.uploadOrOverwriteFile("file-2", new AsyncReader.ArrayBacked(data), data.length,
+                    network, crypto.random, x -> {}, context.fragmenter(),
+                    home.generateChildLocationsFromSize(data.length, crypto.random)).get();
             Assert.fail();
         } catch (Exception e) {}
         file.remove(home, network).get();

@@ -1,16 +1,14 @@
 package peergos.shared.user.fs;
-import java.nio.file.Paths;
 import java.util.logging.*;
 
 import jsinterop.annotations.*;
 import peergos.shared.*;
 import peergos.shared.crypto.*;
-import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.multihash.*;
-import peergos.shared.storage.Transaction;
+import peergos.shared.storage.IpfsTransaction;
 import peergos.shared.storage.TransactionId;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.cryptree.*;
@@ -285,6 +283,11 @@ public class FileWrapper {
         return new Location(pointer.capability.owner, pointer.capability.writer, pointer.capability.getMapKey());
     }
 
+    public Location getNextChunkLocation() {
+        return new Location(pointer.capability.owner, pointer.capability.writer,
+                pointer.fileAccess.getNextChunkLocation(pointer.capability.rBaseKey).get());
+    }
+
     public Set<Location> getChildrenLocations() {
         ensureUnmodified();
         if (!this.isDirectory())
@@ -372,8 +375,10 @@ public class FileWrapper {
      * @param fragmenter
      * @return updated parent dir
      */
-    public CompletableFuture<FileWrapper> clean(NetworkAccess network, SafeRandom random,
-                                                FileWrapper parent, peergos.shared.user.fs.Fragmenter fragmenter) {
+    public CompletableFuture<FileWrapper> clean(NetworkAccess network,
+                                                SafeRandom random,
+                                                FileWrapper parent,
+                                                Fragmenter fragmenter) {
         if (!isDirty())
             return CompletableFuture.completedFuture(this);
         if (isDirectory()) {
@@ -381,14 +386,15 @@ public class FileWrapper {
         } else {
             FileProperties props = getFileProperties();
             SymmetricKey baseKey = pointer.capability.rBaseKey;
-            // stream download and re-encrypt with new metaKey
+            // stream download and re-encrypt with new dataKey
             return getInputStream(network, random, l -> {}).thenCompose(in -> {
                 byte[] tmp = new byte[16];
                 new Random().nextBytes(tmp);
                 String tmpFilename = ArrayOps.bytesToHex(tmp) + ".tmp";
 
-                CompletableFuture<FileWrapper> reuploaded = parent.uploadFileSection(tmpFilename, in, 0, props.size,
-                        Optional.of(baseKey), true, network, random, l -> {}, fragmenter);
+
+                CompletableFuture<FileWrapper> reuploaded = parent.uploadFileSection(tmpFilename, in, false, 0, props.size,
+                        Optional.of(baseKey), true, network, random, l -> {}, fragmenter, parent.generateChildLocations(props.getNumberOfChunks(), random));
                 return reuploaded.thenCompose(upload -> upload.getDescendentByPath(tmpFilename, network)
                         .thenCompose(tmpChild -> tmpChild.get().rename(props.name, network, upload, true))
                         .thenApply(res -> {
@@ -399,58 +405,44 @@ public class FileWrapper {
         }
     }
 
+    public static int getNumberOfChunks(long size) {
+        if (size == 0)
+            return 1;
+        return (int)((size + Chunk.MAX_SIZE - 1)/Chunk.MAX_SIZE);
+    }
+
+    public List<Location> generateChildLocationsFromSize(long fileSize, SafeRandom random) {
+        return generateChildLocations(getNumberOfChunks(fileSize), random);
+    }
+
+    public List<Location> generateChildLocations(int numberOfChunks,
+                                                 SafeRandom random) {
+        return IntStream.range(0, numberOfChunks + 1) //have to have one extra location
+                .mapToObj(e -> new Location(owner(), writer(), random.randomBytes(32)))
+                .collect(Collectors.toList());
+    }
+
     @JsMethod
     public CompletableFuture<FileWrapper> uploadFileJS(String filename, AsyncReader fileData,
                                                        int lengthHi, int lengthLow,
                                                        boolean overwriteExisting,
                                                        NetworkAccess network, SafeRandom random,
-                                                       ProgressConsumer<Long> monitor, Fragmenter fragmenter) {
-        return uploadFileSection(filename, fileData, 0, lengthLow + ((lengthHi & 0xFFFFFFFFL) << 32),
-                Optional.empty(), overwriteExisting, network, random, monitor, fragmenter);
+                                                       ProgressConsumer<Long> monitor, Fragmenter fragmenter,
+                                                       List<Location> locations) {
+        return uploadFileSection(filename, fileData, false, 0, lengthLow + ((lengthHi & 0xFFFFFFFFL) << 32),
+                Optional.empty(), overwriteExisting, network, random, monitor, fragmenter, locations);
     }
 
-    public CompletableFuture<FileWrapper> uploadFile(String filename,
-                                                     AsyncReader fileData,
-                                                     long length,
-                                                     NetworkAccess network,
-                                                     SafeRandom random,
-                                                     ProgressConsumer<Long> monitor,
-                                                     Fragmenter fragmenter) {
-        return uploadFileSection(filename, fileData, 0, length, Optional.empty(),
-                true, network, random, monitor, fragmenter);
-    }
-
-    public CompletableFuture<FileWrapper> uploadFile(String filename,
-                                                     AsyncReader fileData,
-                                                     boolean isHidden,
-                                                     long length,
-                                                     boolean overwriteExisting,
-                                                     NetworkAccess network,
-                                                     SafeRandom random,
-                                                     ProgressConsumer<Long> monitor,
-                                                     Fragmenter fragmenter) {
-        return uploadFileSection(filename, fileData, isHidden, 0, length, Optional.empty(),
-                overwriteExisting, network, random, monitor, fragmenter);
-    }
-
-    public CompletableFuture<FileWrapper> uploadFileSection(String filename, AsyncReader fileData, long startIndex, long endIndex,
-                                                            NetworkAccess network, SafeRandom random,
-                                                            ProgressConsumer<Long> monitor, Fragmenter fragmenter) {
-        return uploadFileSection(filename, fileData, startIndex, endIndex, Optional.empty(), true, network, random, monitor, fragmenter);
-    }
-
-    public CompletableFuture<FileWrapper> uploadFileSection(String filename,
-                                                            AsyncReader fileData,
-                                                            long startIndex,
-                                                            long endIndex,
-                                                            Optional<SymmetricKey> baseKey,
-                                                            boolean overwriteExisting,
-                                                            NetworkAccess network,
-                                                            SafeRandom random,
-                                                            ProgressConsumer<Long> monitor,
-                                                            Fragmenter fragmenter) {
-        return uploadFileSection(filename, fileData, false, startIndex, endIndex, baseKey,
-                overwriteExisting, network, random, monitor, fragmenter);
+    public CompletableFuture<FileWrapper> uploadOrOverwriteFile(String filename,
+                                                                AsyncReader fileData,
+                                                                long length,
+                                                                NetworkAccess network,
+                                                                SafeRandom random,
+                                                                ProgressConsumer<Long> monitor,
+                                                                Fragmenter fragmenter,
+                                                                List<Location> locations) {
+        return uploadFileSection(filename, fileData, false, 0, length, Optional.empty(),
+                true, network, random, monitor, fragmenter, locations);
     }
 
     /**
@@ -478,7 +470,8 @@ public class FileWrapper {
                                                             NetworkAccess network,
                                                             SafeRandom random,
                                                             ProgressConsumer<Long> monitor,
-                                                            Fragmenter fragmenter) {
+                                                            Fragmenter fragmenter,
+                                                            List<Location> locations) {
         if (!isLegalName(filename)) {
             CompletableFuture<FileWrapper> res = new CompletableFuture<>();
             res.completeExceptionally(new IllegalStateException("Illegal filename: " + filename));
@@ -514,15 +507,13 @@ public class FileWrapper {
                                                 LocalDateTime.now(), isHidden, Optional.of(thumbData));
                                         FileUploader chunks = new FileUploader(filename, mimeType, resetReader,
                                                 startIndex, endIndex, fileKey, parentLocation, dirParentKey, monitor, fileProps,
-                                                fragmenter);
-                                        byte[] mapKey = random.randomBytes(32);
-                                        Location nextChunkLocation = new Location(getLocation().owner, getLocation().writer, mapKey);
+                                                fragmenter, locations);
                                         SigningPrivateKeyAndPublicHash signer = signingPair();
-                                        return chunks.upload(network, random, parentLocation.owner, signer, nextChunkLocation)
+                                        return chunks.upload(network, parentLocation.owner, signer)
                                                 .thenCompose(fileLocation -> {
                                                     WritableAbsoluteCapability fileWriteCap =
-                                                            new WritableAbsoluteCapability(owner(), fileLocation.writer,
-                                                                    fileLocation.getMapKey(), fileKey, fileWriteKey);
+                                                            new WritableAbsoluteCapability(owner(), signer.publicKeyHash,
+                                                                    locations.get(0).getMapKey(), fileKey, fileWriteKey);
                                                     return addChildPointer(filename, fileWriteCap, network, random, 2);
                                                 });
                                     }))
@@ -562,22 +553,7 @@ public class FileWrapper {
                                         result.complete(res);
                                     });
                         }
-                        String safeName = nextSafeReplacementFilename(filename, childNames);
-                        // rename file in place as we've already uploaded it
-                        return network.getMetadata(childPointer.getLocation()).thenCompose(renameOpt -> {
-                            CryptreeNode fileToRename = renameOpt.get();
-                            RetrievedCapability updatedChildPointer =
-                                    new RetrievedCapability(childPointer, fileToRename);
-                            FileWrapper toRename = new FileWrapper(Optional.empty(),
-                                    updatedChildPointer, entryWriter, ownername);
-                            return toRename.rename(safeName, network, us).thenCompose(usAgain ->
-                                    ((DirAccess) usAgain.pointer.fileAccess)
-                                            .addChildAndCommit(writableFilePointer().relativise(childPointer), writableFilePointer(), entryWriter, network, random)
-                                            .thenAccept(uploadResult -> {
-                                                setModified();
-                                                result.complete(this.withCryptreeNode(uploadResult));
-                                            }));
-                        });
+                        throw new IllegalStateException("File upload aborted: file already exists!");
                     });
                 }).exceptionally(ex -> {
                     if ((e instanceof MutableTree.CasException ||
@@ -599,18 +575,13 @@ public class FileWrapper {
         return result;
     }
 
-    private static String nextSafeReplacementFilename(String desired, Set<String> existing) {
-        if (! existing.contains(desired))
-            return desired;
-        for (int counter = 1; counter < 1000; counter++) {
-            int dot = desired.lastIndexOf(".");
-            String candidate = dot >= 0 ?
-                    desired.substring(0, dot) + "[" + counter + "]" + desired.substring(dot) :
-                    desired + "[" + counter + "]";
-            if (! existing.contains(candidate))
-                return candidate;
-        }
-        throw new IllegalStateException("Too many concurrent writes trying to add a file of the same name!");
+    public CompletableFuture<FileWrapper> updateExistingChild(String existingChildName, AsyncReader fileData,
+                                                               long inputStartIndex, long endIndex,
+                                                               NetworkAccess network, SafeRandom random,
+                                                               ProgressConsumer<Long> monitor, Fragmenter fragmenter) {
+        return getDescendentByPath(existingChildName, network)
+                .thenCompose(childOpt -> updateExistingChild(childOpt.get(), fileData, inputStartIndex, endIndex,
+                        network, random, monitor, fragmenter));
     }
 
     private CompletableFuture<FileWrapper> updateExistingChild(FileWrapper existingChild, AsyncReader fileData,
@@ -881,8 +852,8 @@ public class FileWrapper {
                         });
             } else {
                 return getInputStream(network, random, x -> {})
-                        .thenCompose(stream -> target.uploadFileSection(getName(), stream, 0, getSize(),
-                                Optional.empty(), false, network, random, x -> {}, fragmenter)
+                        .thenCompose(stream -> target.uploadFileSection(getName(), stream, false, 0, getSize(),
+                                Optional.empty(), false, network, random, x -> {}, fragmenter, target.generateChildLocations(props.getNumberOfChunks(), random))
                         .thenApply(b -> target));
             }
         });
@@ -902,7 +873,7 @@ public class FileWrapper {
         CryptreeNode newFileAccess = fileAccess.withWriterLink(signerLink).withParentLink(newParentLink);
         RetrievedCapability newRetrievedCapability = new RetrievedCapability(cap.withSigner(signer.publicKeyHash), newFileAccess);
 
-        return Transaction.call(owner(),
+        return IpfsTransaction.call(owner(),
                 tid -> network.uploadChunk(newFileAccess, owner(), getPointer().capability.getMapKey(), signer, tid)
                         .thenCompose(z -> copyAllChunks(false, cap, signer, tid, network))
                         .thenCompose(y -> ((DirAccess)parent.getPointer().fileAccess).updateChildLink(parent.writableFilePointer(),
@@ -1000,7 +971,7 @@ public class FileWrapper {
 
         boolean writableParent = parent.isWritable();
         return (writableParent ? parent.removeChild(this, network) : CompletableFuture.completedFuture(parent))
-                .thenCompose(updatedParent -> Transaction.call(owner(),
+                .thenCompose(updatedParent -> IpfsTransaction.call(owner(),
                         tid -> FileWrapper.deleteAllChunks(writableFilePointer(),
                                 writableParent ? parent.signingPair() : signingPair(), tid, network), network.dhtClient)
                         .thenApply(b -> updatedParent));
@@ -1020,7 +991,7 @@ public class FileWrapper {
             Set<PublicKeyHash> ownedKeys = new HashSet<>(parentWriterData.props.ownedKeys);
             ownedKeys.remove(signerToRemove);
             WriterData updatedParentWD = parentWriterData.props.withOwnedKeys(ownedKeys);
-            return Transaction.call(owner, tid ->
+            return IpfsTransaction.call(owner, tid ->
                     updatedParentWD.commit(owner, parentSigner,
                             parentWriterData.hash, network, tid).thenApply(cwd -> true), network.dhtClient);
 

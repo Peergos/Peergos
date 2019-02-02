@@ -55,6 +55,10 @@ public class FileProperties implements Cborable {
         return (int) (size >> 32);
     }
 
+    public int getNumberOfChunks() {
+        return FileWrapper.getNumberOfChunks(size);
+    }
+
     @Override
     @SuppressWarnings("unusable-by-js")
     public CborObject toCbor() {

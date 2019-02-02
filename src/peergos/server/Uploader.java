@@ -85,16 +85,16 @@ public class Uploader {
         File file = source.toFile();
         if (!filter.test(file))
             return;
-        Optional<FileWrapper> existing = await(context.getByPath(targetParent.resolve(file.getName()).toString()));
+        Optional<FileWrapper> existing = context.getByPath(targetParent.resolve(file.getName()).toString()).join();
 
         System.out.println("Uploading " + file);
         if (file.isDirectory()) {
             try {
                 if (! existing.isPresent())
-                    await(context.getByPath(targetParent.toString())).get()
+                    context.getByPath(targetParent.toString()).join().get()
                             .mkdir(file.getName(), context.network, false, context.crypto.random).get();
 
-                Optional<FileWrapper> childDir = await(context.getByPath(targetParent.resolve(source.getFileName()).toString()));
+                Optional<FileWrapper> childDir = context.getByPath(targetParent.resolve(source.getFileName()).toString()).join();
                 childDir.ifPresent(newDir -> Optional.ofNullable(file.list())
                         .map(Stream::of)
                         .orElse(Stream.empty())
@@ -108,21 +108,14 @@ public class Uploader {
         } else {
             try {
                 ResetableFileInputStream fileData = new ResetableFileInputStream(file);
-                await(context.getByPath(targetParent.toString())).get()
-                        .uploadFile(file.getName(), fileData, file.length(),
-                                context.network, context.crypto.random, c -> {}, context.fragmenter).get();
+                FileWrapper parent = context.getByPath(targetParent.toString()).join().get();
+                parent.uploadOrOverwriteFile(file.getName(), fileData, file.length(),
+                        context.network, context.crypto.random, c -> {}, context.fragmenter,
+                        parent.generateChildLocationsFromSize(file.length(), context.crypto.random)).get();
             } catch (Exception e) {
                 System.err.println("Error uploading " + source);
                 e.printStackTrace();
             }
-        }
-    }
-
-    private static <T> T await(CompletableFuture<T> source) {
-        try {
-            return source.get();
-        } catch (Exception e) {
-            throw new RuntimeException(e);
         }
     }
 }
