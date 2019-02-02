@@ -133,14 +133,14 @@ public class FileAccess implements CryptreeNode {
 
     public CompletableFuture<FileAccess> markDirty(WritableAbsoluteCapability us,
                                                    Optional<SigningPrivateKeyAndPublicHash> entryWriter,
+                                                   RelativeCapability toParent,
                                                    SymmetricKey newBaseKey,
                                                    NetworkAccess network) {
         // keep the same data key, just marked as dirty
         SymmetricKey dataKey = this.getDataKey(us.rBaseKey).makeDirty();
         SymmetricLink newParentToData = SymmetricLink.fromPair(newBaseKey, dataKey);
 
-        EncryptedCapability newParentLink = EncryptedCapability.create(newBaseKey,
-                parentLink.toCapability(us.rBaseKey));
+        EncryptedCapability newParentLink = EncryptedCapability.create(newBaseKey, toParent);
         PaddedCipherText newProperties = PaddedCipherText.build(newBaseKey, getProperties(us.rBaseKey), META_DATA_PADDING_BLOCKSIZE);
         FileAccess fa = new FileAccess(committedHash(), version, newParentToData, newProperties,
                 this.retriever, newParentLink, writerLink);

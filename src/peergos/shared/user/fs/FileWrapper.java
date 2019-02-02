@@ -202,17 +202,19 @@ public class FileWrapper {
                     });
         } else {
             // create a new rBaseKey == parentKey
-            SymmetricKey parentKey = SymmetricKey.random();
-            return ((FileAccess) pointer.fileAccess).markDirty(writableFilePointer(), entryWriter, parentKey, network).thenCompose(newFileAccess -> {
-                RetrievedCapability newPointer = new RetrievedCapability(this.pointer.capability.withBaseKey(parentKey), newFileAccess);
-                // update link from parent folder to file to have new rBaseKey
-                return ((DirAccess) parent.pointer.fileAccess)
-                        .updateChildLink(parent.writableFilePointer(), parent.entryWriter, pointer, newPointer, network, random)
-                        .thenApply(x -> new FileWrapper(newPointer, entryWriter, ownername));
-            }).thenApply(x -> {
-                setModified();
-                return x;
-            });
+            SymmetricKey baseReadKey = SymmetricKey.random();
+            return ((FileAccess) pointer.fileAccess).markDirty(writableFilePointer(), entryWriter,
+                    cap.relativise(parent.getMinimalReadPointer()), baseReadKey, network)
+                    .thenCompose(newFileAccess -> {
+                        RetrievedCapability newPointer = new RetrievedCapability(this.pointer.capability.withBaseKey(baseReadKey), newFileAccess);
+                        // update link from parent folder to file to have new rBaseKey
+                        return ((DirAccess) parent.pointer.fileAccess)
+                                .updateChildLink(parent.writableFilePointer(), parent.entryWriter, pointer, newPointer, network, random)
+                                .thenApply(x -> new FileWrapper(newPointer, entryWriter, ownername));
+                    }).thenApply(x -> {
+                        setModified();
+                        return x;
+                    });
         }
     }
 
@@ -802,6 +804,17 @@ public class FileWrapper {
                     return fileAccess.updateProperties(writableFilePointer(), entryWriter, updatedProperties, network)
                             .thenApply(fa -> true);
                 });
+    }
+
+    /**
+     *
+     * @return A capability based on the parent key
+     */
+    public AbsoluteCapability getMinimalReadPointer() {
+        if (isDirectory()) {
+            return pointer.capability.withBaseKey(getParentKey());
+        }
+        return pointer.capability;
     }
 
     public WritableAbsoluteCapability writableFilePointer() {
