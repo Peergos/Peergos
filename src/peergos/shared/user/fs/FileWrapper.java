@@ -159,19 +159,27 @@ public class FileWrapper {
      * @throws IOException
      */
     public CompletableFuture<FileWrapper> makeDirty(NetworkAccess network, SafeRandom random, FileWrapper parent) {
+        return makeDirty(true, network, random, parent, Optional.empty());
+    }
+
+    public CompletableFuture<FileWrapper> makeDirty(boolean isFirstChunk,
+                                                    NetworkAccess network,
+                                                    SafeRandom random,
+                                                    FileWrapper parent,
+                                                    Optional<SymmetricKey> newBaseKey) {
         if (!isWritable())
             throw new IllegalStateException("You cannot mark a file as dirty without write access!");
         WritableAbsoluteCapability cap = writableFilePointer();
         if (isDirectory()) {
             // create a new rBaseKey == subfoldersKey and make all descendants dirty
-            SymmetricKey newSubfoldersKey = SymmetricKey.random();
+            SymmetricKey newSubfoldersKey = newBaseKey.orElseGet(SymmetricKey::random);
             WritableAbsoluteCapability ourNewPointer = cap.withBaseKey(newSubfoldersKey);
             SymmetricKey newParentKey = SymmetricKey.random();
             FileProperties props = getFileProperties();
 
             DirAccess existing = (DirAccess) pointer.fileAccess;
 
-            // Create new DirAccess, but don't upload it
+            // Create new DirAccess
             DirAccess newDirAccess = DirAccess.create(existing.committedHash(), newSubfoldersKey, null, Optional.empty(), props,
                     cap.relativise(parent.writableFilePointer()), newParentKey);
             // re add children
@@ -196,21 +204,50 @@ public class FileWrapper {
                                                 parent.entryWriter, this.pointer,
                                                 ourNewRetrievedPointer, network, random)
                                         .thenApply(x -> theNewUs));
+                    }).thenCompose(updated -> {
+                        Optional<byte[]> nextChunkMapKey = existing.getNextChunkLocation(cap.rBaseKey);
+                        if (! nextChunkMapKey.isPresent())
+                            return CompletableFuture.completedFuture(updated);
+                        WritableAbsoluteCapability nextChunkCap = cap.withMapKey(nextChunkMapKey.get());
+                        return network.getMetadata(nextChunkCap.getLocation())
+                                .thenCompose(mOpt -> {
+                                    if (! mOpt.isPresent())
+                                        return CompletableFuture.completedFuture(updated);
+                                    return new FileWrapper(new RetrievedCapability(nextChunkCap, mOpt.get()), entryWriter, ownername)
+                                            .makeDirty(false, network, random, parent, Optional.of(newSubfoldersKey))
+                                            .thenApply(x -> updated);
+                                });
                     }).thenApply(x -> {
                         setModified();
                         return x;
                     });
         } else {
             // create a new rBaseKey == parentKey
-            SymmetricKey baseReadKey = SymmetricKey.random();
+            SymmetricKey baseReadKey = newBaseKey.orElseGet(SymmetricKey::random);
             return ((FileAccess) pointer.fileAccess).markDirty(writableFilePointer(), entryWriter,
                     cap.relativise(parent.getMinimalReadPointer()), baseReadKey, network)
-                    .thenCompose(newFileAccess -> {
+                    .thenCompose(updated -> {
+                        Optional<byte[]> nextChunkMapKey = pointer.fileAccess.getNextChunkLocation(cap.rBaseKey);
+                        if (! nextChunkMapKey.isPresent())
+                            return CompletableFuture.completedFuture(updated);
+                        WritableAbsoluteCapability nextChunkCap = cap.withMapKey(nextChunkMapKey.get());
+                        return network.getMetadata(nextChunkCap.getLocation())
+                                .thenCompose(mOpt -> {
+                                    if (! mOpt.isPresent())
+                                        return CompletableFuture.completedFuture(updated);
+                                    return new FileWrapper(new RetrievedCapability(nextChunkCap, mOpt.get()), entryWriter, ownername)
+                                            .makeDirty(false, network, random, parent, Optional.of(baseReadKey))
+                                            .thenApply(x -> updated);
+                                });
+                    }).thenCompose(newFileAccess -> {
                         RetrievedCapability newPointer = new RetrievedCapability(this.pointer.capability.withBaseKey(baseReadKey), newFileAccess);
-                        // update link from parent folder to file to have new rBaseKey
-                        return ((DirAccess) parent.pointer.fileAccess)
-                                .updateChildLink(parent.writableFilePointer(), parent.entryWriter, pointer, newPointer, network, random)
-                                .thenApply(x -> new FileWrapper(newPointer, entryWriter, ownername));
+                        // only update link from parent folder to file if we are the first chunk
+                        return (isFirstChunk ?
+                                ((DirAccess) parent.pointer.fileAccess)
+                                        .updateChildLink(parent.writableFilePointer(), parent.entryWriter, pointer,
+                                                newPointer, network, random) :
+                                CompletableFuture.completedFuture(null)
+                        ).thenApply(x -> new FileWrapper(newPointer, entryWriter, ownername));
                     }).thenApply(x -> {
                         setModified();
                         return x;
@@ -386,24 +423,12 @@ public class FileWrapper {
         if (isDirectory()) {
             throw new IllegalStateException("Directories are never dirty (they are cleaned immediately)!");
         } else {
-            FileProperties props = getFileProperties();
-            SymmetricKey baseKey = pointer.capability.rBaseKey;
-            // stream download and re-encrypt with new dataKey
-            return getInputStream(network, random, l -> {}).thenCompose(in -> {
-                byte[] tmp = new byte[16];
-                new Random().nextBytes(tmp);
-                String tmpFilename = ArrayOps.bytesToHex(tmp) + ".tmp";
-
-
-                CompletableFuture<FileWrapper> reuploaded = parent.uploadFileSection(tmpFilename, in, false, 0, props.size,
-                        Optional.of(baseKey), true, network, random, l -> {}, fragmenter, parent.generateChildLocations(props.getNumberOfChunks(), random));
-                return reuploaded.thenCompose(upload -> upload.getDescendentByPath(tmpFilename, network)
-                        .thenCompose(tmpChild -> tmpChild.get().rename(props.name, network, upload, true))
-                        .thenApply(res -> {
-                            setModified();
-                            return res;
-                        }));
-            });
+            return ((FileAccess)pointer.fileAccess).cleanAndCommit(writableFilePointer(), signingPair(),
+                    parent.getLocation(), parent.getParentKey(), network, random, fragmenter)
+                    .thenApply(res -> {
+                        setModified();
+                        return parent;
+                    });
         }
     }
 
@@ -756,7 +781,7 @@ public class FileWrapper {
         return childExists
                 .thenCompose(existing -> {
                     if (existing.isPresent() && !overwrite)
-                        return CompletableFuture.completedFuture(parent);
+                        throw new IllegalStateException("Cannot rename, child already exists with name: " + newFilename);
 
                     return ((overwrite && existing.isPresent()) ?
                             existing.get().remove(parent, network) :
