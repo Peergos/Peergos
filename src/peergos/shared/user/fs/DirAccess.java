@@ -28,7 +28,15 @@ public class DirAccess implements CryptreeNode {
 
     private static final int CHILDREN_LINKS_PADDING_BLOCKSIZE = 1024;
     private static final int META_DATA_PADDING_BLOCKSIZE = 16;
-    private static final int MAX_CHILD_LINKS_PER_BLOB = 500;
+    private static int MAX_CHILD_LINKS_PER_BLOB = 500;
+
+    public static synchronized void setMaxChildLinkPerBlob(int newValue) {
+        MAX_CHILD_LINKS_PER_BLOB = newValue;
+    }
+
+    public static synchronized int getMaxChildLinksPerBlob() {
+        return MAX_CHILD_LINKS_PER_BLOB;
+    }
 
     private final MaybeMultihash lastCommittedHash;
     private final int version;
@@ -220,7 +228,7 @@ public class DirAccess implements CryptreeNode {
                                                              SafeRandom random) {
         // Make sure subsequent blobs use a different transaction to obscure linkage of different parts of this dir
         List<RelativeCapability> children = getDirectChildren(us.rBaseKey);
-        if (children.size() + targetCAPs.size() > MAX_CHILD_LINKS_PER_BLOB) {
+        if (children.size() + targetCAPs.size() > getMaxChildLinksPerBlob()) {
             return getNextMetablob(us, network).thenCompose(nextMetablob -> {
                 if (nextMetablob.size() >= 1) {
                     AbsoluteCapability nextPointer = nextMetablob.get(0).capability;
@@ -228,7 +236,7 @@ public class DirAccess implements CryptreeNode {
                     return nextBlob.addChildrenAndCommit(targetCAPs, nextPointer.toWritable(us.wBaseKey.get()), entryWriter, network, random);
                 } else {
                     // first fill this directory, then overflow into a new one
-                    int freeSlots = MAX_CHILD_LINKS_PER_BLOB - children.size();
+                    int freeSlots = getMaxChildLinksPerBlob() - children.size();
                     List<RelativeCapability> addToUs = targetCAPs.subList(0, freeSlots);
                     List<RelativeCapability> addToNext = targetCAPs.subList(freeSlots, targetCAPs.size());
                     return addChildrenAndCommit(addToUs, us, entryWriter, network, random)

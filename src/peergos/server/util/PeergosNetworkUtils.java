@@ -179,6 +179,7 @@ public class PeergosNetworkUtils {
 
     public static void shareAndUnshareFolderForReadAccess(NetworkAccess sharerNode, NetworkAccess shareeNode, int shareeCount, Random random) throws Exception {
         Assert.assertTrue(0 < shareeCount);
+        DirAccess.setMaxChildLinkPerBlob(10);
 
         String sharerUsername = generateUsername(random);
         UserContext sharer = PeergosNetworkUtils.ensureSignedUp(sharerUsername, sharerUsername, sharerNode, crypto);
