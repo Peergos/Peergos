@@ -190,19 +190,25 @@ public class FileWrapper {
 
             DirAccess existing = (DirAccess) pointer.fileAccess;
 
+            Optional<byte[]> nextChunkMapKey = existing.getNextChunkLocation(cap.rBaseKey);
+            Optional<WritableAbsoluteCapability> nextChunkCap = nextChunkMapKey.map(cap::withMapKey);
+            Optional<WritableAbsoluteCapability> updatedNextChunkCap = nextChunkMapKey.map(ourNewPointer::withMapKey);
+
             // Create new DirAccess
             DirAccess newDirAccess = DirAccess.create(existing.committedHash(), newSubfoldersKey, null, Optional.empty(), props,
-                    cap.relativise(parent.writableFilePointer()), newParentKey);
+                    cap.relativise(parent.writableFilePointer()), newParentKey)
+                    .withNextBlob(updatedNextChunkCap.map(nextCap ->
+                            EncryptedCapability.create(newSubfoldersKey, ourNewPointer.relativise(nextCap))));
             // re add children
 
-            List<RelativeCapability> children = existing.getChildren(pointer.capability.rBaseKey);
+            List<RelativeCapability> children = existing.getDirectChildren(pointer.capability.rBaseKey);
             return newDirAccess.addChildrenAndCommit(children, ourNewPointer, entryWriter, network, random)
                     .thenCompose(updatedDirAccess -> {
                         RetrievedCapability ourNewRetrievedPointer = new RetrievedCapability(ourNewPointer, updatedDirAccess);
                         FileWrapper theNewUs = new FileWrapper(ourNewRetrievedPointer, entryWriter, ownername);
 
                         // clean all subtree keys except file dataKeys (lazily re-key and re-encrypt them)
-                        return getChildren(network).thenCompose(childFiles -> {
+                        return getDirectChildren(network).thenCompose(childFiles -> {
                             List<CompletableFuture<Pair<RetrievedCapability, RetrievedCapability>>> cleanedChildren = childFiles.stream()
                                     .map(child -> child.makeDirty(false, network, random, theNewUs,
                                             Optional.empty())
@@ -220,15 +226,14 @@ public class FileWrapper {
                                                 CompletableFuture.completedFuture(null))
                                                 .thenApply(x -> theNewUs));
                     }).thenCompose(updated -> {
-                        Optional<byte[]> nextChunkMapKey = existing.getNextChunkLocation(cap.rBaseKey);
                         if (! nextChunkMapKey.isPresent())
                             return CompletableFuture.completedFuture(updated);
-                        WritableAbsoluteCapability nextChunkCap = cap.withMapKey(nextChunkMapKey.get());
-                        return network.getMetadata(nextChunkCap.getLocation())
+
+                        return network.getMetadata(nextChunkCap.get().getLocation())
                                 .thenCompose(mOpt -> {
                                     if (! mOpt.isPresent())
                                         return CompletableFuture.completedFuture(updated);
-                                    return new FileWrapper(new RetrievedCapability(nextChunkCap, mOpt.get()), entryWriter, ownername)
+                                    return new FileWrapper(new RetrievedCapability(nextChunkCap.get(), mOpt.get()), entryWriter, ownername)
                                             .makeDirty(false, network, random, parent, Optional.of(newSubfoldersKey))
                                             .thenApply(x -> updated);
                                 });
@@ -392,6 +397,23 @@ public class FileWrapper {
         throw new IllegalStateException("Unreadable FileWrapper!");
     }
 
+    public CompletableFuture<Set<FileWrapper>> getDirectChildren(NetworkAccess network) {
+        ensureUnmodified();
+        if (globalRoot.isPresent())
+            return globalRoot.get().getChildren("/", network);
+        if (isReadable()) {
+            Optional<SigningPrivateKeyAndPublicHash> childsEntryWriter = pointer.capability.wBaseKey
+                    .map(wBase -> pointer.fileAccess.getSigner(wBase, entryWriter));
+            return retrieveDirectChildren(network).thenApply(childrenRFPs -> {
+                Set<FileWrapper> newChildren = childrenRFPs.stream()
+                        .map(x -> new FileWrapper(x, childsEntryWriter, ownername))
+                        .collect(Collectors.toSet());
+                return newChildren.stream().collect(Collectors.toSet());
+            });
+        }
+        throw new IllegalStateException("Unreadable FileWrapper!");
+    }
+
     public CompletableFuture<Optional<FileWrapper>> getChild(String name, NetworkAccess network) {
         return getChildren(network)
                 .thenApply(children -> children.stream().filter(f -> f.getName().equals(name)).findAny());
@@ -402,6 +424,14 @@ public class FileWrapper {
 
         if (isReadable())
             return ((DirAccess) fileAccess).getChildren(network, pointer.capability);
+        throw new IllegalStateException("No credentials to retrieve children!");
+    }
+
+    private CompletableFuture<Set<RetrievedCapability>> retrieveDirectChildren(NetworkAccess network) {
+        CryptreeNode fileAccess = pointer.fileAccess;
+
+        if (isReadable())
+            return ((DirAccess) fileAccess).getDirectChildren(network, pointer.capability);
         throw new IllegalStateException("No credentials to retrieve children!");
     }
 

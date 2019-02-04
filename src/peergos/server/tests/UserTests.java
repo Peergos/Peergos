@@ -447,7 +447,7 @@ public abstract class UserTests {
 
         FileWrapper home = context.getByPath(Paths.get(username).toString()).get().get();
         RetrievedCapability homePointer = home.getPointer();
-        List<RelativeCapability> children = ((DirAccess) homePointer.fileAccess).getChildren(homePointer.capability.rBaseKey);
+        List<RelativeCapability> children = ((DirAccess) homePointer.fileAccess).getDirectChildren(homePointer.capability.rBaseKey);
         for (RelativeCapability child : children) {
             Assert.assertTrue("child pointer is minimal",
                     ! child.writer.isPresent() && child.wBaseKeyLink.isPresent());

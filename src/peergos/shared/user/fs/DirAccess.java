@@ -160,7 +160,7 @@ public class DirAccess implements CryptreeNode {
                 properties, children, moreFolderContents, writerLink);
     }
 
-    public List<RelativeCapability> getChildren(SymmetricKey baseKey) {
+    public List<RelativeCapability> getDirectChildren(SymmetricKey baseKey) {
         return children.decrypt(baseKey, DirAccess::parseChildLinks);
     }
 
@@ -219,7 +219,7 @@ public class DirAccess implements CryptreeNode {
                                                              NetworkAccess network,
                                                              SafeRandom random) {
         // Make sure subsequent blobs use a different transaction to obscure linkage of different parts of this dir
-        List<RelativeCapability> children = getChildren(us.rBaseKey);
+        List<RelativeCapability> children = getDirectChildren(us.rBaseKey);
         if (children.size() + targetCAPs.size() > MAX_CHILD_LINKS_PER_BLOB) {
             return getNextMetablob(us, network).thenCompose(nextMetablob -> {
                 if (nextMetablob.size() >= 1) {
@@ -234,7 +234,7 @@ public class DirAccess implements CryptreeNode {
                     return addChildrenAndCommit(addToUs, us, entryWriter, network, random)
                             .thenCompose(newUs -> {
                                 // create and upload new metadata blob
-                                SymmetricKey nextSubfoldersKey = SymmetricKey.random();
+                                SymmetricKey nextSubfoldersKey = us.rBaseKey;
                                 SymmetricKey ourParentKey = base2parent.target(us.rBaseKey);
                                 RelativeCapability parentCap = parentLink == null ? null : parentLink.toCapability(ourParentKey);
                                 DirAccess next = DirAccess.create(MaybeMultihash.empty(), nextSubfoldersKey, null, Optional.empty(), FileProperties.EMPTY,
@@ -310,7 +310,7 @@ public class DirAccess implements CryptreeNode {
         Set<Location> locsToRemove = childrenToRemove.stream()
                 .map(r -> r.capability.getLocation())
                 .collect(Collectors.toSet());
-        List<RelativeCapability> newSubfolders = getChildren(ourPointer.rBaseKey).stream()
+        List<RelativeCapability> newSubfolders = getDirectChildren(ourPointer.rBaseKey).stream()
                 .filter(e -> ! locsToRemove.contains(e.toAbsolute(ourPointer).getLocation()))
                 .collect(Collectors.toList());
         return IpfsTransaction.call(ourPointer.owner,
@@ -319,11 +319,19 @@ public class DirAccess implements CryptreeNode {
                 network.dhtClient);
     }
 
+    public CompletableFuture<Set<RetrievedCapability>> getDirectChildren(NetworkAccess network,
+                                                                         AbsoluteCapability us) {
+        return network.retrieveAllMetadata(getDirectChildren(us.rBaseKey).stream()
+                .map(c -> c.toAbsolute(us))
+                .collect(Collectors.toList()))
+                .thenApply(HashSet::new);
+    }
+
     // returns [RetrievedCapability]
     public CompletableFuture<Set<RetrievedCapability>> getChildren(NetworkAccess network,
-                                                                   AbsoluteCapability us) {
+                                                                         AbsoluteCapability us) {
         CompletableFuture<List<RetrievedCapability>> childrenFuture =
-                network.retrieveAllMetadata(getChildren(us.rBaseKey).stream()
+                network.retrieveAllMetadata(getDirectChildren(us.rBaseKey).stream()
                         .map(c -> c.toAbsolute(us))
                         .collect(Collectors.toList()));
 
@@ -352,14 +360,14 @@ public class DirAccess implements CryptreeNode {
     }
 
     public Set<Location> getChildrenLocations(AbsoluteCapability us) {
-        return getChildren(us.rBaseKey).stream()
+        return getDirectChildren(us.rBaseKey).stream()
                 .map(cap -> cap.getLocation(us.owner, us.writer))
                 .collect(Collectors.toSet());
     }
 
     @Override
     public Set<AbsoluteCapability> getChildrenCapabilities(AbsoluteCapability us) {
-        return getChildren(us.rBaseKey).stream()
+        return getDirectChildren(us.rBaseKey).stream()
                 .map(cap -> cap.toAbsolute(us))
                 .collect(Collectors.toSet());
     }
