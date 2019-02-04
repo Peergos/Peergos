@@ -169,17 +169,17 @@ public class FileWrapper {
      * @return The updated version of this file/directory
      * @throws IOException
      */
-    public CompletableFuture<FileWrapper> makeDirty(NetworkAccess network, SafeRandom random, FileWrapper parent) {
-        return makeDirty(true, network, random, parent, Optional.empty());
+    public CompletableFuture<FileWrapper> rotateReadKeys(NetworkAccess network, SafeRandom random, FileWrapper parent) {
+        return rotateReadKeys(true, network, random, parent, Optional.empty());
     }
 
-    private CompletableFuture<FileWrapper> makeDirty(boolean updateParent,
-                                                     NetworkAccess network,
-                                                     SafeRandom random,
-                                                     FileWrapper parent,
-                                                     Optional<SymmetricKey> newBaseKey) {
+    private CompletableFuture<FileWrapper> rotateReadKeys(boolean updateParent,
+                                                          NetworkAccess network,
+                                                          SafeRandom random,
+                                                          FileWrapper parent,
+                                                          Optional<SymmetricKey> newBaseKey) {
         if (!isWritable())
-            throw new IllegalStateException("You cannot mark a file as dirty without write access!");
+            throw new IllegalStateException("You cannot rotate read keys without write access!");
         WritableAbsoluteCapability cap = writableFilePointer();
         if (isDirectory()) {
             // create a new rBaseKey == subfoldersKey and make all descendants dirty
@@ -210,7 +210,7 @@ public class FileWrapper {
                         // clean all subtree keys except file dataKeys (lazily re-key and re-encrypt them)
                         return getDirectChildren(network).thenCompose(childFiles -> {
                             List<CompletableFuture<Pair<RetrievedCapability, RetrievedCapability>>> cleanedChildren = childFiles.stream()
-                                    .map(child -> child.makeDirty(false, network, random, theNewUs,
+                                    .map(child -> child.rotateReadKeys(false, network, random, theNewUs,
                                             Optional.empty())
                                             .thenApply(updated -> new Pair<>(child.pointer, updated.pointer)))
                                     .collect(Collectors.toList());
@@ -234,7 +234,7 @@ public class FileWrapper {
                                     if (! mOpt.isPresent())
                                         return CompletableFuture.completedFuture(updated);
                                     return new FileWrapper(new RetrievedCapability(nextChunkCap.get(), mOpt.get()), entryWriter, ownername)
-                                            .makeDirty(false, network, random, parent, Optional.of(newSubfoldersKey))
+                                            .rotateReadKeys(false, network, random, parent, Optional.of(newSubfoldersKey))
                                             .thenApply(x -> updated);
                                 });
                     }).thenApply(x -> {
@@ -256,7 +256,7 @@ public class FileWrapper {
                                     if (! mOpt.isPresent())
                                         return CompletableFuture.completedFuture(updated);
                                     return new FileWrapper(new RetrievedCapability(nextChunkCap, mOpt.get()), entryWriter, ownername)
-                                            .makeDirty(false, network, random, parent, Optional.of(baseReadKey))
+                                            .rotateReadKeys(false, network, random, parent, Optional.of(baseReadKey))
                                             .thenApply(x -> updated);
                                 });
                     }).thenCompose(newFileAccess -> {

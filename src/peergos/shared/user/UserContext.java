@@ -856,7 +856,7 @@ public class UserContext {
             FileWrapper toUnshare = opt.orElseThrow(() -> new IllegalStateException("Specified un-shareWith path " + absolutePathString + " does not exist"));            // now change to new base keys, clean some keys and mark others as dirty
             return getByPath(path.getParent().toString())
                     .thenCompose(parent ->
-                            toUnshare.makeDirty(network, crypto.random, parent.get())
+                            toUnshare.rotateReadKeys(network, crypto.random, parent.get())
                                     .thenCompose(markedDirty -> {
                                         sharedWithCache.removeSharedWith(SharedWithCache.Access.WRITE, absolutePathString, writersToRemove);
                                         return shareWriteAccessWith(path, sharedWithCache.getSharedWith(SharedWithCache.Access.WRITE, absolutePathString));
@@ -872,7 +872,7 @@ public class UserContext {
             // now change to new base keys, clean some keys and mark others as dirty
             return getByPath(path.getParent().toString())
                     .thenCompose(parent ->
-                            toUnshare.makeDirty(network, crypto.random, parent.get())
+                            toUnshare.rotateReadKeys(network, crypto.random, parent.get())
                                     .thenCompose(markedDirty -> {
                                         sharedWithCache.removeSharedWith(SharedWithCache.Access.READ, absolutePathString, readersToRemove);
                                         return shareReadAccessWith(path, sharedWithCache.getSharedWith(SharedWithCache.Access.READ, absolutePathString));
