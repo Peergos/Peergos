@@ -8,6 +8,7 @@ import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.fs.cryptree.*;
+import peergos.shared.util.*;
 
 import java.time.*;
 import java.util.*;
@@ -283,23 +284,35 @@ public class DirAccess implements CryptreeNode {
                                                         RetrievedCapability modified,
                                                         NetworkAccess network,
                                                         SafeRandom random) {
-        return removeChild(original, ourPointer, entryWriter, network)
+        return removeChildren(Arrays.asList(original), ourPointer, entryWriter, network)
                 .thenCompose(res ->
-                        res.addChildAndCommit(ourPointer.relativise((WritableAbsoluteCapability) modified.capability),
-                                ourPointer, entryWriter, network, random));
+                        res.addChildAndCommit(ourPointer.relativise(modified.capability), ourPointer, entryWriter,
+                                network, random));
     }
 
-    public CompletableFuture<DirAccess> removeChild(RetrievedCapability childRetrievedPointer,
-                                                    WritableAbsoluteCapability ourPointer,
-                                                    Optional<SigningPrivateKeyAndPublicHash> entryWriter,
-                                                    NetworkAccess network) {
-        List<RelativeCapability> newSubfolders = getChildren(ourPointer.rBaseKey).stream().filter(e -> {
-            boolean keep = true;
-            if (Arrays.equals(e.getMapKey(), childRetrievedPointer.capability.getMapKey()))
-                if (Objects.equals(e.writer.orElse(ourPointer.writer), childRetrievedPointer.capability.writer))
-                        keep = false;
-            return keep;
-        }).collect(Collectors.toList());
+    public CompletableFuture<DirAccess> updateChildLinks(WritableAbsoluteCapability ourPointer,
+                                                        Optional<SigningPrivateKeyAndPublicHash> entryWriter,
+                                                        Collection<Pair<RetrievedCapability, RetrievedCapability>> childCasPairs,
+                                                        NetworkAccess network,
+                                                        SafeRandom random) {
+        return removeChildren(childCasPairs.stream()
+                .map(p -> p.left)
+                .collect(Collectors.toList()), ourPointer, entryWriter, network)
+                .thenCompose(res -> res.addChildrenAndCommit(childCasPairs.stream()
+                .map(p -> ourPointer.relativise(p.right.capability))
+                .collect(Collectors.toList()), ourPointer, entryWriter, network, random));
+    }
+
+    public CompletableFuture<DirAccess> removeChildren(List<RetrievedCapability> childrenToRemove,
+                                                       WritableAbsoluteCapability ourPointer,
+                                                       Optional<SigningPrivateKeyAndPublicHash> entryWriter,
+                                                       NetworkAccess network) {
+        Set<Location> locsToRemove = childrenToRemove.stream()
+                .map(r -> r.capability.getLocation())
+                .collect(Collectors.toSet());
+        List<RelativeCapability> newSubfolders = getChildren(ourPointer.rBaseKey).stream()
+                .filter(e -> ! locsToRemove.contains(e.toAbsolute(ourPointer).getLocation()))
+                .collect(Collectors.toList());
         return IpfsTransaction.call(ourPointer.owner,
                 tid -> withChildren(encryptChildren(ourPointer.rBaseKey, newSubfolders))
                         .commit(ourPointer, entryWriter, network, tid),

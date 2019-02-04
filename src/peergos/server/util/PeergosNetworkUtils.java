@@ -215,6 +215,16 @@ public class PeergosNetworkUtils {
                 folder.generateChildLocationsFromSize(originalFileContents.length, sharer.crypto.random)).get();
         String originalFilePath = sharer.username + "/" + folderName + "/" + filename;
 
+        for (int i=0; i< 20; i++) {
+            sharer.getByPath(path).join().get()
+                    .mkdir("subdir"+i, sharer.network, false, sharer.crypto.random).join();
+        }
+
+        Set<String> childNames = sharer.getByPath(path).join().get().getChildren(sharer.network).join()
+                .stream()
+                .map(f -> f.getName())
+                .collect(Collectors.toSet());
+
         // file is uploaded, do the actual sharing
         boolean finished = sharer.shareReadAccessWithAll(updatedFolder, shareeUsers.stream().map(c -> c.username).collect(Collectors.toSet())).get();
 
@@ -275,6 +285,11 @@ public class PeergosNetworkUtils {
 
                 FileWrapper sharedFile = otherUser.getByPath(sharer.username + "/" + folderName + "/" + filename).get().get();
                 checkFileContents(newFileContents, sharedFile, otherUser);
+                Set<String> sharedChildNames = sharedFolder.get().getChildren(otherUser.network).join()
+                        .stream()
+                        .map(f -> f.getName())
+                        .collect(Collectors.toSet());
+                Assert.assertTrue("Correct children", sharedChildNames.equals(childNames));
             }
         }
     }

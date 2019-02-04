@@ -149,24 +149,35 @@ public class FileWrapper {
         modified.set(true);
     }
 
+    public CompletableFuture<FileWrapper> updateChildLinks(
+            Collection<Pair<RetrievedCapability, RetrievedCapability>> childCases,
+            NetworkAccess network,
+            SafeRandom random) {
+        return ((DirAccess) pointer.fileAccess)
+                .updateChildLinks((WritableAbsoluteCapability) pointer.capability, entryWriter,
+                        childCases, network, random)
+                .thenApply(committedCryptree ->
+                        new FileWrapper(pointer.withCryptree(committedCryptree), entryWriter, ownername));
+    }
+
     /**
      * Marks a file/directory and all its descendants as dirty. Directories are immediately cleaned,
      * but files have all their keys except the actual data key cleaned. That is cleaned lazily, the next time it is modified
      *
      * @param network
      * @param parent
-     * @return
+     * @return The updated version of this file/directory
      * @throws IOException
      */
     public CompletableFuture<FileWrapper> makeDirty(NetworkAccess network, SafeRandom random, FileWrapper parent) {
         return makeDirty(true, network, random, parent, Optional.empty());
     }
 
-    public CompletableFuture<FileWrapper> makeDirty(boolean isFirstChunk,
-                                                    NetworkAccess network,
-                                                    SafeRandom random,
-                                                    FileWrapper parent,
-                                                    Optional<SymmetricKey> newBaseKey) {
+    private CompletableFuture<FileWrapper> makeDirty(boolean updateParent,
+                                                     NetworkAccess network,
+                                                     SafeRandom random,
+                                                     FileWrapper parent,
+                                                     Optional<SymmetricKey> newBaseKey) {
         if (!isWritable())
             throw new IllegalStateException("You cannot mark a file as dirty without write access!");
         WritableAbsoluteCapability cap = writableFilePointer();
@@ -192,18 +203,22 @@ public class FileWrapper {
 
                         // clean all subtree keys except file dataKeys (lazily re-key and re-encrypt them)
                         return getChildren(network).thenCompose(childFiles -> {
-                            List<CompletableFuture<FileWrapper>> cleanedChildren = childFiles.stream()
-                                    .map(child -> child.makeDirty(network, random, theNewUs))
+                            List<CompletableFuture<Pair<RetrievedCapability, RetrievedCapability>>> cleanedChildren = childFiles.stream()
+                                    .map(child -> child.makeDirty(false, network, random, theNewUs,
+                                            Optional.empty())
+                                            .thenApply(updated -> new Pair<>(child.pointer, updated.pointer)))
                                     .collect(Collectors.toList());
 
                             return Futures.combineAll(cleanedChildren);
-                        }).thenCompose(finished ->
-                                // update pointer from parent to us
-                                ((DirAccess) parent.pointer.fileAccess)
-                                        .updateChildLink((WritableAbsoluteCapability) parent.pointer.capability,
-                                                parent.entryWriter, this.pointer,
-                                                ourNewRetrievedPointer, network, random)
-                                        .thenApply(x -> theNewUs));
+                        }).thenCompose(childrenCases -> theNewUs.updateChildLinks(childrenCases, network, random))
+                                .thenCompose(finished ->
+                                        // update pointer from parent to us
+                                        (updateParent ? ((DirAccess) parent.pointer.fileAccess)
+                                                .updateChildLink((WritableAbsoluteCapability) parent.pointer.capability,
+                                                        parent.entryWriter, this.pointer,
+                                                        ourNewRetrievedPointer, network, random) :
+                                                CompletableFuture.completedFuture(null))
+                                                .thenApply(x -> theNewUs));
                     }).thenCompose(updated -> {
                         Optional<byte[]> nextChunkMapKey = existing.getNextChunkLocation(cap.rBaseKey);
                         if (! nextChunkMapKey.isPresent())
@@ -242,7 +257,7 @@ public class FileWrapper {
                     }).thenCompose(newFileAccess -> {
                         RetrievedCapability newPointer = new RetrievedCapability(this.pointer.capability.withBaseKey(baseReadKey), newFileAccess);
                         // only update link from parent folder to file if we are the first chunk
-                        return (isFirstChunk ?
+                        return (updateParent ?
                                 ((DirAccess) parent.pointer.fileAccess)
                                         .updateChildLink(parent.writableFilePointer(), parent.entryWriter, pointer,
                                                 newPointer, network, random) :
@@ -270,7 +285,7 @@ public class FileWrapper {
     public CompletableFuture<FileWrapper> removeChild(FileWrapper child, NetworkAccess network) {
         setModified();
         return ((DirAccess) pointer.fileAccess)
-                .removeChild(child.getPointer(), writableFilePointer(), entryWriter, network)
+                .removeChildren(Arrays.asList(child.getPointer()), writableFilePointer(), entryWriter, network)
                 .thenApply(updated -> new FileWrapper(globalRoot,
                         new RetrievedCapability(getPointer().capability, updated), entryWriter, ownername));
     }
