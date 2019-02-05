@@ -113,6 +113,11 @@ public class DirAccess implements CryptreeNode {
                 properties, children, moreFolderContents, Optional.of(newWriterLink));
     }
 
+    public DirAccess withWriterLink(Optional<SymmetricLinkToSigner> newWriterLink) {
+        return new DirAccess(lastCommittedHash, version, base2parent, parent2meta, parentLink,
+                properties, children, moreFolderContents, newWriterLink);
+    }
+
     @Override
     public DirAccess withParentLink(EncryptedCapability newParentLink) {
         return new DirAccess(lastCommittedHash, version, base2parent, parent2meta, newParentLink,
@@ -284,6 +289,19 @@ public class DirAccess implements CryptreeNode {
             return CompletableFuture.completedFuture(Collections.emptyList());
         RelativeCapability cap = moreFolderContents.get().toCapability(us.rBaseKey);
         return network.retrieveAllMetadata(Arrays.asList(cap.toAbsolute(us)));
+    }
+
+    public CompletableFuture<DirAccess> rotateBaseWriteKey(WritableAbsoluteCapability us,
+                                                            Optional<SigningPrivateKeyAndPublicHash> entryWriter,
+                                                            SymmetricKey newBaseWriteKey,
+                                                            NetworkAccess network) {
+        Optional<SymmetricLinkToSigner> updatedWriter = writerLink.map(toSigner -> SymmetricLinkToSigner.fromPair(newBaseWriteKey, toSigner.target(us.wBaseKey.get())));
+        DirAccess da = this.withWriterLink(updatedWriter);
+
+        return IpfsTransaction.call(us.owner, tid ->
+                network.uploadChunk(da, us.owner, us.getMapKey(), getSigner(us.wBaseKey.get(), entryWriter), tid)
+                        .thenApply(x -> da),
+                network.dhtClient);
     }
 
     public CompletableFuture<DirAccess> updateChildLink(WritableAbsoluteCapability ourPointer,

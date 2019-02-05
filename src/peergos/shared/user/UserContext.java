@@ -863,7 +863,7 @@ public class UserContext {
             return getByPath(path.getParent().toString())
                     .thenCompose(parent -> addOwnedKeyToParent(parent.get().owner(), parent.get().signingPair(),
                             SigningKeyPair.random(crypto.random, crypto.signer), network)
-                            .thenCompose(newSigner -> toUnshare.rotateWriteKeys(network, crypto, parent.get())
+                            .thenCompose(newSigner -> toUnshare.rotateWriteKeys(parent.get(), network, crypto.random)
                                     .thenCompose(pair -> pair.left.changeSigningKey(newSigner, pair.right, network, crypto.random))
                                     .thenCompose(pair -> pair.left.rotateReadKeys(network, crypto.random, pair.right))
                                     .thenCompose(x -> removeOwnedKeyFromParent(parent.get().owner(),

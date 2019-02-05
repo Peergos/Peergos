@@ -64,8 +64,13 @@ public class MultiUserTests {
     }
 
     @Test
-    public void shareAndUnshareFileForReadAccess() throws Exception {
-        PeergosNetworkUtils.shareAndUnshareFileForReadAccess(network, network, userCount, random);
+    public void grantAndRevokeFileReadAccess() throws Exception {
+        PeergosNetworkUtils.grantAndRevokeFileReadAccess(network, network, userCount, random);
+    }
+
+    @Test
+    public void grantAndRevokeFileWriteAccess() throws Exception {
+        PeergosNetworkUtils.grantAndRevokeFileWriteAccess(network, network, userCount, random);
     }
 
     @Test

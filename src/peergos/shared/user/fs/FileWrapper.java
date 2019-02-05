@@ -244,7 +244,7 @@ public class FileWrapper {
         } else {
             // create a new rBaseKey == parentKey
             SymmetricKey baseReadKey = newBaseKey.orElseGet(SymmetricKey::random);
-            return ((FileAccess) pointer.fileAccess).markDirty(writableFilePointer(), entryWriter,
+            return ((FileAccess) pointer.fileAccess).rotateBaseReadKey(writableFilePointer(), entryWriter,
                     cap.relativise(parent.getMinimalReadPointer()), baseReadKey, network)
                     .thenCompose(updated -> {
                         Optional<byte[]> nextChunkMapKey = pointer.fileAccess.getNextChunkLocation(cap.rBaseKey);
@@ -277,17 +277,79 @@ public class FileWrapper {
 
     /**
      * Change all the symmetric writing keys for this file/dir and its subtree.
-     * @param network
-     * @param crypto
      * @param parent
+     * @param network
+     * @param random
      * @return The updated version of this file/directory and its parent
      */
-    public CompletableFuture<Pair<FileWrapper, FileWrapper>> rotateWriteKeys(NetworkAccess network, Crypto crypto, FileWrapper parent) {
+    public CompletableFuture<Pair<FileWrapper, FileWrapper>> rotateWriteKeys(FileWrapper parent,
+                                                                             NetworkAccess network,
+                                                                             SafeRandom random) {
+        return rotateWriteKeys(true, parent, Optional.empty(), network, random);
+    }
+
+    private CompletableFuture<Pair<FileWrapper, FileWrapper>> rotateWriteKeys(boolean updateParent,
+                                                                             FileWrapper parent,
+                                                                             Optional<SymmetricKey> suppliedBaseWriteKey,
+                                                                             NetworkAccess network,
+                                                                             SafeRandom random) {
         if (!isWritable())
             throw new IllegalStateException("You cannot rotate write keys without write access!");
         WritableAbsoluteCapability cap = writableFilePointer();
+        SymmetricKey newBaseWriteKey = suppliedBaseWriteKey.orElseGet(SymmetricKey::random);
 
-        throw new IllegalStateException("Unimplemented!");
+        if (isDirectory()) {
+            DirAccess existing = (DirAccess) pointer.fileAccess;
+            Optional<SymmetricLinkToSigner> updatedWriter = existing.getWriterLink()
+                    .map(toSigner -> SymmetricLinkToSigner.fromPair(newBaseWriteKey, toSigner.target(cap.wBaseKey.get())));
+            DirAccess updatedDirAccess = existing.withWriterLink(updatedWriter);
+            WritableAbsoluteCapability ourNewPointer = cap.withBaseWriteKey(newBaseWriteKey);
+            Optional<byte[]> nextChunkMapKey = existing.getNextChunkLocation(cap.rBaseKey);
+            Optional<WritableAbsoluteCapability> nextChunkCap = nextChunkMapKey.map(cap::withMapKey);
+
+            RetrievedCapability ourNewRetrievedPointer = new RetrievedCapability(ourNewPointer, updatedDirAccess);
+            FileWrapper theNewUs = new FileWrapper(ourNewRetrievedPointer, entryWriter, ownername);
+
+            // clean all subtree write keys
+            return getDirectChildren(network).thenCompose(childFiles -> {
+                List<CompletableFuture<Pair<RetrievedCapability, RetrievedCapability>>> cleanedChildren = childFiles.stream()
+                        .map(child -> child.rotateWriteKeys(false, theNewUs, Optional.empty(), network, random)
+                                .thenApply(updated -> new Pair<>(child.pointer, updated.left.pointer)))
+                        .collect(Collectors.toList());
+
+                return Futures.combineAll(cleanedChildren);
+            }).thenCompose(childrenCases -> theNewUs.updateChildLinks(childrenCases, network, random))
+                    .thenCompose(finished ->
+                            // update pointer from parent to us
+                            (updateParent ? ((DirAccess) parent.pointer.fileAccess)
+                                    .updateChildLink((WritableAbsoluteCapability) parent.pointer.capability,
+                                            parent.entryWriter, this.pointer,
+                                            ourNewRetrievedPointer, network, random)
+                                    .thenApply(parentDa -> new FileWrapper(parent.pointer.withCryptree(parentDa), parent.entryWriter, parent.ownername)):
+                                    CompletableFuture.completedFuture(parent))
+                                    .thenApply(newParent -> new Pair<>(theNewUs, newParent)))
+                    .thenCompose(updatedPair -> {
+                        if (! nextChunkMapKey.isPresent())
+                            return CompletableFuture.completedFuture(updatedPair);
+
+                        return network.getMetadata(nextChunkCap.get().getLocation())
+                                .thenCompose(mOpt -> {
+                                    if (! mOpt.isPresent())
+                                        return CompletableFuture.completedFuture(updatedPair);
+                                    return new FileWrapper(new RetrievedCapability(nextChunkCap.get(), mOpt.get()), entryWriter, ownername)
+                                            .rotateWriteKeys(false, parent, Optional.of(newBaseWriteKey), network, random)
+                                            .thenApply(x -> updatedPair);
+                                });
+                    }).thenApply(x -> {
+                        setModified();
+                        return x;
+                    });
+        } else {
+            FileAccess existing = (FileAccess) pointer.fileAccess;
+            return existing.rotateBaseWriteKey(cap, entryWriter, newBaseWriteKey, network)
+                    .thenApply(updatedFa -> new Pair<>(
+                            new FileWrapper(pointer.withCryptree(updatedFa), entryWriter, ownername), parent));
+        }
     }
 
     public CompletableFuture<Boolean> hasChildWithName(String name, NetworkAccess network) {

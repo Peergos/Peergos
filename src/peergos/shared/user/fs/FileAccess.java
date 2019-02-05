@@ -131,11 +131,11 @@ public class FileAccess implements CryptreeNode {
                 network.dhtClient);
     }
 
-    public CompletableFuture<FileAccess> markDirty(WritableAbsoluteCapability us,
-                                                   Optional<SigningPrivateKeyAndPublicHash> entryWriter,
-                                                   RelativeCapability toParent,
-                                                   SymmetricKey newBaseKey,
-                                                   NetworkAccess network) {
+    public CompletableFuture<FileAccess> rotateBaseReadKey(WritableAbsoluteCapability us,
+                                                           Optional<SigningPrivateKeyAndPublicHash> entryWriter,
+                                                           RelativeCapability toParent,
+                                                           SymmetricKey newBaseKey,
+                                                           NetworkAccess network) {
         // keep the same data key, just marked as dirty
         SymmetricKey dataKey = this.getDataKey(us.rBaseKey).makeDirty();
         SymmetricLink newParentToData = SymmetricLink.fromPair(newBaseKey, dataKey);
@@ -144,6 +144,21 @@ public class FileAccess implements CryptreeNode {
         PaddedCipherText newProperties = PaddedCipherText.build(newBaseKey, getProperties(us.rBaseKey), META_DATA_PADDING_BLOCKSIZE);
         FileAccess fa = new FileAccess(committedHash(), version, newParentToData, newProperties,
                 this.retriever, newParentLink, writerLink);
+        return IpfsTransaction.call(us.owner, tid ->
+                network.uploadChunk(fa, us.owner, us.getMapKey(), getSigner(us.wBaseKey.get(), entryWriter), tid)
+                        .thenApply(x -> fa),
+                network.dhtClient);
+    }
+
+    public CompletableFuture<FileAccess> rotateBaseWriteKey(WritableAbsoluteCapability us,
+                                                            Optional<SigningPrivateKeyAndPublicHash> entryWriter,
+                                                            SymmetricKey newBaseWriteKey,
+                                                            NetworkAccess network) {
+        if (! writerLink.isPresent())
+            return CompletableFuture.completedFuture(this);
+
+        SigningPrivateKeyAndPublicHash signer = writerLink.get().target(us.wBaseKey.get());
+        FileAccess fa = this.withWriterLink(SymmetricLinkToSigner.fromPair(newBaseWriteKey, signer));
         return IpfsTransaction.call(us.owner, tid ->
                 network.uploadChunk(fa, us.owner, us.getMapKey(), getSigner(us.wBaseKey.get(), entryWriter), tid)
                         .thenApply(x -> fa),
