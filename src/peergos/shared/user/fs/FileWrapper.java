@@ -815,7 +815,7 @@ public class FileWrapper {
                                         endIndex > currentSize ? endIndex : currentSize,
                                         LocalDateTime.now(), childProps.isHidden, childProps.thumbnail);
 
-                                CompletableFuture<Multihash> chunkUploaded = FileUploader.uploadChunk(signingPair(),
+                                CompletableFuture<Multihash> chunkUploaded = FileUploader.uploadChunk(child.signingPair(),
                                         newProps, getLocation(), us.getParentKey(), baseKey, located,
                                         fragmenter,
                                         nextChunkLocation, writerLink, network, monitor);

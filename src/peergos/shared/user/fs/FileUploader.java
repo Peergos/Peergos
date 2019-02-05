@@ -120,6 +120,8 @@ public class FileUploader implements AutoCloseable {
                                                            Optional<SymmetricLinkToSigner> writerLink,
                                                            NetworkAccess network,
                                                            ProgressConsumer<Long> monitor) {
+        if (! writer.publicKeyHash.equals(chunk.location.writer))
+            throw new IllegalStateException("Trying to write a chunk to the wrong signing key space!");
         return chunk.chunk.encrypt().thenCompose(encryptedChunk -> {
             List<Fragment> fragments = encryptedChunk.generateFragments(fragmenter);
             LOG.info(StringUtils.format("Uploading chunk with %d fragments\n", fragments.size()));
