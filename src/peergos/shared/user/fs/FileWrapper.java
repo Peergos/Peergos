@@ -275,6 +275,21 @@ public class FileWrapper {
         }
     }
 
+    /**
+     * Change all the symmetric writing keys for this file/dir and its subtree.
+     * @param network
+     * @param crypto
+     * @param parent
+     * @return The updated version of this file/directory and its parent
+     */
+    public CompletableFuture<Pair<FileWrapper, FileWrapper>> rotateWriteKeys(NetworkAccess network, Crypto crypto, FileWrapper parent) {
+        if (!isWritable())
+            throw new IllegalStateException("You cannot rotate write keys without write access!");
+        WritableAbsoluteCapability cap = writableFilePointer();
+
+        throw new IllegalStateException("Unimplemented!");
+    }
+
     public CompletableFuture<Boolean> hasChildWithName(String name, NetworkAccess network) {
         ensureUnmodified();
         return getChildren(network)
@@ -942,7 +957,15 @@ public class FileWrapper {
         });
     }
 
-    public CompletableFuture<FileWrapper> changeSigningKey(SigningPrivateKeyAndPublicHash signer,
+    /**
+     * Move this file/dir and subtree to a new signing key pair.
+     * @param signer
+     * @param parent
+     * @param network
+     * @param random
+     * @return The updated version of this file/dir and its parent
+     */
+    public CompletableFuture<Pair<FileWrapper, FileWrapper>> changeSigningKey(SigningPrivateKeyAndPublicHash signer,
                                                            FileWrapper parent,
                                                            NetworkAccess network,
                                                            SafeRandom random) {
@@ -963,8 +986,9 @@ public class FileWrapper {
                                 parent.entryWriter,
                                 getPointer(),
                                 newRetrievedCapability, network, random))
-                        .thenCompose(x -> deleteAllChunks(cap, parent.signingPair(), tid, network))
-                        .thenApply(x -> new FileWrapper(newRetrievedCapability, Optional.of(signer), ownername)),
+                        .thenCompose(updatedParentDA -> deleteAllChunks(cap, parent.signingPair(), tid, network)
+                                .thenApply(x -> new FileWrapper(parent.pointer.withCryptree(updatedParentDA), parent.entryWriter, parent.ownername)))
+                        .thenApply(updatedParent -> new Pair<>(new FileWrapper(newRetrievedCapability, Optional.of(signer), ownername), updatedParent)),
                 network.dhtClient);
     }
 
