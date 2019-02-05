@@ -297,13 +297,14 @@ public class FileWrapper {
             throw new IllegalStateException("You cannot rotate write keys without write access!");
         WritableAbsoluteCapability cap = writableFilePointer();
         SymmetricKey newBaseWriteKey = suppliedBaseWriteKey.orElseGet(SymmetricKey::random);
+        WritableAbsoluteCapability ourNewPointer = cap.withBaseWriteKey(newBaseWriteKey);
 
         if (isDirectory()) {
             DirAccess existing = (DirAccess) pointer.fileAccess;
             Optional<SymmetricLinkToSigner> updatedWriter = existing.getWriterLink()
                     .map(toSigner -> SymmetricLinkToSigner.fromPair(newBaseWriteKey, toSigner.target(cap.wBaseKey.get())));
             DirAccess updatedDirAccess = existing.withWriterLink(updatedWriter);
-            WritableAbsoluteCapability ourNewPointer = cap.withBaseWriteKey(newBaseWriteKey);
+
             Optional<byte[]> nextChunkMapKey = existing.getNextChunkLocation(cap.rBaseKey);
             Optional<WritableAbsoluteCapability> nextChunkCap = nextChunkMapKey.map(cap::withMapKey);
 
@@ -348,7 +349,7 @@ public class FileWrapper {
             FileAccess existing = (FileAccess) pointer.fileAccess;
             return existing.rotateBaseWriteKey(cap, entryWriter, newBaseWriteKey, network)
                     .thenApply(updatedFa -> new Pair<>(
-                            new FileWrapper(pointer.withCryptree(updatedFa), entryWriter, ownername), parent));
+                            new FileWrapper(new RetrievedCapability(ourNewPointer, updatedFa), entryWriter, ownername), parent));
         }
     }
 
