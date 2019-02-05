@@ -327,7 +327,10 @@ public class PeergosNetworkUtils {
         FileWrapper folder = sharer.getByPath(path).get().get();
 
         // file is uploaded, do the actual sharing
-        boolean finished = sharer.shareWriteAccessWithAll(folder, shareeUsers.stream().map(c -> c.username).collect(Collectors.toSet())).get();
+        boolean finished = sharer.shareWriteAccessWithAll(folder, sharer.getUserRoot().join(),
+                shareeUsers.stream()
+                        .map(c -> c.username)
+                        .collect(Collectors.toSet())).get();
 
         // check each user can see the shared folder, and write to it
         for (UserContext sharee : shareeUsers) {
