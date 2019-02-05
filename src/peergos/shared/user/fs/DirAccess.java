@@ -67,6 +67,7 @@ public class DirAccess implements CryptreeNode {
         this.writerLink = writerLink;
     }
 
+    @Override
     public DirAccess withHash(Multihash hash) {
         return new DirAccess(MaybeMultihash.of(hash), version, base2parent, parent2meta, parentLink, properties,
                 children, moreFolderContents, writerLink);

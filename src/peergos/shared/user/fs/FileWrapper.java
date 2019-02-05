@@ -66,6 +66,8 @@ public class FileWrapper {
             SymmetricKey parentKey = this.getParentKey();
             props = pointer.fileAccess.getProperties(parentKey);
         }
+        if (isWritable() && !signingPair().publicKeyHash.equals(pointer.capability.writer))
+            throw new IllegalStateException("Invalid FileWrapper! public writing keys don't match!");
     }
 
     public FileWrapper(RetrievedCapability pointer, Optional<SigningPrivateKeyAndPublicHash> entryWriter, String ownername) {
@@ -800,6 +802,9 @@ public class FileWrapper {
                             if (rawData.length < internalEnd)
                                 rawData = Arrays.copyOfRange(rawData, 0, internalEnd);
                             byte[] raw = rawData;
+                            Optional<SymmetricLinkToSigner> writerLink = startIndex < Chunk.MAX_SIZE ?
+                                    ((FileAccess) child.pointer.fileAccess).writerLink :
+                                    Optional.empty();
 
                             return fileData.readIntoArray(raw, internalStart, internalEnd - internalStart).thenCompose(read -> {
 
@@ -813,7 +818,7 @@ public class FileWrapper {
                                 CompletableFuture<Multihash> chunkUploaded = FileUploader.uploadChunk(signingPair(),
                                         newProps, getLocation(), us.getParentKey(), baseKey, located,
                                         fragmenter,
-                                        nextChunkLocation, network, monitor);
+                                        nextChunkLocation, writerLink, network, monitor);
 
                                 return chunkUploaded.thenCompose(isUploaded -> {
                                     //update indices to be relative to next chunk
@@ -1045,14 +1050,16 @@ public class FileWrapper {
 
         return IpfsTransaction.call(owner(),
                 tid -> network.uploadChunk(newFileAccess, owner(), getPointer().capability.getMapKey(), signer, tid)
-                        .thenCompose(z -> copyAllChunks(false, cap, signer, tid, network))
+                        .thenCompose(ourNewHash -> copyAllChunks(false, cap, signer, tid, network)
                         .thenCompose(y -> ((DirAccess)parent.getPointer().fileAccess).updateChildLink(parent.writableFilePointer(),
                                 parent.entryWriter,
                                 getPointer(),
                                 newRetrievedCapability, network, random))
                         .thenCompose(updatedParentDA -> deleteAllChunks(cap, signingPair(), tid, network)
-                                .thenApply(x -> new FileWrapper(parent.pointer.withCryptree(updatedParentDA), parent.entryWriter, parent.ownername)))
-                        .thenApply(updatedParent -> new Pair<>(new FileWrapper(newRetrievedCapability, Optional.of(signer), ownername), updatedParent)),
+                                .thenApply(x -> new FileWrapper(parent.pointer
+                                        .withCryptree(updatedParentDA), parent.entryWriter, parent.ownername)))
+                        .thenApply(updatedParent -> new Pair<>(new FileWrapper(newRetrievedCapability.withHash(ourNewHash),
+                                Optional.of(signer), ownername), updatedParent))),
                 network.dhtClient);
     }
 
