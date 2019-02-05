@@ -347,6 +347,7 @@ public class FileWrapper {
                     });
         } else {
             FileAccess existing = (FileAccess) pointer.fileAccess;
+            // Only need to do the first chunk, because only those can have writer links
             return existing.rotateBaseWriteKey(cap, entryWriter, newBaseWriteKey, network)
                     .thenApply(updatedFa -> new Pair<>(
                             new FileWrapper(new RetrievedCapability(ourNewPointer, updatedFa), entryWriter, ownername), parent));
@@ -1029,9 +1030,9 @@ public class FileWrapper {
      * @return The updated version of this file/dir and its parent
      */
     public CompletableFuture<Pair<FileWrapper, FileWrapper>> changeSigningKey(SigningPrivateKeyAndPublicHash signer,
-                                                           FileWrapper parent,
-                                                           NetworkAccess network,
-                                                           SafeRandom random) {
+                                                                              FileWrapper parent,
+                                                                              NetworkAccess network,
+                                                                              SafeRandom random) {
         ensureUnmodified();
         WritableAbsoluteCapability cap = (WritableAbsoluteCapability)getPointer().capability;
         SymmetricLinkToSigner signerLink = SymmetricLinkToSigner.fromPair(cap.wBaseKey.get(), signer);
@@ -1049,7 +1050,7 @@ public class FileWrapper {
                                 parent.entryWriter,
                                 getPointer(),
                                 newRetrievedCapability, network, random))
-                        .thenCompose(updatedParentDA -> deleteAllChunks(cap, parent.signingPair(), tid, network)
+                        .thenCompose(updatedParentDA -> deleteAllChunks(cap, signingPair(), tid, network)
                                 .thenApply(x -> new FileWrapper(parent.pointer.withCryptree(updatedParentDA), parent.entryWriter, parent.ownername)))
                         .thenApply(updatedParent -> new Pair<>(new FileWrapper(newRetrievedCapability, Optional.of(signer), ownername), updatedParent)),
                 network.dhtClient);

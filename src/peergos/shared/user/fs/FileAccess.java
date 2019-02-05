@@ -106,7 +106,7 @@ public class FileAccess implements CryptreeNode {
 
     @Override
     public FileAccess withParentLink(EncryptedCapability newParentLink) {
-        return new FileAccess(MaybeMultihash.empty(), version, parent2data, properties, retriever,
+        return new FileAccess(lastCommittedHash, version, parent2data, properties, retriever,
                 newParentLink, writerLink);
     }
 
