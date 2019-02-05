@@ -8,6 +8,7 @@ import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.fs.cryptree.*;
+import peergos.shared.util.*;
 
 import java.time.*;
 import java.util.*;
@@ -27,7 +28,15 @@ public class DirAccess implements CryptreeNode {
 
     private static final int CHILDREN_LINKS_PADDING_BLOCKSIZE = 1024;
     private static final int META_DATA_PADDING_BLOCKSIZE = 16;
-    private static final int MAX_CHILD_LINKS_PER_BLOB = 500;
+    private static int MAX_CHILD_LINKS_PER_BLOB = 500;
+
+    public static synchronized void setMaxChildLinkPerBlob(int newValue) {
+        MAX_CHILD_LINKS_PER_BLOB = newValue;
+    }
+
+    public static synchronized int getMaxChildLinksPerBlob() {
+        return MAX_CHILD_LINKS_PER_BLOB;
+    }
 
     private final MaybeMultihash lastCommittedHash;
     private final int version;
@@ -159,7 +168,7 @@ public class DirAccess implements CryptreeNode {
                 properties, children, moreFolderContents, writerLink);
     }
 
-    public List<RelativeCapability> getChildren(SymmetricKey baseKey) {
+    public List<RelativeCapability> getDirectChildren(SymmetricKey baseKey) {
         return children.decrypt(baseKey, DirAccess::parseChildLinks);
     }
 
@@ -218,8 +227,8 @@ public class DirAccess implements CryptreeNode {
                                                              NetworkAccess network,
                                                              SafeRandom random) {
         // Make sure subsequent blobs use a different transaction to obscure linkage of different parts of this dir
-        List<RelativeCapability> children = getChildren(us.rBaseKey);
-        if (children.size() + targetCAPs.size() > MAX_CHILD_LINKS_PER_BLOB) {
+        List<RelativeCapability> children = getDirectChildren(us.rBaseKey);
+        if (children.size() + targetCAPs.size() > getMaxChildLinksPerBlob()) {
             return getNextMetablob(us, network).thenCompose(nextMetablob -> {
                 if (nextMetablob.size() >= 1) {
                     AbsoluteCapability nextPointer = nextMetablob.get(0).capability;
@@ -227,13 +236,13 @@ public class DirAccess implements CryptreeNode {
                     return nextBlob.addChildrenAndCommit(targetCAPs, nextPointer.toWritable(us.wBaseKey.get()), entryWriter, network, random);
                 } else {
                     // first fill this directory, then overflow into a new one
-                    int freeSlots = MAX_CHILD_LINKS_PER_BLOB - children.size();
+                    int freeSlots = getMaxChildLinksPerBlob() - children.size();
                     List<RelativeCapability> addToUs = targetCAPs.subList(0, freeSlots);
                     List<RelativeCapability> addToNext = targetCAPs.subList(freeSlots, targetCAPs.size());
                     return addChildrenAndCommit(addToUs, us, entryWriter, network, random)
                             .thenCompose(newUs -> {
                                 // create and upload new metadata blob
-                                SymmetricKey nextSubfoldersKey = SymmetricKey.random();
+                                SymmetricKey nextSubfoldersKey = us.rBaseKey;
                                 SymmetricKey ourParentKey = base2parent.target(us.rBaseKey);
                                 RelativeCapability parentCap = parentLink == null ? null : parentLink.toCapability(ourParentKey);
                                 DirAccess next = DirAccess.create(MaybeMultihash.empty(), nextSubfoldersKey, null, Optional.empty(), FileProperties.EMPTY,
@@ -283,34 +292,54 @@ public class DirAccess implements CryptreeNode {
                                                         RetrievedCapability modified,
                                                         NetworkAccess network,
                                                         SafeRandom random) {
-        return removeChild(original, ourPointer, entryWriter, network)
+        return removeChildren(Arrays.asList(original), ourPointer, entryWriter, network)
                 .thenCompose(res ->
-                        res.addChildAndCommit(ourPointer.relativise((WritableAbsoluteCapability) modified.capability),
-                                ourPointer, entryWriter, network, random));
+                        res.addChildAndCommit(ourPointer.relativise(modified.capability), ourPointer, entryWriter,
+                                network, random));
     }
 
-    public CompletableFuture<DirAccess> removeChild(RetrievedCapability childRetrievedPointer,
-                                                    WritableAbsoluteCapability ourPointer,
-                                                    Optional<SigningPrivateKeyAndPublicHash> entryWriter,
-                                                    NetworkAccess network) {
-        List<RelativeCapability> newSubfolders = getChildren(ourPointer.rBaseKey).stream().filter(e -> {
-            boolean keep = true;
-            if (Arrays.equals(e.getMapKey(), childRetrievedPointer.capability.getMapKey()))
-                if (Objects.equals(e.writer.orElse(ourPointer.writer), childRetrievedPointer.capability.writer))
-                        keep = false;
-            return keep;
-        }).collect(Collectors.toList());
+    public CompletableFuture<DirAccess> updateChildLinks(WritableAbsoluteCapability ourPointer,
+                                                        Optional<SigningPrivateKeyAndPublicHash> entryWriter,
+                                                        Collection<Pair<RetrievedCapability, RetrievedCapability>> childCasPairs,
+                                                        NetworkAccess network,
+                                                        SafeRandom random) {
+        return removeChildren(childCasPairs.stream()
+                .map(p -> p.left)
+                .collect(Collectors.toList()), ourPointer, entryWriter, network)
+                .thenCompose(res -> res.addChildrenAndCommit(childCasPairs.stream()
+                .map(p -> ourPointer.relativise(p.right.capability))
+                .collect(Collectors.toList()), ourPointer, entryWriter, network, random));
+    }
+
+    public CompletableFuture<DirAccess> removeChildren(List<RetrievedCapability> childrenToRemove,
+                                                       WritableAbsoluteCapability ourPointer,
+                                                       Optional<SigningPrivateKeyAndPublicHash> entryWriter,
+                                                       NetworkAccess network) {
+        Set<Location> locsToRemove = childrenToRemove.stream()
+                .map(r -> r.capability.getLocation())
+                .collect(Collectors.toSet());
+        List<RelativeCapability> newSubfolders = getDirectChildren(ourPointer.rBaseKey).stream()
+                .filter(e -> ! locsToRemove.contains(e.toAbsolute(ourPointer).getLocation()))
+                .collect(Collectors.toList());
         return IpfsTransaction.call(ourPointer.owner,
                 tid -> withChildren(encryptChildren(ourPointer.rBaseKey, newSubfolders))
                         .commit(ourPointer, entryWriter, network, tid),
                 network.dhtClient);
     }
 
+    public CompletableFuture<Set<RetrievedCapability>> getDirectChildren(NetworkAccess network,
+                                                                         AbsoluteCapability us) {
+        return network.retrieveAllMetadata(getDirectChildren(us.rBaseKey).stream()
+                .map(c -> c.toAbsolute(us))
+                .collect(Collectors.toList()))
+                .thenApply(HashSet::new);
+    }
+
     // returns [RetrievedCapability]
     public CompletableFuture<Set<RetrievedCapability>> getChildren(NetworkAccess network,
-                                                                   AbsoluteCapability us) {
+                                                                         AbsoluteCapability us) {
         CompletableFuture<List<RetrievedCapability>> childrenFuture =
-                network.retrieveAllMetadata(getChildren(us.rBaseKey).stream()
+                network.retrieveAllMetadata(getDirectChildren(us.rBaseKey).stream()
                         .map(c -> c.toAbsolute(us))
                         .collect(Collectors.toList()));
 
@@ -339,14 +368,14 @@ public class DirAccess implements CryptreeNode {
     }
 
     public Set<Location> getChildrenLocations(AbsoluteCapability us) {
-        return getChildren(us.rBaseKey).stream()
+        return getDirectChildren(us.rBaseKey).stream()
                 .map(cap -> cap.getLocation(us.owner, us.writer))
                 .collect(Collectors.toSet());
     }
 
     @Override
     public Set<AbsoluteCapability> getChildrenCapabilities(AbsoluteCapability us) {
-        return getChildren(us.rBaseKey).stream()
+        return getDirectChildren(us.rBaseKey).stream()
                 .map(cap -> cap.toAbsolute(us))
                 .collect(Collectors.toSet());
     }

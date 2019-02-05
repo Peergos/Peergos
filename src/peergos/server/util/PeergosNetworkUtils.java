@@ -96,7 +96,7 @@ public class PeergosNetworkUtils {
         FileWrapper u1Root = sharerUser.getUserRoot().get();
         String filename = "somefile.txt";
         File f = File.createTempFile("peergos", "");
-        byte[] originalFileContents = "Hello Peergos friend!".getBytes();
+        byte[] originalFileContents = sharerUser.crypto.random.randomBytes(10*1024*1024);
         Files.write(f.toPath(), originalFileContents);
         ResetableFileInputStream resetableFileInputStream = new ResetableFileInputStream(f);
         FileWrapper uploaded = u1Root.uploadOrOverwriteFile(filename, resetableFileInputStream, f.length(),
@@ -156,6 +156,7 @@ public class PeergosNetworkUtils {
             String path = sharerUser.username + "/" + filename;
             Optional<FileWrapper> sharedFile = userContext.getByPath(path).get();
             Assert.assertTrue("path '" + path + "' is still available", sharedFile.isPresent());
+            checkFileContents(originalFileContents, sharedFile.get(), userContext);
         }
 
         // test that u1 can still access the original file
@@ -178,6 +179,7 @@ public class PeergosNetworkUtils {
 
     public static void shareAndUnshareFolderForReadAccess(NetworkAccess sharerNode, NetworkAccess shareeNode, int shareeCount, Random random) throws Exception {
         Assert.assertTrue(0 < shareeCount);
+        DirAccess.setMaxChildLinkPerBlob(10);
 
         String sharerUsername = generateUsername(random);
         UserContext sharer = PeergosNetworkUtils.ensureSignedUp(sharerUsername, sharerUsername, sharerNode, crypto);
@@ -213,6 +215,16 @@ public class PeergosNetworkUtils {
                 originalFileContents.length, sharer.network, sharer.crypto.random, l -> {}, sharer.fragmenter(),
                 folder.generateChildLocationsFromSize(originalFileContents.length, sharer.crypto.random)).get();
         String originalFilePath = sharer.username + "/" + folderName + "/" + filename;
+
+        for (int i=0; i< 20; i++) {
+            sharer.getByPath(path).join().get()
+                    .mkdir("subdir"+i, sharer.network, false, sharer.crypto.random).join();
+        }
+
+        Set<String> childNames = sharer.getByPath(path).join().get().getChildren(sharer.network).join()
+                .stream()
+                .map(f -> f.getName())
+                .collect(Collectors.toSet());
 
         // file is uploaded, do the actual sharing
         boolean finished = sharer.shareReadAccessWithAll(updatedFolder, shareeUsers.stream().map(c -> c.username).collect(Collectors.toSet())).get();
@@ -274,6 +286,11 @@ public class PeergosNetworkUtils {
 
                 FileWrapper sharedFile = otherUser.getByPath(sharer.username + "/" + folderName + "/" + filename).get().get();
                 checkFileContents(newFileContents, sharedFile, otherUser);
+                Set<String> sharedChildNames = sharedFolder.get().getChildren(otherUser.network).join()
+                        .stream()
+                        .map(f -> f.getName())
+                        .collect(Collectors.toSet());
+                Assert.assertTrue("Correct children", sharedChildNames.equals(childNames));
             }
         }
     }

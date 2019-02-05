@@ -13,14 +13,15 @@ public class WritableAbsoluteCapability extends AbsoluteCapability {
         super(owner, writer, mapKey, baseKey, Optional.of(wBaseKey));
     }
 
-    public RelativeCapability relativise(WritableAbsoluteCapability descendant) {
+    public RelativeCapability relativise(AbsoluteCapability descendant) {
         if (! Objects.equals(owner, descendant.owner))
             throw new IllegalStateException("Files with different owners can't be descendant of each other!");
-        SymmetricLink writerLink = SymmetricLink.fromPair(wBaseKey.get(), descendant.wBaseKey.get());
+
+        Optional<SymmetricLink> writerLink = descendant.wBaseKey.map(dWrite -> SymmetricLink.fromPair(wBaseKey.get(), dWrite));
         Optional<PublicKeyHash> writerOpt = Objects.equals(writer, descendant.writer) ?
                 Optional.empty() : Optional.of(descendant.writer);
 
-        return new RelativeCapability(writerOpt, descendant.getMapKey(), descendant.rBaseKey, Optional.of(writerLink));
+        return new RelativeCapability(writerOpt, descendant.getMapKey(), descendant.rBaseKey, writerLink);
     }
 
     @Override

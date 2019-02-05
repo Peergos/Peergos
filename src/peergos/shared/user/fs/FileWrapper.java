@@ -149,70 +149,129 @@ public class FileWrapper {
         modified.set(true);
     }
 
+    public CompletableFuture<FileWrapper> updateChildLinks(
+            Collection<Pair<RetrievedCapability, RetrievedCapability>> childCases,
+            NetworkAccess network,
+            SafeRandom random) {
+        return ((DirAccess) pointer.fileAccess)
+                .updateChildLinks((WritableAbsoluteCapability) pointer.capability, entryWriter,
+                        childCases, network, random)
+                .thenApply(committedCryptree ->
+                        new FileWrapper(pointer.withCryptree(committedCryptree), entryWriter, ownername));
+    }
+
     /**
      * Marks a file/directory and all its descendants as dirty. Directories are immediately cleaned,
      * but files have all their keys except the actual data key cleaned. That is cleaned lazily, the next time it is modified
      *
      * @param network
      * @param parent
-     * @return
+     * @return The updated version of this file/directory
      * @throws IOException
      */
-    public CompletableFuture<FileWrapper> makeDirty(NetworkAccess network, SafeRandom random, FileWrapper parent) {
+    public CompletableFuture<FileWrapper> rotateReadKeys(NetworkAccess network, SafeRandom random, FileWrapper parent) {
+        return rotateReadKeys(true, network, random, parent, Optional.empty());
+    }
+
+    private CompletableFuture<FileWrapper> rotateReadKeys(boolean updateParent,
+                                                          NetworkAccess network,
+                                                          SafeRandom random,
+                                                          FileWrapper parent,
+                                                          Optional<SymmetricKey> newBaseKey) {
         if (!isWritable())
-            throw new IllegalStateException("You cannot mark a file as dirty without write access!");
+            throw new IllegalStateException("You cannot rotate read keys without write access!");
         WritableAbsoluteCapability cap = writableFilePointer();
         if (isDirectory()) {
             // create a new rBaseKey == subfoldersKey and make all descendants dirty
-            SymmetricKey newSubfoldersKey = SymmetricKey.random();
+            SymmetricKey newSubfoldersKey = newBaseKey.orElseGet(SymmetricKey::random);
             WritableAbsoluteCapability ourNewPointer = cap.withBaseKey(newSubfoldersKey);
             SymmetricKey newParentKey = SymmetricKey.random();
             FileProperties props = getFileProperties();
 
             DirAccess existing = (DirAccess) pointer.fileAccess;
 
-            // Create new DirAccess, but don't upload it
+            Optional<byte[]> nextChunkMapKey = existing.getNextChunkLocation(cap.rBaseKey);
+            Optional<WritableAbsoluteCapability> nextChunkCap = nextChunkMapKey.map(cap::withMapKey);
+            Optional<WritableAbsoluteCapability> updatedNextChunkCap = nextChunkMapKey.map(ourNewPointer::withMapKey);
+
+            // Create new DirAccess
             DirAccess newDirAccess = DirAccess.create(existing.committedHash(), newSubfoldersKey, null, Optional.empty(), props,
-                    cap.relativise(parent.writableFilePointer()), newParentKey);
+                    cap.relativise(parent.writableFilePointer()), newParentKey)
+                    .withNextBlob(updatedNextChunkCap.map(nextCap ->
+                            EncryptedCapability.create(newSubfoldersKey, ourNewPointer.relativise(nextCap))));
             // re add children
 
-            List<RelativeCapability> children = existing.getChildren(pointer.capability.rBaseKey);
+            List<RelativeCapability> children = existing.getDirectChildren(pointer.capability.rBaseKey);
             return newDirAccess.addChildrenAndCommit(children, ourNewPointer, entryWriter, network, random)
                     .thenCompose(updatedDirAccess -> {
                         RetrievedCapability ourNewRetrievedPointer = new RetrievedCapability(ourNewPointer, updatedDirAccess);
                         FileWrapper theNewUs = new FileWrapper(ourNewRetrievedPointer, entryWriter, ownername);
 
                         // clean all subtree keys except file dataKeys (lazily re-key and re-encrypt them)
-                        return getChildren(network).thenCompose(childFiles -> {
-                            List<CompletableFuture<FileWrapper>> cleanedChildren = childFiles.stream()
-                                    .map(child -> child.makeDirty(network, random, theNewUs))
+                        return getDirectChildren(network).thenCompose(childFiles -> {
+                            List<CompletableFuture<Pair<RetrievedCapability, RetrievedCapability>>> cleanedChildren = childFiles.stream()
+                                    .map(child -> child.rotateReadKeys(false, network, random, theNewUs,
+                                            Optional.empty())
+                                            .thenApply(updated -> new Pair<>(child.pointer, updated.pointer)))
                                     .collect(Collectors.toList());
 
                             return Futures.combineAll(cleanedChildren);
-                        }).thenCompose(finished ->
-                                // update pointer from parent to us
-                                ((DirAccess) parent.pointer.fileAccess)
-                                        .updateChildLink((WritableAbsoluteCapability) parent.pointer.capability,
-                                                parent.entryWriter, this.pointer,
-                                                ourNewRetrievedPointer, network, random)
-                                        .thenApply(x -> theNewUs));
+                        }).thenCompose(childrenCases -> theNewUs.updateChildLinks(childrenCases, network, random))
+                                .thenCompose(finished ->
+                                        // update pointer from parent to us
+                                        (updateParent ? ((DirAccess) parent.pointer.fileAccess)
+                                                .updateChildLink((WritableAbsoluteCapability) parent.pointer.capability,
+                                                        parent.entryWriter, this.pointer,
+                                                        ourNewRetrievedPointer, network, random) :
+                                                CompletableFuture.completedFuture(null))
+                                                .thenApply(x -> theNewUs));
+                    }).thenCompose(updated -> {
+                        if (! nextChunkMapKey.isPresent())
+                            return CompletableFuture.completedFuture(updated);
+
+                        return network.getMetadata(nextChunkCap.get().getLocation())
+                                .thenCompose(mOpt -> {
+                                    if (! mOpt.isPresent())
+                                        return CompletableFuture.completedFuture(updated);
+                                    return new FileWrapper(new RetrievedCapability(nextChunkCap.get(), mOpt.get()), entryWriter, ownername)
+                                            .rotateReadKeys(false, network, random, parent, Optional.of(newSubfoldersKey))
+                                            .thenApply(x -> updated);
+                                });
                     }).thenApply(x -> {
                         setModified();
                         return x;
                     });
         } else {
             // create a new rBaseKey == parentKey
-            SymmetricKey parentKey = SymmetricKey.random();
-            return ((FileAccess) pointer.fileAccess).markDirty(writableFilePointer(), entryWriter, parentKey, network).thenCompose(newFileAccess -> {
-                RetrievedCapability newPointer = new RetrievedCapability(this.pointer.capability.withBaseKey(parentKey), newFileAccess);
-                // update link from parent folder to file to have new rBaseKey
-                return ((DirAccess) parent.pointer.fileAccess)
-                        .updateChildLink(parent.writableFilePointer(), parent.entryWriter, pointer, newPointer, network, random)
-                        .thenApply(x -> new FileWrapper(newPointer, entryWriter, ownername));
-            }).thenApply(x -> {
-                setModified();
-                return x;
-            });
+            SymmetricKey baseReadKey = newBaseKey.orElseGet(SymmetricKey::random);
+            return ((FileAccess) pointer.fileAccess).markDirty(writableFilePointer(), entryWriter,
+                    cap.relativise(parent.getMinimalReadPointer()), baseReadKey, network)
+                    .thenCompose(updated -> {
+                        Optional<byte[]> nextChunkMapKey = pointer.fileAccess.getNextChunkLocation(cap.rBaseKey);
+                        if (! nextChunkMapKey.isPresent())
+                            return CompletableFuture.completedFuture(updated);
+                        WritableAbsoluteCapability nextChunkCap = cap.withMapKey(nextChunkMapKey.get());
+                        return network.getMetadata(nextChunkCap.getLocation())
+                                .thenCompose(mOpt -> {
+                                    if (! mOpt.isPresent())
+                                        return CompletableFuture.completedFuture(updated);
+                                    return new FileWrapper(new RetrievedCapability(nextChunkCap, mOpt.get()), entryWriter, ownername)
+                                            .rotateReadKeys(false, network, random, parent, Optional.of(baseReadKey))
+                                            .thenApply(x -> updated);
+                                });
+                    }).thenCompose(newFileAccess -> {
+                        RetrievedCapability newPointer = new RetrievedCapability(this.pointer.capability.withBaseKey(baseReadKey), newFileAccess);
+                        // only update link from parent folder to file if we are the first chunk
+                        return (updateParent ?
+                                ((DirAccess) parent.pointer.fileAccess)
+                                        .updateChildLink(parent.writableFilePointer(), parent.entryWriter, pointer,
+                                                newPointer, network, random) :
+                                CompletableFuture.completedFuture(null)
+                        ).thenApply(x -> new FileWrapper(newPointer, entryWriter, ownername));
+                    }).thenApply(x -> {
+                        setModified();
+                        return x;
+                    });
         }
     }
 
@@ -231,7 +290,7 @@ public class FileWrapper {
     public CompletableFuture<FileWrapper> removeChild(FileWrapper child, NetworkAccess network) {
         setModified();
         return ((DirAccess) pointer.fileAccess)
-                .removeChild(child.getPointer(), writableFilePointer(), entryWriter, network)
+                .removeChildren(Arrays.asList(child.getPointer()), writableFilePointer(), entryWriter, network)
                 .thenApply(updated -> new FileWrapper(globalRoot,
                         new RetrievedCapability(getPointer().capability, updated), entryWriter, ownername));
     }
@@ -338,6 +397,23 @@ public class FileWrapper {
         throw new IllegalStateException("Unreadable FileWrapper!");
     }
 
+    public CompletableFuture<Set<FileWrapper>> getDirectChildren(NetworkAccess network) {
+        ensureUnmodified();
+        if (globalRoot.isPresent())
+            return globalRoot.get().getChildren("/", network);
+        if (isReadable()) {
+            Optional<SigningPrivateKeyAndPublicHash> childsEntryWriter = pointer.capability.wBaseKey
+                    .map(wBase -> pointer.fileAccess.getSigner(wBase, entryWriter));
+            return retrieveDirectChildren(network).thenApply(childrenRFPs -> {
+                Set<FileWrapper> newChildren = childrenRFPs.stream()
+                        .map(x -> new FileWrapper(x, childsEntryWriter, ownername))
+                        .collect(Collectors.toSet());
+                return newChildren.stream().collect(Collectors.toSet());
+            });
+        }
+        throw new IllegalStateException("Unreadable FileWrapper!");
+    }
+
     public CompletableFuture<Optional<FileWrapper>> getChild(String name, NetworkAccess network) {
         return getChildren(network)
                 .thenApply(children -> children.stream().filter(f -> f.getName().equals(name)).findAny());
@@ -348,6 +424,14 @@ public class FileWrapper {
 
         if (isReadable())
             return ((DirAccess) fileAccess).getChildren(network, pointer.capability);
+        throw new IllegalStateException("No credentials to retrieve children!");
+    }
+
+    private CompletableFuture<Set<RetrievedCapability>> retrieveDirectChildren(NetworkAccess network) {
+        CryptreeNode fileAccess = pointer.fileAccess;
+
+        if (isReadable())
+            return ((DirAccess) fileAccess).getDirectChildren(network, pointer.capability);
         throw new IllegalStateException("No credentials to retrieve children!");
     }
 
@@ -384,24 +468,12 @@ public class FileWrapper {
         if (isDirectory()) {
             throw new IllegalStateException("Directories are never dirty (they are cleaned immediately)!");
         } else {
-            FileProperties props = getFileProperties();
-            SymmetricKey baseKey = pointer.capability.rBaseKey;
-            // stream download and re-encrypt with new dataKey
-            return getInputStream(network, random, l -> {}).thenCompose(in -> {
-                byte[] tmp = new byte[16];
-                new Random().nextBytes(tmp);
-                String tmpFilename = ArrayOps.bytesToHex(tmp) + ".tmp";
-
-
-                CompletableFuture<FileWrapper> reuploaded = parent.uploadFileSection(tmpFilename, in, false, 0, props.size,
-                        Optional.of(baseKey), true, network, random, l -> {}, fragmenter, parent.generateChildLocations(props.getNumberOfChunks(), random));
-                return reuploaded.thenCompose(upload -> upload.getDescendentByPath(tmpFilename, network)
-                        .thenCompose(tmpChild -> tmpChild.get().rename(props.name, network, upload, true))
-                        .thenApply(res -> {
-                            setModified();
-                            return res;
-                        }));
-            });
+            return ((FileAccess)pointer.fileAccess).cleanAndCommit(writableFilePointer(), signingPair(),
+                    parent.getLocation(), parent.getParentKey(), network, random, fragmenter)
+                    .thenApply(res -> {
+                        setModified();
+                        return parent;
+                    });
         }
     }
 
@@ -754,7 +826,7 @@ public class FileWrapper {
         return childExists
                 .thenCompose(existing -> {
                     if (existing.isPresent() && !overwrite)
-                        return CompletableFuture.completedFuture(parent);
+                        throw new IllegalStateException("Cannot rename, child already exists with name: " + newFilename);
 
                     return ((overwrite && existing.isPresent()) ?
                             existing.get().remove(parent, network) :
@@ -802,6 +874,17 @@ public class FileWrapper {
                     return fileAccess.updateProperties(writableFilePointer(), entryWriter, updatedProperties, network)
                             .thenApply(fa -> true);
                 });
+    }
+
+    /**
+     *
+     * @return A capability based on the parent key
+     */
+    public AbsoluteCapability getMinimalReadPointer() {
+        if (isDirectory()) {
+            return pointer.capability.withBaseKey(getParentKey());
+        }
+        return pointer.capability;
     }
 
     public WritableAbsoluteCapability writableFilePointer() {

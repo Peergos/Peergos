@@ -133,14 +133,14 @@ public class FileAccess implements CryptreeNode {
 
     public CompletableFuture<FileAccess> markDirty(WritableAbsoluteCapability us,
                                                    Optional<SigningPrivateKeyAndPublicHash> entryWriter,
+                                                   RelativeCapability toParent,
                                                    SymmetricKey newBaseKey,
                                                    NetworkAccess network) {
         // keep the same data key, just marked as dirty
         SymmetricKey dataKey = this.getDataKey(us.rBaseKey).makeDirty();
         SymmetricLink newParentToData = SymmetricLink.fromPair(newBaseKey, dataKey);
 
-        EncryptedCapability newParentLink = EncryptedCapability.create(newBaseKey,
-                parentLink.toCapability(us.rBaseKey));
+        EncryptedCapability newParentLink = EncryptedCapability.create(newBaseKey, toParent);
         PaddedCipherText newProperties = PaddedCipherText.build(newBaseKey, getProperties(us.rBaseKey), META_DATA_PADDING_BLOCKSIZE);
         FileAccess fa = new FileAccess(committedHash(), version, newParentToData, newProperties,
                 this.retriever, newParentLink, writerLink);
@@ -153,6 +153,38 @@ public class FileAccess implements CryptreeNode {
     @Override
     public boolean isDirty(SymmetricKey baseKey) {
         return getDataKey(baseKey).isDirty();
+    }
+
+    public CompletableFuture<FileAccess> cleanAndCommit(WritableAbsoluteCapability cap,
+                                                        SigningPrivateKeyAndPublicHash writer,
+                                                        Location parentLocation,
+                                                        SymmetricKey parentParentKey,
+                                                        NetworkAccess network,
+                                                        SafeRandom random,
+                                                        Fragmenter fragmenter) {
+        FileProperties props = getProperties(cap.rBaseKey);
+        Location nextLocation = cap.getLocation().withMapKey(getNextChunkLocation(cap.rBaseKey).get());
+        return retriever().getFile(network, random, getDataKey(cap.rBaseKey), props.size, cap.getLocation(), committedHash(), x -> {})
+                .thenCompose(data -> {
+                    int chunkSize = (int) Math.min(props.size, Chunk.MAX_SIZE);
+                    byte[] chunkData = new byte[chunkSize];
+                    return data.readIntoArray(chunkData, 0, chunkSize)
+                            .thenCompose(read -> {
+                                byte[] nonce = cap.rBaseKey.createNonce();
+                                byte[] mapKey = cap.getMapKey();
+                                Chunk chunk = new Chunk(chunkData, cap.rBaseKey, mapKey, nonce);
+                                LocatedChunk locatedChunk = new LocatedChunk(cap.getLocation(), lastCommittedHash, chunk);
+                                return FileUploader.uploadChunk(writer, props, parentLocation, parentParentKey, cap.rBaseKey, locatedChunk,
+                                        fragmenter, nextLocation, network, x -> {});
+                            });
+                }).thenCompose(h -> network.getMetadata(nextLocation)
+                        .thenCompose(mOpt -> {
+                            if (! mOpt.isPresent())
+                                return CompletableFuture.completedFuture(null);
+                            return ((FileAccess)mOpt.get()).cleanAndCommit(cap.withMapKey(nextLocation.getMapKey()),
+                                    writer, parentLocation, parentParentKey, network, random, fragmenter);
+                        }).thenCompose(x -> network.getMetadata(cap.getLocation())).thenApply(opt -> (FileAccess) opt.get())
+                );
     }
 
     @Override

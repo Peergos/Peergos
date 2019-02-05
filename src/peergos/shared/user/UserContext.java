@@ -841,32 +841,6 @@ public class UserContext {
         });
     }
 
-    ;
-
-    public CompletableFuture<Boolean> sendWriteAccess(PublicKeyHash targetUser) {
-        /*
-        // create sharing keypair and give it write access
-        User sharing = User.random(random, signer, boxer);
-        byte[] rootMapKey = new byte[32];
-        random.randombytes(rootMapKey, 0, 32);
-
-        // add a note to our static data so we know who we sent the private key to
-        Capability friendRoot = new Capability(user, sharing, rootMapKey, SymmetricKey.random());
-        return corenodeClient.getUsername(targetUser).thenCompose(name -> {
-            EntryPoint entry = new EntryPoint(friendRoot, username, Collections.emptySet(), Stream.of(name).collect(Collectors.toSet()));
-            try {
-                addToStaticDataAndCommit(entry);
-                // create a tmp keypair whose public key we can append to the request without leaking information
-                User tmp = User.random(random, signer, boxer);
-                byte[] payload = entry.serializeAndEncrypt(tmp, targetUser);
-                return corenodeClient.sendFollowRequest(targetUser, ArrayOps.concat(tmp.publicBoxingKey.toByteArray(), payload));
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        });*/
-        throw new IllegalStateException("Unimplemented!");
-    }
-
     public CompletableFuture<Boolean> unShareReadAccess(Path path, String readerToRemove) {
         return unShareReadAccess(path, Collections.singleton(readerToRemove));
     }
@@ -882,7 +856,7 @@ public class UserContext {
             FileWrapper toUnshare = opt.orElseThrow(() -> new IllegalStateException("Specified un-shareWith path " + absolutePathString + " does not exist"));            // now change to new base keys, clean some keys and mark others as dirty
             return getByPath(path.getParent().toString())
                     .thenCompose(parent ->
-                            toUnshare.makeDirty(network, crypto.random, parent.get())
+                            toUnshare.rotateReadKeys(network, crypto.random, parent.get())
                                     .thenCompose(markedDirty -> {
                                         sharedWithCache.removeSharedWith(SharedWithCache.Access.WRITE, absolutePathString, writersToRemove);
                                         return shareWriteAccessWith(path, sharedWithCache.getSharedWith(SharedWithCache.Access.WRITE, absolutePathString));
@@ -898,7 +872,7 @@ public class UserContext {
             // now change to new base keys, clean some keys and mark others as dirty
             return getByPath(path.getParent().toString())
                     .thenCompose(parent ->
-                            toUnshare.makeDirty(network, crypto.random, parent.get())
+                            toUnshare.rotateReadKeys(network, crypto.random, parent.get())
                                     .thenCompose(markedDirty -> {
                                         sharedWithCache.removeSharedWith(SharedWithCache.Access.READ, absolutePathString, readersToRemove);
                                         return shareReadAccessWith(path, sharedWithCache.getSharedWith(SharedWithCache.Access.READ, absolutePathString));
