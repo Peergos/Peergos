@@ -38,7 +38,9 @@ public class Path {
     }
 
     public Path resolve(String other) {
-        throw new IllegalArgumentException("Not implemented!");
+        if (pathString.endsWith(SEPARATOR))
+            return new Path(pathString + other);
+        return new Path(pathString + "/" + other);
     }
 
     public File toFile() {

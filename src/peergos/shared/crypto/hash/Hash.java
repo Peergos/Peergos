@@ -38,7 +38,7 @@ public class Hash {
     private static CompletableFuture<byte[]> sha256(AsyncReader input, long length, MessageDigest md, byte[] buf) {
         if (length == 0)
             return CompletableFuture.completedFuture(md.digest());
-        return input.readIntoArray(buf, 0, buf.length)
+        return input.readIntoArray(buf, 0, Math.min(buf.length, (int)length & 0xFFFFFFF))
                 .thenCompose(read -> {
                     md.update(buf, 0, read);
                     return sha256(input, length - read, md, buf);
@@ -48,7 +48,7 @@ public class Hash {
     private static CompletableFuture<byte[]> sha256(AsyncReader input, long length, Sha256 md, byte[] buf) {
         if (length == 0)
             return CompletableFuture.completedFuture(md.digest());
-        return input.readIntoArray(buf, 0, buf.length)
+        return input.readIntoArray(buf, 0, Math.min(buf.length, (int)length & 0xFFFFFFF))
                 .thenCompose(read -> {
                     md.update(buf, 0, read);
                     return sha256(input, length - read, md, buf);

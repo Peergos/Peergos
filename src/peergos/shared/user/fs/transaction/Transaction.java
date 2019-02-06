@@ -41,20 +41,20 @@ public interface Transaction extends Cborable {
 
     @JsMethod
     static CompletableFuture<FileUploadTransaction> buildFileUploadTransaction(String path,
-                                                                     int fileSizeLo,
-                                                                     int fileSizeHi,
-                                                                     AsyncReader fileData,
-                                                                     SigningPrivateKeyAndPublicHash writer,
-                                                                     List<Location> locations) {
+                                                                               int fileSizeLo,
+                                                                               int fileSizeHi,
+                                                                               AsyncReader fileData,
+                                                                               SigningPrivateKeyAndPublicHash writer,
+                                                                               List<Location> locations) {
         return buildFileUploadTransaction(path, fileSizeLo & 0xFFFFFFFFL | (((long) fileSizeHi)) << 32,
                 fileData, writer, locations);
     }
 
     static CompletableFuture<FileUploadTransaction> buildFileUploadTransaction(String path,
-                                                                     long fileSize,
-                                                                     AsyncReader fileData,
-                                                                     SigningPrivateKeyAndPublicHash writer,
-                                                                     List<Location> locations) {
+                                                                               long fileSize,
+                                                                               AsyncReader fileData,
+                                                                               SigningPrivateKeyAndPublicHash writer,
+                                                                               List<Location> locations) {
         return Hash.sha256(fileData, fileSize)
                 .thenApply(hash -> new FileUploadTransaction(System.currentTimeMillis(), path,
                         new Multihash(Multihash.Type.sha2_256, hash), writer, locations));

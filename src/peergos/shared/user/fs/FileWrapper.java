@@ -1,4 +1,5 @@
 package peergos.shared.user.fs;
+import java.nio.file.*;
 import java.util.logging.*;
 
 import jsinterop.annotations.*;
@@ -12,6 +13,7 @@ import peergos.shared.storage.IpfsTransaction;
 import peergos.shared.storage.TransactionId;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.cryptree.*;
+import peergos.shared.user.fs.transaction.*;
 import peergos.shared.util.*;
 
 import javax.imageio.ImageIO;
@@ -20,8 +22,6 @@ import java.awt.Graphics2D;
 import java.awt.AlphaComposite;
 import java.awt.RenderingHints;
 import java.io.*;
-import java.nio.file.Files;
-import java.nio.file.StandardOpenOption;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
@@ -600,14 +600,25 @@ public class FileWrapper {
     }
 
     @JsMethod
-    public CompletableFuture<FileWrapper> uploadFileJS(String filename, AsyncReader fileData,
-                                                       int lengthHi, int lengthLow,
+    public CompletableFuture<FileWrapper> uploadFileJS(String filename,
+                                                       AsyncReader fileData,
+                                                       int lengthHi,
+                                                       int lengthLow,
                                                        boolean overwriteExisting,
-                                                       NetworkAccess network, SafeRandom random,
-                                                       ProgressConsumer<Long> monitor, Fragmenter fragmenter,
-                                                       List<Location> locations) {
-        return uploadFileSection(filename, fileData, false, 0, lengthLow + ((lengthHi & 0xFFFFFFFFL) << 32),
-                Optional.empty(), overwriteExisting, network, random, monitor, fragmenter, locations);
+                                                       NetworkAccess network,
+                                                       SafeRandom random,
+                                                       ProgressConsumer<Long> monitor,
+                                                       Fragmenter fragmenter,
+                                                       TransactionService transactions) {
+        long fileSize = lengthLow + ((lengthHi & 0xFFFFFFFFL) << 32);
+        return getPath(network).thenCompose(path ->
+                Transaction.buildFileUploadTransaction(Paths.get(path).resolve(filename).toString(), fileSize, fileData, signingPair(),
+                        generateChildLocationsFromSize(fileSize, random)))
+                .thenCompose(txn -> transactions.open(txn)
+                        .thenCompose(x -> fileData.reset())
+                        .thenCompose(reset -> uploadFileSection(filename, reset, false, 0, fileSize,
+                                Optional.empty(), overwriteExisting, network, random, monitor, fragmenter, txn.getLocations()))
+                        .thenCompose(res -> transactions.close(txn).thenApply(x -> res)));
     }
 
     public CompletableFuture<FileWrapper> uploadOrOverwriteFile(String filename,
