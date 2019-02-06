@@ -297,19 +297,6 @@ public class DirAccess implements CryptreeNode {
         return network.retrieveAllMetadata(Arrays.asList(cap.toAbsolute(us)));
     }
 
-    public CompletableFuture<DirAccess> rotateBaseWriteKey(WritableAbsoluteCapability us,
-                                                            Optional<SigningPrivateKeyAndPublicHash> entryWriter,
-                                                            SymmetricKey newBaseWriteKey,
-                                                            NetworkAccess network) {
-        Optional<SymmetricLinkToSigner> updatedWriter = writerLink.map(toSigner -> SymmetricLinkToSigner.fromPair(newBaseWriteKey, toSigner.target(us.wBaseKey.get())));
-        DirAccess da = this.withWriterLink(updatedWriter);
-
-        return IpfsTransaction.call(us.owner, tid ->
-                network.uploadChunk(da, us.owner, us.getMapKey(), getSigner(us.wBaseKey.get(), entryWriter), tid)
-                        .thenApply(x -> da),
-                network.dhtClient);
-    }
-
     public CompletableFuture<DirAccess> updateChildLink(WritableAbsoluteCapability ourPointer,
                                                         Optional<SigningPrivateKeyAndPublicHash> entryWriter,
                                                         RetrievedCapability original,
