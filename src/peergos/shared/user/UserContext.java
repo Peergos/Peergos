@@ -143,8 +143,7 @@ public class UserContext {
 
     public static CompletableFuture<UserContext> signIn(String username, String password, NetworkAccess network
             , Crypto crypto) {
-        return signIn(username, password, network, crypto, t -> {
-        });
+        return signIn(username, password, network, crypto, t -> {});
     }
 
     @JsMethod
@@ -222,8 +221,7 @@ public class UserContext {
                                                         String password,
                                                         NetworkAccess network,
                                                         Crypto crypto) {
-        return signUpGeneral(username, password, network, crypto, SecretGenerationAlgorithm.getDefault(), t -> {
-        });
+        return signUpGeneral(username, password, network, crypto, SecretGenerationAlgorithm.getDefault(), t -> {});
     }
 
     public static CompletableFuture<UserContext> signUpGeneral(String username,
@@ -278,8 +276,9 @@ public class UserContext {
                         long t1 = System.currentTimeMillis();
                         return context.createEntryDirectory(signer, username).thenCompose(userRoot -> {
                             LOG.info("Creating root directory took " + (System.currentTimeMillis() - t1) + " mS");
-                            return context.createSpecialDirectories()
-                                    .thenCompose(x -> signIn(username, userWithRoot, network.clear(), crypto, progressCallback));
+                            return context.createSpecialDirectory(SHARED_DIR_NAME)
+                                    .thenCompose(x -> signIn(username, userWithRoot, network.clear(), crypto, progressCallback))
+                                    .thenCompose(c -> c.createSpecialDirectory(TRANSACTIONS_DIR_NAME));
                         });
                     });
                 }).thenCompose(context -> network.coreNode.getUsernames(PEERGOS_USERNAME)
@@ -290,11 +289,9 @@ public class UserContext {
                 .exceptionally(Futures::logError);
     }
 
-    private CompletableFuture<UserContext> createSpecialDirectories() {
-        return Futures.combineAll(Arrays.asList(SHARED_DIR_NAME, TRANSACTIONS_DIR_NAME)
-                .stream()
-                .map(dirName -> getUserRoot().thenCompose(root -> root.mkdir(dirName, network, true, crypto.random)))
-                .collect(Collectors.toList()))
+    private CompletableFuture<UserContext> createSpecialDirectory(String dirName) {
+        return getUserRoot()
+                .thenCompose(root -> root.mkdir(dirName, network, true, crypto.random))
                 .thenApply(x -> this);
     }
 
