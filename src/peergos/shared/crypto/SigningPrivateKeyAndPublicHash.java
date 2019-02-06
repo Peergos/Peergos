@@ -31,4 +31,9 @@ public class SigningPrivateKeyAndPublicHash implements Cborable {
         SecretSigningKey secretKey = SecretSigningKey.fromCbor(map.get("s"));
         return new SigningPrivateKeyAndPublicHash(publicKeyHash, secretKey);
     }
+
+    @Override
+    public String toString() {
+        return publicKeyHash.toString();
+    }
 }

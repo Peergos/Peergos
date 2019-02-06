@@ -30,24 +30,29 @@ public class FileAccess implements CryptreeNode {
     protected final int version;
     protected final SymmetricLink parent2data;
     protected final PaddedCipherText properties;
-    protected final FileRetriever retriever;
+    protected final FileRetriever fileRetriever;
     protected final EncryptedCapability parentLink;
     protected final Optional<SymmetricLinkToSigner> writerLink;
 
     public FileAccess(MaybeMultihash lastCommittedHash,
                       int version,
                       SymmetricLink parent2Data,
-                      PaddedCipherText fileProperties,
+                      PaddedCipherText properties,
                       FileRetriever fileRetriever,
                       EncryptedCapability parentLink,
                       Optional<SymmetricLinkToSigner> writerLink) {
         this.lastCommittedHash = lastCommittedHash;
         this.version = version;
         this.parent2data = parent2Data;
-        this.properties = fileProperties;
-        this.retriever = fileRetriever;
+        this.properties = properties;
+        this.fileRetriever = fileRetriever;
         this.parentLink = parentLink;
         this.writerLink = writerLink;
+    }
+
+    @Override
+    public FileAccess withHash(Multihash hash) {
+        return new FileAccess(MaybeMultihash.of(hash), version, parent2data, properties, fileRetriever, parentLink, writerLink);
     }
 
     @Override
@@ -91,22 +96,27 @@ public class FileAccess implements CryptreeNode {
 
     @Override
     public Optional<byte[]> getNextChunkLocation(SymmetricKey rBaseKey) {
-        return retriever.getNext(getDataKey(rBaseKey));
+        return fileRetriever.getNext(getDataKey(rBaseKey));
     }
 
     public FileRetriever retriever() {
-        return retriever;
+        return fileRetriever;
     }
 
     @Override
     public FileAccess withWriterLink(SymmetricLinkToSigner newWriterLink) {
-        return new FileAccess(MaybeMultihash.empty(), version, parent2data,
-                properties, retriever, parentLink, Optional.of(newWriterLink));
+        return new FileAccess(lastCommittedHash, version, parent2data,
+                properties, fileRetriever, parentLink, Optional.of(newWriterLink));
+    }
+
+    public FileAccess withWriterLink(Optional<SymmetricLinkToSigner> newWriterLink) {
+        return new FileAccess(lastCommittedHash, version, parent2data,
+                properties, fileRetriever, parentLink, newWriterLink);
     }
 
     @Override
     public FileAccess withParentLink(EncryptedCapability newParentLink) {
-        return new FileAccess(MaybeMultihash.empty(), version, parent2data, properties, retriever,
+        return new FileAccess(lastCommittedHash, version, parent2data, properties, fileRetriever,
                 newParentLink, writerLink);
     }
 
@@ -124,18 +134,18 @@ public class FileAccess implements CryptreeNode {
 
         PaddedCipherText encryptedProperties = PaddedCipherText.build(metaKey, newProps, META_DATA_PADDING_BLOCKSIZE);
         FileAccess fa = new FileAccess(lastCommittedHash, version, this.parent2data, encryptedProperties,
-                this.retriever, this.parentLink, writerLink);
+                this.fileRetriever, this.parentLink, writerLink);
         return IpfsTransaction.call(us.owner, tid ->
                 network.uploadChunk(fa, us.owner, us.getMapKey(), getSigner(us.wBaseKey.get(), entryWriter), tid)
                         .thenApply(b -> fa),
                 network.dhtClient);
     }
 
-    public CompletableFuture<FileAccess> markDirty(WritableAbsoluteCapability us,
-                                                   Optional<SigningPrivateKeyAndPublicHash> entryWriter,
-                                                   RelativeCapability toParent,
-                                                   SymmetricKey newBaseKey,
-                                                   NetworkAccess network) {
+    public CompletableFuture<FileAccess> rotateBaseReadKey(WritableAbsoluteCapability us,
+                                                           Optional<SigningPrivateKeyAndPublicHash> entryWriter,
+                                                           RelativeCapability toParent,
+                                                           SymmetricKey newBaseKey,
+                                                           NetworkAccess network) {
         // keep the same data key, just marked as dirty
         SymmetricKey dataKey = this.getDataKey(us.rBaseKey).makeDirty();
         SymmetricLink newParentToData = SymmetricLink.fromPair(newBaseKey, dataKey);
@@ -143,7 +153,22 @@ public class FileAccess implements CryptreeNode {
         EncryptedCapability newParentLink = EncryptedCapability.create(newBaseKey, toParent);
         PaddedCipherText newProperties = PaddedCipherText.build(newBaseKey, getProperties(us.rBaseKey), META_DATA_PADDING_BLOCKSIZE);
         FileAccess fa = new FileAccess(committedHash(), version, newParentToData, newProperties,
-                this.retriever, newParentLink, writerLink);
+                this.fileRetriever, newParentLink, writerLink);
+        return IpfsTransaction.call(us.owner, tid ->
+                network.uploadChunk(fa, us.owner, us.getMapKey(), getSigner(us.wBaseKey.get(), entryWriter), tid)
+                        .thenApply(x -> fa),
+                network.dhtClient);
+    }
+
+    public CompletableFuture<FileAccess> rotateBaseWriteKey(WritableAbsoluteCapability us,
+                                                            Optional<SigningPrivateKeyAndPublicHash> entryWriter,
+                                                            SymmetricKey newBaseWriteKey,
+                                                            NetworkAccess network) {
+        if (! writerLink.isPresent())
+            return CompletableFuture.completedFuture(this);
+
+        SigningPrivateKeyAndPublicHash signer = writerLink.get().target(us.wBaseKey.get());
+        FileAccess fa = this.withWriterLink(SymmetricLinkToSigner.fromPair(newBaseWriteKey, signer));
         return IpfsTransaction.call(us.owner, tid ->
                 network.uploadChunk(fa, us.owner, us.getMapKey(), getSigner(us.wBaseKey.get(), entryWriter), tid)
                         .thenApply(x -> fa),
@@ -175,7 +200,7 @@ public class FileAccess implements CryptreeNode {
                                 Chunk chunk = new Chunk(chunkData, cap.rBaseKey, mapKey, nonce);
                                 LocatedChunk locatedChunk = new LocatedChunk(cap.getLocation(), lastCommittedHash, chunk);
                                 return FileUploader.uploadChunk(writer, props, parentLocation, parentParentKey, cap.rBaseKey, locatedChunk,
-                                        fragmenter, nextLocation, network, x -> {});
+                                        fragmenter, nextLocation, writerLink, network, x -> {});
                             });
                 }).thenCompose(h -> network.getMetadata(nextLocation)
                         .thenCompose(mOpt -> {
@@ -200,7 +225,7 @@ public class FileAccess implements CryptreeNode {
         boolean isDirectory = isDirectory();
         FileAccess fa = FileAccess.create(MaybeMultihash.empty(), newBaseKey,
                 isDirectory ? SymmetricKey.random() : getDataKey(us.rBaseKey),
-                props, this.retriever, newParentCap.getLocation(), parentparentKey);
+                props, this.fileRetriever, newParentCap.getLocation(), parentparentKey);
         return IpfsTransaction.call(newParentCap.owner,
                 tid -> network.uploadChunk(fa, newParentCap.owner, newMapKey, fa.getSigner(newParentCap.wBaseKey.get(), newEntryWriter), tid)
                         .thenApply(b -> fa),
@@ -215,7 +240,7 @@ public class FileAccess implements CryptreeNode {
                         parent2data.toCbor(),
                         parentLink == null ? new CborObject.CborNull() : parentLink.toCbor(),
                         properties.toCbor(),
-                        retriever == null ? new CborObject.CborNull() : retriever.toCbor(),
+                        fileRetriever == null ? new CborObject.CborNull() : fileRetriever.toCbor(),
                         writerLink.isPresent() ? writerLink.get().toCbor() : new CborObject.CborNull()
                 ));
     }

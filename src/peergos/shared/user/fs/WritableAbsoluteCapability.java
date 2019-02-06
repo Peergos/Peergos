@@ -17,7 +17,10 @@ public class WritableAbsoluteCapability extends AbsoluteCapability {
         if (! Objects.equals(owner, descendant.owner))
             throw new IllegalStateException("Files with different owners can't be descendant of each other!");
 
-        Optional<SymmetricLink> writerLink = descendant.wBaseKey.map(dWrite -> SymmetricLink.fromPair(wBaseKey.get(), dWrite));
+        Optional<SymmetricLink> writerLink = descendant.wBaseKey.flatMap(dWrite ->
+                dWrite.equals(wBaseKey.get()) ?
+                        Optional.empty() :
+                        Optional.of(SymmetricLink.fromPair(wBaseKey.get(), dWrite)));
         Optional<PublicKeyHash> writerOpt = Objects.equals(writer, descendant.writer) ?
                 Optional.empty() : Optional.of(descendant.writer);
 
@@ -27,6 +30,10 @@ public class WritableAbsoluteCapability extends AbsoluteCapability {
     @Override
     public WritableAbsoluteCapability withBaseKey(SymmetricKey newBaseKey) {
         return new WritableAbsoluteCapability(owner, writer, getMapKey(), newBaseKey, wBaseKey.get());
+    }
+
+    public WritableAbsoluteCapability withBaseWriteKey(SymmetricKey newBaseWriteKey) {
+        return new WritableAbsoluteCapability(owner, writer, getMapKey(), rBaseKey, newBaseWriteKey);
     }
 
     @Override

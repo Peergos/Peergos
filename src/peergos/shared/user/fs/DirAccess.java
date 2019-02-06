@@ -67,6 +67,7 @@ public class DirAccess implements CryptreeNode {
         this.writerLink = writerLink;
     }
 
+    @Override
     public DirAccess withHash(Multihash hash) {
         return new DirAccess(MaybeMultihash.of(hash), version, base2parent, parent2meta, parentLink, properties,
                 children, moreFolderContents, writerLink);
@@ -111,6 +112,16 @@ public class DirAccess implements CryptreeNode {
     public DirAccess withWriterLink(SymmetricLinkToSigner newWriterLink) {
         return new DirAccess(lastCommittedHash, version, base2parent, parent2meta, parentLink,
                 properties, children, moreFolderContents, Optional.of(newWriterLink));
+    }
+
+    public DirAccess withWriterLink(Optional<SymmetricLinkToSigner> newWriterLink) {
+        return new DirAccess(lastCommittedHash, version, base2parent, parent2meta, parentLink,
+                properties, children, moreFolderContents, newWriterLink);
+    }
+
+    public DirAccess withoutChildren(SymmetricKey rBaseKey) {
+        return new DirAccess(lastCommittedHash, version, base2parent, parent2meta, parentLink,
+                properties, encryptChildren(rBaseKey, Collections.emptyList()), moreFolderContents, writerLink);
     }
 
     @Override

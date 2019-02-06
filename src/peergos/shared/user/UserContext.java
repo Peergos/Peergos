@@ -850,17 +850,30 @@ public class UserContext {
     }
 
     public CompletableFuture<Boolean> unShareWriteAccess(Path path, Set<String> writersToRemove) {
+        // 1. Add new writer pair as an owned key to parent's writer
+        // 2. Rotate symmetric writing keys of subtree
+        // 3. Change the signing key pair of the subtree
+        // 4. Rotate the symmetric read keys
+        // 5. Remove old writer from parent owned keys
         String pathString = path.toString();
         String absolutePathString = pathString.startsWith("/") ? pathString : "/" + pathString;
-        return getByPath(absolutePathString).thenCompose(opt -> {
-            FileWrapper toUnshare = opt.orElseThrow(() -> new IllegalStateException("Specified un-shareWith path " + absolutePathString + " does not exist"));            // now change to new base keys, clean some keys and mark others as dirty
+        return getByPath(path).thenCompose(opt -> {
+            FileWrapper toUnshare = opt.orElseThrow(() -> new IllegalStateException("Specified un-shareWith path "
+                    + absolutePathString + " does not exist"));
             return getByPath(path.getParent().toString())
-                    .thenCompose(parent ->
-                            toUnshare.rotateReadKeys(network, crypto.random, parent.get())
-                                    .thenCompose(markedDirty -> {
+                    .thenCompose(parent -> addOwnedKeyToParent(parent.get().owner(), parent.get().signingPair(),
+                            SigningKeyPair.random(crypto.random, crypto.signer), network)
+                            .thenCompose(newSigner -> toUnshare.rotateWriteKeys(parent.get(), network, crypto.random)
+                                    .thenCompose(pair -> pair.left.changeSigningKey(newSigner, pair.right, network, crypto.random))
+                                    .thenCompose(pair -> pair.left.rotateReadKeys(network, crypto.random, pair.right))
+                                    .thenCompose(x -> removeOwnedKeyFromParent(parent.get().owner(),
+                                            parent.get().signingPair(), toUnshare.writer(), network))
+                                    .thenCompose(x -> {
                                         sharedWithCache.removeSharedWith(SharedWithCache.Access.WRITE, absolutePathString, writersToRemove);
                                         return shareWriteAccessWith(path, sharedWithCache.getSharedWith(SharedWithCache.Access.WRITE, absolutePathString));
-                                    }));
+                                    })
+                            )
+                    );
         });
     }
 
@@ -895,8 +908,17 @@ public class UserContext {
     }
 
     public CompletableFuture<Boolean> shareWriteAccessWith(Path path, Set<String> writersToAdd) {
-        return getByPath(path.toString())
-                .thenCompose(file -> shareWriteAccessWithAll(file.orElseThrow(() -> new IllegalStateException("Could not find path " + path.toString())), writersToAdd));
+        return getByPath(path.getParent().toString())
+                .thenCompose(parent -> {
+                    if (! parent.isPresent())
+                        throw new IllegalStateException("Could not find path " + path.getParent().toString());
+                    return parent.get().getChild(path.getFileName().toString(), network)
+                            .thenCompose(file -> {
+                                if (! file.isPresent())
+                                    throw new IllegalStateException("Could not find path " + path.toString());
+                                return shareWriteAccessWithAll(file.get(), parent.get(), writersToAdd);
+                            });
+                });
     }
 
     public CompletableFuture<Boolean> shareReadAccessWithAll(FileWrapper file, Set<String> readersToAdd) {
@@ -917,55 +939,76 @@ public class UserContext {
         });
     }
 
-    public CompletableFuture<Boolean> shareWriteAccessWithAll(FileWrapper file, Set<String> writersToAdd) {
-        return file.getPath(network).thenCompose(path -> {
-            String parentPath = Paths.get(path).getParent().toString();
-            return getByPath(parentPath).thenCompose(parentOpt -> {
-                AbsoluteCapability parentCap = parentOpt.get().getPointer().capability;
-                PublicKeyHash parentWriter = parentCap.writer;
-                return WriterData.getWriterData(parentCap.owner, parentWriter, network.mutable, network.dhtClient).thenCompose(parentWriterData -> {
-                    SigningPrivateKeyAndPublicHash parentSigner = parentOpt.get().signingPair();
-                    SigningKeyPair newSignerPair = SigningKeyPair.random(crypto.random, crypto.signer);
+    public CompletableFuture<Boolean> shareWriteAccessWithAll(FileWrapper file,
+                                                              FileWrapper parent,
+                                                              Set<String> writersToAdd) {
+        SigningKeyPair newSignerPair = SigningKeyPair.random(crypto.random, crypto.signer);
 
-                    TriFunction<TransactionId, WriterData, SigningPrivateKeyAndPublicHash, CompletableFuture<Boolean>> func =
-                            (tid2, updatedParentWD, newSigner) -> updatedParentWD.commit(signer.publicKeyHash,
-                                    parentSigner, parentWriterData.hash, network, tid2).thenCompose(cwd ->
+        return addOwnedKeyToParent(parent.owner(), parent.signingPair(), newSignerPair, network)
+                .thenCompose(newSigner -> file.changeSigningKey(newSigner, parent, network, crypto.random)
+                        .thenCompose(updatedFile -> {
+                            BiFunction<FileWrapper, FileWrapper, CompletableFuture<Boolean>> sharingFunction =
+                                    (sharedDir, fileToShare) -> CapabilityStore.addEditSharingLinkTo(sharedDir,
+                                            updatedFile.left.writableFilePointer(), network, crypto.random, fragmenter)
+                                            .thenCompose(ee -> CompletableFuture.completedFuture(true));
+                            return Futures.reduceAll(writersToAdd,
+                                    true,
+                                    (x, username) -> shareAccessWith(file, username, sharingFunction),
+                                    (a, b) -> a && b)
+                                    .thenCompose(result -> updatedSharedWithCache(file, writersToAdd, SharedWithCache.Access.WRITE));
+                        })
+                );
+    }
 
-                            file.changeSigningKey(newSigner, parentOpt.get(), network, crypto.random).thenCompose(fw -> {
+    /**
+     * Add an new owned siging key pair to the writer data of a parent signing pair
+     * @param owner
+     * @param parentSigner
+     * @param newSignerPair
+     * @param network
+     * @return The hashed new signing pair
+     */
+    public static CompletableFuture<SigningPrivateKeyAndPublicHash> addOwnedKeyToParent(PublicKeyHash owner,
+                                                                                        SigningPrivateKeyAndPublicHash parentSigner,
+                                                                                        SigningKeyPair newSignerPair,
+                                                                                        NetworkAccess network) {
+        return IpfsTransaction.call(owner,
+                tid -> network.dhtClient.putSigningKey(
+                        parentSigner.secret.signatureOnly(newSignerPair.publicSigningKey.serialize()),
+                        owner, parentSigner.publicKeyHash, newSignerPair.publicSigningKey, tid).thenCompose(newSignerHash ->
+                        WriterData.getWriterData(owner, parentSigner.publicKeyHash, network.mutable, network.dhtClient)
+                                .thenCompose(wd -> {
+                                    Set<PublicKeyHash> ownedKeys = new HashSet<>(wd.props.ownedKeys);
+                                    ownedKeys.add(newSignerHash);
+                                    WriterData updatedParentWD = wd.props.withOwnedKeys(ownedKeys);
+                                    return updatedParentWD.commit(owner,
+                                            parentSigner, wd.hash, network, tid)
+                                            .thenApply(x -> new SigningPrivateKeyAndPublicHash(newSignerHash,
+                                                    newSignerPair.secretSigningKey));
+                                })), network.dhtClient);
+    }
 
-                                BiFunction<FileWrapper, FileWrapper, CompletableFuture<Boolean>> sharingFunction =
-                                        (sharedDir, fileToShare) -> CapabilityStore.addEditSharingLinkTo(sharedDir,
-                                                fw.writableFilePointer(), network, crypto.random, fragmenter)
-                                                .thenCompose(ee -> CompletableFuture.completedFuture(true));
-
-                                return Futures.reduceAll(writersToAdd,
-                                        true,
-                                        (x, username) -> shareAccessWith(file, username, sharingFunction),
-                                        (a, b) -> a && b).thenCompose(result -> {
-                                    if (!result) {
-                                        CompletableFuture<Boolean> res = new CompletableFuture<>();
-                                        res.complete(false);
-                                        return res;
-                                    }
-                                    return updatedSharedWithCache(file, writersToAdd, SharedWithCache.Access.WRITE);
-                                });
-                            })
-                    );
-
-                    return IpfsTransaction.call(signer.publicKeyHash,
-                            tid -> network.dhtClient.putSigningKey(
-                                    parentSigner.secret.signatureOnly(newSignerPair.publicSigningKey.serialize()),
-                                    parentCap.owner, parentCap.writer, newSignerPair.publicSigningKey, tid).thenCompose(newSignerHash -> {
-                                Set<PublicKeyHash> ownedKeys = new HashSet<>(parentWriterData.props.ownedKeys);
-                                ownedKeys.add(newSignerHash);
-                                WriterData updatedParentWD = parentWriterData.props.withOwnedKeys(ownedKeys);
-                                SigningPrivateKeyAndPublicHash newSigner = new SigningPrivateKeyAndPublicHash(newSignerHash, newSignerPair.secretSigningKey);
-
-                                return func.apply(tid, updatedParentWD, newSigner);
-                            }), network.dhtClient);
-                });
-            });
-        });
+    /**
+     * Remove an owned signing key pair from the writer data of a parent signing pair
+     * @param owner
+     * @param parentSigner
+     * @param toRemove
+     * @param network
+     * @return The hashed new signing pair
+     */
+    public static CompletableFuture<CommittedWriterData> removeOwnedKeyFromParent(PublicKeyHash owner,
+                                                                                             SigningPrivateKeyAndPublicHash parentSigner,
+                                                                                             PublicKeyHash toRemove,
+                                                                                             NetworkAccess network) {
+        return IpfsTransaction.call(owner,
+                tid -> WriterData.getWriterData(owner, parentSigner.publicKeyHash, network.mutable, network.dhtClient)
+                        .thenCompose(wd -> {
+                            Set<PublicKeyHash> ownedKeys = new HashSet<>(wd.props.ownedKeys);
+                            ownedKeys.remove(toRemove);
+                            WriterData updatedParentWD = wd.props.withOwnedKeys(ownedKeys);
+                            return updatedParentWD.commit(owner,
+                                    parentSigner, wd.hash, network, tid);
+                        }), network.dhtClient);
     }
 
     private CompletableFuture<Boolean> updatedSharedWithCache(FileWrapper file, Set<String> usersToAdd,
@@ -986,10 +1029,10 @@ public class UserContext {
     }
 
     @JsMethod
-    public CompletableFuture<Boolean> shareWriteAccessWith(FileWrapper file, String usernameToGrantWriteAccess) {
+    public CompletableFuture<Boolean> shareWriteAccessWith(FileWrapper file, FileWrapper parent, String usernameToGrantWriteAccess) {
         Set<String> readersToAdd = new HashSet<>();
         readersToAdd.add(usernameToGrantWriteAccess);
-        return shareWriteAccessWithAll(file, readersToAdd);
+        return shareWriteAccessWithAll(file, parent, readersToAdd);
     }
 
     public CompletableFuture<Boolean> shareAccessWith(FileWrapper file, String usernameToGrantAccess,

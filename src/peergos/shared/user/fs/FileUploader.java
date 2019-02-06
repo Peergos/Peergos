@@ -91,7 +91,7 @@ public class FileUploader implements AutoCloseable {
             LocatedChunk locatedChunk = new LocatedChunk(new Location(owner, writer.publicKeyHash, chunk.mapKey()), ourExistingHash, chunk);
             Location nextLocation = new Location(owner, writer.publicKeyHash, locations.get((int) chunkIndex + 1).getMapKey());
             return uploadChunk(writer, props, parentLocation, parentparentKey, baseKey, locatedChunk,
-                    fragmenter, nextLocation, network, monitor).thenApply(c -> true);
+                    fragmenter, nextLocation, Optional.empty(), network, monitor).thenApply(c -> true);
         });
     }
 
@@ -109,9 +109,19 @@ public class FileUploader implements AutoCloseable {
                 });
     }
 
-    public static CompletableFuture<Multihash> uploadChunk(SigningPrivateKeyAndPublicHash writer, FileProperties props, Location parentLocation, SymmetricKey parentparentKey,
-                                                           SymmetricKey baseKey, LocatedChunk chunk, Fragmenter fragmenter, Location nextChunkLocation,
-                                                           NetworkAccess network, ProgressConsumer<Long> monitor) {
+    public static CompletableFuture<Multihash> uploadChunk(SigningPrivateKeyAndPublicHash writer,
+                                                           FileProperties props,
+                                                           Location parentLocation,
+                                                           SymmetricKey parentparentKey,
+                                                           SymmetricKey baseKey,
+                                                           LocatedChunk chunk,
+                                                           Fragmenter fragmenter,
+                                                           Location nextChunkLocation,
+                                                           Optional<SymmetricLinkToSigner> writerLink,
+                                                           NetworkAccess network,
+                                                           ProgressConsumer<Long> monitor) {
+        if (! writer.publicKeyHash.equals(chunk.location.writer))
+            throw new IllegalStateException("Trying to write a chunk to the wrong signing key space!");
         return chunk.chunk.encrypt().thenCompose(encryptedChunk -> {
             List<Fragment> fragments = encryptedChunk.generateFragments(fragmenter);
             LOG.info(StringUtils.format("Uploading chunk with %d fragments\n", fragments.size()));
@@ -124,7 +134,7 @@ public class FileUploader implements AutoCloseable {
                                         new EncryptedChunkRetriever(chunk.chunk.nonce(), encryptedChunk.getAuth(),
                                                 hashes, Optional.of(encryptedNextChunkLocation), fragmenter);
                                 FileAccess metaBlob = FileAccess.create(chunk.existingHash, baseKey,
-                                        chunkKey, props, retriever, parentLocation, parentparentKey);
+                                        chunkKey, props, retriever, parentLocation, parentparentKey).withWriterLink(writerLink);
                                 return network.uploadChunk(metaBlob, chunk.location.owner,
                                         chunk.chunk.mapKey(), writer, tid);
                             }),

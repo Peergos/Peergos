@@ -34,7 +34,7 @@ import static peergos.server.util.PeergosNetworkUtils.getUserContextsForNode;
 public class MultiUserTests {
 
     private static Args args = UserTests.buildArgs();
-    private Random random = new Random(666);
+    private Random random = new Random();
     private final NetworkAccess network;
     private static final Crypto crypto = Crypto.initJava();
     private final int userCount;
@@ -64,8 +64,13 @@ public class MultiUserTests {
     }
 
     @Test
-    public void shareAndUnshareFileForReadAccess() throws Exception {
-        PeergosNetworkUtils.shareAndUnshareFileForReadAccess(network, network, userCount, random);
+    public void grantAndRevokeFileReadAccess() throws Exception {
+        PeergosNetworkUtils.grantAndRevokeFileReadAccess(network, network, userCount, random);
+    }
+
+    @Test
+    public void grantAndRevokeFileWriteAccess() throws Exception {
+        PeergosNetworkUtils.grantAndRevokeFileWriteAccess(network, network, userCount, random);
     }
 
     @Test
@@ -432,8 +437,13 @@ public class MultiUserTests {
     }
 
     @Test
-    public void shareAndUnshareFolderForReadAccess() throws Exception {
-        PeergosNetworkUtils.shareAndUnshareFolderForReadAccess(network, network, 2, random);
+    public void grantAndRevokeDirReadAccess() throws Exception {
+        PeergosNetworkUtils.grantAndRevokeDirReadAccess(network, network, 2, random);
+    }
+
+    @Test
+    public void grantAndRevokeDirWriteAccess() throws Exception {
+        PeergosNetworkUtils.grantAndRevokeDirWriteAccess(network, network, 2, random);
     }
 
     @Test

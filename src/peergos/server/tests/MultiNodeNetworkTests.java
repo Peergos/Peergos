@@ -158,15 +158,15 @@ public class MultiNodeNetworkTests {
     }
 
     @Test
-    public void  shareAndUnshareFileForReadAccess() throws Exception {
+    public void grantAndRevokeFileReadAccess() throws Exception {
         int shareeCount = 2;
-        PeergosNetworkUtils.shareAndUnshareFileForReadAccess(getNode(iNode1), getNode(iNode2), shareeCount, random);
+        PeergosNetworkUtils.grantAndRevokeFileReadAccess(getNode(iNode1), getNode(iNode2), shareeCount, random);
     }
 
     @Test
-    public void shareAndUnshareFolderForReadAccess() throws Exception {
+    public void grantAndRevokeDirReadAccess() throws Exception {
         int shareeCount = 2;
-        PeergosNetworkUtils.shareAndUnshareFolderForReadAccess(getNode(iNode1), getNode(iNode2), shareeCount, random);
+        PeergosNetworkUtils.grantAndRevokeDirReadAccess(getNode(iNode1), getNode(iNode2), shareeCount, random);
     }
 
     @Test

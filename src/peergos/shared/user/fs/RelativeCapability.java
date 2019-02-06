@@ -12,7 +12,7 @@ import java.util.*;
 /** This provides a relative cryptographic capability (read only or read and write) for a file or folder.
  *
  *  Here, relative means that the holder has the owner and writer public key from another source, typically the parent
- *  folder or entry point. This also includes the relative link between the symmetric write base key.
+ *  folder or entry point. This also includes the relative link between the symmetric write base keys if they are different.
  */
 public class RelativeCapability implements Cborable {
     // writer is only present when it is not implicit (an entry point, or a child link to a different writing key)
