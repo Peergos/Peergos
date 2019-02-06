@@ -34,7 +34,7 @@ import static peergos.server.util.PeergosNetworkUtils.getUserContextsForNode;
 public class MultiUserTests {
 
     private static Args args = UserTests.buildArgs();
-    private Random random = new Random(666);
+    private Random random = new Random();
     private final NetworkAccess network;
     private static final Crypto crypto = Crypto.initJava();
     private final int userCount;
