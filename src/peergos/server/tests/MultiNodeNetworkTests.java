@@ -164,9 +164,9 @@ public class MultiNodeNetworkTests {
     }
 
     @Test
-    public void shareAndUnshareFolderForReadAccess() throws Exception {
+    public void grantAndRevokeDirReadAccess() throws Exception {
         int shareeCount = 2;
-        PeergosNetworkUtils.shareAndUnshareFolderForReadAccess(getNode(iNode1), getNode(iNode2), shareeCount, random);
+        PeergosNetworkUtils.grantAndRevokeDirReadAccess(getNode(iNode1), getNode(iNode2), shareeCount, random);
     }
 
     @Test
