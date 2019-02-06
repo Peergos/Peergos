@@ -403,7 +403,7 @@ public class FileWrapper {
 
     @JsMethod
     public boolean isWritable() {
-        return pointer.capability instanceof WritableAbsoluteCapability;
+        return pointer != null && pointer.capability instanceof WritableAbsoluteCapability;
     }
 
     @JsMethod
