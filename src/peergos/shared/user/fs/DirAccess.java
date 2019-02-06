@@ -119,6 +119,11 @@ public class DirAccess implements CryptreeNode {
                 properties, children, moreFolderContents, newWriterLink);
     }
 
+    public DirAccess withoutChildren(SymmetricKey rBaseKey) {
+        return new DirAccess(lastCommittedHash, version, base2parent, parent2meta, parentLink,
+                properties, encryptChildren(rBaseKey, Collections.emptyList()), moreFolderContents, writerLink);
+    }
+
     @Override
     public DirAccess withParentLink(EncryptedCapability newParentLink) {
         return new DirAccess(lastCommittedHash, version, base2parent, parent2meta, newParentLink,

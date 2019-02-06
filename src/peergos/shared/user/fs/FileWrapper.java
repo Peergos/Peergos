@@ -163,6 +163,25 @@ public class FileWrapper {
     }
 
     /**
+     *
+     * @param children
+     * @param network
+     * @param random
+     * @return An updated version of this directory
+     */
+    public CompletableFuture<FileWrapper> addChildLinks(Collection<RetrievedCapability> children,
+                                                        NetworkAccess network,
+                                                        SafeRandom random) {
+        return ((DirAccess) pointer.fileAccess)
+                .addChildrenAndCommit(children.stream()
+                                .map(p -> ((WritableAbsoluteCapability)pointer.capability).relativise(p.capability))
+                                .collect(Collectors.toList()), (WritableAbsoluteCapability) pointer.capability, entryWriter,
+                        network, random)
+                .thenApply(committedCryptree ->
+                        new FileWrapper(pointer.withCryptree(committedCryptree), entryWriter, ownername));
+    }
+
+    /**
      * Marks a file/directory and all its descendants as dirty. Directories are immediately cleaned,
      * but files have all their keys except the actual data key cleaned. That is cleaned lazily, the next time it is modified
      *
@@ -199,10 +218,11 @@ public class FileWrapper {
             // Create new DirAccess
             DirAccess newDirAccess = DirAccess.create(existing.committedHash(), newSubfoldersKey, null, Optional.empty(), props,
                     cap.relativise(parent.writableFilePointer()), newParentKey)
+                    .withWriterLink(existing.getWriterLink())
                     .withNextBlob(updatedNextChunkCap.map(nextCap ->
                             EncryptedCapability.create(newSubfoldersKey, ourNewPointer.relativise(nextCap))));
-            // re add children
 
+            // re add children
             List<RelativeCapability> children = existing.getDirectChildren(pointer.capability.rBaseKey);
             return newDirAccess.addChildrenAndCommit(children, ourNewPointer, entryWriter, network, random)
                     .thenCompose(updatedDirAccess -> {
@@ -305,7 +325,8 @@ public class FileWrapper {
             DirAccess existing = (DirAccess) pointer.fileAccess;
             Optional<SymmetricLinkToSigner> updatedWriter = existing.getWriterLink()
                     .map(toSigner -> SymmetricLinkToSigner.fromPair(newBaseWriteKey, toSigner.target(cap.wBaseKey.get())));
-            DirAccess updatedDirAccess = existing.withWriterLink(updatedWriter);
+            DirAccess updatedDirAccess = existing.withWriterLink(updatedWriter)
+                    .withoutChildren(cap.rBaseKey);
 
             Optional<byte[]> nextChunkMapKey = existing.getNextChunkLocation(cap.rBaseKey);
             Optional<WritableAbsoluteCapability> nextChunkCap = nextChunkMapKey.map(cap::withMapKey);
@@ -321,32 +342,35 @@ public class FileWrapper {
                         .collect(Collectors.toList());
 
                 return Futures.combineAll(cleanedChildren);
-            }).thenCompose(childrenCases -> theNewUs.updateChildLinks(childrenCases, network, random))
-                    .thenCompose(finished ->
-                            // update pointer from parent to us
-                            (updateParent ? ((DirAccess) parent.pointer.fileAccess)
-                                    .updateChildLink((WritableAbsoluteCapability) parent.pointer.capability,
-                                            parent.entryWriter, this.pointer,
-                                            ourNewRetrievedPointer, network, random)
-                                    .thenApply(parentDa -> new FileWrapper(parent.pointer.withCryptree(parentDa), parent.entryWriter, parent.ownername)):
-                                    CompletableFuture.completedFuture(parent))
-                                    .thenApply(newParent -> new Pair<>(theNewUs, newParent)))
-                    .thenCompose(updatedPair -> {
-                        if (! nextChunkMapKey.isPresent())
-                            return CompletableFuture.completedFuture(updatedPair);
+            }).thenCompose(childrenCases -> theNewUs.addChildLinks(childrenCases.stream()
+                    .map(p -> p.left)
+                    .collect(Collectors.toList()), network, random)
+            ).thenCompose(updatedDir ->
+                    // update pointer from parent to us
+                    (updateParent ? ((DirAccess) parent.pointer.fileAccess)
+                            .updateChildLink((WritableAbsoluteCapability) parent.pointer.capability,
+                                    parent.entryWriter, this.pointer,
+                                    updatedDir.pointer, network, random)
+                            .thenApply(parentDa -> new FileWrapper(parent.pointer.withCryptree(parentDa),
+                                    parent.entryWriter, parent.ownername)):
+                            CompletableFuture.completedFuture(parent))
+                            .thenApply(newParent -> new Pair<>(updatedDir, newParent))
+            ).thenCompose(updatedPair -> {
+                if (! nextChunkMapKey.isPresent())
+                    return CompletableFuture.completedFuture(updatedPair);
 
-                        return network.getMetadata(nextChunkCap.get().getLocation())
-                                .thenCompose(mOpt -> {
-                                    if (! mOpt.isPresent())
-                                        return CompletableFuture.completedFuture(updatedPair);
-                                    return new FileWrapper(new RetrievedCapability(nextChunkCap.get(), mOpt.get()), entryWriter, ownername)
-                                            .rotateWriteKeys(false, parent, Optional.of(newBaseWriteKey), network, random)
-                                            .thenApply(x -> updatedPair);
-                                });
-                    }).thenApply(x -> {
-                        setModified();
-                        return x;
-                    });
+                return network.getMetadata(nextChunkCap.get().getLocation())
+                        .thenCompose(mOpt -> {
+                            if (! mOpt.isPresent())
+                                return CompletableFuture.completedFuture(updatedPair);
+                            return new FileWrapper(new RetrievedCapability(nextChunkCap.get(), mOpt.get()), Optional.of(signingPair()), ownername)
+                                    .rotateWriteKeys(false, parent, Optional.of(newBaseWriteKey), network, random)
+                                    .thenApply(x -> updatedPair);
+                        });
+            }).thenApply(x -> {
+                setModified();
+                return x;
+            });
         } else {
             FileAccess existing = (FileAccess) pointer.fileAccess;
             // Only need to do the first chunk, because only those can have writer links

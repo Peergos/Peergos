@@ -445,9 +445,9 @@ public class PeergosNetworkUtils {
         String filename = "somefile.txt";
         byte[] originalFileContents = "Hello Peergos friend!".getBytes();
         AsyncReader resetableFileInputStream = new AsyncReader.ArrayBacked(originalFileContents);
-        FileWrapper updatedFolder = folder.uploadOrOverwriteFile(filename, resetableFileInputStream,
+        folder.uploadOrOverwriteFile(filename, resetableFileInputStream,
                 originalFileContents.length, sharer.network, sharer.crypto.random, l -> {}, sharer.fragmenter(),
-                folder.generateChildLocationsFromSize(originalFileContents.length, sharer.crypto.random)).get();
+                folder.generateChildLocationsFromSize(originalFileContents.length, sharer.crypto.random)).join();
         String originalFilePath = sharer.username + "/" + folderName + "/" + filename;
 
         for (int i=0; i< 20; i++) {
@@ -461,7 +461,7 @@ public class PeergosNetworkUtils {
                 .collect(Collectors.toSet());
 
         // file is uploaded, do the actual sharing
-        boolean finished = sharer.shareWriteAccessWithAll(updatedFolder, sharer.getUserRoot().join(), shareeUsers.stream()
+        boolean finished = sharer.shareWriteAccessWithAll(sharer.getByPath(path).join().get(), sharer.getUserRoot().join(), shareeUsers.stream()
                 .map(c -> c.username)
                 .collect(Collectors.toSet())).get();
 
@@ -473,6 +473,11 @@ public class PeergosNetworkUtils {
 
             FileWrapper sharedFile = sharee.getByPath(sharer.username + "/" + folderName + "/" + filename).get().get();
             checkFileContents(originalFileContents, sharedFile, sharee);
+            Set<String> sharedChildNames = sharedFolder.getChildren(sharee.network).join()
+                    .stream()
+                    .map(f -> f.getName())
+                    .collect(Collectors.toSet());
+            Assert.assertTrue("Correct children", sharedChildNames.equals(childNames));
         }
 
         UserContext updatedSharer = PeergosNetworkUtils.ensureSignedUp(sharerUsername, sharerUsername, sharerNode.clear(), crypto);
