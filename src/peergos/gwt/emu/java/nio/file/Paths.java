@@ -1,6 +1,9 @@
 package java.nio.file;
 
 
+import java.util.*;
+import java.util.stream.*;
+
 public class Paths {
 
     private static final String ERROR_MSG_NULL_PATH = "Paths.get() does not support null path";
@@ -8,15 +11,12 @@ public class Paths {
     private static final String ERROR_MSG_UNINITIALISED = "Paths.get() does not support uninitialised path string";
 
     public static Path get(String firstPath, String... pathString) {
-        if(firstPath == null) {
+        if (firstPath == null) {
             throw new IllegalArgumentException(ERROR_MSG_NULL_PATH);
         }
-        if(pathString.length != 0) {
-            throw new IllegalArgumentException(ERROR_MSG_VARARGS);
-        }
-        if(firstPath.equals("")) {
+        if (firstPath.equals("")) {
             throw new IllegalArgumentException(ERROR_MSG_UNINITIALISED);
         }
-        return new Path(firstPath);
+        return new Path(Stream.concat(Stream.of(firstPath), Arrays.stream(pathString)).collect(Collectors.joining("/")));
     }
 }
