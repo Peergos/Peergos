@@ -640,27 +640,40 @@ public class UserContext {
     }
 
     public CompletableFuture<CommittedWriterData> makePublic(FileWrapper file) {
-        return userData.runWithLock(wd -> file.getPath(network).thenCompose(path -> IpfsTransaction.call(signer.publicKeyHash,
-                tid -> {
-                    Optional<Multihash> publicData = wd.props.publicData;
+        return userData.runWithLock(wd -> file.getPath(network).thenCompose(path -> {
+            ensureAllowedToShare(path);
+            return IpfsTransaction.call(signer.publicKeyHash,
+                    tid -> {
+                        Optional<Multihash> publicData = wd.props.publicData;
 
-                    Function<ByteArrayWrapper, byte[]> hasher = x -> Hash.sha256(x.data);
-                    CompletableFuture<ChampWrapper> champ = publicData.isPresent() ?
-                            ChampWrapper.create(publicData.get(), hasher, network.dhtClient) :
-                            ChampWrapper.create(signer.publicKeyHash, signer, hasher, tid, network.dhtClient);
+                        Function<ByteArrayWrapper, byte[]> hasher = x -> Hash.sha256(x.data);
+                        CompletableFuture<ChampWrapper> champ = publicData.isPresent() ?
+                                ChampWrapper.create(publicData.get(), hasher, network.dhtClient) :
+                                ChampWrapper.create(signer.publicKeyHash, signer, hasher, tid, network.dhtClient);
 
-                    AbsoluteCapability cap = file.getPointer().capability.readOnly();
-                    return network.dhtClient.put(signer.publicKeyHash, signer, cap.serialize(), tid)
-                            .thenCompose(capHash ->
-                                    champ.thenCompose(c -> c.put(signer.publicKeyHash, signer, path.getBytes(),
-                                            MaybeMultihash.empty(), capHash, tid))
-                                            .thenCompose(newRoot -> wd.props.withPublicRoot(newRoot)
-                                                    .commit(signer.publicKeyHash, signer, wd.hash, network, tid)));
-                },
-                network.dhtClient)));
+                        AbsoluteCapability cap = file.getPointer().capability.readOnly();
+                        return network.dhtClient.put(signer.publicKeyHash, signer, cap.serialize(), tid)
+                                .thenCompose(capHash ->
+                                        champ.thenCompose(c -> c.put(signer.publicKeyHash, signer, path.getBytes(),
+                                                MaybeMultihash.empty(), capHash, tid))
+                                                .thenCompose(newRoot -> wd.props.withPublicRoot(newRoot)
+                                                        .commit(signer.publicKeyHash, signer, wd.hash, network, tid)));
+                    },
+                    network.dhtClient);
+        }));
     }
 
-    @JsMethod
+    private static void ensureAllowedToShare(String path) {
+        if (Paths.get(path).getNameCount() == 1)
+                throw new IllegalStateException("You cannot make your home directory public!");
+    }
+
+   private static void ensureAllowedToShare(Path path) {
+        if (path.getNameCount() == 1)
+                throw new IllegalStateException("You cannot make your home directory public!");
+    }
+
+     @JsMethod
     public CompletableFuture<Set<FileWrapper>> getFriendRoots() {
         List<CompletableFuture<Optional<FileWrapper>>> friendRoots = entrie.getChildNames()
                 .stream()
@@ -900,11 +913,13 @@ public class UserContext {
     }
 
     public CompletableFuture<Boolean> shareReadAccessWith(Path path, Set<String> readersToAdd) {
+        ensureAllowedToShare(path);
         return getByPath(path.toString())
                 .thenCompose(file -> shareReadAccessWithAll(file.orElseThrow(() -> new IllegalStateException("Could not find path " + path.toString())), readersToAdd));
     }
 
     public CompletableFuture<Boolean> shareWriteAccessWith(Path path, Set<String> writersToAdd) {
+        ensureAllowedToShare(path);
         return getByPath(path.getParent().toString())
                 .thenCompose(parent -> {
                     if (! parent.isPresent())
