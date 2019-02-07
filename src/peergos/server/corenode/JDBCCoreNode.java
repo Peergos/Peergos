@@ -427,11 +427,11 @@ public class JDBCCoreNode {
      * @return
      */
     public boolean updateChain(String username,
-                                                  List<UserPublicKeyLink> existing,
-                                                  List<UserPublicKeyLink> tail,
-                                                  List<UserPublicKeyLink> merged) {
+                               List<UserPublicKeyLink> existing,
+                               List<UserPublicKeyLink> tail,
+                               List<UserPublicKeyLink> merged) {
         if (! UsernameValidator.isValidUsername(username))
-            throw new IllegalStateException("Invalid  username '" +username+"'");
+            throw new IllegalStateException("Invalid username '" +username+"'");
 
 
         List<String> toWrite = merged.stream().map(x -> new String(Base64.getEncoder().encode(x.serialize()))).collect(Collectors.toList());

@@ -2,7 +2,9 @@ package peergos.server.corenode;
 
 import peergos.shared.corenode.*;
 
+import java.util.*;
 import java.util.regex.Pattern;
+import java.util.stream.*;
 
 /**
  * Encapsulates CoreNode username rules.
@@ -11,6 +13,9 @@ import java.util.regex.Pattern;
 public final class UsernameValidator {
 
     private static final Pattern VALID_USERNAME = Pattern.compile(Usernames.REGEX);
+
+    public static final Set<String> BANNED_USERNAMES = Stream.of("ipfs", "ipns", "root", "http", "https")
+            .collect(Collectors.toSet());
 
     /** Username rules:
      * no _- at the end
@@ -22,7 +27,7 @@ public final class UsernameValidator {
      * @return true iff username is a valid username.
      */
     public static boolean isValidUsername(String username) {
-        return VALID_USERNAME.matcher(username).find();
+        return VALID_USERNAME.matcher(username).find() && ! BANNED_USERNAMES.contains(username);
     }
 
 }
