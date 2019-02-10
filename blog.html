@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<head>
+    <title>Blog</title>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta charset="utf-8">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <link rel="shortcut icon" href="/theme/vendor/peergos-styles/dist/img/icons/favicon.ico"/>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+            <link href="https://fonts.googleapis.com/css?family=Montserrat:400,300,700,900,500" rel="stylesheet" type="text/css">
+    <link rel="stylesheet" href="/theme/vendor/materialize/css/materialize.min.css" type="text/css"/>
+    <link rel="stylesheet" href="theme/css/peergos.css" type="text/css"/>
+
+
+ </head>
+<body class="blog" style="overflow-y: scroll;">
+<nav>
+    <div class="nav-wrapper">
+
+
+        <a href="/" class="brand-logo"><img src="/theme/img/peergos/logo-main.svg" width="200"/></a>
+        <a href="#" data-activates="mobile" class="button-collapse"><i class="material-icons">menu</i></a>
+            <ul class="right hide-on-med-and-down">
+                    <li >
+                        <a href="./features"
+>
+                            Features
+                        </a>
+                    </li>
+                    <li >
+                        <a href="./security"
+>
+                            Security
+                        </a>
+                    </li>
+                    <li class="active">
+                        <a href="./blog"
+>
+                            Blog
+                        </a>
+                    </li>
+                    <li >
+                        <a href="./about"
+>
+                            About
+                        </a>
+                    </li>
+                        <li>
+                            <a href="https://demo.peergos.net" class="btn">
+                                                        <span>
+                                                                Try the Demo
+                                                        </span>
+                            </a>
+                        </li>
+
+            </ul>
+
+
+        <ul class="side-nav" id="mobile">
+            <li class="side-nav-header">
+                <a href="/" class="brand-logo"><img src="/theme/img/peergos/logo-tower-only-green.svg" width="180"/></a>
+            </li>
+                <li >
+                    <a href="./features"
+>
+                        Features
+                    </a>
+                </li>
+                <li >
+                    <a href="./security"
+>
+                        Security
+                    </a>
+                </li>
+                <li class="active">
+                    <a href="./blog"
+>
+                        Blog
+                    </a>
+                </li>
+                    <li class="hidden-md hidden-lg nav_bar_grey_li">
+                        <a href="https://demo.peergos.net" class="nav_bar_grey_lnk">
+                                                        <span class="nav_bar_grey_span">
+                                                                Demo
+                                                        </span>
+                        </a>
+                    </li>
+                <li >
+                    <a href="./about"
+>
+                        About
+                    </a>
+                </li>
+        </ul>
+
+    </div>
+</nav>
+    <div class="container bs-docs-container">
+    <div class="row">
+    <div class="col m3 col s4">
+    <div id="full-toc" class="bs-docs-sidebar hidden-print affix-top hidden-xs hidden-sm" role="complementary">
+  <ul class='nav bs-docs-sidenav'><li class='active'><a href='#development_update_feb_2019_' data-scroll data-url>Development update, Feb 2019</a><ul class='nav'><li><a href='#decentralization_' data-scroll data-url>Decentralization</a></li><li><a href='#granting_write_access_' data-scroll data-url>Granting write access</a></li><li><a href='#future_work_' data-scroll data-url>Future work</a></li></ul>
+    </div>
+    </div>
+    <div class="col m9 col s8" role="main" style="overflow-x:auto; padding-bottom: 10px;">
+    <h1 class="page-header main-title">Blog</h1>
+    <div class="bs-docs-section">
+    <h2 id="development_update_feb_2019_">Development update, Feb 2019</h2>
+<p><em>This is our first development update since we started, in July 2013. For most of that period we've been working on Peergos for free in our spare time. Everything we do is <a href="https://github.com/peergos/peergos">open source</a> and pro bono - If you would like to support our development then please make a <a href="https://liberapay.com/peergos">recurring donation of less than 100 euros per week</a> or a <a href="https://donorbox.org/peergos">larger one off donation</a>.</em> </p>
+<p>The browser's capabilities have come a long way since we started. Things that we can do now were not possible 5 years ago. The Inter-Planetary File system (<a href="https://ipfs.io">IPFS</a>) has come a long way in solving many of the peer-to-peer networking problems and laying a solid structural foundation to build on. That's why very early on after IPFS started we switched from our own networking and distributed hash table to IPFS, allowing us to focus on our core principles of privacy and security. </p>
+<p>Thanks to some very generous support from <a href="https://protocol.ai/">Protocol Labs</a> (the initial creators of IPFS) we have been able to accelerate development recently. We've released a bunch of cool new features and are much closer to our public alpha. Let's go through a few of the big ones. You can see the rest in more detail in our <a href="https://book.peergos.org">book</a>. </p>
+<h3 id="decentralization_">Decentralization</h3>
+<p>The first new feature is proper decentralization. Now you can self host your own Peergos instance and transparently interact with users on other servers, whilst being independent of the domain name system (DNS) and the SSL certificate authorities (central points of failure outside our control). You can even log in to your Peergos account through someone else's Peergos server. The Peergos interface can actually be entirely self hosted from within IPFS itself (i.e. you can log in through a standard ipfs instance rather than a Peergos instance)! This was all achieved with IPFS p2p streams. p2p streams are a new feature in IPFS which let you create a tcp socket between any two IPFS instances. This stream is end-to-end encrypted with secio. Secio is basically <a href="https://en.wikipedia.org/wiki/Transport_Layer_Security">TLS</a> with a different handshake because the end points are not location addressed - instead the addresses are the hash of each node's public key. Like all other IPFS connections, this stream will tunnel through NATs and firewalls transparently. </p>
+<p>We implemented a new http endpoint on the IPFS gateway which allows you to proxy a http request to any target IPFS instance (who is listening) using these p2p streams.</p>
+<p>This new endpoint is accessed through the gateway (after enabling it - it's an experimental feature for now) at:</p>
+<p>http://locahost:8080<b>/p2p/$ipfs-node-id/http/$path</b></p>
+<p>For each such request, IPFS will open a p2p stream to $ipfs-node-id and proxy the request to it with a path of $path. Note that the $ipfs-node-id is the hash of the IPFS node's public key. How this works is illustrated below. The beauty of this http endpoint is you don't need to manually open p2p streams for every different endpointdestination, IPFS handles that for you automatically. </p>
+<p><center>
+<img alt="Proxying requests" class="class" height="90%" id="id" src="/theme/img/blog/proxy.svg" width="90%">
+</center></p>
+<p>Using this key ingredient, we can separate out each user's data into their own server. Most of the data is already in IPFS, but a user's storage server is responsible for pinning it, and for storing the mutable pointers (our equivalent of IPNS), and pending follow requests. This means the only centralized component is the pki, which stores mappings from username to public identity key, and public storage server key. The job of the pki server is to ensure unique usernames and thus it is logically centralized, but we take various efforts to mitigate the effect of this. For example the pki is mirrored on every Peergos server. This has threefold benefits: first it allows users to do private lookups for friends' public keys without announcing to the network who they are looking up; second, it makes the whole system much more scalable - you only need to contact the real pki when you are signing up, or changing your identity or storage server; and third it improves resiliency, if the pki server were to permanently be taken down the network could move to a new one without any loss of data. The pki data itself is stored in IPFS as an append only data structure in a compressed hash array mapped trie (champ). </p>
+<h3 id="granting_write_access_">Granting write access</h3>
+<p>We've had the ability to grant read access for years, but only this year have we finally implemented granting write access to other users. Every write is signed by a signing keypair. Initially you only have one signing keypair for your entire filestystem, which means that to only grant write access to a subtree, it needs to be moved to a new signing keypair. To explain how this works we're going to take a few steps back. Every directory or 5 MiB section (chunk) of a file requires a unique capability to access it consisting of:</p>
+<p><b>(owner, signer, label, read base key, write base key)</b></p>
+<p>Here the owner and signer are (hashes of) public signing keys, label is a random 32 byte label, and the read and write base keys are symmetric keys. If someone has the first 4, which amount to a location and a key, then they can read the file or folder that it points to. If they also have the write base key, then they can also make modifications.</p>
+<p>From a network visible point of view, every signing key pair points to a champ root (by signing the root). This champ is just a look up from the label to the value, which is a cryptree node. You can read more about cryptree in our <a href="https://book.peergos.org/security/cryptree.html">book</a>, or the <a href="https://raw.githubusercontent.com/ianopolous/Peergos/master/papers/wuala-cryptree.pdf">original paper</a> describing it. If the thing pointed to is a file, then the cryptree node itself will have merkle links to the encrypted fragments of the chunk. Remember that merkle links are just a hash that points to another ipfs object. This is illustrated below. </p>
+<p><center>
+<img alt="Champ" class="class" height="90%" id="id" src="/theme/img/blog/champ.svg" width="90%">
+</center></p>
+<p>When you grant write access to a file or folder then you are just revealing the write base key to them. This enables them to extract the private signing key and thus make modifications. Initially your entire filesystem is under the same signing key pair. This means were we to naively grant write access by sharing this key then the recipient could delete (though not read) all your files. To avoid this we first move the file or directory to which we want to grant write access to a new signing key pair. This allows us to only grant the friend write access to the particular part of our filesystem we want to share. Voila!</p>
+<p>If you grant write access to a folder, then that means that the recipient can upload new files or make new directories inside that folder, or delete all the contents. Granting write access to an individual file means the recipient can only modify that file.</p>
+<h3 id="future_work_">Future work</h3>
+<p>We have lots of work in the pipeline, so stay tuned! These include an in Peergos text editor, for a google docs like experience with collaborative editing, a secure messaging system inside Peergos and a sandbox and API for third-party applications inside Peergos. </p>
+    </div>
+    <span class="pull-right">
+                                        <a class="btn btn-default" role="button"
+                                           href="javascript:window.scrollTo(0,0);">Back to Top</a>
+                                </span>
+    </div>
+    </div>
+    </div>
+    <div class="index">
+
+
+<footer class="page-footer">
+    <div class="">
+        <div class="row">
+            <div class="col l6 m6 s12 footer-logo">
+                <img src="/theme/img/peergos/logo-dark-bg.svg" width="230">
+            </div>
+
+            <div class="col l3 m4 s12">
+                <h5 class="white-text">About Us</h5>
+                <ul>
+                    <li><a href="/about" >About</a></li>
+                    <li><a href="/contact" >Contact</a></li>
+                    <li><a href="/faq" >FAQ</a></li>
+                </ul>
+            </div>
+
+            <div class="col l3 m3 s12">
+                <h5 class="white-text">Community</h5>
+                <ul>
+                    <!--<li><a href="http://blog.peergos.org" target="_new">Blog</a></li>-->
+                    <li><a href="https://github.com/peergos" target="_new">GitHub</a></li>
+                    <li><a href="https://twitter.com/peergos" target="_new">Twitter</a></li>
+                    <li><a href="https://gitter.im/ianopolous/Peergos/PeergosChat" target="_new">Chatroom</a></li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="footer-copyright">
+            <div class="row">
+                <div class="col s12">
+                    © PEERGOS | Designed by <a href="http://www.antarctic-design.co.uk" target="_blank"> Eamonn
+                    Maguire</a>.
+                </div>
+
+            </div>
+        </div>
+
+</footer>
+
+    </div>
+</div>
+<script src="/theme/vendor/jquery/dist/jquery.min.js"></script>
+<script src="/theme/vendor/materialize/js/materialize.min.js"></script>
+<script>
+    $(".button-collapse").sideNav();
+
+
+</script>
+
+</body>
+</html>

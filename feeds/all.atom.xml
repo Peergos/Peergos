@@ -1,2 +1,2 @@
 <?xml version="1.0" encoding="utf-8"?>
-<feed xmlns="http://www.w3.org/2005/Atom"><title>Peergos</title><link href="https://peergos.gitlab.io/website/" rel="alternate"></link><link href="https://peergos.gitlab.io/website/feeds/all.atom.xml" rel="self"></link><id>https://peergos.gitlab.io/website/</id><updated>2017-05-22T22:39:00Z</updated></feed>
+<feed xmlns="http://www.w3.org/2005/Atom"><title>Peergos</title><link href="http://localhost:8000/" rel="alternate"></link><link href="http://localhost:8000/feeds/all.atom.xml" rel="self"></link><id>http://localhost:8000/</id><updated>2019-02-10T21:28:36Z</updated></feed>
