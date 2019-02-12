@@ -15,6 +15,8 @@ You can read more detail about our features and architecture in our [book](https
 
 The slides of a talk introducing Peergos are [here](https://speakerdeck.com/ianopolous/peergos-architecture) and [videos here](https://www.youtube.com/watch?v=h54pShffxvI) and [here](https://www.youtube.com/watch?v=dCLboQDlzds).
 
+A short [tour of Peergos](https://vimeo.com/316903779) is here.
+
 If you would like to support Peergos development, then please make a 
 
 [recurring donation less than 100 EUR per week](https://liberapay.com/peergos)
