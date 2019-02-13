@@ -48,7 +48,7 @@ public class HTTPCoreNode implements CoreNode {
             Serialize.serialize(username, dout);
             dout.flush();
 
-            CompletableFuture<byte[]> fut = poster.postUnzip(urlPrefix + "core/getPublicKey", bout.toByteArray());
+            CompletableFuture<byte[]> fut = poster.postUnzip(urlPrefix + Constants.CORE_URL + "getPublicKey", bout.toByteArray());
             return fut.thenApply(res -> {
                 DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
 
@@ -76,7 +76,7 @@ public class HTTPCoreNode implements CoreNode {
 
             Serialize.serialize(owner.serialize(), dout);
             dout.flush();
-            CompletableFuture<byte[]> fut = poster.post(urlPrefix + "core/getUsername", bout.toByteArray(), true);
+            CompletableFuture<byte[]> fut = poster.post(urlPrefix + Constants.CORE_URL + "getUsername", bout.toByteArray(), true);
             return fut.thenApply(res -> {
                 DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
                 try {
@@ -103,7 +103,7 @@ public class HTTPCoreNode implements CoreNode {
             Serialize.serialize(username, dout);
             dout.flush();
 
-            return poster.postUnzip(urlPrefix + "core/getChain", bout.toByteArray()).thenApply(res -> {
+            return poster.postUnzip(urlPrefix + Constants.CORE_URL + "getChain", bout.toByteArray()).thenApply(res -> {
                 CborObject cbor = CborObject.fromByteArray(res);
                 if (! (cbor instanceof CborObject.CborList))
                     throw new IllegalStateException("Invalid cbor for claim chain: " + cbor);
@@ -131,7 +131,7 @@ public class HTTPCoreNode implements CoreNode {
             }
             dout.flush();
 
-            return poster.postUnzip(urlPrefix + "core/updateChain", bout.toByteArray()).thenApply(res -> {
+            return poster.postUnzip(urlPrefix + Constants.CORE_URL + "updateChain", bout.toByteArray()).thenApply(res -> {
                 DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
                 try {
                     return din.readBoolean();
@@ -147,7 +147,7 @@ public class HTTPCoreNode implements CoreNode {
 
     @Override
     public CompletableFuture<List<String>> getUsernames(String prefix) {
-        return poster.postUnzip(urlPrefix + "core/getUsernamesGzip/"+prefix, new byte[0])
+        return poster.postUnzip(urlPrefix + Constants.CORE_URL + "getUsernamesGzip/"+prefix, new byte[0])
                 .thenApply(raw -> (List) JSONParser.parse(new String(raw)));
     }
 
