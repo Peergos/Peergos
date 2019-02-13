@@ -288,8 +288,10 @@ public class Main {
             long defaultQuota = a.getLong("default-quota");
             Logging.LOG().info("Using default user space quota of " + defaultQuota);
             Path quotaFilePath = a.fromPeergosDir("quotas_file","quotas.txt");
+            Path statePath = a.fromPeergosDir("state_path","state_path.txt");
+
             UserQuotas userQuotas = new UserQuotas(quotaFilePath, defaultQuota);
-            SpaceCheckingKeyFilter spaceChecker = new SpaceCheckingKeyFilter(core, sqlMutable, localDht, userQuotas::quota);
+            SpaceCheckingKeyFilter spaceChecker = new SpaceCheckingKeyFilter(core, sqlMutable, localDht, userQuotas::quota, statePath);
             CorenodeEventPropagator corePropagator = new CorenodeEventPropagator(core);
             corePropagator.addListener(spaceChecker::accept);
             MutableEventPropagator localMutable = new MutableEventPropagator(sqlMutable);
@@ -330,7 +332,7 @@ public class Main {
             peergos.initAndStart(localAddress, tlsProps, webroot, useWebAssetCache);
             if (! isPkiNode)
                 ((MirrorCoreNode) core).start();
-            spaceChecker.loadAllOwnerAndUsage();
+            spaceChecker.calculateUsage();
         } catch (Exception e) {
             e.printStackTrace();
             System.exit(1);

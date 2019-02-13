@@ -56,7 +56,7 @@ public class DHTHandler implements HttpHandler {
                     PublicKeyHash ownerHash = PublicKeyHash.fromString(last.apply("owner"));
                     dht.startTransaction(ownerHash).thenAccept(tid -> {
                         replyJson(httpExchange, tid.toString(), Optional.empty());
-                    }).exceptionally(Futures::logError).get();
+                    }).exceptionally(Futures::logAndThrow).get();
                     break;
                 }
                 case TRANSACTION_CLOSE: {
@@ -64,7 +64,7 @@ public class DHTHandler implements HttpHandler {
                     TransactionId tid = new TransactionId(args.get(0));
                     dht.closeTransaction(ownerHash, tid).thenAccept(b -> {
                         replyJson(httpExchange, JSONParser.toString(b ? 1 : 0), Optional.empty());
-                    }).exceptionally(Futures::logError).get();
+                    }).exceptionally(Futures::logAndThrow).get();
                     break;
                 }
                 case BLOCK_PUT: {
@@ -151,7 +151,7 @@ public class DHTHandler implements HttpHandler {
                         Map<String, Object> json = new TreeMap<>();
                         json.put("Pins", pinned.stream().map(h -> h.toString()).collect(Collectors.toList()));
                         replyJson(httpExchange, JSONParser.toString(json), Optional.empty());
-                    }).exceptionally(Futures::logError).get();
+                    }).exceptionally(Futures::logAndThrow).get();
                     break;
                 }
                 case PIN_UPDATE: {

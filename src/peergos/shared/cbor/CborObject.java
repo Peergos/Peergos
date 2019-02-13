@@ -181,18 +181,6 @@ public interface CborObject extends Cborable {
             return values != null ? values.hashCode() : 0;
         }
 
-        public Cborable get(String key) {
-            return values.get(new CborString(key));
-        }
-
-        public String getString(String key) {
-            return ((CborString) get(key)).value;
-        }
-
-        public long getLong(String key) {
-            return ((CborLong) get(key)).value;
-        }
-
         public CborList getList(String key) {
             return (CborList) get(key);
         }

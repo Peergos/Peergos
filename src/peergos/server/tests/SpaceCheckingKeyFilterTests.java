@@ -3,11 +3,11 @@ import org.junit.*;
 import static org.junit.Assert.*;
 import peergos.server.SpaceCheckingKeyFilter;
 import peergos.shared.Crypto;
+import peergos.shared.MaybeMultihash;
 import peergos.shared.cbor.CborObject;
 import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.crypto.hash.Sha256;
 import peergos.shared.io.ipfs.multihash.Multihash;
-import peergos.shared.merklebtree.MaybeMultihash;
 
 import java.util.HashSet;
 import java.util.Random;

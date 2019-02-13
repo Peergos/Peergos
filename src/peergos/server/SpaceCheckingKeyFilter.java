@@ -1,6 +1,7 @@
 package peergos.server;
 import java.util.logging.*;
 
+import peergos.server.util.Args;
 import peergos.server.util.Logging;
 
 import peergos.server.corenode.*;
@@ -277,21 +278,21 @@ public class SpaceCheckingKeyFilter {
         }
         try {
             for (Map.Entry<PublicKeyHash, Stat> entry : state.currentView.entrySet()) {
-                PublicKeyHash writerKey = entry.getKey();
+                PublicKeyHash ownerKey = entry.getKey();
                 Stat stat = entry.getValue();
-                MaybeMultihash rootHash = mutable.getPointerTarget(writerKey, dht).get();
+                MaybeMultihash rootHash = mutable.getPointerTarget(ownerKey, ownerKey, dht).get();
                 boolean isChanged = stat.target.equals(rootHash);
                 if (isChanged) {
                     long updatedSize = dht.getRecursiveBlockSize(rootHash.get()).get();
                     long deltaUsage = updatedSize - stat.directRetainedStorage;
-                    state.usage.get(stat.owner).confirmUsage(writerKey, deltaUsage); //NB: writerKey is a dummy value
-                    Set<PublicKeyHash> directOwnedKeys = WriterData.getDirectOwnedKeys(writerKey, mutable, dht);
+                    state.usage.get(stat.owner).confirmUsage(ownerKey, deltaUsage); //NB: ownerKey is a dummy value
+                    Set<PublicKeyHash> directOwnedKeys = WriterData.getDirectOwnedKeys(ownerKey, ownerKey, mutable, dht);
                     List<PublicKeyHash> newOwnedKeys = directOwnedKeys.stream()
                         .filter(key -> !stat.ownedKeys.contains(key))
                         .collect(Collectors.toList());
                     for (PublicKeyHash newOwnedKey : newOwnedKeys) {
                         state.currentView.putIfAbsent(newOwnedKey, new Stat(stat.owner, MaybeMultihash.empty(), 0, Collections.emptySet()));
-                        processMutablePointerEvent(newOwnedKey, MaybeMultihash.empty(), mutable.getPointerTarget(newOwnedKey, dht).get());
+                        processMutablePointerEvent(ownerKey, newOwnedKey, MaybeMultihash.empty(), mutable.getPointerTarget(ownerKey, newOwnedKey, dht).get());
                     }
                     stat.update(rootHash, directOwnedKeys, updatedSize);
                 }
@@ -379,11 +380,11 @@ public class SpaceCheckingKeyFilter {
     public void processCorenodeEvent(String username, PublicKeyHash owner) {
         try {
             state.usage.putIfAbsent(username, new Usage(0));
-            Set<PublicKeyHash> childrenKeys = WriterData.getDirectOwnedKeys(ownedKeyHash, mutable, dht);
-            state.currentView.computeIfAbsent(ownedKeyHash, k -> new Stat(username, MaybeMultihash.empty(), 0, childrenKeys));
-            Stat current = state.currentView.get(ownedKeyHash);
-            MaybeMultihash updatedRoot = mutable.getPointerTarget(ownedKeyHash, dht).get();
-            processMutablePointerEvent(ownedKeyHash, current.target, updatedRoot);
+            Set<PublicKeyHash> childrenKeys = WriterData.getDirectOwnedKeys(owner, owner, mutable, dht);
+            state.currentView.computeIfAbsent(owner, k -> new Stat(username, MaybeMultihash.empty(), 0, childrenKeys));
+            Stat current = state.currentView.get(owner);
+            MaybeMultihash updatedRoot = mutable.getPointerTarget(owner, owner, dht).get();
+            processMutablePointerEvent(owner, owner, current.target, updatedRoot);
             for (PublicKeyHash childKey : childrenKeys) {
                 processCorenodeEvent(username, childKey);
             }

@@ -4,6 +4,7 @@ import java.util.function.*;
 import java.util.logging.Logger;
 
 import peergos.server.storage.admin.*;
+import peergos.server.storage.UserQuotas;
 import peergos.server.util.Logging;
 import java.util.logging.Level;
 
@@ -172,13 +173,13 @@ public class UserService {
             }
         }
 
-        long defaultQuota = 1e6; //TODO: fixme 
+        long defaultQuota = Long.MAX_VALUE; //TODO: fixme
         LOG.info("Using default user space quota of " + defaultQuota);
         Path quotaFilePath = Paths.get("quotas.txt");
         Path usagePath = Paths.get("usage.json");
         UserQuotas userQuotas = new UserQuotas(quotaFilePath, defaultQuota);
 
-        SpaceCheckingKeyFilter spaceChecker = new SpaceCheckingKeyFilter(coreNode, mutable, dht, userQuotas::quota, usagePath);
+        SpaceCheckingKeyFilter spaceChecker = new SpaceCheckingKeyFilter(coreNode, mutable, storage, userQuotas::quota, usagePath);
         spaceChecker.calculateUsage();
 
         //define web-root static-handler
