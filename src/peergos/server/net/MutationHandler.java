@@ -35,7 +35,7 @@ public class MutationHandler implements HttpHandler {
         String path = exchange.getRequestURI().getPath();
         if (path.startsWith("/"))
             path = path.substring(1);
-        String[] subComponents = path.substring(UserService.MUTABLE_POINTERS_URL.length()).split("/");
+        String[] subComponents = path.substring(Constants.MUTABLE_POINTERS_URL.length()).split("/");
         String method = subComponents[0];
 //            LOG.info("core method "+ method +" from path "+ path);
 

@@ -31,10 +31,6 @@ public class UserService {
 
 	public static final Version CURRENT_VERSION = Version.parse("0.0.0");
     public static final String UI_URL = "/";
-    public static final String DHT_URL = "/api/v0/";
-    public static final String MUTABLE_POINTERS_URL = "mutable/";
-    public static final String SOCIAL_URL = "social/";
-    public static final String PUBLIC_FILES_URL = "public/";
 
     public static final int HANDLER_THREADS = 50;
     public static final int CONNECTION_BACKLOG = 100;
@@ -195,16 +191,16 @@ public class UserService {
                 tlsServer.createContext(path, new HSTSHandler(handlerFunc));
         };
 
-        addHandler.accept(DHT_URL, new DHTHandler(storage, (h, i) -> true));
-        addHandler.accept("/" + HttpCoreNodeServer.CORE_URL,
+        addHandler.accept(Constants.DHT_URL, new DHTHandler(storage, (h, i) -> true));
+        addHandler.accept("/" + Constants.CORE_URL,
                 new HttpCoreNodeServer.CoreNodeHandler(this.coreNode));
-        addHandler.accept("/" + SOCIAL_URL,
+        addHandler.accept("/" + Constants.SOCIAL_URL,
                 new SocialHandler(this.social));
-        addHandler.accept("/" + MUTABLE_POINTERS_URL,
+        addHandler.accept("/" + Constants.MUTABLE_POINTERS_URL,
                 new MutationHandler(this.mutable));
         addHandler.accept("/" + Constants.ADMIN_URL,
                 new AdminHandler(this.controller));
-        addHandler.accept("/" + PUBLIC_FILES_URL, new PublicFileHandler(coreNode, mutable, storage));
+        addHandler.accept("/" + Constants.PUBLIC_FILES_URL, new PublicFileHandler(coreNode, mutable, storage));
         addHandler.accept(UI_URL, handler);
 
         localhostServer.setExecutor(Executors.newFixedThreadPool(HANDLER_THREADS));

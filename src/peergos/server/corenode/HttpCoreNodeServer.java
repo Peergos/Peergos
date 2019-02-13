@@ -22,7 +22,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.api.*;
 import peergos.shared.mutable.*;
 import peergos.server.util.Args;
-import peergos.shared.util.Serialize;
+import peergos.shared.util.*;
 
 public class HttpCoreNodeServer {
 	private static final Logger LOG = Logging.LOG();
@@ -30,8 +30,6 @@ public class HttpCoreNodeServer {
     private static final boolean LOGGING = true;
     private static final int CONNECTION_BACKLOG = 100;
     private static final int HANDLER_THREAD_COUNT = 100;
-
-    public static final String CORE_URL = "core/";
 
     public static class CoreNodeHandler implements HttpHandler
     {
@@ -52,7 +50,7 @@ public class HttpCoreNodeServer {
             String path = exchange.getRequestURI().getPath();
             if (path.startsWith("/"))
                 path = path.substring(1);
-            String[] subComponents = path.substring(CORE_URL.length()).split("/");
+            String[] subComponents = path.substring(Constants.CORE_URL.length()).split("/");
             String method = subComponents[0];
 //            LOG.info("core method "+ method +" from path "+ path);
 
@@ -173,8 +171,8 @@ public class HttpCoreNodeServer {
         else
             server = HttpServer.create(new InetSocketAddress(InetAddress.getLocalHost(), address.getPort()), CONNECTION_BACKLOG);
         ch = new CoreNodeHandler(coreNode);
-        server.createContext("/" + CORE_URL, ch);
-        server.createContext("/" + UserService.MUTABLE_POINTERS_URL, new MutationHandler(mutable));
+        server.createContext("/" + Constants.CORE_URL, ch);
+        server.createContext("/" + Constants.MUTABLE_POINTERS_URL, new MutationHandler(mutable));
         server.setExecutor(Executors.newFixedThreadPool(HANDLER_THREAD_COUNT));
     }
 
