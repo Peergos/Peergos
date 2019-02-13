@@ -40,7 +40,7 @@ public class HttpSocialNetwork implements SocialNetworkProxy {
 
     private CompletableFuture<Boolean> sendFollowRequest(String urlPrefix, HttpPoster poster, PublicKeyHash target, byte[] encryptedPermission)
     {
-        return poster.postUnzip(urlPrefix + "social/followRequest?owner=" + encode(target.toString()), encryptedPermission).thenApply(res -> {
+        return poster.postUnzip(urlPrefix + Constants.SOCIAL_URL + "followRequest?owner=" + encode(target.toString()), encryptedPermission).thenApply(res -> {
             DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
             try {
                 return din.readBoolean();
@@ -62,7 +62,7 @@ public class HttpSocialNetwork implements SocialNetworkProxy {
 
     private CompletableFuture<byte[]> getFollowRequests(String urlPrefix, HttpPoster poster, PublicKeyHash owner, byte[] signedTime)
     {
-        return poster.get(urlPrefix + "social/getFollowRequests?owner=" + encode(owner.toString())
+        return poster.get(urlPrefix + Constants.SOCIAL_URL + "getFollowRequests?owner=" + encode(owner.toString())
                 + "&auth=" + ArrayOps.bytesToHex(signedTime)).thenApply(res -> {
             DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
             try {
@@ -85,7 +85,7 @@ public class HttpSocialNetwork implements SocialNetworkProxy {
 
     private CompletableFuture<Boolean> removeFollowRequest(String urlPrefix, HttpPoster poster, PublicKeyHash owner, byte[] signedRequest)
     {
-        return poster.postUnzip(urlPrefix + "social/removeFollowRequest?owner=" + encode(owner.toString()), signedRequest).thenApply(res -> {
+        return poster.postUnzip(urlPrefix + Constants.SOCIAL_URL + "removeFollowRequest?owner=" + encode(owner.toString()), signedRequest).thenApply(res -> {
             DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
             try {
                 return din.readBoolean();
