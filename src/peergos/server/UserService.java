@@ -14,6 +14,8 @@ import peergos.shared.social.*;
 import peergos.shared.storage.ContentAddressedStorage;
 
 import peergos.server.net.*;
+import peergos.shared.storage.controller.*;
+import peergos.shared.util.*;
 
 import javax.net.ssl.*;
 import java.io.*;
@@ -26,6 +28,7 @@ import java.util.concurrent.*;
 public class UserService {
 	private static final Logger LOG = Logging.LOG();
 
+	public static final Version CURRENT_VERSION = Version.parse("0.0.0");
     public static final String UI_URL = "/";
     public static final String DHT_URL = "/api/v0/";
     public static final String MUTABLE_POINTERS_URL = "mutable/";
@@ -71,15 +74,18 @@ public class UserService {
     private final CoreNode coreNode;
     private final SocialNetwork social;
     private final MutablePointers mutable;
+    private final StorageController controller;
 
     public UserService(ContentAddressedStorage storage,
                        CoreNode coreNode,
                        SocialNetwork social,
-                       MutablePointers mutable) {
+                       MutablePointers mutable,
+                       StorageController controller) {
         this.storage = storage;
         this.coreNode = coreNode;
         this.social = social;
         this.mutable = mutable;
+        this.controller = controller;
     }
 
     public static class TlsProperties {

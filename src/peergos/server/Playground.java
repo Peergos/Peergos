@@ -37,7 +37,7 @@ public class Playground {
                 nonWriteThroughSocial,
                 nonWriteThroughIpfs,
                 nonWriteThroughPointers,
-                nonWriteThroughTree, source.usernames, false);
+                nonWriteThroughTree, source.storageController, source.usernames, false);
 
         String username = args[0];
         Console console = System.console();
