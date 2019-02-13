@@ -7,8 +7,6 @@ import peergos.server.mutable.*;
 import peergos.server.social.*;
 import peergos.server.storage.*;
 import peergos.shared.*;
-import peergos.shared.crypto.*;
-import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
@@ -37,7 +35,7 @@ public class Playground {
                 nonWriteThroughSocial,
                 nonWriteThroughIpfs,
                 nonWriteThroughPointers,
-                nonWriteThroughTree, source.storageController, source.usernames, false);
+                nonWriteThroughTree, source.instanceAdmin, source.usernames, false);
 
         String username = args[0];
         Console console = System.console();

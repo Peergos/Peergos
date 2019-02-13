@@ -32,7 +32,6 @@ public class HttpCoreNodeServer {
     private static final int HANDLER_THREAD_COUNT = 100;
 
     public static final String CORE_URL = "core/";
-    public static final int PORT = 9999;
 
     public static class CoreNodeHandler implements HttpHandler
     {

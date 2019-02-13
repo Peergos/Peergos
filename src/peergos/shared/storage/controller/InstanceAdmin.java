@@ -7,7 +7,7 @@ import peergos.shared.util.*;
 import java.util.*;
 import java.util.concurrent.*;
 
-public interface StorageController {
+public interface InstanceAdmin {
 
     CompletableFuture<VersionInfo> getVersionInfo();
 
@@ -31,11 +31,10 @@ public interface StorageController {
         }
     }
 
-    class HTTP implements StorageController {
+    class HTTP implements InstanceAdmin {
+        public static final String VERSION = "version";
 
         private final HttpPoster poster;
-        private static final String apiPrefix = "api/v0/";
-        public static final String VERSION = "version";
 
         public HTTP(HttpPoster poster) {
             this.poster = poster;
@@ -43,7 +42,7 @@ public interface StorageController {
 
         @Override
         public CompletableFuture<VersionInfo> getVersionInfo() {
-            return poster.get(apiPrefix + VERSION)
+            return poster.get(Constants.ADMIN_URL + VERSION)
                     .thenApply(raw -> VersionInfo.fromJSON(JSONParser.parse(new String(raw))));
         }
     }

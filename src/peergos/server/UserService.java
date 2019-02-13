@@ -3,6 +3,7 @@ import java.util.*;
 import java.util.function.*;
 import java.util.logging.Logger;
 
+import peergos.server.storage.admin.*;
 import peergos.server.util.Logging;
 import java.util.logging.Level;
 
@@ -74,13 +75,13 @@ public class UserService {
     private final CoreNode coreNode;
     private final SocialNetwork social;
     private final MutablePointers mutable;
-    private final StorageController controller;
+    private final InstanceAdmin controller;
 
     public UserService(ContentAddressedStorage storage,
                        CoreNode coreNode,
                        SocialNetwork social,
                        MutablePointers mutable,
-                       StorageController controller) {
+                       InstanceAdmin controller) {
         this.storage = storage;
         this.coreNode = coreNode;
         this.social = social;
@@ -201,6 +202,8 @@ public class UserService {
                 new SocialHandler(this.social));
         addHandler.accept("/" + MUTABLE_POINTERS_URL,
                 new MutationHandler(this.mutable));
+        addHandler.accept("/" + Constants.ADMIN_URL,
+                new AdminHandler(this.controller));
         addHandler.accept("/" + PUBLIC_FILES_URL, new PublicFileHandler(coreNode, mutable, storage));
         addHandler.accept(UI_URL, handler);
 
