@@ -68,14 +68,6 @@ public class Multihash implements Comparable<Multihash> {
         return compare;
     }
 
-    public Multihash(Multihash toClone) {
-        this(toClone.type, toClone.hash); // N.B. despite being a byte[], hash is immutable
-    }
-
-    public Multihash(byte[] multihash) {
-        this(Type.lookup(multihash[0] & 0xff), Arrays.copyOfRange(multihash, 2, multihash.length));
-    }
-
     public byte[] toBytes() {
         byte[] res = new byte[hash.length+2];
         res[0] = (byte)type.index;
