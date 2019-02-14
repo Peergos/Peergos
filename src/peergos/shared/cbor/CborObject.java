@@ -23,7 +23,6 @@ public interface CborObject extends Cborable {
         serialize(encoder);
         return bout.toByteArray();
     }
-    public interface CborComparable extends CborObject, Comparable {}
 
     @Override
     default CborObject toCbor() {
