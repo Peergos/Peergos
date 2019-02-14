@@ -199,7 +199,8 @@ public class IpfsCoreNode implements CoreNode {
 
     @Override
     public synchronized CompletableFuture<String> getUsername(PublicKeyHash key) {
-        return CompletableFuture.completedFuture(reverseLookup.get(key));
+        return CompletableFuture.completedFuture(Optional.ofNullable(reverseLookup.get(key))
+                .orElseThrow(() -> new IllegalStateException("Unknown identity key: " + key)));
     }
 
     @Override
