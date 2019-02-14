@@ -1,5 +1,6 @@
 package peergos.server;
 
+import peergos.server.storage.admin.*;
 import peergos.shared.*;
 import peergos.server.corenode.*;
 import peergos.server.fuse.*;
@@ -316,7 +317,8 @@ public class Main {
 
             new UserFilePinner(userPath, core, p2mMutable, p2pDht, delayMs).start();
 
-            UserService peergos = new UserService(p2pDht, corePropagator, p2pSocial, p2mMutable);
+            Admin storageAdmin = new Admin();
+            UserService peergos = new UserService(p2pDht, corePropagator, p2pSocial, p2mMutable, storageAdmin);
             InetSocketAddress localAddress = new InetSocketAddress("localhost", userAPIAddress.getPort());
             Optional<Path> webroot = a.hasArg("webroot") ?
                     Optional.of(Paths.get(a.getArg("webroot"))) :

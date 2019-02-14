@@ -16,6 +16,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.server.*;
+import peergos.shared.storage.controller.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.user.fs.cryptree.*;
@@ -144,6 +145,8 @@ public abstract class UserTests {
         String username = generateUsername();
         String password = "password";
         PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        InstanceAdmin.VersionInfo version = network.instanceAdmin.getVersionInfo().join();
+        Assert.assertTrue(! version.version.isBefore(Version.parse("0.0.0")));
     }
 
     @Test

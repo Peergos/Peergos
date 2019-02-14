@@ -68,7 +68,7 @@ public class HttpMutablePointers implements MutablePointersProxy {
         long t1 = System.currentTimeMillis();
         try
         {
-            return poster.postUnzip(urlPrefix + "mutable/setPointer?owner=" + owner + "&writer=" + writer, writerSignedPayload).thenApply(res -> {
+            return poster.postUnzip(urlPrefix + Constants.MUTABLE_POINTERS_URL + "setPointer?owner=" + owner + "&writer=" + writer, writerSignedPayload).thenApply(res -> {
                 DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
                 try {
                     return din.readBoolean();
@@ -96,7 +96,7 @@ public class HttpMutablePointers implements MutablePointersProxy {
     public CompletableFuture<Optional<byte[]>> getPointer(String urlPrefix, HttpPoster poster, PublicKeyHash owner, PublicKeyHash writer) {
         long t1 = System.currentTimeMillis();
         try {
-            return poster.get(urlPrefix + "mutable/getPointer?owner=" + owner + "&writer=" + writer)
+            return poster.get(urlPrefix + Constants.MUTABLE_POINTERS_URL + "getPointer?owner=" + owner + "&writer=" + writer)
                     .thenApply(meta -> meta.length == 0 ? Optional.empty() : Optional.of(meta));
         } catch (Exception ioe) {
             LOG.log(Level.WARNING, ioe.getMessage(), ioe);

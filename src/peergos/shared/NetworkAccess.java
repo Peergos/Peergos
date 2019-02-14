@@ -12,6 +12,7 @@ import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.mutable.*;
 import peergos.shared.social.*;
 import peergos.shared.storage.*;
+import peergos.shared.storage.controller.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.user.fs.cryptree.*;
@@ -34,21 +35,36 @@ public class NetworkAccess {
     public final ContentAddressedStorage dhtClient;
     public final MutablePointers mutable;
     public final MutableTree tree;
+    public final InstanceAdmin instanceAdmin;
     @JsProperty
     public final List<String> usernames;
     private final LocalDateTime creationTime;
     private final boolean isJavascript;
 
-    public NetworkAccess(CoreNode coreNode, SocialNetwork social, ContentAddressedStorage dhtClient, MutablePointers mutable, MutableTree tree, List<String> usernames) {
-        this(coreNode, social, dhtClient, mutable, tree, usernames, false);
+    public NetworkAccess(CoreNode coreNode,
+                         SocialNetwork social,
+                         ContentAddressedStorage dhtClient,
+                         MutablePointers mutable,
+                         MutableTree tree,
+                         InstanceAdmin instanceAdmin,
+                         List<String> usernames) {
+        this(coreNode, social, dhtClient, mutable, tree, instanceAdmin, usernames, false);
     }
 
-    public NetworkAccess(CoreNode coreNode, SocialNetwork social, ContentAddressedStorage dhtClient, MutablePointers mutable, MutableTree tree, List<String> usernames, boolean isJavascript) {
+    public NetworkAccess(CoreNode coreNode,
+                         SocialNetwork social,
+                         ContentAddressedStorage dhtClient,
+                         MutablePointers mutable,
+                         MutableTree tree,
+                         InstanceAdmin instanceAdmin,
+                         List<String> usernames,
+                         boolean isJavascript) {
         this.coreNode = coreNode;
         this.social = social;
         this.dhtClient = new HashVerifyingStorage(dhtClient);
         this.mutable = mutable;
         this.tree = tree;
+        this.instanceAdmin = instanceAdmin;
         this.usernames = usernames;
         this.creationTime = LocalDateTime.now();
         this.isJavascript = isJavascript;
@@ -59,7 +75,7 @@ public class NetworkAccess {
     }
 
     public NetworkAccess withCorenode(CoreNode newCore) {
-        return new NetworkAccess(newCore, social, dhtClient, mutable, tree, usernames, isJavascript);
+        return new NetworkAccess(newCore, social, dhtClient, mutable, tree, instanceAdmin, usernames, isJavascript);
     }
 
     @JsMethod
@@ -70,12 +86,12 @@ public class NetworkAccess {
     }
 
     public NetworkAccess clear() {
-        return new NetworkAccess(coreNode, social, dhtClient, mutable, new MutableTreeImpl(mutable, dhtClient), usernames, isJavascript);
+        return new NetworkAccess(coreNode, social, dhtClient, mutable, new MutableTreeImpl(mutable, dhtClient), instanceAdmin, usernames, isJavascript);
     }
 
     public NetworkAccess withMutablePointerCache(int ttl) {
         CachingPointers mutable = new CachingPointers(this.mutable, ttl);
-        return new NetworkAccess(coreNode, social, dhtClient, mutable, new MutableTreeImpl(mutable, dhtClient), usernames, isJavascript);
+        return new NetworkAccess(coreNode, social, dhtClient, mutable, new MutableTreeImpl(mutable, dhtClient), instanceAdmin, usernames, isJavascript);
     }
 
     public static CoreNode buildProxyingCorenode(HttpPoster poster, Multihash pkiServerNodeId) {
@@ -176,18 +192,19 @@ public class NetworkAccess {
                     SocialNetwork p2pSocial = isPeergosServer ?
                             httpSocial :
                             new ProxyingSocialNetwork(nodeId, core, httpSocial, httpSocial);
-                    return build(p2pDht, core, p2pMutable, p2pSocial, usernames, isJavascript);
+                    return build(p2pDht, core, p2pMutable, p2pSocial, new InstanceAdmin.HTTP(apiPoster), usernames, isJavascript);
                 });
     }
 
     public static NetworkAccess build(ContentAddressedStorage dht,
                                       CoreNode coreNode,
-                                                         MutablePointers mutable,
-                                                         SocialNetwork social,
-                                                         List<String> usernames,
-                                                         boolean isJavascript) {
+                                      MutablePointers mutable,
+                                      SocialNetwork social,
+                                      InstanceAdmin instanceAdmin,
+                                      List<String> usernames,
+                                      boolean isJavascript) {
         MutableTree btree = new MutableTreeImpl(mutable, dht);
-        return new NetworkAccess(coreNode, social, dht, mutable, btree, usernames, isJavascript);
+        return new NetworkAccess(coreNode, social, dht, mutable, btree, instanceAdmin, usernames, isJavascript);
     }
 
     public static CompletableFuture<NetworkAccess> buildJava(URL target) {

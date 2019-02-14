@@ -38,7 +38,7 @@ public class SocialHandler implements HttpHandler {
         String path = exchange.getRequestURI().getPath();
         if (path.startsWith("/"))
             path = path.substring(1);
-        String[] subComponents = path.substring(UserService.SOCIAL_URL.length()).split("/");
+        String[] subComponents = path.substring(Constants.SOCIAL_URL.length()).split("/");
         String method = subComponents[0];
         Map<String, List<String>> params = HttpUtil.parseQuery(exchange.getRequestURI().getQuery());
         Function<String, String> last = key -> params.get(key).get(params.get(key).size() - 1);
