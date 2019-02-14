@@ -2,7 +2,6 @@ package peergos.server;
 
 import java.util.logging.*;
 
-import peergos.server.util.Args;
 import peergos.server.util.Logging;
 
 import peergos.server.corenode.*;
@@ -11,14 +10,11 @@ import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
-import peergos.server.storage.UserQuotas;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
-import java.net.URL;
-import java.nio.file.Paths;
 import java.time.*;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -470,30 +466,5 @@ public class SpaceCheckingKeyFilter {
         }
         usage.addPending(writer, size);
         return true;
-    }
-
-    public static void main(String[] args) throws Exception {
-        Args parsed = Args.parse(args);
-        String peergosAddress = parsed.getArg("peergos_address");
-        long defaultQuota = parsed.getLong("default-quota", 1000L);
-        String quota = parsed.getArg("quota_path", "quotas.txt");
-        String state = parsed.getArg("state_path", "state.cbor");
-
-        Crypto.initJava();
-
-        System.out.println(
-            String.format("Starting space-checking-key-filter with peergos-addres %s, default-quota %d, quota_path %s",peergosAddress, defaultQuota, quota));
-
-        Path quotaFilePath = Paths.get(quota);
-        UserQuotas userQuotas = new UserQuotas(quotaFilePath, defaultQuota);
-
-        System.out.println("Connecting to " + peergosAddress);
-        NetworkAccess network = NetworkAccess.buildJava(new URL(peergosAddress)).get();
-
-
-        SpaceCheckingKeyFilter spaceCheckingKeyFilter = new SpaceCheckingKeyFilter(network.coreNode, network.mutable, network.dhtClient, userQuotas::quota, Paths.get(state));
-        System.out.println("Calculating usages...");
-        spaceCheckingKeyFilter.calculateUsage();
-        System.out.println("Finished calculating usages");
     }
 }
