@@ -1,4 +1,5 @@
 package peergos.server;
+
 import java.util.logging.*;
 
 import peergos.server.util.Args;
@@ -10,10 +11,7 @@ import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
-import peergos.server.storage.IPFS;
-import peergos.server.storage.IpfsDHT;
 import peergos.server.storage.UserQuotas;
-import peergos.shared.io.ipfs.api.JSONParser;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
