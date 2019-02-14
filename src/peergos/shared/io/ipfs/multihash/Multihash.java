@@ -65,7 +65,7 @@ public class Multihash implements Comparable<Multihash> {
             if (compare != 0)
                 return compare;
         }
-        return compare;
+        return Integer.compare(type.index, that.type.index);
     }
 
     public byte[] toBytes() {
