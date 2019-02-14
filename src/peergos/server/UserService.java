@@ -4,7 +4,6 @@ import java.util.function.*;
 import java.util.logging.Logger;
 
 import peergos.server.storage.admin.*;
-import peergos.server.storage.UserQuotas;
 import peergos.server.util.Logging;
 import java.util.logging.Level;
 
