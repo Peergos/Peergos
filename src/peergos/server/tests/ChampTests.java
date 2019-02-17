@@ -72,6 +72,7 @@ public class ChampTests {
             MaybeMultihash result = updated.left.get(key, key.data, 0, bitWidth, storage).get();
             if (! result.equals(MaybeMultihash.of(value)))
                 throw new IllegalStateException("Incorrect result!");
+            state.put(key, MaybeMultihash.of(value));
             current = updated.left;
             currentHash = updated.right;
         }
@@ -97,6 +98,35 @@ public class ChampTests {
                     MaybeMultihash.of(value), bitWidth, maxCollisions, tid, storage, updated.right).get();
             if (! removed.right.equals(currentHash))
                 throw new IllegalStateException("Non canonical state!");
+        }
+
+        testInsertionOrderIndependence(state, currentHash, bitWidth, maxCollisions, storage, user);
+    }
+
+    private void testInsertionOrderIndependence(Map<ByteArrayWrapper, MaybeMultihash> state,
+                                                Multihash expectedRoot,
+                                                int bitWidth,
+                                                int maxCollisions,
+                                                RAMStorage storage,
+                                                SigningPrivateKeyAndPublicHash user) {
+        ArrayList<Map.Entry<ByteArrayWrapper, MaybeMultihash>> mappings = new ArrayList<>(state.entrySet());
+        Random r = new Random();
+        int orderings = 1;
+        for (int i = 0; i < orderings; i++) {
+            Collections.shuffle(mappings, r);
+            Champ current = Champ.empty();
+            TransactionId tid = storage.startTransaction(user.publicKeyHash).join();
+            Multihash currentHash = storage.put(user.publicKeyHash, user, current.serialize(), tid).join();
+            for (int k=0; k < mappings.size(); k++) {
+                ByteArrayWrapper key = mappings.get(k).getKey();
+                Multihash value = mappings.get(k).getValue().get();
+                Pair<Champ, Multihash> updated = current.put(user.publicKeyHash, user, key, key.data, 0,
+                        MaybeMultihash.empty(), MaybeMultihash.of(value), bitWidth, maxCollisions, x -> x.data, tid, storage, currentHash).join();
+                current = updated.left;
+                currentHash = updated.right;
+            }
+            if (! currentHash.equals(expectedRoot))
+                throw new IllegalStateException("Champ is not insertion order independent!");
         }
     }
 
