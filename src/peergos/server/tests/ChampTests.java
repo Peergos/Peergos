@@ -10,6 +10,7 @@ import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
+import java.nio.file.*;
 import java.util.*;
 import java.util.function.*;
 
@@ -19,7 +20,7 @@ public class ChampTests {
 
     @Test
     public void insertAndRetrieve() throws Exception {
-        RAMStorage storage = new RAMStorage();
+        ContentAddressedStorage storage = new FileContentAddressedStorage(Files.createTempDirectory("peergos-tmp"));
         SigningPrivateKeyAndPublicHash user = createUser(storage, crypto);
         Random r = new Random(28);
 
@@ -107,7 +108,7 @@ public class ChampTests {
                                                 Multihash expectedRoot,
                                                 int bitWidth,
                                                 int maxCollisions,
-                                                RAMStorage storage,
+                                                ContentAddressedStorage storage,
                                                 SigningPrivateKeyAndPublicHash user) {
         ArrayList<Map.Entry<ByteArrayWrapper, MaybeMultihash>> mappings = new ArrayList<>(state.entrySet());
         Random r = new Random();
@@ -198,7 +199,7 @@ public class ChampTests {
         return new Pair<>(current, currentHash);
     }
 
-    public static SigningPrivateKeyAndPublicHash createUser(RAMStorage storage, Crypto crypto) {
+    public static SigningPrivateKeyAndPublicHash createUser(ContentAddressedStorage storage, Crypto crypto) {
         SigningKeyPair random = SigningKeyPair.random(crypto.random, crypto.signer);
         try {
             PublicKeyHash ownerHash = ContentAddressedStorage.hashKey(random.publicSigningKey);
