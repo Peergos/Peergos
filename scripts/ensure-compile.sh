@@ -10,9 +10,9 @@ echo "********************************"
 echo " Checking if project compiles.."
 echo "********************************"
 
-if ! ant compile;
-then 
-    echo "Project failed to compile"
-    exit 1
-fi
+#if ! ant compile;
+#then 
+#    echo "Project failed to compile"
+#    exit 1
+#fi
 
