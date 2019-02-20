@@ -56,7 +56,7 @@ public class DHTHandler implements HttpHandler {
                     PublicKeyHash ownerHash = PublicKeyHash.fromString(last.apply("owner"));
                     dht.startTransaction(ownerHash).thenAccept(tid -> {
                         replyJson(httpExchange, tid.toString(), Optional.empty());
-                    }).exceptionally(Futures::logError).get();
+                    }).exceptionally(Futures::logAndThrow).get();
                     break;
                 }
                 case TRANSACTION_CLOSE: {
@@ -64,7 +64,7 @@ public class DHTHandler implements HttpHandler {
                     TransactionId tid = new TransactionId(args.get(0));
                     dht.closeTransaction(ownerHash, tid).thenAccept(b -> {
                         replyJson(httpExchange, JSONParser.toString(b ? 1 : 0), Optional.empty());
-                    }).exceptionally(Futures::logError).get();
+                    }).exceptionally(Futures::logAndThrow).get();
                     break;
                 }
                 case BLOCK_PUT: {
@@ -141,7 +141,7 @@ public class DHTHandler implements HttpHandler {
                             dht.get(hash).thenApply(opt -> opt.map(CborObject::toByteArray)))
                             .thenAccept(opt -> replyBytes(httpExchange,
                                     opt.orElse(new byte[0]), opt.map(x -> hash)))
-                            .exceptionally(Futures::logError).get();
+                            .exceptionally(Futures::logAndThrow).get();
                     break;
                 }
                 case PIN_ADD: {
@@ -151,7 +151,7 @@ public class DHTHandler implements HttpHandler {
                         Map<String, Object> json = new TreeMap<>();
                         json.put("Pins", pinned.stream().map(h -> h.toString()).collect(Collectors.toList()));
                         replyJson(httpExchange, JSONParser.toString(json), Optional.empty());
-                    }).exceptionally(Futures::logError).get();
+                    }).exceptionally(Futures::logAndThrow).get();
                     break;
                 }
                 case PIN_UPDATE: {
@@ -162,7 +162,7 @@ public class DHTHandler implements HttpHandler {
                         Map<String, Object> json = new TreeMap<>();
                         json.put("Pins", pinned.stream().map(h -> h.toString()).collect(Collectors.toList()));
                         replyJson(httpExchange, JSONParser.toString(json), Optional.empty());
-                    }).exceptionally(Futures::logError).get();
+                    }).exceptionally(Futures::logAndThrow).get();
                     break;
                 }
                 case PIN_RM: {
@@ -175,7 +175,7 @@ public class DHTHandler implements HttpHandler {
                         Map<String, Object> json = new TreeMap<>();
                         json.put("Pins", unpinned.stream().map(h -> h.toString()).collect(Collectors.toList()));
                         replyJson(httpExchange, JSONParser.toString(json), Optional.empty());
-                    }).exceptionally(Futures::logError).get();
+                    }).exceptionally(Futures::logAndThrow).get();
                     break;
                 }
                 case BLOCK_STAT: {
@@ -185,7 +185,7 @@ public class DHTHandler implements HttpHandler {
                         res.put("Size", sizeOpt.orElse(0));
                         String json = JSONParser.toString(res);
                         replyJson(httpExchange, json, Optional.of(block));
-                    }).exceptionally(Futures::logError).get();
+                    }).exceptionally(Futures::logAndThrow).get();
                     break;
                 }
                 case REFS: {
@@ -195,14 +195,14 @@ public class DHTHandler implements HttpHandler {
                         // make stream of JSON objects
                         String jsonStream = json.stream().map(m -> JSONParser.toString(m)).reduce("", (a, b) -> a + b);
                         replyJson(httpExchange, jsonStream, Optional.of(block));
-                    }).exceptionally(Futures::logError).get();
+                    }).exceptionally(Futures::logAndThrow).get();
                     break;
                 }
                 case ID: {
                     dht.id().thenAccept(id -> {
                         Object json = wrapHash("ID", id);
                         replyJson(httpExchange, JSONParser.toString(json), Optional.empty());
-                    }).exceptionally(Futures::logError).get();
+                    }).exceptionally(Futures::logAndThrow).get();
                     break;
                 }
                 default: {

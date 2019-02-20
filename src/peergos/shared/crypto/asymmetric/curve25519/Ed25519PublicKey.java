@@ -46,6 +46,8 @@ public class Ed25519PublicKey implements PublicSigningKey {
     }
 
     public byte[] unsignMessage(byte[] signed) {
+        if (implementation == null)
+            throw new IllegalStateException("Uninitialized crypto-implementation: call peergos.shared.Crypto::init");
         return implementation.crypto_sign_open(signed, publicKey);
     }
 

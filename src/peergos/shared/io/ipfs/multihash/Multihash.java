@@ -8,7 +8,7 @@ import java.io.*;
 import java.util.*;
 
 @JsType
-public class Multihash {
+public class Multihash implements Comparable<Multihash> {
     @JsType
     public enum Type {
         id(0, -1),
@@ -54,6 +54,18 @@ public class Multihash {
 
     public static Multihash decode(byte[] multihash) {
         return new Multihash(Type.lookup(multihash[0] & 0xff), Arrays.copyOfRange(multihash, 2, multihash.length));
+    }
+    @Override
+    public int compareTo(Multihash that) {
+        int compare = Integer.compare(this.hash.length, that.hash.length);
+        if (compare != 0)
+            return compare;
+        for (int i = 0; i < this.hash.length; i++) {
+            compare = Byte.compare(this.hash[i], that.hash[i]);
+            if (compare != 0)
+                return compare;
+        }
+        return Integer.compare(type.index, that.type.index);
     }
 
     public byte[] toBytes() {
