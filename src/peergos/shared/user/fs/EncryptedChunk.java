@@ -11,24 +11,19 @@ import java.util.concurrent.CompletableFuture;
  *
  */
 public class EncryptedChunk {
+    private static final int AUTH_SIZE = TweetNaCl.SECRETBOX_OVERHEAD_BYTES;
 
-    private final byte[] auth, cipher;
+    private final byte[] authAndCipherText;
 
-    public EncryptedChunk(byte[] auth, byte[] cipher) {
-        this.auth = auth;
-        this.cipher = cipher;
-    }
-
-    public EncryptedChunk(byte[] encrypted) {
-        this(Arrays.copyOfRange(encrypted, 0, TweetNaCl.SECRETBOX_OVERHEAD_BYTES),
-        Arrays.copyOfRange(encrypted, TweetNaCl.SECRETBOX_OVERHEAD_BYTES, encrypted.length));
+    public EncryptedChunk(byte[] authAndCipherText) {
+        this.authAndCipherText = authAndCipherText;
     }
 
     public List<Fragment> generateFragments(peergos.shared.user.fs.Fragmenter  fragmenter) {
-        if (this.cipher.length == 0)
+        if (authAndCipherText.length == AUTH_SIZE)
             return Collections.emptyList();
 
-        byte[][] bfrags = fragmenter.split(cipher);
+        byte[][] bfrags = fragmenter.split(Arrays.copyOfRange(authAndCipherText, AUTH_SIZE, authAndCipherText.length));
         List<Fragment> frags = new ArrayList<>();
         for (int i=0; i < bfrags.length; i++)
             frags.add(new Fragment(bfrags[i]));
@@ -36,19 +31,19 @@ public class EncryptedChunk {
     }
 
     public byte[] getAuth() {
-        return Arrays.copyOf(auth, auth.length);
+        return Arrays.copyOf(authAndCipherText, AUTH_SIZE);
     }
 
     public CompletableFuture<byte[]> decrypt(SymmetricKey key, byte[] nonce) {
-        if (cipher.length == 0) {
+        if (authAndCipherText.length == AUTH_SIZE) {
             CompletableFuture<byte[]> res = new CompletableFuture<>();
-            res.complete(cipher);
+            res.complete(new byte[0]);
             return res;
         }
-        return key.decryptAsync(ArrayOps.concat(this.auth, this.cipher), nonce);
+        return key.decryptAsync(authAndCipherText, nonce);
     }
 
     public EncryptedChunk truncateTo(int length) {
-        return new EncryptedChunk(auth, Arrays.copyOfRange(cipher, 0, length));
+        return new EncryptedChunk(Arrays.copyOfRange(authAndCipherText, 0, AUTH_SIZE + length));
     }
 }
