@@ -45,18 +45,19 @@ public class SplitFragmenter implements Fragmenter {
         return CborObject.CborMap.build(res);
     }
 
-    public byte[] recombine(byte[][] encoded, int truncateTo) {
+    @Override
+    public byte[] recombine(byte[][] encoded, int startOffset, int truncateTo) {
         int length = 0;
 
         for (int i=0; i < encoded.length; i++)
             length += encoded[i].length;
 
-        byte[] output = new byte[length];
+        byte[] output = new byte[startOffset + length];
         int pos =  0;
         for (int i=0; i < encoded.length && pos < truncateTo; i++) {
             byte[] b = encoded[i];
             int copyLength = Math.max(0, Math.min(b.length, truncateTo - pos));
-            System.arraycopy(b, 0, output, pos, copyLength);
+            System.arraycopy(b, 0, output, startOffset + pos, copyLength);
             pos += copyLength;
         }
         return output;

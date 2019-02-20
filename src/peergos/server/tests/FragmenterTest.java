@@ -61,7 +61,7 @@ public class FragmenterTest {
             assertTrue(length <= Fragment.MAX_LENGTH);
         }
 
-        byte[] recombine = fragmenter.recombine(split, input.length);
+        byte[] recombine = fragmenter.recombine(split, 0, input.length);
 
         assertTrue("recombine(split(input)) = input", Arrays.equals(input, recombine));
     }

@@ -65,8 +65,9 @@ public class EncryptedChunkRetriever implements FileRetriever {
             return network.downloadFragments(fragmentHashes, monitor, fragmenter.storageIncreaseFactor()).thenCompose(fragments -> {
                 fragments = reorder(fragments, fragmentHashes);
                 byte[][] collect = fragments.stream().map(f -> f.fragment.data).toArray(byte[][]::new);
-                byte[] cipherText = fragmenter.recombine(collect, Chunk.MAX_SIZE);
-                EncryptedChunk fullEncryptedChunk = new EncryptedChunk(ArrayOps.concat(chunkAuth, cipherText));
+                byte[] authAndCipherText = fragmenter.recombine(collect, chunkAuth.length, Chunk.MAX_SIZE);
+                System.arraycopy(chunkAuth, 0, authAndCipherText, 0, chunkAuth.length);
+                EncryptedChunk fullEncryptedChunk = new EncryptedChunk(authAndCipherText);
                 if (truncateTo < Chunk.MAX_SIZE)
                     fullEncryptedChunk = fullEncryptedChunk.truncateTo((int) truncateTo);
                 LocatedEncryptedChunk result = new LocatedEncryptedChunk(ourLocation, ourExistingHash, fullEncryptedChunk, nonce);

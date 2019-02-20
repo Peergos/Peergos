@@ -25,7 +25,7 @@ public interface Fragmenter extends Cborable {
 
     byte[][] split(byte[] input);
 
-    byte[] recombine(byte[][] encoded, int inputLength);
+    byte[] recombine(byte[][] encoded, int startOffset, int inputLength);
 
     @SuppressWarnings("unusable-by-js")
     static Fragmenter fromCbor(Cborable cbor) {

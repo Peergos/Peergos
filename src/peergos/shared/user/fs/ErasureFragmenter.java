@@ -27,9 +27,12 @@ public class ErasureFragmenter implements Fragmenter {
         return Erasure.split(input, nOriginalFragments, nAllowedFailures);
     }
 
-    public byte[] recombine(byte[][] encoded, int truncateLength) {
+    public byte[] recombine(byte[][] encoded, int startOffset, int truncateLength) {
         // truncateTo should be  input.length
-        return Erasure.recombine(encoded, truncateLength, nOriginalFragments, nAllowedFailures);
+        byte[] withoutPrefix = Erasure.recombine(encoded, truncateLength, nOriginalFragments, nAllowedFailures);
+        byte[] withPrefix = new byte[startOffset + withoutPrefix.length];
+        System.arraycopy(withoutPrefix, 0, withPrefix, startOffset, withoutPrefix.length);
+        return withPrefix;
     }
 
     @Override
