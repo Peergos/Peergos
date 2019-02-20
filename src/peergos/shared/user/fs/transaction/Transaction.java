@@ -55,8 +55,6 @@ public interface Transaction extends Cborable {
                                                                                AsyncReader fileData,
                                                                                SigningPrivateKeyAndPublicHash writer,
                                                                                List<Location> locations) {
-        return Hash.sha256(fileData, fileSize)
-                .thenApply(hash -> new FileUploadTransaction(System.currentTimeMillis(), path,
-                        new Multihash(Multihash.Type.sha2_256, hash), writer, locations));
+        return CompletableFuture.completedFuture(new FileUploadTransaction(System.currentTimeMillis(), path, writer, locations));
     }
 }
