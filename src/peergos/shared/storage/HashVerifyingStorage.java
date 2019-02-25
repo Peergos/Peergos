@@ -14,15 +14,17 @@ import java.util.stream.*;
 public class HashVerifyingStorage implements ContentAddressedStorage {
 
     private final ContentAddressedStorage source;
+    private final LoginHasher hasher;
 
-    public HashVerifyingStorage(ContentAddressedStorage source) {
+    public HashVerifyingStorage(ContentAddressedStorage source, LoginHasher hasher) {
         this.source = source;
+        this.hasher = hasher;
     }
 
     private <T> T verify(byte[] data, Multihash claimed, Supplier<T> result) {
         switch (claimed.type) {
             case sha2_256:
-                Multihash computed = new Multihash(Multihash.Type.sha2_256, Hash.sha256(data));
+                Multihash computed = new Multihash(Multihash.Type.sha2_256, hasher.sha256(data));
                 if (claimed instanceof Cid)
                     computed = new Cid(((Cid) claimed).version, ((Cid) claimed).codec, computed);
 

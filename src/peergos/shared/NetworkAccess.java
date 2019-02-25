@@ -61,7 +61,7 @@ public class NetworkAccess {
                          boolean isJavascript) {
         this.coreNode = coreNode;
         this.social = social;
-        this.dhtClient = new HashVerifyingStorage(dhtClient);
+        this.dhtClient = new HashVerifyingStorage(dhtClient, isJavascript ? new ScryptJS() : new ScryptJava());
         this.mutable = mutable;
         this.tree = tree;
         this.instanceAdmin = instanceAdmin;

@@ -36,4 +36,9 @@ public class ScryptJava implements LoginHasher {
         }
         throw new IllegalStateException("Unknown user generation algorithm: " + algorithm);
     }
+
+    @Override
+    public byte[] sha256(byte[] input) {
+        return Hash.sha256(input);
+    }
 }

@@ -7,4 +7,6 @@ import java.util.concurrent.CompletableFuture;
 public interface LoginHasher {
 
     CompletableFuture<byte[]> hashToKeyBytes(String username, String password, SecretGenerationAlgorithm algorithm);
+
+    byte[] sha256(byte[] input);
 }
