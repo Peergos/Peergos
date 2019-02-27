@@ -40,7 +40,7 @@ public class FileUploader implements AutoCloseable {
                         ProgressConsumer<Long> monitor,
                         FileProperties fileProperties, Fragmenter fragmenter,
                         List<Location> locations) {
-        long length = lengthLow + ((lengthHi & 0xFFFFFFFFL) << 32);
+        long length = (lengthLow & 0xFFFFFFFFL) + ((lengthHi & 0xFFFFFFFFL) << 32);
         if (fileProperties == null)
             this.props = new FileProperties(name, mimeType, length, LocalDateTime.now(), false, Optional.empty());
         else
@@ -49,7 +49,7 @@ public class FileUploader implements AutoCloseable {
 
         this.fragmenter = fragmenter;
 
-        long offset = offsetLow + ((offsetHi & 0xFFFFFFFFL) << 32);
+        long offset = (offsetLow & 0xFFFFFFFFL) + ((offsetHi & 0xFFFFFFFFL) << 32);
 
         // Process and upload chunk by chunk to avoid running out of RAM, in reverse order to build linked list
         this.nchunks = length > 0 ? (length + Chunk.MAX_SIZE - 1) / Chunk.MAX_SIZE : 1;
