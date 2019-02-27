@@ -35,7 +35,7 @@ public class FileProperties implements Cborable {
             throw new IllegalStateException("File and directory names must be less than 256 characters.");
         this.name = name;
         this.mimeType = mimeType;
-        this.size = sizeLo | ((sizeHi | 0L) << 32);
+        this.size = (sizeLo & 0xFFFFFFFFL) | ((sizeHi | 0L) << 32);
         this.modified = modified;
         this.isHidden = isHidden;
         this.thumbnail = thumbnail;
