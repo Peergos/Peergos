@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class PeergosFileSystemImpl implements FileSystem {
 
@@ -57,8 +58,8 @@ public class PeergosFileSystemImpl implements FileSystem {
     }
 
     @Override
-    public void grant(Path path, List<String> users, Permission permission) {
-        Set<String> userSet = users.stream().collect(Collectors.toSet());
+    public void grant(Path path, String user, Permission permission) {
+        Set<String> userSet = Stream.of(user).collect(Collectors.toSet());
         switch (permission) {
             case READ:
                 userContext.shareReadAccessWith(path, userSet);
@@ -71,14 +72,14 @@ public class PeergosFileSystemImpl implements FileSystem {
     }
 
     @Override
-    public void revoke(Path path, List<String> users, Permission permission) {
-        Set<String> userSet = users.stream().collect(Collectors.toSet());
+    public void revoke(Path path, String user, Permission permission) {
+
         switch (permission) {
             case READ:
-                userContext.unShareReadAccess(path, userSet).join();
+                userContext.unShareReadAccess(path, user).join();
                 return;
             case WRITE:
-                userContext.unShareWriteAccess(path, userSet).join();
+                userContext.unShareWriteAccess(path, user).join();
                 return;
         }
         throw new IllegalStateException();
