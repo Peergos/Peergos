@@ -160,7 +160,7 @@ public class UserContext {
                             crypto.random, crypto.signer, crypto.boxer, algorithm)
                             .thenCompose(userWithRoot ->
                                     login(username, userWithRoot, pair, network, crypto, progressCallback));
-                }).exceptionally(Futures::logAndThrow);
+                }).exceptionally(Futures::logError);
     }
 
     public static CompletableFuture<UserContext> signIn(String username, UserWithRoot userWithRoot, NetworkAccess network
@@ -168,7 +168,7 @@ public class UserContext {
         return getWriterDataCbor(network, username)
                 .thenCompose(pair -> {
                     return login(username, userWithRoot, pair, network, crypto, progressCallback);
-                }).exceptionally(Futures::logAndThrow);
+                }).exceptionally(Futures::logError);
     }
 
     private static CompletableFuture<UserContext> login(String username,
@@ -201,7 +201,7 @@ public class UserContext {
                                         .thenCompose(x -> {
                                             System.out.println("Initializing context..");
                                             return result.init(userWithRoot.getRoot(), progressCallback);
-                                        }).exceptionally(Futures::logAndThrow);
+                                        }).exceptionally(Futures::logError);
                             }));
         } catch (Throwable t) {
             throw new IllegalStateException("Incorrect password");
@@ -230,7 +230,7 @@ public class UserContext {
                                                                Crypto crypto,
                                                                SecretGenerationAlgorithm algorithm,
                                                                Consumer<String> progressCallback) {
-        progressCallback.accept("Generating keys");
+        progressCallback.accept("Making those sweet sweet keys");
         return UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer, algorithm)
                 .thenCompose(userWithRoot -> {
                     PublicSigningKey publicSigningKey = userWithRoot.getUser().publicSigningKey;
@@ -286,7 +286,7 @@ public class UserContext {
                                 context.sendInitialFollowRequest(PEERGOS_USERNAME) :
                                 CompletableFuture.completedFuture(true))
                         .thenApply(b -> context))
-                .exceptionally(Futures::logAndThrow);
+                .exceptionally(Futures::logError);
     }
 
     private CompletableFuture<UserContext> createSpecialDirectory(String dirName) {
@@ -1217,7 +1217,7 @@ public class UserContext {
                 .filter(e -> e.ownerName.equals(ourName))
                 .collect(Collectors.toList());
         return Futures.reduceAll(ourFileSystemEntries, root, (t, e) -> addEntryPoint(ourName, t, e, network, random, fragmenter), (a, b) -> a)
-                .exceptionally(Futures::logAndThrow);
+                .exceptionally(Futures::logError);
     }
 
     /**
@@ -1238,7 +1238,7 @@ public class UserContext {
 
         // need to to retrieve all the entry points of our friends
         return Futures.reduceAll(notOurFileSystemEntries, ourRoot, (t, e) -> addEntryPoint(ourName, t, e, network, random, fragmenter), (a, b) -> a)
-                .exceptionally(Futures::logAndThrow);
+                .exceptionally(Futures::logError);
     }
 
     private static CompletableFuture<TrieNode> addRetrievedEntryPoint(String ourName,
@@ -1284,7 +1284,7 @@ public class UserContext {
                         );
             }
             return CompletableFuture.completedFuture(root);
-        }).exceptionally(Futures::logAndThrow);
+        }).exceptionally(Futures::logError);
     }
 
     public static CompletableFuture<CommittedWriterData> getWriterData(NetworkAccess network, PublicKeyHash owner, PublicKeyHash writer) {
