@@ -92,6 +92,7 @@ public class PublicFileHandler implements HttpHandler {
                 StringBuilder resp = new StringBuilder();
                 resp.append("<!DOCTYPE html><html lang=\"en\">");
                 resp.append("<body>");
+                resp.append("<h1>Contents of directory " + originalPath + "</h1>");
                 children.forEach(child -> resp.append("<a href=\""+canonicalFullPath + child.getName()+"\">" + child.getName() + "</a><br/>"));
                 resp.append("</body>");
                 resp.append("</html>");
@@ -102,14 +103,16 @@ public class PublicFileHandler implements HttpHandler {
                 out.write(body);
                 out.close();
             } else {
-                httpExchange.sendResponseHeaders(200, file.getSize());
+                long fileSize = file.getSize();
+                httpExchange.sendResponseHeaders(200, fileSize);
                 AsyncReader reader = file.getInputStream(network, null, x -> {}).get();
-                byte[] buf = new byte[(int) Math.min(file.getSize(), 5 * 1024 * 1024)];
+                byte[] buf = new byte[(int) Math.min(fileSize, 5 * 1024 * 1024)];
                 long read = 0;
                 OutputStream out = httpExchange.getResponseBody();
-                while (read < file.getSize()) {
-                    int r = reader.readIntoArray(buf, 0, buf.length).get();
+                while (read < fileSize) {
+                    int r = reader.readIntoArray(buf, 0, (int) Math.min(buf.length, fileSize - read)).get();
                     out.write(buf, 0, r);
+                    read += r;
                 }
                 out.close();
             }
