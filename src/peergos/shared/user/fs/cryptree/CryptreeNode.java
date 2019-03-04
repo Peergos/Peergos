@@ -76,6 +76,10 @@ public interface CryptreeNode extends Cborable {
                                                      NetworkAccess network,
                                                      SafeRandom random);
 
+    default boolean hasParentLink() {
+        return getParentLink() != null;
+    }
+
     default CompletableFuture<RetrievedCapability> getParent(PublicKeyHash owner,
                                                              PublicKeyHash writer,
                                                              SymmetricKey baseKey,

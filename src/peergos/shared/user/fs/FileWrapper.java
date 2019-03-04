@@ -472,6 +472,12 @@ public class FileWrapper {
         });
     }
 
+    public boolean isUserRoot() {
+        if (pointer == null)
+            return false;
+        return ! pointer.fileAccess.hasParentLink();
+    }
+
     public SymmetricKey getParentKey() {
         ensureUnmodified();
         SymmetricKey parentKey = pointer.capability.rBaseKey;
