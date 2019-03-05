@@ -472,6 +472,7 @@ public class FileWrapper {
         });
     }
 
+    @JsMethod
     public boolean isUserRoot() {
         if (pointer == null)
             return false;
