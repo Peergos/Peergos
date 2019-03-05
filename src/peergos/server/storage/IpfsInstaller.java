@@ -65,17 +65,20 @@ public class IpfsInstaller {
 
     private static DownloadTarget getForPlatform() {
         String os = System.getProperty("os.name");
-        String arch = System.getProperty("os.arch");
-        DownloadTarget downloadTarget = null;
+        String arch = canonicaliseArchitecture(System.getProperty("os.arch"));
 
         String type = os + "_" + arch;
-        switch (type) {
-            case "Linux_amd64": {
-                return DownloadTarget.LINUX_AMD64;
-            }
-            default:
-                throw new IllegalStateException("Unable to install IPFS for unknown Operating System + cpu architecture: " + type);
-        }
+        return DownloadTarget.valueOf(type.toUpperCase());
+    }
+
+    private static String canonicaliseArchitecture(String arch) {
+        if (arch.startsWith("arm64"))
+            return "arm64";
+        if (arch.startsWith("arm"))
+            return "arm";
+        if (arch.startsWith("x86"))
+            return "386";
+        return arch;
     }
 
     private static void ensureInstalled(Path targetFile, DownloadTarget downloadTarget) {
