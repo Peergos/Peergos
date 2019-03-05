@@ -640,8 +640,10 @@ public class UserContext {
     }
 
     public CompletableFuture<CommittedWriterData> makePublic(FileWrapper file) {
+        if (! file.getOwnerName().equals(username))
+            return Futures.errored(new IllegalStateException("Only the owner of a file can make it public!"));
         return userData.runWithLock(wd -> file.getPath(network).thenCompose(path -> {
-            ensureAllowedToShare(path);
+            ensureAllowedToShare(file, username, false);
             return IpfsTransaction.call(signer.publicKeyHash,
                     tid -> {
                         Optional<Multihash> publicData = wd.props.publicData;
@@ -663,14 +665,11 @@ public class UserContext {
         }));
     }
 
-    private static void ensureAllowedToShare(String path) {
-        if (Paths.get(path).getNameCount() == 1)
-                throw new IllegalStateException("You cannot make your home directory public!");
-    }
-
-   private static void ensureAllowedToShare(Path path) {
-        if (path.getNameCount() == 1)
-                throw new IllegalStateException("You cannot make your home directory public!");
+    private static void ensureAllowedToShare(FileWrapper file, String ourname, boolean isWrite) {
+        if (file.isUserRoot())
+            throw new IllegalStateException("You cannot share your home directory public!");
+        if (isWrite && ! file.getOwnerName().equals(ourname))
+            throw new IllegalStateException("Only the owner of a file can grant write access!");
     }
 
      @JsMethod
@@ -913,13 +912,12 @@ public class UserContext {
     }
 
     public CompletableFuture<Boolean> shareReadAccessWith(Path path, Set<String> readersToAdd) {
-        ensureAllowedToShare(path);
         return getByPath(path.toString())
-                .thenCompose(file -> shareReadAccessWithAll(file.orElseThrow(() -> new IllegalStateException("Could not find path " + path.toString())), readersToAdd));
+                .thenCompose(file -> shareReadAccessWithAll(file.orElseThrow(() ->
+                        new IllegalStateException("Could not find path " + path.toString())), readersToAdd));
     }
 
     public CompletableFuture<Boolean> shareWriteAccessWith(Path path, Set<String> writersToAdd) {
-        ensureAllowedToShare(path);
         return getByPath(path.getParent().toString())
                 .thenCompose(parent -> {
                     if (! parent.isPresent())
@@ -934,6 +932,7 @@ public class UserContext {
     }
 
     public CompletableFuture<Boolean> shareReadAccessWithAll(FileWrapper file, Set<String> readersToAdd) {
+        ensureAllowedToShare(file, username, false);
         BiFunction<FileWrapper, FileWrapper, CompletableFuture<Boolean>> sharingFunction = (sharedDir, fileWrapper) ->
                 CapabilityStore.addReadOnlySharingLinkTo(sharedDir, fileWrapper.getPointer().capability,
                         network, crypto.random, fragmenter)
@@ -954,6 +953,7 @@ public class UserContext {
     public CompletableFuture<Boolean> shareWriteAccessWithAll(FileWrapper file,
                                                               FileWrapper parent,
                                                               Set<String> writersToAdd) {
+        ensureAllowedToShare(file, username, true);
         SigningKeyPair newSignerPair = SigningKeyPair.random(crypto.random, crypto.signer);
 
         return addOwnedKeyToParent(parent.owner(), parent.signingPair(), newSignerPair, network)
