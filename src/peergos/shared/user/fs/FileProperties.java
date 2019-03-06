@@ -62,28 +62,27 @@ public class FileProperties implements Cborable {
     @Override
     @SuppressWarnings("unusable-by-js")
     public CborObject toCbor() {
-        return new CborObject.CborList(Arrays.asList(
-                new CborObject.CborString(name),
-                new CborObject.CborString(mimeType),
-                new CborObject.CborLong(size),
-                new CborObject.CborLong(modified.toEpochSecond(ZoneOffset.UTC)),
-                new CborObject.CborBoolean(isHidden),
-                new CborObject.CborByteArray(thumbnail.orElse(new byte[0]))
-        ));
+        SortedMap<String, Cborable> state = new TreeMap<>();
+        state.put("n", new CborObject.CborString(name));
+        state.put("m", new CborObject.CborString(mimeType));
+        state.put("s", new CborObject.CborLong(size));
+        state.put("t", new CborObject.CborLong(modified.toEpochSecond(ZoneOffset.UTC)));
+        state.put("h", new CborObject.CborBoolean(isHidden));
+        thumbnail.ifPresent(thumb -> state.put("i", new CborObject.CborByteArray(thumb)));
+        return CborObject.CborMap.build(state);
     }
 
     @SuppressWarnings("unusable-by-js")
     public static FileProperties fromCbor(Cborable cbor) {
-        List<? extends Cborable> elements = ((CborObject.CborList) cbor).value;
-        String name = ((CborObject.CborString)elements.get(0)).value;
-        String mimeType = ((CborObject.CborString)elements.get(1)).value;
-        long size = ((CborObject.CborLong)elements.get(2)).value;
-        long modified = ((CborObject.CborLong)elements.get(3)).value;
-        boolean isHidden = ((CborObject.CborBoolean)elements.get(4)).value;
-        byte[] thumb = ((CborObject.CborByteArray)elements.get(5)).value;
-        Optional<byte[]> thumbnail = thumb.length == 0 ?
-                Optional.empty() :
-                Optional.of(thumb);
+        if (! (cbor instanceof CborObject.CborMap))
+            throw new IllegalStateException("Invalid cbor for FileProperties! " + cbor);
+        CborObject.CborMap m = (CborObject.CborMap) cbor;
+        String name = m.getString("n");
+        String mimeType = m.getString("m");
+        long size = m.getLong("s");
+        long modified = m.getLong("t");
+        boolean isHidden = m.getBoolean("h");
+        Optional<byte[]> thumbnail = m.getOptionalByteArray("i");
 
         return new FileProperties(name, mimeType, size, LocalDateTime.ofEpochSecond(modified, 0, ZoneOffset.UTC), isHidden, thumbnail);
     }
