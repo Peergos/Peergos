@@ -64,7 +64,7 @@ public class IpfsInstaller {
     }
 
     private static DownloadTarget getForPlatform() {
-        String os = canonicaliseOS(System.getProperty("os.name"));
+        String os = canonicaliseOS(System.getProperty("os.name").toLowerCase());
         String arch = canonicaliseArchitecture(System.getProperty("os.arch"));
 
         String type = os + "_" + arch;
@@ -72,6 +72,7 @@ public class IpfsInstaller {
     }
 
     private static String canonicaliseArchitecture(String arch) {
+        System.out.println("Looking up architecture: " + arch);
         if (arch.startsWith("arm64"))
             return "arm64";
         if (arch.startsWith("arm"))
@@ -84,8 +85,11 @@ public class IpfsInstaller {
     }
 
     private static String canonicaliseOS(String os) {
-        if (os.startsWith("Mac"))
+        System.out.println("Looking up OS: " + os);
+        if (os.startsWith("mac"))
             return "darwin";
+        if (os.startsWith("windows"))
+            return "windows";
         return os;
     }
 
