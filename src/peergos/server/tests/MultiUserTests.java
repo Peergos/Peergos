@@ -362,7 +362,7 @@ public class MultiUserTests {
         SymmetricKey priorMetaKey = priorFileAccess.getMetaKey(priorPointer.rBaseKey);
 
         // unshare with a single user
-        u1.unShareReadAccess(Paths.get(u1.username, filename), userToUnshareWith.username);
+        u1.unShareReadAccess(Paths.get(u1.username, filename), userToUnshareWith.username).join();
 
         String newname = "newname.txt";
         FileWrapper updatedParent = u1.getByPath(originalPath).get().get()
@@ -373,12 +373,12 @@ public class MultiUserTests {
         String friendsNewPathToFile = u1.username + "/" + newname;
         Optional<FileWrapper> unsharedView2 = userToUnshareWith.getByPath(friendsNewPathToFile).get();
         CryptreeNode fileAccess = network.getMetadata(priorPointer).get().get();
+        // check we are trying to decrypt the correct thing
+        PaddedCipherText priorPropsCipherText = (PaddedCipherText) ((CborObject.CborMap) priorFileAccess.toCbor()).get("s");
+        FileProperties priorProps =  priorPropsCipherText.decrypt(priorMetaKey, FileProperties::fromCbor);
         try {
-            // check we are trying to decrypt the correct thing
-            PaddedCipherText priorPropsCipherText = PaddedCipherText.fromCbor(((CborObject.CborList) priorFileAccess.toCbor()).value.get(4));
-            FileProperties priorProps =  priorPropsCipherText.decrypt(priorMetaKey, FileProperties::fromCbor);
             // Try decrypting the new metadata with the old key
-            PaddedCipherText propsCipherText = PaddedCipherText.fromCbor(((CborObject.CborList) fileAccess.toCbor()).value.get(4));
+            PaddedCipherText propsCipherText = (PaddedCipherText) ((CborObject.CborMap) fileAccess.toCbor()).get("s");
             FileProperties props =  propsCipherText.decrypt(priorMetaKey, FileProperties::fromCbor);
             throw new IllegalStateException("We shouldn't be able to decrypt this after a rename! new name = " + props.name);
         } catch (TweetNaCl.InvalidCipherTextException e) {}
