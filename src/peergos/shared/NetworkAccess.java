@@ -364,10 +364,16 @@ public class NetworkAccess {
                 .thenApply(res -> metadata.committedHash().get());
     }
 
-    public CompletableFuture<Optional<CryptreeNode>> getMetadata(Location loc) {
-        if (loc == null)
-            return CompletableFuture.completedFuture(Optional.empty());
-        return tree.get(loc.owner, loc.writer, loc.getMapKey()).thenCompose(blobHash -> {
+    public CompletableFuture<Boolean> deleteChunkIfPresent(PublicKeyHash owner,
+                                                             SigningPrivateKeyAndPublicHash writer,
+                                                             byte[] mapKey,
+                                                             TransactionId tid) {
+        return tree.get(owner, writer.publicKeyHash, mapKey)
+                .thenCompose(valueHash -> valueHash.ifPresent(h -> tree.remove(owner, writer, mapKey, valueHash, tid)));
+    }
+
+    public CompletableFuture<Optional<CryptreeNode>> getMetadata(AbsoluteCapability cap) {
+        return tree.get(cap.owner, cap.writer, cap.getMapKey()).thenCompose(blobHash -> {
             if (!blobHash.isPresent())
                 return CompletableFuture.completedFuture(Optional.empty());
             return dhtClient.get(blobHash.get())

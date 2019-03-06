@@ -43,9 +43,10 @@ public class EncryptedChunkRetriever implements FileRetriever {
                                                   Location ourLocation,
                                                   MaybeMultihash ourExistingHash,
                                                   ProgressConsumer<Long> monitor) {
-        return getChunkInputStream(network, random, dataKey, 0, fileSize, ourLocation, ourExistingHash, monitor)
+        AbsoluteCapability ourCap = AbsoluteCapability.build(ourLocation, dataKey);
+        return getChunkInputStream(network, random, 0, fileSize, ourCap, ourExistingHash, monitor)
                 .thenApply(chunk -> {
-                    Location nextChunkPointer = this.getNext(dataKey).map(ourLocation::withMapKey).orElse(null);
+                    Location nextChunkPointer = this.getNextMapLabel(dataKey).map(ourLocation::withMapKey).orElse(null);
                     return new LazyInputStreamCombiner(0,
                             chunk.get().chunk.data(), nextChunkPointer,
                             chunk.get().chunk.data(), nextChunkPointer,
@@ -56,8 +57,7 @@ public class EncryptedChunkRetriever implements FileRetriever {
     public CompletableFuture<Optional<LocatedEncryptedChunk>> getEncryptedChunk(long bytesRemainingUntilStart,
                                                                                 long truncateTo,
                                                                                 byte[] nonce,
-                                                                                SymmetricKey dataKey,
-                                                                                Location ourLocation,
+                                                                                AbsoluteCapability ourCap,
                                                                                 MaybeMultihash ourExistingHash,
                                                                                 NetworkAccess network,
                                                                                 ProgressConsumer<Long> monitor) {
@@ -70,42 +70,42 @@ public class EncryptedChunkRetriever implements FileRetriever {
                 EncryptedChunk fullEncryptedChunk = new EncryptedChunk(authAndCipherText);
                 if (truncateTo < Chunk.MAX_SIZE)
                     fullEncryptedChunk = fullEncryptedChunk.truncateTo((int) truncateTo);
-                LocatedEncryptedChunk result = new LocatedEncryptedChunk(ourLocation, ourExistingHash, fullEncryptedChunk, nonce);
+                LocatedEncryptedChunk result = new LocatedEncryptedChunk(ourCap.getLocation(), ourExistingHash, fullEncryptedChunk, nonce);
                 return CompletableFuture.completedFuture(Optional.of(result));
             });
         }
-        Optional<byte[]> next = getNext(dataKey);
+        Optional<byte[]> next = getNextMapLabel(ourCap.rBaseKey);
         if (! next.isPresent())
             return CompletableFuture.completedFuture(Optional.empty());
-        Location ourLoc = ourLocation.withMapKey(next.get());
-        return network.getMetadata(ourLoc).thenCompose(meta -> {
+        AbsoluteCapability nextCap = ourCap.withMapKey(next.get());
+        return network.getMetadata(nextCap).thenCompose(meta -> {
             if (!meta.isPresent())
                 return CompletableFuture.completedFuture(Optional.empty());
 
             FileAccess access = (FileAccess) meta.get();
             FileRetriever retriever = access.retriever();
             return retriever.getEncryptedChunk(bytesRemainingUntilStart - Chunk.MAX_SIZE,
-                    truncateTo - Chunk.MAX_SIZE, retriever.getNonce(), dataKey,
-                    ourLoc, access.committedHash(), network, monitor);
+                    truncateTo - Chunk.MAX_SIZE, retriever.getNonce(), ourCap,
+                    access.committedHash(), network, monitor);
         });
     }
 
-    public CompletableFuture<Optional<byte[]>> getLocationAt(Location startLocation, long offset, SymmetricKey dataKey, NetworkAccess network) {
+    public CompletableFuture<Optional<byte[]>> getMapLabelAt(AbsoluteCapability startCap, long offset, NetworkAccess network) {
         if (offset < Chunk.MAX_SIZE)
-            return CompletableFuture.completedFuture(Optional.of(startLocation.getMapKey()));
-        Optional<byte[]> next = getNext(dataKey);
+            return CompletableFuture.completedFuture(Optional.of(startCap.getMapKey()));
+        Optional<byte[]> next = getNextMapLabel(startCap.rBaseKey);
         if (! next.isPresent())
             return CompletableFuture.completedFuture(Optional.empty());
         if (offset < 2*Chunk.MAX_SIZE)
             return CompletableFuture.completedFuture(next); // chunk at this location hasn't been written yet, only referenced by previous chunk
-        return network.getMetadata(startLocation.withMapKey(next.get()))
+        return network.getMetadata(startCap.withMapKey(next.get()))
                 .thenCompose(meta -> meta.isPresent() ?
-                        ((FileAccess)meta.get()).retriever().getLocationAt(startLocation.withMapKey(next.get()), offset - Chunk.MAX_SIZE, dataKey, network) :
+                        ((FileAccess)meta.get()).retriever().getMapLabelAt(startCap.withMapKey(next.get()), offset - Chunk.MAX_SIZE, network) :
                         CompletableFuture.completedFuture(Optional.empty())
                 );
     }
 
-    public Optional<byte[]> getNext(SymmetricKey dataKey) {
+    public Optional<byte[]> getNextMapLabel(SymmetricKey dataKey) {
         return this.nextChunk.map(c -> c.decrypt(dataKey, cbor -> ((CborObject.CborByteArray)cbor).value));
     }
 
@@ -115,20 +115,19 @@ public class EncryptedChunkRetriever implements FileRetriever {
 
     public CompletableFuture<Optional<LocatedChunk>> getChunkInputStream(NetworkAccess network,
                                                                          SafeRandom random,
-                                                                         SymmetricKey dataKey,
                                                                          long startIndex,
                                                                          long truncateTo,
-                                                                         Location ourLocation,
+                                                                         AbsoluteCapability ourCap,
                                                                          MaybeMultihash ourExistingHash,
                                                                          ProgressConsumer<Long> monitor) {
-        return getEncryptedChunk(startIndex, truncateTo, chunkNonce, dataKey, ourLocation, ourExistingHash, network, monitor).thenCompose(fullEncryptedChunk -> {
+        return getEncryptedChunk(startIndex, truncateTo, chunkNonce, ourCap, ourExistingHash, network, monitor).thenCompose(fullEncryptedChunk -> {
             if (! fullEncryptedChunk.isPresent()) {
-                return getLocationAt(ourLocation, startIndex, dataKey, network).thenApply(unwrittenChunkLocation ->
+                return getMapLabelAt(ourCap, startIndex, network).thenApply(unwrittenChunkLocation ->
                         ! unwrittenChunkLocation.isPresent() ? Optional.empty() :
-                                Optional.of(new LocatedChunk(ourLocation.withMapKey(unwrittenChunkLocation.get()), MaybeMultihash.empty(),
+                                Optional.of(new LocatedChunk(ourCap.getLocation().withMapKey(unwrittenChunkLocation.get()), MaybeMultihash.empty(),
                                         new Chunk(new byte[Math.min(Chunk.MAX_SIZE, (int) (truncateTo - startIndex))],
-                                                dataKey, unwrittenChunkLocation.get(),
-                                                dataKey.createNonce()))));
+                                                ourCap.rBaseKey, unwrittenChunkLocation.get(),
+                                                ourCap.rBaseKey.createNonce()))));
             }
 
             if (!fullEncryptedChunk.isPresent())
@@ -136,10 +135,10 @@ public class EncryptedChunkRetriever implements FileRetriever {
 
             LocatedEncryptedChunk cipherText = fullEncryptedChunk.get();
             try {
-                return cipherText.chunk.decrypt(dataKey, cipherText.nonce).thenCompose(original -> {
+                return cipherText.chunk.decrypt(ourCap.rBaseKey, cipherText.nonce).thenCompose(original -> {
                     return CompletableFuture.completedFuture(Optional.of(new LocatedChunk(cipherText.location,
                             cipherText.existingHash,
-                            new Chunk(original, dataKey, cipherText.location.getMapKey(), dataKey.createNonce()))));
+                            new Chunk(original, ourCap.rBaseKey, cipherText.location.getMapKey(), ourCap.rBaseKey.createNonce()))));
                 });
             } catch (IllegalStateException e) {
                 throw new IllegalStateException("Couldn't decrypt chunk at mapkey: " + new ByteArrayWrapper(cipherText.location.getMapKey()), e);

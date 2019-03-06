@@ -251,7 +251,7 @@ public class FileWrapper {
                         if (! nextChunkMapKey.isPresent())
                             return CompletableFuture.completedFuture(updated);
 
-                        return network.getMetadata(nextChunkCap.get().getLocation())
+                        return network.getMetadata(nextChunkCap.get())
                                 .thenCompose(mOpt -> {
                                     if (! mOpt.isPresent())
                                         return CompletableFuture.completedFuture(updated);
@@ -273,7 +273,7 @@ public class FileWrapper {
                         if (! nextChunkMapKey.isPresent())
                             return CompletableFuture.completedFuture(updated);
                         WritableAbsoluteCapability nextChunkCap = cap.withMapKey(nextChunkMapKey.get());
-                        return network.getMetadata(nextChunkCap.getLocation())
+                        return network.getMetadata(nextChunkCap)
                                 .thenCompose(mOpt -> {
                                     if (! mOpt.isPresent())
                                         return CompletableFuture.completedFuture(updated);
@@ -359,7 +359,7 @@ public class FileWrapper {
                 if (! nextChunkMapKey.isPresent())
                     return CompletableFuture.completedFuture(updatedPair);
 
-                return network.getMetadata(nextChunkCap.get().getLocation())
+                return network.getMetadata(nextChunkCap.get())
                         .thenCompose(mOpt -> {
                             if (! mOpt.isPresent())
                                 return CompletableFuture.completedFuture(updatedPair);
@@ -781,7 +781,7 @@ public class FileWrapper {
 
             if (e instanceof MutableTree.CasException || e.getCause() instanceof MutableTree.CasException) {
                 // reload directory and try again
-                network.getMetadata(getLocation()).thenCompose(opt -> {
+                network.getMetadata(pointer.capability).thenCompose(opt -> {
                     DirAccess updatedUs = (DirAccess) opt.get();
                     // Check another file of same name hasn't been added in the concurrent change
 
@@ -858,15 +858,15 @@ public class FileWrapper {
             for (long startIndex = inputStartIndex; startIndex < endIndex; startIndex = startIndex + Chunk.MAX_SIZE - (startIndex % Chunk.MAX_SIZE))
                 startIndexes.add(startIndex);
 
-
             boolean identity = true;
 
             BiFunction<Boolean, Long, CompletableFuture<Boolean>> composer = (id, startIndex) -> {
-                return retriever.getChunkInputStream(network, random, dataKey, startIndex, filesSize.get(),
-                        child.getLocation(), child.pointer.fileAccess.committedHash(), monitor)
+                AbsoluteCapability childCap = AbsoluteCapability.build(child.getLocation(), dataKey);
+                return retriever.getChunkInputStream(network, random, startIndex, filesSize.get(),
+                        childCap, child.pointer.fileAccess.committedHash(), monitor)
                         .thenCompose(currentLocation -> {
                                     CompletableFuture<Optional<Location>> locationAt = retriever
-                                            .getLocationAt(child.getLocation(), startIndex + Chunk.MAX_SIZE, dataKey, network)
+                                            .getMapLabelAt(childCap, startIndex + Chunk.MAX_SIZE, network)
                                             .thenApply(x -> x.map(m -> getLocation().withMapKey(m)));
                                     return locationAt.thenCompose(location ->
                                             CompletableFuture.completedFuture(new Pair<>(currentLocation, location)));
@@ -1169,7 +1169,7 @@ public class FileWrapper {
                                                             TransactionId tid,
                                                             NetworkAccess network) {
 
-        return network.getMetadata(currentCap.getLocation())
+        return network.getMetadata(currentCap)
                 .thenCompose(mOpt -> {
                     if (! mOpt.isPresent()) {
                         return CompletableFuture.completedFuture(true);
@@ -1200,7 +1200,7 @@ public class FileWrapper {
                                                              SigningPrivateKeyAndPublicHash signer,
                                                              TransactionId tid,
                                                              NetworkAccess network) {
-        return network.getMetadata(currentCap.getLocation())
+        return network.getMetadata(currentCap)
                 .thenCompose(mOpt -> {
                     if (! mOpt.isPresent()) {
                         return CompletableFuture.completedFuture(true);

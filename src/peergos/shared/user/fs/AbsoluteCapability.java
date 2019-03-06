@@ -65,6 +65,10 @@ public class AbsoluteCapability implements Cborable {
                 .collect(Collectors.joining("/", "#", ""));
     }
 
+    public static AbsoluteCapability build(Location loc, SymmetricKey key) {
+        return new AbsoluteCapability(loc.owner, loc.writer, loc.getMapKey(), key);
+    }
+
     public static AbsoluteCapability fromLink(String keysString) {
         if (keysString.startsWith("#"))
             keysString = keysString.substring(1);

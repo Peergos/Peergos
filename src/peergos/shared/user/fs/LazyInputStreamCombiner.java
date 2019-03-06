@@ -3,7 +3,6 @@ package peergos.shared.user.fs;
 import peergos.shared.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
-import peergos.shared.user.*;
 import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.*;
 
@@ -18,10 +17,10 @@ public class LazyInputStreamCombiner implements AsyncReader {
     private final long totalLength;
 
     private final byte[] originalChunk;
-    private final Location originalNextPointer;
+    private final AbsoluteCapability originalNextPointer;
 
     private byte[] currentChunk;
-    private Location nextChunkPointer;
+    private AbsoluteCapability nextChunkPointer;
 
     private long globalIndex; // index of beginning of current chunk in file
     private int index; // index within current chunk
@@ -44,17 +43,17 @@ public class LazyInputStreamCombiner implements AsyncReader {
         this.monitor = monitor;
         this.totalLength = totalLength;
         this.originalChunk = originalChunk;
-        this.originalNextPointer = originalNextChunkPointer;
+        this.originalNextPointer = AbsoluteCapability.build(originalNextChunkPointer, dataKey);
         this.currentChunk = chunk;
-        this.nextChunkPointer = nextChunkPointer;
+        this.nextChunkPointer = AbsoluteCapability.build(nextChunkPointer, dataKey);
         this.globalIndex = globalIndex;
         this.index = 0;
     }
 
     public CompletableFuture<Boolean> getNextStream(int len) {
         if (this.nextChunkPointer != null) {
-            Location nextLocation = this.nextChunkPointer;
-            return network.getMetadata(nextLocation).thenCompose(meta -> {
+            AbsoluteCapability nextCap = this.nextChunkPointer;
+            return network.getMetadata(nextCap).thenCompose(meta -> {
                 if (!meta.isPresent()) {
                     CompletableFuture<Boolean> err = new CompletableFuture<>();
                     err.completeExceptionally(new EOFException());
@@ -64,8 +63,8 @@ public class LazyInputStreamCombiner implements AsyncReader {
                 if (! (access instanceof FileAccess))
                     throw new IllegalStateException("File linked to a directory for its next chunk!");
                 FileRetriever nextRet = ((FileAccess) access).retriever();
-                Location newNextChunkPointer = nextRet.getNext(dataKey).map(nextLocation::withMapKey).orElse(null);
-                return nextRet.getChunkInputStream(network, random, dataKey, 0, len, nextLocation, access.committedHash(), monitor)
+                AbsoluteCapability newNextChunkPointer = nextRet.getNextMapLabel(dataKey).map(nextCap::withMapKey).orElse(null);
+                return nextRet.getChunkInputStream(network, random, 0, len, nextCap, access.committedHash(), monitor)
                         .thenApply(x -> {
                             byte[] nextData = x.get().chunk.data();
                             updateState(0,globalIndex + Chunk.MAX_SIZE, nextData, newNextChunkPointer);
@@ -148,7 +147,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
     private void updateState(int index,
                              long globalIndex,
                              byte[] chunk,
-                             Location nextChunkPointer) {
+                             AbsoluteCapability nextChunkPointer) {
         this.index = index;
         this.globalIndex = globalIndex;
         this.currentChunk = chunk;

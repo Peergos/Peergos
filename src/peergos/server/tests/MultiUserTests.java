@@ -358,8 +358,7 @@ public class MultiUserTests {
         String friendsPathToFile = u1.username + "/" + filename;
         Optional<FileWrapper> priorUnsharedView = userToUnshareWith.getByPath(friendsPathToFile).get();
         AbsoluteCapability priorPointer = priorUnsharedView.get().getPointer().capability;
-        Location priorLocation = priorPointer.getLocation();
-        CryptreeNode priorFileAccess = network.getMetadata(priorLocation).get().get();
+        CryptreeNode priorFileAccess = network.getMetadata(priorPointer).get().get();
         SymmetricKey priorMetaKey = priorFileAccess.getMetaKey(priorPointer.rBaseKey);
 
         // unshare with a single user
@@ -373,7 +372,7 @@ public class MultiUserTests {
         Optional<FileWrapper> unsharedView = userToUnshareWith.getByPath(friendsPathToFile).get();
         String friendsNewPathToFile = u1.username + "/" + newname;
         Optional<FileWrapper> unsharedView2 = userToUnshareWith.getByPath(friendsNewPathToFile).get();
-        CryptreeNode fileAccess = network.getMetadata(priorLocation).get().get();
+        CryptreeNode fileAccess = network.getMetadata(priorPointer).get().get();
         try {
             // check we are trying to decrypt the correct thing
             PaddedCipherText priorPropsCipherText = PaddedCipherText.fromCbor(((CborObject.CborList) priorFileAccess.toCbor()).value.get(4));

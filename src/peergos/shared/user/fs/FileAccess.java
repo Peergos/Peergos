@@ -96,7 +96,7 @@ public class FileAccess implements CryptreeNode {
 
     @Override
     public Optional<byte[]> getNextChunkLocation(SymmetricKey rBaseKey) {
-        return fileRetriever.getNext(getDataKey(rBaseKey));
+        return fileRetriever.getNextMapLabel(getDataKey(rBaseKey));
     }
 
     public FileRetriever retriever() {
@@ -188,7 +188,7 @@ public class FileAccess implements CryptreeNode {
                                                         SafeRandom random,
                                                         Fragmenter fragmenter) {
         FileProperties props = getProperties(cap.rBaseKey);
-        Location nextLocation = cap.getLocation().withMapKey(getNextChunkLocation(cap.rBaseKey).get());
+        AbsoluteCapability nextCap = cap.withMapKey(getNextChunkLocation(cap.rBaseKey).get());
         return retriever().getFile(network, random, getDataKey(cap.rBaseKey), props.size, cap.getLocation(), committedHash(), x -> {})
                 .thenCompose(data -> {
                     int chunkSize = (int) Math.min(props.size, Chunk.MAX_SIZE);
@@ -200,15 +200,15 @@ public class FileAccess implements CryptreeNode {
                                 Chunk chunk = new Chunk(chunkData, cap.rBaseKey, mapKey, nonce);
                                 LocatedChunk locatedChunk = new LocatedChunk(cap.getLocation(), lastCommittedHash, chunk);
                                 return FileUploader.uploadChunk(writer, props, parentLocation, parentParentKey, cap.rBaseKey, locatedChunk,
-                                        fragmenter, nextLocation, writerLink, network, x -> {});
+                                        fragmenter, nextCap.getLocation(), writerLink, network, x -> {});
                             });
-                }).thenCompose(h -> network.getMetadata(nextLocation)
+                }).thenCompose(h -> network.getMetadata(nextCap)
                         .thenCompose(mOpt -> {
                             if (! mOpt.isPresent())
                                 return CompletableFuture.completedFuture(null);
-                            return ((FileAccess)mOpt.get()).cleanAndCommit(cap.withMapKey(nextLocation.getMapKey()),
+                            return ((FileAccess)mOpt.get()).cleanAndCommit(cap.withMapKey(nextCap.getMapKey()),
                                     writer, parentLocation, parentParentKey, network, random, fragmenter);
-                        }).thenCompose(x -> network.getMetadata(cap.getLocation())).thenApply(opt -> (FileAccess) opt.get())
+                        }).thenCompose(x -> network.getMetadata(cap)).thenApply(opt -> (FileAccess) opt.get())
                 );
     }
 
