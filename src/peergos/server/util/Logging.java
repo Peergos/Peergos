@@ -54,11 +54,18 @@ public class  Logging {
             // tell console where we're logging to
             LOG().info("Logging to "+ logPathS.replace("%g", "0"));
             nullLog().setParent(LOG());
+
+            Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
+                long id = thread.getId();
+                String name = thread.getName();
+                String msg = "Uncaught Exception in thread " + id + ":" + name;
+                LOG().log(Level.SEVERE, msg, throwable);
+            });
+
             LOG().addHandler(fileHandler);
             // also logging to stdout?
             if (! logToConsole)
                 LOG().setUseParentHandlers(false);
-
         } catch (IOException ioe) {
             throw new IllegalStateException(ioe.getMessage(), ioe);
         } finally {
