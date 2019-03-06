@@ -13,6 +13,10 @@ public interface AccessControl {
 
     void remove(Path path, String reader, FileSystem.Permission permission);
 
+    default List<String> getWithAncestors(Path path, FileSystem.Permission permission)  {
+
+    }
+
 
     /**
      * Model owners, reader and writers
@@ -34,6 +38,7 @@ public interface AccessControl {
     }
 
     default boolean can(Path path, String user, FileSystem.Permission permission) {
+
         return getOwner(path).equals(user) || get(path, permission).contains(user);
     }
 
