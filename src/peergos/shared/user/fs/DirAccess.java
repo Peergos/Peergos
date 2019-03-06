@@ -137,45 +137,36 @@ public class DirAccess implements CryptreeNode {
 
     @Override
     public CborObject toCbor() {
-        return new CborObject.CborList(Arrays.asList(
-                new CborObject.CborLong(getVersionAndType()),
-                base2parent.toCbor(),
-                parent2meta.toCbor(),
-                parentLink == null ? new CborObject.CborNull() : parentLink.toCbor(),
-                properties.toCbor(),
-                children.toCbor(),
-                moreFolderContents.isPresent() ? moreFolderContents.get().toCbor() : new CborObject.CborNull(),
-                writerLink.isPresent() ? writerLink.get().toCbor() : new CborObject.CborNull()
-        ));
+        SortedMap<String, Cborable> state = new TreeMap<>();
+        state.put("v", new CborObject.CborLong(getVersionAndType()));
+        state.put("b", base2parent);
+        state.put("m", parent2meta);
+        if (parentLink != null)
+            state.put("p", parentLink);
+        state.put("s", properties);
+        writerLink.ifPresent(w -> state.put("w", w));
+
+        state.put("c", children);
+        moreFolderContents.ifPresent(n -> state.put("n", n));
+        return CborObject.CborMap.build(state);
     }
 
     public static DirAccess fromCbor(CborObject cbor, Multihash hash) {
-        if (! (cbor instanceof CborObject.CborList))
+        if (! (cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("Incorrect cbor for DirAccess: " + cbor);
 
-        List<? extends Cborable> value = ((CborObject.CborList) cbor).value;
+        CborObject.CborMap m = (CborObject.CborMap) cbor;
 
-        int index = 0;
-        int version = (int) ((CborObject.CborLong) value.get(index++)).value >> 1;
-        SymmetricLink subfoldersToParent = SymmetricLink.fromCbor(value.get(index++));
-        SymmetricLink parentToMeta = SymmetricLink.fromCbor(value.get(index++));
-        Cborable parentLinkCbor = value.get(index++);
-        EncryptedCapability parentLink = parentLinkCbor instanceof CborObject.CborNull ?
-                null :
-                EncryptedCapability.fromCbor(parentLinkCbor);
-        PaddedCipherText properties = PaddedCipherText.fromCbor(value.get(index++));
-        PaddedCipherText children = PaddedCipherText.fromCbor(value.get(index++));
+        int version = (int) m.getLong("v") >> 1;
+        SymmetricLink baseToParent = SymmetricLink.fromCbor(m.get("b"));
+        SymmetricLink parentToMeta = SymmetricLink.fromCbor(m.get("m"));
+        EncryptedCapability parentLink = m.getOptional("p").map(EncryptedCapability::fromCbor).orElse(null);
+        PaddedCipherText properties = PaddedCipherText.fromCbor(m.get("s"));
+        Optional<SymmetricLinkToSigner> writerLink = m.getOptional("w").map(SymmetricLinkToSigner::fromCbor);
 
-        Cborable linkToNext = value.get(index++);
-        Optional<EncryptedCapability> moreFolderContents = linkToNext instanceof CborObject.CborNull ?
-                Optional.empty() :
-                Optional.of(EncryptedCapability.fromCbor(linkToNext));
-
-        Cborable writerLinkCbor = value.get(index++);
-        Optional<SymmetricLinkToSigner> writerLink = writerLinkCbor instanceof CborObject.CborNull ?
-                Optional.empty() :
-                Optional.of(SymmetricLinkToSigner.fromCbor(writerLinkCbor));
-        return new DirAccess(MaybeMultihash.of(hash), version, subfoldersToParent, parentToMeta, parentLink,
+        PaddedCipherText children = PaddedCipherText.fromCbor(m.get("c"));
+        Optional<EncryptedCapability> moreFolderContents = m.getOptional("n").map(EncryptedCapability::fromCbor);
+        return new DirAccess(MaybeMultihash.of(hash), version, baseToParent, parentToMeta, parentLink,
                 properties, children, moreFolderContents, writerLink);
     }
 

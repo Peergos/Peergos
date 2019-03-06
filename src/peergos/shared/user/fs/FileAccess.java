@@ -234,42 +234,29 @@ public class FileAccess implements CryptreeNode {
 
     @Override
     public CborObject toCbor() {
-        return new CborObject.CborList(
-                Arrays.asList(
-                        new CborObject.CborLong(getVersionAndType()),
-                        parent2data.toCbor(),
-                        parentLink == null ? new CborObject.CborNull() : parentLink.toCbor(),
-                        properties.toCbor(),
-                        fileRetriever == null ? new CborObject.CborNull() : fileRetriever.toCbor(),
-                        writerLink.isPresent() ? writerLink.get().toCbor() : new CborObject.CborNull()
-                ));
+        SortedMap<String, Cborable> state = new TreeMap<>();
+        state.put("v", new CborObject.CborLong(getVersionAndType()));
+        state.put("d", parent2data);
+        state.put("p", parentLink);
+        state.put("s", properties);
+        state.put("r", fileRetriever);
+        writerLink.ifPresent(w -> state.put("w", w));
+        return CborObject.CborMap.build(state);
     }
 
     public static FileAccess fromCbor(CborObject cbor, Multihash hash) {
-        if (! (cbor instanceof CborObject.CborList))
+        if (! (cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("Incorrect cbor for FileAccess: " + cbor);
 
-        List<? extends Cborable> value = ((CborObject.CborList) cbor).value;
+        CborObject.CborMap m = (CborObject.CborMap) cbor;
 
-        int index = 0;
-        int versionAndType = (int) ((CborObject.CborLong) value.get(index++)).value;
-        SymmetricLink parentToData = SymmetricLink.fromCbor(value.get(index++));
+        int versionAndType = (int) m.getLong("v");
+        SymmetricLink parentToData = SymmetricLink.fromCbor(m.get("d"));
+        EncryptedCapability parentLink = EncryptedCapability.fromCbor(m.get("p"));
+        PaddedCipherText properties = PaddedCipherText.fromCbor(m.get("s"));
+        FileRetriever retriever = FileRetriever.fromCbor(m.get("r"));
 
-        Cborable parentLinkCbor = value.get(index++);
-        EncryptedCapability parentLink = parentLinkCbor instanceof CborObject.CborNull ?
-                null :
-                EncryptedCapability.fromCbor(parentLinkCbor);
-
-        PaddedCipherText properties = PaddedCipherText.fromCbor(value.get(index++));
-        Cborable retrieverCbor = value.get(index++);
-        FileRetriever retriever = retrieverCbor instanceof CborObject.CborNull ?
-                null :
-                FileRetriever.fromCbor(retrieverCbor);
-
-        Cborable writeLinkCbor = value.get(index++);
-        Optional<SymmetricLinkToSigner> writeLink = writeLinkCbor instanceof CborObject.CborNull ?
-                Optional.empty() :
-                Optional.of(writeLinkCbor).map(SymmetricLinkToSigner::fromCbor);
+        Optional<SymmetricLinkToSigner> writeLink = m.getOptional("w").map(SymmetricLinkToSigner::fromCbor);
 
         return new FileAccess(MaybeMultihash.of(hash), versionAndType >> 1, parentToData,
                 properties, retriever, parentLink, writeLink);

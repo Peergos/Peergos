@@ -97,11 +97,11 @@ public interface CryptreeNode extends Cborable {
     }
 
     static CryptreeNode fromCbor(CborObject cbor, Multihash hash) {
-        if (! (cbor instanceof CborObject.CborList))
+        if (! (cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("Incorrect cbor for FileAccess: " + cbor);
 
-        List<? extends Cborable> value = ((CborObject.CborList) cbor).value;
-        int versionAndType = (int) ((CborObject.CborLong) value.get(0)).value;
+        CborObject.CborMap m = (CborObject.CborMap) cbor;
+        int versionAndType = (int) m.getLong("v");
         boolean isFile = (versionAndType & 1) != 0;
         if (isFile)
             return FileAccess.fromCbor(cbor, hash);

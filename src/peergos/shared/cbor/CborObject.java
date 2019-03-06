@@ -144,6 +144,10 @@ public interface CborObject extends Cborable {
             return Optional.ofNullable((CborByteArray) get(key)).map(c -> c.value);
         }
 
+        public Optional<Cborable> getOptional(String key) {
+            return Optional.ofNullable(get(key));
+        }
+
         public <T> List<T> getList(String key, Function<Cborable, T> fromCbor) {
             CborList cborList = (CborList) get(key);
             return cborList.value
