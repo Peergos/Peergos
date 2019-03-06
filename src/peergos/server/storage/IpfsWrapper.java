@@ -380,10 +380,9 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
     }
 
     public static Path getIpfsExePath(Args args) {
-        return args.hasArg(IPFS_EXE) ?
+        return IpfsInstaller.getExecutableForOS(args.hasArg(IPFS_EXE) ?
                 Paths.get(args.getArg(IPFS_EXE)) :
-                args.fromPeergosDir("ipfs-exe", DEFAULT_IPFS_EXE
-                );
+                args.fromPeergosDir("ipfs-exe", DEFAULT_IPFS_EXE));
     }
 
 

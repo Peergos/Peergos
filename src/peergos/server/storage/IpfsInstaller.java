@@ -63,6 +63,12 @@ public class IpfsInstaller {
         install(targetFile, getForPlatform());
     }
 
+    public static Path getExecutableForOS(Path targetFile) {
+        if (System.getProperty("os.name").toLowerCase().contains("windows"))
+            return targetFile.getParent().resolve(targetFile.getFileName() + ".exe");
+        return targetFile;
+    }
+
     private static DownloadTarget getForPlatform() {
         String os = canonicaliseOS(System.getProperty("os.name").toLowerCase());
         String arch = canonicaliseArchitecture(System.getProperty("os.arch"));
