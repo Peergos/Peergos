@@ -39,6 +39,29 @@ public class SpaceCheckingKeyFilter {
     private final Path statePath;
     private final State state;
 
+    /**
+     *
+     * @param core
+     * @param mutable
+     * @param dht
+     * @param quotaSupplier The quota supplier
+     * @param statePath path to local file with user usages
+     */
+    public SpaceCheckingKeyFilter(CoreNode core,
+                                  MutablePointers mutable,
+                                  ContentAddressedStorage dht,
+                                  Function<String, Long> quotaSupplier,
+                                  Path statePath) throws IOException{
+        this.core = core;
+        this.mutable = mutable;
+        this.dht = dht;
+        this.quotaSupplier = quotaSupplier;
+        this.statePath = statePath;
+        this.state = initState(statePath, mutable, dht);
+        //add shutdown-hook to call close
+        Runtime.getRuntime().addShutdownHook(new Thread(this::close));
+    }
+
     public static class State implements Cborable {
         final Map<PublicKeyHash, Stat> currentView;
         final Map<String, Usage> usage;
@@ -56,7 +79,7 @@ public class SpaceCheckingKeyFilter {
                     e -> e.getKey().toCbor(),
                     e -> (Cborable) (e.getValue()),
                     (a,b) -> a,
-                    () -> new TreeMap<>()
+                    TreeMap::new
                 ));
 
             CborObject.CborMap views = new CborObject.CborMap(viewsMap);
@@ -65,6 +88,15 @@ public class SpaceCheckingKeyFilter {
             map.put("views", views);
             map.put("usages", usages);
             return CborObject.CborMap.build(map);
+        }
+
+        public static State fromCbor(CborObject cbor) {
+            CborObject.CborMap map = (CborObject.CborMap) cbor;
+            CborObject.CborMap viewsMap = (CborObject.CborMap) map.get("views");
+            CborObject.CborMap usagesMap = (CborObject.CborMap) map.get("usages");
+
+            return new State(viewsMap.getMap(PublicKeyHash::fromCbor, Stat::fromCbor),
+                    usagesMap.getMap(e -> ((CborObject.CborString) e).value, Usage::fromCbor));
         }
 
         public Map<String, Usage> getUsage() {
@@ -88,18 +120,6 @@ public class SpaceCheckingKeyFilter {
             result = 31 * result + (usage != null ? usage.hashCode() : 0);
             return result;
         }
-    }
-
-    public static State fromCbor(CborObject cbor) {
-        CborObject.CborMap map = (CborObject.CborMap) cbor;
-        CborObject.CborMap viewsMap = (CborObject.CborMap) map.get("views");
-        CborObject.CborMap usagesMap = (CborObject.CborMap) map.get("usages");
-
-        return new State(
-            viewsMap.getMap(PublicKeyHash::fromCbor, Stat::fromCbor),
-            usagesMap.getMap(
-                e -> ((CborObject.CborString) e).value,
-                Usage::fromCbor));
     }
 
     public static class Stat implements Cborable {
@@ -235,46 +255,28 @@ public class SpaceCheckingKeyFilter {
 
     /**
      *
-     * @param core
-     * @param mutable
-     * @param dht
-     * @param quotaSupplier The quota supplier
-     * @param statePath path to local file with user usages
      */
-    public SpaceCheckingKeyFilter(CoreNode core,
-                                  MutablePointers mutable,
-                                  ContentAddressedStorage dht,
-                                  Function<String, Long> quotaSupplier,
-                                  Path statePath) throws IOException{
-        this.core = core;
-        this.mutable = mutable;
-        this.dht = dht;
-        this.quotaSupplier = quotaSupplier;
-        this.statePath = statePath;
-        this.state = initState();
-    }
-
-    /**
-     *
-     */
-    private State initState() throws IOException {
-        State state = null;
+    private static State initState(Path statePath,
+                                   MutablePointers mutable,
+                                   ContentAddressedStorage dht) throws IOException {
+        State state;
         try {
             // Read stored usages and update current view.
-            state = load();
-            System.out.println("Successfully loaded usage-state from "+ this.statePath);
+            state = load(statePath);
+            System.out.println("Successfully loaded usage-state from "+ statePath);
         } catch (IOException ioe) {
-            System.out.println("Could not read usage-state from "+ this.statePath);
+            System.out.println("Could not read usage-state from "+ statePath);
             // calculate usage from scratch
-            state = new State(
-                new ConcurrentHashMap<>(),
-                new ConcurrentHashMap<>());
+            state = new State(new ConcurrentHashMap<>(), new ConcurrentHashMap<>());
         }
         try {
-            for (Map.Entry<PublicKeyHash, Stat> entry : state.currentView.entrySet()) {
+            System.out.println("Checking for updated mutable pointers...");
+            for (Map.Entry<PublicKeyHash, Stat> entry : new HashSet<>(state.currentView.entrySet())) {
                 PublicKeyHash ownerKey = entry.getKey();
                 Stat stat = entry.getValue();
-                MaybeMultihash rootHash = mutable.getPointerTarget(ownerKey, ownerKey, dht).get();
+                System.out.println("Checking for updates from user " + stat.owner);
+
+                MaybeMultihash rootHash = mutable.getPointerTarget(ownerKey, ownerKey, dht).join();
                 boolean isChanged = stat.target.equals(rootHash);
                 if (isChanged) {
                     long updatedSize = dht.getRecursiveBlockSize(rootHash.get()).get();
@@ -282,20 +284,20 @@ public class SpaceCheckingKeyFilter {
                     state.usage.get(stat.owner).confirmUsage(ownerKey, deltaUsage); //NB: ownerKey is a dummy value
                     Set<PublicKeyHash> directOwnedKeys = WriterData.getDirectOwnedKeys(ownerKey, ownerKey, mutable, dht);
                     List<PublicKeyHash> newOwnedKeys = directOwnedKeys.stream()
-                        .filter(key -> !stat.ownedKeys.contains(key))
-                        .collect(Collectors.toList());
+                            .filter(key -> !stat.ownedKeys.contains(key))
+                            .collect(Collectors.toList());
                     for (PublicKeyHash newOwnedKey : newOwnedKeys) {
                         state.currentView.putIfAbsent(newOwnedKey, new Stat(stat.owner, MaybeMultihash.empty(), 0, Collections.emptySet()));
-                        processMutablePointerEvent(ownerKey, newOwnedKey, MaybeMultihash.empty(), mutable.getPointerTarget(ownerKey, newOwnedKey, dht).get());
+                        processMutablePointerEvent(state, ownerKey, newOwnedKey, MaybeMultihash.empty(),
+                                mutable.getPointerTarget(ownerKey, newOwnedKey, dht).get(), mutable, dht);
                     }
                     stat.update(rootHash, directOwnedKeys, updatedSize);
                 }
             }
         } catch (InterruptedException | ExecutionException ex) {
-                throw new IOException(ex);
+            throw new IOException(ex);
         }
-        //add shutdown-hook to call close
-        Runtime.getRuntime().addShutdownHook(new Thread(this::close));
+
         return state;
     }
 
@@ -316,11 +318,11 @@ public class SpaceCheckingKeyFilter {
      * @return previous usages
      * @throws IOException
      */
-    private State load() throws IOException {
+    private static State load(Path statePath) throws IOException {
         System.out.println("Reading state from "+ statePath +" which exists ? "+ Files.exists(statePath) +" from cwd "+ System.getProperty("cwd"));
         byte[] data = Files.readAllBytes(statePath);
         CborObject object = CborObject.deserialize(new CborDecoder(new ByteArrayInputStream(data)), 1000);
-        return fromCbor(object);
+        return State.fromCbor(object);
     }
 
     /**
@@ -378,7 +380,7 @@ public class SpaceCheckingKeyFilter {
             state.currentView.computeIfAbsent(owner, k -> new Stat(username, MaybeMultihash.empty(), 0, childrenKeys));
             Stat current = state.currentView.get(owner);
             MaybeMultihash updatedRoot = mutable.getPointerTarget(owner, owner, dht).get();
-            processMutablePointerEvent(owner, owner, current.target, updatedRoot);
+            processMutablePointerEvent(state, owner, owner, current.target, updatedRoot, mutable, dht);
             for (PublicKeyHash childKey : childrenKeys) {
                 processCorenodeEvent(username, childKey);
             }
@@ -393,13 +395,19 @@ public class SpaceCheckingKeyFilter {
             HashCasPair hashCasPair = dht.getSigningKey(event.writer)
                     .thenApply(signer -> HashCasPair.fromCbor(CborObject.fromByteArray(signer.get()
                             .unsignMessage(event.writerSignedBtreeRootHash)))).get();
-            processMutablePointerEvent(event.owner, event.writer, hashCasPair.original, hashCasPair.updated);
+            processMutablePointerEvent(state, event.owner, event.writer, hashCasPair.original, hashCasPair.updated, mutable, dht);
         } catch (Exception e) {
             LOG.log(Level.WARNING, e.getMessage(), e);
         }
     }
 
-    public void processMutablePointerEvent(PublicKeyHash owner, PublicKeyHash writer, MaybeMultihash existingRoot, MaybeMultihash newRoot) {
+    public static void processMutablePointerEvent(State state,
+                                                  PublicKeyHash owner,
+                                                  PublicKeyHash writer,
+                                                  MaybeMultihash existingRoot,
+                                                  MaybeMultihash newRoot,
+                                                  MutablePointers mutable,
+                                                  ContentAddressedStorage dht) {
         if (existingRoot.equals(newRoot))
             return;
         Stat current = state.currentView.get(writer);
@@ -411,7 +419,7 @@ public class SpaceCheckingKeyFilter {
                 try {
                     // subtract data size from orphaned child keys (this assumes the keys form a tree without dups)
                     Set<PublicKeyHash> updatedOwned = WriterData.getWriterData(writer, newRoot, dht).get().props.ownedKeys;
-                    processRemovedOwnedKeys(owner, updatedOwned);
+                    processRemovedOwnedKeys(state, owner, updatedOwned, mutable, dht);
                 } catch (Exception e) {
                     LOG.log(Level.WARNING, e.getMessage(), e);
                 }
@@ -431,7 +439,7 @@ public class SpaceCheckingKeyFilter {
 
                 HashSet<PublicKeyHash> removedChildren = new HashSet<>(current.getOwnedKeys());
                 removedChildren.removeAll(updatedOwned);
-                processRemovedOwnedKeys(owner, removedChildren);
+                processRemovedOwnedKeys(state, owner, removedChildren, mutable, dht);
                 current.update(newRoot, updatedOwned, current.directRetainedStorage + changeInStorage);
             }
         } catch (Exception e) {
@@ -439,11 +447,15 @@ public class SpaceCheckingKeyFilter {
         }
     }
 
-    private void processRemovedOwnedKeys(PublicKeyHash owner, Set<PublicKeyHash> removed) {
+    private static void processRemovedOwnedKeys(State state,
+                                                PublicKeyHash owner,
+                                                Set<PublicKeyHash> removed,
+                                                MutablePointers mutable,
+                                                ContentAddressedStorage dht) {
         for (PublicKeyHash ownedKey : removed) {
             try {
                 MaybeMultihash currentTarget = mutable.getPointerTarget(owner, ownedKey, dht).get();
-                processMutablePointerEvent(owner, ownedKey, currentTarget, MaybeMultihash.empty());
+                processMutablePointerEvent(state, owner, ownedKey, currentTarget, MaybeMultihash.empty(), mutable, dht);
             } catch (Exception e) {
                 LOG.log(Level.WARNING, e.getMessage(), e);
             }
