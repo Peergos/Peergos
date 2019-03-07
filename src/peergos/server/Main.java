@@ -288,7 +288,7 @@ public class Main {
             long defaultQuota = a.getLong("default-quota");
             Logging.LOG().info("Using default user space quota of " + defaultQuota);
             Path quotaFilePath = a.fromPeergosDir("quotas_file","quotas.txt");
-            Path statePath = a.fromPeergosDir("state_path","state_path.txt");
+            Path statePath = a.fromPeergosDir("state_path","usage-state.cbor");
 
             UserQuotas userQuotas = new UserQuotas(quotaFilePath, defaultQuota);
             SpaceCheckingKeyFilter spaceChecker = new SpaceCheckingKeyFilter(core, sqlMutable, localDht, userQuotas::quota, statePath);

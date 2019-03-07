@@ -39,7 +39,7 @@ public class SpaceCheckingKeyFilterTests {
         CborObject cborObject = state.toCbor();
         byte[] serialized = cborObject.serialize();
 
-        State deserialized = fromCbor(CborObject.fromByteArray(serialized));
+        State deserialized = State.fromCbor(CborObject.fromByteArray(serialized));
         //check that deserialize(serialize(object)) == object
         Assert.assertEquals(deserialized, state);
     }
