@@ -85,7 +85,7 @@ public class EncryptedChunkRetriever implements FileRetriever {
             FileAccess access = (FileAccess) meta.get();
             FileRetriever retriever = access.retriever();
             return retriever.getEncryptedChunk(bytesRemainingUntilStart - Chunk.MAX_SIZE,
-                    truncateTo - Chunk.MAX_SIZE, retriever.getNonce(), ourCap,
+                    truncateTo - Chunk.MAX_SIZE, retriever.getNonce(), nextCap,
                     access.committedHash(), network, monitor);
         });
     }
