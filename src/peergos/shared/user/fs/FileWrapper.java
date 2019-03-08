@@ -719,39 +719,27 @@ public class FileWrapper {
                                                     fileWriteKey);
 
                                         return addChildPointer(filename, fileWriteCap, network, random, 2)
-                                            .thenCompose(pointer -> pointer.getChild(filename, network)
-                                                    .thenCompose(child -> {
+                                            .thenCompose(pointer -> { 
+                                                return generateThumbnailAndUpdate(pointer, filename, fileData, network, thumbnailSrcImageSize, isHidden, mimeType, endIndex, LocalDateTime.now());
+                                            });
 
-                                                        return generateThumbnail(network, fileData, thumbnailSrcImageSize, filename)
-                                                            .thenCompose(thumbData -> {
-
-                                                                FileProperties propsWithThumbnail = new FileProperties(filename, mimeType, endIndex,
-                                                                        LocalDateTime.now(), isHidden, Optional.of(thumbData));
-
-                                                                return child
-                                                                    .get()
-                                                                    .setProperties(propsWithThumbnail, network, Optional.empty())
-                                                                    .thenApply(x -> pointer);
-
-                                                            });
-                                                    }));
                                     });
                         })
             );
 
         });
 
-    };
+    }
 
     private CompletableFuture<FileWrapper> generateThumbnailAndUpdate(
-            CompletableFuture<FileWrapper> hashPointer,
+            FileWrapper hashPointer,
             String fileName,
             AsyncReader fileData,
             NetworkAccess network,
             int thumbNailSize,
             Boolean isHidden,
             String mimeType,
-            int endIndex,
+            long endIndex,
             LocalDateTime updatedDateTime
             ) {
 
