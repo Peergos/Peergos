@@ -734,7 +734,7 @@ public class FileWrapper {
     }
 
     private CompletableFuture<FileWrapper> generateThumbnailAndUpdate(
-            FileWrapper hashPointer,
+            FileWrapper parent,
             String fileName,
             AsyncReader fileData,
             NetworkAccess network,
@@ -745,7 +745,7 @@ public class FileWrapper {
             LocalDateTime updatedDateTime
             ) {
 
-        return hashPointer
+        return parent
             .getChild(fileName, network)
             .thenCompose(child -> {
 
@@ -757,7 +757,7 @@ public class FileWrapper {
                         return child 
                             .get()
                             .setProperties(fileProps, network, Optional.empty())
-                            .thenApply(x -> hashPointer);
+                            .thenApply(x -> parent);
 
                     }
                     );
