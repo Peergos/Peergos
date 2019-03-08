@@ -617,7 +617,7 @@ public class FileWrapper {
                                                        ProgressConsumer<Long> monitor,
                                                        Fragmenter fragmenter,
                                                        TransactionService transactions) {
-        long fileSize = (lengthLow & 0xFFFFFFFL) + ((lengthHi & 0xFFFFFFFFL) << 32);
+        long fileSize = (lengthLow & 0xFFFFFFFFL) + ((lengthHi & 0xFFFFFFFFL) << 32);
         return getPath(network).thenCompose(path ->
                 Transaction.buildFileUploadTransaction(Paths.get(path).resolve(filename).toString(), fileSize, fileData, signingPair(),
                         generateChildLocationsFromSize(fileSize, random)))
@@ -1278,7 +1278,7 @@ public class FileWrapper {
                                                                    int fileSizeHi,
                                                                    int fileSizeLow,
                                                                    ProgressConsumer<Long> monitor) {
-        return getInputStream(network, random, (fileSizeLow & 0xFFFFFFFL) + ((fileSizeHi & 0xFFFFFFFFL) << 32), monitor);
+        return getInputStream(network, random, (fileSizeLow & 0xFFFFFFFFL) + ((fileSizeHi & 0xFFFFFFFFL) << 32), monitor);
     }
 
     public CompletableFuture<? extends AsyncReader> getInputStream(NetworkAccess network,
