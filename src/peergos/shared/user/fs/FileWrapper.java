@@ -617,7 +617,7 @@ public class FileWrapper {
                                                        ProgressConsumer<Long> monitor,
                                                        Fragmenter fragmenter,
                                                        TransactionService transactions) {
-        long fileSize = lengthLow + ((lengthHi & 0xFFFFFFFFL) << 32);
+        long fileSize = (lengthLow & 0xFFFFFFFL) + ((lengthHi & 0xFFFFFFFFL) << 32);
         return getPath(network).thenCompose(path ->
                 Transaction.buildFileUploadTransaction(Paths.get(path).resolve(filename).toString(), fileSize, fileData, signingPair(),
                         generateChildLocationsFromSize(fileSize, random)))
@@ -719,9 +719,11 @@ public class FileWrapper {
                                                     fileWriteKey);
 
                                         return addChildPointer(filename, fileWriteCap, network, random, 2)
-                                            .thenCompose(pointer -> { 
-                                                return generateThumbnailAndUpdate(pointer, filename, fileData, network, thumbnailSrcImageSize, isHidden, mimeType, endIndex, LocalDateTime.now());
-                                            });
+                                            .thenCompose(pointer -> fileData
+                                                    .reset()
+                                                    .thenCompose(resetAgain -> { 
+                                                        return generateThumbnailAndUpdate(pointer, filename, resetAgain, network, thumbnailSrcImageSize, isHidden, mimeType, endIndex, LocalDateTime.now());
+                                            }));
 
                                     });
                         })
@@ -1276,7 +1278,7 @@ public class FileWrapper {
                                                                    int fileSizeHi,
                                                                    int fileSizeLow,
                                                                    ProgressConsumer<Long> monitor) {
-        return getInputStream(network, random, fileSizeLow + ((fileSizeHi & 0xFFFFFFFFL) << 32), monitor);
+        return getInputStream(network, random, (fileSizeLow & 0xFFFFFFFL) + ((fileSizeHi & 0xFFFFFFFFL) << 32), monitor);
     }
 
     public CompletableFuture<? extends AsyncReader> getInputStream(NetworkAccess network,

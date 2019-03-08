@@ -230,7 +230,7 @@ public class UserContext {
                                                                Crypto crypto,
                                                                SecretGenerationAlgorithm algorithm,
                                                                Consumer<String> progressCallback) {
-        progressCallback.accept("Making those sweet sweet keys");
+        progressCallback.accept("Generating keys");
         return UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer, algorithm)
                 .thenCompose(userWithRoot -> {
                     PublicSigningKey publicSigningKey = userWithRoot.getUser().publicSigningKey;
