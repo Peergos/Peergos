@@ -390,7 +390,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
                     */
 
             try {
-                boolean isUpdated = stat.treeNode.setProperties(updated, context.network, parentOpt.get().treeNode).get();
+                boolean isUpdated = stat.treeNode.setProperties(updated, context.network, Optional.of(parentOpt.get().treeNode)).get();
                 return isUpdated ? 0 : 1;
             } catch (Exception ex) {
                 LOG.log(Level.WARNING, ex.getMessage(), ex);

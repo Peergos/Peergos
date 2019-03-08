@@ -617,7 +617,7 @@ public class FileWrapper {
                                                        ProgressConsumer<Long> monitor,
                                                        Fragmenter fragmenter,
                                                        TransactionService transactions) {
-        long fileSize = (lengthLow & 0xFFFFFFFFL)  + ((lengthHi & 0xFFFFFFFFL) << 32);
+        long fileSize = (lengthLow & 0xFFFFFFFFL) + ((lengthHi & 0xFFFFFFFFL) << 32);
         return getPath(network).thenCompose(path ->
                 Transaction.buildFileUploadTransaction(Paths.get(path).resolve(filename).toString(), fileSize, fileData, signingPair(),
                         generateChildLocationsFromSize(fileSize, random)))
@@ -694,28 +694,77 @@ public class FileWrapper {
             SymmetricKey dirParentKey = dirAccess.getParentKey(rootRKey);
             Location parentLocation = getLocation();
             int thumbnailSrcImageSize = startIndex == 0 && endIndex < Integer.MAX_VALUE ? (int) endIndex : 0;
-            return generateThumbnail(network, fileData, thumbnailSrcImageSize, filename)
-                    .thenCompose(thumbData -> fileData.reset()
-                            .thenCompose(forMime -> calculateMimeType(forMime, endIndex)
-                                    .thenCompose(mimeType -> fileData.reset().thenCompose(resetReader -> {
-                                        FileProperties fileProps = new FileProperties(filename, mimeType, endIndex,
-                                                LocalDateTime.now(), isHidden, Optional.of(thumbData));
-                                        FileUploader chunks = new FileUploader(filename, mimeType, resetReader,
-                                                startIndex, endIndex, fileKey, parentLocation, dirParentKey, monitor, fileProps,
-                                                fragmenter, locations);
-                                        SigningPrivateKeyAndPublicHash signer = signingPair();
-                                        return chunks.upload(network, parentLocation.owner, signer)
-                                                .thenCompose(fileLocation -> {
-                                                    WritableAbsoluteCapability fileWriteCap =
-                                                            new WritableAbsoluteCapability(owner(), signer.publicKeyHash,
-                                                                    locations.get(0).getMapKey(), fileKey, fileWriteKey);
-                                                    return addChildPointer(filename, fileWriteCap, network, random, 2);
-                                                });
-                                    }))
-                            )
-                    );
+            
+            return calculateMimeType(fileData, endIndex)
+                .thenCompose(mimeType -> fileData
+                        .reset()
+                        .thenCompose(resetReader -> {
+
+                                FileProperties fileProps = new FileProperties(filename, mimeType, endIndex,
+                                        LocalDateTime.now(), isHidden, Optional.empty()); 
+
+                                FileUploader chunks = new FileUploader(filename, mimeType, resetReader,
+                                        startIndex, endIndex, fileKey, parentLocation, dirParentKey, monitor, fileProps,
+                                        fragmenter, locations);
+
+                                SigningPrivateKeyAndPublicHash signer = signingPair();
+
+                                return chunks.upload(network, parentLocation.owner, signer)
+                                    .thenCompose(fileLocation -> {
+
+                                        WritableAbsoluteCapability fileWriteCap = new
+                                            WritableAbsoluteCapability(owner(),
+                                                    signer.publicKeyHash,
+                                                    locations.get(0).getMapKey(), fileKey,
+                                                    fileWriteKey);
+
+                                        return addChildPointer(filename, fileWriteCap, network, random, 2)
+                                            .thenCompose(pointer -> fileData
+                                                    .reset()
+                                                    .thenCompose(resetAgain -> { 
+                                                        return generateThumbnailAndUpdate(pointer, filename, resetAgain, network, thumbnailSrcImageSize, isHidden, mimeType, endIndex, LocalDateTime.now());
+                                            }));
+
+                                    });
+                        })
+            );
+
         });
+
     }
+
+    private CompletableFuture<FileWrapper> generateThumbnailAndUpdate(
+            FileWrapper parent,
+            String fileName,
+            AsyncReader fileData,
+            NetworkAccess network,
+            int thumbNailSize,
+            Boolean isHidden,
+            String mimeType,
+            long endIndex,
+            LocalDateTime updatedDateTime
+            ) {
+
+        return parent
+            .getChild(fileName, network)
+            .thenCompose(child -> {
+
+                return generateThumbnail(network, fileData, thumbNailSize, fileName)
+                    .thenCompose(thumbData -> {
+                        FileProperties fileProps = new FileProperties(fileName, mimeType, endIndex,
+                                updatedDateTime, isHidden, Optional.of(thumbData));
+
+                        return child 
+                            .get()
+                            .setProperties(fileProps, network, Optional.empty())
+                            .thenApply(x -> parent);
+
+                    }
+                    );
+            }
+            );
+
+            }
 
     private CompletableFuture<FileWrapper> addChildPointer(String filename,
                                                            WritableAbsoluteCapability childPointer,
@@ -874,7 +923,7 @@ public class FileWrapper {
                                                 Optional<FileWrapper> updatedChild = children.stream()
                                                         .filter(f -> f.getFileProperties().name.equals(filename))
                                                         .findAny();
-                                                return updatedChild.get().setProperties(child.getFileProperties().withSize(endIndex), network, this);
+                                                return updatedChild.get().setProperties(child.getFileProperties().withSize(endIndex), network, Optional.of(this));
                                             });
                                         }
                                     }
@@ -976,7 +1025,7 @@ public class FileWrapper {
                 });
     }
 
-    public CompletableFuture<Boolean> setProperties(FileProperties updatedProperties, NetworkAccess network, FileWrapper parent) {
+    public CompletableFuture<Boolean> setProperties(FileProperties updatedProperties, NetworkAccess network, Optional<FileWrapper> parent) {
         setModified();
         String newName = updatedProperties.name;
         CompletableFuture<Boolean> result = new CompletableFuture<>();
@@ -984,11 +1033,11 @@ public class FileWrapper {
             result.completeExceptionally(new IllegalArgumentException("Illegal file name: " + newName));
             return result;
         }
-        return (parent == null ?
+        return (!parent.isPresent() ?
                 CompletableFuture.completedFuture(false) :
-                parent.hasChildWithName(newName, network))
+                parent.get().hasChildWithName(newName, network))
                 .thenCompose(hasChild -> {
-                    if (hasChild && parent != null && !parent.getChildrenLocations().stream()
+                    if (hasChild && !parent.get().getChildrenLocations().stream()
                             .map(l -> new ByteArrayWrapper(l.getMapKey()))
                             .collect(Collectors.toSet())
                             .contains(new ByteArrayWrapper(pointer.capability.getMapKey()))) {
