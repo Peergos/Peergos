@@ -755,18 +755,24 @@ public class FileWrapper {
             LocalDateTime updatedDateTime
             ) {
 
-        CompletableFuture<byte[]> thumbData = generateThumbnail(network, fileData, thumbNailSize, fileName);
-
-        FileProperties propsWithThumbnail = new FileProperties(fileName, mimeType, endIndex,
-                updatedDateTime, isHidden, Optional.of(thumbData));
-
         return hashPointer
-            .thenCompose(pointer -> pointer.getChild(fileName, network)
-                    .thenCompose(child -> child
-                        .get()
-                        .setProperties(propsWithThumbnail, network, Optional.empty())
-                        .thenApply(x -> pointer)
-                        ));
+            .getChild(fileName, network)
+            .thenCompose(child -> {
+
+                return generateThumbnail(network, fileData, thumbNailSize, fileName)
+                    .thenCompose(thumbData -> {
+                        FileProperties fileProps = new FileProperties(fileName, mimeType, endIndex,
+                                updatedDateTime, isHidden, Optional.of(thumbData));
+
+                        return child 
+                            .get()
+                            .setProperties(fileProps, network, Optional.empty())
+                            .thenApply(x -> hashPointer);
+
+                    }
+                    );
+            }
+            );
 
             }
 
