@@ -12,62 +12,62 @@ import peergos.shared.user.fs.*;
 import java.util.*;
 import java.util.concurrent.*;
 
-public interface CryptreeNode extends Cborable {
+public abstract class CryptreeNode implements Cborable {
 
-    int CURRENT_FILE_VERSION = 1;
-    int CURRENT_DIR_VERSION = 1;
+    public static final int CURRENT_FILE_VERSION = 1;
+    public static final int CURRENT_DIR_VERSION = 1;
 
-    MaybeMultihash committedHash();
+    public abstract MaybeMultihash committedHash();
 
-    boolean isDirectory();
+    public abstract boolean isDirectory();
 
-    int getVersion();
+    public abstract int getVersion();
 
-    default int getVersionAndType() {
+    public int getVersionAndType() {
         return getVersion() << 1 | (isDirectory() ? 0 : 1);
     }
 
-    SymmetricKey getParentKey(SymmetricKey baseKey);
+    public abstract SymmetricKey getParentKey(SymmetricKey baseKey);
 
-    SymmetricKey getMetaKey(SymmetricKey baseKey);
+    public abstract SymmetricKey getMetaKey(SymmetricKey baseKey);
 
-    EncryptedCapability getParentLink();
+    public abstract EncryptedCapability getParentLink();
 
-    FileProperties getProperties(SymmetricKey parentKey);
+    public abstract FileProperties getProperties(SymmetricKey parentKey);
 
-    Optional<SymmetricLinkToSigner> getWriterLink();
+    public abstract Optional<SymmetricLinkToSigner> getWriterLink();
 
-    default SigningPrivateKeyAndPublicHash getSigner(SymmetricKey wBaseKey, Optional<SigningPrivateKeyAndPublicHash> entrySigner) {
+    public SigningPrivateKeyAndPublicHash getSigner(SymmetricKey wBaseKey, Optional<SigningPrivateKeyAndPublicHash> entrySigner) {
         return getWriterLink().map(link -> link.target(wBaseKey))
                 .orElseGet(() -> entrySigner.orElseThrow(() ->
                         new IllegalStateException("No link to private signing key present on directory!")));
     }
 
-    default Set<AbsoluteCapability> getChildrenCapabilities(AbsoluteCapability us) {
+    public Set<AbsoluteCapability> getChildrenCapabilities(AbsoluteCapability us) {
         return Collections.emptySet();
     }
 
-    CompletableFuture<? extends CryptreeNode> updateProperties(WritableAbsoluteCapability us,
+    public abstract CompletableFuture<? extends CryptreeNode> updateProperties(WritableAbsoluteCapability us,
                                                                Optional<SigningPrivateKeyAndPublicHash> entryWriter,
                                                                FileProperties newProps,
                                                                NetworkAccess network);
 
-    boolean isDirty(SymmetricKey baseKey);
+    public abstract boolean isDirty(SymmetricKey baseKey);
 
-    CryptreeNode withHash(Multihash newHash);
+    public abstract CryptreeNode withHash(Multihash newHash);
 
-    CryptreeNode withWriterLink(SymmetricLinkToSigner newWriterLink);
+    public abstract CryptreeNode withWriterLink(SymmetricLinkToSigner newWriterLink);
 
-    CryptreeNode withParentLink(EncryptedCapability newParentLink);
+    public abstract CryptreeNode withParentLink(EncryptedCapability newParentLink);
 
     /**
      *
      * @param rBaseKey
      * @return the mapkey of the next chunk of this file or folder if present
      */
-    Optional<byte[]> getNextChunkLocation(SymmetricKey rBaseKey);
+    public abstract Optional<byte[]> getNextChunkLocation(SymmetricKey rBaseKey);
 
-    CompletableFuture<? extends CryptreeNode> copyTo(AbsoluteCapability us,
+    public abstract CompletableFuture<? extends CryptreeNode> copyTo(AbsoluteCapability us,
                                                      SymmetricKey newBaseKey,
                                                      WritableAbsoluteCapability newParentCap,
                                                      Optional<SigningPrivateKeyAndPublicHash> newEntryWriter,
@@ -76,11 +76,11 @@ public interface CryptreeNode extends Cborable {
                                                      NetworkAccess network,
                                                      SafeRandom random);
 
-    default boolean hasParentLink() {
+    public boolean hasParentLink() {
         return getParentLink() != null;
     }
 
-    default CompletableFuture<RetrievedCapability> getParent(PublicKeyHash owner,
+    public CompletableFuture<RetrievedCapability> getParent(PublicKeyHash owner,
                                                              PublicKeyHash writer,
                                                              SymmetricKey baseKey,
                                                              NetworkAccess network) {
@@ -96,7 +96,7 @@ public interface CryptreeNode extends Cborable {
         });
     }
 
-    static CryptreeNode fromCbor(CborObject cbor, Multihash hash) {
+    public static CryptreeNode fromCbor(CborObject cbor, Multihash hash) {
         if (! (cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("Incorrect cbor for FileAccess: " + cbor);
 

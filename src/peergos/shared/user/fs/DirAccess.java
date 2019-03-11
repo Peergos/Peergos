@@ -24,7 +24,7 @@ import java.util.stream.*;
  * link to the parent's parent key. The metadata key encrypts the name of the directory.
  *
  */
-public class DirAccess implements CryptreeNode {
+public class DirAccess extends CryptreeNode {
 
     private static final int CHILDREN_LINKS_PADDING_BLOCKSIZE = 1024;
     private static final int META_DATA_PADDING_BLOCKSIZE = 16;

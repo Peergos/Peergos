@@ -23,7 +23,7 @@ import java.util.concurrent.*;
  * The file retriever contains the merkle links to the encrypted file fragments of this file section, an optional
  * erasure coding scheme, nonce and auth for this section as well as an encrypted link to the next section.
  */
-public class FileAccess implements CryptreeNode {
+public class FileAccess extends CryptreeNode {
     private static final int META_DATA_PADDING_BLOCKSIZE = 16;
 
     protected final MaybeMultihash lastCommittedHash;
