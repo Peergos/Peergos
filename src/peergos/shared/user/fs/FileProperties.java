@@ -19,9 +19,10 @@ import java.util.*;
 @JsType
 public class FileProperties implements Cborable {
     public static final int MAX_FILE_NAME_SIZE = 255;
-    public static final FileProperties EMPTY = new FileProperties("", "", 0, LocalDateTime.MIN, false, Optional.empty());
+    public static final FileProperties EMPTY = new FileProperties("", true, "", 0, LocalDateTime.MIN, false, Optional.empty());
 
     public final String name;
+    public final boolean isDirectory;
     public final String mimeType;
     @JsIgnore
     public final long size;
@@ -29,11 +30,12 @@ public class FileProperties implements Cborable {
     public final boolean isHidden;
     public final Optional<byte[]> thumbnail;
 
-    public FileProperties(String name, String mimeType, int sizeHi, int sizeLo,
+    public FileProperties(String name, boolean isDirectory, String mimeType, int sizeHi, int sizeLo,
                           LocalDateTime modified, boolean isHidden, Optional<byte[]> thumbnail) {
         if (name.length() > MAX_FILE_NAME_SIZE)
             throw new IllegalStateException("File and directory names must be less than 256 characters.");
         this.name = name;
+        this.isDirectory = isDirectory;
         this.mimeType = mimeType;
         this.size = (sizeLo & 0xFFFFFFFFL) | ((sizeHi | 0L) << 32);
         this.modified = modified;
@@ -42,9 +44,9 @@ public class FileProperties implements Cborable {
     }
 
     @JsIgnore
-    public FileProperties(String name, String mimeType, long size,
+    public FileProperties(String name, boolean isDirectory, String mimeType, long size,
                           LocalDateTime modified, boolean isHidden, Optional<byte[]> thumbnail) {
-        this(name, mimeType, (int)(size >> 32), (int) size, modified, isHidden, thumbnail);
+        this(name, isDirectory, mimeType, (int)(size >> 32), (int) size, modified, isHidden, thumbnail);
     }
 
     public int sizeLow() {
@@ -78,22 +80,24 @@ public class FileProperties implements Cborable {
             throw new IllegalStateException("Invalid cbor for FileProperties! " + cbor);
         CborObject.CborMap m = (CborObject.CborMap) cbor;
         String name = m.getString("n");
+        boolean isDirectory = m.getBoolean("d");
         String mimeType = m.getString("m");
         long size = m.getLong("s");
-        long modified = m.getLong("t");
+        long modifiedEpochMillis = m.getLong("t");
         boolean isHidden = m.getBoolean("h");
         Optional<byte[]> thumbnail = m.getOptionalByteArray("i");
 
-        return new FileProperties(name, mimeType, size, LocalDateTime.ofEpochSecond(modified, 0, ZoneOffset.UTC), isHidden, thumbnail);
+        LocalDateTime modified = LocalDateTime.ofEpochSecond(modifiedEpochMillis, 0, ZoneOffset.UTC);
+        return new FileProperties(name, isDirectory, mimeType, size, modified, isHidden, thumbnail);
     }
 
     @JsIgnore
     public FileProperties withSize(long newSize) {
-        return new FileProperties(name, mimeType, newSize, modified, isHidden, thumbnail);
+        return new FileProperties(name, isDirectory, mimeType, newSize, modified, isHidden, thumbnail);
     }
 
     public FileProperties withModified(LocalDateTime modified) {
-        return new FileProperties(name, mimeType, size, modified, isHidden, thumbnail);
+        return new FileProperties(name, isDirectory, mimeType, size, modified, isHidden, thumbnail);
     }
 
     @Override

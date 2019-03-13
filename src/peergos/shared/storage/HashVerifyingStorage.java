@@ -14,9 +14,9 @@ import java.util.stream.*;
 public class HashVerifyingStorage implements ContentAddressedStorage {
 
     private final ContentAddressedStorage source;
-    private final LoginHasher hasher;
+    private final Hasher hasher;
 
-    public HashVerifyingStorage(ContentAddressedStorage source, LoginHasher hasher) {
+    public HashVerifyingStorage(ContentAddressedStorage source, Hasher hasher) {
         this.source = source;
         this.hasher = hasher;
     }

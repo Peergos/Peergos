@@ -228,6 +228,11 @@ public class NetworkAccess {
         }
     }
 
+    public CompletableFuture<Optional<RetrievedCapability>> retrieveMetadata(AbsoluteCapability cap) {
+        return retrieveAllMetadata(Collections.singletonList(cap))
+                .thenApply(res -> res.isEmpty() ? Optional.empty() : Optional.of(res.get(0)));
+    }
+
     public CompletableFuture<List<RetrievedCapability>> retrieveAllMetadata(List<AbsoluteCapability> links) {
         List<CompletableFuture<Optional<RetrievedCapability>>> all = links.stream()
                 .map(link -> {
@@ -241,7 +246,7 @@ public class NetworkAccess {
                                             .thenApply(dataOpt ->  dataOpt
                                                     .map(cbor -> new RetrievedCapability(
                                                             link,
-                                                            CryptreeNode.fromCbor(cbor, key.get()))));
+                                                            CryptreeNode.fromCbor(cbor, link.rBaseKey, key.get()))));
                                 LOG.severe("Couldn't download link at: " + new Location(owner, writer, mapKey));
                                 Optional<RetrievedCapability> result = Optional.empty();
                                 return CompletableFuture.completedFuture(result);
@@ -267,7 +272,7 @@ public class NetworkAccess {
         return downloadEntryPoint(e)
                 .thenApply(faOpt ->faOpt.map(fa -> new FileWrapper(Optional.empty(),
                         new RetrievedCapability(e.pointer, fa),
-                        e.pointer.wBaseKey.map(wBase -> fa.getSigner(wBase, Optional.empty())), e.ownerName)))
+                        e.pointer.wBaseKey.map(wBase -> fa.getSigner(e.pointer.rBaseKey, wBase, Optional.empty())), e.ownerName)))
                 .exceptionally(t -> Optional.empty());
     }
 
@@ -276,7 +281,7 @@ public class NetworkAccess {
         return tree.get(entry.pointer.owner, entry.pointer.writer, entry.pointer.getMapKey()).thenCompose(btreeValue -> {
             if (btreeValue.isPresent())
                 return dhtClient.get(btreeValue.get())
-                        .thenApply(value -> value.map(cbor -> CryptreeNode.fromCbor(cbor,  btreeValue.get())));
+                        .thenApply(value -> value.map(cbor -> CryptreeNode.fromCbor(cbor,  entry.pointer.rBaseKey, btreeValue.get())));
             return CompletableFuture.completedFuture(Optional.empty());
         });
     }
@@ -376,7 +381,7 @@ public class NetworkAccess {
             if (!blobHash.isPresent())
                 return CompletableFuture.completedFuture(Optional.empty());
             return dhtClient.get(blobHash.get())
-                    .thenApply(rawOpt -> rawOpt.map(cbor -> CryptreeNode.fromCbor(cbor, blobHash.get())));
+                    .thenApply(rawOpt -> rawOpt.map(cbor -> CryptreeNode.fromCbor(cbor, cap.rBaseKey, blobHash.get())));
         });
     }
 

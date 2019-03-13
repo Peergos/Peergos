@@ -18,7 +18,7 @@ public class PasswordProtected {
 
     public static Cborable encryptWithPassword(byte[] cleartext,
                                                String password,
-                                               LoginHasher hasher,
+                                               Hasher hasher,
                                                Salsa20Poly1305 provider,
                                                SafeRandom random) {
         return encryptWithPassword(cleartext, password, getDefault(), hasher, provider, random);
@@ -27,7 +27,7 @@ public class PasswordProtected {
     public static Cborable encryptWithPassword(byte[] cleartext,
                                                String password,
                                                SecretGenerationAlgorithm algorithm,
-                                               LoginHasher hasher,
+                                               Hasher hasher,
                                                Salsa20Poly1305 provider,
                                                SafeRandom random) {
         List<Cborable> elements = new ArrayList<>();
@@ -51,7 +51,7 @@ public class PasswordProtected {
 
     public static byte[] decryptWithPassword(Cborable wrappedCipherText,
                                              String password,
-                                             LoginHasher hasher,
+                                             Hasher hasher,
                                              Salsa20Poly1305 provider,
                                              SafeRandom random) {
         if (! (wrappedCipherText instanceof CborObject.CborList))

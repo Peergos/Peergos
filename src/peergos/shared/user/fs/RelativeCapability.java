@@ -67,6 +67,10 @@ public class RelativeCapability implements Cborable {
         return new RelativeCapability(Optional.of(writingKey), mapKey, rBaseKey, wBaseKeyLink);
     }
 
+    public static RelativeCapability buildSubsequentChunk(byte[] mapkey, SymmetricKey baseKey) {
+        return new RelativeCapability(Optional.empty(), mapkey, baseKey, Optional.empty());
+    }
+
     @Override
     public CborObject toCbor() {
         Map<String, CborObject> cbor = new TreeMap<>();

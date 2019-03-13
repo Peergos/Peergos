@@ -12,6 +12,5 @@ public class Fragment {
         if (MAX_LENGTH < data.length)
             throw new IllegalStateException("fragment size "+ data.length +" greater than max "+ MAX_LENGTH);
         this.data = data;
-
     }
 }

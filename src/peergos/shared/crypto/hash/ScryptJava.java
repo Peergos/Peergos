@@ -7,7 +7,7 @@ import java.util.concurrent.CompletableFuture;
 import peergos.shared.scrypt.com.lambdaworks.crypto.SCrypt;
 import peergos.shared.user.*;
 
-public class ScryptJava implements LoginHasher {
+public class ScryptJava implements Hasher {
 	private static final Logger LOG = Logger.getGlobal();
     private static final int LOG_2_MIN_RAM = 17;
 
