@@ -107,7 +107,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
     private Optional<RelativeCapability> mkdir(String name, FileWrapper node)  {
         boolean isSystemFolder = false;
         try {
-            return Optional.of(node.mkdir(name, context.network, isSystemFolder, context.crypto.random).get());
+            return Optional.of(node.mkdir(name, context.network, isSystemFolder, context.crypto.random, context.crypto.hasher).get());
         } catch (Exception ioe) {
             LOG.log(Level.WARNING, ioe.getMessage(), ioe);
             return Optional.empty();
@@ -146,7 +146,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
             if (!parent.isPresent())
                 return 1;
 
-            FileWrapper updatedParent = file.get().remove(parent.get(), context.network).get();
+            FileWrapper updatedParent = file.get().remove(parent.get(), context.network, context.crypto.hasher).get();
             return updatedParent != parent.get() ? 0 : 1;
         } catch (Exception ioe) {
             LOG.log(Level.WARNING, ioe.getMessage(), ioe);
@@ -175,15 +175,15 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
                 return 1;
 
             FileWrapper parent = sourceParent.treeNode;
-            FileWrapper updatedParent = source.treeNode.rename(requested.getFileName().toString(), context.network, parent).get();
+            FileWrapper updatedParent = source.treeNode.rename(requested.getFileName().toString(), context.network, parent, context.crypto.hasher).get();
             // TODO clean up on error conditions
             if (! parent.equals(newParent.get())) {
                 Path renamedInPlacePath = Paths.get(sourcePath).getParent().resolve(requested.getFileName().toString());
                 Optional<FileWrapper> renamedOriginal = context.getByPath(renamedInPlacePath.toString()).get();;
                 if (! renamedOriginal.isPresent())
                     return 1;
-                renamedOriginal.get().copyTo(newParent.get(), context.network, context.crypto.random, context.fragmenter()).get();
-                FileWrapper updatedParent2 = renamedOriginal.get().remove(parent, context.network).get();
+                renamedOriginal.get().copyTo(newParent.get(), context.network, context.crypto.random, context.fragmenter(), context.crypto.hasher).get();
+                FileWrapper updatedParent2 = renamedOriginal.get().remove(parent, context.network, context.crypto.hasher).get();
             }
             return 0;
         } catch (Exception ioe) {
@@ -487,7 +487,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
     private int rmdir(PeergosStat stat, PeergosStat parentStat) {
         FileWrapper treeNode = stat.treeNode;
         try {
-            FileWrapper updatedParent = treeNode.remove(parentStat.treeNode, context.network).get();
+            FileWrapper updatedParent = treeNode.remove(parentStat.treeNode, context.network, context.crypto.hasher).get();
             return 0;
         } catch (Exception ioe) {
             LOG.log(Level.WARNING, ioe.getMessage(), ioe);
@@ -575,9 +575,9 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
             // TODO do this smarter by only writing the chunk containing the new endpoint, and deleting all following chunks
             // or extending with 0s
             byte[] truncated = Arrays.copyOfRange(original, 0, (int)size);
-            FileWrapper newParent = file.treeNode.remove(parent.treeNode, context.network).get();
+            FileWrapper newParent = file.treeNode.remove(parent.treeNode, context.network, context.crypto.hasher).get();
             FileWrapper b = newParent.uploadOrOverwriteFile(file.properties.name, new AsyncReader.ArrayBacked(truncated),
-                    truncated.length, context.network, context.crypto.random, l -> {}, context.fragmenter(),
+                    truncated.length, context.network, context.crypto.random, context.crypto.hasher, l -> {}, context.fragmenter(),
                     newParent.generateChildLocationsFromSize(truncated.length, context.crypto.random)).get();
             return (int) size;
         } catch (Throwable t) {
@@ -595,8 +595,9 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
             }
 
             FileWrapper b = parent.treeNode.uploadFileSection(name, new AsyncReader.ArrayBacked(toWrite), false, offset,
-                    offset + size, Optional.empty(), true, context.network, context.crypto.random, l -> {},
-                    context.fragmenter(), parent.treeNode.generateChildLocationsFromSize(size, context.crypto.random)).get();
+                    offset + size, Optional.empty(), true, context.network,
+                    context.crypto.random, context.crypto.hasher, l -> {}, context.fragmenter(),
+                    parent.treeNode.generateChildLocationsFromSize(size, context.crypto.random)).get();
             return (int) size;
         } catch (Throwable t) {
             LOG.log(Level.WARNING, t.getMessage(), t);

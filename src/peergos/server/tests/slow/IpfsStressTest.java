@@ -89,14 +89,14 @@ public class IpfsStressTest {
 
     public static void mkdir(UserContext context, Path parentPath, String name, Random rnd) throws Exception {
         context.getByPath(parentPath.toString()).get().get()
-                .mkdir(name, context.network, false, context.crypto.random).get();
+                .mkdir(name, context.network, false, context.crypto.random, context.crypto.hasher).get();
     }
 
     public static void generateFile(UserContext context, Path parentPath, String name, Random rnd) throws Exception {
         int size = rnd.nextInt(15*1024*1024);
         FileWrapper parent = context.getByPath(parentPath.toString()).get().get();
         parent.uploadOrOverwriteFile(name, new AsyncReader.ArrayBacked(randomData(rnd, size)), size,
-                        context.network, context.crypto.random, x -> {}, context.fragmenter,
+                        context.network, context.crypto.random, context.crypto.hasher, x -> {}, context.fragmenter,
                 parent.generateChildLocationsFromSize(size, context.crypto.random)).get();
     }
 

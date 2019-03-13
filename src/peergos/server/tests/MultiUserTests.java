@@ -113,7 +113,7 @@ public class MultiUserTests {
         byte[] data = UserTests.randomData(10*1024*1024);
 
         FileWrapper uploaded = u1Root.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length,
-                u1.network, u1.crypto.random,l -> {}, u1.fragmenter(),
+                u1.network, crypto.random, crypto.hasher, l -> {}, u1.fragmenter(),
                 u1Root.generateChildLocationsFromSize(data.length, u1.crypto.random)).get();
 
         // share the file from "a" to each of the others
@@ -123,12 +123,12 @@ public class MultiUserTests {
         // check other user can read the file
         FileWrapper sharedFile = u2.getByPath(u1.username + "/" + filename).get().get();
         String dirname = "adir";
-        u2.getUserRoot().get().mkdir(dirname, network, false, crypto.random).get();
+        u2.getUserRoot().get().mkdir(dirname, network, false, crypto.random, crypto.hasher).get();
         FileWrapper targetDir = u2.getByPath(Paths.get(u2.username, dirname).toString()).get().get();
 
         // copy the friend's file to our own space, this should reupload the file encrypted with a new key
         // this prevents us exposing to the network our social graph by the fact that we pin the same file fragments
-        sharedFile.copyTo(targetDir, network, crypto.random, u2.fragmenter()).get();
+        sharedFile.copyTo(targetDir, network, crypto.random, u2.fragmenter(), crypto.hasher).get();
         FileWrapper copy = u2.getByPath(Paths.get(u2.username, dirname, filename).toString()).get().get();
 
         // check that the copied file has the correct contents
@@ -183,16 +183,16 @@ public class MultiUserTests {
         byte[] data1 = "Hello Peergos friend!".getBytes();
         AsyncReader file1Reader = new AsyncReader.ArrayBacked(data1);
         FileWrapper uploaded = u1Root.uploadOrOverwriteFile(filename, file1Reader, data1.length,
-                u1.network, u1.crypto.random,l -> {}, u1.fragmenter(),
+                u1.network, u1.crypto.random, crypto.hasher, l -> {}, u1.fragmenter(),
                 u1Root.generateChildLocationsFromSize(data1.length, u1.crypto.random)).get();
 
         // upload a different file with the same name in a sub folder
-        uploaded.mkdir("subdir", network, false, crypto.random).get();
+        uploaded.mkdir("subdir", network, false, crypto.random, crypto.hasher).get();
         FileWrapper subdir = u1.getByPath("/" + u1.username + "/subdir").get().get();
         byte[] data2 = "Goodbye Peergos friend!".getBytes();
         AsyncReader file2Reader = new AsyncReader.ArrayBacked(data2);
         subdir.uploadOrOverwriteFile(filename, file2Reader, data2.length,
-                u1.network, u1.crypto.random,l -> {}, u1.fragmenter(),
+                u1.network, u1.crypto.random, crypto.hasher, l -> {}, u1.fragmenter(),
                 u1Root.generateChildLocationsFromSize(data2.length, u1.crypto.random)).get();
 
         // share the file from "a" to each of the others
@@ -257,11 +257,11 @@ public class MultiUserTests {
         byte[] data1 = "Hello Peergos friend!".getBytes();
         AsyncReader file1Reader = new AsyncReader.ArrayBacked(data1);
         String subdirName = "subdir";
-        u1Root.mkdir(subdirName, network, false, crypto.random).get();
+        u1Root.mkdir(subdirName, network, false, crypto.random, crypto.hasher).get();
         Path subdirPath = Paths.get(u1.username, subdirName);
         FileWrapper subdir = u1.getByPath(subdirPath).get().get();
         FileWrapper uploaded = subdir.uploadOrOverwriteFile(filename, file1Reader, data1.length,
-                u1.network, u1.crypto.random,l -> {}, u1.fragmenter(),
+                u1.network, u1.crypto.random, crypto.hasher, l -> {}, u1.fragmenter(),
                 subdir.generateChildLocationsFromSize(data1.length, u1.crypto.random)).get();
 
         Path filePath = Paths.get(u1.username, subdirName, filename);
@@ -289,7 +289,7 @@ public class MultiUserTests {
         Set<PublicKeyHash> keysOwnedByRootSigner = WriterData.getDirectOwnedKeys(theFile.owner(), parentFolder.writer(), network.mutable, network.dhtClient);
         Assert.assertTrue("New writer key present", keysOwnedByRootSigner.contains(theFile.writer()));
 
-        parentFolder.remove(u1.getUserRoot().get(), network).get();
+        parentFolder.remove(u1.getUserRoot().get(), network, crypto.hasher).get();
         Optional<FileWrapper> removedFile = u1.getByPath(filePath).get();
         Assert.assertTrue("file removed", ! removedFile.isPresent());
 
@@ -334,7 +334,7 @@ public class MultiUserTests {
         Files.write(f.toPath(), originalFileContents);
         ResetableFileInputStream resetableFileInputStream = new ResetableFileInputStream(f);
         FileWrapper uploaded = u1Root.uploadOrOverwriteFile(filename, resetableFileInputStream, f.length(),
-                u1.network, u1.crypto.random,l -> {}, u1.fragmenter(),
+                u1.network, u1.crypto.random, crypto.hasher, l -> {}, u1.fragmenter(),
                 u1Root.generateChildLocationsFromSize(originalFileContents.length, u1.crypto.random)).get();
 
         // share the file from "a" to each of the others
@@ -359,14 +359,14 @@ public class MultiUserTests {
         Optional<FileWrapper> priorUnsharedView = userToUnshareWith.getByPath(friendsPathToFile).get();
         AbsoluteCapability priorPointer = priorUnsharedView.get().getPointer().capability;
         CryptreeNode priorFileAccess = network.getMetadata(priorPointer).get().get();
-        SymmetricKey priorMetaKey = priorFileAccess.getMetaKey(priorPointer.rBaseKey);
+        SymmetricKey priorMetaKey = priorFileAccess.getParentKey(priorPointer.rBaseKey);
 
         // unshare with a single user
         u1.unShareReadAccess(Paths.get(u1.username, filename), userToUnshareWith.username).join();
 
         String newname = "newname.txt";
         FileWrapper updatedParent = u1.getByPath(originalPath).get().get()
-                .rename(newname, network, u1.getUserRoot().get()).get();
+                .rename(newname, network, u1.getUserRoot().get(), crypto.hasher).get();
 
         // check still logged in user can't read the new name
         Optional<FileWrapper> unsharedView = userToUnshareWith.getByPath(friendsPathToFile).get();
@@ -423,9 +423,9 @@ public class MultiUserTests {
         FileWrapper parent = u1New.getByPath(u1New.username).get().get();
         parent.uploadFileSection(newname, suffixStream, false, originalFileContents.length,
                 originalFileContents.length + suffix.length, Optional.empty(), true,
-                u1New.network, u1New.crypto.random, l -> {}, u1New.fragmenter(), null).get();
+                u1New.network, crypto.random, crypto.hasher, l -> {}, u1New.fragmenter(), null).get();
         AsyncReader extendedContents = u1New.getByPath(u1.username + "/" + newname).get().get()
-                .getInputStream(u1New.network, u1New.crypto.random, l -> {}).get();
+                .getInputStream(u1New.network, crypto.random, l -> {}).get();
         byte[] newFileContents = Serialize.readFully(extendedContents, originalFileContents.length + suffix.length).get();
 
         Assert.assertTrue(Arrays.equals(newFileContents, ArrayOps.concat(originalFileContents, suffix)));

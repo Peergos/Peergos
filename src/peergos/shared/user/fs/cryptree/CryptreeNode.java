@@ -607,6 +607,11 @@ public class CryptreeNode implements Cborable {
         return getParentBlock(parentKey).parentLink.isPresent();
     }
 
+    public Optional<RelativeCapability> getParentCapability(SymmetricKey baseKey) {
+        SymmetricKey parentKey = getParentKey(baseKey);
+        return getParentBlock(parentKey).parentLink;
+    }
+
     public CompletableFuture<RetrievedCapability> getParent(PublicKeyHash owner,
                                                              PublicKeyHash writer,
                                                              SymmetricKey baseKey,
