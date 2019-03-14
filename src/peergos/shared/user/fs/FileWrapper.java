@@ -474,14 +474,14 @@ public class FileWrapper {
 
     public SymmetricKey getParentKey() {
         ensureUnmodified();
-        SymmetricKey parentKey = pointer.capability.rBaseKey;
+        SymmetricKey baseKey = pointer.capability.rBaseKey;
         if (this.isDirectory())
             try {
-                parentKey = pointer.fileAccess.getParentKey(parentKey);
+                return pointer.fileAccess.getParentKey(baseKey);
             } catch (Exception e) {
                 // if we don't have read access to this folder, then we must just have the parent key already
             }
-        return parentKey;
+        return baseKey;
     }
 
     @JsMethod

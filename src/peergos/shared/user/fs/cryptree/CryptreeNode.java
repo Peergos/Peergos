@@ -205,7 +205,11 @@ public class CryptreeNode implements Cborable {
 
     public SymmetricKey getParentKey(SymmetricKey baseKey) {
         if (isDirectory())
-            return getBaseBlock(baseKey).parentOrData;
+            try {
+                return getBaseBlock(baseKey).parentOrData;
+            } catch (Exception e) {
+                // if we don't have read access to this folder, then we must just have the parent key already
+            }
         return baseKey;
     }
 
