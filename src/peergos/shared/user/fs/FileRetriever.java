@@ -9,32 +9,15 @@ import peergos.shared.util.*;
 import java.util.*;
 import java.util.concurrent.*;
 
-public interface FileRetriever extends Cborable {
-
-    /**
-     *
-     * @param dataKey
-     * @return the map key of the next chunk in this file
-     */
-    Optional<byte[]> getNextMapLabel(SymmetricKey dataKey);
-
-    byte[] getNonce();
+public interface FileRetriever {
 
     CompletableFuture<AsyncReader> getFile(NetworkAccess network,
                                            SafeRandom random,
-                                           SymmetricKey dataKey,
+                                           SymmetricKey baseKey,
                                            long fileSize,
                                            Location ourLocation,
                                            MaybeMultihash ourExistingHash,
                                            ProgressConsumer<Long> monitor);
-
-    CompletableFuture<Optional<LocatedEncryptedChunk>> getEncryptedChunk(long bytesRemainingUntilStart,
-                                                                         long bytesRemainingUntilEnd,
-                                                                         byte[] nonce,
-                                                                         AbsoluteCapability ourCap,
-                                                                         MaybeMultihash ourExistingHash,
-                                                                         NetworkAccess network,
-                                                                         ProgressConsumer<Long> monitor);
 
     CompletableFuture<Optional<byte[]>> getMapLabelAt(AbsoluteCapability startCap,
                                                       long offset,
@@ -47,8 +30,4 @@ public interface FileRetriever extends Cborable {
                                                                   AbsoluteCapability ourLocation,
                                                                   MaybeMultihash ourExistingHash,
                                                                   ProgressConsumer<Long> monitor);
-
-    static FileRetriever fromCbor(Cborable cbor) {
-        return EncryptedChunkRetriever.fromCbor(cbor);
-    }
 }

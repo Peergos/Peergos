@@ -12,7 +12,7 @@ import java.util.concurrent.*;
 public class LazyInputStreamCombiner implements AsyncReader {
     private final NetworkAccess network;
     private final SafeRandom random;
-    private final SymmetricKey dataKey;
+    private final SymmetricKey baseKey;
     private final ProgressConsumer<Long> monitor;
     private final long totalLength;
 
@@ -32,20 +32,20 @@ public class LazyInputStreamCombiner implements AsyncReader {
                                    Location originalNextChunkPointer,
                                    NetworkAccess network,
                                    SafeRandom random,
-                                   SymmetricKey dataKey,
+                                   SymmetricKey baseKey,
                                    long totalLength,
                                    ProgressConsumer<Long> monitor) {
         if (chunk == null)
             throw new IllegalStateException("Null initial chunk!");
         this.network = network;
         this.random = random;
-        this.dataKey = dataKey;
+        this.baseKey = baseKey;
         this.monitor = monitor;
         this.totalLength = totalLength;
         this.originalChunk = originalChunk;
-        this.originalNextPointer = AbsoluteCapability.build(originalNextChunkPointer, dataKey);
+        this.originalNextPointer = AbsoluteCapability.build(originalNextChunkPointer, baseKey);
         this.currentChunk = chunk;
-        this.nextChunkPointer = AbsoluteCapability.build(nextChunkPointer, dataKey);
+        this.nextChunkPointer = AbsoluteCapability.build(nextChunkPointer, baseKey);
         this.globalIndex = globalIndex;
         this.index = 0;
     }
@@ -60,10 +60,10 @@ public class LazyInputStreamCombiner implements AsyncReader {
                     return err;
                 }
                 CryptreeNode access = meta.get();
-                if (! (access instanceof FileAccess))
+                if (access.isDirectory())
                     throw new IllegalStateException("File linked to a directory for its next chunk!");
-                FileRetriever nextRet = ((FileAccess) access).retriever();
-                AbsoluteCapability newNextChunkPointer = nextRet.getNextMapLabel(dataKey).map(nextCap::withMapKey).orElse(null);
+                FileRetriever nextRet = access.retriever(baseKey);
+                AbsoluteCapability newNextChunkPointer = nextCap.withMapKey(access.getNextChunkLocation(baseKey));
                 return nextRet.getChunkInputStream(network, random, 0, len, nextCap, access.committedHash(), monitor)
                         .thenApply(x -> {
                             byte[] nextData = x.get().chunk.data();

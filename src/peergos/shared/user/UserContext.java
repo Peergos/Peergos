@@ -587,7 +587,7 @@ public class UserContext {
                         RelativeCapability nextChunk = RelativeCapability.buildSubsequentChunk(crypto.random.randomBytes(32), rootRKey);
                         CryptreeNode root = CryptreeNode.createDir(MaybeMultihash.empty(), rootRKey, rootWKey, Optional.of(writerWithHash),
                                 new FileProperties(directoryName, true, "", 0, LocalDateTime.now(),
-                                        false, Optional.empty()), Optional.empty(), null, nextChunk, crypto.hasher);
+                                        false, Optional.empty()), Optional.empty(), SymmetricKey.random(), nextChunk, crypto.hasher);
                         LOG.info("Uploading entry point directory");
                         return network.uploadChunk(root, this.signer.publicKeyHash, rootMapKey, writerWithHash, tid).thenApply(chunkHash -> {
                             long t3 = System.currentTimeMillis();

@@ -222,11 +222,11 @@ public class FileWrapper {
             // Create new DirAccess
             CryptreeNode newDirAccess = CryptreeNode.createDir(existing.committedHash(), newSubfoldersKey, null, Optional.empty(), props,
                     Optional.of(cap.relativise(parent.writableFilePointer())), newParentKey, toNextChunk, hasher)
-                    .withWriterLink(existing.getWriterLink(cap.rBaseKey));
+                    .withWriterLink(newSubfoldersKey, existing.getWriterLink(cap.rBaseKey));
 
             // re add children
-            List<RelativeCapability> children = existing.getDirectChildren(pointer.capability.rBaseKey);
-            return newDirAccess.addChildrenAndCommit(children, ourNewPointer, entryWriter, network, random, hasher)
+            return existing.getDirectChildren(pointer.capability.rBaseKey, network)
+                    .thenCompose(children -> newDirAccess.addChildrenAndCommit(children, ourNewPointer, entryWriter, network, random, hasher)
                     .thenCompose(updatedDirAccess -> {
                         RetrievedCapability ourNewRetrievedPointer = new RetrievedCapability(ourNewPointer, updatedDirAccess);
                         FileWrapper theNewUs = new FileWrapper(ourNewRetrievedPointer, entryWriter, ownername);
@@ -261,7 +261,8 @@ public class FileWrapper {
                     }).thenApply(x -> {
                         setModified();
                         return x;
-                    });
+                    })
+            );
         } else {
             // create a new rBaseKey == parentKey
             SymmetricKey baseReadKey = newBaseKey.orElseGet(SymmetricKey::random);
@@ -324,8 +325,8 @@ public class FileWrapper {
             CryptreeNode existing = pointer.fileAccess;
             Optional<SymmetricLinkToSigner> updatedWriter = existing.getWriterLink(cap.rBaseKey)
                     .map(toSigner -> SymmetricLinkToSigner.fromPair(newBaseWriteKey, toSigner.target(cap.wBaseKey.get())));
-            CryptreeNode updatedDirAccess = existing.withWriterLink(updatedWriter)
-                    .withoutChildren(cap.rBaseKey);
+            CryptreeNode updatedDirAccess = existing.withWriterLink(cap.rBaseKey, updatedWriter)
+                    .withChildren(cap.rBaseKey, CryptreeNode.ChildrenLinks.empty(), hasher);
 
             byte[] nextChunkMapKey = existing.getNextChunkLocation(cap.rBaseKey);
             WritableAbsoluteCapability nextChunkCap = cap.withMapKey(nextChunkMapKey);
@@ -566,6 +567,7 @@ public class FileWrapper {
     public CompletableFuture<FileWrapper> clean(NetworkAccess network,
                                                 SafeRandom random,
                                                 FileWrapper parent,
+                                                Hasher hasher,
                                                 Fragmenter fragmenter) {
         if (!isDirty())
             return CompletableFuture.completedFuture(this);
@@ -573,7 +575,7 @@ public class FileWrapper {
             throw new IllegalStateException("Directories are never dirty (they are cleaned immediately)!");
         } else {
             return pointer.fileAccess.cleanAndCommit(writableFilePointer(), signingPair(),
-                    parent.getLocation(), parent.getParentKey(), network, random, fragmenter)
+                    parent.getLocation(), parent.getParentKey(), network, random, hasher, fragmenter)
                     .thenApply(res -> {
                         setModified();
                         return parent;
@@ -676,7 +678,7 @@ public class FileWrapper {
             if (childOpt.isPresent()) {
                 if (! overwriteExisting)
                     throw new IllegalStateException("File already exists with name " + filename);
-                return updateExistingChild(childOpt.get(), fileData, startIndex, endIndex, network, random, monitor, fragmenter);
+                return updateExistingChild(childOpt.get(), fileData, startIndex, endIndex, network, random, hasher, monitor, fragmenter);
             }
             if (startIndex > 0) {
                 // TODO if startIndex > 0 prepend with a zero section
@@ -695,7 +697,7 @@ public class FileWrapper {
                         .reset()
                         .thenCompose(resetReader -> {
 
-                                FileProperties fileProps = new FileProperties(filename, mimeType, endIndex,
+                                FileProperties fileProps = new FileProperties(filename, false, mimeType, endIndex,
                                         LocalDateTime.now(), isHidden, Optional.empty()); 
 
                                 FileUploader chunks = new FileUploader(filename, mimeType, resetReader,
@@ -704,7 +706,7 @@ public class FileWrapper {
 
                                 SigningPrivateKeyAndPublicHash signer = signingPair();
 
-                                return chunks.upload(network, parentLocation.owner, signer)
+                                return chunks.upload(network, parentLocation.owner, signer, hasher)
                                     .thenCompose(fileLocation -> {
 
                                         WritableAbsoluteCapability fileWriteCap = new
@@ -713,7 +715,7 @@ public class FileWrapper {
                                                     locations.get(0).getMapKey(), fileKey,
                                                     fileWriteKey);
 
-                                        return addChildPointer(filename, fileWriteCap, network, random, 2)
+                                        return addChildPointer(filename, fileWriteCap, network, random, hasher, 2)
                                             .thenCompose(pointer -> fileData
                                                     .reset()
                                                     .thenCompose(resetAgain -> { 
@@ -814,19 +816,29 @@ public class FileWrapper {
         return result;
     }
 
-    public CompletableFuture<FileWrapper> updateExistingChild(String existingChildName, AsyncReader fileData,
-                                                               long inputStartIndex, long endIndex,
-                                                               NetworkAccess network, SafeRandom random,
-                                                               ProgressConsumer<Long> monitor, Fragmenter fragmenter) {
+    public CompletableFuture<FileWrapper> updateExistingChild(String existingChildName,
+                                                              AsyncReader fileData,
+                                                              long inputStartIndex,
+                                                              long endIndex,
+                                                              NetworkAccess network,
+                                                              SafeRandom random,
+                                                              Hasher hasher,
+                                                              ProgressConsumer<Long> monitor,
+                                                              Fragmenter fragmenter) {
         return getDescendentByPath(existingChildName, network)
                 .thenCompose(childOpt -> updateExistingChild(childOpt.get(), fileData, inputStartIndex, endIndex,
-                        network, random, monitor, fragmenter));
+                        network, random, hasher, monitor, fragmenter));
     }
 
-    private CompletableFuture<FileWrapper> updateExistingChild(FileWrapper existingChild, AsyncReader fileData,
-                                                               long inputStartIndex, long endIndex,
-                                                               NetworkAccess network, SafeRandom random,
-                                                               ProgressConsumer<Long> monitor, Fragmenter fragmenter) {
+    private CompletableFuture<FileWrapper> updateExistingChild(FileWrapper existingChild,
+                                                               AsyncReader fileData,
+                                                               long inputStartIndex,
+                                                               long endIndex,
+                                                               NetworkAccess network,
+                                                               SafeRandom random,
+                                                               Hasher hasher,
+                                                               ProgressConsumer<Long> monitor,
+                                                               Fragmenter fragmenter) {
 
         String filename = existingChild.getFileProperties().name;
         LOG.info("Overwriting section [" + Long.toHexString(inputStartIndex) + ", " + Long.toHexString(endIndex) + "] of child with name: " + filename);
@@ -834,7 +846,7 @@ public class FileWrapper {
         Supplier<Location> locationSupplier = () -> new Location(getLocation().owner, getLocation().writer, random.randomBytes(32));
 
         return (existingChild.isDirty() ?
-                existingChild.clean(network, random, this, fragmenter)
+                existingChild.clean(network, random, this, hasher, fragmenter)
                         .thenCompose(us -> us.getChild(filename, network)
                                 .thenApply(cleanedChild -> new Pair<>(us, cleanedChild.get()))) :
                 CompletableFuture.completedFuture(new Pair<>(this, existingChild))
@@ -904,7 +916,7 @@ public class FileWrapper {
                                 CompletableFuture<Multihash> chunkUploaded = FileUploader.uploadChunk(child.signingPair(),
                                         newProps, getLocation(), us.getParentKey(), baseKey, located,
                                         fragmenter,
-                                        nextChunkLocation, writerLink, network, monitor);
+                                        nextChunkLocation, writerLink, hasher, network, monitor);
 
                                 return chunkUploaded.thenCompose(isUploaded -> {
                                     //update indices to be relative to next chunk
@@ -1294,14 +1306,14 @@ public class FileWrapper {
             throw new IllegalStateException("Cannot get input stream for a directory!");
         CryptreeNode fileAccess = pointer.fileAccess;
         SymmetricKey baseKey = pointer.capability.rBaseKey;
-        SymmetricKey dataKey = fileAccess.getDataKey(baseKey);
-        return fileAccess.retriever().getFile(network, random, dataKey, fileSize, getLocation(), fileAccess.committedHash(), monitor);
+        return fileAccess.retriever(pointer.capability.rBaseKey)
+                .getFile(network, random, baseKey, fileSize, getLocation(), fileAccess.committedHash(), monitor);
     }
 
     private FileRetriever getRetriever() {
         if (pointer.fileAccess.isDirectory())
             throw new IllegalStateException("Cannot get input stream for a directory!");
-        return pointer.fileAccess.retriever();
+        return pointer.fileAccess.retriever(pointer.capability.rBaseKey);
     }
 
     @JsMethod

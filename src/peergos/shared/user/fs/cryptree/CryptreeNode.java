@@ -25,6 +25,9 @@ import java.util.stream.*;
  * For a directory, the base key encrypts the links to child directories and files. For a file the datakey encrypts the
  * file's data. The parent key encrypts the link to the parent directory's parent key and the metadata (FileProperties).
  *
+ * There are three network visible components to the serialization:
+ * 1) A fixed size block encrypted with the base key, containing the second key (parent or data key), the location of
+ *    the next chunk, and an optional symmetric link to a signing pair
  */
 public class CryptreeNode implements Cborable {
     private static final int CURRENT_VERSION = 1;
@@ -154,6 +157,10 @@ public class CryptreeNode implements Cborable {
                     .map(RelativeCapability::fromCbor)
                     .collect(Collectors.toList()));
         }
+
+        public static ChildrenLinks empty() {
+            return new ChildrenLinks(Collections.emptyList());
+        }
     }
 
     public MaybeMultihash committedHash() {
@@ -199,6 +206,10 @@ public class CryptreeNode implements Cborable {
                 .map(link -> link.target(wBaseKey))
                 .orElseGet(() -> entrySigner.orElseThrow(() ->
                         new IllegalStateException("No link to private signing key present on directory!")));
+    }
+
+    public FileRetriever retriever(SymmetricKey baseKey) {
+        return new EncryptedChunkRetriever(childrenOrData, getNextChunkLocation(baseKey));
     }
 
     public CompletableFuture<List<RelativeCapability>> getDirectChildren(SymmetricKey baseKey, NetworkAccess network) {
@@ -345,35 +356,36 @@ public class CryptreeNode implements Cborable {
     }
 
     public CompletableFuture<CryptreeNode> rotateBaseReadKey(WritableAbsoluteCapability us,
-                                                           Optional<SigningPrivateKeyAndPublicHash> entryWriter,
-                                                           RelativeCapability toParent,
-                                                           SymmetricKey newBaseKey,
-                                                           NetworkAccess network) {
+                                                             Optional<SigningPrivateKeyAndPublicHash> entryWriter,
+                                                             RelativeCapability toParent,
+                                                             SymmetricKey newBaseKey,
+                                                             NetworkAccess network) {
+        if (isDirectory())
+            throw new IllegalStateException("Invalid operation for directory!");
         // keep the same data key, just marked as dirty
         SymmetricKey dataKey = this.getDataKey(us.rBaseKey).makeDirty();
-        SymmetricLink newParentToData = SymmetricLink.fromPair(newBaseKey, dataKey);
 
-        EncryptedCapability newParentLink = EncryptedCapability.create(newBaseKey, toParent);
-        PaddedCipherText newProperties = PaddedCipherText.build(newBaseKey, getProperties(us.rBaseKey), META_DATA_PADDING_BLOCKSIZE);
-        FileAccess fa = new FileAccess(committedHash(), version, newParentToData, newProperties,
-                this.fileRetriever, newParentLink, writerLink);
+        RelativeCapability nextChunk = RelativeCapability.buildSubsequentChunk(getNextChunkLocation(us.rBaseKey), newBaseKey);
+        CryptreeNode fa = CryptreeNode.createFile(committedHash(), newBaseKey, dataKey, getProperties(us.rBaseKey),
+                childrenOrData, toParent.getLocation(us.owner, us.writer), toParent.rBaseKey, nextChunk);
         return IpfsTransaction.call(us.owner, tid ->
-                        network.uploadChunk(fa, us.owner, us.getMapKey(), getSigner(us.wBaseKey.get(), entryWriter), tid)
+                        network.uploadChunk(fa, us.owner, us.getMapKey(), getSigner(us.rBaseKey, us.wBaseKey.get(), entryWriter), tid)
                                 .thenApply(x -> fa),
                 network.dhtClient);
     }
 
     public CompletableFuture<CryptreeNode> rotateBaseWriteKey(WritableAbsoluteCapability us,
-                                                            Optional<SigningPrivateKeyAndPublicHash> entryWriter,
-                                                            SymmetricKey newBaseWriteKey,
-                                                            NetworkAccess network) {
-        if (! writerLink.isPresent())
+                                                              Optional<SigningPrivateKeyAndPublicHash> entryWriter,
+                                                              SymmetricKey newBaseWriteKey,
+                                                              NetworkAccess network) {
+        FromBase baseBlock = getBaseBlock(us.rBaseKey);
+        if (! baseBlock.signer.isPresent())
             return CompletableFuture.completedFuture(this);
 
-        SigningPrivateKeyAndPublicHash signer = writerLink.get().target(us.wBaseKey.get());
-        CryptreeNode fa = this.withWriterLink(SymmetricLinkToSigner.fromPair(newBaseWriteKey, signer));
+        SigningPrivateKeyAndPublicHash signer = baseBlock.signer.get().target(us.wBaseKey.get());
+        CryptreeNode fa = this.withWriterLink(us.rBaseKey, SymmetricLinkToSigner.fromPair(newBaseWriteKey, signer));
         return IpfsTransaction.call(us.owner, tid ->
-                        network.uploadChunk(fa, us.owner, us.getMapKey(), getSigner(us.wBaseKey.get(), entryWriter), tid)
+                        network.uploadChunk(fa, us.owner, us.getMapKey(), getSigner(us.rBaseKey, us.wBaseKey.get(), entryWriter), tid)
                                 .thenApply(x -> fa),
                 network.dhtClient);
     }
@@ -384,10 +396,11 @@ public class CryptreeNode implements Cborable {
                                                         SymmetricKey parentParentKey,
                                                         NetworkAccess network,
                                                         SafeRandom random,
+                                                        Hasher hasher,
                                                         Fragmenter fragmenter) {
         FileProperties props = getProperties(cap.rBaseKey);
-        AbsoluteCapability nextCap = cap.withMapKey(getNextChunkLocation(cap.rBaseKey).get());
-        return retriever().getFile(network, random, getDataKey(cap.rBaseKey), props.size, cap.getLocation(), committedHash(), x -> {})
+        AbsoluteCapability nextCap = cap.withMapKey(getNextChunkLocation(cap.rBaseKey));
+        return retriever(cap.rBaseKey).getFile(network, random, cap.rBaseKey, props.size, cap.getLocation(), committedHash(), x -> {})
                 .thenCompose(data -> {
                     int chunkSize = (int) Math.min(props.size, Chunk.MAX_SIZE);
                     byte[] chunkData = new byte[chunkSize];
@@ -398,15 +411,15 @@ public class CryptreeNode implements Cborable {
                                 Chunk chunk = new Chunk(chunkData, cap.rBaseKey, mapKey, nonce);
                                 LocatedChunk locatedChunk = new LocatedChunk(cap.getLocation(), lastCommittedHash, chunk);
                                 return FileUploader.uploadChunk(writer, props, parentLocation, parentParentKey, cap.rBaseKey, locatedChunk,
-                                        fragmenter, nextCap.getLocation(), writerLink, network, x -> {});
+                                        fragmenter, nextCap.getLocation(), getWriterLink(cap.rBaseKey), hasher, network, x -> {});
                             });
                 }).thenCompose(h -> network.getMetadata(nextCap)
                         .thenCompose(mOpt -> {
                             if (! mOpt.isPresent())
                                 return CompletableFuture.completedFuture(null);
-                            return ((FileAccess)mOpt.get()).cleanAndCommit(cap.withMapKey(nextCap.getMapKey()),
-                                    writer, parentLocation, parentParentKey, network, random, fragmenter);
-                        }).thenCompose(x -> network.getMetadata(cap)).thenApply(opt -> (FileAccess) opt.get())
+                            return mOpt.get().cleanAndCommit(cap.withMapKey(nextCap.getMapKey()),
+                                    writer, parentLocation, parentParentKey, network, random, hasher, fragmenter);
+                        }).thenCompose(x -> network.getMetadata(cap)).thenApply(opt -> opt.get())
                 );
     }
 
