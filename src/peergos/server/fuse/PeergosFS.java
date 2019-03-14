@@ -182,7 +182,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
                 Optional<FileWrapper> renamedOriginal = context.getByPath(renamedInPlacePath.toString()).get();;
                 if (! renamedOriginal.isPresent())
                     return 1;
-                renamedOriginal.get().copyTo(newParent.get(), context.network, context.crypto.random, context.fragmenter(), context.crypto.hasher).get();
+                renamedOriginal.get().copyTo(newParent.get(), context.network, context.crypto.random, context.crypto.hasher).get();
                 FileWrapper updatedParent2 = renamedOriginal.get().remove(parent, context.network, context.crypto.hasher).get();
             }
             return 0;
@@ -577,7 +577,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
             byte[] truncated = Arrays.copyOfRange(original, 0, (int)size);
             FileWrapper newParent = file.treeNode.remove(parent.treeNode, context.network, context.crypto.hasher).get();
             FileWrapper b = newParent.uploadOrOverwriteFile(file.properties.name, new AsyncReader.ArrayBacked(truncated),
-                    truncated.length, context.network, context.crypto.random, context.crypto.hasher, l -> {}, context.fragmenter(),
+                    truncated.length, context.network, context.crypto.random, context.crypto.hasher, l -> {},
                     newParent.generateChildLocationsFromSize(truncated.length, context.crypto.random)).get();
             return (int) size;
         } catch (Throwable t) {
@@ -596,7 +596,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
 
             FileWrapper b = parent.treeNode.uploadFileSection(name, new AsyncReader.ArrayBacked(toWrite), false, offset,
                     offset + size, Optional.empty(), true, context.network,
-                    context.crypto.random, context.crypto.hasher, l -> {}, context.fragmenter(),
+                    context.crypto.random, context.crypto.hasher, l -> {},
                     parent.treeNode.generateChildLocationsFromSize(size, context.crypto.random)).get();
             return (int) size;
         } catch (Throwable t) {

@@ -561,21 +561,19 @@ public class FileWrapper {
      * @param network
      * @param random
      * @param parent
-     * @param fragmenter
      * @return updated parent dir
      */
     public CompletableFuture<FileWrapper> clean(NetworkAccess network,
                                                 SafeRandom random,
                                                 FileWrapper parent,
-                                                Hasher hasher,
-                                                Fragmenter fragmenter) {
+                                                Hasher hasher) {
         if (!isDirty())
             return CompletableFuture.completedFuture(this);
         if (isDirectory()) {
             throw new IllegalStateException("Directories are never dirty (they are cleaned immediately)!");
         } else {
             return pointer.fileAccess.cleanAndCommit(writableFilePointer(), signingPair(),
-                    parent.getLocation(), parent.getParentKey(), network, random, hasher, fragmenter)
+                    parent.getLocation(), parent.getParentKey(), network, random, hasher)
                     .thenApply(res -> {
                         setModified();
                         return parent;
@@ -610,7 +608,6 @@ public class FileWrapper {
                                                        SafeRandom random,
                                                        Hasher hasher,
                                                        ProgressConsumer<Long> monitor,
-                                                       Fragmenter fragmenter,
                                                        TransactionService transactions) {
         long fileSize = (lengthLow & 0xFFFFFFFFL) + ((lengthHi & 0xFFFFFFFFL) << 32);
         return getPath(network).thenCompose(path ->
@@ -619,7 +616,7 @@ public class FileWrapper {
                 .thenCompose(txn -> transactions.open(txn)
                         .thenCompose(x -> fileData.reset())
                         .thenCompose(reset -> uploadFileSection(filename, reset, false, 0, fileSize,
-                                Optional.empty(), overwriteExisting, network, random, hasher, monitor, fragmenter, txn.getLocations()))
+                                Optional.empty(), overwriteExisting, network, random, hasher, monitor, txn.getLocations()))
                         .thenCompose(res -> transactions.close(txn).thenApply(x -> res)));
     }
 
@@ -630,10 +627,9 @@ public class FileWrapper {
                                                                 SafeRandom random,
                                                                 Hasher hasher,
                                                                 ProgressConsumer<Long> monitor,
-                                                                Fragmenter fragmenter,
                                                                 List<Location> locations) {
         return uploadFileSection(filename, fileData, false, 0, length, Optional.empty(),
-                true, network, random, hasher, monitor, fragmenter, locations);
+                true, network, random, hasher, monitor, locations);
     }
 
     /**
@@ -648,7 +644,6 @@ public class FileWrapper {
      * @param network
      * @param random
      * @param monitor A way to report back progress in number of bytes of file written
-     * @param fragmenter
      * @return The updated version of this directory after the upload
      */
     public CompletableFuture<FileWrapper> uploadFileSection(String filename,
@@ -662,7 +657,6 @@ public class FileWrapper {
                                                             SafeRandom random,
                                                             Hasher hasher,
                                                             ProgressConsumer<Long> monitor,
-                                                            Fragmenter fragmenter,
                                                             List<Location> locations) {
         if (!isLegalName(filename)) {
             CompletableFuture<FileWrapper> res = new CompletableFuture<>();
@@ -678,7 +672,7 @@ public class FileWrapper {
             if (childOpt.isPresent()) {
                 if (! overwriteExisting)
                     throw new IllegalStateException("File already exists with name " + filename);
-                return updateExistingChild(childOpt.get(), fileData, startIndex, endIndex, network, random, hasher, monitor, fragmenter);
+                return updateExistingChild(childOpt.get(), fileData, startIndex, endIndex, network, random, hasher, monitor);
             }
             if (startIndex > 0) {
                 // TODO if startIndex > 0 prepend with a zero section
@@ -702,7 +696,7 @@ public class FileWrapper {
 
                                 FileUploader chunks = new FileUploader(filename, mimeType, resetReader,
                                         startIndex, endIndex, fileKey, parentLocation, dirParentKey, monitor, fileProps,
-                                        fragmenter, locations);
+                                        locations);
 
                                 SigningPrivateKeyAndPublicHash signer = signingPair();
 
@@ -823,11 +817,10 @@ public class FileWrapper {
                                                               NetworkAccess network,
                                                               SafeRandom random,
                                                               Hasher hasher,
-                                                              ProgressConsumer<Long> monitor,
-                                                              Fragmenter fragmenter) {
+                                                              ProgressConsumer<Long> monitor) {
         return getDescendentByPath(existingChildName, network)
                 .thenCompose(childOpt -> updateExistingChild(childOpt.get(), fileData, inputStartIndex, endIndex,
-                        network, random, hasher, monitor, fragmenter));
+                        network, random, hasher, monitor));
     }
 
     private CompletableFuture<FileWrapper> updateExistingChild(FileWrapper existingChild,
@@ -837,8 +830,7 @@ public class FileWrapper {
                                                                NetworkAccess network,
                                                                SafeRandom random,
                                                                Hasher hasher,
-                                                               ProgressConsumer<Long> monitor,
-                                                               Fragmenter fragmenter) {
+                                                               ProgressConsumer<Long> monitor) {
 
         String filename = existingChild.getFileProperties().name;
         LOG.info("Overwriting section [" + Long.toHexString(inputStartIndex) + ", " + Long.toHexString(endIndex) + "] of child with name: " + filename);
@@ -846,7 +838,7 @@ public class FileWrapper {
         Supplier<Location> locationSupplier = () -> new Location(getLocation().owner, getLocation().writer, random.randomBytes(32));
 
         return (existingChild.isDirty() ?
-                existingChild.clean(network, random, this, hasher, fragmenter)
+                existingChild.clean(network, random, this, hasher)
                         .thenCompose(us -> us.getChild(filename, network)
                                 .thenApply(cleanedChild -> new Pair<>(us, cleanedChild.get()))) :
                 CompletableFuture.completedFuture(new Pair<>(this, existingChild))
@@ -915,7 +907,6 @@ public class FileWrapper {
 
                                 CompletableFuture<Multihash> chunkUploaded = FileUploader.uploadChunk(child.signingPair(),
                                         newProps, getLocation(), us.getParentKey(), baseKey, located,
-                                        fragmenter,
                                         nextChunkLocation, writerLink, hasher, network, monitor);
 
                                 return chunkUploaded.thenCompose(isUploaded -> {
@@ -1095,7 +1086,6 @@ public class FileWrapper {
     public CompletableFuture<FileWrapper> copyTo(FileWrapper target,
                                                  NetworkAccess network,
                                                  SafeRandom random,
-                                                 Fragmenter fragmenter,
                                                  Hasher hasher) {
         ensureUnmodified();
         CompletableFuture<FileWrapper> result = new CompletableFuture<>();
@@ -1127,7 +1117,7 @@ public class FileWrapper {
             } else {
                 return getInputStream(network, random, x -> {})
                         .thenCompose(stream -> target.uploadFileSection(getName(), stream, false, 0, getSize(),
-                                Optional.empty(), false, network, random, hasher, x -> {}, fragmenter, target.generateChildLocations(props.getNumberOfChunks(), random))
+                                Optional.empty(), false, network, random, hasher, x -> {}, target.generateChildLocations(props.getNumberOfChunks(), random))
                         .thenApply(b -> target));
             }
         });

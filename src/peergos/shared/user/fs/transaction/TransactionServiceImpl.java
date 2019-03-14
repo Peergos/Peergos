@@ -21,15 +21,15 @@ public class TransactionServiceImpl implements TransactionService {
     private final NetworkAccess networkAccess;
     private final SafeRandom random;
     private final Hasher hasher;
-    private final Fragmenter fragmenter;
 
-    public TransactionServiceImpl(NetworkAccess networkAccess, SafeRandom random, Hasher hasher, Fragmenter fragmenter,
+    public TransactionServiceImpl(NetworkAccess networkAccess,
+                                  SafeRandom random,
+                                  Hasher hasher,
                                   FileWrapperUpdater transactionDirUpdater) {
         this.transactionDirUpdater = transactionDirUpdater;
         this.networkAccess = networkAccess;
         this.random = random;
         this.hasher = hasher;
-        this.fragmenter = fragmenter;
     }
 
     @Override
@@ -38,7 +38,7 @@ public class TransactionServiceImpl implements TransactionService {
         AsyncReader asyncReader = AsyncReader.build(data);
         return transactionDirUpdater.updated().thenCompose(dirWrapper ->
                 dirWrapper.uploadOrOverwriteFile(transaction.name(), asyncReader, data.length, networkAccess,
-                        random, hasher, VOID_PROGRESS, fragmenter,
+                        random, hasher, VOID_PROGRESS,
                         dirWrapper.generateChildLocations(1, random))
                         .thenApply(e -> true));
     }

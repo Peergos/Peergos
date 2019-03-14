@@ -58,12 +58,12 @@ public class QuotaTests {
         byte[] data = new byte[1024*1024];
         random.nextBytes(data);
         FileWrapper newHome = home.uploadOrOverwriteFile("file-1", new AsyncReader.ArrayBacked(data), data.length,
-                network, crypto.random, crypto.hasher, x -> {}, context.fragmenter(),
+                network, crypto.random, crypto.hasher, x -> {},
                 home.generateChildLocationsFromSize(data.length, crypto.random)).get();
 
         try {
             newHome.uploadOrOverwriteFile("file-2", new AsyncReader.ArrayBacked(data), data.length, network,
-                    crypto.random, crypto.hasher, x -> {}, context.fragmenter(),
+                    crypto.random, crypto.hasher, x -> {},
                     newHome.generateChildLocationsFromSize(data.length, crypto.random)).get();
             Assert.fail("Quota wasn't enforced");
         } catch (Exception e) {}
@@ -81,7 +81,7 @@ public class QuotaTests {
         for (int i=0; i < 5; i++) {
             String filename = "file-1";
             home = home.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length,
-                    network, crypto.random, crypto.hasher, x -> {}, context.fragmenter(),
+                    network, crypto.random, crypto.hasher, x -> {},
                     home.generateChildLocationsFromSize(data.length, crypto.random)).get();
             FileWrapper file = context.getByPath("/" + username + "/" + filename).get().get();
             home = file.remove(home, network, crypto.hasher).get();
@@ -101,7 +101,7 @@ public class QuotaTests {
         random.nextBytes(data);
         String filename = "file-1";
         home = home.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length,
-                network, crypto.random, crypto.hasher, x -> {}, context.fragmenter(),
+                network, crypto.random, crypto.hasher, x -> {},
                 home.generateChildLocationsFromSize(data.length, crypto.random)).get();
         FileWrapper file = context.getByPath("/" + username + "/" + filename).get().get();
         file.remove(home, network, crypto.hasher).get();
@@ -119,12 +119,12 @@ public class QuotaTests {
         random.nextBytes(data);
         String filename = "file-1";
         home = home.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length,
-                network, crypto.random, crypto.hasher, x -> {}, context.fragmenter(),
+                network, crypto.random, crypto.hasher, x -> {},
                 home.generateChildLocationsFromSize(data.length, crypto.random)).get();
         FileWrapper file = context.getByPath("/" + username + "/" + filename).get().get();
         try {
             home = home.uploadOrOverwriteFile("file-2", new AsyncReader.ArrayBacked(data), data.length,
-                    network, crypto.random, crypto.hasher, x -> {}, context.fragmenter(),
+                    network, crypto.random, crypto.hasher, x -> {},
                     home.generateChildLocationsFromSize(data.length, crypto.random)).get();
             Assert.fail();
         } catch (Exception e) {}

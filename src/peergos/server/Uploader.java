@@ -111,7 +111,7 @@ public class Uploader {
                 ResetableFileInputStream fileData = new ResetableFileInputStream(file);
                 FileWrapper parent = context.getByPath(targetParent.toString()).join().get();
                 parent.uploadOrOverwriteFile(file.getName(), fileData, file.length(),
-                        context.network, context.crypto.random, context.crypto.hasher, l -> {}, context.fragmenter,
+                        context.network, context.crypto.random, context.crypto.hasher, l -> {},
                         parent.generateChildLocationsFromSize(file.length(), context.crypto.random)).get();
             } catch (Exception e) {
                 System.err.println("Error uploading " + source);

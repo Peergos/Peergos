@@ -96,7 +96,7 @@ public class IpfsStressTest {
         int size = rnd.nextInt(15*1024*1024);
         FileWrapper parent = context.getByPath(parentPath.toString()).get().get();
         parent.uploadOrOverwriteFile(name, new AsyncReader.ArrayBacked(randomData(rnd, size)), size,
-                        context.network, context.crypto.random, context.crypto.hasher, x -> {}, context.fragmenter,
+                        context.network, context.crypto.random, context.crypto.hasher, x -> {},
                 parent.generateChildLocationsFromSize(size, context.crypto.random)).get();
     }
 

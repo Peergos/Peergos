@@ -421,8 +421,7 @@ public class CryptreeNode implements Cborable {
                                                         SymmetricKey parentParentKey,
                                                         NetworkAccess network,
                                                         SafeRandom random,
-                                                        Hasher hasher,
-                                                        Fragmenter fragmenter) {
+                                                        Hasher hasher) {
         FileProperties props = getProperties(cap.rBaseKey);
         AbsoluteCapability nextCap = cap.withMapKey(getNextChunkLocation(cap.rBaseKey));
         return retriever(cap.rBaseKey).getFile(network, random, cap.rBaseKey, props.size, cap.getLocation(), committedHash(), x -> {})
@@ -436,14 +435,14 @@ public class CryptreeNode implements Cborable {
                                 Chunk chunk = new Chunk(chunkData, cap.rBaseKey, mapKey, nonce);
                                 LocatedChunk locatedChunk = new LocatedChunk(cap.getLocation(), lastCommittedHash, chunk);
                                 return FileUploader.uploadChunk(writer, props, parentLocation, parentParentKey, cap.rBaseKey, locatedChunk,
-                                        fragmenter, nextCap.getLocation(), getWriterLink(cap.rBaseKey), hasher, network, x -> {});
+                                        nextCap.getLocation(), getWriterLink(cap.rBaseKey), hasher, network, x -> {});
                             });
                 }).thenCompose(h -> network.getMetadata(nextCap)
                         .thenCompose(mOpt -> {
                             if (! mOpt.isPresent())
                                 return CompletableFuture.completedFuture(null);
                             return mOpt.get().cleanAndCommit(cap.withMapKey(nextCap.getMapKey()),
-                                    writer, parentLocation, parentParentKey, network, random, hasher, fragmenter);
+                                    writer, parentLocation, parentParentKey, network, random, hasher);
                         }).thenCompose(x -> network.getMetadata(cap)).thenApply(opt -> opt.get())
                 );
     }

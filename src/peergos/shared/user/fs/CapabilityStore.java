@@ -71,9 +71,8 @@ public class CapabilityStore {
                                                                           AbsoluteCapability capability,
                                                                           NetworkAccess network,
                                                                           SafeRandom random,
-                                                                          Hasher hasher,
-                                                                          Fragmenter fragmenter) {
-        return addSharingLinkTo(sharedDir, capability.readOnly(), network, random, hasher, fragmenter, CapabilityStore.READ_SHARING_FILE_PREFIX,
+                                                                          Hasher hasher) {
+        return addSharingLinkTo(sharedDir, capability.readOnly(), network, random, hasher, CapabilityStore.READ_SHARING_FILE_PREFIX,
                 CapabilityStore.READ_CAPABILITY_SIZE, CapabilityStore.SHARING_READ_FILE_MAX_SIZE);
     }
 
@@ -81,9 +80,8 @@ public class CapabilityStore {
                                                                       WritableAbsoluteCapability capability,
                                                                       NetworkAccess network,
                                                                       SafeRandom random,
-                                                                      Hasher hasher,
-                                                                      Fragmenter fragmenter) {
-        return addSharingLinkTo(sharedDir, capability, network, random, hasher, fragmenter, CapabilityStore.EDIT_SHARING_FILE_PREFIX,
+                                                                      Hasher hasher) {
+        return addSharingLinkTo(sharedDir, capability, network, random, hasher, CapabilityStore.EDIT_SHARING_FILE_PREFIX,
                 CapabilityStore.EDIT_CAPABILITY_SIZE, CapabilityStore.SHARING_EDIT_FILE_MAX_SIZE);
     }
 
@@ -92,7 +90,6 @@ public class CapabilityStore {
                                                                   NetworkAccess network,
                                                                   SafeRandom random,
                                                                   Hasher hasher,
-                                                                  Fragmenter fragmenter,
                                                                   String sharingPrefix,
                                                                   int capabilitySize,
                                                                   int sharingFileMaxSize) {
@@ -123,14 +120,14 @@ public class CapabilityStore {
                         return sharedDir.uploadFileSection(currentSharingFile.getFileProperties().name, newCapability,
                                 false, size, size + serializedCapability.length,
                                 Optional.of(currentSharingFile.getPointer().capability.rBaseKey),
-                                true, network, random, hasher, x -> {}, fragmenter,
+                                true, network, random, hasher, x -> {},
                                 existingLocation);
                     } else {
                         int sharingFileIndex = currentSharingFile == null ? 0 : sharingFiles.size();
                         String capStoreFilename = sharingPrefix + sharingFileIndex;
                         return sharedDir.uploadFileSection(capStoreFilename, newCapability, false,
                                 0, serializedCapability.length, Optional.empty(), false,
-                                network, random, hasher, x -> {}, fragmenter, sharedDir.generateChildLocations(1, random));
+                                network, random, hasher, x -> {}, sharedDir.generateChildLocations(1, random));
                     }
                 });
     }
@@ -142,7 +139,6 @@ public class CapabilityStore {
      * @param friendName
      * @param network
      * @param random
-     * @param fragmenter
      * @param saveCache
      * @return a pair of the current capability index, and the valid capabilities
      */
@@ -152,9 +148,8 @@ public class CapabilityStore {
                                                                                      NetworkAccess network,
                                                                                      SafeRandom random,
                                                                                      Hasher hasher,
-                                                                                     Fragmenter fragmenter,
                                                                                      boolean saveCache) {
-        return loadSharingLinks( homeDirSupplier, friendSharedDir, friendName, network, random, hasher, fragmenter,
+        return loadSharingLinks( homeDirSupplier, friendSharedDir, friendName, network, random, hasher,
                 saveCache, readOnlySharingFilesFilter, CAPABILITY_READ, READ_CAPABILITY_SIZE, SHARING_READ_FILE_MAX_SIZE);
     }
 
@@ -165,7 +160,6 @@ public class CapabilityStore {
      * @param friendName
      * @param network
      * @param random
-     * @param fragmenter
      * @param saveCache
      * @return a pair of the current capability index, and the valid capabilities
      */
@@ -175,10 +169,9 @@ public class CapabilityStore {
                                                                                       NetworkAccess network,
                                                                                       SafeRandom random,
                                                                                       Hasher hasher,
-                                                                                      Fragmenter fragmenter,
                                                                                       boolean saveCache) {
 
-        return loadSharingLinks( homeDirSupplier, friendSharedDir, friendName, network, random, hasher, fragmenter,
+        return loadSharingLinks( homeDirSupplier, friendSharedDir, friendName, network, random, hasher,
                 saveCache, editSharingFilesFilter, CAPABILITY_EDIT, EDIT_CAPABILITY_SIZE, SHARING_EDIT_FILE_MAX_SIZE);
     }
 
@@ -188,7 +181,6 @@ public class CapabilityStore {
                                                                             NetworkAccess network,
                                                                             SafeRandom random,
                                                                             Hasher hasher,
-                                                                            Fragmenter fragmenter,
                                                                             boolean saveCache,
                                                                             Function<Set<FileWrapper>, List<FileWrapper>> sharingFileFilter,
                                                                             String capabilityType,
@@ -209,7 +201,7 @@ public class CapabilityStore {
                             return allFiles.thenCompose(res -> {
                                 if(saveCache && res.size() > 0) {
                                     return saveRetrievedCapabilityCache(totalRecords, homeDirSupplier, friendName,
-                                            network, random, hasher, fragmenter, res, capabilityType);
+                                            network, random, hasher, res, capabilityType);
                                 } else {
                                     return CompletableFuture.completedFuture(new CapabilitiesFromUser(totalRecords, res));
                                 }
@@ -233,7 +225,7 @@ public class CapabilityStore {
                                         .thenCompose(res -> {
                                             if (saveCache) {
                                                 return saveRetrievedCapabilityCache(totalRecords, homeDirSupplier, friendName,
-                                                        network, random, hasher, fragmenter, res, capabilityType);
+                                                        network, random, hasher, res, capabilityType);
                                             } else {
                                                 return CompletableFuture.completedFuture(new CapabilitiesFromUser(totalRecords, res));
                                             }
@@ -251,7 +243,6 @@ public class CapabilityStore {
                                                                                               NetworkAccess network,
                                                                                               SafeRandom random,
                                                                                               Hasher hasher,
-                                                                                              Fragmenter fragmenter,
                                                                                               long capIndex,
                                                                                               boolean saveCache) {
         Function<Set<FileWrapper>, List<FileWrapper>> readOnlySharingFilesFilter = files ->
@@ -260,7 +251,7 @@ public class CapabilityStore {
                         .collect(Collectors.toList());
 
         return loadSharingLinksFromIndex(homeDirSupplier, friendSharedDir, friendName, network, random, hasher,
-                fragmenter, capIndex, saveCache, readOnlySharingFilesFilter,
+                capIndex, saveCache, readOnlySharingFilesFilter,
                 CAPABILITY_READ, READ_CAPABILITY_SIZE, SHARING_READ_FILE_MAX_SIZE);
 
     }
@@ -271,7 +262,6 @@ public class CapabilityStore {
                                                                                                NetworkAccess network,
                                                                                                SafeRandom random,
                                                                                                Hasher hasher,
-                                                                                               Fragmenter fragmenter,
                                                                                                long capIndex,
                                                                                                boolean saveCache) {
         Function<Set<FileWrapper>, List<FileWrapper>> editSharingFilesFilter = files ->
@@ -280,7 +270,7 @@ public class CapabilityStore {
                         .collect(Collectors.toList());
 
         return loadSharingLinksFromIndex(homeDirSupplier, friendSharedDir, friendName, network, random, hasher,
-                fragmenter, capIndex, saveCache, editSharingFilesFilter,
+                capIndex, saveCache, editSharingFilesFilter,
                 CAPABILITY_EDIT, EDIT_CAPABILITY_SIZE, SHARING_EDIT_FILE_MAX_SIZE);
     }
 
@@ -290,7 +280,6 @@ public class CapabilityStore {
                                                                                      NetworkAccess network,
                                                                                      SafeRandom random,
                                                                                      Hasher hasher,
-                                                                                     Fragmenter fragmenter,
                                                                                      long capIndex,
                                                                                      boolean saveCache,
                                                                                      Function<Set<FileWrapper>, List<FileWrapper>> sharingFileFilter,
@@ -316,7 +305,7 @@ public class CapabilityStore {
                             .thenCompose(res -> {
                                 if (saveCache) {
                                     return saveRetrievedCapabilityCache(totalRecords - capIndex, homeDirSupplier, friendName,
-                                            network, random, hasher, fragmenter, res, capabilityType);
+                                            network, random, hasher, res, capabilityType);
                                 } else {
                                     return CompletableFuture.completedFuture(new CapabilitiesFromUser(totalRecords - capIndex, res));
                                 }
@@ -430,7 +419,6 @@ public class CapabilityStore {
                                                                                        NetworkAccess network,
                                                                                        SafeRandom random,
                                                                                        Hasher hasher,
-                                                                                       Fragmenter fragmenter,
                                                                                        List<CapabilityWithPath> retrievedCapabilities,
                                                                                        String capabilityType) {
         CapabilitiesFromUser capabilitiesFromUser = new CapabilitiesFromUser(recordsRead, retrievedCapabilities);
@@ -438,7 +426,7 @@ public class CapabilityStore {
         AsyncReader.ArrayBacked dataReader = new AsyncReader.ArrayBacked(data);
         return getCapabilityCacheDir(homeDirSupplier, network, random, hasher)
                 .thenCompose(cacheDir -> cacheDir.uploadOrOverwriteFile(friendName + capabilityType, dataReader,
-                        (long) data.length, network, random, hasher, x-> {}, fragmenter,
+                        (long) data.length, network, random, hasher, x-> {},
                         cacheDir.generateChildLocationsFromSize(data.length, random))
                         .thenApply(x -> capabilitiesFromUser));
     }
