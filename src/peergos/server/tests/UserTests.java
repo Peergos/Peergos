@@ -912,7 +912,7 @@ public abstract class UserTests {
         FileWrapper copy = context.getByPath(home.resolve(foldername).resolve(filename).toString()).get().get();
         Assert.assertTrue("Different base key", ! copy.getPointer().capability.rBaseKey.equals(original.getPointer().capability.rBaseKey));
         Assert.assertTrue("Different metadata key", ! getMetaKey(copy).equals(getMetaKey(original)));
-        Assert.assertTrue("Same data key", getDataKey(copy).equals(getDataKey(original)));
+        Assert.assertTrue("Different data key", ! getDataKey(copy).equals(getDataKey(original)));
         checkFileContents(data, copy, context);
     }
 
