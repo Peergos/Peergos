@@ -65,6 +65,7 @@ public class FileProperties implements Cborable {
     @SuppressWarnings("unusable-by-js")
     public CborObject toCbor() {
         SortedMap<String, Cborable> state = new TreeMap<>();
+        state.put("d", new CborObject.CborBoolean(isDirectory));
         state.put("n", new CborObject.CborString(name));
         state.put("m", new CborObject.CborString(mimeType));
         state.put("s", new CborObject.CborLong(size));
@@ -79,8 +80,8 @@ public class FileProperties implements Cborable {
         if (! (cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("Invalid cbor for FileProperties! " + cbor);
         CborObject.CborMap m = (CborObject.CborMap) cbor;
-        String name = m.getString("n");
         boolean isDirectory = m.getBoolean("d");
+        String name = m.getString("n");
         String mimeType = m.getString("m");
         long size = m.getLong("s");
         long modifiedEpochMillis = m.getLong("t");

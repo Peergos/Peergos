@@ -273,7 +273,10 @@ public class NetworkAccess {
                 .thenApply(faOpt ->faOpt.map(fa -> new FileWrapper(Optional.empty(),
                         new RetrievedCapability(e.pointer, fa),
                         e.pointer.wBaseKey.map(wBase -> fa.getSigner(e.pointer.rBaseKey, wBase, Optional.empty())), e.ownerName)))
-                .exceptionally(t -> Optional.empty());
+                .exceptionally(t -> {
+                    LOG.log(Level.SEVERE, t.getMessage(), t);
+                    return Optional.empty();
+                });
     }
 
     private CompletableFuture<Optional<CryptreeNode>> downloadEntryPoint(EntryPoint entry) {

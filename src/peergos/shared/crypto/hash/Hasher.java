@@ -1,5 +1,6 @@
 package peergos.shared.crypto.hash;
 
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.user.*;
 
@@ -11,11 +12,11 @@ public interface Hasher {
 
     byte[] sha256(byte[] input);
 
-    default Multihash hash(byte[] input) {
-        return new Multihash(Multihash.Type.sha2_256, sha256(input));
+    default Multihash hash(byte[] input, boolean isRaw) {
+        return Cid.buildCidV1(isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor, Multihash.Type.sha2_256, sha256(input));
     }
 
-    default Multihash identityHash(byte[] input) {
-        return new Multihash(Multihash.Type.id, input);
+    default Multihash identityHash(byte[] input, boolean isRaw) {
+        return Cid.buildCidV1(isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor, Multihash.Type.id, input);
     }
 }

@@ -220,9 +220,9 @@ public class FileWrapper {
             RelativeCapability toNextChunk = ourNewPointer.relativise(updatedNextChunkCap);
 
             // Create new DirAccess
-            CryptreeNode newDirAccess = CryptreeNode.createDir(existing.committedHash(), newSubfoldersKey, null, Optional.empty(), props,
-                    Optional.of(cap.relativise(parent.writableFilePointer())), newParentKey, toNextChunk, hasher)
-                    .withWriterLink(newSubfoldersKey, existing.getWriterLink(cap.rBaseKey));
+            CryptreeNode.DirAndChildren dir = CryptreeNode.createDir(existing.committedHash(), newSubfoldersKey, null, Optional.empty(), props,
+                    Optional.of(cap.relativise(parent.writableFilePointer())), newParentKey, toNextChunk, hasher);
+            CryptreeNode newDirAccess = dir.dir.withWriterLink(newSubfoldersKey, existing.getWriterLink(cap.rBaseKey));
 
             // re add children
             return existing.getDirectChildren(pointer.capability.rBaseKey, network)
@@ -325,13 +325,13 @@ public class FileWrapper {
             CryptreeNode existing = pointer.fileAccess;
             Optional<SymmetricLinkToSigner> updatedWriter = existing.getWriterLink(cap.rBaseKey)
                     .map(toSigner -> SymmetricLinkToSigner.fromPair(newBaseWriteKey, toSigner.target(cap.wBaseKey.get())));
-            CryptreeNode updatedDirAccess = existing.withWriterLink(cap.rBaseKey, updatedWriter)
+            CryptreeNode.DirAndChildren updatedDirAccess = existing.withWriterLink(cap.rBaseKey, updatedWriter)
                     .withChildren(cap.rBaseKey, CryptreeNode.ChildrenLinks.empty(), hasher);
 
             byte[] nextChunkMapKey = existing.getNextChunkLocation(cap.rBaseKey);
             WritableAbsoluteCapability nextChunkCap = cap.withMapKey(nextChunkMapKey);
 
-            RetrievedCapability ourNewRetrievedPointer = new RetrievedCapability(ourNewPointer, updatedDirAccess);
+            RetrievedCapability ourNewRetrievedPointer = new RetrievedCapability(ourNewPointer, updatedDirAccess.dir);
             FileWrapper theNewUs = new FileWrapper(ourNewRetrievedPointer, entryWriter, ownername);
 
             // clean all subtree write keys
@@ -456,8 +456,8 @@ public class FileWrapper {
         ensureUnmodified();
         if (pointer == null)
             return CompletableFuture.completedFuture(Optional.empty());
-        SymmetricKey parentKey = getParentKey();
-        CompletableFuture<RetrievedCapability> parent = pointer.fileAccess.getParent(pointer.capability.owner, pointer.capability.writer, parentKey, network);
+        AbsoluteCapability cap = pointer.capability;
+        CompletableFuture<RetrievedCapability> parent = pointer.fileAccess.getParent(cap.owner, cap.writer, cap.rBaseKey, network);
         return parent.thenApply(parentRFP -> {
             if (parentRFP == null)
                 return Optional.empty();

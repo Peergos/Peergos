@@ -585,17 +585,17 @@ public class UserContext {
                     .thenCompose(x -> {
                         long t2 = System.currentTimeMillis();
                         RelativeCapability nextChunk = RelativeCapability.buildSubsequentChunk(crypto.random.randomBytes(32), rootRKey);
-                        CryptreeNode root = CryptreeNode.createDir(MaybeMultihash.empty(), rootRKey, rootWKey, Optional.of(writerWithHash),
+                        CryptreeNode.DirAndChildren root = CryptreeNode.createDir(MaybeMultihash.empty(), rootRKey, rootWKey, Optional.of(writerWithHash),
                                 new FileProperties(directoryName, true, "", 0, LocalDateTime.now(),
                                         false, Optional.empty()), Optional.empty(), SymmetricKey.random(), nextChunk, crypto.hasher);
-                        LOG.info("Uploading entry point directory");
-                        return network.uploadChunk(root, this.signer.publicKeyHash, rootMapKey, writerWithHash, tid).thenApply(chunkHash -> {
-                            long t3 = System.currentTimeMillis();
-                            LOG.info("Uploading root dir metadata took " + (t3 - t2) + " mS");
 
-                            LOG.info("Committing static data took " + (System.currentTimeMillis() - t3) + " mS");
-                            return new RetrievedCapability(rootPointer, root.withHash(chunkHash));
-                        });
+                        LOG.info("Uploading entry point directory");
+                        return root.commit(rootPointer, Optional.of(writerWithHash), network, tid)
+                                .thenApply(rootWithHash -> {
+                                    long t3 = System.currentTimeMillis();
+                                    LOG.info("Uploading root dir metadata took " + (t3 - t2) + " mS");
+                                    return new RetrievedCapability(rootPointer, rootWithHash);
+                                });
                     }).thenCompose(x -> addToStaticDataAndCommit(entry).thenApply(y -> {
                         this.entrie = y;
                         return x;

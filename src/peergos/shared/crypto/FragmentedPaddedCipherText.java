@@ -68,14 +68,14 @@ public class FragmentedPaddedCipherText implements Cborable {
         byte[] cipherText = from.encrypt(pad(secret.serialize(), paddingBlockSize), nonce);
         if (cipherText.length <= 4096) {
             // use inline identity hash for small amount of data (small files or directories)
-            FragmentWithHash frag = new FragmentWithHash(new Fragment(cipherText), hasher.identityHash(cipherText));
+            FragmentWithHash frag = new FragmentWithHash(new Fragment(cipherText), hasher.identityHash(cipherText, true));
             return new Pair<>(new FragmentedPaddedCipherText(nonce, Collections.singletonList(frag.hash)), Collections.singletonList(frag));
         }
 
         byte[][] split = split(cipherText, maxFragmentSize);
 
         List<FragmentWithHash> frags = Arrays.asList(split).stream()
-                .map(d -> new FragmentWithHash(new Fragment(d), hasher.hash(d)))
+                .map(d -> new FragmentWithHash(new Fragment(d), hasher.hash(d, true)))
                 .collect(Collectors.toList());
         List<Multihash> hashes = frags.stream()
                 .map(f -> f.hash)

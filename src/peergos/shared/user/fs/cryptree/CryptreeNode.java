@@ -136,6 +136,26 @@ public class CryptreeNode implements Cborable {
         return fromParentKey.decrypt(parentKey, FromParent::fromCbor);
     }
 
+    public static class DirAndChildren {
+        public final CryptreeNode dir;
+        public final List<FragmentWithHash> childData;
+
+        public DirAndChildren(CryptreeNode dir, List<FragmentWithHash> childData) {
+            this.dir = dir;
+            this.childData = childData;
+        }
+
+        public CompletableFuture<CryptreeNode> commit(WritableAbsoluteCapability us,
+                                                      Optional<SigningPrivateKeyAndPublicHash> entryWriter,
+                                                      NetworkAccess network,
+                                                      TransactionId tid) {
+            List<Fragment> frags = childData.stream().map(f -> f.fragment).collect(Collectors.toList());
+            SigningPrivateKeyAndPublicHash signer = dir.getSigner(us.rBaseKey, us.wBaseKey.get(), entryWriter);
+            return network.uploadFragments(frags, us.owner, signer, l -> {}, 1.0, tid)
+                    .thenCompose(hashes -> dir.commit(us, entryWriter, network, tid));
+        }
+    }
+
     public static class ChildrenLinks implements Cborable {
         public final List<RelativeCapability> children;
 
@@ -312,9 +332,10 @@ public class CryptreeNode implements Cborable {
         return new CryptreeNode(lastCommittedHash, isDirectory, encryptedBaseBlock, childrenOrData, fromParentKey);
     }
 
-    public CryptreeNode withChildren(SymmetricKey baseKey, ChildrenLinks children, Hasher hasher) {
+    public DirAndChildren withChildren(SymmetricKey baseKey, ChildrenLinks children, Hasher hasher) {
         Pair<FragmentedPaddedCipherText, List<FragmentWithHash>> encryptedChildren = buildChildren(children, baseKey, hasher);
-        return new CryptreeNode(lastCommittedHash, isDirectory, fromBaseKey, encryptedChildren.left, fromParentKey);
+        CryptreeNode cryptreeNode = new CryptreeNode(lastCommittedHash, isDirectory, fromBaseKey, encryptedChildren.left, fromParentKey);
+        return new DirAndChildren(cryptreeNode, encryptedChildren.right);
     }
 
     private static Pair<FragmentedPaddedCipherText, List<FragmentWithHash>> buildChildren(ChildrenLinks children, SymmetricKey rBaseKey, Hasher hasher) {
@@ -329,9 +350,9 @@ public class CryptreeNode implements Cborable {
     }
 
     public <T> CompletableFuture<T> getLinkedData(SymmetricKey baseOrDataKey,
-                               Function<CborObject, T> fromCbor,
-                               NetworkAccess network,
-                               ProgressConsumer<Long> progress) {
+                                                  Function<CborObject, T> fromCbor,
+                                                  NetworkAccess network,
+                                                  ProgressConsumer<Long> progress) {
         return childrenOrData.getAndDecrypt(baseOrDataKey, fromCbor, network, progress);
     }
 
@@ -433,11 +454,11 @@ public class CryptreeNode implements Cborable {
     }
 
     public CompletableFuture<CryptreeNode> addChildrenAndCommit(List<RelativeCapability> targetCAPs,
-                                                             WritableAbsoluteCapability us,
-                                                             Optional<SigningPrivateKeyAndPublicHash> entryWriter,
-                                                             NetworkAccess network,
-                                                             SafeRandom random,
-                                                             Hasher hasher) {
+                                                                WritableAbsoluteCapability us,
+                                                                Optional<SigningPrivateKeyAndPublicHash> entryWriter,
+                                                                NetworkAccess network,
+                                                                SafeRandom random,
+                                                                Hasher hasher) {
         // Make sure subsequent blobs use a different transaction to obscure linkage of different parts of this dir
         return getDirectChildren(us.rBaseKey, network).thenCompose(children -> {
             if (children.size() + targetCAPs.size() > getMaxChildLinksPerBlob()) {
@@ -460,13 +481,13 @@ public class CryptreeNode implements Cborable {
                                     Optional<RelativeCapability> parentCap = getParentBlock(ourParentKey).parentLink;
                                     byte[] nextMapKey = random.randomBytes(32);
                                     RelativeCapability nextChunk = RelativeCapability.buildSubsequentChunk(nextMapKey, nextSubfoldersKey);
-                                    CryptreeNode next = CryptreeNode.createDir(MaybeMultihash.empty(), nextSubfoldersKey,
+                                    DirAndChildren next = CryptreeNode.createDir(MaybeMultihash.empty(), nextSubfoldersKey,
                                             null, Optional.empty(), FileProperties.EMPTY, parentCap,
                                             ourParentKey, nextChunk, hasher);
                                     WritableAbsoluteCapability nextPointer = new WritableAbsoluteCapability(us.owner,
                                             us.writer, nextMapKey, nextSubfoldersKey, us.wBaseKey.get());
-                                    return next.addChildrenAndCommit(addToNext, nextPointer, entryWriter, network, random, hasher)
-                                            .thenApply(nextBlob -> newUs);
+                                    return next.dir.addChildrenAndCommit(addToNext, nextPointer, entryWriter, network, random, hasher)
+                                                    .thenApply(nextBlob -> newUs);
                                 });
                     }
                 });
@@ -496,15 +517,15 @@ public class CryptreeNode implements Cborable {
         SymmetricKey ourParentKey = this.getParentKey(us.rBaseKey);
         RelativeCapability ourCap = new RelativeCapability(us.getMapKey(), ourParentKey, null);
         RelativeCapability nextChunk = new RelativeCapability(Optional.empty(), random.randomBytes(32), dirReadKey, Optional.empty());
-        CryptreeNode child = CryptreeNode.createDir(MaybeMultihash.empty(), dirReadKey, dirWriteKey, Optional.empty(),
+        WritableAbsoluteCapability childCap = us.withBaseKey(dirReadKey).withBaseWriteKey(dirWriteKey).withMapKey(dirMapKey);
+        DirAndChildren child = CryptreeNode.createDir(MaybeMultihash.empty(), dirReadKey, dirWriteKey, Optional.empty(),
                 new FileProperties(name, true, "", 0, LocalDateTime.now(), isSystemFolder,
-                        Optional.empty()), Optional.of(ourCap), null, nextChunk, hasher);
+                        Optional.empty()), Optional.of(ourCap), SymmetricKey.random(), nextChunk, hasher);
 
         SymmetricLink toChildWriteKey = SymmetricLink.fromPair(us.wBaseKey.get(), dirWriteKey);
         // Use two transactions to not expose the child linkage
         return IpfsTransaction.call(us.owner,
-                tid -> network.uploadChunk(child, us.owner, dirMapKey,
-                        getSigner(us.rBaseKey, us.wBaseKey.get(), entryWriter), tid), network.dhtClient)
+                tid -> child.commit(childCap, entryWriter, network, tid), network.dhtClient)
                 .thenCompose(resultHash -> {
                     RelativeCapability subdirPointer = new RelativeCapability(dirMapKey, dirReadKey, toChildWriteKey);
                     return addChildAndCommit(subdirPointer, us, entryWriter, network, random, hasher)
@@ -530,8 +551,9 @@ public class CryptreeNode implements Cborable {
         Optional<SigningPrivateKeyAndPublicHash> newSigner = Optional.empty();
         RelativeCapability nextChunk = new RelativeCapability(Optional.empty(), random.randomBytes(32), newReadBaseKey, Optional.empty());
         RelativeCapability parentLink = new RelativeCapability(Optional.empty(), newParentCap.getMapKey(), parentparentKey, Optional.empty());
-        CryptreeNode da = CryptreeNode.createDir(MaybeMultihash.empty(), newReadBaseKey, newWriteBaseKey, newSigner, props,
+        DirAndChildren dirWithLinked = CryptreeNode.createDir(MaybeMultihash.empty(), newReadBaseKey, newWriteBaseKey, newSigner, props,
                 Optional.of(parentLink), parentKey, nextChunk, hasher);
+        CryptreeNode da = dirWithLinked.dir;
         SymmetricKey ourNewParentKey = da.getParentKey(newReadBaseKey);
         WritableAbsoluteCapability ourNewCap = new WritableAbsoluteCapability(newParentCap.owner, newParentCap.writer, newMapKey, newReadBaseKey, newWriteBaseKey);
 
@@ -553,9 +575,10 @@ public class CryptreeNode implements Cborable {
             }, (a, b) -> a.thenCompose(x -> b)); // TODO Think about this combiner function
             return reduce;
         }).thenCompose(finalDir -> IpfsTransaction.call(newParentCap.owner,
-                tid -> finalDir.commit(new WritableAbsoluteCapability(newParentCap.owner, newParentCap.writer, newMapKey,
-                        newReadBaseKey, newWriteBaseKey), newEntryWriter, network, tid),
-                network.dhtClient));
+                tid -> {
+                    return finalDir.commit(new WritableAbsoluteCapability(newParentCap.owner, newParentCap.writer,
+                                    newMapKey, newReadBaseKey, newWriteBaseKey), newEntryWriter, network, tid);
+                }, network.dhtClient));
     }
 
     public CompletableFuture<CryptreeNode> updateChildLink(WritableAbsoluteCapability ourPointer,
@@ -626,9 +649,9 @@ public class CryptreeNode implements Cborable {
     }
 
     public CompletableFuture<RetrievedCapability> getParent(PublicKeyHash owner,
-                                                             PublicKeyHash writer,
-                                                             SymmetricKey baseKey,
-                                                             NetworkAccess network) {
+                                                            PublicKeyHash writer,
+                                                            SymmetricKey baseKey,
+                                                            NetworkAccess network) {
         SymmetricKey parentKey = getParentKey(baseKey);
         Optional<RelativeCapability> parentLink = getParentBlock(parentKey).parentLink;
         if (! parentLink.isPresent())
@@ -677,7 +700,7 @@ public class CryptreeNode implements Cborable {
         return new CryptreeNode(existingHash, false, encryptedBaseBlock, data, encryptedParentBlock);
     }
 
-    public static CryptreeNode createDir(MaybeMultihash lastCommittedHash,
+    public static DirAndChildren createDir(MaybeMultihash lastCommittedHash,
                                          SymmetricKey rBaseKey,
                                          SymmetricKey wBaseKey,
                                          Optional<SigningPrivateKeyAndPublicHash> signingPair,
@@ -695,7 +718,8 @@ public class CryptreeNode implements Cborable {
         Pair<FragmentedPaddedCipherText, List<FragmentWithHash>> linksAndData =
                 FragmentedPaddedCipherText.build(rBaseKey,
                         new ChildrenLinks(Collections.emptyList()), MIN_FRAGMENT_SIZE, Fragment.MAX_LENGTH, hasher);
-        return new CryptreeNode(lastCommittedHash, true, encryptedBaseBlock, linksAndData.left, encryptedParentBlock);
+        CryptreeNode metadata = new CryptreeNode(lastCommittedHash, true, encryptedBaseBlock, linksAndData.left, encryptedParentBlock);
+        return new DirAndChildren(metadata, linksAndData.right);
     }
 
     @Override
