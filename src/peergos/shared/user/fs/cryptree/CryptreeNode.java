@@ -149,13 +149,20 @@ public class CryptreeNode implements Cborable {
                                                       Optional<SigningPrivateKeyAndPublicHash> entryWriter,
                                                       NetworkAccess network,
                                                       TransactionId tid) {
+            return commitChildrenLinks(us, entryWriter, network, tid)
+                    .thenCompose(hashes -> dir.commit(us, entryWriter, network, tid));
+        }
+
+        public CompletableFuture<List<Multihash>> commitChildrenLinks(WritableAbsoluteCapability us,
+                                                                      Optional<SigningPrivateKeyAndPublicHash> entryWriter,
+                                                                      NetworkAccess network,
+                                                                      TransactionId tid) {
             List<Fragment> frags = childData.stream()
                     .filter(f -> ! f.hash.isIdentity())
                     .map(f -> f.fragment)
                     .collect(Collectors.toList());
             SigningPrivateKeyAndPublicHash signer = dir.getSigner(us.rBaseKey, us.wBaseKey.get(), entryWriter);
-            return network.uploadFragments(frags, us.owner, signer, l -> {}, 1.0, tid)
-                    .thenCompose(hashes -> dir.commit(us, entryWriter, network, tid));
+            return network.uploadFragments(frags, us.owner, signer, l -> {}, 1.0, tid);
         }
     }
 
