@@ -1145,7 +1145,7 @@ public class FileWrapper {
                 parent.getLocation().getMapKey(), parent.getParentKey(), Optional.empty());
         CryptreeNode newFileAccess = fileAccess
                 .withWriterLink(cap.rBaseKey, signerLink)
-                .withParentLink(cap.rBaseKey, newParentLink);
+                .withParentLink(getParentKey(), newParentLink);
         RetrievedCapability newRetrievedCapability = new RetrievedCapability(cap.withSigner(signer.publicKeyHash), newFileAccess);
 
         return IpfsTransaction.call(owner(),
