@@ -162,7 +162,7 @@ public class CryptreeNode implements Cborable {
                     .map(f -> f.fragment)
                     .collect(Collectors.toList());
             SigningPrivateKeyAndPublicHash signer = dir.getSigner(us.rBaseKey, us.wBaseKey.get(), entryWriter);
-            return network.uploadFragments(frags, us.owner, signer, l -> {}, 1.0, tid);
+            return network.uploadFragments(frags, us.owner, signer, l -> {}, tid);
         }
     }
 

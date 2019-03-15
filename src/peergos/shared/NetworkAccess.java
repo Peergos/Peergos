@@ -312,7 +312,6 @@ public class NetworkAccess {
                                                               PublicKeyHash owner,
                                                               SigningPrivateKeyAndPublicHash writer,
                                                               ProgressConsumer<Long> progressCounter,
-                                                              double spaceIncreaseFactor,
                                                               TransactionId tid) {
         // upload one per query because IPFS doesn't support more than one
         int FRAGMENTs_PER_QUERY = 1;
@@ -328,7 +327,7 @@ public class NetworkAccess {
                         tid
                 ).thenApply(hash -> {
                     if (progressCounter != null)
-                        progressCounter.accept((long)(g.stream().mapToInt(f -> f.data.length).sum() / spaceIncreaseFactor));
+                        progressCounter.accept((long)(g.stream().mapToInt(f -> f.data.length).sum()));
                     return hash;
                 })).collect(Collectors.toList());
         return Futures.combineAllInOrder(futures)
