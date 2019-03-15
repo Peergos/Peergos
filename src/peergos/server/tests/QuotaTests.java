@@ -97,7 +97,7 @@ public class QuotaTests {
         FileWrapper home = context.getByPath(Paths.get(username).toString()).get().get();
         int used = context.getTotalSpaceUsed(context.signer.publicKeyHash, context.signer.publicKeyHash).get().intValue();
         // use within a few KiB of our quota, before deletion
-        byte[] data = new byte[2 * 1024 * 1024 - used - 4 * 1024];
+        byte[] data = new byte[2 * 1024 * 1024 - used - 9 * 1024];
         random.nextBytes(data);
         String filename = "file-1";
         home = home.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length,
@@ -114,8 +114,8 @@ public class QuotaTests {
 
         UserContext context = ensureSignedUp(username, password, network, crypto);
         FileWrapper home = context.getByPath(Paths.get(username).toString()).get().get();
-        // signing up uses just over 14k and the quota is 2 MiB, so use within 1 KiB of our quota
-        byte[] data = new byte[2 * 1024 * 1024 - 19 * 1024];
+        // signing up uses just under 32k and the quota is 2 MiB, so use close to our quota
+        byte[] data = new byte[2 * 1024 * 1024 - 44 * 1024];
         random.nextBytes(data);
         String filename = "file-1";
         home = home.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length,
