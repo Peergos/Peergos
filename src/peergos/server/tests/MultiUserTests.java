@@ -374,12 +374,14 @@ public class MultiUserTests {
         Optional<FileWrapper> unsharedView2 = userToUnshareWith.getByPath(friendsNewPathToFile).get();
         CryptreeNode fileAccess = network.getMetadata(priorPointer).get().get();
         // check we are trying to decrypt the correct thing
-        PaddedCipherText priorPropsCipherText = (PaddedCipherText) ((CborObject.CborMap) priorFileAccess.toCbor()).get("s");
-        FileProperties priorProps =  priorPropsCipherText.decrypt(priorMetaKey, FileProperties::fromCbor);
+        PaddedCipherText priorPropsCipherText = (PaddedCipherText) ((CborObject.CborMap) priorFileAccess.toCbor()).get("p");
+        CborObject.CborMap priorFromParent = priorPropsCipherText.decrypt(priorMetaKey, x -> (CborObject.CborMap)x);
+        FileProperties priorProps = FileProperties.fromCbor(priorFromParent.get("s"));
         try {
             // Try decrypting the new metadata with the old key
-            PaddedCipherText propsCipherText = (PaddedCipherText) ((CborObject.CborMap) fileAccess.toCbor()).get("s");
-            FileProperties props =  propsCipherText.decrypt(priorMetaKey, FileProperties::fromCbor);
+            PaddedCipherText propsCipherText = (PaddedCipherText) ((CborObject.CborMap) fileAccess.toCbor()).get("p");
+            CborObject.CborMap fromParent = propsCipherText.decrypt(priorMetaKey, x -> (CborObject.CborMap)x);
+            FileProperties props = FileProperties.fromCbor(fromParent.get("s"));
             throw new IllegalStateException("We shouldn't be able to decrypt this after a rename! new name = " + props.name);
         } catch (TweetNaCl.InvalidCipherTextException e) {}
         try {
