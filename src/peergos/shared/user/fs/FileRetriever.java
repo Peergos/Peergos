@@ -13,9 +13,8 @@ public interface FileRetriever {
 
     CompletableFuture<AsyncReader> getFile(NetworkAccess network,
                                            SafeRandom random,
-                                           SymmetricKey baseKey,
+                                           AbsoluteCapability ourCap,
                                            long fileSize,
-                                           Location ourLocation,
                                            MaybeMultihash ourExistingHash,
                                            ProgressConsumer<Long> monitor);
 
@@ -23,11 +22,11 @@ public interface FileRetriever {
                                                       long offset,
                                                       NetworkAccess network);
 
-    CompletableFuture<Optional<LocatedChunk>> getChunkInputStream(NetworkAccess network,
-                                                                  SafeRandom random,
-                                                                  long startIndex,
-                                                                  long truncateTo,
-                                                                  AbsoluteCapability ourLocation,
-                                                                  MaybeMultihash ourExistingHash,
-                                                                  ProgressConsumer<Long> monitor);
+    CompletableFuture<Optional<LocatedChunk>> getChunk(NetworkAccess network,
+                                                       SafeRandom random,
+                                                       long startIndex,
+                                                       long truncateTo,
+                                                       AbsoluteCapability ourCap,
+                                                       MaybeMultihash ourExistingHash,
+                                                       ProgressConsumer<Long> monitor);
 }

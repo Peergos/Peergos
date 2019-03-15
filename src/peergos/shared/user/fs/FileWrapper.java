@@ -861,8 +861,8 @@ public class FileWrapper {
 
             BiFunction<Boolean, Long, CompletableFuture<Boolean>> composer = (id, startIndex) -> {
                 AbsoluteCapability childCap = AbsoluteCapability.build(child.getLocation(), dataKey);
-                return retriever.getChunkInputStream(network, random, startIndex, filesSize.get(),
-                        childCap, child.pointer.fileAccess.committedHash(), monitor)
+                MaybeMultihash currentHash = child.pointer.fileAccess.committedHash();
+                return retriever.getChunk(network, random, startIndex, filesSize.get(), childCap, currentHash, monitor)
                         .thenCompose(currentLocation -> {
                                     CompletableFuture<Optional<Location>> locationAt = retriever
                                             .getMapLabelAt(childCap, startIndex + Chunk.MAX_SIZE, network)
@@ -1046,7 +1046,7 @@ public class FileWrapper {
                         CompletableFuture.completedFuture(true) :
                         parent.getChildrenCapabilities(network)
                                 .thenApply(childCaps -> {
-                                            if (childCaps.stream()
+                                            if (! childCaps.stream()
                                                     .map(l -> new ByteArrayWrapper(l.getMapKey()))
                                                     .collect(Collectors.toSet())
                                                     .contains(new ByteArrayWrapper(pointer.capability.getMapKey())))
@@ -1295,9 +1295,8 @@ public class FileWrapper {
         if (pointer.fileAccess.isDirectory())
             throw new IllegalStateException("Cannot get input stream for a directory!");
         CryptreeNode fileAccess = pointer.fileAccess;
-        SymmetricKey baseKey = pointer.capability.rBaseKey;
         return fileAccess.retriever(pointer.capability.rBaseKey)
-                .getFile(network, random, baseKey, fileSize, getLocation(), fileAccess.committedHash(), monitor);
+                .getFile(network, random, pointer.capability, fileSize, fileAccess.committedHash(), monitor);
     }
 
     private FileRetriever getRetriever() {

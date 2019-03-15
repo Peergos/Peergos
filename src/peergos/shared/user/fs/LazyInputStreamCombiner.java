@@ -64,7 +64,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
                     throw new IllegalStateException("File linked to a directory for its next chunk!");
                 FileRetriever nextRet = access.retriever(baseKey);
                 AbsoluteCapability newNextChunkPointer = nextCap.withMapKey(access.getNextChunkLocation(baseKey));
-                return nextRet.getChunkInputStream(network, random, 0, len, nextCap, access.committedHash(), monitor)
+                return nextRet.getChunk(network, random, 0, len, nextCap, access.committedHash(), monitor)
                         .thenApply(x -> {
                             byte[] nextData = x.get().chunk.data();
                             updateState(0,globalIndex + Chunk.MAX_SIZE, nextData, newNextChunkPointer);

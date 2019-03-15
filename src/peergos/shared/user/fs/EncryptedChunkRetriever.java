@@ -5,13 +5,10 @@ import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
-import peergos.shared.io.ipfs.multihash.*;
-import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.stream.*;
 
 /** An instance of EncryptedChunkRetriever holds a list of fragment hashes for a chunk, and the nonce used in
  *  decrypting the resulting chunk, along with a link to the next chunk (if any).
@@ -21,28 +18,28 @@ public class EncryptedChunkRetriever implements FileRetriever {
 
     private final FragmentedPaddedCipherText linksToData;
     private final byte[] nextChunkLabel;
+    private final SymmetricKey dataKey;
 
-    public EncryptedChunkRetriever(FragmentedPaddedCipherText linksToData, byte[] nextChunkLabel) {
+    public EncryptedChunkRetriever(FragmentedPaddedCipherText linksToData, byte[] nextChunkLabel, SymmetricKey dataKey) {
         this.linksToData = linksToData;
         this.nextChunkLabel = nextChunkLabel;
+        this.dataKey = dataKey;
     }
 
     @Override
     public CompletableFuture<AsyncReader> getFile(NetworkAccess network,
                                                   SafeRandom random,
-                                                  SymmetricKey baseKey,
+                                                  AbsoluteCapability ourCap,
                                                   long fileSize,
-                                                  Location ourLocation,
                                                   MaybeMultihash ourExistingHash,
                                                   ProgressConsumer<Long> monitor) {
-        AbsoluteCapability ourCap = AbsoluteCapability.build(ourLocation, baseKey);
-        return getChunkInputStream(network, random, 0, fileSize, ourCap, ourExistingHash, monitor)
+        return getChunk(network, random, 0, fileSize, ourCap, ourExistingHash, monitor)
                 .thenApply(chunk -> {
-                    Location nextChunkPointer = ourLocation.withMapKey(nextChunkLabel);
+                    Location nextChunkPointer = ourCap.withMapKey(nextChunkLabel).getLocation();
                     return new LazyInputStreamCombiner(0,
                             chunk.get().chunk.data(), nextChunkPointer,
                             chunk.get().chunk.data(), nextChunkPointer,
-                            network, random, baseKey, fileSize, monitor);
+                            network, random, ourCap.rBaseKey, fileSize, monitor);
                 });
     }
 
@@ -58,16 +55,31 @@ public class EncryptedChunkRetriever implements FileRetriever {
                 );
     }
 
-    public CompletableFuture<Optional<LocatedChunk>> getChunkInputStream(NetworkAccess network,
-                                                                         SafeRandom random,
-                                                                         long startIndex,
-                                                                         long truncateTo,
-                                                                         AbsoluteCapability ourCap,
-                                                                         MaybeMultihash ourExistingHash,
-                                                                         ProgressConsumer<Long> monitor) {
+    public CompletableFuture<Optional<LocatedChunk>> getChunk(NetworkAccess network,
+                                                              SafeRandom random,
+                                                              long startIndex,
+                                                              long truncateTo,
+                                                              AbsoluteCapability ourCap,
+                                                              MaybeMultihash ourExistingHash,
+                                                              ProgressConsumer<Long> monitor) {
+        if (startIndex >= Chunk.MAX_SIZE) {
+            AbsoluteCapability nextChunkCap = ourCap.withMapKey(nextChunkLabel);
+            return network.getMetadata(nextChunkCap)
+                    .thenCompose(meta -> {
+                        if (meta.isPresent())
+                            return meta.get().retriever(ourCap.rBaseKey)
+                                    .getChunk(network, random, startIndex - Chunk.MAX_SIZE,
+                                            truncateTo - Chunk.MAX_SIZE,
+                                            nextChunkCap, meta.get().committedHash(), l -> {});
+                        Chunk newEmptyChunk = new Chunk(new byte[0], dataKey, nextChunkLabel, dataKey.createNonce());
+                        LocatedChunk withLocation = new LocatedChunk(nextChunkCap.getLocation(),
+                                MaybeMultihash.empty(), newEmptyChunk);
+                        return CompletableFuture.completedFuture(Optional.of(withLocation));
+                    });
+        }
         return linksToData.getAndDecrypt(ourCap.rBaseKey, c -> ((CborObject.CborByteArray)c).value, network, monitor)
                 .thenApply(data ->  Optional.of(new LocatedChunk(ourCap.getLocation(), ourExistingHash,
-                        new Chunk(truncate(data, Math.min(Chunk.MAX_SIZE, (int)(truncateTo - startIndex))),
+                        new Chunk(truncate(data, Math.min(Chunk.MAX_SIZE, (int)truncateTo)),
                                 ourCap.rBaseKey, ourCap.getMapKey(), ourCap.rBaseKey.createNonce()))));
     }
 
@@ -75,15 +87,5 @@ public class EncryptedChunkRetriever implements FileRetriever {
         if (in.length == length)
             return in;
         return Arrays.copyOfRange(in, 0, length);
-    }
-
-    private static List<FragmentWithHash> reorder(List<FragmentWithHash> fragments, List<Multihash> hashes) {
-        FragmentWithHash[] res = new FragmentWithHash[fragments.size()];
-        for (FragmentWithHash f: fragments) {
-            for (int index = 0; index < res.length; index++)
-                if (hashes.get(index).equals(f.hash))
-                    res[index] = f;
-        }
-        return Arrays.asList(res);
     }
 }

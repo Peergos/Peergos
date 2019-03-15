@@ -233,7 +233,7 @@ public class CryptreeNode implements Cborable {
     }
 
     public FileRetriever retriever(SymmetricKey baseKey) {
-        return new EncryptedChunkRetriever(childrenOrData, getNextChunkLocation(baseKey));
+        return new EncryptedChunkRetriever(childrenOrData, getNextChunkLocation(baseKey), getDataKey(baseKey));
     }
 
     public CompletableFuture<List<RelativeCapability>> getDirectChildren(SymmetricKey baseKey, NetworkAccess network) {
@@ -424,7 +424,7 @@ public class CryptreeNode implements Cborable {
                                                         Hasher hasher) {
         FileProperties props = getProperties(cap.rBaseKey);
         AbsoluteCapability nextCap = cap.withMapKey(getNextChunkLocation(cap.rBaseKey));
-        return retriever(cap.rBaseKey).getFile(network, random, cap.rBaseKey, props.size, cap.getLocation(), committedHash(), x -> {})
+        return retriever(cap.rBaseKey).getFile(network, random, cap, props.size, committedHash(), x -> {})
                 .thenCompose(data -> {
                     int chunkSize = (int) Math.min(props.size, Chunk.MAX_SIZE);
                     byte[] chunkData = new byte[chunkSize];
