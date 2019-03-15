@@ -219,14 +219,16 @@ public class FileWrapper {
             WritableAbsoluteCapability updatedNextChunkCap = ourNewPointer.withMapKey(nextChunkMapKey);
             RelativeCapability toNextChunk = ourNewPointer.relativise(updatedNextChunkCap);
 
-            // Create new DirAccess
-            CryptreeNode.DirAndChildren dir = CryptreeNode.createDir(existing.committedHash(), newSubfoldersKey, null, Optional.empty(), props,
-                    Optional.of(cap.relativise(parent.writableFilePointer())), newParentKey, toNextChunk, hasher);
-            CryptreeNode newDirAccess = dir.dir.withWriterLink(newSubfoldersKey, existing.getWriterLink(cap.rBaseKey));
+            Optional<SymmetricLinkToSigner> writerLink = existing.getWriterLink(cap.rBaseKey);
+            Optional<SigningPrivateKeyAndPublicHash> signer = writerLink.map(link -> link.target(cap.wBaseKey.get()));
 
             // re add children
             return existing.getDirectChildren(pointer.capability.rBaseKey, network)
-                    .thenCompose(children -> newDirAccess.addChildrenAndCommit(children, ourNewPointer, entryWriter, network, random, hasher)
+                    .thenCompose(children ->  IpfsTransaction.call(owner(),
+                            tid -> CryptreeNode.createDir(existing.committedHash(), newSubfoldersKey, cap.wBaseKey.get(),
+                                    signer, props, Optional.of(cap.relativise(parent.writableFilePointer())),
+                                    newParentKey, toNextChunk, new CryptreeNode.ChildrenLinks(children), hasher)
+                                    .commit(ourNewPointer, entryWriter, network, tid), network.dhtClient))
                     .thenCompose(updatedDirAccess -> {
                         RetrievedCapability ourNewRetrievedPointer = new RetrievedCapability(ourNewPointer, updatedDirAccess);
                         FileWrapper theNewUs = new FileWrapper(ourNewRetrievedPointer, entryWriter, ownername);
@@ -261,8 +263,7 @@ public class FileWrapper {
                     }).thenApply(x -> {
                         setModified();
                         return x;
-                    })
-            );
+                    });
         } else {
             // create a new rBaseKey == parentKey
             SymmetricKey baseReadKey = newBaseKey.orElseGet(SymmetricKey::random);

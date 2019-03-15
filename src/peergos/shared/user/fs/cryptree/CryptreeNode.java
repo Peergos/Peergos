@@ -485,15 +485,24 @@ public class CryptreeNode implements Cborable {
                                     SymmetricKey nextSubfoldersKey = us.rBaseKey;
                                     SymmetricKey ourParentKey = getParentKey(us.rBaseKey);
                                     Optional<RelativeCapability> parentCap = getParentBlock(ourParentKey).parentLink;
-                                    byte[] nextMapKey = random.randomBytes(32);
-                                    RelativeCapability nextChunk = RelativeCapability.buildSubsequentChunk(nextMapKey, nextSubfoldersKey);
+                                    RelativeCapability nextChunk = RelativeCapability.buildSubsequentChunk(random.randomBytes(32), nextSubfoldersKey);
+                                    List<RelativeCapability> addToNextChunk = addToNext.stream()
+                                            .limit(getMaxChildLinksPerBlob())
+                                            .collect(Collectors.toList());
+                                    List<RelativeCapability> remaining = addToNext.stream()
+                                            .skip(getMaxChildLinksPerBlob())
+                                            .collect(Collectors.toList());
                                     DirAndChildren next = CryptreeNode.createDir(MaybeMultihash.empty(), nextSubfoldersKey,
                                             null, Optional.empty(), FileProperties.EMPTY, parentCap,
-                                            ourParentKey, nextChunk, hasher);
+                                            ourParentKey, nextChunk, new ChildrenLinks(addToNextChunk), hasher);
+                                    byte[] nextMapKey = getNextChunkLocation(us.rBaseKey);
                                     WritableAbsoluteCapability nextPointer = new WritableAbsoluteCapability(us.owner,
                                             us.writer, nextMapKey, nextSubfoldersKey, us.wBaseKey.get());
-                                    return next.dir.addChildrenAndCommit(addToNext, nextPointer, entryWriter, network, random, hasher)
-                                                    .thenApply(nextBlob -> newUs);
+                                    return IpfsTransaction.call(us.owner,
+                                            tid -> next.commit(nextPointer, entryWriter, network, tid)
+                                                    .thenCompose(nextBlob -> nextBlob.addChildrenAndCommit(remaining,
+                                                            nextPointer, entryWriter, network, random, hasher))
+                                                    .thenApply(nextBlob -> newUs), network.dhtClient);
                                 });
                     }
                 });
@@ -707,14 +716,28 @@ public class CryptreeNode implements Cborable {
     }
 
     public static DirAndChildren createDir(MaybeMultihash lastCommittedHash,
-                                         SymmetricKey rBaseKey,
-                                         SymmetricKey wBaseKey,
-                                         Optional<SigningPrivateKeyAndPublicHash> signingPair,
-                                         FileProperties props,
-                                         Optional<RelativeCapability> parentCap,
-                                         SymmetricKey parentKey,
-                                         RelativeCapability nextChunk,
-                                         Hasher hasher) {
+                                           SymmetricKey rBaseKey,
+                                           SymmetricKey wBaseKey,
+                                           Optional<SigningPrivateKeyAndPublicHash> signingPair,
+                                           FileProperties props,
+                                           Optional<RelativeCapability> parentCap,
+                                           SymmetricKey parentKey,
+                                           RelativeCapability nextChunk,
+                                           Hasher hasher) {
+        return createDir(lastCommittedHash, rBaseKey, wBaseKey, signingPair, props, parentCap, parentKey, nextChunk,
+                new ChildrenLinks(Collections.emptyList()), hasher);
+    }
+
+    public static DirAndChildren createDir(MaybeMultihash lastCommittedHash,
+                                           SymmetricKey rBaseKey,
+                                           SymmetricKey wBaseKey,
+                                           Optional<SigningPrivateKeyAndPublicHash> signingPair,
+                                           FileProperties props,
+                                           Optional<RelativeCapability> parentCap,
+                                           SymmetricKey parentKey,
+                                           RelativeCapability nextChunk,
+                                           ChildrenLinks children,
+                                           Hasher hasher) {
         Optional<SymmetricLinkToSigner> writerLink = signingPair.map(pair -> SymmetricLinkToSigner.fromPair(wBaseKey, pair));
         FromBase fromBase = new FromBase(parentKey, writerLink, nextChunk);
         FromParent fromParent = new FromParent(parentCap, props);
@@ -722,8 +745,7 @@ public class CryptreeNode implements Cborable {
         PaddedCipherText encryptedBaseBlock = PaddedCipherText.build(rBaseKey, fromBase, BASE_BLOCK_PADDING_BLOCKSIZE);
         PaddedCipherText encryptedParentBlock = PaddedCipherText.build(parentKey, fromParent, META_DATA_PADDING_BLOCKSIZE);
         Pair<FragmentedPaddedCipherText, List<FragmentWithHash>> linksAndData =
-                FragmentedPaddedCipherText.build(rBaseKey,
-                        new ChildrenLinks(Collections.emptyList()), MIN_FRAGMENT_SIZE, Fragment.MAX_LENGTH, hasher);
+                FragmentedPaddedCipherText.build(rBaseKey, children, MIN_FRAGMENT_SIZE, Fragment.MAX_LENGTH, hasher);
         CryptreeNode metadata = new CryptreeNode(lastCommittedHash, true, encryptedBaseBlock, linksAndData.left, encryptedParentBlock);
         return new DirAndChildren(metadata, linksAndData.right);
     }
