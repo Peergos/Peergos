@@ -356,13 +356,6 @@ public class CryptreeNode implements Cborable {
         return FragmentedPaddedCipherText.build(rBaseKey, children, MIN_FRAGMENT_SIZE, Fragment.MAX_LENGTH, hasher);
     }
 
-    private CompletableFuture<Optional<RetrievedCapability>> getNextMetablob(AbsoluteCapability us,
-                                                                             NetworkAccess network) {
-        RelativeCapability cap = getBaseBlock(us.rBaseKey).nextChunk;
-        return network.retrieveAllMetadata(Arrays.asList(cap.toAbsolute(us)))
-                .thenApply(list -> list.isEmpty() ? Optional.empty() : Optional.of(list.get(0)));
-    }
-
     public <T> CompletableFuture<T> getLinkedData(SymmetricKey baseOrDataKey,
                                                   Function<CborObject, T> fromCbor,
                                                   NetworkAccess network,
@@ -401,11 +394,12 @@ public class CryptreeNode implements Cborable {
         SymmetricKey dataKey = this.getDataKey(us.rBaseKey).makeDirty();
 
         RelativeCapability nextChunk = RelativeCapability.buildSubsequentChunk(getNextChunkLocation(us.rBaseKey), newBaseKey);
-        CryptreeNode fa = CryptreeNode.createFile(committedHash(), newBaseKey, dataKey, getProperties(us.rBaseKey),
-                childrenOrData, toParent.getLocation(us.owner, us.writer), toParent.rBaseKey, nextChunk);
-        return IpfsTransaction.call(us.owner, tid ->
-                        network.uploadChunk(fa, us.owner, us.getMapKey(), getSigner(us.rBaseKey, us.wBaseKey.get(), entryWriter), tid)
-                                .thenApply(x -> fa),
+        Optional<SymmetricLinkToSigner> linkToSigner = getBaseBlock(us.rBaseKey).signer;
+        CryptreeNode fa = CryptreeNode.createFile(committedHash(), linkToSigner, newBaseKey, dataKey, getProperties(us.rBaseKey),
+                childrenOrData, toParent, nextChunk);
+        SigningPrivateKeyAndPublicHash signer = getSigner(us.rBaseKey, us.wBaseKey.get(), entryWriter);
+        return IpfsTransaction.call(us.owner, tid -> network.uploadChunk(fa, us.owner, us.getMapKey(), signer, tid)
+                        .thenApply(x -> fa),
                 network.dhtClient);
     }
 
@@ -475,7 +469,7 @@ public class CryptreeNode implements Cborable {
         // Make sure subsequent blobs use a different transaction to obscure linkage of different parts of this dir
         return getDirectChildren(us.rBaseKey, network).thenCompose(children -> {
             if (children.size() + targetCAPs.size() > getMaxChildLinksPerBlob()) {
-                return getNextMetablob(us, network).thenCompose(nextMetablob -> {
+                return getNextChunk(us, network).thenCompose(nextMetablob -> {
                     if (nextMetablob.isPresent()) {
                         AbsoluteCapability nextPointer = nextMetablob.get().capability;
                         CryptreeNode nextBlob = nextMetablob.get().fileAccess;
@@ -688,33 +682,33 @@ public class CryptreeNode implements Cborable {
     }
 
     public static Pair<CryptreeNode, List<FragmentWithHash>> createFile(MaybeMultihash existingHash,
-                                          SymmetricKey parentKey,
-                                          SymmetricKey dataKey,
-                                          FileProperties props,
-                                          byte[] chunkData,
-                                          Location parentLocation,
-                                          SymmetricKey parentparentKey,
-                                          RelativeCapability nextChunk,
-                                          Hasher hasher) {
+                                                                        SymmetricKey parentKey,
+                                                                        SymmetricKey dataKey,
+                                                                        FileProperties props,
+                                                                        byte[] chunkData,
+                                                                        Location parentLocation,
+                                                                        SymmetricKey parentparentKey,
+                                                                        RelativeCapability nextChunk,
+                                                                        Hasher hasher) {
         Pair<FragmentedPaddedCipherText, List<FragmentWithHash>> linksAndData =
                 FragmentedPaddedCipherText.build(dataKey, new CborObject.CborByteArray(chunkData),
                         MIN_FRAGMENT_SIZE, Fragment.MAX_LENGTH, hasher);
-        CryptreeNode cryptree = createFile(existingHash, parentKey, dataKey, props,
-                linksAndData.left, parentLocation, parentparentKey, nextChunk);
+        RelativeCapability toParent = new RelativeCapability(Optional.empty(), parentLocation.getMapKey(),
+                parentparentKey, Optional.empty());
+        CryptreeNode cryptree = createFile(existingHash, Optional.empty(), parentKey, dataKey, props,
+                linksAndData.left, toParent, nextChunk);
         return new Pair<>(cryptree, linksAndData.right);
     }
 
     public static CryptreeNode createFile(MaybeMultihash existingHash,
+                                          Optional<SymmetricLinkToSigner> signerLink,
                                           SymmetricKey parentKey,
                                           SymmetricKey dataKey,
                                           FileProperties props,
                                           FragmentedPaddedCipherText data,
-                                          Location parentLocation,
-                                          SymmetricKey parentparentKey,
+                                          RelativeCapability toParentDir,
                                           RelativeCapability nextChunk) {
-        FromBase fromBase = new FromBase(dataKey, Optional.empty(), nextChunk);
-        RelativeCapability toParentDir = new RelativeCapability(Optional.empty(), parentLocation.getMapKey(),
-                parentparentKey, Optional.empty());
+        FromBase fromBase = new FromBase(dataKey, signerLink, nextChunk);
         FromParent fromParent = new FromParent(Optional.of(toParentDir), props);
 
         PaddedCipherText encryptedBaseBlock = PaddedCipherText.build(parentKey, fromBase, BASE_BLOCK_PADDING_BLOCKSIZE);
