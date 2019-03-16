@@ -149,8 +149,8 @@ public class FileContentAddressedStorage implements ContentAddressedStorage {
 
     public Multihash put(byte[] data, boolean isRaw) {
         try {
-            Multihash rawhash = new Multihash(Multihash.Type.sha2_256, RAMStorage.hash(data));
-            Cid cid = new Cid(CID_V1, isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor, rawhash);
+            Cid cid = new Cid(CID_V1, isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor,
+                    Multihash.Type.sha2_256, RAMStorage.hash(data));
             Path filePath = getFilePath(cid);
             Path target = root.resolve(filePath);
             Path parent = target.getParent();

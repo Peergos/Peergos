@@ -165,9 +165,8 @@ public interface ContentAddressedStorage {
     }
 
     static PublicKeyHash hashKey(PublicSigningKey key) {
-        return new PublicKeyHash(new Cid(1, Cid.Codec.DagCbor, new Multihash(
-                            Multihash.Type.sha2_256,
-                            Hash.sha256(key.serialize()))));
+        return new PublicKeyHash(new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256,
+                Hash.sha256(key.serialize())));
     }
 
     default CompletableFuture<PublicKeyHash> putBoxingKey(PublicKeyHash controller,

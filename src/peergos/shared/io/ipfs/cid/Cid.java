@@ -49,20 +49,14 @@ public class Cid extends Multihash {
     public final long version;
     public final Codec codec;
 
-    public Cid(long version, Codec codec, Multihash hash) {
-        super(hash.type, hash.getHash());
-        this.version = version;
-        this.codec = codec;
-    }
-
     public Cid(long version, Codec codec, Multihash.Type type, byte[] hash) {
         super(type, hash);
         this.version = version;
         this.codec = codec;
     }
 
-    public Cid(Multihash h) {
-        this(0, Codec.DagProtobuf, h);
+    public static Cid build(long version, Codec codec, Multihash h) {
+        return new Cid(version, codec, h.type, h.getHash());
     }
 
     private byte[] toBytesV0() {
@@ -125,8 +119,8 @@ public class Cid extends Multihash {
         return result;
     }
 
-    public static Cid buildCidV0(Multihash h) {
-        return new Cid(h);
+    public static Cid buildV0(Multihash h) {
+        return Cid.build(0, Codec.DagProtobuf, h);
     }
 
     public static Cid buildCidV1(Codec c, Multihash.Type type, byte[] hash) {
@@ -139,7 +133,7 @@ public class Cid extends Multihash {
 
         // support legacy format
         if (v.length() == 46 && v.startsWith("Qm"))
-            return buildCidV0(Multihash.fromBase58(v));
+            return buildV0(Multihash.fromBase58(v));
 
         byte[] data = Multibase.decode(v);
         return cast(data);
@@ -147,21 +141,21 @@ public class Cid extends Multihash {
 
     public static Cid cast(byte[] data) {
         if (data.length == 34 && data[0] == 18 && data[1] == 32)
-            return buildCidV0(Multihash.decode(data));
+            return buildV0(Multihash.decode(data));
 
         InputStream in = new ByteArrayInputStream(data);
         try {
             long version = readVarint(in);
             if (version != 0 && version != 1)
-                throw new CidEncodingException("Invalid Cif version number: " + version);
+                throw new CidEncodingException("Invalid Cid version number: " + version);
 
             long codec = readVarint(in);
             if (version != 0 && version != 1)
-                throw new CidEncodingException("Invalid Cif version number: " + version);
+                throw new CidEncodingException("Invalid Cid version number: " + version);
 
             Multihash hash = Multihash.deserialize(new DataInputStream(in));
 
-            return new Cid(version, Codec.lookup(codec), hash);
+            return new Cid(version, Codec.lookup(codec), hash.type, hash.getHash());
         } catch (Exception e) {
             throw new CidEncodingException("Invalid cid bytes: " + ArrayOps.bytesToHex(data));
         }

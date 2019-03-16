@@ -128,8 +128,7 @@ public class RAMStorage implements ContentAddressedStorage {
 
     public static Cid hashToCid(byte[] input, boolean isRaw) {
         byte[] hash = hash(input);
-        Multihash multihash = new Multihash(Multihash.Type.sha2_256, hash);
-        return new Cid(CID_V1, isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor, multihash);
+        return new Cid(CID_V1, isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor, Multihash.Type.sha2_256, hash);
     }
 
     public static byte[] hash(byte[] input)
