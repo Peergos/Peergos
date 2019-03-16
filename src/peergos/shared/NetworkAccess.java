@@ -394,10 +394,12 @@ public class NetworkAccess {
                                                                        ProgressConsumer<Long> monitor,
                                                                        double spaceIncreaseFactor) {
         List<CompletableFuture<Optional<FragmentWithHash>>> futures = hashes.stream().parallel()
-                .map(h -> ((h instanceof Cid) && ((Cid) h).codec == Cid.Codec.Raw ?
-                        dhtClient.getRaw(h) :
-                        dhtClient.get(h)
-                                .thenApply(cborOpt -> cborOpt.map(cbor -> ((CborObject.CborByteArray) cbor).value))) // for backwards compatibility
+                .map(h -> (h.isIdentity() ?
+                        CompletableFuture.completedFuture(Optional.of(h.getHash())) :
+                        (h instanceof Cid) && ((Cid) h).codec == Cid.Codec.Raw ?
+                                dhtClient.getRaw(h) :
+                                dhtClient.get(h)
+                                        .thenApply(cborOpt -> cborOpt.map(cbor -> ((CborObject.CborByteArray) cbor).value))) // for backwards compatibility
                         .thenApply(dataOpt -> {
                             Optional<byte[]> bytes = dataOpt;
                             bytes.ifPresent(arr -> monitor.accept((long)(arr.length / spaceIncreaseFactor)));

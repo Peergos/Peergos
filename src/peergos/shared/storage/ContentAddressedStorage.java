@@ -189,7 +189,10 @@ public interface ContentAddressedStorage {
 
     default CompletableFuture<Long> getRecursiveBlockSize(Multihash block) {
         return getLinks(block).thenCompose(links -> {
-            List<CompletableFuture<Long>> subtrees = links.stream().map(this::getRecursiveBlockSize).collect(Collectors.toList());
+            List<CompletableFuture<Long>> subtrees = links.stream()
+                    .filter(m -> ! m.isIdentity())
+                    .map(this::getRecursiveBlockSize)
+                    .collect(Collectors.toList());
             return getSize(block)
                     .thenCompose(sizeOpt -> {
                         CompletableFuture<Long> reduced = Futures.reduceAll(subtrees,

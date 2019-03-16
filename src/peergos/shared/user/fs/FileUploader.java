@@ -129,7 +129,10 @@ public class FileUploader implements AutoCloseable {
 
         CryptreeNode metadata = file.left.withWriterLink(baseKey, writerLink);
 
-        List<Fragment> fragments = file.right.stream().map(f -> f.fragment).collect(Collectors.toList());
+        List<Fragment> fragments = file.right.stream()
+                .filter(f -> ! f.hash.isIdentity())
+                .map(f -> f.fragment)
+                .collect(Collectors.toList());
         LOG.info(StringUtils.format("Uploading chunk with %d fragments\n", fragments.size()));
         return IpfsTransaction.call(chunk.location.owner,
                 tid -> network.uploadFragments(fragments, chunk.location.owner, writer, monitor, tid)
