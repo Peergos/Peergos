@@ -20,7 +20,9 @@ public class EncryptedChunkRetriever implements FileRetriever {
     private final byte[] nextChunkLabel;
     private final SymmetricKey dataKey;
 
-    public EncryptedChunkRetriever(FragmentedPaddedCipherText linksToData, byte[] nextChunkLabel, SymmetricKey dataKey) {
+    public EncryptedChunkRetriever(FragmentedPaddedCipherText linksToData,
+                                   byte[] nextChunkLabel,
+                                   SymmetricKey dataKey) {
         this.linksToData = linksToData;
         this.nextChunkLabel = nextChunkLabel;
         this.dataKey = dataKey;

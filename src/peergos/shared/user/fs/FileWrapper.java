@@ -687,6 +687,7 @@ public class FileWrapper {
             }
             SymmetricKey fileWriteKey = SymmetricKey.random();
             SymmetricKey fileKey = baseKey.orElseGet(SymmetricKey::random);
+            SymmetricKey dataKey = SymmetricKey.random();
             SymmetricKey rootRKey = pointer.capability.rBaseKey;
             CryptreeNode dirAccess = pointer.fileAccess;
             SymmetricKey dirParentKey = dirAccess.getParentKey(rootRKey);
@@ -700,7 +701,7 @@ public class FileWrapper {
                                 LocalDateTime.now(), isHidden, Optional.empty());
 
                         FileUploader chunks = new FileUploader(filename, mimeType, resetReader,
-                                startIndex, endIndex, fileKey, parentLocation, dirParentKey, monitor, fileProps,
+                                startIndex, endIndex, fileKey, dataKey, parentLocation, dirParentKey, monitor, fileProps,
                                 locations);
 
                         SigningPrivateKeyAndPublicHash signer = signingPair();
@@ -853,7 +854,7 @@ public class FileWrapper {
             boolean identity = true;
 
             BiFunction<Boolean, Long, CompletableFuture<Boolean>> composer = (id, startIndex) -> {
-                AbsoluteCapability childCap = AbsoluteCapability.build(child.getLocation(), dataKey);
+                AbsoluteCapability childCap = AbsoluteCapability.build(child.getLocation(), baseKey);
                 MaybeMultihash currentHash = child.pointer.fileAccess.committedHash();
                 return retriever.getChunk(network, random, startIndex, filesSize.get(), childCap, currentHash, monitor)
                         .thenCompose(currentLocation -> {

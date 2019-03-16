@@ -25,6 +25,7 @@ public class FileUploader implements AutoCloseable {
     private final long offset, length;
     private final FileProperties props;
     private final SymmetricKey baseKey;
+    private final SymmetricKey dataKey;
     private final long nchunks;
     private final Location parentLocation;
     private final SymmetricKey parentparentKey;
@@ -36,6 +37,7 @@ public class FileUploader implements AutoCloseable {
     public FileUploader(String name, String mimeType, AsyncReader fileData,
                         int offsetHi, int offsetLow, int lengthHi, int lengthLow,
                         SymmetricKey baseKey,
+                        SymmetricKey dataKey,
                         Location parentLocation,
                         SymmetricKey parentparentKey,
                         ProgressConsumer<Long> monitor,
@@ -57,6 +59,7 @@ public class FileUploader implements AutoCloseable {
         this.length = length;
         this.reader = fileData;
         this.baseKey = baseKey;
+        this.dataKey = dataKey;
         this.parentLocation = parentLocation;
         this.parentparentKey = parentparentKey;
         this.monitor = monitor;
@@ -64,10 +67,10 @@ public class FileUploader implements AutoCloseable {
     }
 
     public FileUploader(String name, String mimeType, AsyncReader fileData, long offset, long length,
-                        SymmetricKey baseKey, Location parentLocation, SymmetricKey parentparentKey,
+                        SymmetricKey baseKey, SymmetricKey dataKey, Location parentLocation, SymmetricKey parentparentKey,
                         ProgressConsumer<Long> monitor, FileProperties fileProperties, List<Location> locations) {
         this(name, mimeType, fileData, (int)(offset >> 32), (int) offset, (int) (length >> 32), (int) length,
-                baseKey, parentLocation, parentparentKey, monitor, fileProperties, locations);
+                baseKey, dataKey, parentLocation, parentparentKey, monitor, fileProperties, locations);
     }
 
     public CompletableFuture<Boolean> uploadChunk(NetworkAccess network,
@@ -87,7 +90,7 @@ public class FileUploader implements AutoCloseable {
         return reader.readIntoArray(data, 0, data.length).thenCompose(b -> {
             byte[] nonce = baseKey.createNonce();
             byte[] mapKey = locations.get((int) chunkIndex).getMapKey();
-            Chunk chunk = new Chunk(data, baseKey, mapKey, nonce);
+            Chunk chunk = new Chunk(data, dataKey, mapKey, nonce);
             LocatedChunk locatedChunk = new LocatedChunk(new Location(owner, writer.publicKeyHash, chunk.mapKey()), ourExistingHash, chunk);
             Location nextLocation = new Location(owner, writer.publicKeyHash, locations.get((int) chunkIndex + 1).getMapKey());
             return uploadChunk(writer, props, parentLocation, parentparentKey, baseKey, locatedChunk,

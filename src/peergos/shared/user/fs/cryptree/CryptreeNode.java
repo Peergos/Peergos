@@ -708,6 +708,8 @@ public class CryptreeNode implements Cborable {
                                           FragmentedPaddedCipherText data,
                                           RelativeCapability toParentDir,
                                           RelativeCapability nextChunk) {
+        if (parentKey.equals(dataKey))
+            throw new IllegalStateException("A file's base key and data key must be different!");
         FromBase fromBase = new FromBase(dataKey, signerLink, nextChunk);
         FromParent fromParent = new FromParent(Optional.of(toParentDir), props);
 
@@ -739,6 +741,8 @@ public class CryptreeNode implements Cborable {
                                            RelativeCapability nextChunk,
                                            ChildrenLinks children,
                                            Hasher hasher) {
+        if (rBaseKey.equals(parentKey))
+            throw new IllegalStateException("A directory's base key and parent key must be different!");
         Optional<SymmetricLinkToSigner> writerLink = signingPair.map(pair -> SymmetricLinkToSigner.fromPair(wBaseKey, pair));
         FromBase fromBase = new FromBase(parentKey, writerLink, nextChunk);
         FromParent fromParent = new FromParent(parentCap, props);

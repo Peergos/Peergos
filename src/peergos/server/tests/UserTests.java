@@ -9,6 +9,7 @@ import static org.junit.Assert.*;
 
 import peergos.server.util.PeergosNetworkUtils;
 import peergos.shared.*;
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
@@ -317,6 +318,47 @@ public abstract class UserTests {
     }
 
     @Test
+    public void directoryEncryptionKey() throws Exception {
+        // ensure that a directory's child links are encrypted with the base key, not the parent key
+        String username = generateUsername();
+        String password = "test";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        FileWrapper userRoot = context.getUserRoot().get();
+
+        String dirname = "somedir";
+        userRoot.mkdir(dirname, network, false, crypto.random, crypto.hasher).join();
+
+        FileWrapper dir = context.getByPath("/" + username + "/" + dirname).get().get();
+        RetrievedCapability pointer = dir.getPointer();
+        SymmetricKey baseKey = pointer.capability.rBaseKey;
+        SymmetricKey parentKey = dir.getParentKey();
+        Assert.assertTrue("parent key different from base key", ! parentKey.equals(baseKey));
+        pointer.fileAccess.getDirectChildren(baseKey, network).join();
+    }
+
+    @Test
+    public void fileEncryptionKey() throws Exception {
+        // ensure that a directory's child links are encrypted with the base key, not the parent key
+        String username = generateUsername();
+        String password = "test";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        FileWrapper userRoot = context.getUserRoot().get();
+
+        String filename = "somedir";
+        byte[] data = new byte[200*1024];
+        userRoot.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
+                context.crypto.random, hasher, l -> {},
+                userRoot.generateChildLocationsFromSize(0, context.crypto.random)).join();
+
+        FileWrapper file = context.getByPath("/" + username + "/" + filename).join().get();
+        RetrievedCapability pointer = file.getPointer();
+        SymmetricKey baseKey = pointer.capability.rBaseKey;
+        SymmetricKey dataKey = pointer.fileAccess.getDataKey(baseKey);
+        Assert.assertTrue("data key different from base key", ! dataKey.equals(baseKey));
+        pointer.fileAccess.getLinkedData(dataKey, c -> ((CborObject.CborByteArray)c).value, network, x -> {}).join();
+    }
+
+    @Test
     public void concurrentWritesToDir() throws Exception {
         String username = generateUsername();
         String password = "test01";
@@ -577,7 +619,7 @@ public abstract class UserTests {
         byte[] data5 = new byte[10*1024*1024];
         random.nextBytes(data5);
         FileWrapper userRoot3 = uploadFileSection(userRoot2, filename, new AsyncReader.ArrayBacked(data5), 0, data5.length, context.network,
-                context.crypto.random, hasher, l -> {}).get();
+                context.crypto.random, hasher, l -> {}).join();
         checkFileContents(data5, userRoot3.getDescendentByPath(filename, context.network).get().get(), context);
         assertTrue("10MiB file size", data5.length == userRoot3.getDescendentByPath(filename,
                 context.network).get().get().getFileProperties().size);
