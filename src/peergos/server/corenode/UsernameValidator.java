@@ -15,7 +15,8 @@ public final class UsernameValidator {
     private static final Pattern VALID_USERNAME = Pattern.compile(Usernames.REGEX);
 
     public static final Set<String> BANNED_USERNAMES =
-            Stream.of("ipfs", "ipns", "root", "http", "https", "admin", "administrator", "support")
+            Stream.of("ipfs", "ipns", "root", "http", "https", "admin", "administrator", "support", "mail", "www",
+                    "web", "onion", "i2p", "ftp", "sftp", "file", "mailto", "wss", "xmpp", "ssh", "smtp", "imap", "irc")
             .collect(Collectors.toSet());
 
     /** Username rules:
