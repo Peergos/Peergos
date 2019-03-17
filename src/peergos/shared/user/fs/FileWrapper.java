@@ -580,7 +580,7 @@ public class FileWrapper {
             throw new IllegalStateException("Directories are never dirty (they are cleaned immediately)!");
         } else {
             return pointer.fileAccess.cleanAndCommit(writableFilePointer(), signingPair(),
-                    parent.getLocation(), parent.getParentKey(), network, random, hasher)
+                    SymmetricKey.random(), parent.getLocation(), parent.getParentKey(), network, random, hasher)
                     .thenApply(res -> {
                         setModified();
                         return parent;

@@ -421,6 +421,7 @@ public class CryptreeNode implements Cborable {
 
     public CompletableFuture<CryptreeNode> cleanAndCommit(WritableAbsoluteCapability cap,
                                                         SigningPrivateKeyAndPublicHash writer,
+                                                        SymmetricKey newDataKey,
                                                         Location parentLocation,
                                                         SymmetricKey parentParentKey,
                                                         NetworkAccess network,
@@ -436,19 +437,19 @@ public class CryptreeNode implements Cborable {
                             .thenCompose(read -> {
                                 byte[] nonce = cap.rBaseKey.createNonce();
                                 byte[] mapKey = cap.getMapKey();
-                                Chunk chunk = new Chunk(chunkData, getDataKey(cap.rBaseKey), mapKey, nonce);
+
+                                Chunk chunk = new Chunk(chunkData, newDataKey, mapKey, nonce);
                                 LocatedChunk locatedChunk = new LocatedChunk(cap.getLocation(), lastCommittedHash, chunk);
                                 return FileUploader.uploadChunk(writer, props, parentLocation, parentParentKey, cap.rBaseKey, locatedChunk,
                                         nextCap.getLocation(), getWriterLink(cap.rBaseKey), hasher, network, x -> {});
-                            });
-                }).thenCompose(h -> network.getMetadata(nextCap)
-                        .thenCompose(mOpt -> {
-                            if (! mOpt.isPresent())
-                                return CompletableFuture.completedFuture(null);
-                            return mOpt.get().cleanAndCommit(cap.withMapKey(nextCap.getMapKey()),
-                                    writer, parentLocation, parentParentKey, network, random, hasher);
-                        }).thenCompose(x -> network.getMetadata(cap)).thenApply(opt -> opt.get())
-                );
+                            }).thenCompose(h -> network.getMetadata(nextCap));
+                }).thenCompose(mOpt -> {
+                    if (! mOpt.isPresent())
+                        return CompletableFuture.completedFuture(null);
+                    return mOpt.get().cleanAndCommit(cap.withMapKey(nextCap.getMapKey()),
+                            writer, newDataKey, parentLocation, parentParentKey, network, random, hasher);
+                }).thenCompose(x -> network.getMetadata(cap))
+                .thenApply(opt -> opt.get());
     }
 
     public CompletableFuture<CryptreeNode> addChildAndCommit(RelativeCapability targetCAP,
