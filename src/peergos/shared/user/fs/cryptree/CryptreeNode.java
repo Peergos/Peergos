@@ -436,7 +436,7 @@ public class CryptreeNode implements Cborable {
                             .thenCompose(read -> {
                                 byte[] nonce = cap.rBaseKey.createNonce();
                                 byte[] mapKey = cap.getMapKey();
-                                Chunk chunk = new Chunk(chunkData, cap.rBaseKey, mapKey, nonce);
+                                Chunk chunk = new Chunk(chunkData, getDataKey(cap.rBaseKey), mapKey, nonce);
                                 LocatedChunk locatedChunk = new LocatedChunk(cap.getLocation(), lastCommittedHash, chunk);
                                 return FileUploader.uploadChunk(writer, props, parentLocation, parentParentKey, cap.rBaseKey, locatedChunk,
                                         nextCap.getLocation(), getWriterLink(cap.rBaseKey), hasher, network, x -> {});
