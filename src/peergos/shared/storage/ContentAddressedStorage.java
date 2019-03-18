@@ -160,8 +160,7 @@ public interface ContentAddressedStorage {
                                                            PublicKeyHash writer,
                                                            PublicSigningKey newKey,
                                                            TransactionId tid) {
-        return put(owner, writer, signature, newKey.toCbor().toByteArray(), tid)
-                .thenApply(PublicKeyHash::new);
+        return CompletableFuture.completedFuture(hashKey(newKey));
     }
 
     static PublicKeyHash hashKey(PublicSigningKey key) {

@@ -826,7 +826,8 @@ public class FileWrapper {
                                                                Hasher hasher,
                                                                ProgressConsumer<Long> monitor) {
 
-        String filename = existingChild.getFileProperties().name;
+        FileProperties existingProps = existingChild.getFileProperties();
+        String filename = existingProps.name;
         LOG.info("Overwriting section [" + Long.toHexString(inputStartIndex) + ", " + Long.toHexString(endIndex) + "] of child with name: " + filename);
 
         Supplier<Location> locationSupplier = () -> new Location(getLocation().owner, getLocation().writer, random.randomBytes(32));
@@ -927,7 +928,13 @@ public class FileWrapper {
 
             BiFunction<Boolean, Boolean, Boolean> combiner = (left, right) -> left && right;
             return Futures.reduceAll(startIndexes, identity, composer, combiner)
-                    .thenApply(b -> us);
+                    .thenCompose(b -> {
+                        // update file size
+                        if (existingProps.size >= endIndex)
+                            return CompletableFuture.completedFuture(true);
+                        return us.getChild(filename, network)
+                                .thenCompose(c -> c.get().setProperties(existingProps.withSize(endIndex), network, Optional.of(this)));
+                    }).thenApply(b -> us);
         });
     }
 

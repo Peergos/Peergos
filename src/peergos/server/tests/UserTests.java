@@ -146,9 +146,15 @@ public abstract class UserTests {
     public void randomSignup() throws Exception {
         String username = generateUsername();
         String password = "password";
-        PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         InstanceAdmin.VersionInfo version = network.instanceAdmin.getVersionInfo().join();
         Assert.assertTrue(! version.version.isBefore(Version.parse("0.0.0")));
+
+        FileWrapper userRoot = context.getUserRoot().join();
+        Assert.assertTrue("owner uses identity multihash", userRoot.getPointer().capability.owner.isIdentity());
+        Assert.assertTrue("signer uses identity multihash", userRoot.getPointer().capability.writer.isIdentity());
+        Assert.assertTrue("user root does not have a retrievable parent",
+                ! userRoot.retrieveParent(network).join().isPresent());
     }
 
     @Test

@@ -1,14 +1,21 @@
 package peergos.shared.user.fs;
 
 import jsinterop.annotations.*;
+import peergos.shared.cbor.*;
 
+import java.io.*;
+import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.*;
 
 @JsType
 public interface AsyncReader extends AutoCloseable {
 
     CompletableFuture<AsyncReader> seek(int high32, int low32);
+
+    default CompletableFuture<AsyncReader> seek(long offset) {
+        return seek((int)(offset >> 32), (int)offset);
+    }
 
     /**
      *
@@ -29,6 +36,45 @@ public interface AsyncReader extends AutoCloseable {
      * Close and dispose of any resources
      */
     void close();
+
+    default <T> CompletableFuture<Long> parseStream(Function<Cborable, T> fromCbor, Consumer<T> accumulator, long maxBytesToRead) {
+        return parseStream(new byte[0], fromCbor, accumulator, maxBytesToRead);
+    }
+
+    /** Convert reader into a stream of CborObjects
+     *
+     * @param prefix any bytes from a partial object read that will form the prefix of this read
+     * @param fromCbor The cbor converter
+     * @param accumulator The results consumer
+     * @param maxBytesToRead There must be at least this many bytes left in this stream or an EOF will result
+     * @param <T>
+     * @return
+     */
+    default <T> CompletableFuture<Long> parseStream(byte[] prefix, Function<Cborable, T> fromCbor, Consumer<T> accumulator, long maxBytesToRead) {
+        if (maxBytesToRead == 0)
+            return CompletableFuture.completedFuture(0L);
+        byte[] buf = new byte[Chunk.MAX_SIZE];
+        System.arraycopy(prefix, 0, buf, 0, prefix.length);
+        ByteArrayInputStream in = new ByteArrayInputStream(buf);
+        return readIntoArray(buf, prefix.length, (int) Math.min((long)(buf.length - prefix.length), maxBytesToRead))
+                .thenCompose(bytesRead -> {
+                    for (int localOffset = 0; localOffset < bytesRead;) {
+                        try {
+                            CborObject readObject = CborObject.read(in, bytesRead);
+                            accumulator.accept(fromCbor.apply(readObject));
+                            localOffset += readObject.toByteArray().length;
+                        } catch (RuntimeException e) {
+                            e.printStackTrace();
+                            int fromThisChunk = localOffset;
+                            return parseStream(Arrays.copyOfRange(buf, localOffset, bytesRead), fromCbor, accumulator,
+                                    maxBytesToRead - bytesRead)
+                                    .thenApply(rest -> rest + fromThisChunk);
+                        }
+                    }
+                    return parseStream(fromCbor, accumulator, maxBytesToRead - bytesRead)
+                            .thenApply(rest -> rest + bytesRead);
+                });
+    }
 
     class ArrayBacked implements AsyncReader {
         private final byte[] data;
