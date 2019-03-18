@@ -165,8 +165,7 @@ public interface ContentAddressedStorage {
     }
 
     static PublicKeyHash hashKey(PublicSigningKey key) {
-        return new PublicKeyHash(new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256,
-                Hash.sha256(key.serialize())));
+        return new PublicKeyHash(new Cid(1, Cid.Codec.DagCbor, Multihash.Type.id, key.serialize()));
     }
 
     default CompletableFuture<PublicKeyHash> putBoxingKey(PublicKeyHash controller,
@@ -178,12 +177,16 @@ public interface ContentAddressedStorage {
     }
 
     default CompletableFuture<Optional<PublicSigningKey>> getSigningKey(PublicKeyHash hash) {
-        return get(hash.multihash)
+        return (hash.isIdentity() ?
+                CompletableFuture.completedFuture(Optional.of(CborObject.fromByteArray(hash.getHash()))) :
+                get(hash.multihash))
                 .thenApply(opt -> Optional.ofNullable(opt).orElse(Optional.empty()).map(PublicSigningKey::fromCbor));
     }
 
     default CompletableFuture<Optional<PublicBoxingKey>> getBoxingKey(PublicKeyHash hash) {
-        return get(hash.multihash)
+        return (hash.isIdentity() ?
+                CompletableFuture.completedFuture(Optional.of(CborObject.fromByteArray(hash.getHash()))) :
+                get(hash.multihash))
                 .thenApply(opt -> Optional.ofNullable(opt).orElse(Optional.empty()).map(PublicBoxingKey::fromCbor));
     }
 
@@ -344,12 +347,16 @@ public interface ContentAddressedStorage {
 
         @Override
         public CompletableFuture<Optional<CborObject>> get(Multihash hash) {
+            if (hash.isIdentity())
+                return CompletableFuture.completedFuture(Optional.of(CborObject.fromByteArray(hash.getHash())));
             return poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash.toString())
                     .thenApply(raw -> raw.length == 0 ? Optional.empty() : Optional.of(CborObject.fromByteArray(raw)));
         }
 
         @Override
         public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash) {
+            if (hash.type == Multihash.Type.id)
+                return CompletableFuture.completedFuture(Optional.of(hash.getHash()));
             return poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash.toString())
                     .thenApply(raw -> raw.length == 0 ? Optional.empty() : Optional.of(raw));
         }
