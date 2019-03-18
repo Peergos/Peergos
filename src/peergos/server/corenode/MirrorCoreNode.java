@@ -48,7 +48,7 @@ public class MirrorCoreNode implements CoreNode {
 
     private PublicKeyHash getPkiKey() throws Exception {
         CommittedWriterData current = WriterData.getWriterData(pkiOwnerIdentity, pkiOwnerIdentity, mutable, ipfs).get();
-        PublicKeyHash pki = current.props.namedOwnedKeys.get("pki");
+        PublicKeyHash pki = current.props.namedOwnedKeys.get("pki").ownedKey;
         if (pki == null)
             throw new IllegalStateException("No pki key on owner: " + pkiOwnerIdentity);
         return pki;

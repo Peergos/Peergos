@@ -1259,9 +1259,11 @@ public class FileWrapper {
         return WriterData.getWriterData(owner, parentWriter, network.mutable, network.dhtClient)
                 .thenCompose(parentWriterData -> {
 
-            Set<PublicKeyHash> ownedKeys = new HashSet<>(parentWriterData.props.ownedKeys);
-            ownedKeys.remove(signerToRemove);
-            WriterData updatedParentWD = parentWriterData.props.withOwnedKeys(ownedKeys);
+                    Set<OwnerProof> ownedKeys = parentWriterData.props.ownedKeys;
+                    Set<OwnerProof> updatedOwnedKeys = ownedKeys.stream()
+                            .filter(p -> !p.ownedKey.equals(signerToRemove))
+                            .collect(Collectors.toSet());
+                    WriterData updatedParentWD = parentWriterData.props.withOwnedKeys(updatedOwnedKeys);
             return IpfsTransaction.call(owner, tid ->
                     updatedParentWD.commit(owner, parentSigner,
                             parentWriterData.hash, network, tid).thenApply(cwd -> true), network.dhtClient);

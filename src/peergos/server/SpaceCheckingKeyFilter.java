@@ -418,7 +418,11 @@ public class SpaceCheckingKeyFilter {
             if (existingRoot.isPresent()) {
                 try {
                     // subtract data size from orphaned child keys (this assumes the keys form a tree without dups)
-                    Set<PublicKeyHash> updatedOwned = WriterData.getWriterData(writer, newRoot, dht).get().props.ownedKeys;
+                    Set<PublicKeyHash> updatedOwned = WriterData.getWriterData(writer, newRoot, dht).join()
+                            .props.ownedKeys.stream()
+                            .filter(p -> p.getOwner(dht).join().equals(writer))
+                            .map(p -> p.ownedKey)
+                            .collect(Collectors.toSet());
                     processRemovedOwnedKeys(state, owner, updatedOwned, mutable, dht);
                 } catch (Exception e) {
                     LOG.log(Level.WARNING, e.getMessage(), e);
@@ -430,7 +434,12 @@ public class SpaceCheckingKeyFilter {
         try {
             synchronized (current) {
                 long changeInStorage = dht.getChangeInContainedSize(current.target, newRoot.get()).get();
-                Set<PublicKeyHash> updatedOwned = WriterData.getWriterData(writer, newRoot, dht).get().props.ownedKeys;
+                Set<PublicKeyHash> updatedOwned = WriterData.getWriterData(writer, newRoot, dht).get().props
+                        .ownedKeys
+                        .stream()
+                        .filter(p -> p.getOwner(dht).join().equals(writer))
+                        .map(p -> p.ownedKey)
+                        .collect(Collectors.toSet());
                 for (PublicKeyHash owned : updatedOwned) {
                     state.currentView.computeIfAbsent(owned, k -> new Stat(current.owner, MaybeMultihash.empty(), 0, Collections.emptySet()));
                 }

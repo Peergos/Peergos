@@ -157,12 +157,18 @@ public class Main {
                     PublicKeyHash pkiPublicHash = ContentAddressedStorage.hashKey(pkiPublic);
                     int webPort = args.getInt("port");
                     NetworkAccess network = NetworkAccess.buildJava(new URL("http://localhost:" + webPort)).get();
+                    String pkiFilePassword = args.getArg("pki.keyfile.password");
+                    SecretSigningKey pkiSecret =
+                            SecretSigningKey.fromCbor(CborObject.fromByteArray(PasswordProtected.decryptWithPassword(
+                                    CborObject.fromByteArray(Files.readAllBytes(args.fromPeergosDir("pki.secret.key.path"))),
+                                    pkiFilePassword, crypto.hasher, crypto.symmetricProvider, crypto.random)));
 
                     // sign up peergos user
                     UserContext context = UserContext.ensureSignedUp(pkiUsername, password, network, crypto).get();
                     Optional<PublicKeyHash> existingPkiKey = context.getNamedKey("pki").get();
                     if (!existingPkiKey.isPresent() || existingPkiKey.get().equals(pkiPublicHash)) {
-                        context.addNamedOwnedKeyAndCommit("pki", pkiPublicHash).get();
+                        SigningPrivateKeyAndPublicHash pkiKeyPair = new SigningPrivateKeyAndPublicHash(pkiPublicHash, pkiSecret);
+                        context.addNamedOwnedKeyAndCommit("pki", pkiKeyPair).get();
                         // write pki public key to ipfs
                         IpfsTransaction.call(peergosPublicHash,
                                 tid -> network.dhtClient.putSigningKey(peergosIdentityKeys.secretSigningKey

@@ -32,10 +32,10 @@ public class WriterData implements Cborable {
     // The public boxing key to encrypt follow requests to
     public final Optional<PublicKeyHash> followRequestReceiver;
     // Any keys directly owned by the controller, that aren't named
-    public final Set<PublicKeyHash> ownedKeys;
+    public final Set<OwnerProof> ownedKeys;
 
     // Any keys directly owned by the controller that have specific labels
-    public final Map<String, PublicKeyHash> namedOwnedKeys;
+    public final Map<String, OwnerProof> namedOwnedKeys;
 
     // Encrypted entry points to our and our friends file systems (present on owner keys)
     public final Optional<UserStaticData> staticData;
@@ -55,8 +55,8 @@ public class WriterData implements Cborable {
                       Optional<SecretGenerationAlgorithm> generationAlgorithm,
                       Optional<Multihash> publicData,
                       Optional<PublicKeyHash> followRequestReceiver,
-                      Set<PublicKeyHash> ownedKeys,
-                      Map<String, PublicKeyHash> namedOwnedKeys,
+                      Set<OwnerProof> ownedKeys,
+                      Map<String, OwnerProof> namedOwnedKeys,
                       Optional<UserStaticData> staticData,
                       Optional<Multihash> tree) {
         this.controller = controller;
@@ -77,18 +77,18 @@ public class WriterData implements Cborable {
         return new WriterData(controller, generationAlgorithm, Optional.of(publicChampRoot), followRequestReceiver, ownedKeys, namedOwnedKeys, staticData, tree);
     }
 
-    public WriterData withOwnedKeys(Set<PublicKeyHash> owned) {
+    public WriterData withOwnedKeys(Set<OwnerProof> owned) {
         return new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver, owned, namedOwnedKeys, staticData, tree);
     }
 
-    public WriterData addOwnedKey(PublicKeyHash newOwned) {
-        Set<PublicKeyHash> updated = new HashSet<>(ownedKeys);
+    public WriterData addOwnedKey(OwnerProof newOwned) {
+        Set<OwnerProof> updated = new HashSet<>(ownedKeys);
         updated.add(newOwned);
         return new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver, updated, namedOwnedKeys, staticData, tree);
     }
 
-    public WriterData addNamedKey(String name, PublicKeyHash newNamedKey) {
-        Map<String, PublicKeyHash> updated = new TreeMap<>(namedOwnedKeys);
+    public WriterData addNamedKey(String name, OwnerProof newNamedKey) {
+        Map<String, OwnerProof> updated = new TreeMap<>(namedOwnedKeys);
         updated.put(name, newNamedKey);
         return new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver, ownedKeys, updated, staticData, tree);
     }
@@ -160,7 +160,7 @@ public class WriterData implements Cborable {
                                                              NetworkAccess network) {
         return IpfsTransaction.call(oldSigner.publicKeyHash, tid -> {
             // auth new key by adding to existing writer data first
-            WriterData tmp = addOwnedKey(signer.publicKeyHash);
+            WriterData tmp = addOwnedKey(OwnerProof.build(signer, oldSigner.publicKeyHash));
             return tmp.commit(oldSigner.publicKeyHash, oldSigner, currentHash, network, tid)
                     .thenCompose(tmpCommited -> {
                         Optional<UserStaticData> newEntryPoints = staticData
@@ -227,8 +227,8 @@ public class WriterData implements Cborable {
         generationAlgorithm.ifPresent(alg -> result.put("algorithm", alg.toCbor()));
         publicData.ifPresent(root -> result.put("public", new CborObject.CborMerkleLink(root)));
         followRequestReceiver.ifPresent(boxer -> result.put("inbound", new CborObject.CborMerkleLink(boxer)));
-        List<CborObject> ownedKeyStrings = ownedKeys.stream().map(CborObject.CborMerkleLink::new).collect(Collectors.toList());
-        if (! ownedKeyStrings.isEmpty())
+        List<CborObject> ownedKeyStrings = ownedKeys.stream().map(p -> p.toCbor()).collect(Collectors.toList());
+        if (! ownedKeys.isEmpty())
             result.put("owned", new CborObject.CborList(ownedKeyStrings));
         if (! namedOwnedKeys.isEmpty())
             result.put("named", new CborObject.CborMap(new TreeMap<>(namedOwnedKeys.entrySet()
@@ -239,44 +239,29 @@ public class WriterData implements Cborable {
         return CborObject.CborMap.build(result);
     }
 
-    public static Optional<SecretGenerationAlgorithm> extractUserGenerationAlgorithm(CborObject cbor) {
-        CborObject.CborMap map = (CborObject.CborMap) cbor;
-        Function<String, Optional<Cborable>> extract = key -> {
-            CborObject.CborString cborKey = new CborObject.CborString(key);
-            return map.values.containsKey(cborKey) ? Optional.of(map.values.get(cborKey)) : Optional.empty();
-        };
-        return extract.apply("algorithm").map(SecretGenerationAlgorithm::fromCbor);
-    }
-
     public static WriterData fromCbor(CborObject cbor) {
         if (! ( cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("Cbor for WriterData should be a map! " + cbor);
 
-        CborObject.CborMap map = (CborObject.CborMap) cbor;
-        Function<String, Optional<Cborable>> extract = key -> {
-            CborObject.CborString cborKey = new CborObject.CborString(key);
-            return map.values.containsKey(cborKey) ? Optional.of(map.values.get(cborKey)) : Optional.empty();
-        };
+        CborObject.CborMap m = (CborObject.CborMap) cbor;
 
-        PublicKeyHash controller = extract.apply("controller").map(PublicKeyHash::fromCbor).get();
-        Optional<SecretGenerationAlgorithm> algo  = extractUserGenerationAlgorithm(cbor);
-        Optional<Multihash> publicData = extract.apply("public").map(val -> ((CborObject.CborMerkleLink)val).target);
-        Optional<PublicKeyHash> followRequestReceiver = extract.apply("inbound").map(PublicKeyHash::fromCbor);
-        CborObject.CborList ownedList = (CborObject.CborList) map.values.get(new CborObject.CborString("owned"));
-        Set<PublicKeyHash> owned = ownedList == null ?
-                Collections.emptySet() :
-                ownedList.value.stream().map(PublicKeyHash::fromCbor).collect(Collectors.toSet());
+        PublicKeyHash controller = m.get("controller", PublicKeyHash::fromCbor);
+        Optional<SecretGenerationAlgorithm> algo  = m.getOptional("algorithm", SecretGenerationAlgorithm::fromCbor);
+        Optional<Multihash> publicData = m.getOptional("public", val -> ((CborObject.CborMerkleLink)val).target);
+        Optional<PublicKeyHash> followRequestReceiver = m.getOptional("inbound", PublicKeyHash::fromCbor);
+        Set<OwnerProof> owned = m.getOptional("owned", c -> (CborObject.CborList)c)
+                .map(list -> list.map(OwnerProof::fromCbor).stream().collect(Collectors.toSet()))
+                .orElseGet(() -> Collections.emptySet());
 
-        CborObject.CborMap namedMap = (CborObject.CborMap) map.values.get(new CborObject.CborString("named"));
-        Map<String, PublicKeyHash> named = namedMap == null ?
-                Collections.emptyMap() :
-                namedMap.values.entrySet().stream()
+        Map<String, OwnerProof> named = m.getOptional("named", c -> (CborObject.CborMap)c)
+                .map(map -> map.values.entrySet().stream()
                         .collect(Collectors.toMap(
                                 e -> ((CborObject.CborString)e.getKey()).value,
-                                e -> new PublicKeyHash(((CborObject.CborMerkleLink) e.getValue()).target)));
+                                e -> OwnerProof.fromCbor(e.getValue()))))
+                .orElseGet(() -> Collections.emptyMap());
 
-        Optional<UserStaticData> staticData = extract.apply("static").map(UserStaticData::fromCbor);
-        Optional<Multihash> tree = extract.apply("tree").map(val -> ((CborObject.CborMerkleLink)val).target);
+        Optional<UserStaticData> staticData = m.getOptional("static", UserStaticData::fromCbor);
+        Optional<Multihash> tree = m.getOptional("tree", val -> ((CborObject.CborMerkleLink)val).target);
         return new WriterData(controller, algo, publicData, followRequestReceiver, owned, named, staticData, tree);
     }
 
@@ -302,20 +287,18 @@ public class WriterData implements Cborable {
                                                            ContentAddressedStorage dht) {
         Set<PublicKeyHash> res = new HashSet<>();
         res.add(writer);
-        try {
-            CommittedWriterData subspaceDescriptor = mutable.getPointer(owner, writer)
-                    .thenCompose(dataOpt -> dataOpt.isPresent() ?
-                            dht.getSigningKey(writer)
-                                    .thenApply(signer -> HashCasPair.fromCbor(CborObject.fromByteArray(signer.get()
-                                            .unsignMessage(dataOpt.get()))).updated) :
-                            CompletableFuture.completedFuture(MaybeMultihash.empty()))
-                    .thenCompose(x -> getWriterData(writer, x, dht)).get();
+        CommittedWriterData subspaceDescriptor = mutable.getPointer(owner, writer)
+                .thenCompose(dataOpt -> dataOpt.isPresent() ?
+                        dht.getSigningKey(writer)
+                                .thenApply(signer -> HashCasPair.fromCbor(CborObject.fromByteArray(signer.get()
+                                        .unsignMessage(dataOpt.get()))).updated) :
+                        CompletableFuture.completedFuture(MaybeMultihash.empty()))
+                .thenCompose(x -> getWriterData(writer, x, dht)).join();
 
-            for (PublicKeyHash subKey : subspaceDescriptor.props.ownedKeys) {
-                res.addAll(getOwnedKeysRecursive(owner, subKey, mutable, dht));
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
+        for (OwnerProof subKey : subspaceDescriptor.props.ownedKeys) {
+            PublicKeyHash claimedOwner = subKey.getOwner(dht).join();
+            if (claimedOwner.equals(writer))
+                res.addAll(getOwnedKeysRecursive(owner, subKey.ownedKey, mutable, dht));
         }
         return res;
     }
@@ -325,20 +308,25 @@ public class WriterData implements Cborable {
                                                         MutablePointers mutable,
                                                         ContentAddressedStorage dht) {
         Set<PublicKeyHash> res = new HashSet<>();
-        try {
-            CommittedWriterData subspaceDescriptor = mutable.getPointer(owner, writer)
-                    .thenCompose(dataOpt -> dataOpt.isPresent() ?
-                            dht.getSigningKey(writer)
-                                    .thenApply(signer -> HashCasPair.fromCbor(CborObject.fromByteArray(signer.get()
-                                            .unsignMessage(dataOpt.get()))).updated) :
-                            CompletableFuture.completedFuture(MaybeMultihash.empty()))
-                    .thenCompose(x -> getWriterData(writer, x, dht)).get();
+        CommittedWriterData subspaceDescriptor = mutable.getPointer(owner, writer)
+                .thenCompose(dataOpt -> dataOpt.isPresent() ?
+                        dht.getSigningKey(writer)
+                                .thenApply(signer -> HashCasPair.fromCbor(CborObject.fromByteArray(signer.get()
+                                        .unsignMessage(dataOpt.get()))).updated) :
+                        CompletableFuture.completedFuture(MaybeMultihash.empty()))
+                .thenCompose(x -> getWriterData(writer, x, dht)).join();
 
-            res.addAll(subspaceDescriptor.props.ownedKeys);
-            res.addAll(subspaceDescriptor.props.namedOwnedKeys.values());
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        subspaceDescriptor.props.ownedKeys
+                .stream()
+                .filter(p -> p.getOwner(dht).join().equals(writer))
+                .map(p -> p.ownedKey)
+                .forEach(res::add);
+
+        subspaceDescriptor.props.namedOwnedKeys.values()
+                .stream()
+                .filter(p -> p.getOwner(dht).join().equals(writer))
+                .map(p -> p.ownedKey)
+                .forEach(res::add);
         return res;
     }
 

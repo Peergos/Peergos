@@ -20,7 +20,7 @@ public class PublicKeyHash extends Multihash implements Cborable {
     }
 
     public static boolean isSafe(Multihash h) {
-        return h.type == Type.sha2_256; // we can add other hashes later
+        return h.type == Type.sha2_256 || h.type == Type.id; // we can add other hashes later
     }
 
     @Override
