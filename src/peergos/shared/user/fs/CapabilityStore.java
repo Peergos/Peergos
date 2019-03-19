@@ -45,7 +45,7 @@ public class CapabilityStore {
         return addSharingLinkTo(sharedDir, capability, network, random, hasher, CapabilityStore.EDIT_SHARING_FILE_NAME);
     }
 
-    public static CompletableFuture<FileWrapper> addSharingLinkTo(FileWrapper sharedDir,
+    private static CompletableFuture<FileWrapper> addSharingLinkTo(FileWrapper sharedDir,
                                                                   AbsoluteCapability capability,
                                                                   NetworkAccess network,
                                                                   SafeRandom random,
@@ -163,11 +163,11 @@ public class CapabilityStore {
                                                                                               NetworkAccess network,
                                                                                               SafeRandom random,
                                                                                               Hasher hasher,
-                                                                                              long capIndex,
+                                                                                              long startOffset,
                                                                                               boolean saveCache) {
 
         return loadSharingLinksFromIndex(homeDirSupplier, friendSharedDir, friendName, network, random, hasher,
-                capIndex, saveCache, READ_SHARING_FILE_NAME);
+                startOffset, saveCache, READ_SHARING_FILE_NAME);
     }
 
     public static CompletableFuture<CapabilitiesFromUser> loadWriteAccessSharingLinksFromIndex(Supplier<CompletableFuture<FileWrapper>> homeDirSupplier,
@@ -176,11 +176,11 @@ public class CapabilityStore {
                                                                                                NetworkAccess network,
                                                                                                SafeRandom random,
                                                                                                Hasher hasher,
-                                                                                               long capIndex,
+                                                                                               long startOffset,
                                                                                                boolean saveCache) {
 
         return loadSharingLinksFromIndex(homeDirSupplier, friendSharedDir, friendName, network, random, hasher,
-                capIndex, saveCache, EDIT_SHARING_FILE_NAME);
+                startOffset, saveCache, EDIT_SHARING_FILE_NAME);
     }
 
     private static CompletableFuture<CapabilitiesFromUser> loadSharingLinksFromIndex(Supplier<CompletableFuture<FileWrapper>> homeDirSupplier,
@@ -239,14 +239,12 @@ public class CapabilityStore {
                                                                               FileWrapper file,
                                                                               NetworkAccess network,
                                                                               SafeRandom random) {
-        byte[] buf = new byte[Chunk.MAX_SIZE];
         return file.getInputStream(network, random, x -> {})
                 .thenCompose(reader -> reader.seek(startOffset))
-                .thenCompose(seeked -> readSharingRecords(buf, ownerName, owner, seeked, file.getSize() - startOffset, network));
+                .thenCompose(seeked -> readSharingRecords(ownerName, owner, seeked, file.getSize() - startOffset, network));
     }
 
-    private static CompletableFuture<List<CapabilityWithPath>> readSharingRecords(byte[] buf,
-                                                                                  String ownerName,
+    private static CompletableFuture<List<CapabilityWithPath>> readSharingRecords(String ownerName,
                                                                                   PublicKeyHash owner,
                                                                                   AsyncReader reader,
                                                                                   long maxBytesToRead,
@@ -274,7 +272,7 @@ public class CapabilityStore {
                         }).exceptionally(t -> Collections.emptyList());
                     }).collect(Collectors.toList()))
                             .thenApply(res -> res.stream().flatMap(x -> x.stream()).collect(Collectors.toList()))
-                            .thenCompose(results -> readSharingRecords(buf, ownerName, owner, reader,
+                            .thenCompose(results -> readSharingRecords(ownerName, owner, reader,
                                     maxBytesToRead - bytesRead, network)
                                     .thenApply(recurse -> Stream.concat(results.stream(), recurse.stream())
                                             .collect(Collectors.toList())));

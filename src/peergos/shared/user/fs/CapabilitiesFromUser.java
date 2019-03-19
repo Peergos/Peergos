@@ -27,7 +27,7 @@ public class CapabilitiesFromUser implements Cborable {
     @Override
     public CborObject toCbor() {
         Map<String, CborObject> cbor = new TreeMap<>();
-        cbor.put("count", new CborObject.CborLong(bytesRead));
+        cbor.put("bytes", new CborObject.CborLong(bytesRead));
         cbor.put("caps", new CborObject.CborList(retrievedCapabilities));
         return CborObject.CborMap.build(cbor);
     }
@@ -36,12 +36,12 @@ public class CapabilitiesFromUser implements Cborable {
         if (! (cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("CapabilitiesFromUser cbor must be a Map! " + cbor);
         CborObject.CborMap m = (CborObject.CborMap) cbor;
-        long count = m.getLong("count");
+        long bytesRead = m.getLong("bytes");
         List<CapabilityWithPath> caps = m.getList("caps")
                 .value.stream()
                 .map(CapabilityWithPath::fromCbor)
                 .collect(Collectors.toList());
-        return new CapabilitiesFromUser(count, caps);
+        return new CapabilitiesFromUser(bytesRead, caps);
     }
 
 }

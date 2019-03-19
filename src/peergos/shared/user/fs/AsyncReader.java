@@ -64,7 +64,6 @@ public interface AsyncReader extends AutoCloseable {
                             accumulator.accept(fromCbor.apply(readObject));
                             localOffset += readObject.toByteArray().length;
                         } catch (RuntimeException e) {
-                            e.printStackTrace();
                             int fromThisChunk = localOffset;
                             return parseStream(Arrays.copyOfRange(buf, localOffset, bytesRead), fromCbor, accumulator,
                                     maxBytesToRead - bytesRead)
