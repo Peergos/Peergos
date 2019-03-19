@@ -97,8 +97,8 @@ public class FriendSourcedTrieNode implements TrieNode {
 
     private synchronized CompletableFuture<Boolean> addEditableCapabilities(Optional<FileWrapper> sharedDirOpt, NetworkAccess network) {
         return CapabilityStore.getEditableCapabilityFileSize(sharedDirOpt.get(), network)
-                .thenCompose(editCount -> {
-                    if (editCount == byteOffsetWrite)
+                .thenCompose(editFilesize -> {
+                    if (editFilesize == byteOffsetWrite)
                         return CompletableFuture.completedFuture(true);
                     return CapabilityStore.loadWriteAccessSharingLinksFromIndex(homeDirSupplier, sharedDirOpt.get(),
                             ownerName, network, random, hasher, byteOffsetWrite, true)
