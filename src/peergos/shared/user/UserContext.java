@@ -319,7 +319,8 @@ public class UserContext {
                         return CompletableFuture.completedFuture(file.getName());
                     FileWrapper child = children.stream().findAny().get();
                     if (child.isReadable()) // case where a directory was shared with exactly one direct child
-                        return CompletableFuture.completedFuture(file.getName() + "/" + child.getName());
+                        return CompletableFuture.completedFuture(file.getName() + (child.isDirectory() ?
+                                "/" + child.getName() : ""));
                     return getLinkPath(child)
                             .thenApply(p -> file.getName() + (p.length() > 0 ? "/" + p : ""));
                 });

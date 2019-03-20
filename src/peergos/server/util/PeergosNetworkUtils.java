@@ -603,6 +603,8 @@ public class PeergosNetworkUtils {
         FileWrapper file = context.getByPath(path).get().get();
         String link = file.toLink();
         UserContext linkContext = UserContext.fromPublicLink(link, readerNode, crypto).get();
+        String entryPath = linkContext.getEntryPath().join();
+        Assert.assertTrue("Correct entry path", entryPath.equals("/" + username));
         Optional<FileWrapper> fileThroughLink = linkContext.getByPath(path).get();
         Assert.assertTrue("File present through link", fileThroughLink.isPresent());
     }
