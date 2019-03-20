@@ -75,7 +75,7 @@ public class FragmentedPaddedCipherText implements Cborable {
 
         byte[][] split = split(cipherText, maxFragmentSize);
 
-        List<FragmentWithHash> frags = Arrays.asList(split).stream()
+        List<FragmentWithHash> frags = Arrays.stream(split)
                 .map(d -> new FragmentWithHash(new Fragment(d), hasher.hash(d, true)))
                 .collect(Collectors.toList());
         List<Multihash> hashes = frags.stream()
