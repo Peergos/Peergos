@@ -13,7 +13,7 @@ import java.util.concurrent.*;
 import java.util.function.*;
 import java.util.stream.*;
 
-/** This class pads the secret up to a multiple of the given block size before encrypting and splits the data into
+/** This class pads the secret up to a multiple of the given block size before encrypting and splits the ciphertext into
  * fragments which are referenced by merkle links in the serialization.
  *
  */
