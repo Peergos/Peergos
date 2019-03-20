@@ -4,8 +4,11 @@ import peergos.server.util.Logging;
 
 import peergos.shared.NetworkAccess;
 import peergos.shared.corenode.CoreNode;
+import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.mutable.MutablePointers;
 import peergos.shared.storage.ContentAddressedStorage;
+import peergos.shared.user.*;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -45,7 +48,7 @@ public class UserFilePinner implements Runnable {
                 LOG.info("File pinner read usernames "+ usernames);
                 // pin their files
                 for (String username : usernames) {
-                    NetworkAccess.pinAllUserFiles(username, coreNode, mutablePointers, dhtClient);
+                    pinAllUserFiles(username, coreNode, mutablePointers, dhtClient);
                     LOG.info("Pinned files for user "+ username);
                 }
             } catch (IOException ioe) {
@@ -55,6 +58,18 @@ public class UserFilePinner implements Runnable {
                 LOG.info("Failed to pin user files");
                 LOG.log(Level.WARNING, ie.getMessage(), ie);
             }
+        }
+    }
+
+    public static void pinAllUserFiles(String username, CoreNode coreNode, MutablePointers mutable, ContentAddressedStorage dhtClient) throws ExecutionException, InterruptedException {
+        Set<PublicKeyHash> ownedKeysRecursive = WriterData.getOwnedKeysRecursive(username, coreNode, mutable, dhtClient).join();
+        Optional<PublicKeyHash> ownerOpt = coreNode.getPublicKeyHash(username).get();
+        if (! ownerOpt.isPresent())
+            throw new IllegalStateException("Couldn't retrieve public key for " + username);
+        PublicKeyHash owner = ownerOpt.get();
+        for (PublicKeyHash keyHash: ownedKeysRecursive) {
+            Multihash casKeyHash = mutable.getPointerTarget(owner, keyHash, dhtClient).get().get();
+            dhtClient.recursivePin(owner, casKeyHash).get();
         }
     }
 

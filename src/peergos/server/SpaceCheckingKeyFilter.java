@@ -282,7 +282,7 @@ public class SpaceCheckingKeyFilter {
                     long updatedSize = dht.getRecursiveBlockSize(rootHash.get()).get();
                     long deltaUsage = updatedSize - stat.directRetainedStorage;
                     state.usage.get(stat.owner).confirmUsage(ownerKey, deltaUsage); //NB: ownerKey is a dummy value
-                    Set<PublicKeyHash> directOwnedKeys = WriterData.getDirectOwnedKeys(ownerKey, ownerKey, mutable, dht);
+                    Set<PublicKeyHash> directOwnedKeys = WriterData.getDirectOwnedKeys(ownerKey, ownerKey, mutable, dht).join();
                     List<PublicKeyHash> newOwnedKeys = directOwnedKeys.stream()
                             .filter(key -> !stat.ownedKeys.contains(key))
                             .collect(Collectors.toList());
@@ -376,7 +376,7 @@ public class SpaceCheckingKeyFilter {
     public void processCorenodeEvent(String username, PublicKeyHash owner) {
         try {
             state.usage.putIfAbsent(username, new Usage(0));
-            Set<PublicKeyHash> childrenKeys = WriterData.getDirectOwnedKeys(owner, owner, mutable, dht);
+            Set<PublicKeyHash> childrenKeys = WriterData.getDirectOwnedKeys(owner, owner, mutable, dht).join();
             state.currentView.computeIfAbsent(owner, k -> new Stat(username, MaybeMultihash.empty(), 0, childrenKeys));
             Stat current = state.currentView.get(owner);
             MaybeMultihash updatedRoot = mutable.getPointerTarget(owner, owner, dht).get();
@@ -418,7 +418,11 @@ public class SpaceCheckingKeyFilter {
             if (existingRoot.isPresent()) {
                 try {
                     // subtract data size from orphaned child keys (this assumes the keys form a tree without dups)
-                    Set<PublicKeyHash> updatedOwned = WriterData.getWriterData(writer, newRoot, dht).get().props.ownedKeys;
+                    Set<PublicKeyHash> updatedOwned = WriterData.getWriterData(writer, newRoot, dht).join()
+                            .props.ownedKeys.stream()
+                            .filter(p -> p.getOwner(dht).join().equals(writer))
+                            .map(p -> p.ownedKey)
+                            .collect(Collectors.toSet());
                     processRemovedOwnedKeys(state, owner, updatedOwned, mutable, dht);
                 } catch (Exception e) {
                     LOG.log(Level.WARNING, e.getMessage(), e);
@@ -430,7 +434,12 @@ public class SpaceCheckingKeyFilter {
         try {
             synchronized (current) {
                 long changeInStorage = dht.getChangeInContainedSize(current.target, newRoot.get()).get();
-                Set<PublicKeyHash> updatedOwned = WriterData.getWriterData(writer, newRoot, dht).get().props.ownedKeys;
+                Set<PublicKeyHash> updatedOwned = WriterData.getWriterData(writer, newRoot, dht).get().props
+                        .ownedKeys
+                        .stream()
+                        .filter(p -> p.getOwner(dht).join().equals(writer))
+                        .map(p -> p.ownedKey)
+                        .collect(Collectors.toSet());
                 for (PublicKeyHash owned : updatedOwned) {
                     state.currentView.computeIfAbsent(owned, k -> new Stat(current.owner, MaybeMultihash.empty(), 0, Collections.emptySet()));
                 }

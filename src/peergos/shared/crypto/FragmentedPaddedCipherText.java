@@ -13,7 +13,7 @@ import java.util.concurrent.*;
 import java.util.function.*;
 import java.util.stream.*;
 
-/** This class pads the secret up to a multiple of the given block size before encrypting and splits the data into
+/** This class pads the secret up to a multiple of the given block size before encrypting and splits the ciphertext into
  * fragments which are referenced by merkle links in the serialization.
  *
  */
@@ -75,7 +75,7 @@ public class FragmentedPaddedCipherText implements Cborable {
 
         byte[][] split = split(cipherText, maxFragmentSize);
 
-        List<FragmentWithHash> frags = Arrays.asList(split).stream()
+        List<FragmentWithHash> frags = Arrays.stream(split)
                 .map(d -> new FragmentWithHash(new Fragment(d), hasher.hash(d, true)))
                 .collect(Collectors.toList());
         List<Multihash> hashes = frags.stream()

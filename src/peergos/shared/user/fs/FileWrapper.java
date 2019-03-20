@@ -826,7 +826,8 @@ public class FileWrapper {
                                                                Hasher hasher,
                                                                ProgressConsumer<Long> monitor) {
 
-        String filename = existingChild.getFileProperties().name;
+        FileProperties existingProps = existingChild.getFileProperties();
+        String filename = existingProps.name;
         LOG.info("Overwriting section [" + Long.toHexString(inputStartIndex) + ", " + Long.toHexString(endIndex) + "] of child with name: " + filename);
 
         Supplier<Location> locationSupplier = () -> new Location(getLocation().owner, getLocation().writer, random.randomBytes(32));
@@ -927,7 +928,13 @@ public class FileWrapper {
 
             BiFunction<Boolean, Boolean, Boolean> combiner = (left, right) -> left && right;
             return Futures.reduceAll(startIndexes, identity, composer, combiner)
-                    .thenApply(b -> us);
+                    .thenCompose(b -> {
+                        // update file size
+                        if (existingProps.size >= endIndex)
+                            return CompletableFuture.completedFuture(true);
+                        return us.getChild(filename, network)
+                                .thenCompose(c -> c.get().setProperties(existingProps.withSize(endIndex), network, Optional.of(this)));
+                    }).thenApply(b -> us);
         });
     }
 
@@ -1259,9 +1266,11 @@ public class FileWrapper {
         return WriterData.getWriterData(owner, parentWriter, network.mutable, network.dhtClient)
                 .thenCompose(parentWriterData -> {
 
-            Set<PublicKeyHash> ownedKeys = new HashSet<>(parentWriterData.props.ownedKeys);
-            ownedKeys.remove(signerToRemove);
-            WriterData updatedParentWD = parentWriterData.props.withOwnedKeys(ownedKeys);
+                    Set<OwnerProof> ownedKeys = parentWriterData.props.ownedKeys;
+                    Set<OwnerProof> updatedOwnedKeys = ownedKeys.stream()
+                            .filter(p -> !p.ownedKey.equals(signerToRemove))
+                            .collect(Collectors.toSet());
+                    WriterData updatedParentWD = parentWriterData.props.withOwnedKeys(updatedOwnedKeys);
             return IpfsTransaction.call(owner, tid ->
                     updatedParentWD.commit(owner, parentSigner,
                             parentWriterData.hash, network, tid).thenApply(cwd -> true), network.dhtClient);

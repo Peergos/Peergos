@@ -35,6 +35,10 @@ public interface CborObject extends Cborable {
         return deserialize(new CborDecoder(new ByteArrayInputStream(cbor)), cbor.length);
     }
 
+    static CborObject read(InputStream in, int maxBytes) {
+        return deserialize(new CborDecoder(in), maxBytes);
+    }
+
     static CborObject deserialize(CborDecoder decoder, int maxGroupSize) {
         try {
             CborType type = decoder.peekType();

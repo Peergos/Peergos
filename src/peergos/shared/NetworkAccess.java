@@ -410,26 +410,4 @@ public class NetworkAccess {
         return Futures.combineAllInOrder(futures)
                 .thenApply(optList -> optList.stream().filter(Optional::isPresent).map(Optional::get).collect(Collectors.toList()));
     }
-
-    /**
-     * Pin all files associated with all the keys of a user. For
-     * self-hosting.
-     *
-     * @param username
-     */
-    public void pinAllUserFiles(String username) throws ExecutionException, InterruptedException {
-        pinAllUserFiles(username, coreNode, mutable, dhtClient);
-    }
-
-    public static void pinAllUserFiles(String username, CoreNode coreNode, MutablePointers mutable, ContentAddressedStorage dhtClient) throws ExecutionException, InterruptedException {
-        Set<PublicKeyHash> ownedKeysRecursive = WriterData.getOwnedKeysRecursive(username, coreNode, mutable, dhtClient);
-        Optional<PublicKeyHash> ownerOpt = coreNode.getPublicKeyHash(username).get();
-        if (! ownerOpt.isPresent())
-            throw new IllegalStateException("Couldn't retrieve public key for " + username);
-        PublicKeyHash owner = ownerOpt.get();
-        for (PublicKeyHash keyHash: ownedKeysRecursive) {
-            Multihash casKeyHash = mutable.getPointerTarget(owner, keyHash, dhtClient).get().get();
-            dhtClient.recursivePin(owner, casKeyHash).get();
-        }
-    }
 }

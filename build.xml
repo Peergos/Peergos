@@ -54,41 +54,6 @@
     <mkdir dir="${test.reports}"/>
   </target>
 
-  <target name="install_ipfs">
-    <exec executable="/bin/bash">
-      <arg value="./data.service.sh"/>
-      <arg value="install"/>
-      <arg value="v0.4.15"/>
-      <arg value="."/>
-      <arg value="."/>
-    </exec>
-  </target>
-
-  <target name="start_ipfs">
-    <exec executable="/bin/bash">
-      <arg value="./data.service.sh"/>
-      <arg value="restart"/>
-      <arg value="."/>
-      <arg value="."/>
-    </exec>
-  </target>
-
-  <target name="stop_ipfs">
-    <exec executable="/bin/bash">
-      <arg value="./data.service.sh"/>
-      <arg value="stop"/>
-    </exec>
-  </target>
-
-  <target name="uninstall_ipfs">
-    <exec executable="/bin/bash">
-      <arg value="./data.service.sh"/>
-      <arg value="uninstall"/>
-      <arg value="."/>
-      <arg value="."/>
-    </exec>
-  </target>
-
   <target name="compile" depends="clean, init"
         description="compile the source">
     <javac includeantruntime="false" destdir="${build}" debug="true" debuglevel="lines,vars,source">
@@ -145,7 +110,7 @@
     </pathconvert>
     <!-- run one particular test -->
     <junit fork="true" printsummary="true" haltonfailure="yes">
-      <jvmarg value="-Xmx3g"/>
+      <jvmarg value="-Xmx2g"/>
       <classpath>
 	<pathelement location="lib/jnr-fuse-0.3-all.jar" />
 	<pathelement location="lib/sqlite-jdbc-3.7.2.jar" />

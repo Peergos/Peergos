@@ -134,14 +134,12 @@ public class UserContext {
     }
 
     @JsMethod
-    public static CompletableFuture<UserContext> signIn(String username, String password, NetworkAccess network
-            , Crypto crypto, Consumer<String> progressCallback) {
+    public static CompletableFuture<UserContext> signIn(String username, String password, NetworkAccess network,
+                                                        Crypto crypto, Consumer<String> progressCallback) {
         return getWriterDataCbor(network, username)
                 .thenCompose(pair -> {
-                    Optional<SecretGenerationAlgorithm> algorithmOpt = WriterData.extractUserGenerationAlgorithm(pair.right);
-                    if (!algorithmOpt.isPresent())
-                        throw new IllegalStateException("No login algorithm specified in user data!");
-                    SecretGenerationAlgorithm algorithm = algorithmOpt.get();
+                    SecretGenerationAlgorithm algorithm = WriterData.fromCbor(pair.right).generationAlgorithm
+                            .orElseThrow(() -> new IllegalStateException("No login algorithm specified in user data!"));
                     progressCallback.accept("Generating keys");
                     return UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider,
                             crypto.random, crypto.signer, crypto.boxer, algorithm)
@@ -153,9 +151,8 @@ public class UserContext {
     public static CompletableFuture<UserContext> signIn(String username, UserWithRoot userWithRoot, NetworkAccess network
             , Crypto crypto, Consumer<String> progressCallback) {
         return getWriterDataCbor(network, username)
-                .thenCompose(pair -> {
-                    return login(username, userWithRoot, pair, network, crypto, progressCallback);
-                }).exceptionally(Futures::logAndThrow);
+                .thenCompose(pair -> login(username, userWithRoot, pair, network, crypto, progressCallback))
+                .exceptionally(Futures::logAndThrow);
     }
 
     private static CompletableFuture<UserContext> login(String username,
@@ -322,7 +319,8 @@ public class UserContext {
                         return CompletableFuture.completedFuture(file.getName());
                     FileWrapper child = children.stream().findAny().get();
                     if (child.isReadable()) // case where a directory was shared with exactly one direct child
-                        return CompletableFuture.completedFuture(file.getName() + "/" + child.getName());
+                        return CompletableFuture.completedFuture(file.getName() + (child.isDirectory() ?
+                                "/" + child.getName() : ""));
                     return getLinkPath(child)
                             .thenApply(p -> file.getName() + (p.length() > 0 ? "/" + p : ""));
                 });
@@ -461,7 +459,7 @@ public class UserContext {
                         .thenCompose(cwd -> {
                             CompletableFuture<Long> subtree = Futures.reduceAll(cwd.props.ownedKeys
                                             .stream()
-                                            .map(writer -> getTotalSpaceUsed(ownerHash, writer))
+                                            .map(writer -> getTotalSpaceUsed(ownerHash, writer.ownedKey))
                                             .collect(Collectors.toList()),
                                     0L, (t, fut) -> fut.thenApply(x -> x + t), (a, b) -> a + b);
                             return subtree.thenCompose(ownedSize -> network.dhtClient.getRecursiveBlockSize(cwd.hash.get())
@@ -470,31 +468,21 @@ public class UserContext {
     }
 
     public CompletableFuture<SecretGenerationAlgorithm> getKeyGenAlgorithm() {
-        return getWriterDataCbor(this.network, this.username)
-                .thenApply(pair -> {
-                    Optional<SecretGenerationAlgorithm> algorithmOpt = WriterData.extractUserGenerationAlgorithm(pair.right);
-                    if (!algorithmOpt.isPresent())
-                        throw new IllegalStateException("No login algorithm specified in user data!");
-                    return algorithmOpt.get();
-                });
+        return getWriterData(network, signer.publicKeyHash, signer.publicKeyHash)
+                .thenApply(wd -> wd.props.generationAlgorithm
+                        .orElseThrow(() -> new IllegalStateException("No login algorithm specified in user data!")));
     }
 
     public CompletableFuture<Optional<PublicKeyHash>> getNamedKey(String name) {
-        return getWriterDataCbor(this.network, this.username)
-                .thenApply(p -> Optional.ofNullable(WriterData.fromCbor(p.right).namedOwnedKeys.get(name)));
+        return getWriterData(network, signer.publicKeyHash, signer.publicKeyHash)
+                .thenApply(wd -> wd.props.namedOwnedKeys.get(name))
+                .thenApply(res -> Optional.ofNullable(res).map(p -> p.ownedKey));
     }
 
     @JsMethod
     public CompletableFuture<UserContext> changePassword(String oldPassword, String newPassword) {
 
-        return getWriterDataCbor(this.network, this.username)
-                .thenCompose(pair -> {
-                    Optional<SecretGenerationAlgorithm> algorithmOpt = WriterData.extractUserGenerationAlgorithm(pair.right);
-                    if (!algorithmOpt.isPresent())
-                        throw new IllegalStateException("No login algorithm specified in user data!");
-                    SecretGenerationAlgorithm algorithm = algorithmOpt.get();
-                    return changePassword(oldPassword, newPassword, algorithm, algorithm);
-                });
+        return getKeyGenAlgorithm().thenCompose(alg -> changePassword(oldPassword, newPassword, alg, alg));
     }
 
     public CompletableFuture<UserContext> changePassword(String oldPassword,
@@ -567,7 +555,7 @@ public class UserContext {
             SigningPrivateKeyAndPublicHash writerWithHash = new SigningPrivateKeyAndPublicHash(writerHash, writer.secretSigningKey);
             WritableAbsoluteCapability rootPointer = new WritableAbsoluteCapability(owner.publicKeyHash, writerHash, rootMapKey, rootRKey, rootWKey);
             EntryPoint entry = new EntryPoint(rootPointer, this.username);
-            return addOwnedKeyAndCommit(entry.pointer.writer, tid)
+            return addOwnedKeyAndCommit(writerWithHash, tid)
                     .thenCompose(x -> {
                         long t2 = System.currentTimeMillis();
                         RelativeCapability nextChunk = RelativeCapability.buildSubsequentChunk(crypto.random.randomBytes(32), rootRKey);
@@ -605,11 +593,12 @@ public class UserContext {
                                         .thenApply(boxer -> Optional.of(new Pair<>(signerOpt.get(), boxer))))));
     }
 
-    private CompletableFuture<CommittedWriterData> addOwnedKeyAndCommit(PublicKeyHash owned, TransactionId tid) {
+    private CompletableFuture<CommittedWriterData> addOwnedKeyAndCommit(SigningPrivateKeyAndPublicHash owned,
+                                                                        TransactionId tid) {
         return userData.runWithLock(wd -> {
-            Set<PublicKeyHash> updated = Stream.concat(
+            Set<OwnerProof> updated = Stream.concat(
                     wd.props.ownedKeys.stream(),
-                    Stream.of(owned)
+                    Stream.of(OwnerProof.build(owned, signer.publicKeyHash))
             ).collect(Collectors.toSet());
 
             WriterData writerData = wd.props.withOwnedKeys(updated);
@@ -617,9 +606,10 @@ public class UserContext {
         });
     }
 
-    public CompletableFuture<CommittedWriterData> addNamedOwnedKeyAndCommit(String keyName, PublicKeyHash owned) {
+    public CompletableFuture<CommittedWriterData> addNamedOwnedKeyAndCommit(String keyName,
+                                                                            SigningPrivateKeyAndPublicHash owned) {
         return userData.runWithLock(wd -> {
-            WriterData writerData = wd.props.addNamedKey(keyName, owned);
+            WriterData writerData = wd.props.addNamedKey(keyName, OwnerProof.build(owned, signer.publicKeyHash));
             return IpfsTransaction.call(signer.publicKeyHash,
                     tid -> writerData.commit(signer.publicKeyHash, signer, wd.hash, network, tid),
                     network.dhtClient);
@@ -977,13 +967,14 @@ public class UserContext {
                         owner, parentSigner.publicKeyHash, newSignerPair.publicSigningKey, tid).thenCompose(newSignerHash ->
                         WriterData.getWriterData(owner, parentSigner.publicKeyHash, network.mutable, network.dhtClient)
                                 .thenCompose(wd -> {
-                                    Set<PublicKeyHash> ownedKeys = new HashSet<>(wd.props.ownedKeys);
-                                    ownedKeys.add(newSignerHash);
+                                    SigningPrivateKeyAndPublicHash newSigner =
+                                            new SigningPrivateKeyAndPublicHash(newSignerHash, newSignerPair.secretSigningKey);
+                                    Set<OwnerProof> ownedKeys = new HashSet<>(wd.props.ownedKeys);
+                                    ownedKeys.add(OwnerProof.build(newSigner, parentSigner.publicKeyHash));
                                     WriterData updatedParentWD = wd.props.withOwnedKeys(ownedKeys);
                                     return updatedParentWD.commit(owner,
                                             parentSigner, wd.hash, network, tid)
-                                            .thenApply(x -> new SigningPrivateKeyAndPublicHash(newSignerHash,
-                                                    newSignerPair.secretSigningKey));
+                                            .thenApply(x -> newSigner);
                                 })), network.dhtClient);
     }
 
@@ -1002,9 +993,11 @@ public class UserContext {
         return IpfsTransaction.call(owner,
                 tid -> WriterData.getWriterData(owner, parentSigner.publicKeyHash, network.mutable, network.dhtClient)
                         .thenCompose(wd -> {
-                            Set<PublicKeyHash> ownedKeys = new HashSet<>(wd.props.ownedKeys);
-                            ownedKeys.remove(toRemove);
-                            WriterData updatedParentWD = wd.props.withOwnedKeys(ownedKeys);
+                            Set<OwnerProof> ownedKeys = wd.props.ownedKeys;
+                            Set<OwnerProof> updatedOwnedKeys = ownedKeys.stream()
+                                    .filter(p -> !p.ownedKey.equals(toRemove))
+                                    .collect(Collectors.toSet());
+                            WriterData updatedParentWD = wd.props.withOwnedKeys(updatedOwnedKeys);
                             return updatedParentWD.commit(owner,
                                     parentSigner, wd.hash, network, tid);
                         }), network.dhtClient);

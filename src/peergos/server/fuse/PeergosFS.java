@@ -522,7 +522,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
             return Optional.of(data);
 
         try (AsyncReader asyncReader = stat.treeNode.getInputStream(context.network, context.crypto.random, actualSize, (l) -> {}).get()){
-            AsyncReader seeked = asyncReader.seek((int) (offset >> 32), (int) offset).get();
+            AsyncReader seeked = asyncReader.seekJS((int) (offset >> 32), (int) offset).get();
 
             // N.B. Fuse seems to assume that a file must be an integral number of disk sectors,
             // so need to tolerate EOFs up end of last sector (4KiB)
