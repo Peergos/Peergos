@@ -55,11 +55,13 @@ public class Playground {
                                    UserContext context,
                                    NetworkAccess network) throws Exception {
         // Do something dangerous (you only live once)
-        Set<PublicKeyHash> ownedKeys = WriterData.getOwnedKeysRecursive(username, network.coreNode, network.mutable, network.dhtClient);
+        Set<PublicKeyHash> ownedKeys = WriterData.getOwnedKeysRecursive(username, network.coreNode,
+                network.mutable, network.dhtClient).join();
         for (PublicKeyHash ownedKey : ownedKeys) {
             if (ownedKey.equals(context.signer.publicKeyHash))
                 continue; // only the writer has a tree
-            CommittedWriterData existing = WriterData.getWriterData(context.signer.publicKeyHash, ownedKey, network.mutable, network.dhtClient).get();
+            CommittedWriterData existing = WriterData.getWriterData(context.signer.publicKeyHash, ownedKey,
+                    network.mutable, network.dhtClient).get();
             if (existing.props.tree.isPresent())
                 continue;
             // Do something risky

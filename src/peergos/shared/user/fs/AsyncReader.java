@@ -11,10 +11,10 @@ import java.util.function.*;
 @JsType
 public interface AsyncReader extends AutoCloseable {
 
-    CompletableFuture<AsyncReader> seek(int high32, int low32);
+    CompletableFuture<AsyncReader> seekJS(int high32, int low32);
 
     default CompletableFuture<AsyncReader> seek(long offset) {
-        return seek((int)(offset >> 32), (int)offset);
+        return seekJS((int)(offset >> 32), (int)offset);
     }
 
     /**
@@ -38,7 +38,7 @@ public interface AsyncReader extends AutoCloseable {
     void close();
 
     default <T> CompletableFuture<Long> parseStream(Function<Cborable, T> fromCbor, Consumer<T> accumulator, long maxBytesToRead) {
-        return parseStream(new byte[0], fromCbor, accumulator, maxBytesToRead);
+        return parseStreamRecurse(new byte[0], fromCbor, accumulator, maxBytesToRead);
     }
 
     /** Convert reader into a stream of CborObjects
@@ -50,7 +50,7 @@ public interface AsyncReader extends AutoCloseable {
      * @param <T>
      * @return
      */
-    default <T> CompletableFuture<Long> parseStream(byte[] prefix, Function<Cborable, T> fromCbor, Consumer<T> accumulator, long maxBytesToRead) {
+    default <T> CompletableFuture<Long> parseStreamRecurse(byte[] prefix, Function<Cborable, T> fromCbor, Consumer<T> accumulator, long maxBytesToRead) {
         if (maxBytesToRead == 0)
             return CompletableFuture.completedFuture(0L);
         byte[] buf = new byte[Chunk.MAX_SIZE];
@@ -65,7 +65,7 @@ public interface AsyncReader extends AutoCloseable {
                             localOffset += readObject.toByteArray().length;
                         } catch (RuntimeException e) {
                             int fromThisChunk = localOffset;
-                            return parseStream(Arrays.copyOfRange(buf, localOffset, bytesRead), fromCbor, accumulator,
+                            return parseStreamRecurse(Arrays.copyOfRange(buf, localOffset, bytesRead), fromCbor, accumulator,
                                     maxBytesToRead - bytesRead)
                                     .thenApply(rest -> rest + fromThisChunk);
                         }
@@ -84,7 +84,7 @@ public interface AsyncReader extends AutoCloseable {
         }
 
         @Override
-        public CompletableFuture<AsyncReader> seek(int high32, int low32) {
+        public CompletableFuture<AsyncReader> seekJS(int high32, int low32) {
             if (high32 != 0)
                 throw new IllegalArgumentException("Cannot have arrays larger than 4GiB!");
             index += low32;

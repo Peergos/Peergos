@@ -93,7 +93,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
     }
 
     @Override
-    public CompletableFuture<AsyncReader> seek(int hi32, int low32) {
+    public CompletableFuture<AsyncReader> seekJS(int hi32, int low32) {
         long seek = ((long) (hi32) << 32) | low32;
 
         if (totalLength < seek)

@@ -286,7 +286,8 @@ public class MultiUserTests {
         Assert.assertTrue("Following parent link results in read only parent",
                 ! metaOnlyParent.isWritable() && ! metaOnlyParent.isReadable());
 
-        Set<PublicKeyHash> keysOwnedByRootSigner = WriterData.getDirectOwnedKeys(theFile.owner(), parentFolder.writer(), network.mutable, network.dhtClient);
+        Set<PublicKeyHash> keysOwnedByRootSigner = WriterData.getDirectOwnedKeys(theFile.owner(), parentFolder.writer(),
+                network.mutable, network.dhtClient).join();
         Assert.assertTrue("New writer key present", keysOwnedByRootSigner.contains(theFile.writer()));
 
         parentFolder.remove(u1.getUserRoot().get(), network, crypto.hasher).get();
@@ -297,7 +298,8 @@ public class MultiUserTests {
             Optional<FileWrapper> sharedFile = userContext.getByPath(filePath).get();
             Assert.assertTrue("shared file removed", ! sharedFile.isPresent());
         }
-        Set<PublicKeyHash> updatedKeysOwnedByRootSigner = WriterData.getDirectOwnedKeys(theFile.owner(), parentFolder.writer(), network.mutable, network.dhtClient);
+        Set<PublicKeyHash> updatedKeysOwnedByRootSigner = WriterData.getDirectOwnedKeys(theFile.owner(),
+                parentFolder.writer(), network.mutable, network.dhtClient).join();
         Assert.assertTrue("New writer key not present", ! updatedKeysOwnedByRootSigner.contains(theFile.writer()));
     }
 

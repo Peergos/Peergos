@@ -515,7 +515,7 @@ public abstract class UserTests {
         }
 
         @Override
-        public CompletableFuture<AsyncReader> seek(int high32, int low32) {
+        public CompletableFuture<AsyncReader> seekJS(int high32, int low32) {
             if (high32 != 0)
                 throw new IllegalArgumentException("Cannot have arrays larger than 4GiB!");
             if (index + low32 > throwAtIndex)

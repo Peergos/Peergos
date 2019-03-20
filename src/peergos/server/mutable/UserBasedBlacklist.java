@@ -80,7 +80,7 @@ public class UserBasedBlacklist implements PublicKeyBlackList {
     private Set<PublicKeyHash> buildBlackList(Set<String> usernames) {
         Set<PublicKeyHash> res = new HashSet<>();
         for (String username : usernames) {
-            res.addAll(WriterData.getOwnedKeysRecursive(username, core, mutable, dht));
+            res.addAll(WriterData.getOwnedKeysRecursive(username, core, mutable, dht).join());
         }
         return res;
     }

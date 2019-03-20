@@ -267,9 +267,9 @@ public class CapabilityStore {
                                     return Futures.errored(nsee); //a file ancestor no longer exists!?
                                 }
                             } else {
-                                return CompletableFuture.completedFuture(Collections.emptyList());
+                                return CompletableFuture.completedFuture(Collections.<CapabilityWithPath>emptyList());
                             }
-                        }).exceptionally(t -> Collections.emptyList());
+                        }).exceptionally(t -> Collections.<CapabilityWithPath>emptyList());
                     }).collect(Collectors.toList()))
                             .thenApply(res -> res.stream().flatMap(x -> x.stream()).collect(Collectors.toList()))
                             .thenCompose(results -> readSharingRecords(ownerName, owner, reader,

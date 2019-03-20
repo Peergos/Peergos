@@ -282,7 +282,7 @@ public class SpaceCheckingKeyFilter {
                     long updatedSize = dht.getRecursiveBlockSize(rootHash.get()).get();
                     long deltaUsage = updatedSize - stat.directRetainedStorage;
                     state.usage.get(stat.owner).confirmUsage(ownerKey, deltaUsage); //NB: ownerKey is a dummy value
-                    Set<PublicKeyHash> directOwnedKeys = WriterData.getDirectOwnedKeys(ownerKey, ownerKey, mutable, dht);
+                    Set<PublicKeyHash> directOwnedKeys = WriterData.getDirectOwnedKeys(ownerKey, ownerKey, mutable, dht).join();
                     List<PublicKeyHash> newOwnedKeys = directOwnedKeys.stream()
                             .filter(key -> !stat.ownedKeys.contains(key))
                             .collect(Collectors.toList());
@@ -376,7 +376,7 @@ public class SpaceCheckingKeyFilter {
     public void processCorenodeEvent(String username, PublicKeyHash owner) {
         try {
             state.usage.putIfAbsent(username, new Usage(0));
-            Set<PublicKeyHash> childrenKeys = WriterData.getDirectOwnedKeys(owner, owner, mutable, dht);
+            Set<PublicKeyHash> childrenKeys = WriterData.getDirectOwnedKeys(owner, owner, mutable, dht).join();
             state.currentView.computeIfAbsent(owner, k -> new Stat(username, MaybeMultihash.empty(), 0, childrenKeys));
             Stat current = state.currentView.get(owner);
             MaybeMultihash updatedRoot = mutable.getPointerTarget(owner, owner, dht).get();
