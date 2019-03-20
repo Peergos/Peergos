@@ -60,6 +60,7 @@ public abstract class UserTests {
             return Args.parse(new String[]{
                     "-port", Integer.toString(port),
                     "-logToConsole", "true",
+                    "max-users", "10000",
                     Main.PEERGOS_PATH, peergosDir.toString(),
                     "peergos.password", "testpassword",
                     "pki.keygen.password", "testpkipassword",

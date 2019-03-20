@@ -73,6 +73,7 @@ public class Main {
                     new Command.Arg("port", "service port", false, "8000"),
                     new Command.Arg("pki-node-id", "Ipfs node id of the pki node", true),
                     new Command.Arg("domain", "Domain name to bind to,", false, "localhost"),
+                    new Command.Arg("max-users", "The maximum number of local users", false, "1"),
                     new Command.Arg("useIPFS", "Use IPFS for storage or a local disk store", false, "true"),
                     new Command.Arg("mutable-pointers-file", "The filename for the mutable pointers datastore", true, "mutable.sql"),
                     new Command.Arg("social-sql-file", "The filename for the follow requests datastore", true, "social.sql"),
@@ -292,13 +293,15 @@ public class Main {
                     new MirrorCoreNode(new HTTPCoreNode(ipfsGateway, pkiServerNodeId), localDht, proxingMutable, peergosId);
 
             long defaultQuota = a.getLong("default-quota");
+            long maxUsers = a.getLong("max-users");
             Logging.LOG().info("Using default user space quota of " + defaultQuota);
             Path quotaFilePath = a.fromPeergosDir("quotas_file","quotas.txt");
             Path statePath = a.fromPeergosDir("state_path","usage-state.cbor");
 
-            UserQuotas userQuotas = new UserQuotas(quotaFilePath, defaultQuota);
-            SpaceCheckingKeyFilter spaceChecker = new SpaceCheckingKeyFilter(core, sqlMutable, localDht, userQuotas::quota, statePath);
-            CorenodeEventPropagator corePropagator = new CorenodeEventPropagator(core);
+            UserQuotas userQuotas = new UserQuotas(quotaFilePath, defaultQuota, maxUsers);
+            CoreNode signupFilter = new SignUpFilter(core, userQuotas, nodeId);
+            SpaceCheckingKeyFilter spaceChecker = new SpaceCheckingKeyFilter(core, sqlMutable, localDht, userQuotas, statePath);
+            CorenodeEventPropagator corePropagator = new CorenodeEventPropagator(signupFilter);
             corePropagator.addListener(spaceChecker::accept);
             MutableEventPropagator localMutable = new MutableEventPropagator(sqlMutable);
             localMutable.addListener(spaceChecker::accept);

@@ -14,16 +14,17 @@ public class UserQuotas {
 
     private static final long RELOAD_PERIOD_MS = 3_600_000;
 
-    private Map<String, Long> quotas = new ConcurrentHashMap<>();
-    private final long defaultQuota;
     private final Path source;
-    private final ForkJoinPool pool = new ForkJoinPool(1);
+    private final long defaultQuota, maxUsers;
+    private Map<String, Long> quotas = new ConcurrentHashMap<>();
     private long lastModified, lastReloaded;
 
-    public UserQuotas(Path source, long defaultQuota) {
+    public UserQuotas(Path source, long defaultQuota, long maxUsers) {
         this.source = source;
         this.defaultQuota = defaultQuota;
-        pool.submit(() -> {
+        this.maxUsers = maxUsers;
+        updateQuotas();
+        new ForkJoinPool(1).submit(() -> {
             while (true) {
                 try {
                     updateQuotas();
@@ -35,6 +36,45 @@ public class UserQuotas {
                 } catch (InterruptedException e) {}
             }
         });
+    }
+
+    public List<String> getLocalUsernames() {
+        return new ArrayList<>(quotas.keySet());
+    }
+
+    public boolean allowSignupOrUpdate(String username) {
+        if (quotas.containsKey(username))
+            return true;
+        if (quotas.size() >= maxUsers)
+            return false;
+        quotas.put(username, defaultQuota);
+        try {
+            saveToFile();
+            return true;
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public long getQuota(String username) {
+        return quotas.getOrDefault(username, defaultQuota);
+    }
+
+    public void setQuota(String username, long quota) {
+        quotas.put(username, quota);
+        try {
+            saveToFile();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private void saveToFile() throws IOException {
+        Files.write(source, quotas.entrySet()
+                .stream()
+                .sorted(Comparator.comparing(e -> e.getKey()))
+                .map(e -> e.getKey() + " " + e.getValue())
+                .collect(Collectors.toList()), StandardOpenOption.CREATE);
     }
 
     private void updateQuotas() {
@@ -56,7 +96,7 @@ public class UserQuotas {
         return line.split(" ")[0];
     }
 
-    private static long getQuota(String line) {
+    private static long parseQuota(String line) {
         String quota = line.split(" ")[1];
         if (quota.endsWith("t"))
             return Long.parseLong(quota.substring(0, quota.length() - 1)) * 1024 * 1024 * 1024 * 1024;
@@ -75,14 +115,10 @@ public class UserQuotas {
                 return Collections.emptyMap();
             return Files.lines(source)
                     .map(String::trim)
-                    .collect(Collectors.toMap(UserQuotas::getUsername, UserQuotas::getQuota));
+                    .collect(Collectors.toMap(UserQuotas::getUsername, UserQuotas::parseQuota));
         } catch (IOException e) {
             LOG.log(Level.WARNING, e.getMessage(), e);
             return Collections.emptyMap();
         }
-    }
-
-    public long quota(String username) {
-        return quotas.getOrDefault(username, defaultQuota);
     }
 }
