@@ -2,6 +2,7 @@ package peergos.server;
 
 import java.util.logging.*;
 
+import peergos.server.storage.*;
 import peergos.server.util.Logging;
 
 import peergos.server.corenode.*;
@@ -35,7 +36,7 @@ public class SpaceCheckingKeyFilter {
     private final CoreNode core;
     private final MutablePointers mutable;
     private final ContentAddressedStorage dht;
-    private Function<String, Long> quotaSupplier;
+    private final UserQuotas quotaSupplier;
     private final Path statePath;
     private final State state;
 
@@ -50,7 +51,7 @@ public class SpaceCheckingKeyFilter {
     public SpaceCheckingKeyFilter(CoreNode core,
                                   MutablePointers mutable,
                                   ContentAddressedStorage dht,
-                                  Function<String, Long> quotaSupplier,
+                                  UserQuotas quotaSupplier,
                                   Path statePath) throws IOException{
         this.core = core;
         this.mutable = mutable;
@@ -343,12 +344,7 @@ public class SpaceCheckingKeyFilter {
      */
     public void calculateUsage() {
         try {
-      List<String> usernames =
-          core.getUsernames("")
-              .get()
-              .stream()
-              .filter(e -> !state.usage.containsKey(e))
-              .collect(Collectors.toList());
+            List<String> usernames = quotaSupplier.getLocalUsernames();
             long t1 = System.currentTimeMillis();
             for (String username : usernames) {
                 System.out.printf("Processing %s\n", username);
@@ -478,7 +474,7 @@ public class SpaceCheckingKeyFilter {
 
         Usage usage = state.usage.get(stat.owner);
         long spaceUsed = usage.usage();
-        long quota = quotaSupplier.apply(stat.owner);
+        long quota = quotaSupplier.getQuota(stat.owner);
         if (spaceUsed > quota || quota - spaceUsed - size <= 0) {
             long pending = usage.getPending(writer);
             usage.clearPending(writer);
