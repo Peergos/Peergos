@@ -35,6 +35,10 @@ public interface CborObject extends Cborable {
         return deserialize(new CborDecoder(new ByteArrayInputStream(cbor)), cbor.length);
     }
 
+    static CborObject read(InputStream in, int maxBytes) {
+        return deserialize(new CborDecoder(in), maxBytes);
+    }
+
     static CborObject deserialize(CborDecoder decoder, int maxGroupSize) {
         try {
             CborType type = decoder.peekType();
@@ -134,6 +138,26 @@ public interface CborObject extends Cborable {
 
         public long getLong(String key) {
             return ((CborLong) get(key)).value;
+        }
+
+        public boolean getBoolean(String key) {
+            return ((CborBoolean) get(key)).value;
+        }
+
+        public Optional<byte[]> getOptionalByteArray(String key) {
+            return Optional.ofNullable((CborByteArray) get(key)).map(c -> c.value);
+        }
+
+        public byte[] getByteArray(String key) {
+            return ((CborByteArray) get(key)).value;
+        }
+
+        public Optional<Cborable> getOptional(String key) {
+            return Optional.ofNullable(get(key));
+        }
+
+        public <T> Optional<T> getOptional(String key, Function<Cborable, T> fromCbor) {
+            return Optional.ofNullable(get(key)).map(fromCbor);
         }
 
         public <T> List<T> getList(String key, Function<Cborable, T> fromCbor) {

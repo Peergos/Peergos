@@ -5,6 +5,7 @@ import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.io.ipfs.cid.*;
 
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.function.*;
 
 public class MaybeMultihash implements Cborable {
@@ -26,6 +27,12 @@ public class MaybeMultihash implements Cborable {
         if (! isPresent())
             throw new IllegalStateException("hash not present");
         return hash;
+    }
+
+    public CompletableFuture<Boolean> ifPresent(Function<Multihash, CompletableFuture<Boolean>> con) {
+        if (isPresent())
+            con.apply(hash);
+        return CompletableFuture.completedFuture(true);
     }
 
     public String toString() {

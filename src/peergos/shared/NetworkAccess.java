@@ -228,6 +228,11 @@ public class NetworkAccess {
         }
     }
 
+    public CompletableFuture<Optional<RetrievedCapability>> retrieveMetadata(AbsoluteCapability cap) {
+        return retrieveAllMetadata(Collections.singletonList(cap))
+                .thenApply(res -> res.isEmpty() ? Optional.empty() : Optional.of(res.get(0)));
+    }
+
     public CompletableFuture<List<RetrievedCapability>> retrieveAllMetadata(List<AbsoluteCapability> links) {
         List<CompletableFuture<Optional<RetrievedCapability>>> all = links.stream()
                 .map(link -> {
@@ -241,7 +246,7 @@ public class NetworkAccess {
                                             .thenApply(dataOpt ->  dataOpt
                                                     .map(cbor -> new RetrievedCapability(
                                                             link,
-                                                            CryptreeNode.fromCbor(cbor, key.get()))));
+                                                            CryptreeNode.fromCbor(cbor, link.rBaseKey, key.get()))));
                                 LOG.severe("Couldn't download link at: " + new Location(owner, writer, mapKey));
                                 Optional<RetrievedCapability> result = Optional.empty();
                                 return CompletableFuture.completedFuture(result);
@@ -267,8 +272,11 @@ public class NetworkAccess {
         return downloadEntryPoint(e)
                 .thenApply(faOpt ->faOpt.map(fa -> new FileWrapper(Optional.empty(),
                         new RetrievedCapability(e.pointer, fa),
-                        e.pointer.wBaseKey.map(wBase -> fa.getSigner(wBase, Optional.empty())), e.ownerName)))
-                .exceptionally(t -> Optional.empty());
+                        e.pointer.wBaseKey.map(wBase -> fa.getSigner(e.pointer.rBaseKey, wBase, Optional.empty())), e.ownerName)))
+                .exceptionally(t -> {
+                    LOG.log(Level.SEVERE, t.getMessage(), t);
+                    return Optional.empty();
+                });
     }
 
     private CompletableFuture<Optional<CryptreeNode>> downloadEntryPoint(EntryPoint entry) {
@@ -276,7 +284,7 @@ public class NetworkAccess {
         return tree.get(entry.pointer.owner, entry.pointer.writer, entry.pointer.getMapKey()).thenCompose(btreeValue -> {
             if (btreeValue.isPresent())
                 return dhtClient.get(btreeValue.get())
-                        .thenApply(value -> value.map(cbor -> CryptreeNode.fromCbor(cbor,  btreeValue.get())));
+                        .thenApply(value -> value.map(cbor -> CryptreeNode.fromCbor(cbor,  entry.pointer.rBaseKey, btreeValue.get())));
             return CompletableFuture.completedFuture(Optional.empty());
         });
     }
@@ -304,7 +312,6 @@ public class NetworkAccess {
                                                               PublicKeyHash owner,
                                                               SigningPrivateKeyAndPublicHash writer,
                                                               ProgressConsumer<Long> progressCounter,
-                                                              double spaceIncreaseFactor,
                                                               TransactionId tid) {
         // upload one per query because IPFS doesn't support more than one
         int FRAGMENTs_PER_QUERY = 1;
@@ -320,7 +327,7 @@ public class NetworkAccess {
                         tid
                 ).thenApply(hash -> {
                     if (progressCounter != null)
-                        progressCounter.accept((long)(g.stream().mapToInt(f -> f.data.length).sum() / spaceIncreaseFactor));
+                        progressCounter.accept((long)(g.stream().mapToInt(f -> f.data.length).sum()));
                     return hash;
                 })).collect(Collectors.toList());
         return Futures.combineAllInOrder(futures)
@@ -329,13 +336,15 @@ public class NetworkAccess {
                         .collect(Collectors.toList()));
     }
 
-    // this one
     public CompletableFuture<Multihash> uploadChunk(CryptreeNode metadata,
                                                     PublicKeyHash owner,
                                                     byte[] mapKey,
                                                     SigningPrivateKeyAndPublicHash writer,
                                                     TransactionId tid) {
         try {
+            System.out.println("Uploading chunk: " + (metadata.isDirectory() ? "dir" : "file")
+                    + " at " + ArrayOps.bytesToHex(mapKey)
+                    + " with " + metadata.toCbor().links().size() + " fragments");
             byte[] metaBlob = metadata.serialize();
             return dhtClient.put(owner, writer.publicKeyHash, writer.secret.signatureOnly(metaBlob), metaBlob, tid)
                     .thenCompose(blobHash -> tree.put(owner, writer, mapKey, metadata.committedHash(), blobHash, tid)
@@ -364,14 +373,20 @@ public class NetworkAccess {
                 .thenApply(res -> metadata.committedHash().get());
     }
 
-    public CompletableFuture<Optional<CryptreeNode>> getMetadata(Location loc) {
-        if (loc == null)
-            return CompletableFuture.completedFuture(Optional.empty());
-        return tree.get(loc.owner, loc.writer, loc.getMapKey()).thenCompose(blobHash -> {
+    public CompletableFuture<Boolean> deleteChunkIfPresent(PublicKeyHash owner,
+                                                             SigningPrivateKeyAndPublicHash writer,
+                                                             byte[] mapKey,
+                                                             TransactionId tid) {
+        return tree.get(owner, writer.publicKeyHash, mapKey)
+                .thenCompose(valueHash -> valueHash.ifPresent(h -> tree.remove(owner, writer, mapKey, valueHash, tid)));
+    }
+
+    public CompletableFuture<Optional<CryptreeNode>> getMetadata(AbsoluteCapability cap) {
+        return tree.get(cap.owner, cap.writer, cap.getMapKey()).thenCompose(blobHash -> {
             if (!blobHash.isPresent())
                 return CompletableFuture.completedFuture(Optional.empty());
             return dhtClient.get(blobHash.get())
-                    .thenApply(rawOpt -> rawOpt.map(cbor -> CryptreeNode.fromCbor(cbor, blobHash.get())));
+                    .thenApply(rawOpt -> rawOpt.map(cbor -> CryptreeNode.fromCbor(cbor, cap.rBaseKey, blobHash.get())));
         });
     }
 
@@ -379,10 +394,12 @@ public class NetworkAccess {
                                                                        ProgressConsumer<Long> monitor,
                                                                        double spaceIncreaseFactor) {
         List<CompletableFuture<Optional<FragmentWithHash>>> futures = hashes.stream().parallel()
-                .map(h -> ((h instanceof Cid) && ((Cid) h).codec == Cid.Codec.Raw ?
-                        dhtClient.getRaw(h) :
-                        dhtClient.get(h)
-                                .thenApply(cborOpt -> cborOpt.map(cbor -> ((CborObject.CborByteArray) cbor).value))) // for backwards compatibility
+                .map(h -> (h.isIdentity() ?
+                        CompletableFuture.completedFuture(Optional.of(h.getHash())) :
+                        (h instanceof Cid) && ((Cid) h).codec == Cid.Codec.Raw ?
+                                dhtClient.getRaw(h) :
+                                dhtClient.get(h)
+                                        .thenApply(cborOpt -> cborOpt.map(cbor -> ((CborObject.CborByteArray) cbor).value))) // for backwards compatibility
                         .thenApply(dataOpt -> {
                             Optional<byte[]> bytes = dataOpt;
                             bytes.ifPresent(arr -> monitor.accept((long)(arr.length / spaceIncreaseFactor)));
@@ -392,27 +409,5 @@ public class NetworkAccess {
 
         return Futures.combineAllInOrder(futures)
                 .thenApply(optList -> optList.stream().filter(Optional::isPresent).map(Optional::get).collect(Collectors.toList()));
-    }
-
-    /**
-     * Pin all files associated with all the keys of a user. For
-     * self-hosting.
-     *
-     * @param username
-     */
-    public void pinAllUserFiles(String username) throws ExecutionException, InterruptedException {
-        pinAllUserFiles(username, coreNode, mutable, dhtClient);
-    }
-
-    public static void pinAllUserFiles(String username, CoreNode coreNode, MutablePointers mutable, ContentAddressedStorage dhtClient) throws ExecutionException, InterruptedException {
-        Set<PublicKeyHash> ownedKeysRecursive = WriterData.getOwnedKeysRecursive(username, coreNode, mutable, dhtClient);
-        Optional<PublicKeyHash> ownerOpt = coreNode.getPublicKeyHash(username).get();
-        if (! ownerOpt.isPresent())
-            throw new IllegalStateException("Couldn't retrieve public key for " + username);
-        PublicKeyHash owner = ownerOpt.get();
-        for (PublicKeyHash keyHash: ownedKeysRecursive) {
-            Multihash casKeyHash = mutable.getPointerTarget(owner, keyHash, dhtClient).get().get();
-            dhtClient.recursivePin(owner, casKeyHash).get();
-        }
     }
 }

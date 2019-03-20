@@ -13,7 +13,7 @@ public class UserUtil {
 
     public static CompletableFuture<UserWithRoot> generateUser(String username,
                                                                String password,
-                                                               LoginHasher hasher,
+                                                               Hasher hasher,
                                                                Salsa20Poly1305 provider,
                                                                SafeRandom random,
                                                                Ed25519 signer,

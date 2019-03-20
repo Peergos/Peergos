@@ -54,18 +54,10 @@ public class FileUploadTransaction implements Transaction {
     }
 
     private CompletableFuture<Boolean> clear(NetworkAccess networkAccess, Location location) {
-        Function<TransactionId, CompletableFuture<Boolean>> clearAll = tid -> networkAccess.getMetadata(location)
-                    .thenCompose(mOpt -> {
-                        if (!mOpt.isPresent()) {
-                            return CompletableFuture.completedFuture(true);
-                        }
-                        CryptreeNode metadata = mOpt.get();
+        Function<TransactionId, CompletableFuture<Boolean>> clear =
+                tid -> networkAccess.deleteChunkIfPresent(location.owner, writer, location.getMapKey(), tid);
 
-                        return networkAccess.deleteChunk(metadata, location.owner, location.getMapKey(), writer, tid)
-                                .thenApply(e -> true);
-                    });
-
-        return IpfsTransaction.call(location.owner, clearAll, networkAccess.dhtClient);
+        return IpfsTransaction.call(location.owner, clear, networkAccess.dhtClient);
     }
 
     public CompletableFuture<Boolean> clear(NetworkAccess networkAccess) {

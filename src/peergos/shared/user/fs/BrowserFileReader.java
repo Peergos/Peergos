@@ -13,7 +13,7 @@ public class BrowserFileReader implements AsyncReader {
         this.reader = reader;
     }
 
-    public CompletableFuture<AsyncReader> seek(int high32, int low32) {
+    public CompletableFuture<AsyncReader> seekJS(int high32, int low32) {
         return reader.seek(high32, low32).thenApply(x -> this);
     }
 

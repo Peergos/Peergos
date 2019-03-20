@@ -14,9 +14,9 @@ import java.util.stream.*;
 public class HashVerifyingStorage implements ContentAddressedStorage {
 
     private final ContentAddressedStorage source;
-    private final LoginHasher hasher;
+    private final Hasher hasher;
 
-    public HashVerifyingStorage(ContentAddressedStorage source, LoginHasher hasher) {
+    public HashVerifyingStorage(ContentAddressedStorage source, Hasher hasher) {
         this.source = source;
         this.hasher = hasher;
     }
@@ -26,12 +26,16 @@ public class HashVerifyingStorage implements ContentAddressedStorage {
             case sha2_256:
                 Multihash computed = new Multihash(Multihash.Type.sha2_256, hasher.sha256(data));
                 if (claimed instanceof Cid)
-                    computed = new Cid(((Cid) claimed).version, ((Cid) claimed).codec, computed);
+                    computed = Cid.build(((Cid) claimed).version, ((Cid) claimed).codec, computed);
 
                 if (computed.equals(claimed))
                     return result.get();
 
                 throw new IllegalStateException("Incorrect hash! Are you under attack? Expected: " + claimed + " actual: " + computed);
+            case id:
+                if (Arrays.equals(data, claimed.getHash()))
+                    return result.get();
+                throw new IllegalStateException("Incorrect identity hash! This shouldn't ever  happen.");
             default: throw new IllegalStateException("Unimplemented hash algorithm: " + claimed.type);
         }
     }

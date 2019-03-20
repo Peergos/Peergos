@@ -15,43 +15,43 @@ public class FriendSourcedTrieNode implements TrieNode {
     private final Supplier<CompletableFuture<FileWrapper>> homeDirSupplier;
     private final EntryPoint sharedDir;
     private final SafeRandom random;
-    private final Fragmenter fragmenter;
+    private final Hasher hasher;
     private TrieNode root;
-    private long capCountReadOnly;
-    private long capCountEdit;
+    private long byteOffsetReadOnly;
+    private long byteOffsetWrite;
 
     public FriendSourcedTrieNode(Supplier<CompletableFuture<FileWrapper>> homeDirSupplier,
                                  String ownerName,
                                  EntryPoint sharedDir,
                                  TrieNode root,
-                                 long capCountReadOnly,
-                                 long capCountEdit,
+                                 long byteOffsetReadOnly,
+                                 long byteOffsetWrite,
                                  SafeRandom random,
-                                 Fragmenter fragmenter) {
+                                 Hasher hasher) {
         this.homeDirSupplier = homeDirSupplier;
         this.ownerName = ownerName;
         this.sharedDir = sharedDir;
         this.root = root;
-        this.capCountReadOnly = capCountReadOnly;
-        this.capCountEdit = capCountEdit;
+        this.byteOffsetReadOnly = byteOffsetReadOnly;
+        this.byteOffsetWrite = byteOffsetWrite;
         this.random = random;
-        this.fragmenter = fragmenter;
+        this.hasher = hasher;
     }
 
     public static CompletableFuture<Optional<FriendSourcedTrieNode>> build(Supplier<CompletableFuture<FileWrapper>> homeDirSupplier,
                                                                            EntryPoint e,
                                                                            NetworkAccess network,
                                                                            SafeRandom random,
-                                                                           Fragmenter fragmenter) {
+                                                                           Hasher hasher) {
         return network.retrieveEntryPoint(e)
                 .thenCompose(sharedDirOpt -> {
                     if (!sharedDirOpt.isPresent())
                         return CompletableFuture.completedFuture(Optional.empty());
                     return CapabilityStore.loadReadAccessSharingLinks(homeDirSupplier, sharedDirOpt.get(), e.ownerName,
-                            network, random, fragmenter, true)
+                            network, random, hasher, true)
                             .thenCompose(readCaps -> {
                                 return CapabilityStore.loadWriteAccessSharingLinks(homeDirSupplier, sharedDirOpt.get(), e.ownerName,
-                                        network, random, fragmenter, true)
+                                        network, random, hasher, true)
                                         .thenApply(writeCaps -> {
                                             List<CapabilityWithPath> allCaps = new ArrayList<>();
                                             allCaps.addAll(readCaps.getRetrievedCapabilities());
@@ -63,7 +63,7 @@ public class FriendSourcedTrieNode implements TrieNode {
                                                             .reduce(TrieNodeImpl.empty(),
                                                                     (root, cap) -> root.put(trimOwner(cap.path), new EntryPoint(cap.cap, e.ownerName)),
                                                                     (a, b) -> a),
-                                                    readCaps.getRecordsRead(), writeCaps.getRecordsRead(), random, fragmenter));
+                                                    readCaps.getBytesRead(), writeCaps.getBytesRead(), random, hasher));
                                         });
                             });
                 });
@@ -75,15 +75,15 @@ public class FriendSourcedTrieNode implements TrieNode {
                 .thenCompose(sharedDirOpt -> {
                     if (!sharedDirOpt.isPresent())
                         return CompletableFuture.completedFuture(true);
-                    return CapabilityStore.getReadOnlyCapabilityCount(sharedDirOpt.get(), network)
-                            .thenCompose(count -> {
-                                if (count == capCountReadOnly) {
+                    return CapabilityStore.getReadOnlyCapabilityFileSize(sharedDirOpt.get(), network)
+                            .thenCompose(bytes -> {
+                                if (bytes == byteOffsetReadOnly) {
                                     return addEditableCapabilities(sharedDirOpt, network);
                                 } else {
                                     return CapabilityStore.loadReadAccessSharingLinksFromIndex(homeDirSupplier, sharedDirOpt.get(),
-                                            ownerName, network, random, fragmenter, capCountReadOnly, true)
+                                            ownerName, network, random, hasher, byteOffsetReadOnly, true)
                                             .thenCompose(newReadCaps -> {
-                                                capCountReadOnly += newReadCaps.getRecordsRead();
+                                                byteOffsetReadOnly += newReadCaps.getBytesRead();
                                                 root = newReadCaps.getRetrievedCapabilities().stream()
                                                         .reduce(root,
                                                                 (root, cap) -> root.put(trimOwner(cap.path), new EntryPoint(cap.cap, ownerName)),
@@ -96,14 +96,14 @@ public class FriendSourcedTrieNode implements TrieNode {
     }
 
     private synchronized CompletableFuture<Boolean> addEditableCapabilities(Optional<FileWrapper> sharedDirOpt, NetworkAccess network) {
-        return CapabilityStore.getEditableCapabilityCount(sharedDirOpt.get(), network)
-                .thenCompose(editCount -> {
-                    if (editCount == capCountEdit)
+        return CapabilityStore.getEditableCapabilityFileSize(sharedDirOpt.get(), network)
+                .thenCompose(editFilesize -> {
+                    if (editFilesize == byteOffsetWrite)
                         return CompletableFuture.completedFuture(true);
                     return CapabilityStore.loadWriteAccessSharingLinksFromIndex(homeDirSupplier, sharedDirOpt.get(),
-                            ownerName, network, random, fragmenter, capCountEdit, true)
+                            ownerName, network, random, hasher, byteOffsetWrite, true)
                             .thenApply(newWriteCaps -> {
-                                capCountEdit += newWriteCaps.getRecordsRead();
+                                byteOffsetWrite += newWriteCaps.getBytesRead();
                                 root = newWriteCaps.getRetrievedCapabilities().stream()
                                         .reduce(root,
                                                 (root, cap) -> root.put(trimOwner(cap.path), new EntryPoint(cap.cap, ownerName)),

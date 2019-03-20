@@ -16,12 +16,12 @@ public class Crypto {
 
     @JsProperty
     public final SafeRandom random;
-    public final LoginHasher hasher;
+    public final Hasher hasher;
     public final Salsa20Poly1305 symmetricProvider;
     public final Ed25519 signer;
     public final Curve25519 boxer;
 
-    public Crypto(SafeRandom random, LoginHasher hasher, Salsa20Poly1305 symmetricProvider, Ed25519 signer, Curve25519 boxer) {
+    public Crypto(SafeRandom random, Hasher hasher, Salsa20Poly1305 symmetricProvider, Ed25519 signer, Curve25519 boxer) {
         this.random = random;
         this.hasher = hasher;
         this.symmetricProvider = symmetricProvider;

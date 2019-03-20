@@ -38,6 +38,7 @@ public class AsyncLock<T> {
                     updater.get().thenCompose(processor)
                             .thenApply(res -> newHead.complete(res) && result.complete(res))
                             .exceptionally(e -> newHead.complete(current) && result.completeExceptionally(e));
+                    t.printStackTrace();
                     return true;
                 }));
 

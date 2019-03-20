@@ -1,6 +1,7 @@
 package peergos.shared.user.fs.transaction;
 
 import peergos.shared.NetworkAccess;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.SafeRandom;
 import peergos.shared.user.FileWrapperUpdater;
 import peergos.shared.user.fs.*;
@@ -19,14 +20,16 @@ public class TransactionServiceImpl implements TransactionService {
     private final FileWrapperUpdater transactionDirUpdater;
     private final NetworkAccess networkAccess;
     private final SafeRandom random;
-    private final Fragmenter fragmenter;
+    private final Hasher hasher;
 
-    public TransactionServiceImpl(NetworkAccess networkAccess, SafeRandom random, Fragmenter fragmenter,
+    public TransactionServiceImpl(NetworkAccess networkAccess,
+                                  SafeRandom random,
+                                  Hasher hasher,
                                   FileWrapperUpdater transactionDirUpdater) {
         this.transactionDirUpdater = transactionDirUpdater;
         this.networkAccess = networkAccess;
         this.random = random;
-        this.fragmenter = fragmenter;
+        this.hasher = hasher;
     }
 
     @Override
@@ -34,8 +37,9 @@ public class TransactionServiceImpl implements TransactionService {
         byte[] data = transaction.serialize();
         AsyncReader asyncReader = AsyncReader.build(data);
         return transactionDirUpdater.updated().thenCompose(dirWrapper ->
-                dirWrapper.uploadOrOverwriteFile(transaction.name(), asyncReader, data.length, networkAccess, random, VOID_PROGRESS,
-                        fragmenter, dirWrapper.generateChildLocations(1, random))
+                dirWrapper.uploadOrOverwriteFile(transaction.name(), asyncReader, data.length, networkAccess,
+                        random, hasher, VOID_PROGRESS,
+                        dirWrapper.generateChildLocations(1, random))
                         .thenApply(e -> true));
     }
 
@@ -47,7 +51,7 @@ public class TransactionServiceImpl implements TransactionService {
                     if (!hasChild)
                         return CompletableFuture.completedFuture(false);
                     FileWrapper fileWrapper = fileOpt.get();
-                    return dirWrapper.removeChild(fileWrapper, networkAccess);
+                    return dirWrapper.removeChild(fileWrapper, networkAccess, hasher);
                 }).thenApply(e -> true));
     }
 

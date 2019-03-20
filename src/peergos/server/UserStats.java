@@ -22,7 +22,8 @@ public class UserStats {
                 UserPublicKeyLink last = chain.get(chain.size() - 1);
                 LocalDate expiry = last.claim.expiry;
                 PublicKeyHash owner = last.owner;
-                Set<PublicKeyHash> ownedKeysRecursive = WriterData.getOwnedKeysRecursive(username, network.coreNode, network.mutable, network.dhtClient);
+                Set<PublicKeyHash> ownedKeysRecursive =
+                        WriterData.getOwnedKeysRecursive(username, network.coreNode, network.mutable, network.dhtClient).join();
                 long total = 0;
                 for (PublicKeyHash writer : ownedKeysRecursive) {
                     MaybeMultihash target = network.mutable.getPointerTarget(owner, writer, network.dhtClient).get();

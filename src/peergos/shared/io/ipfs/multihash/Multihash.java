@@ -44,12 +44,18 @@ public class Multihash implements Comparable<Multihash> {
 
     @JsConstructor
     public Multihash(Type type, byte[] hash) {
-        if (hash.length > 127)
+        if (hash.length > 127 && type != Type.id)
+            throw new IllegalStateException("Unsupported hash size: "+hash.length);
+        if (hash.length > 1024*1024)
             throw new IllegalStateException("Unsupported hash size: "+hash.length);
         if (hash.length != type.length && type != Type.id)
             throw new IllegalStateException("Incorrect hash length: " + hash.length + " != "+type.length);
         this.type = type;
         this.hash = hash;
+    }
+
+    public boolean isIdentity() {
+        return type == Type.id;
     }
 
     public static Multihash decode(byte[] multihash) {
@@ -69,11 +75,15 @@ public class Multihash implements Comparable<Multihash> {
     }
 
     public byte[] toBytes() {
-        byte[] res = new byte[hash.length+2];
-        res[0] = (byte)type.index;
-        res[1] = (byte)hash.length;
-        System.arraycopy(hash, 0, res, 2, hash.length);
-        return res;
+        try {
+            ByteArrayOutputStream res = new ByteArrayOutputStream();
+            putUvarint(res, type.index);
+            putUvarint(res, hash.length);
+            res.write(hash);
+            return res.toByteArray();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public byte[] getHash() {
@@ -81,17 +91,30 @@ public class Multihash implements Comparable<Multihash> {
     }
 
     @SuppressWarnings("unusable-by-js")
-    public void serialize(DataOutput dout) throws IOException {
-        dout.write(toBytes());
+    public void serialize(OutputStream out) {
+        try {
+            putUvarint(out, type.index);
+            putUvarint(out, hash.length);
+            out.write(hash);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @SuppressWarnings("unusable-by-js")
-    public static Multihash deserialize(DataInput din) throws IOException {
-        int type = din.readUnsignedByte();
-        int len = din.readUnsignedByte();
+    public static Multihash deserialize(InputStream din) throws IOException {
+        int type = (int)readVarint(din);
+        int len = (int)readVarint(din);
         Type t = Type.lookup(type);
         byte[] hash = new byte[len];
-        din.readFully(hash);
+        int total = 0;
+        while (total < len) {
+            int read = din.read(hash);
+            if (read < 0)
+                throw new EOFException();
+            else
+                total += read;
+        }
         return new Multihash(t, hash);
     }
 
@@ -118,5 +141,30 @@ public class Multihash implements Comparable<Multihash> {
 
     public static Multihash fromBase58(String base58) {
         return Multihash.decode(Base58.decode(base58));
+    }
+
+    public static long readVarint(InputStream in) throws IOException {
+        long x = 0;
+        int s=0;
+        for (int i=0; i < 10; i++) {
+            int b = in.read();
+            if (b < 0x80) {
+                if (i == 9 && b > 1) {
+                    throw new IllegalStateException("Overflow reading varint!");
+                }
+                return x | (((long)b) << s);
+            }
+            x |= ((long)b & 0x7f) << s;
+            s += 7;
+        }
+        throw new IllegalStateException("Varint too long!");
+    }
+
+    public static void putUvarint(OutputStream out, long x) throws IOException {
+        while (x >= 0x80) {
+            out.write((byte)(x | 0x80));
+            x >>= 7;
+        }
+        out.write((byte)x);
     }
 }

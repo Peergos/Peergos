@@ -49,35 +49,30 @@ public class Cid extends Multihash {
     public final long version;
     public final Codec codec;
 
-    public Cid(long version, Codec codec, Multihash hash) {
-        super(hash.type, hash.getHash());
-        this.version = version;
-        this.codec = codec;
-    }
-
     public Cid(long version, Codec codec, Multihash.Type type, byte[] hash) {
         super(type, hash);
         this.version = version;
         this.codec = codec;
     }
 
-    public Cid(Multihash h) {
-        this(0, Codec.DagProtobuf, h);
+    public static Cid build(long version, Codec codec, Multihash h) {
+        return new Cid(version, codec, h.type, h.getHash());
     }
 
     private byte[] toBytesV0() {
         return super.toBytes();
     }
 
-    private static final int MAX_VARINT_LEN64 = 10;
-
     private byte[] toBytesV1() {
-        byte[] hashBytes = super.toBytes();
-        byte[] res = new byte[2 * MAX_VARINT_LEN64 + hashBytes.length];
-        int index = putUvarint(res, 0, version);
-        index = putUvarint(res, index, codec.type);
-        System.arraycopy(hashBytes, 0, res, index, hashBytes.length);
-        return Arrays.copyOfRange(res, 0, index + hashBytes.length);
+        try {
+            ByteArrayOutputStream res = new ByteArrayOutputStream();
+            putUvarint(res, version);
+            putUvarint(res, codec.type);
+            super.serialize(res);
+            return res.toByteArray();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override
@@ -125,8 +120,8 @@ public class Cid extends Multihash {
         return result;
     }
 
-    public static Cid buildCidV0(Multihash h) {
-        return new Cid(h);
+    public static Cid buildV0(Multihash h) {
+        return Cid.build(0, Codec.DagProtobuf, h);
     }
 
     public static Cid buildCidV1(Codec c, Multihash.Type type, byte[] hash) {
@@ -139,7 +134,7 @@ public class Cid extends Multihash {
 
         // support legacy format
         if (v.length() == 46 && v.startsWith("Qm"))
-            return buildCidV0(Multihash.fromBase58(v));
+            return buildV0(Multihash.fromBase58(v));
 
         byte[] data = Multibase.decode(v);
         return cast(data);
@@ -147,52 +142,20 @@ public class Cid extends Multihash {
 
     public static Cid cast(byte[] data) {
         if (data.length == 34 && data[0] == 18 && data[1] == 32)
-            return buildCidV0(Multihash.decode(data));
+            return buildV0(Multihash.decode(data));
 
         InputStream in = new ByteArrayInputStream(data);
         try {
             long version = readVarint(in);
             if (version != 0 && version != 1)
-                throw new CidEncodingException("Invalid Cif version number: " + version);
+                throw new CidEncodingException("Invalid Cid version number: " + version);
 
             long codec = readVarint(in);
-            if (version != 0 && version != 1)
-                throw new CidEncodingException("Invalid Cif version number: " + version);
+            Multihash hash = Multihash.deserialize(in);
 
-            Multihash hash = Multihash.deserialize(new DataInputStream(in));
-
-            return new Cid(version, Codec.lookup(codec), hash);
+            return new Cid(version, Codec.lookup(codec), hash.type, hash.getHash());
         } catch (Exception e) {
             throw new CidEncodingException("Invalid cid bytes: " + ArrayOps.bytesToHex(data));
         }
-    }
-
-    private static long readVarint(InputStream in) throws IOException {
-        long x = 0;
-        int s=0;
-        for (int i=0; i < 10; i++) {
-            int b = in.read();
-            if (b == -1)
-                throw new EOFException();
-            if (b < 0x80) {
-                if (i > 9 || i == 9 && b > 1) {
-                    throw new IllegalStateException("Overflow reading varint" +(-(i + 1)));
-                }
-                return x | (((long)b) << s);
-            }
-            x |= ((long)b & 0x7f) << s;
-            s += 7;
-        }
-        throw new IllegalStateException("Varint too long!");
-    }
-
-    private static int putUvarint(byte[] buf, int index, long x) {
-        while (x >= 0x80) {
-            buf[index] = (byte)(x | 0x80);
-            x >>= 7;
-            index++;
-        }
-        buf[index] = (byte)x;
-        return index + 1;
     }
 }

@@ -38,7 +38,7 @@ public class RegisteredUserKeyFilter {
             List<String> usernames = core.getUsernames("").get();
             Set<PublicKeyHash> updated = new HashSet<>();
             for (String username : usernames) {
-                updated.addAll(WriterData.getOwnedKeysRecursive(username, core, mutable, dht));
+                updated.addAll(WriterData.getOwnedKeysRecursive(username, core, mutable, dht).join());
             }
             Set<PublicKeyHash> toRemove = new HashSet<>();
             for (PublicKeyHash hash : allowedKeys.keySet())

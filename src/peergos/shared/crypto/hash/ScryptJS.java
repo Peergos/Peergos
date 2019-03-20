@@ -4,7 +4,7 @@ import peergos.shared.user.*;
 
 import java.util.concurrent.CompletableFuture;
 
-public class ScryptJS implements LoginHasher {
+public class ScryptJS implements Hasher {
 
     NativeScryptJS scriptJS = new NativeScryptJS();
     

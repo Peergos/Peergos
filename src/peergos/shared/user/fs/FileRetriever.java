@@ -9,49 +9,24 @@ import peergos.shared.util.*;
 import java.util.*;
 import java.util.concurrent.*;
 
-public interface FileRetriever extends Cborable {
-
-    /**
-     *
-     * @param dataKey
-     * @return the map key of the next chunk in this file
-     */
-    Optional<byte[]> getNext(SymmetricKey dataKey);
-
-    byte[] getNonce();
+public interface FileRetriever {
 
     CompletableFuture<AsyncReader> getFile(NetworkAccess network,
                                            SafeRandom random,
-                                           SymmetricKey dataKey,
+                                           AbsoluteCapability ourCap,
                                            long fileSize,
-                                           Location ourLocation,
                                            MaybeMultihash ourExistingHash,
                                            ProgressConsumer<Long> monitor);
 
-    CompletableFuture<Optional<LocatedEncryptedChunk>> getEncryptedChunk(long bytesRemainingUntilStart,
-                                                                         long bytesRemainingUntilEnd,
-                                                                         byte[] nonce,
-                                                                         SymmetricKey dataKey,
-                                                                         Location ourLocation,
-                                                                         MaybeMultihash ourExistingHash,
-                                                                         NetworkAccess network,
-                                                                         ProgressConsumer<Long> monitor);
+    CompletableFuture<Optional<byte[]>> getMapLabelAt(AbsoluteCapability startCap,
+                                                      long offset,
+                                                      NetworkAccess network);
 
-    CompletableFuture<Optional<byte[]>> getLocationAt(Location startLocation,
-                                                        long offset,
-                                                        SymmetricKey dataKey,
-                                                        NetworkAccess network);
-
-    CompletableFuture<Optional<LocatedChunk>> getChunkInputStream(NetworkAccess network,
-                                                                  SafeRandom random,
-                                                                  SymmetricKey dataKey,
-                                                                  long startIndex,
-                                                                  long truncateTo,
-                                                                  Location ourLocation,
-                                                                  MaybeMultihash ourExistingHash,
-                                                                  ProgressConsumer<Long> monitor);
-
-    static FileRetriever fromCbor(Cborable cbor) {
-        return EncryptedChunkRetriever.fromCbor(cbor);
-    }
+    CompletableFuture<Optional<LocatedChunk>> getChunk(NetworkAccess network,
+                                                       SafeRandom random,
+                                                       long startIndex,
+                                                       long truncateTo,
+                                                       AbsoluteCapability ourCap,
+                                                       MaybeMultihash ourExistingHash,
+                                                       ProgressConsumer<Long> monitor);
 }

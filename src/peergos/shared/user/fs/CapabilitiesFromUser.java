@@ -8,16 +8,16 @@ import java.util.stream.*;
 
 public class CapabilitiesFromUser implements Cborable {
 
-    private final long recordsRead;
+    private final long bytesRead;
     private final List<CapabilityWithPath> retrievedCapabilities;
 
-    public CapabilitiesFromUser(long recordsRead, List<CapabilityWithPath> retrievedCapabilities) {
-        this.recordsRead = recordsRead;
+    public CapabilitiesFromUser(long bytesRead, List<CapabilityWithPath> retrievedCapabilities) {
+        this.bytesRead = bytesRead;
         this.retrievedCapabilities = retrievedCapabilities;
     }
 
-    public long getRecordsRead() {
-        return recordsRead;
+    public long getBytesRead() {
+        return bytesRead;
     }
 
     public List<CapabilityWithPath> getRetrievedCapabilities() {
@@ -27,7 +27,7 @@ public class CapabilitiesFromUser implements Cborable {
     @Override
     public CborObject toCbor() {
         Map<String, CborObject> cbor = new TreeMap<>();
-        cbor.put("count", new CborObject.CborLong(recordsRead));
+        cbor.put("bytes", new CborObject.CborLong(bytesRead));
         cbor.put("caps", new CborObject.CborList(retrievedCapabilities));
         return CborObject.CborMap.build(cbor);
     }
@@ -35,12 +35,13 @@ public class CapabilitiesFromUser implements Cborable {
     public static CapabilitiesFromUser fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("CapabilitiesFromUser cbor must be a Map! " + cbor);
-        long count = ((CborObject.CborLong) (((CborObject.CborMap) cbor).values.get(new CborObject.CborString("count")))).value;
-        List<CapabilityWithPath> caps = ((CborObject.CborList)((CborObject.CborMap) cbor).values.get(new CborObject.CborString("caps")))
+        CborObject.CborMap m = (CborObject.CborMap) cbor;
+        long bytesRead = m.getLong("bytes");
+        List<CapabilityWithPath> caps = m.getList("caps")
                 .value.stream()
                 .map(CapabilityWithPath::fromCbor)
                 .collect(Collectors.toList());
-        return new CapabilitiesFromUser(count, caps);
+        return new CapabilitiesFromUser(bytesRead, caps);
     }
 
 }

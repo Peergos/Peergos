@@ -3,7 +3,6 @@ package peergos.shared.user.fs;
 import peergos.shared.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
-import peergos.shared.user.*;
 import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.*;
 
@@ -13,15 +12,15 @@ import java.util.concurrent.*;
 public class LazyInputStreamCombiner implements AsyncReader {
     private final NetworkAccess network;
     private final SafeRandom random;
-    private final SymmetricKey dataKey;
+    private final SymmetricKey baseKey;
     private final ProgressConsumer<Long> monitor;
     private final long totalLength;
 
     private final byte[] originalChunk;
-    private final Location originalNextPointer;
+    private final AbsoluteCapability originalNextPointer;
 
     private byte[] currentChunk;
-    private Location nextChunkPointer;
+    private AbsoluteCapability nextChunkPointer;
 
     private long globalIndex; // index of beginning of current chunk in file
     private int index; // index within current chunk
@@ -33,39 +32,39 @@ public class LazyInputStreamCombiner implements AsyncReader {
                                    Location originalNextChunkPointer,
                                    NetworkAccess network,
                                    SafeRandom random,
-                                   SymmetricKey dataKey,
+                                   SymmetricKey baseKey,
                                    long totalLength,
                                    ProgressConsumer<Long> monitor) {
         if (chunk == null)
             throw new IllegalStateException("Null initial chunk!");
         this.network = network;
         this.random = random;
-        this.dataKey = dataKey;
+        this.baseKey = baseKey;
         this.monitor = monitor;
         this.totalLength = totalLength;
         this.originalChunk = originalChunk;
-        this.originalNextPointer = originalNextChunkPointer;
+        this.originalNextPointer = AbsoluteCapability.build(originalNextChunkPointer, baseKey);
         this.currentChunk = chunk;
-        this.nextChunkPointer = nextChunkPointer;
+        this.nextChunkPointer = AbsoluteCapability.build(nextChunkPointer, baseKey);
         this.globalIndex = globalIndex;
         this.index = 0;
     }
 
     public CompletableFuture<Boolean> getNextStream(int len) {
         if (this.nextChunkPointer != null) {
-            Location nextLocation = this.nextChunkPointer;
-            return network.getMetadata(nextLocation).thenCompose(meta -> {
+            AbsoluteCapability nextCap = this.nextChunkPointer;
+            return network.getMetadata(nextCap).thenCompose(meta -> {
                 if (!meta.isPresent()) {
                     CompletableFuture<Boolean> err = new CompletableFuture<>();
                     err.completeExceptionally(new EOFException());
                     return err;
                 }
                 CryptreeNode access = meta.get();
-                if (! (access instanceof FileAccess))
+                if (access.isDirectory())
                     throw new IllegalStateException("File linked to a directory for its next chunk!");
-                FileRetriever nextRet = ((FileAccess) access).retriever();
-                Location newNextChunkPointer = nextRet.getNext(dataKey).map(nextLocation::withMapKey).orElse(null);
-                return nextRet.getChunkInputStream(network, random, dataKey, 0, len, nextLocation, access.committedHash(), monitor)
+                FileRetriever nextRet = access.retriever(baseKey);
+                AbsoluteCapability newNextChunkPointer = nextCap.withMapKey(access.getNextChunkLocation(baseKey));
+                return nextRet.getChunk(network, random, 0, len, nextCap, access.committedHash(), monitor)
                         .thenApply(x -> {
                             byte[] nextData = x.get().chunk.data();
                             updateState(0,globalIndex + Chunk.MAX_SIZE, nextData, newNextChunkPointer);
@@ -94,7 +93,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
     }
 
     @Override
-    public CompletableFuture<AsyncReader> seek(int hi32, int low32) {
+    public CompletableFuture<AsyncReader> seekJS(int hi32, int low32) {
         long seek = ((long) (hi32) << 32) | low32;
 
         if (totalLength < seek)
@@ -148,7 +147,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
     private void updateState(int index,
                              long globalIndex,
                              byte[] chunk,
-                             Location nextChunkPointer) {
+                             AbsoluteCapability nextChunkPointer) {
         this.index = index;
         this.globalIndex = globalIndex;
         this.currentChunk = chunk;

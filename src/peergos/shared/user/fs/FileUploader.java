@@ -10,6 +10,7 @@ import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
+import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.*;
 
 import java.time.*;
@@ -24,11 +25,11 @@ public class FileUploader implements AutoCloseable {
     private final long offset, length;
     private final FileProperties props;
     private final SymmetricKey baseKey;
+    private final SymmetricKey dataKey;
     private final long nchunks;
     private final Location parentLocation;
     private final SymmetricKey parentparentKey;
     private final ProgressConsumer<Long> monitor;
-    private final Fragmenter fragmenter;
     private final AsyncReader reader; // resettable input stream
     private final List<Location> locations;
 
@@ -36,18 +37,18 @@ public class FileUploader implements AutoCloseable {
     public FileUploader(String name, String mimeType, AsyncReader fileData,
                         int offsetHi, int offsetLow, int lengthHi, int lengthLow,
                         SymmetricKey baseKey,
-                        Location parentLocation, SymmetricKey parentparentKey,
+                        SymmetricKey dataKey,
+                        Location parentLocation,
+                        SymmetricKey parentparentKey,
                         ProgressConsumer<Long> monitor,
-                        FileProperties fileProperties, Fragmenter fragmenter,
+                        FileProperties fileProperties,
                         List<Location> locations) {
         long length = (lengthLow & 0xFFFFFFFFL) + ((lengthHi & 0xFFFFFFFFL) << 32);
         if (fileProperties == null)
-            this.props = new FileProperties(name, mimeType, length, LocalDateTime.now(), false, Optional.empty());
+            this.props = new FileProperties(name, false, mimeType, length, LocalDateTime.now(), false, Optional.empty());
         else
             this.props = fileProperties;
         if (baseKey == null) baseKey = SymmetricKey.random();
-
-        this.fragmenter = fragmenter;
 
         long offset = (offsetLow & 0xFFFFFFFFL) + ((offsetHi & 0xFFFFFFFFL) << 32);
 
@@ -58,6 +59,7 @@ public class FileUploader implements AutoCloseable {
         this.length = length;
         this.reader = fileData;
         this.baseKey = baseKey;
+        this.dataKey = dataKey;
         this.parentLocation = parentLocation;
         this.parentparentKey = parentparentKey;
         this.monitor = monitor;
@@ -65,10 +67,10 @@ public class FileUploader implements AutoCloseable {
     }
 
     public FileUploader(String name, String mimeType, AsyncReader fileData, long offset, long length,
-                        SymmetricKey baseKey, Location parentLocation, SymmetricKey parentparentKey,
-                        ProgressConsumer<Long> monitor, FileProperties fileProperties, Fragmenter fragmenter, List<Location> locations) {
+                        SymmetricKey baseKey, SymmetricKey dataKey, Location parentLocation, SymmetricKey parentparentKey,
+                        ProgressConsumer<Long> monitor, FileProperties fileProperties, List<Location> locations) {
         this(name, mimeType, fileData, (int)(offset >> 32), (int) offset, (int) (length >> 32), (int) length,
-                baseKey, parentLocation, parentparentKey, monitor, fileProperties, fragmenter, locations);
+                baseKey, dataKey, parentLocation, parentparentKey, monitor, fileProperties, locations);
     }
 
     public CompletableFuture<Boolean> uploadChunk(NetworkAccess network,
@@ -76,7 +78,8 @@ public class FileUploader implements AutoCloseable {
                                                   SigningPrivateKeyAndPublicHash writer,
                                                   long chunkIndex,
                                                   MaybeMultihash ourExistingHash,
-                                                  ProgressConsumer<Long> monitor) {
+                                                  ProgressConsumer<Long> monitor,
+                                                  Hasher hasher) {
         LOG.info("uploading chunk: "+chunkIndex + " of "+name);
         long position = chunkIndex * Chunk.MAX_SIZE;
 
@@ -87,24 +90,25 @@ public class FileUploader implements AutoCloseable {
         return reader.readIntoArray(data, 0, data.length).thenCompose(b -> {
             byte[] nonce = baseKey.createNonce();
             byte[] mapKey = locations.get((int) chunkIndex).getMapKey();
-            Chunk chunk = new Chunk(data, baseKey, mapKey, nonce);
+            Chunk chunk = new Chunk(data, dataKey, mapKey, nonce);
             LocatedChunk locatedChunk = new LocatedChunk(new Location(owner, writer.publicKeyHash, chunk.mapKey()), ourExistingHash, chunk);
             Location nextLocation = new Location(owner, writer.publicKeyHash, locations.get((int) chunkIndex + 1).getMapKey());
             return uploadChunk(writer, props, parentLocation, parentparentKey, baseKey, locatedChunk,
-                    fragmenter, nextLocation, Optional.empty(), network, monitor).thenApply(c -> true);
+                    nextLocation, Optional.empty(), hasher, network, monitor).thenApply(c -> true);
         });
     }
 
     public CompletableFuture<Boolean> upload(NetworkAccess network,
                                              PublicKeyHash owner,
-                                             SigningPrivateKeyAndPublicHash writer) {
+                                             SigningPrivateKeyAndPublicHash writer,
+                                             Hasher hasher) {
         long t1 = System.currentTimeMillis();
 
         List<Integer> input = IntStream.range(0, (int) nchunks).mapToObj(i -> Integer.valueOf(i)).collect(Collectors.toList());
         return Futures.reduceAll(input, true, (loc, i) -> uploadChunk(network, owner, writer, i,
-                MaybeMultihash.empty(), monitor), (a, b) -> a && b)
+                MaybeMultihash.empty(), monitor, hasher), (a, b) -> a && b)
                 .thenApply(x -> {
-                    LOG.info("File encryption, erasure coding and upload took: " +(System.currentTimeMillis()-t1) + " mS");
+                    LOG.info("File encryption, upload took: " +(System.currentTimeMillis()-t1) + " mS");
                     return x;
                 });
     }
@@ -115,31 +119,28 @@ public class FileUploader implements AutoCloseable {
                                                            SymmetricKey parentparentKey,
                                                            SymmetricKey baseKey,
                                                            LocatedChunk chunk,
-                                                           Fragmenter fragmenter,
                                                            Location nextChunkLocation,
                                                            Optional<SymmetricLinkToSigner> writerLink,
+                                                           Hasher hasher,
                                                            NetworkAccess network,
                                                            ProgressConsumer<Long> monitor) {
         if (! writer.publicKeyHash.equals(chunk.location.writer))
             throw new IllegalStateException("Trying to write a chunk to the wrong signing key space!");
-        return chunk.chunk.encrypt().thenCompose(encryptedChunk -> {
-            List<Fragment> fragments = encryptedChunk.generateFragments(fragmenter);
-            LOG.info(StringUtils.format("Uploading chunk with %d fragments\n", fragments.size()));
-            SymmetricKey chunkKey = chunk.chunk.key();
-            CipherText encryptedNextChunkLocation = CipherText.build(chunkKey, new CborObject.CborByteArray(nextChunkLocation.getMapKey()));
-            return IpfsTransaction.call(chunk.location.owner, tid -> network
-                            .uploadFragments(fragments, chunk.location.owner, writer, monitor, fragmenter.storageIncreaseFactor(), tid)
-                            .thenCompose(hashes -> {
-                                FileRetriever retriever =
-                                        new EncryptedChunkRetriever(chunk.chunk.nonce(), encryptedChunk.getAuth(),
-                                                hashes, Optional.of(encryptedNextChunkLocation), fragmenter);
-                                FileAccess metaBlob = FileAccess.create(chunk.existingHash, baseKey,
-                                        chunkKey, props, retriever, parentLocation, parentparentKey).withWriterLink(writerLink);
-                                return network.uploadChunk(metaBlob, chunk.location.owner,
-                                        chunk.chunk.mapKey(), writer, tid);
-                            }),
-                    network.dhtClient);
-        });
+        RelativeCapability nextChunk = RelativeCapability.buildSubsequentChunk(nextChunkLocation.getMapKey(), baseKey);
+        Pair<CryptreeNode, List<FragmentWithHash>> file = CryptreeNode.createFile(chunk.existingHash, baseKey,
+                chunk.chunk.key(), props, chunk.chunk.data(), parentLocation, parentparentKey, nextChunk, hasher);
+
+        CryptreeNode metadata = file.left.withWriterLink(baseKey, writerLink);
+
+        List<Fragment> fragments = file.right.stream()
+                .filter(f -> ! f.hash.isIdentity())
+                .map(f -> f.fragment)
+                .collect(Collectors.toList());
+        LOG.info(StringUtils.format("Uploading chunk with %d fragments\n", fragments.size()));
+        return IpfsTransaction.call(chunk.location.owner,
+                tid -> network.uploadFragments(fragments, chunk.location.owner, writer, monitor, tid)
+                        .thenCompose(hashes -> network.uploadChunk(metadata, chunk.location.owner, chunk.chunk.mapKey(), writer, tid)),
+                network.dhtClient);
     }
 
     public void close() {

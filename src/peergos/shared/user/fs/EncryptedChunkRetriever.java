@@ -5,193 +5,89 @@ import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
-import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.stream.*;
 
-/** An instance of EncryptedChunkRetriever holds a list of fragment hashes for a chunk, and the nonce and auth used in
- *  decrypting the resulting chunk, along with an encrypted link to the next chunk (if any).
+/** An instance of EncryptedChunkRetriever holds a list of fragment hashes for a chunk, and the nonce used in
+ *  decrypting the resulting chunk, along with a link to the next chunk (if any).
  *
  */
 public class EncryptedChunkRetriever implements FileRetriever {
 
-    private final byte[] chunkNonce, chunkAuth;
-    private final List<Multihash> fragmentHashes;
-    private final Optional<CipherText> nextChunk;
-    private final Fragmenter fragmenter;
+    private final FragmentedPaddedCipherText linksToData;
+    private final byte[] nextChunkLabel;
+    private final SymmetricKey dataKey;
 
-    public EncryptedChunkRetriever(byte[] chunkNonce,
-                                   byte[] chunkAuth,
-                                   List<Multihash> fragmentHashes,
-                                   Optional<CipherText> nextChunk,
-                                   Fragmenter fragmenter) {
-        this.chunkNonce = chunkNonce;
-        this.chunkAuth = chunkAuth;
-        this.fragmentHashes = fragmentHashes;
-        this.nextChunk = nextChunk;
-        this.fragmenter = fragmenter;
+    public EncryptedChunkRetriever(FragmentedPaddedCipherText linksToData,
+                                   byte[] nextChunkLabel,
+                                   SymmetricKey dataKey) {
+        this.linksToData = linksToData;
+        this.nextChunkLabel = nextChunkLabel;
+        this.dataKey = dataKey;
     }
 
     @Override
     public CompletableFuture<AsyncReader> getFile(NetworkAccess network,
                                                   SafeRandom random,
-                                                  SymmetricKey dataKey,
+                                                  AbsoluteCapability ourCap,
                                                   long fileSize,
-                                                  Location ourLocation,
                                                   MaybeMultihash ourExistingHash,
                                                   ProgressConsumer<Long> monitor) {
-        return getChunkInputStream(network, random, dataKey, 0, fileSize, ourLocation, ourExistingHash, monitor)
+        return getChunk(network, random, 0, fileSize, ourCap, ourExistingHash, monitor)
                 .thenApply(chunk -> {
-                    Location nextChunkPointer = this.getNext(dataKey).map(ourLocation::withMapKey).orElse(null);
+                    Location nextChunkPointer = ourCap.withMapKey(nextChunkLabel).getLocation();
                     return new LazyInputStreamCombiner(0,
                             chunk.get().chunk.data(), nextChunkPointer,
                             chunk.get().chunk.data(), nextChunkPointer,
-                            network, random, dataKey, fileSize, monitor);
+                            network, random, ourCap.rBaseKey, fileSize, monitor);
                 });
     }
 
-    public CompletableFuture<Optional<LocatedEncryptedChunk>> getEncryptedChunk(long bytesRemainingUntilStart,
-                                                                                long truncateTo,
-                                                                                byte[] nonce,
-                                                                                SymmetricKey dataKey,
-                                                                                Location ourLocation,
-                                                                                MaybeMultihash ourExistingHash,
-                                                                                NetworkAccess network,
-                                                                                ProgressConsumer<Long> monitor) {
-        if (bytesRemainingUntilStart < Chunk.MAX_SIZE) {
-            return network.downloadFragments(fragmentHashes, monitor, fragmenter.storageIncreaseFactor()).thenCompose(fragments -> {
-                fragments = reorder(fragments, fragmentHashes);
-                byte[][] collect = fragments.stream().map(f -> f.fragment.data).toArray(byte[][]::new);
-                byte[] authAndCipherText = fragmenter.recombine(collect, chunkAuth.length, Chunk.MAX_SIZE);
-                System.arraycopy(chunkAuth, 0, authAndCipherText, 0, chunkAuth.length);
-                EncryptedChunk fullEncryptedChunk = new EncryptedChunk(authAndCipherText);
-                if (truncateTo < Chunk.MAX_SIZE)
-                    fullEncryptedChunk = fullEncryptedChunk.truncateTo((int) truncateTo);
-                LocatedEncryptedChunk result = new LocatedEncryptedChunk(ourLocation, ourExistingHash, fullEncryptedChunk, nonce);
-                return CompletableFuture.completedFuture(Optional.of(result));
-            });
-        }
-        Optional<byte[]> next = getNext(dataKey);
-        if (! next.isPresent())
-            return CompletableFuture.completedFuture(Optional.empty());
-        Location ourLoc = ourLocation.withMapKey(next.get());
-        return network.getMetadata(ourLoc).thenCompose(meta -> {
-            if (!meta.isPresent())
-                return CompletableFuture.completedFuture(Optional.empty());
-
-            FileAccess access = (FileAccess) meta.get();
-            FileRetriever retriever = access.retriever();
-            return retriever.getEncryptedChunk(bytesRemainingUntilStart - Chunk.MAX_SIZE,
-                    truncateTo - Chunk.MAX_SIZE, retriever.getNonce(), dataKey,
-                    ourLoc, access.committedHash(), network, monitor);
-        });
-    }
-
-    public CompletableFuture<Optional<byte[]>> getLocationAt(Location startLocation, long offset, SymmetricKey dataKey, NetworkAccess network) {
+    public CompletableFuture<Optional<byte[]>> getMapLabelAt(AbsoluteCapability startCap, long offset, NetworkAccess network) {
         if (offset < Chunk.MAX_SIZE)
-            return CompletableFuture.completedFuture(Optional.of(startLocation.getMapKey()));
-        Optional<byte[]> next = getNext(dataKey);
-        if (! next.isPresent())
-            return CompletableFuture.completedFuture(Optional.empty());
+            return CompletableFuture.completedFuture(Optional.of(startCap.getMapKey()));
         if (offset < 2*Chunk.MAX_SIZE)
-            return CompletableFuture.completedFuture(next); // chunk at this location hasn't been written yet, only referenced by previous chunk
-        return network.getMetadata(startLocation.withMapKey(next.get()))
+            return CompletableFuture.completedFuture(Optional.of(nextChunkLabel)); // chunk at this location hasn't been written yet, only referenced by previous chunk
+        return network.getMetadata(startCap.withMapKey(nextChunkLabel))
                 .thenCompose(meta -> meta.isPresent() ?
-                        ((FileAccess)meta.get()).retriever().getLocationAt(startLocation.withMapKey(next.get()), offset - Chunk.MAX_SIZE, dataKey, network) :
+                        meta.get().retriever(startCap.rBaseKey).getMapLabelAt(startCap.withMapKey(nextChunkLabel), offset - Chunk.MAX_SIZE, network) :
                         CompletableFuture.completedFuture(Optional.empty())
                 );
     }
 
-    public Optional<byte[]> getNext(SymmetricKey dataKey) {
-        return this.nextChunk.map(c -> c.decrypt(dataKey, cbor -> ((CborObject.CborByteArray)cbor).value));
-    }
-
-    public byte[] getNonce() {
-        return chunkNonce;
-    }
-
-    public CompletableFuture<Optional<LocatedChunk>> getChunkInputStream(NetworkAccess network,
-                                                                         SafeRandom random,
-                                                                         SymmetricKey dataKey,
-                                                                         long startIndex,
-                                                                         long truncateTo,
-                                                                         Location ourLocation,
-                                                                         MaybeMultihash ourExistingHash,
-                                                                         ProgressConsumer<Long> monitor) {
-        return getEncryptedChunk(startIndex, truncateTo, chunkNonce, dataKey, ourLocation, ourExistingHash, network, monitor).thenCompose(fullEncryptedChunk -> {
-            if (! fullEncryptedChunk.isPresent()) {
-                return getLocationAt(ourLocation, startIndex, dataKey, network).thenApply(unwrittenChunkLocation ->
-                        ! unwrittenChunkLocation.isPresent() ? Optional.empty() :
-                                Optional.of(new LocatedChunk(ourLocation.withMapKey(unwrittenChunkLocation.get()), MaybeMultihash.empty(),
-                                        new Chunk(new byte[Math.min(Chunk.MAX_SIZE, (int) (truncateTo - startIndex))],
-                                                dataKey, unwrittenChunkLocation.get(),
-                                                dataKey.createNonce()))));
-            }
-
-            if (!fullEncryptedChunk.isPresent())
-                return CompletableFuture.completedFuture(Optional.empty());
-
-            LocatedEncryptedChunk cipherText = fullEncryptedChunk.get();
-            try {
-                return cipherText.chunk.decrypt(dataKey, cipherText.nonce).thenCompose(original -> {
-                    return CompletableFuture.completedFuture(Optional.of(new LocatedChunk(cipherText.location,
-                            cipherText.existingHash,
-                            new Chunk(original, dataKey, cipherText.location.getMapKey(), dataKey.createNonce()))));
-                });
-            } catch (IllegalStateException e) {
-                throw new IllegalStateException("Couldn't decrypt chunk at mapkey: " + new ByteArrayWrapper(cipherText.location.getMapKey()), e);
-            }
-        });
-    }
-
-    @Override
-    public CborObject toCbor() {
-        return new CborObject.CborList(Arrays.asList(
-                new CborObject.CborByteArray(chunkNonce),
-                new CborObject.CborByteArray(chunkAuth),
-                new CborObject.CborList(fragmentHashes
-                        .stream()
-                        .map(CborObject.CborMerkleLink::new)
-                        .collect(Collectors.toList())),
-                ! nextChunk.isPresent() ? new CborObject.CborNull() : nextChunk.get().toCbor(),
-                fragmenter.toCbor()
-        ));
-    }
-
-    public static EncryptedChunkRetriever fromCbor(Cborable cbor) {
-        if (! (cbor instanceof CborObject.CborList))
-            throw new IllegalStateException("Incorrect cbor for EncryptedChunkRetriever: " + cbor);
-
-        List<? extends Cborable> value = ((CborObject.CborList) cbor).value;
-        byte[] chunkNonce = ((CborObject.CborByteArray)value.get(0)).value;
-        byte[] chunkAuth = ((CborObject.CborByteArray)value.get(1)).value;
-        List<Multihash> fragmentHashes = ((CborObject.CborList)value.get(2)).value
-                .stream()
-                .map(c -> ((CborObject.CborMerkleLink)c).target)
-                .collect(Collectors.toList());
-        Optional<CipherText> nextChunk = value.get(3) instanceof CborObject.CborNull ? Optional.empty() : Optional.of(CipherText.fromCbor(value.get(3)));
-        Fragmenter fragmenter = Fragmenter.fromCbor(value.get(4));
-        return new EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes, nextChunk, fragmenter);
-    }
-
-    private static List<FragmentWithHash> reorder(List<FragmentWithHash> fragments, List<Multihash> hashes) {
-        FragmentWithHash[] res = new FragmentWithHash[fragments.size()];
-        for (FragmentWithHash f: fragments) {
-            for (int index = 0; index < res.length; index++)
-                if (hashes.get(index).equals(f.hash))
-                    res[index] = f;
+    public CompletableFuture<Optional<LocatedChunk>> getChunk(NetworkAccess network,
+                                                              SafeRandom random,
+                                                              long startIndex,
+                                                              long truncateTo,
+                                                              AbsoluteCapability ourCap,
+                                                              MaybeMultihash ourExistingHash,
+                                                              ProgressConsumer<Long> monitor) {
+        if (startIndex >= Chunk.MAX_SIZE) {
+            AbsoluteCapability nextChunkCap = ourCap.withMapKey(nextChunkLabel);
+            return network.getMetadata(nextChunkCap)
+                    .thenCompose(meta -> {
+                        if (meta.isPresent())
+                            return meta.get().retriever(ourCap.rBaseKey)
+                                    .getChunk(network, random, startIndex - Chunk.MAX_SIZE,
+                                            truncateTo - Chunk.MAX_SIZE,
+                                            nextChunkCap, meta.get().committedHash(), l -> {});
+                        Chunk newEmptyChunk = new Chunk(new byte[0], dataKey, nextChunkLabel, dataKey.createNonce());
+                        LocatedChunk withLocation = new LocatedChunk(nextChunkCap.getLocation(),
+                                MaybeMultihash.empty(), newEmptyChunk);
+                        return CompletableFuture.completedFuture(Optional.of(withLocation));
+                    });
         }
-        return Arrays.asList(res);
+        return linksToData.getAndDecrypt(dataKey, c -> ((CborObject.CborByteArray)c).value, network, monitor)
+                .thenApply(data ->  Optional.of(new LocatedChunk(ourCap.getLocation(), ourExistingHash,
+                        new Chunk(truncate(data, Math.min(Chunk.MAX_SIZE, (int)truncateTo)),
+                                dataKey, ourCap.getMapKey(), ourCap.rBaseKey.createNonce()))));
     }
 
-    private static List<byte[]> split(byte[] arr, int size) {
-        int length = arr.length/size;
-        List<byte[]> res = new ArrayList<>();
-        for (int i=0; i < length; i++)
-            res.add(Arrays.copyOfRange(arr, i*size, (i+1)*size));
-        return res;
+    public static byte[] truncate(byte[] in, int length) {
+        if (in.length == length)
+            return in;
+        return Arrays.copyOfRange(in, 0, length);
     }
 }

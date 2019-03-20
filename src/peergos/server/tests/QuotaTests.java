@@ -58,12 +58,12 @@ public class QuotaTests {
         byte[] data = new byte[1024*1024];
         random.nextBytes(data);
         FileWrapper newHome = home.uploadOrOverwriteFile("file-1", new AsyncReader.ArrayBacked(data), data.length,
-                network, crypto.random, x -> {}, context.fragmenter(),
+                network, crypto.random, crypto.hasher, x -> {},
                 home.generateChildLocationsFromSize(data.length, crypto.random)).get();
 
         try {
             newHome.uploadOrOverwriteFile("file-2", new AsyncReader.ArrayBacked(data), data.length, network,
-                    crypto.random, x -> {}, context.fragmenter(),
+                    crypto.random, crypto.hasher, x -> {},
                     newHome.generateChildLocationsFromSize(data.length, crypto.random)).get();
             Assert.fail("Quota wasn't enforced");
         } catch (Exception e) {}
@@ -81,10 +81,10 @@ public class QuotaTests {
         for (int i=0; i < 5; i++) {
             String filename = "file-1";
             home = home.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length,
-                    network, crypto.random, x -> {}, context.fragmenter(),
+                    network, crypto.random, crypto.hasher, x -> {},
                     home.generateChildLocationsFromSize(data.length, crypto.random)).get();
             FileWrapper file = context.getByPath("/" + username + "/" + filename).get().get();
-            home = file.remove(home, network).get();
+            home = file.remove(home, network, crypto.hasher).get();
         }
     }
 
@@ -97,14 +97,14 @@ public class QuotaTests {
         FileWrapper home = context.getByPath(Paths.get(username).toString()).get().get();
         int used = context.getTotalSpaceUsed(context.signer.publicKeyHash, context.signer.publicKeyHash).get().intValue();
         // use within a few KiB of our quota, before deletion
-        byte[] data = new byte[2 * 1024 * 1024 - used - 4 * 1024];
+        byte[] data = new byte[2 * 1024 * 1024 - used - 10 * 1024];
         random.nextBytes(data);
         String filename = "file-1";
         home = home.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length,
-                network, crypto.random, x -> {}, context.fragmenter(),
+                network, crypto.random, crypto.hasher, x -> {},
                 home.generateChildLocationsFromSize(data.length, crypto.random)).get();
         FileWrapper file = context.getByPath("/" + username + "/" + filename).get().get();
-        file.remove(home, network).get();
+        file.remove(home, network, crypto.hasher).get();
     }
 
     @Test
@@ -114,20 +114,20 @@ public class QuotaTests {
 
         UserContext context = ensureSignedUp(username, password, network, crypto);
         FileWrapper home = context.getByPath(Paths.get(username).toString()).get().get();
-        // signing up uses just over 14k and the quota is 2 MiB, so use within 1 KiB of our quota
-        byte[] data = new byte[2 * 1024 * 1024 - 19 * 1024];
+        // signing up uses just under 32k and the quota is 2 MiB, so use close to our quota
+        byte[] data = new byte[2 * 1024 * 1024 - 44 * 1024];
         random.nextBytes(data);
         String filename = "file-1";
         home = home.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length,
-                network, crypto.random, x -> {}, context.fragmenter(),
+                network, crypto.random, crypto.hasher, x -> {},
                 home.generateChildLocationsFromSize(data.length, crypto.random)).get();
         FileWrapper file = context.getByPath("/" + username + "/" + filename).get().get();
         try {
             home = home.uploadOrOverwriteFile("file-2", new AsyncReader.ArrayBacked(data), data.length,
-                    network, crypto.random, x -> {}, context.fragmenter(),
+                    network, crypto.random, crypto.hasher, x -> {},
                     home.generateChildLocationsFromSize(data.length, crypto.random)).get();
             Assert.fail();
         } catch (Exception e) {}
-        file.remove(home, network).get();
+        file.remove(home, network, crypto.hasher).get();
     }
 }
