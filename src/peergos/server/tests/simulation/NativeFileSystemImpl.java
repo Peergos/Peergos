@@ -141,7 +141,22 @@ public class NativeFileSystemImpl implements FileSystem {
         return Paths.get(root.toString(), relativePath.toString());
     }
 
+    @Override
+    public void mkdir(Path path) {
+        Path parentDir = path.getParent();
+        ensureCan(parentDir, Permission.WRITE);
+        Path nativePath = virtualToNative(path);
+        boolean mkdir = nativePath.toFile().mkdir();
+        if (! mkdir)
+            throw new IllegalStateException("Could not make dir "+ nativePath);
 
+
+        try {
+            Files.delete(nativePath);
+        } catch (IOException ioe) {
+            throw new IllegalStateException(ioe);
+        }
+    }
 
     public static void main(String[] args) {
         System.out.println("HELO");

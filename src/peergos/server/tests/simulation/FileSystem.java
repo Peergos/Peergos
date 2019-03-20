@@ -29,5 +29,7 @@ public interface FileSystem {
     void revoke(Path path, String user, Permission permission);
 
     Stat stat(Path path);
+
+    void mkdir(Path path);
 }
 
