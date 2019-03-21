@@ -21,6 +21,7 @@ import peergos.shared.mutable.*;
 import peergos.shared.social.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
+import peergos.shared.user.fs.*;
 
 import java.io.*;
 import java.net.*;
@@ -176,6 +177,14 @@ public class Main {
                                 tid -> network.dhtClient.putSigningKey(peergosIdentityKeys.secretSigningKey
                                 .signatureOnly(pkiPublic.serialize()), peergosPublicHash, pkiPublic, tid),
                                 network.dhtClient).get();
+                    }
+                    // Create /peergos/releases and make it public
+                    Optional<FileWrapper> releaseDir = context.getByPath(Paths.get(pkiUsername, "releases")).join();
+                    if (! releaseDir.isPresent()) {
+                        context.getUserRoot().join().mkdir("releases", network, false,
+                                crypto.random, crypto.hasher).join();
+                        FileWrapper releases = context.getByPath(Paths.get(pkiUsername, "releases")).join().get();
+                        context.makePublic(releases).join();
                     }
                 } catch (Exception e) {
                     e.printStackTrace();
