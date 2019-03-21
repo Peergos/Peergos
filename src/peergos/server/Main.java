@@ -121,6 +121,7 @@ public class Main {
                     Files.write(args.fromPeergosDir("pki.secret.key.path"), cipherTextCbor.serialize());
                     Files.write(args.fromPeergosDir("pki.public.key.path"), pkiKeys.publicSigningKey.toCbor().toByteArray());
                     args.setIfAbsent("peergos.identity.hash", peergosPublicHash.toString());
+                    System.out.println("Peergos user identity hash: " + peergosPublicHash);
 
                 } catch (Exception e) {
                     e.printStackTrace();
@@ -188,7 +189,7 @@ public class Main {
             )
     );
 
-    public static final Command PKI = new Command("pki",
+    public static final Command PKI_INIT = new Command("pki-init",
             "Bootstrap and start the Peergos PKI Server",
             args -> {
                 try {
@@ -232,6 +233,51 @@ public class Main {
                     // Secret parameters
                     new Command.Arg("peergos.password", "The password for the 'peergos' user", true),
                     new Command.Arg("pki.keygen.password", "The password to generate the pki key from", true),
+                    new Command.Arg("pki.keyfile.password", "The password protecting the pki keyfile", true)
+            )
+    );
+
+    public static final Command PKI = new Command("pki",
+            "Start the Peergos PKI Server that has already been bootstrapped",
+            args -> {
+                try {
+                    int peergosPort = args.getInt("port");
+                    int ipfsApiPort = args.getInt("ipfs-config-api-port");
+                    args.setIfAbsent("proxy-target", getLocalMultiAddress(peergosPort).toString());
+
+                    IpfsWrapper ipfs = null;
+                    boolean useIPFS = args.getBoolean("useIPFS");
+                    if (useIPFS) {
+                        ENSURE_IPFS_INSTALLED.main(args);
+                        ipfs = startIpfs(args);
+                    }
+
+                    args.setArg("ipfs-api-address", getLocalMultiAddress(ipfsApiPort).toString());
+
+                    Multihash pkiIpfsNodeId = useIPFS ?
+                            new IpfsDHT(getLocalMultiAddress(ipfsApiPort)).id().get() :
+                            new FileContentAddressedStorage(blockstorePath(args)).id().get();
+
+                    if (ipfs != null)
+                        ipfs.stop();
+                    args.setIfAbsent("pki-node-id", pkiIpfsNodeId.toBase58());
+                    PEERGOS.main(args);
+                } catch (Exception e) {
+                    throw new RuntimeException(e.getMessage(), e);
+                }
+            },
+            Arrays.asList(
+                    new Command.Arg("peergos.identity.hash", "The hostname to listen on", true),
+                    new Command.Arg("domain", "The hostname to listen on", true, "localhost"),
+                    new Command.Arg("port", "The port for the local non tls server to listen on", true, "8000"),
+                    new Command.Arg("useIPFS", "Whether to use IPFS or a local datastore", true, "false"),
+                    new Command.Arg("mutable-pointers-file", "The filename for the mutable pointers (or :memory: or ram based)", true, ":memory:"),
+                    new Command.Arg("social-sql-file", "The filename for the follow requests (or :memory: or ram based)", true, ":memory:"),
+                    new Command.Arg("ipfs-config-api-port", "ipfs api port", true, "5001"),
+                    new Command.Arg("ipfs-config-gateway-port", "ipfs gateway port", true, "8080"),
+                    new Command.Arg("pki.secret.key.path", "The path to the pki secret key file", true, "test.pki.secret.key"),
+                    new Command.Arg("pki.public.key.path", "The path to the pki public key file", true, "test.pki.public.key"),
+                    // Secret parameters
                     new Command.Arg("pki.keyfile.password", "The password protecting the pki keyfile", true)
             )
     );
@@ -492,6 +538,7 @@ public class Main {
             },
             Collections.emptyList(),
             Arrays.asList(
+                    PKI_INIT,
                     PKI,
                     PEERGOS,
                     FUSE
