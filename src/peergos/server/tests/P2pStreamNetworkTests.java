@@ -33,7 +33,7 @@ public class P2pStreamNetworkTests {
     @BeforeClass
     public static void init() throws Exception {
         // start pki node
-        Main.PKI.main(args);
+        Main.PKI_INIT.main(args);
         NetworkAccess toPki = buildApi(args);
         Multihash pkiNodeId = toPki.dhtClient.id().get();
         nodes.add(toPki);

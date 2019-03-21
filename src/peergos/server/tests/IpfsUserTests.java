@@ -29,6 +29,6 @@ public class IpfsUserTests extends UserTests {
 
     @BeforeClass
     public static void init() {
-        Main.PKI.main(args);
+        Main.PKI_INIT.main(args);
     }
 }

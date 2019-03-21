@@ -34,7 +34,7 @@ public class IpfsStressTest {
         int webPort = portMin + r.nextInt(portRange);
         int corePort = portMin + portRange + r.nextInt(portRange);
         Args args = Args.parse(new String[]{"useIPFS", "true", "-port", Integer.toString(webPort), "-corenodePort", Integer.toString(corePort)});
-        Main.PKI.main(args);
+        Main.PKI_INIT.main(args);
         this.network = NetworkAccess.buildJava(new URL("http://localhost:" + webPort)).get();
     }
 
