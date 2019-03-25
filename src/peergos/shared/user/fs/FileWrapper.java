@@ -817,6 +817,21 @@ public class FileWrapper {
                         network, random, hasher, monitor));
     }
 
+    public CompletableFuture<FileWrapper> appendToChild(String filename,
+                                                         byte[] fileData,
+                                                         boolean isHidden,
+                                                         NetworkAccess network,
+                                                         SafeRandom random,
+                                                         Hasher hasher,
+                                                         ProgressConsumer<Long> monitor) {
+        return getChild(filename, network)
+                .thenCompose(child -> uploadFileSection(filename, AsyncReader.build(fileData), isHidden,
+                        child.map(f -> f.getSize()).orElse(0L),
+                        fileData.length + child.map(f -> f.getSize()).orElse(0L),
+                        child.map(f -> f.getPointer().capability.rBaseKey), true, network, random,
+                        hasher, monitor, generateChildLocationsFromSize(fileData.length, random)));
+    }
+
     private CompletableFuture<FileWrapper> updateExistingChild(FileWrapper existingChild,
                                                                AsyncReader fileData,
                                                                long inputStartIndex,

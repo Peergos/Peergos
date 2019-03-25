@@ -41,6 +41,7 @@ public class UserContext {
     public static final String SHARED_DIR_NAME = "shared";
     public static final String TRANSACTIONS_DIR_NAME = ".transactions";
     public static final String ENTRY_POINT_FILENAME = ".from-friends.cborstream";
+    public static final String BLOCKED_USERNAMES_FILE = ".blocked-usernames.txt";
 
     @JsProperty
     public final String username;
@@ -650,7 +651,7 @@ public class UserContext {
             throw new IllegalStateException("Only the owner of a file can grant write access!");
     }
 
-     @JsMethod
+    @JsMethod
     public CompletableFuture<Set<FileWrapper>> getFriendRoots() {
         List<CompletableFuture<Optional<FileWrapper>>> friendRoots = entrie.getChildNames()
                 .stream()
@@ -1071,11 +1072,6 @@ public class UserContext {
                 }).thenCompose(res -> addEntryPoint(username, root, entry, network, crypto.random, crypto.hasher));
     }
 
-    private CompletableFuture<CommittedWriterData> removeFromStaticData(FileWrapper fileWrapper) {
-        // Todo apply this to entry point stores in filesystem
-        return userData.runWithLock(wd -> wd.props.removeFromStaticData(fileWrapper, rootKey, signer, wd.hash, network));
-    }
-
     private CompletableFuture<List<BlindFollowRequest>> getFollowRequests() {
         byte[] time = new CborObject.CborLong(System.currentTimeMillis()).serialize();
         byte[] auth = signer.secret.signMessage(time);
@@ -1134,11 +1130,8 @@ public class UserContext {
                         if (keyFromResponse == null || !Arrays.equals(keyFromResponse, ourKeyForThem)) {
                             // They didn't reciprocate (follow us)
                             CompletableFuture<FileWrapper> removeDir = ourDirForThem.remove(sharing, network, crypto.hasher);
-                            // remove entry point as well
-                            CompletableFuture<CommittedWriterData> cleanStatic = removeFromStaticData(ourDirForThem);
 
-                            return removeDir.thenCompose(x -> cleanStatic)
-                                    .thenCompose(b -> addToStatic.apply(trie, p));
+                            return removeDir.thenCompose(b -> addToStatic.apply(trie, p));
                         } else if (freq.entry.get().pointer.isNull()) {
                             // They reciprocated, but didn't accept (they follow us, but we can't follow them)
                             // add entry point to static data to signify their acceptance
@@ -1239,7 +1232,21 @@ public class UserContext {
                             return f.getInputStream(network, crypto.random, x -> {})
                                     .thenCompose(reader -> reader.parseStream(EntryPoint::fromCbor, res::add, f.getSize())
                                             .thenApply(x -> res));
-                        }).orElse(CompletableFuture.completedFuture(Collections.emptyList())));
+                        }).orElse(CompletableFuture.completedFuture(Collections.emptyList())))
+                .thenCompose(fromFriends -> {
+                    // filter out blocked friends
+                    return getByPath(Paths.get(username, BLOCKED_USERNAMES_FILE))
+                            .thenCompose(fopt -> fopt
+                                    .map(f -> f.getInputStream(network, crypto.random, x -> {})
+                                            .thenCompose(in -> Serialize.readFully(in, f.getSize()))
+                                            .thenApply(data -> new HashSet<>(Arrays.asList(new String(data).split("\n")))
+                                                    .stream()
+                                                    .collect(Collectors.toSet())))
+                                    .orElse(CompletableFuture.completedFuture(Collections.emptySet())))
+                            .thenApply(toRemove -> fromFriends.stream()
+                                    .filter(e -> ! toRemove.contains(e.ownerName))
+                                    .collect(Collectors.toList()));
+                });
     }
 
     private static CompletableFuture<TrieNode> addRetrievedEntryPoint(String ourName,
@@ -1317,27 +1324,23 @@ public class UserContext {
     @JsMethod
     public CompletableFuture<Boolean> unfollow(String friendName) {
         LOG.info("Unfollowing: " + friendName);
-        // remove entry point from static data
-        String friendPath = "/" + friendName + "/";
-        return getByPath(friendPath)
-                // remove our static data entry storing that they've granted us access
-                .thenCompose(dir -> removeFromStaticData(dir.get()))
+        return getUserRoot()
+                .thenCompose(home -> home.appendToChild(BLOCKED_USERNAMES_FILE, (friendName + "\n").getBytes(), true,
+                        network, crypto.random, crypto.hasher, x -> {}))
                 .thenApply(b -> {
-                    entrie = entrie.removeEntry(friendPath);
+                    entrie = entrie.removeEntry("/" + friendName + "/");
                     return true;
                 });
     }
 
     @JsMethod
-    public CompletableFuture<CommittedWriterData> removeFollower(String username) {
+    public CompletableFuture<Boolean> removeFollower(String username) {
         LOG.info("Remove follower: " + username);
         // remove /$us/shared/$them
         return getSharingFolder()
-                .thenCompose(sharing -> getByPath("/"+this.username+"/shared/"+username)
-                        .thenCompose(dir -> dir.get().remove(sharing, network, crypto.hasher)
-
-                                // remove our static data entry storing that we've granted them access
-                                .thenCompose(b -> removeFromStaticData(dir.get()))));
+                .thenCompose(sharing -> getByPath(Paths.get(this.username, SHARED_DIR_NAME, username))
+                        .thenCompose(dir -> dir.get().remove(sharing, network, crypto.hasher)))
+                .thenApply(x -> true);
     }
 
     public void logout() {
