@@ -38,7 +38,7 @@ public class WriterData implements Cborable {
     // Any keys directly owned by the controller that have specific labels
     public final Map<String, OwnerProof> namedOwnedKeys;
 
-    // Encrypted entry points to our and our friends file systems (present on owner keys)
+    // Encrypted entry points to our file systems (present on owner keys)
     public final Optional<UserStaticData> staticData;
     // This is the root of a champ containing the controller's filesystem (present on writer keys)
     public final Optional<Multihash> tree;
