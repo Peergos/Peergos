@@ -4,6 +4,7 @@ import peergos.shared.io.ipfs.api.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multiaddr.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
 import java.io.*;
@@ -203,6 +204,10 @@ public class IPFS {
         }
 
         public List<MerkleNode> put(List<byte[]> data, Optional<String> format) throws IOException {
+            for (byte[] block : data) {
+                if (block.length > ContentAddressedStorage.MAX_BLOCK_SIZE)
+                    throw new IllegalStateException("Invalid block size: " + block.length + ", blocks must be smaller than 2MiB!");
+            }
             String fmt = format.map(f -> "&format=" + f).orElse("");
             Multipart m = new Multipart("http://" + host + ":" + port + version+"block/put?stream-channels=true" + fmt, "UTF-8");
             for (byte[] f : data)
