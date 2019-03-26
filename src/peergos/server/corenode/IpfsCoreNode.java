@@ -25,9 +25,6 @@ import java.util.stream.*;
 public class IpfsCoreNode implements CoreNode {
 	private static final Logger LOG = Logging.LOG();
 
-    public static final PublicSigningKey PEERGOS_IDENTITY_KEY = PublicSigningKey.fromString("ggFYIE7uD1ViM9KfiA1w69n774/jk6hERINN3xACPyabWiBp");
-    public static final PublicKeyHash PEERGOS_IDENTITY_KEY_HASH = PublicKeyHash.fromString("zdpuAvZynWLuyvovJwa34bj24M7cspt5M8seFfrFLrPWDGFDW");
-
     private final PublicKeyHash peergosIdentity;
     private final ContentAddressedStorage ipfs;
     private final MutablePointers mutable;
@@ -39,7 +36,7 @@ public class IpfsCoreNode implements CoreNode {
 
     private MaybeMultihash currentRoot;
 
-    public IpfsCoreNode(SigningKeyPair pkiKeys,
+    public IpfsCoreNode(SigningPrivateKeyAndPublicHash pkiSigner,
                         MaybeMultihash currentRoot,
                         ContentAddressedStorage ipfs,
                         MutablePointers mutable,
@@ -48,16 +45,8 @@ public class IpfsCoreNode implements CoreNode {
         this.ipfs = ipfs;
         this.mutable = mutable;
         this.peergosIdentity = peergosIdentity;
-        PublicKeyHash pkiPublicHash = ContentAddressedStorage.hashKey(pkiKeys.publicSigningKey);
-        this.signer = new SigningPrivateKeyAndPublicHash(pkiPublicHash, pkiKeys.secretSigningKey);
+        this.signer = pkiSigner;
         this.update(currentRoot);
-    }
-
-    public IpfsCoreNode(SigningKeyPair signer,
-                        MaybeMultihash currentRoot,
-                        ContentAddressedStorage ipfs,
-                        MutablePointers mutable) {
-        this(signer, currentRoot, ipfs, mutable, PEERGOS_IDENTITY_KEY_HASH);
     }
 
     /** Update the existing mappings based on the diff between the current champ and the champ with the supplied root.
@@ -69,6 +58,14 @@ public class IpfsCoreNode implements CoreNode {
         this.currentRoot = newRoot;
     }
 
+    private static MaybeMultihash getTreeRoot(MaybeMultihash pointerTarget, ContentAddressedStorage ipfs) {
+        if (! pointerTarget.isPresent())
+            return MaybeMultihash.empty();
+        CommittedWriterData current = WriterData.getWriterData(pointerTarget.get(), ipfs).join();
+        return current.props.tree.map(MaybeMultihash::of).orElseGet(MaybeMultihash::empty);
+
+    }
+
     public static void updateAllMappings(PublicKeyHash pkiSigner,
                                          MaybeMultihash currentChampRoot,
                                          MaybeMultihash newChampRoot,
@@ -77,10 +74,8 @@ public class IpfsCoreNode implements CoreNode {
                                          Map<PublicKeyHash, String> reverseLookup,
                                          List<String> usernames) {
         try {
-            CommittedWriterData current = WriterData.getWriterData(pkiSigner, currentChampRoot, ipfs).get();
-            CommittedWriterData updated = WriterData.getWriterData(pkiSigner, newChampRoot, ipfs).get();
-            MaybeMultihash currentTree = current.props.tree.map(MaybeMultihash::of).orElseGet(MaybeMultihash::empty);
-            MaybeMultihash updatedTree = updated.props.tree.map(MaybeMultihash::of).orElseGet(MaybeMultihash::empty);
+            MaybeMultihash currentTree = getTreeRoot(currentChampRoot, ipfs);
+            MaybeMultihash updatedTree = getTreeRoot(newChampRoot, ipfs);
             Consumer<Triple<ByteArrayWrapper, MaybeMultihash, MaybeMultihash>> consumer =
                     t -> updateMapping(t.left, t.middle, t.right, ipfs, chains, reverseLookup, usernames);
             Champ.applyToDiff(currentTree, updatedTree, consumer, ipfs).get();
@@ -143,7 +138,7 @@ public class IpfsCoreNode implements CoreNode {
     public synchronized CompletableFuture<Boolean> updateChain(String username, List<UserPublicKeyLink> updatedChain) {
             try {
                 Function<ByteArrayWrapper, byte[]> identityHash = arr -> Arrays.copyOfRange(arr.data, 0, CoreNode.MAX_USERNAME_SIZE);
-                CommittedWriterData current = WriterData.getWriterData(signer.publicKeyHash, currentRoot, ipfs).get();
+                CommittedWriterData current = WriterData.getWriterData(currentRoot.get(), ipfs).get();
                 MaybeMultihash currentTree = current.props.tree.map(MaybeMultihash::of).orElseGet(MaybeMultihash::empty);
 
                 ChampWrapper champ = currentTree.isPresent() ?

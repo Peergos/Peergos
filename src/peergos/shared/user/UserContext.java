@@ -243,28 +243,30 @@ public class UserContext {
                         );
                     }).thenCompose(boxerHash -> {
                         progressCallback.accept("Creating filesystem");
-                        WriterData newUserData = WriterData.createEmpty(
-                                signerHash,
-                                Optional.of(new PublicKeyHash(boxerHash)),
-                                userWithRoot.getRoot());
-
-                        CommittedWriterData notCommitted = new CommittedWriterData(MaybeMultihash.empty(), newUserData);
-                        UserContext context = new UserContext(username,
+                        return WriterData.createEmptyWithStaticData(signerHash,
                                 signer,
-                                userWithRoot.getBoxingPair(),
+                                Optional.of(new PublicKeyHash(boxerHash)),
                                 userWithRoot.getRoot(),
-                                network,
-                                crypto,
-                                CompletableFuture.completedFuture(notCommitted),
-                                TrieNodeImpl.empty());
+                                network.dhtClient).thenCompose(newUserData -> {
 
-                        LOG.info("Creating user's root directory");
-                        long t1 = System.currentTimeMillis();
-                        return context.createEntryDirectory(signer, username).thenCompose(userRoot -> {
-                            LOG.info("Creating root directory took " + (System.currentTimeMillis() - t1) + " mS");
-                            return context.createSpecialDirectory(SHARED_DIR_NAME)
-                                    .thenCompose(x -> signIn(username, userWithRoot, network.clear(), crypto, progressCallback))
-                                    .thenCompose(c -> c.createSpecialDirectory(TRANSACTIONS_DIR_NAME));
+                            CommittedWriterData notCommitted = new CommittedWriterData(MaybeMultihash.empty(), newUserData);
+                            UserContext context = new UserContext(username,
+                                    signer,
+                                    userWithRoot.getBoxingPair(),
+                                    userWithRoot.getRoot(),
+                                    network,
+                                    crypto,
+                                    CompletableFuture.completedFuture(notCommitted),
+                                    TrieNodeImpl.empty());
+
+                            LOG.info("Creating user's root directory");
+                            long t1 = System.currentTimeMillis();
+                            return context.createEntryDirectory(signer, username).thenCompose(userRoot -> {
+                                LOG.info("Creating root directory took " + (System.currentTimeMillis() - t1) + " mS");
+                                return context.createSpecialDirectory(SHARED_DIR_NAME)
+                                        .thenCompose(x -> signIn(username, userWithRoot, network.clear(), crypto, progressCallback))
+                                        .thenCompose(c -> c.createSpecialDirectory(TRANSACTIONS_DIR_NAME));
+                            });
                         });
                     });
                 }).thenCompose(context -> network.coreNode.getUsernames(PEERGOS_USERNAME)
@@ -292,7 +294,14 @@ public class UserContext {
             return invalidLink;
         }
         EntryPoint entry = new EntryPoint(cap, "");
-        WriterData empty = WriterData.createEmpty(cap.owner);
+        WriterData empty = new WriterData(cap.owner,
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.empty(),
+                        Collections.emptyMap(),
+                        Optional.empty(),
+                        Optional.empty());
         CommittedWriterData committed = new CommittedWriterData(MaybeMultihash.empty(), empty);
         CompletableFuture<CommittedWriterData> userData = CompletableFuture.completedFuture(committed);
         UserContext context = new UserContext(null, null, null, null, network.clear(), crypto, userData, TrieNodeImpl.empty());
@@ -456,17 +465,14 @@ public class UserContext {
 
     public CompletableFuture<Long> getTotalSpaceUsed(PublicKeyHash ownerHash, PublicKeyHash writerHash) {
         // assume no cycles in owned keys
-        return getSigningKey(ownerHash)
-                .thenCompose(owner -> getWriterData(network, ownerHash, writerHash)
-                        .thenCompose(cwd -> {
-                            CompletableFuture<Long> subtree = Futures.reduceAll(cwd.props.ownedKeys
-                                            .stream()
-                                            .map(writer -> getTotalSpaceUsed(ownerHash, writer.ownedKey))
-                                            .collect(Collectors.toList()),
-                                    0L, (t, fut) -> fut.thenApply(x -> x + t), (a, b) -> a + b);
-                            return subtree.thenCompose(ownedSize -> network.dhtClient.getRecursiveBlockSize(cwd.hash.get())
-                                    .thenApply(descendentSize -> descendentSize + ownedSize));
-                        }));
+        return WriterData.getOwnedKeysRecursive(ownerHash, writerHash, network.mutable, network.dhtClient)
+                .thenCompose(allOwned -> Futures.reduceAll(allOwned.stream()
+                                .map(w -> network.mutable.getPointerTarget(ownerHash, w, network.dhtClient)
+                                        .thenCompose(root -> root.isPresent() ?
+                                                network.dhtClient.getRecursiveBlockSize(root.get()) :
+                                                CompletableFuture.completedFuture(0L)))
+                                .collect(Collectors.toList()),
+                        0L, (t, fut) -> fut.thenApply(x -> x + t), (a, b) -> a + b));
     }
 
     public CompletableFuture<SecretGenerationAlgorithm> getKeyGenAlgorithm() {
@@ -554,24 +560,30 @@ public class UserContext {
             LOG.info("Random keys generation took " + (System.currentTimeMillis() - t1) + " mS");
 
             // and authorise the writer key
-            SigningPrivateKeyAndPublicHash writerWithHash = new SigningPrivateKeyAndPublicHash(writerHash, writer.secretSigningKey);
-            WritableAbsoluteCapability rootPointer = new WritableAbsoluteCapability(owner.publicKeyHash, writerHash, rootMapKey, rootRKey, rootWKey);
+            SigningPrivateKeyAndPublicHash writerWithHash =
+                    new SigningPrivateKeyAndPublicHash(writerHash, writer.secretSigningKey);
+            WritableAbsoluteCapability rootPointer =
+                    new WritableAbsoluteCapability(owner.publicKeyHash, writerHash, rootMapKey, rootRKey, rootWKey);
             EntryPoint entry = new EntryPoint(rootPointer, this.username);
             return addOwnedKeyAndCommit(writerWithHash, tid)
                     .thenCompose(x -> {
                         long t2 = System.currentTimeMillis();
-                        RelativeCapability nextChunk = RelativeCapability.buildSubsequentChunk(crypto.random.randomBytes(32), rootRKey);
-                        CryptreeNode.DirAndChildren root = CryptreeNode.createDir(MaybeMultihash.empty(), rootRKey, rootWKey, Optional.of(writerWithHash),
+                        RelativeCapability nextChunk =
+                                RelativeCapability.buildSubsequentChunk(crypto.random.randomBytes(32), rootRKey);
+                        CryptreeNode.DirAndChildren root =
+                                CryptreeNode.createDir(MaybeMultihash.empty(), rootRKey, rootWKey, Optional.of(writerWithHash),
                                 new FileProperties(directoryName, true, "", 0, LocalDateTime.now(),
                                         false, Optional.empty()), Optional.empty(), SymmetricKey.random(), nextChunk, crypto.hasher);
 
                         LOG.info("Uploading entry point directory");
-                        return root.commit(rootPointer, Optional.of(writerWithHash), network, tid)
-                                .thenApply(rootWithHash -> {
-                                    long t3 = System.currentTimeMillis();
-                                    LOG.info("Uploading root dir metadata took " + (t3 - t2) + " mS");
-                                    return new RetrievedCapability(rootPointer, rootWithHash);
-                                });
+                        return WriterData.createEmpty(owner.publicKeyHash, writerWithHash, network.dhtClient)
+                                .thenCompose(empty -> empty.commit(owner.publicKeyHash, writerWithHash, MaybeMultihash.empty(), network, tid))
+                                .thenCompose(empty -> root.commit(rootPointer, Optional.of(writerWithHash), network, tid)
+                                        .thenApply(rootWithHash -> {
+                                            long t3 = System.currentTimeMillis();
+                                            LOG.info("Uploading root dir metadata took " + (t3 - t2) + " mS");
+                                            return new RetrievedCapability(rootPointer, rootWithHash);
+                                        }));
                     }).thenCompose(x -> addRootEntryPointAndCommit(entrie, entry).thenApply(y -> {
                         this.entrie = y;
                         return x;
@@ -597,15 +609,9 @@ public class UserContext {
 
     private CompletableFuture<CommittedWriterData> addOwnedKeyAndCommit(SigningPrivateKeyAndPublicHash owned,
                                                                         TransactionId tid) {
-        return userData.runWithLock(wd -> {
-            Set<OwnerProof> updated = Stream.concat(
-                    wd.props.ownedKeys.stream(),
-                    Stream.of(OwnerProof.build(owned, signer.publicKeyHash))
-            ).collect(Collectors.toSet());
-
-            WriterData writerData = wd.props.withOwnedKeys(updated);
-            return writerData.commit(signer.publicKeyHash, signer, wd.hash, network, tid);
-        });
+        return userData.runWithLock(wd ->
+            wd.props.addOwnedKey(signer.publicKeyHash, signer, OwnerProof.build(owned, signer.publicKeyHash), network.dhtClient)
+                    .thenCompose(updated -> updated.commit(signer.publicKeyHash, signer, wd.hash, network, tid)));
     }
 
     public CompletableFuture<CommittedWriterData> addNamedOwnedKeyAndCommit(String keyName,
@@ -963,21 +969,21 @@ public class UserContext {
                                                                                         SigningPrivateKeyAndPublicHash parentSigner,
                                                                                         SigningKeyPair newSignerPair,
                                                                                         NetworkAccess network) {
+        byte[] signature = parentSigner.secret.signatureOnly(newSignerPair.publicSigningKey.serialize());
         return IpfsTransaction.call(owner,
-                tid -> network.dhtClient.putSigningKey(
-                        parentSigner.secret.signatureOnly(newSignerPair.publicSigningKey.serialize()),
-                        owner, parentSigner.publicKeyHash, newSignerPair.publicSigningKey, tid).thenCompose(newSignerHash ->
-                        WriterData.getWriterData(owner, parentSigner.publicKeyHash, network.mutable, network.dhtClient)
+                tid -> network.dhtClient.putSigningKey(signature, owner, parentSigner.publicKeyHash,
+                        newSignerPair.publicSigningKey, tid)
+                        .thenCompose(newSignerHash -> WriterData.getWriterData(owner, parentSigner.publicKeyHash,
+                                network.mutable, network.dhtClient)
                                 .thenCompose(wd -> {
                                     SigningPrivateKeyAndPublicHash newSigner =
                                             new SigningPrivateKeyAndPublicHash(newSignerHash, newSignerPair.secretSigningKey);
-                                    Set<OwnerProof> ownedKeys = new HashSet<>(wd.props.ownedKeys);
-                                    ownedKeys.add(OwnerProof.build(newSigner, parentSigner.publicKeyHash));
-                                    WriterData updatedParentWD = wd.props.withOwnedKeys(ownedKeys);
-                                    return updatedParentWD.commit(owner,
-                                            parentSigner, wd.hash, network, tid)
+                                    return wd.props.addOwnedKey(owner, parentSigner,
+                                            OwnerProof.build(newSigner, parentSigner.publicKeyHash), network.dhtClient)
+                                            .thenCompose(updated -> updated.commit(owner, parentSigner, wd.hash, network, tid))
                                             .thenApply(x -> newSigner);
-                                })), network.dhtClient);
+                                }))
+                , network.dhtClient);
     }
 
     /**
@@ -989,20 +995,14 @@ public class UserContext {
      * @return The hashed new signing pair
      */
     public static CompletableFuture<CommittedWriterData> removeOwnedKeyFromParent(PublicKeyHash owner,
-                                                                                             SigningPrivateKeyAndPublicHash parentSigner,
-                                                                                             PublicKeyHash toRemove,
-                                                                                             NetworkAccess network) {
+                                                                                  SigningPrivateKeyAndPublicHash parentSigner,
+                                                                                  PublicKeyHash toRemove,
+                                                                                  NetworkAccess network) {
         return IpfsTransaction.call(owner,
                 tid -> WriterData.getWriterData(owner, parentSigner.publicKeyHash, network.mutable, network.dhtClient)
-                        .thenCompose(wd -> {
-                            Set<OwnerProof> ownedKeys = wd.props.ownedKeys;
-                            Set<OwnerProof> updatedOwnedKeys = ownedKeys.stream()
-                                    .filter(p -> !p.ownedKey.equals(toRemove))
-                                    .collect(Collectors.toSet());
-                            WriterData updatedParentWD = wd.props.withOwnedKeys(updatedOwnedKeys);
-                            return updatedParentWD.commit(owner,
-                                    parentSigner, wd.hash, network, tid);
-                        }), network.dhtClient);
+                        .thenCompose(wd -> wd.props.removeOwnedKey(owner, parentSigner, toRemove, network.dhtClient)
+                                .thenCompose(updated -> updated.commit(owner, parentSigner, wd.hash, network, tid))),
+                network.dhtClient);
     }
 
     private CompletableFuture<Boolean> updatedSharedWithCache(FileWrapper file, Set<String> usersToAdd,

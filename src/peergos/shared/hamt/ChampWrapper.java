@@ -34,7 +34,7 @@ public class ChampWrapper implements ImmutableTree
                                                          ContentAddressedStorage dht) {
         return dht.get(rootHash).thenApply(rawOpt -> {
             if (! rawOpt.isPresent())
-                throw new IllegalStateException("Null byte[] returned by DHT for hash: " + rootHash);
+                throw new IllegalStateException("Champ root not present: " + rootHash);
             return new ChampWrapper(Champ.fromCbor(rawOpt.get()), rootHash, hasher, dht, BIT_WIDTH);
         });
     }
@@ -93,7 +93,7 @@ public class ChampWrapper implements ImmutableTree
                                                SigningPrivateKeyAndPublicHash writer,
                                                byte[] rawKey,
                                                MaybeMultihash existing,
-                                            TransactionId tid) {
+                                               TransactionId tid) {
         ByteArrayWrapper key = new ByteArrayWrapper(rawKey);
         return root.left.put(owner, writer, key, hasher.apply(key), 0, existing, MaybeMultihash.empty(),
                 BIT_WIDTH, MAX_HASH_COLLISIONS_PER_LEVEL, hasher, tid, storage, root.right)
