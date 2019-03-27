@@ -817,6 +817,21 @@ public class FileWrapper {
                         network, random, hasher, monitor));
     }
 
+    public CompletableFuture<FileWrapper> appendToChild(String filename,
+                                                         byte[] fileData,
+                                                         boolean isHidden,
+                                                         NetworkAccess network,
+                                                         SafeRandom random,
+                                                         Hasher hasher,
+                                                         ProgressConsumer<Long> monitor) {
+        return getChild(filename, network)
+                .thenCompose(child -> uploadFileSection(filename, AsyncReader.build(fileData), isHidden,
+                        child.map(f -> f.getSize()).orElse(0L),
+                        fileData.length + child.map(f -> f.getSize()).orElse(0L),
+                        child.map(f -> f.getPointer().capability.rBaseKey), true, network, random,
+                        hasher, monitor, generateChildLocationsFromSize(fileData.length, random)));
+    }
+
     private CompletableFuture<FileWrapper> updateExistingChild(FileWrapper existingChild,
                                                                AsyncReader fileData,
                                                                long inputStartIndex,
@@ -1151,19 +1166,24 @@ public class FileWrapper {
                 .withParentLink(getParentKey(), newParentLink);
         RetrievedCapability newRetrievedCapability = new RetrievedCapability(cap.withSigner(signer.publicKeyHash), newFileAccess);
 
-        return IpfsTransaction.call(owner(),
-                tid -> network.uploadChunk(newFileAccess, owner(), getPointer().capability.getMapKey(), signer, tid)
+        // create the new signing subspace move subtree to it
+        PublicKeyHash owner = owner();
+        return IpfsTransaction.call(owner,
+                tid -> WriterData.createEmpty(owner, signer, network.dhtClient)
+                        .thenCompose(wd -> wd.commit(owner, signer, MaybeMultihash.empty(), network, tid)),
+                network.dhtClient).thenCompose(empty -> IpfsTransaction.call(owner,
+                tid -> network.uploadChunk(newFileAccess, owner, getPointer().capability.getMapKey(), signer, tid)
                         .thenCompose(ourNewHash -> copyAllChunks(false, cap, signer, tid, network)
-                        .thenCompose(y -> parent.getPointer().fileAccess.updateChildLink(parent.writableFilePointer(),
-                                parent.entryWriter,
-                                getPointer(),
-                                newRetrievedCapability, network, random, hasher))
-                        .thenCompose(updatedParentDA -> deleteAllChunks(cap, signingPair(), tid, network)
-                                .thenApply(x -> new FileWrapper(parent.pointer
-                                        .withCryptree(updatedParentDA), parent.entryWriter, parent.ownername)))
-                        .thenApply(updatedParent -> new Pair<>(new FileWrapper(newRetrievedCapability.withHash(ourNewHash),
-                                Optional.of(signer), ownername), updatedParent))),
-                network.dhtClient);
+                                .thenCompose(y -> parent.getPointer().fileAccess.updateChildLink(parent.writableFilePointer(),
+                                        parent.entryWriter,
+                                        getPointer(),
+                                        newRetrievedCapability, network, random, hasher))
+                                .thenCompose(updatedParentDA -> deleteAllChunks(cap, signingPair(), tid, network)
+                                        .thenApply(x -> new FileWrapper(parent.pointer
+                                                .withCryptree(updatedParentDA), parent.entryWriter, parent.ownername)))
+                                .thenApply(updatedParent -> new Pair<>(new FileWrapper(newRetrievedCapability.withHash(ourNewHash),
+                                        Optional.of(signer), ownername), updatedParent))),
+                network.dhtClient));
     }
 
     /** This copies all the cryptree nodes from one signing key to another for a file or subtree
@@ -1264,18 +1284,11 @@ public class FileWrapper {
 
         PublicKeyHash parentWriter = parentSigner.publicKeyHash;
         return WriterData.getWriterData(owner, parentWriter, network.mutable, network.dhtClient)
-                .thenCompose(parentWriterData -> {
-
-                    Set<OwnerProof> ownedKeys = parentWriterData.props.ownedKeys;
-                    Set<OwnerProof> updatedOwnedKeys = ownedKeys.stream()
-                            .filter(p -> !p.ownedKey.equals(signerToRemove))
-                            .collect(Collectors.toSet());
-                    WriterData updatedParentWD = parentWriterData.props.withOwnedKeys(updatedOwnedKeys);
-            return IpfsTransaction.call(owner, tid ->
-                    updatedParentWD.commit(owner, parentSigner,
-                            parentWriterData.hash, network, tid).thenApply(cwd -> true), network.dhtClient);
-
-        });
+                .thenCompose(parentWriterData -> parentWriterData.props
+                        .removeOwnedKey(owner, parentSigner, signerToRemove, network.dhtClient)
+                        .thenCompose(updatedParentWD -> IpfsTransaction.call(owner,
+                                tid -> updatedParentWD.commit(owner, parentSigner, parentWriterData.hash, network, tid)
+                                        .thenApply(cwd -> true), network.dhtClient)));
     }
 
     public CompletableFuture<? extends AsyncReader> getInputStream(NetworkAccess network, SafeRandom random,

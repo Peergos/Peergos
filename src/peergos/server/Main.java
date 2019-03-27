@@ -490,12 +490,12 @@ public class Main {
                             crypto.symmetricProvider,
                             crypto.random
                     )));
-            SigningKeyPair pkiKeys = new SigningKeyPair(pkiPublic, pkiSecretKey);
-            PublicKeyHash pkiPublicHash = ContentAddressedStorage.hashKey(pkiKeys.publicSigningKey);
+            PublicKeyHash pkiPublicHash = ContentAddressedStorage.hashKey(pkiPublic);
+            SigningPrivateKeyAndPublicHash pkiSigner = new SigningPrivateKeyAndPublicHash(pkiPublicHash, pkiSecretKey);
 
             MaybeMultihash currentPkiRoot = mutable.getPointerTarget(peergosIdentity, pkiPublicHash, dht).get();
 
-            IpfsCoreNode core = new IpfsCoreNode(pkiKeys, currentPkiRoot, dht, mutable, peergosIdentity);
+            IpfsCoreNode core = new IpfsCoreNode(pkiSigner, currentPkiRoot, dht, mutable, peergosIdentity);
             HttpCoreNodeServer.createAndStart(corenodePort, core, mutable, a);
         } catch (Exception e) {
             throw new RuntimeException(e);
@@ -524,8 +524,14 @@ public class Main {
             PublicKeyHash pkiPublicHash = ContentAddressedStorage.hashKey(pkiKeys.publicSigningKey);
 
             MaybeMultihash currentPkiRoot = mutable.getPointerTarget(peergosIdentity, pkiPublicHash, dht).get();
+            SigningPrivateKeyAndPublicHash pkiSigner = new SigningPrivateKeyAndPublicHash(pkiPublicHash, pkiSecretKey);
+            if (! currentPkiRoot.isPresent())
+                currentPkiRoot = IpfsTransaction.call(peergosIdentity,
+                        tid -> WriterData.createEmpty(peergosIdentity, pkiSigner, dht).join()
+                                .commit(peergosIdentity, pkiSigner, MaybeMultihash.empty(), mutable, dht, tid)
+                                .thenApply(cwd -> cwd.hash), dht).join();
 
-            return new IpfsCoreNode(pkiKeys, currentPkiRoot, dht, mutable, peergosIdentity);
+            return new IpfsCoreNode(pkiSigner, currentPkiRoot, dht, mutable, peergosIdentity);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

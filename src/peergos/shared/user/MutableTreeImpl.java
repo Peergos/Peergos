@@ -34,24 +34,13 @@ public class MutableTreeImpl implements MutableTree {
         return result;
     }
 
-    private CompletableFuture<CommittedWriterData> getWriterData(PublicKeyHash controller, MaybeMultihash hash) {
-        if (!hash.isPresent())
-            return CompletableFuture.completedFuture(new CommittedWriterData(MaybeMultihash.empty(), WriterData.createEmpty(controller)));
-        return dht.get(hash.get())
-                .thenApply(cborOpt -> {
-                    if (! cborOpt.isPresent())
-                        throw new IllegalStateException("Couldn't retrieve WriterData from dht! " + hash);
-                    return new CommittedWriterData(hash, WriterData.fromCbor(cborOpt.get()));
-                });
-    }
-
-    private CompletableFuture<CommittedWriterData> getWriterData(PublicKeyHash owner, PublicKeyHash hash) {
-        return mutable.getPointer(owner, hash)
-                .thenCompose(dataOpt -> dht.getSigningKey(hash)
+    private CompletableFuture<CommittedWriterData> getWriterData(PublicKeyHash owner, PublicKeyHash writer) {
+        return mutable.getPointer(owner, writer)
+                .thenCompose(dataOpt -> dht.getSigningKey(writer)
                         .thenApply(signer -> dataOpt.isPresent() ?
                                 HashCasPair.fromCbor(CborObject.fromByteArray(signer.get().unsignMessage(dataOpt.get()))).updated :
                                 MaybeMultihash.empty())
-                        .thenCompose(x -> getWriterData(hash, x)));
+                        .thenCompose(x -> WriterData.getWriterData(x.get(), dht)));
     }
 
     private CompletableFuture<CommittedWriterData> getCurrentWriterData(PublicKeyHash owner,

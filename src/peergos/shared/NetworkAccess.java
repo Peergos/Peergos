@@ -313,6 +313,8 @@ public class NetworkAccess {
                                                               SigningPrivateKeyAndPublicHash writer,
                                                               ProgressConsumer<Long> progressCounter,
                                                               TransactionId tid) {
+        if (fragments.isEmpty())
+            return CompletableFuture.completedFuture(Collections.emptyList());
         // upload one per query because IPFS doesn't support more than one
         int FRAGMENTs_PER_QUERY = 1;
         List<List<Fragment>> grouped = IntStream.range(0, (fragments.size() + FRAGMENTs_PER_QUERY - 1) / FRAGMENTs_PER_QUERY)

@@ -22,7 +22,7 @@ import java.util.stream.*;
 
 public interface ContentAddressedStorage {
 
-    int MAX_OBJECT_LENGTH  = 1024*256;
+    int MAX_BLOCK_SIZE  = 2*1024*1024;
 
     default CompletableFuture<Multihash> put(PublicKeyHash owner,
                                              SigningPrivateKeyAndPublicHash writer,
@@ -333,6 +333,11 @@ public interface ContentAddressedStorage {
                                                        List<byte[]> signatures,
                                                        List<byte[]> blocks, String format,
                                                        TransactionId tid) {
+            for (byte[] block : blocks) {
+                if (block.length > MAX_BLOCK_SIZE)
+                    throw new IllegalStateException("Invalid block size: " + block.length
+                            + ", blocks must be smaller than 2MiB!");
+            }
             return poster.postMultipart(apiPrefix + BLOCK_PUT + "?format=" + format
                     + "&owner=" + encode(owner.toString())
                     + "&transaction=" + encode(tid.toString())

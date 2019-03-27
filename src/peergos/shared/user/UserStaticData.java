@@ -10,7 +10,7 @@ import java.util.stream.*;
 
 public class UserStaticData implements Cborable {
 	private static final Logger LOG = Logger.getGlobal();
-	private static final int PADDING_BLOCK_SIZE = 8192;
+	private static final int PADDING_BLOCK_SIZE = 4096;
 
     private final PaddedCipherText allEntryPoints;
 
