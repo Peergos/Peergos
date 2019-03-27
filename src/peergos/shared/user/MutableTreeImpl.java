@@ -34,12 +34,6 @@ public class MutableTreeImpl implements MutableTree {
         return result;
     }
 
-    private CompletableFuture<CommittedWriterData> getCurrentWriterData(PublicKeyHash owner,
-                                                                        PublicKeyHash writer,
-                                                                        Function<CommittedWriterData, CompletableFuture<CommittedWriterData>> updater) {
-        return synchronizer.getCurrentWriterData(owner, writer, updater);
-    }
-
     @Override
     public CompletableFuture<Boolean> put(PublicKeyHash owner,
                                           SigningPrivateKeyAndPublicHash writer,
@@ -48,7 +42,7 @@ public class MutableTreeImpl implements MutableTree {
                                           Multihash value,
                                           TransactionId tid) {
         PublicKeyHash publicWriterKey = writer.publicKeyHash;
-        return getCurrentWriterData(owner, publicWriterKey, committed -> {
+        return synchronizer.getCurrentWriterData(owner, publicWriterKey, committed -> {
             WriterData holder = committed.props;
             return (holder.tree.isPresent() ?
                     ChampWrapper.create(holder.tree.get(), hasher, dht) :
@@ -63,7 +57,7 @@ public class MutableTreeImpl implements MutableTree {
 
     @Override
     public CompletableFuture<MaybeMultihash> get(PublicKeyHash owner, PublicKeyHash writer, byte[] mapKey) {
-        return getCurrentWriterData(owner, writer, x -> CompletableFuture.completedFuture(x))
+        return synchronizer.getCurrentWriterData(owner, writer, x -> CompletableFuture.completedFuture(x))
                 .thenCompose(old -> synchronizer.getWriterData(owner, writer).thenCompose(committed -> {
                     WriterData holder = committed.props;
                     if (! holder.tree.isPresent())
@@ -83,7 +77,7 @@ public class MutableTreeImpl implements MutableTree {
                                              TransactionId tid) {
         PublicKeyHash publicWriter = writer.publicKeyHash;
 
-        return getCurrentWriterData(owner, publicWriter, committed -> {
+        return synchronizer.getCurrentWriterData(owner, publicWriter, committed -> {
             WriterData holder = committed.props;
             if (! holder.tree.isPresent())
                 throw new IllegalStateException("Tree root not present!");
