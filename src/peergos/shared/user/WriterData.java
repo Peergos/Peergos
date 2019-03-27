@@ -333,19 +333,23 @@ public class WriterData implements Cborable {
         if (! root.isPresent())
             return CompletableFuture.completedFuture(Collections.emptySet());
 
+        BiFunction<Set<OwnerProof>, Pair<PublicKeyHash, OwnerProof>, CompletableFuture<Set<OwnerProof>>>
+                composer = (acc, pair) -> CompletableFuture.completedFuture(Stream.concat(acc.stream(), Stream.of(pair.right))
+                .collect(Collectors.toSet()));
+
+        BiFunction<Set<PublicKeyHash>, OwnerProof, CompletableFuture<Set<PublicKeyHash>>> proofComposer =
+                (acc, proof) -> proof.getOwner(ipfs)
+                        .thenApply(claimedWriter -> Stream.concat(acc.stream(), claimedWriter.equals(writer) ?
+                                Stream.of(proof.ownedKey) :
+                                Stream.empty()).collect(Collectors.toSet()));
+
         return getWriterData(root.get(), ipfs)
                 .thenCompose(wd -> wd.props.getOwnedKeyChamp(ipfs)
-                        .thenCompose(owned ->
-                                owned.applyToAllMappings(Collections.<OwnerProof>emptySet(),
-                                        (acc, pair) -> CompletableFuture.completedFuture(Stream.concat(acc.stream(), Stream.of(pair.right))
-                                                .collect(Collectors.toSet())), ipfs))
+                        .thenCompose(owned -> owned.applyToAllMappings(Collections.emptySet(), composer, ipfs))
                         .thenApply(owned -> Stream.concat(owned.stream(),
                                 wd.props.namedOwnedKeys.values().stream()).collect(Collectors.toSet())))
                 .thenCompose(all -> Futures.reduceAll(all, Collections.emptySet(),
-                        (acc, proof) -> proof.getOwner(ipfs)
-                                .thenApply(claimedWriter -> Stream.concat(acc.stream(), claimedWriter.equals(writer) ?
-                                        Stream.of(proof.ownedKey) :
-                                        Stream.empty()).collect(Collectors.toSet())),
+                        proofComposer,
                         (a, b) -> Stream.concat(a.stream(), b.stream())
                                 .collect(Collectors.toSet())));
     }
