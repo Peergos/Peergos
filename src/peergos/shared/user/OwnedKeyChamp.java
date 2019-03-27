@@ -19,7 +19,7 @@ public class OwnedKeyChamp {
     private final ChampWrapper champ;
     private final ContentAddressedStorage ipfs;
 
-    public OwnedKeyChamp(Multihash root, ChampWrapper champ, ContentAddressedStorage ipfs) {
+    private OwnedKeyChamp(Multihash root, ChampWrapper champ, ContentAddressedStorage ipfs) {
         this.root = root;
         this.champ = champ;
         this.ipfs = ipfs;
@@ -35,7 +35,7 @@ public class OwnedKeyChamp {
     }
 
     public static CompletableFuture<OwnedKeyChamp> build(Multihash root, ContentAddressedStorage ipfs) {
-        return ChampWrapper.create(root, b -> reverse(b.data), ipfs)
+        return ChampWrapper.create(root, b -> b.data, ipfs)
                 .thenApply(c -> new OwnedKeyChamp(root, c, ipfs));
     }
 
@@ -46,8 +46,12 @@ public class OwnedKeyChamp {
         return reversed;
     }
 
+    private static byte[] keyToBytes(PublicKeyHash key) {
+        return reverse(key.serialize());
+    }
+
     public CompletableFuture<Optional<OwnerProof>> get(PublicKeyHash ownedKey) {
-        return champ.get(ownedKey.serialize())
+        return champ.get(keyToBytes(ownedKey))
                 .thenCompose(res -> res.isPresent() ?
                         ipfs.get(res.get()).thenApply(raw -> raw.map(OwnerProof::fromCbor)) :
                         CompletableFuture.completedFuture(Optional.empty()));
@@ -59,20 +63,20 @@ public class OwnedKeyChamp {
                                             TransactionId tid) {
         return ipfs.put(owner, writer, proof.serialize(), tid)
                 .thenCompose(valueHash ->
-                        champ.put(owner, writer, reverse(proof.ownedKey.serialize()), MaybeMultihash.empty(), valueHash, tid));
+                        champ.put(owner, writer, keyToBytes(proof.ownedKey), MaybeMultihash.empty(), valueHash, tid));
     }
 
     public CompletableFuture<Multihash> remove(PublicKeyHash owner,
                                                SigningPrivateKeyAndPublicHash writer,
                                                PublicKeyHash key,
                                                TransactionId tid) {
-        byte[] keyBytes = reverse(key.serialize());
+        byte[] keyBytes = keyToBytes(key);
         return champ.get(keyBytes)
                 .thenCompose(existing -> champ.remove(owner, writer, keyBytes, existing, tid));
     }
 
     public CompletableFuture<Boolean> contains(PublicKeyHash ownedKey) {
-        return champ.get(ownedKey.multihash.getHash())
+        return champ.get(keyToBytes(ownedKey))
                 .thenApply(MaybeMultihash::isPresent);
     }
 
