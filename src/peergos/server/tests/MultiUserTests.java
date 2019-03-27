@@ -468,14 +468,15 @@ public class MultiUserTests {
 
         SocialState u1Social = PeergosNetworkUtils.ensureSignedUp(username1, password1, network.clear(), crypto)
                 .getSocialState().get();
-        Set<String> u1Following = u1Social
-                .followingRoots.stream().map(f -> f.getName())
+
+        Set<String> u1Following = u1Social.followingRoots.stream().map(f -> f.getName())
                 .collect(Collectors.toSet());
         assertTrue("Following correct", u1Following.contains(u2.username));
         assertTrue("Followers correct", u1Social.followerRoots.containsKey(username2));
 
         SocialState u2Social = PeergosNetworkUtils.ensureSignedUp(username2, password2, network.clear(), crypto)
                 .getSocialState().get();
+
         Set<String> u2Following = u2Social
                 .followingRoots.stream().map(f -> f.getName())
                 .collect(Collectors.toSet());

@@ -11,7 +11,6 @@ import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
-import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
 
@@ -20,12 +19,13 @@ public class MutableTreeImpl implements MutableTree {
     private final MutablePointers mutable;
     private final ContentAddressedStorage dht;
     private static final boolean LOGGING = false;
+    private final WriteSynchronizer synchronizer;
     private final Function<ByteArrayWrapper, byte[]> hasher = x -> x.data;
-    private final Map<PublicKeyHash, AsyncLock<CommittedWriterData>> pending = new ConcurrentHashMap<>();
 
-    public MutableTreeImpl(MutablePointers mutable, ContentAddressedStorage dht) {
+    public MutableTreeImpl(MutablePointers mutable, ContentAddressedStorage dht, WriteSynchronizer synchronizer) {
         this.mutable = mutable;
         this.dht = dht;
+        this.synchronizer = synchronizer;
     }
 
     private <T> T log(T result, String toPrint) {
@@ -34,24 +34,10 @@ public class MutableTreeImpl implements MutableTree {
         return result;
     }
 
-    private CompletableFuture<CommittedWriterData> getWriterData(PublicKeyHash owner, PublicKeyHash writer) {
-        return mutable.getPointer(owner, writer)
-                .thenCompose(dataOpt -> dht.getSigningKey(writer)
-                        .thenApply(signer -> dataOpt.isPresent() ?
-                                HashCasPair.fromCbor(CborObject.fromByteArray(signer.get().unsignMessage(dataOpt.get()))).updated :
-                                MaybeMultihash.empty())
-                        .thenCompose(x -> WriterData.getWriterData(x.get(), dht)));
-    }
-
     private CompletableFuture<CommittedWriterData> getCurrentWriterData(PublicKeyHash owner,
                                                                         PublicKeyHash writer,
                                                                         Function<CommittedWriterData, CompletableFuture<CommittedWriterData>> updater) {
-        // This is subtle, but we need to ensure that there is only ever 1 thenAble waiting on the future for a given key
-        // otherwise when the future completes, then the two or more waiters will both proceed with the existing hash,
-        // and whoever commits first will win. We also need to retrieve the writer data again from the network after
-        // a previous transaction has completed (another node/user may have updated the mapping)
-        return pending.computeIfAbsent(writer, w -> new AsyncLock<>(getWriterData(owner, w)))
-                .runWithLock(current -> updater.apply(current), () -> getWriterData(owner, writer));
+        return synchronizer.getCurrentWriterData(owner, writer, updater);
     }
 
     @Override
@@ -78,7 +64,7 @@ public class MutableTreeImpl implements MutableTree {
     @Override
     public CompletableFuture<MaybeMultihash> get(PublicKeyHash owner, PublicKeyHash writer, byte[] mapKey) {
         return getCurrentWriterData(owner, writer, x -> CompletableFuture.completedFuture(x))
-                .thenCompose(old -> getWriterData(owner, writer).thenCompose(committed -> {
+                .thenCompose(old -> synchronizer.getWriterData(owner, writer).thenCompose(committed -> {
                     WriterData holder = committed.props;
                     if (! holder.tree.isPresent())
                         throw new IllegalStateException("Tree root not present for " + writer);

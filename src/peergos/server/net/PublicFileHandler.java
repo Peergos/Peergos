@@ -34,7 +34,9 @@ public class PublicFileHandler implements HttpHandler {
         this.core = core;
         this.mutable = mutable;
         this.dht = dht;
-        this.network = new NetworkAccess(core, null, dht, mutable, new MutableTreeImpl(mutable, dht), null, Collections.emptyList());
+        WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, dht);
+        MutableTree mutableTree = new MutableTreeImpl(mutable, dht, synchronizer);
+        this.network = new NetworkAccess(core, null, dht, mutable, mutableTree, synchronizer, null, Collections.emptyList());
     }
 
     @Override
