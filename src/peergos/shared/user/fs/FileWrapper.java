@@ -1166,19 +1166,24 @@ public class FileWrapper {
                 .withParentLink(getParentKey(), newParentLink);
         RetrievedCapability newRetrievedCapability = new RetrievedCapability(cap.withSigner(signer.publicKeyHash), newFileAccess);
 
-        return IpfsTransaction.call(owner(),
-                tid -> network.uploadChunk(newFileAccess, owner(), getPointer().capability.getMapKey(), signer, tid)
+        // create the new signing subspace move subtree to it
+        PublicKeyHash owner = owner();
+        return IpfsTransaction.call(owner,
+                tid -> WriterData.createEmpty(owner, signer, network.dhtClient)
+                        .thenCompose(wd -> wd.commit(owner, signer, MaybeMultihash.empty(), network, tid)),
+                network.dhtClient).thenCompose(empty -> IpfsTransaction.call(owner,
+                tid -> network.uploadChunk(newFileAccess, owner, getPointer().capability.getMapKey(), signer, tid)
                         .thenCompose(ourNewHash -> copyAllChunks(false, cap, signer, tid, network)
-                        .thenCompose(y -> parent.getPointer().fileAccess.updateChildLink(parent.writableFilePointer(),
-                                parent.entryWriter,
-                                getPointer(),
-                                newRetrievedCapability, network, random, hasher))
-                        .thenCompose(updatedParentDA -> deleteAllChunks(cap, signingPair(), tid, network)
-                                .thenApply(x -> new FileWrapper(parent.pointer
-                                        .withCryptree(updatedParentDA), parent.entryWriter, parent.ownername)))
-                        .thenApply(updatedParent -> new Pair<>(new FileWrapper(newRetrievedCapability.withHash(ourNewHash),
-                                Optional.of(signer), ownername), updatedParent))),
-                network.dhtClient);
+                                .thenCompose(y -> parent.getPointer().fileAccess.updateChildLink(parent.writableFilePointer(),
+                                        parent.entryWriter,
+                                        getPointer(),
+                                        newRetrievedCapability, network, random, hasher))
+                                .thenCompose(updatedParentDA -> deleteAllChunks(cap, signingPair(), tid, network)
+                                        .thenApply(x -> new FileWrapper(parent.pointer
+                                                .withCryptree(updatedParentDA), parent.entryWriter, parent.ownername)))
+                                .thenApply(updatedParent -> new Pair<>(new FileWrapper(newRetrievedCapability.withHash(ourNewHash),
+                                        Optional.of(signer), ownername), updatedParent))),
+                network.dhtClient));
     }
 
     /** This copies all the cryptree nodes from one signing key to another for a file or subtree
