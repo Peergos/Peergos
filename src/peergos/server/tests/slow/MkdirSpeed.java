@@ -34,8 +34,9 @@ public class MkdirSpeed {
     private static NetworkAccess buildInProcessAccess(Random r) throws Exception {
         ContentAddressedStorage dht = new FileContentAddressedStorage(Paths.get("blockstore"));
         UserRepository core = UserRepository.buildSqlLite(":memory:", dht, CoreNode.MAX_USERNAME_COUNT);
-        MutableTree btree = new MutableTreeImpl(core, dht);
-        return new NetworkAccess(core, core, dht, core, btree, null, Collections.emptyList());
+        WriteSynchronizer synchronizer = new WriteSynchronizer(core, dht);
+        MutableTree btree = new MutableTreeImpl(core, dht, synchronizer);
+        return new NetworkAccess(core, core, dht, core, btree, synchronizer, null, Collections.emptyList());
     }
 
     private static NetworkAccess buildHttpNetworkAccess(boolean useIpfs, Random r) throws Exception {

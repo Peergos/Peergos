@@ -30,12 +30,13 @@ public class Playground {
         MutablePointers nonWriteThroughPointers = new NonWriteThroughMutablePointers(source.mutable, nonWriteThroughIpfs);
         NonWriteThroughCoreNode nonWriteThroughCoreNode = new NonWriteThroughCoreNode(source.coreNode, nonWriteThroughIpfs);
         NonWriteThroughSocialNetwork nonWriteThroughSocial = new NonWriteThroughSocialNetwork(source.social, nonWriteThroughIpfs);
-        MutableTreeImpl nonWriteThroughTree = new MutableTreeImpl(nonWriteThroughPointers, nonWriteThroughIpfs);
+        WriteSynchronizer synchronizer = new WriteSynchronizer(nonWriteThroughPointers, nonWriteThroughIpfs);
+        MutableTree nonWriteThroughTree = new MutableTreeImpl(nonWriteThroughPointers, nonWriteThroughIpfs, synchronizer);
         NetworkAccess nonWriteThrough = new NetworkAccess(nonWriteThroughCoreNode,
                 nonWriteThroughSocial,
                 nonWriteThroughIpfs,
                 nonWriteThroughPointers,
-                nonWriteThroughTree, source.instanceAdmin, source.usernames, false);
+                nonWriteThroughTree, synchronizer, source.instanceAdmin, source.usernames, false);
 
         String username = args[0];
         Console console = System.console();

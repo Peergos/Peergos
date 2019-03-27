@@ -35,6 +35,7 @@ public class NetworkAccess {
     public final ContentAddressedStorage dhtClient;
     public final MutablePointers mutable;
     public final MutableTree tree;
+    public final WriteSynchronizer synchronizer;
     public final InstanceAdmin instanceAdmin;
     @JsProperty
     public final List<String> usernames;
@@ -46,9 +47,10 @@ public class NetworkAccess {
                          ContentAddressedStorage dhtClient,
                          MutablePointers mutable,
                          MutableTree tree,
+                         WriteSynchronizer synchronizer,
                          InstanceAdmin instanceAdmin,
                          List<String> usernames) {
-        this(coreNode, social, dhtClient, mutable, tree, instanceAdmin, usernames, false);
+        this(coreNode, social, dhtClient, mutable, tree, synchronizer, instanceAdmin, usernames, false);
     }
 
     public NetworkAccess(CoreNode coreNode,
@@ -56,6 +58,7 @@ public class NetworkAccess {
                          ContentAddressedStorage dhtClient,
                          MutablePointers mutable,
                          MutableTree tree,
+                         WriteSynchronizer synchronizer,
                          InstanceAdmin instanceAdmin,
                          List<String> usernames,
                          boolean isJavascript) {
@@ -64,6 +67,7 @@ public class NetworkAccess {
         this.dhtClient = new HashVerifyingStorage(dhtClient, isJavascript ? new ScryptJS() : new ScryptJava());
         this.mutable = mutable;
         this.tree = tree;
+        this.synchronizer = synchronizer;
         this.instanceAdmin = instanceAdmin;
         this.usernames = usernames;
         this.creationTime = LocalDateTime.now();
@@ -75,7 +79,7 @@ public class NetworkAccess {
     }
 
     public NetworkAccess withCorenode(CoreNode newCore) {
-        return new NetworkAccess(newCore, social, dhtClient, mutable, tree, instanceAdmin, usernames, isJavascript);
+        return new NetworkAccess(newCore, social, dhtClient, mutable, tree, synchronizer, instanceAdmin, usernames, isJavascript);
     }
 
     @JsMethod
@@ -86,12 +90,16 @@ public class NetworkAccess {
     }
 
     public NetworkAccess clear() {
-        return new NetworkAccess(coreNode, social, dhtClient, mutable, new MutableTreeImpl(mutable, dhtClient), instanceAdmin, usernames, isJavascript);
+        WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, dhtClient);
+        MutableTree mutableTree = new MutableTreeImpl(mutable, dhtClient, synchronizer);
+        return new NetworkAccess(coreNode, social, dhtClient, mutable, mutableTree, synchronizer, instanceAdmin, usernames, isJavascript);
     }
 
     public NetworkAccess withMutablePointerCache(int ttl) {
         CachingPointers mutable = new CachingPointers(this.mutable, ttl);
-        return new NetworkAccess(coreNode, social, dhtClient, mutable, new MutableTreeImpl(mutable, dhtClient), instanceAdmin, usernames, isJavascript);
+        WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, dhtClient);
+        MutableTree mutableTree = new MutableTreeImpl(mutable, dhtClient, synchronizer);
+        return new NetworkAccess(coreNode, social, dhtClient, mutable, mutableTree, synchronizer, instanceAdmin, usernames, isJavascript);
     }
 
     public static CoreNode buildProxyingCorenode(HttpPoster poster, Multihash pkiServerNodeId) {
@@ -203,8 +211,9 @@ public class NetworkAccess {
                                       InstanceAdmin instanceAdmin,
                                       List<String> usernames,
                                       boolean isJavascript) {
-        MutableTree btree = new MutableTreeImpl(mutable, dht);
-        return new NetworkAccess(coreNode, social, dht, mutable, btree, instanceAdmin, usernames, isJavascript);
+        WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, dht);
+        MutableTree btree = new MutableTreeImpl(mutable, dht, synchronizer);
+        return new NetworkAccess(coreNode, social, dht, mutable, btree, synchronizer, instanceAdmin, usernames, isJavascript);
     }
 
     public static CompletableFuture<NetworkAccess> buildJava(URL target) {
