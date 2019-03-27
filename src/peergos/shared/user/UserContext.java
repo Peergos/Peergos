@@ -355,7 +355,7 @@ public class UserContext {
                         .thenCompose(root -> {
                             this.entrie = root;
                             return getByPath("/" + username + "/" + "shared")
-                                    .thenApply(sharedOpt -> {
+                                    .thenCompose(sharedOpt -> {
                                         if (!sharedOpt.isPresent())
                                             throw new IllegalStateException("Couldn't find shared folder!");
                                         return buildSharedWithCache(sharedOpt.get(), this::getUserRoot);
