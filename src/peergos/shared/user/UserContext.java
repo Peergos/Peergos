@@ -742,7 +742,7 @@ public class UserContext {
                 return getSharingFolder().thenCompose(sharing -> {
                     return sharing.mkdir(theirUsername, network, initialRequest.key.get(), true, crypto.random, crypto.hasher)
                             .thenCompose(friendRoot -> {
-                                // add a note to our static data so we know who we sent the read access to
+                                // add a note to our entry point store so we know who we sent the read access to
                                 EntryPoint entry = new EntryPoint(friendRoot
                                         .withWritingKey(sharing.writer())
                                         .toAbsolute(sharing.getPointer().capability.readOnly()),
