@@ -466,17 +466,21 @@ public class MultiUserTests {
 
         assertTrue("Browse to friend root", children.isEmpty());
 
-        Set<String> u1Following = PeergosNetworkUtils.ensureSignedUp(username1, password1, network.clear(), crypto).getSocialState().get()
+        SocialState u1Social = PeergosNetworkUtils.ensureSignedUp(username1, password1, network.clear(), crypto)
+                .getSocialState().get();
+        Set<String> u1Following = u1Social
                 .followingRoots.stream().map(f -> f.getName())
                 .collect(Collectors.toSet());
         assertTrue("Following correct", u1Following.contains(u2.username));
+        assertTrue("Followers correct", u1Social.followerRoots.containsKey(username2));
 
-        Set<String> u2Following = PeergosNetworkUtils.ensureSignedUp(username2, password2, network.clear(), crypto).getSocialState().get()
+        SocialState u2Social = PeergosNetworkUtils.ensureSignedUp(username2, password2, network.clear(), crypto)
+                .getSocialState().get();
+        Set<String> u2Following = u2Social
                 .followingRoots.stream().map(f -> f.getName())
                 .collect(Collectors.toSet());
         assertTrue("Following correct", u2Following.contains(u1.username));
-
-
+        assertTrue("Followers correct", u2Social.followerRoots.containsKey(username1));
     }
 
     @Test

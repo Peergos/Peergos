@@ -40,7 +40,8 @@ public class UserContext {
     public static final String PEERGOS_USERNAME = "peergos";
     public static final String SHARED_DIR_NAME = "shared";
     public static final String TRANSACTIONS_DIR_NAME = ".transactions";
-    public static final String ENTRY_POINT_FILENAME = ".from-friends.cborstream";
+    public static final String ENTRY_POINTS_FROM_FRIENDS_FILENAME = ".from-friends.cborstream";
+    public static final String ENTRY_POINTS_FROM_US_FILENAME = ".from-us.cborstream";
     public static final String BLOCKED_USERNAMES_FILE = ".blocked-usernames.txt";
 
     @JsProperty
@@ -688,14 +689,18 @@ public class UserContext {
                         .collect(Collectors.toMap(e -> e.getFileProperties().name, e -> e)));
     }
 
-    private CompletableFuture<Set<String>> getFollowers(SymmetricKey rootKey) {
-        return userData.getValue()
-                .thenApply(wd -> wd.props.staticData.get()
-                        .getEntryPoints(rootKey)
-                        .stream()
-                        .map(e -> e.ownerName)
-                        .filter(name -> ! name.equals(username))
-                        .collect(Collectors.toSet()));
+    private CompletableFuture<Set<String>> getFollowers() {
+        return getByPath(Paths.get(username, ENTRY_POINTS_FROM_FRIENDS_FILENAME))
+                .thenCompose(fopt -> fopt
+                        .map(f -> {
+                            Set<EntryPoint> res = new HashSet<>();
+                            return f.getInputStream(network, crypto.random, x -> {})
+                                    .thenCompose(reader -> reader.parseStream(EntryPoint::fromCbor, res::add, f.getSize())
+                                            .thenApply(x -> res.stream()
+                                                    .map(e -> e.ownerName)
+                                                    .filter(name -> ! name.equals(username))
+                                                    .collect(Collectors.toSet())));
+                        }).orElse(CompletableFuture.completedFuture(Collections.emptySet())));
     }
 
     @JsMethod
@@ -703,7 +708,7 @@ public class UserContext {
         return processFollowRequests()
                 .thenCompose(pending -> getFollowerRoots()
                         .thenCompose(followerRoots -> getFriendRoots()
-                                .thenCompose(followingRoots -> getFollowers(rootKey)
+                                .thenCompose(followingRoots -> getFollowers()
                                         .thenApply(followers -> new SocialState(pending, followers, followerRoots, followingRoots)))));
     }
 
@@ -1057,7 +1062,7 @@ public class UserContext {
 
     private synchronized CompletableFuture<TrieNode> addExternalEntryPoint(TrieNode root, EntryPoint entry) {
         boolean isOurs = username.equals(entry.ownerName);
-        String filename = isOurs ? ".from-us.cborstream" : ENTRY_POINT_FILENAME;
+        String filename = isOurs ? ENTRY_POINTS_FROM_US_FILENAME : ENTRY_POINTS_FROM_FRIENDS_FILENAME;
         return getByPath(Paths.get(username, filename))
                 .thenCompose(existing -> {
                     long offset = existing.map(f -> f.getSize()).orElse(0L);
@@ -1225,7 +1230,7 @@ public class UserContext {
     }
 
     private CompletableFuture<List<EntryPoint>> getFriendsEntryPoints() {
-        return getByPath(Paths.get(username, ENTRY_POINT_FILENAME))
+        return getByPath(Paths.get(username, ENTRY_POINTS_FROM_FRIENDS_FILENAME))
                 .thenCompose(fopt -> fopt
                         .map(f -> {
                             List<EntryPoint> res = new ArrayList<>();
