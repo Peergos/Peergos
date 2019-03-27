@@ -40,10 +40,14 @@ public class UserContext {
     public static final String PEERGOS_USERNAME = "peergos";
     public static final String SHARED_DIR_NAME = "shared";
     public static final String TRANSACTIONS_DIR_NAME = ".transactions";
+<<<<<<< HEAD
     public static final String ENTRY_POINTS_FROM_FRIENDS_FILENAME = ".from-friends.cborstream";
     public static final String ENTRY_POINTS_FROM_US_FILENAME = ".from-us.cborstream";
     public static final String BLOCKED_USERNAMES_FILE = ".blocked-usernames.txt";
 
+=======
+    public static final String FEEDBACK_DIR_NAME = ".feedback";
+>>>>>>> Added submitFeedback method to UserContext.
     @JsProperty
     public final String username;
     public final SigningPrivateKeyAndPublicHash signer;
@@ -1354,4 +1358,36 @@ public class UserContext {
     public void logout() {
         entrie = TrieNodeImpl.empty();
     }
+
+    @JsMethod
+    public CompletableFuture<Boolean> submitFeedback(String feedback) {
+        LOG.info("Checking if feedback directory exists before posting...");
+
+        String timestamp = LocalDateTime.now().toString();
+        String filename = "feedback_" + timestamp + ".txt";
+        Path path = Paths.get(username, ".feedback");
+
+        return getByPath(path)
+            .thenCompose(feedbackWrapper -> {
+                if (feedbackWrapper.isPresent()) {
+                    LOG.info("Feedback directory already exists... nothing to do here!");
+                    return CompletableFuture.completedFuture(feedbackWrapper.get());
+                } else {
+                    LOG.info("Creating a directory for feedback!");
+                    return createSpecialDirectory(".feedback")
+                        .thenCompose(dir -> getByPath(path))
+                        .thenApply(Optional::get);
+                }
+            }
+            )
+            .thenCompose(feedbackWrapper -> {
+                LOG.info("Posting the feedback!");
+                byte[] feedbackBytes = feedback.getBytes();
+                return feedbackWrapper.uploadOrOverwriteFile(filename, AsyncReader.build(feedbackBytes), feedbackBytes.length,
+                        network, crypto.random, x -> {}, fragmenter, feedbackWrapper.generateChildLocationsFromSize(feedbackBytes.length, crypto.random));
+            }
+            )
+            .thenCompose(x -> shareReadAccessWith(path.resolve(filename), Collections.singleton(PEERGOS_USERNAME)));
+    }
+
 }
