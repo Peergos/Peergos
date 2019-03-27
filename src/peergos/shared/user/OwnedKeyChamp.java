@@ -66,8 +66,9 @@ public class OwnedKeyChamp {
                                                SigningPrivateKeyAndPublicHash writer,
                                                PublicKeyHash key,
                                                TransactionId tid) {
-        return champ.get(key.serialize())
-                .thenCompose(existing -> champ.remove(owner, writer, reverse(key.serialize()), existing, tid));
+        byte[] keyBytes = reverse(key.serialize());
+        return champ.get(keyBytes)
+                .thenCompose(existing -> champ.remove(owner, writer, keyBytes, existing, tid));
     }
 
     public CompletableFuture<Boolean> contains(PublicKeyHash ownedKey) {
