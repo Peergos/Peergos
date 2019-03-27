@@ -30,7 +30,6 @@ import static org.junit.Assert.assertTrue;
 import static peergos.server.util.PeergosNetworkUtils.ensureSignedUp;
 import static peergos.server.util.PeergosNetworkUtils.getUserContextsForNode;
 
-@RunWith(Parameterized.class)
 public class MultiUserTests {
 
     private static Args args = UserTests.buildArgs();
@@ -39,19 +38,9 @@ public class MultiUserTests {
     private static final Crypto crypto = Crypto.initJava();
     private final int userCount;
 
-    public MultiUserTests(Args args, int userCount) throws Exception {
-        this.userCount = userCount;
-        if (userCount  < 2)
-            throw new IllegalStateException();
-
+    public MultiUserTests() throws Exception {
+        this.userCount = 2;
         this.network = NetworkAccess.buildJava(new URL("http://localhost:" + args.getInt("port"))).get();
-    }
-
-    @Parameterized.Parameters(name = "{index}: {0}")
-    public static Collection<Object[]> parameters() {
-        return Arrays.asList(new Object[][] {
-                {args, 2}
-        });
     }
 
     @BeforeClass
