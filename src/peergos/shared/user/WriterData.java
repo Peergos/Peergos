@@ -158,31 +158,6 @@ public class WriterData implements Cborable {
         return new CommittedWriterData(hash, this);
     }
 
-    public CompletableFuture<CommittedWriterData> removeFromStaticData(FileWrapper fileWrapper,
-                                                                       SymmetricKey rootKey,
-                                                                       SigningPrivateKeyAndPublicHash signer,
-                                                                       MaybeMultihash currentHash,
-                                                                       NetworkAccess network) {
-        AbsoluteCapability pointer = fileWrapper.getPointer().capability;
-
-        return staticData.map(sd -> {
-            List<EntryPoint> original = sd.getEntryPoints(rootKey);
-            List<EntryPoint> updated = original.stream()
-                    .filter(e -> !e.pointer.equals(pointer))
-                    .collect(Collectors.toList());
-            boolean isRemoved = updated.size() < original.size();
-
-            if (isRemoved) {
-                return IpfsTransaction.call(fileWrapper.owner(),
-                        tid -> withStaticData(Optional.of(new UserStaticData(updated, rootKey)))
-                                .commit(fileWrapper.owner(), signer, currentHash, network, tid),
-                        network.dhtClient);
-            }
-            CommittedWriterData committed = committed(currentHash);
-            return CompletableFuture.completedFuture(committed);
-        }).orElse(CompletableFuture.completedFuture(committed(currentHash)));
-    }
-
     public CompletableFuture<CommittedWriterData> changeKeys(SigningPrivateKeyAndPublicHash oldSigner,
                                                              SigningPrivateKeyAndPublicHash signer,
                                                              MaybeMultihash currentHash,
@@ -232,7 +207,7 @@ public class WriterData implements Cborable {
                                                          ContentAddressedStorage immutable,
                                                          TransactionId tid) {
         byte[] raw = serialize();
-
+        
         return immutable.put(owner, signer.publicKeyHash, signer.secret.signatureOnly(raw), raw, tid)
                 .thenCompose(blobHash -> {
                     MaybeMultihash newHash = MaybeMultihash.of(blobHash);

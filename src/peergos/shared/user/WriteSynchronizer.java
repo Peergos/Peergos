@@ -8,7 +8,9 @@ import peergos.shared.mutable.MutablePointers;
 import peergos.shared.storage.ContentAddressedStorage;
 import peergos.shared.util.AsyncLock;
 
+import java.util.Collections;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
@@ -25,6 +27,19 @@ public class WriteSynchronizer {
 
     public void put(PublicKeyHash writer, CommittedWriterData val) {
         pending.put(writer, new AsyncLock<>(CompletableFuture.completedFuture(val)));
+    }
+
+    public void putEmpty(PublicKeyHash writer) {
+        WriterData emptyWD = new WriterData(writer,
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Collections.emptyMap(),
+                Optional.empty(),
+                Optional.empty());
+        CommittedWriterData emptyUserData = new CommittedWriterData(MaybeMultihash.empty(), emptyWD);
+        put(writer, emptyUserData);
     }
 
     public CompletableFuture<CommittedWriterData> getWriterData(PublicKeyHash owner, PublicKeyHash writer) {

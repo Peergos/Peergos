@@ -1168,11 +1168,15 @@ public class FileWrapper {
 
         // create the new signing subspace move subtree to it
         PublicKeyHash owner = owner();
+
+        network.synchronizer.putEmpty(signer.publicKeyHash);
         return IpfsTransaction.call(owner,
-                tid -> WriterData.createEmpty(owner, signer, network.dhtClient)
-                        .thenCompose(wd -> wd.commit(owner, signer, MaybeMultihash.empty(), network, tid)),
-                network.dhtClient).thenCompose(empty -> IpfsTransaction.call(owner,
-                tid -> network.uploadChunk(newFileAccess, owner, getPointer().capability.getMapKey(), signer, tid)
+                tid -> network.synchronizer.applyUpdate(owner, signer.publicKeyHash, wd2 ->
+                        WriterData.createEmpty(owner, signer, network.dhtClient)
+                                .thenCompose(wd -> wd.commit(owner, signer, MaybeMultihash.empty(), network, tid))),
+                network.dhtClient)
+                .thenCompose(empty -> IpfsTransaction.call(owner,
+                    tid -> network.uploadChunk(newFileAccess, owner, getPointer().capability.getMapKey(), signer, tid)
                         .thenCompose(ourNewHash -> copyAllChunks(false, cap, signer, tid, network)
                                 .thenCompose(y -> parent.getPointer().fileAccess.updateChildLink(parent.writableFilePointer(),
                                         parent.entryWriter,
@@ -1282,13 +1286,12 @@ public class FileWrapper {
         if (parentSigner.publicKeyHash.equals(signerToRemove))
             return CompletableFuture.completedFuture(true);
 
-        PublicKeyHash parentWriter = parentSigner.publicKeyHash;
-        return WriterData.getWriterData(owner, parentWriter, network.mutable, network.dhtClient)
-                .thenCompose(parentWriterData -> parentWriterData.props
+        return network.synchronizer.applyUpdate(owner, parentSigner.publicKeyHash, parentWriterData -> parentWriterData.props
                         .removeOwnedKey(owner, parentSigner, signerToRemove, network.dhtClient)
                         .thenCompose(updatedParentWD -> IpfsTransaction.call(owner,
-                                tid -> updatedParentWD.commit(owner, parentSigner, parentWriterData.hash, network, tid)
-                                        .thenApply(cwd -> true), network.dhtClient)));
+                                tid ->  updatedParentWD.commit(owner, parentSigner, parentWriterData.hash, network, tid)
+                                , network.dhtClient)))
+                .thenApply(cwd -> true);
     }
 
     public CompletableFuture<? extends AsyncReader> getInputStream(NetworkAccess network, SafeRandom random,
