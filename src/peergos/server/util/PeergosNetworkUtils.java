@@ -358,7 +358,7 @@ public class PeergosNetworkUtils {
         List<UserContext> updatedSharees = shareeUsers.stream()
                 .map(e -> {
                     try {
-                        return ensureSignedUp(e.username, e.username, shareeNode, crypto);
+                        return ensureSignedUp(e.username, e.username, e.network, crypto);
                     } catch (Exception ex) {
                         throw new IllegalStateException(ex.getMessage(), ex);
                     }
@@ -485,7 +485,7 @@ public class PeergosNetworkUtils {
         List<UserContext> updatedSharees = shareeUsers.stream()
                 .map(e -> {
                     try {
-                        return ensureSignedUp(e.username, e.username, shareeNode, crypto);
+                        return ensureSignedUp(e.username, e.username, e.network, crypto);
                     } catch (Exception ex) {
                         throw new IllegalStateException(ex.getMessage(), ex);
                     }
