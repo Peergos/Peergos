@@ -367,7 +367,7 @@ public class PeergosNetworkUtils {
 
         for (int i = 0; i < updatedSharees.size(); i++) {
             UserContext user = updatedSharees.get(i);
-            sharer.unShareReadAccess(Paths.get(sharer.username, folderName), user.username).get();
+            updatedSharer.unShareReadAccess(Paths.get(updatedSharer.username, folderName), user.username).get();
 
             Optional<FileWrapper> updatedSharedFolder = user.getByPath(updatedSharer.username + "/" + folderName).get();
 
@@ -394,10 +394,10 @@ public class PeergosNetworkUtils {
             for (int j = i + 1; j < updatedSharees.size(); j++) {
                 UserContext otherUser = updatedSharees.get(j);
 
-                Optional<FileWrapper> sharedFolder = otherUser.getByPath(sharer.username + "/" + folderName).get();
+                Optional<FileWrapper> sharedFolder = otherUser.getByPath(updatedSharer.username + "/" + folderName).get();
                 Assert.assertTrue("Shared folder present via direct path", sharedFolder.isPresent() && sharedFolder.get().getName().equals(folderName));
 
-                FileWrapper sharedFile = otherUser.getByPath(sharer.username + "/" + folderName + "/" + filename).get().get();
+                FileWrapper sharedFile = otherUser.getByPath(updatedSharer.username + "/" + folderName + "/" + filename).get().get();
                 checkFileContents(newFileContents, sharedFile, otherUser);
                 Set<String> sharedChildNames = sharedFolder.get().getChildren(otherUser.network).join()
                         .stream()
@@ -494,7 +494,7 @@ public class PeergosNetworkUtils {
 
         for (int i = 0; i < updatedSharees.size(); i++) {
             UserContext user = updatedSharees.get(i);
-            sharer.unShareWriteAccess(Paths.get(sharer.username, folderName), user.username).get();
+            updatedSharer.unShareWriteAccess(Paths.get(updatedSharer.username, folderName), user.username).get();
 
             Optional<FileWrapper> updatedSharedFolder = user.getByPath(updatedSharer.username + "/" + folderName).get();
 
@@ -522,10 +522,10 @@ public class PeergosNetworkUtils {
             for (int j = i + 1; j < updatedSharees.size(); j++) {
                 UserContext otherUser = updatedSharees.get(j);
 
-                Optional<FileWrapper> sharedFolder = otherUser.getByPath(sharer.username + "/" + folderName).get();
+                Optional<FileWrapper> sharedFolder = otherUser.getByPath(updatedSharer.username + "/" + folderName).get();
                 Assert.assertTrue("Shared folder present via direct path", sharedFolder.isPresent() && sharedFolder.get().getName().equals(folderName));
 
-                FileWrapper sharedFile = otherUser.getByPath(sharer.username + "/" + folderName + "/" + filename).get().get();
+                FileWrapper sharedFile = otherUser.getByPath(updatedSharer.username + "/" + folderName + "/" + filename).get().get();
                 checkFileContents(newFileContents, sharedFile, otherUser);
                 Set<String> sharedChildNames = sharedFolder.get().getChildren(otherUser.network).join()
                         .stream()

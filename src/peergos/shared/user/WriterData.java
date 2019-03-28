@@ -207,7 +207,7 @@ public class WriterData implements Cborable {
                                                          ContentAddressedStorage immutable,
                                                          TransactionId tid) {
         byte[] raw = serialize();
-
+        
         return immutable.put(owner, signer.publicKeyHash, signer.secret.signatureOnly(raw), raw, tid)
                 .thenCompose(blobHash -> {
                     MaybeMultihash newHash = MaybeMultihash.of(blobHash);

@@ -176,7 +176,7 @@ public class MultiUserTests {
                 u1Root.generateChildLocationsFromSize(data1.length, u1.crypto.random)).get();
 
         // upload a different file with the same name in a sub folder
-        uploaded.mkdir("subdir", network, false, crypto.random, crypto.hasher).get();
+        uploaded.mkdir("subdir", u1.network, false, crypto.random, crypto.hasher).get();
         FileWrapper subdir = u1.getByPath("/" + u1.username + "/subdir").get().get();
         byte[] data2 = "Goodbye Peergos friend!".getBytes();
         AsyncReader file2Reader = new AsyncReader.ArrayBacked(data2);
@@ -246,7 +246,7 @@ public class MultiUserTests {
         byte[] data1 = "Hello Peergos friend!".getBytes();
         AsyncReader file1Reader = new AsyncReader.ArrayBacked(data1);
         String subdirName = "subdir";
-        u1Root.mkdir(subdirName, network, false, crypto.random, crypto.hasher).get();
+        u1Root.mkdir(subdirName, u1.network, false, crypto.random, crypto.hasher).get();
         Path subdirPath = Paths.get(u1.username, subdirName);
         FileWrapper subdir = u1.getByPath(subdirPath).get().get();
         FileWrapper uploaded = subdir.uploadOrOverwriteFile(filename, file1Reader, data1.length,
@@ -270,16 +270,16 @@ public class MultiUserTests {
         //delete file
         FileWrapper theFile = u1.getByPath(filePath).get().get();
         FileWrapper parentFolder = u1.getByPath(subdirPath).get().get();
-        FileWrapper metaOnlyParent = theFile.retrieveParent(network).get().get();
+        FileWrapper metaOnlyParent = theFile.retrieveParent(u1.network).get().get();
 
         Assert.assertTrue("Following parent link results in read only parent",
                 ! metaOnlyParent.isWritable() && ! metaOnlyParent.isReadable());
 
         Set<PublicKeyHash> keysOwnedByRootSigner = WriterData.getDirectOwnedKeys(theFile.owner(), parentFolder.writer(),
-                network.mutable, network.dhtClient).join();
+                u1.network.mutable, u1.network.dhtClient).join();
         Assert.assertTrue("New writer key present", keysOwnedByRootSigner.contains(theFile.writer()));
 
-        parentFolder.remove(u1.getUserRoot().get(), network, crypto.hasher).get();
+        parentFolder.remove(u1.getUserRoot().get(), u1.network, crypto.hasher).get();
         Optional<FileWrapper> removedFile = u1.getByPath(filePath).get();
         Assert.assertTrue("file removed", ! removedFile.isPresent());
 
@@ -288,7 +288,7 @@ public class MultiUserTests {
             Assert.assertTrue("shared file removed", ! sharedFile.isPresent());
         }
         Set<PublicKeyHash> updatedKeysOwnedByRootSigner = WriterData.getDirectOwnedKeys(theFile.owner(),
-                parentFolder.writer(), network.mutable, network.dhtClient).join();
+                parentFolder.writer(), u1.network.mutable, u1.network.dhtClient).join();
         Assert.assertTrue("New writer key not present", ! updatedKeysOwnedByRootSigner.contains(theFile.writer()));
     }
 
