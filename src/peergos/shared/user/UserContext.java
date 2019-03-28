@@ -267,7 +267,7 @@ public class UserContext {
                             return context.createEntryDirectory(signer, username).thenCompose(userRoot -> {
                                 LOG.info("Creating root directory took " + (System.currentTimeMillis() - t1) + " mS");
                                 return context.createSpecialDirectory(SHARED_DIR_NAME)
-                                        .thenCompose(x -> signIn(username, userWithRoot, network.clear(), crypto, progressCallback))
+                                        .thenCompose(x -> signIn(username, userWithRoot, network, crypto, progressCallback))
                                         .thenCompose(c -> c.createSpecialDirectory(TRANSACTIONS_DIR_NAME));
                             });
                         });
@@ -306,7 +306,7 @@ public class UserContext {
                         Optional.empty(),
                         Optional.empty());
         CommittedWriterData userData = new CommittedWriterData(MaybeMultihash.empty(), empty);
-        UserContext context = new UserContext(null, null, null, null, network.clear(), crypto, userData, TrieNodeImpl.empty());
+        UserContext context = new UserContext(null, null, null, null, network, crypto, userData, TrieNodeImpl.empty());
         return context.addEntryPoint(null, context.entrie, entry, network, crypto.random, crypto.hasher).thenApply(trieNode -> {
             context.entrie = trieNode;
             return context;
@@ -350,7 +350,7 @@ public class UserContext {
 
     private CompletableFuture<UserContext> init(Consumer<String> progressCallback) {
         progressCallback.accept("Retrieving Friends");
-        return writeSynchronizer.getCurrentWriterData(signer.publicKeyHash, signer.publicKeyHash,
+        return writeSynchronizer.applyUpdate(signer.publicKeyHash, signer.publicKeyHash,
                 wd -> createFileTree(entrie, username, network, crypto.random, crypto.hasher)
                         .thenCompose(root -> {
                             this.entrie = root;
@@ -521,7 +521,7 @@ public class UserContext {
                                                 tid),
                                         network.dhtClient
                                 ).thenCompose(newSignerHash ->
-                                        writeSynchronizer.getCurrentWriterData(signer.publicKeyHash, signer.publicKeyHash, wd ->
+                                        writeSynchronizer.applyUpdate(signer.publicKeyHash, signer.publicKeyHash, wd ->
                                                 wd.props.changeKeys(
                                                         signer,
                                                         new SigningPrivateKeyAndPublicHash(newSignerHash, updatedUser.getUser().secretSigningKey),
@@ -615,14 +615,14 @@ public class UserContext {
 
     private CompletableFuture<CommittedWriterData> addOwnedKeyAndCommit(SigningPrivateKeyAndPublicHash owned,
                                                                         TransactionId tid) {
-        return writeSynchronizer.getCurrentWriterData(signer.publicKeyHash, signer.publicKeyHash, wd ->
+        return writeSynchronizer.applyUpdate(signer.publicKeyHash, signer.publicKeyHash, wd ->
             wd.props.addOwnedKey(signer.publicKeyHash, signer, OwnerProof.build(owned, signer.publicKeyHash), network.dhtClient)
                     .thenCompose(updated -> updated.commit(signer.publicKeyHash, signer, wd.hash, network, tid)));
     }
 
     public CompletableFuture<CommittedWriterData> addNamedOwnedKeyAndCommit(String keyName,
                                                                             SigningPrivateKeyAndPublicHash owned) {
-        return writeSynchronizer.getCurrentWriterData(signer.publicKeyHash, signer.publicKeyHash, wd -> {
+        return writeSynchronizer.applyUpdate(signer.publicKeyHash, signer.publicKeyHash, wd -> {
             WriterData writerData = wd.props.addNamedKey(keyName, OwnerProof.build(owned, signer.publicKeyHash));
             return IpfsTransaction.call(signer.publicKeyHash,
                     tid -> writerData.commit(signer.publicKeyHash, signer, wd.hash, network, tid),
@@ -633,7 +633,7 @@ public class UserContext {
     public CompletableFuture<CommittedWriterData> makePublic(FileWrapper file) {
         if (! file.getOwnerName().equals(username))
             return Futures.errored(new IllegalStateException("Only the owner of a file can make it public!"));
-        return writeSynchronizer.getCurrentWriterData(signer.publicKeyHash, signer.publicKeyHash, wd -> file.getPath(network).thenCompose(path -> {
+        return writeSynchronizer.applyUpdate(signer.publicKeyHash, signer.publicKeyHash, wd -> file.getPath(network).thenCompose(path -> {
             ensureAllowedToShare(file, username, false);
             return IpfsTransaction.call(signer.publicKeyHash,
                     tid -> {
@@ -983,7 +983,7 @@ public class UserContext {
         return IpfsTransaction.call(owner,
                 tid -> network.dhtClient.putSigningKey(signature, owner, parentSigner.publicKeyHash,
                         newSignerPair.publicSigningKey, tid)
-                        .thenCompose(newSignerHash -> writeSynchronizer.getCurrentWriterData(owner, parentSigner.publicKeyHash, wd -> {
+                        .thenCompose(newSignerHash -> writeSynchronizer.applyUpdate(owner, parentSigner.publicKeyHash, wd -> {
                                     SigningPrivateKeyAndPublicHash newSigner =
                                             new SigningPrivateKeyAndPublicHash(newSignerHash, newSignerPair.secretSigningKey);
                                     return wd.props.addOwnedKey(owner, parentSigner,
@@ -1007,7 +1007,7 @@ public class UserContext {
                                                                                   PublicKeyHash toRemove,
                                                                                   NetworkAccess network) {
         return IpfsTransaction.call(owner,
-                tid -> writeSynchronizer.getCurrentWriterData(owner, parentSigner.publicKeyHash, wd ->
+                tid -> writeSynchronizer.applyUpdate(owner, parentSigner.publicKeyHash, wd ->
                         wd.props.removeOwnedKey(owner, parentSigner, toRemove, network.dhtClient)
                                 .thenCompose(updated -> updated.commit(owner, parentSigner, wd.hash, network, tid))),
                 network.dhtClient);
@@ -1049,7 +1049,7 @@ public class UserContext {
     }
 
     private synchronized CompletableFuture<TrieNode> addRootEntryPointAndCommit(TrieNode root, EntryPoint entry) {
-        return writeSynchronizer.getCurrentWriterData(signer.publicKeyHash, signer.publicKeyHash, wd -> {
+        return writeSynchronizer.applyUpdate(signer.publicKeyHash, signer.publicKeyHash, wd -> {
             Optional<UserStaticData> updated = wd.props.staticData.map(sd -> {
                 List<EntryPoint> entryPoints = sd.getEntryPoints(rootKey);
                 entryPoints.add(entry);

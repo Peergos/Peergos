@@ -171,12 +171,13 @@ public class Main {
                     Optional<PublicKeyHash> existingPkiKey = context.getNamedKey("pki").get();
                     if (!existingPkiKey.isPresent() || existingPkiKey.get().equals(pkiPublicHash)) {
                         SigningPrivateKeyAndPublicHash pkiKeyPair = new SigningPrivateKeyAndPublicHash(pkiPublicHash, pkiSecret);
-                        context.addNamedOwnedKeyAndCommit("pki", pkiKeyPair).get();
+
                         // write pki public key to ipfs
                         IpfsTransaction.call(peergosPublicHash,
                                 tid -> network.dhtClient.putSigningKey(peergosIdentityKeys.secretSigningKey
                                 .signatureOnly(pkiPublic.serialize()), peergosPublicHash, pkiPublic, tid),
                                 network.dhtClient).get();
+                        context.addNamedOwnedKeyAndCommit("pki", pkiKeyPair).join();
                     }
                     // Create /peergos/releases and make it public
                     Optional<FileWrapper> releaseDir = context.getByPath(Paths.get(pkiUsername, "releases")).join();
