@@ -36,9 +36,9 @@ public class WriteSynchronizer {
                         .thenCompose(x -> WriterData.getWriterData(x.get(), dht)));
     }
 
-    public CompletableFuture<CommittedWriterData> getCurrentWriterData(PublicKeyHash owner,
-                                                                        PublicKeyHash writer,
-                                                                        Function<CommittedWriterData, CompletableFuture<CommittedWriterData>> updater) {
+    public CompletableFuture<CommittedWriterData> applyUpdate(PublicKeyHash owner,
+                                                              PublicKeyHash writer,
+                                                              Function<CommittedWriterData, CompletableFuture<CommittedWriterData>> updater) {
         // This is subtle, but we need to ensure that there is only ever 1 thenAble waiting on the future for a given key
         // otherwise when the future completes, then the two or more waiters will both proceed with the existing hash,
         // and whoever commits first will win. We also need to retrieve the writer data again from the network after

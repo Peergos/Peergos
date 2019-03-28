@@ -12,5 +12,8 @@ public class CommittedWriterData {
         this.props = props;
     }
 
-
+    @Override
+    public String toString() {
+        return hash.toString();
+    }
 }
