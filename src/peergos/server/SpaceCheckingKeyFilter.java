@@ -1,5 +1,6 @@
 package peergos.server;
 
+import java.util.concurrent.atomic.*;
 import java.util.logging.*;
 
 import peergos.server.storage.*;
@@ -39,6 +40,8 @@ public class SpaceCheckingKeyFilter {
     private final UserQuotas quotaSupplier;
     private final Path statePath;
     private final State state;
+    private final AtomicBoolean isRunning = new AtomicBoolean(true);
+    private final BlockingQueue<MutableEvent> mutableQueue = new ArrayBlockingQueue<>(1000);
 
     /**
      *
@@ -59,6 +62,14 @@ public class SpaceCheckingKeyFilter {
         this.quotaSupplier = quotaSupplier;
         this.statePath = statePath;
         this.state = initState(statePath, mutable, dht);
+        new Thread(() -> {
+            while (isRunning.get()) {
+                try {
+                    MutableEvent event = mutableQueue.take();
+                    processMutablePointerEvent(event);
+                } catch (InterruptedException e) {}
+            }
+        }).start();
         //add shutdown-hook to call close
         Runtime.getRuntime().addShutdownHook(new Thread(this::close));
     }
@@ -307,6 +318,7 @@ public class SpaceCheckingKeyFilter {
      */
     private synchronized void close() {
         try {
+            isRunning.set(false);
             store();
             System.out.println("Successfully stored usage-state to " + this.statePath);
         } catch (Throwable t) {
@@ -387,6 +399,24 @@ public class SpaceCheckingKeyFilter {
     }
 
     public void accept(MutableEvent event) {
+        mutableQueue.add(event);
+        try {
+            HashCasPair hashCasPair = dht.getSigningKey(event.writer)
+                    .thenApply(signer -> HashCasPair.fromCbor(CborObject.fromByteArray(signer.get()
+                            .unsignMessage(event.writerSignedBtreeRootHash)))).get();
+            Set<PublicKeyHash> updatedOwned =
+                    WriterData.getDirectOwnedKeys(event.writer, hashCasPair.updated, dht).join();
+            Stat current = state.currentView.get(event.writer);
+            for (PublicKeyHash owned : updatedOwned) {
+                state.currentView.computeIfAbsent(owned,
+                        k -> new Stat(current.owner, MaybeMultihash.empty(), 0, Collections.emptySet()));
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void processMutablePointerEvent(MutableEvent event) {
         try {
             HashCasPair hashCasPair = dht.getSigningKey(event.writer)
                     .thenApply(signer -> HashCasPair.fromCbor(CborObject.fromByteArray(signer.get()
@@ -397,13 +427,13 @@ public class SpaceCheckingKeyFilter {
         }
     }
 
-    public static void processMutablePointerEvent(State state,
-                                                  PublicKeyHash owner,
-                                                  PublicKeyHash writer,
-                                                  MaybeMultihash existingRoot,
-                                                  MaybeMultihash newRoot,
-                                                  MutablePointers mutable,
-                                                  ContentAddressedStorage dht) {
+    private static void processMutablePointerEvent(State state,
+                                                   PublicKeyHash owner,
+                                                   PublicKeyHash writer,
+                                                   MaybeMultihash existingRoot,
+                                                   MaybeMultihash newRoot,
+                                                   MutablePointers mutable,
+                                                   ContentAddressedStorage dht) {
         if (existingRoot.equals(newRoot))
             return;
         Stat current = state.currentView.get(writer);
