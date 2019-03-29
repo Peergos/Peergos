@@ -491,6 +491,24 @@ public class MultiUserTests {
 
         List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
         assertTrue("Receive a follow request", u1Requests.size() > 0);
+
+        // Check that user w can send feedback to the user peergos.
+        String feedback = "Here's some constructive feedback!";
+        CompletableFuture<Boolean> testFeedbackSubmission = u2.submitFeedback(feedback);
+        assertTrue("Feedback submission was successful!", testFeedbackSubmission.get() == true);
+
+        // Can peergos read the feedback file?
+        Path filePath = Paths.get(u1.username, "feedback");
+        Optional<FileWrapper> feedbackFile = u1.getByPath(filePath).get();
+        assertTrue("Feedback file present", feedbackFile.isPresent());
+
+        AsyncReader inputStream = feedbackFile
+            .get()
+            .getInputStream(u1.network, u1.crypto.random, l -> {})
+            .get();
+
+        byte[] fileContents = Serialize.readFully(inputStream, feedbackFile.get().getFileProperties().size).get();
+        assertTrue("Feedback file contents correct", feedback.getBytes() == fileContents);
     }
 
     @Test
