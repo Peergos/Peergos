@@ -742,7 +742,7 @@ public class FileWrapper {
                 .thenCompose(child -> generateThumbnail(network, fileData, thumbNailSize, fileName)
                         .thenCompose(thumbData -> {
                             FileProperties fileProps = new FileProperties(fileName, false, mimeType, endIndex,
-                                    updatedDateTime, isHidden, Optional.of(thumbData));
+                                    updatedDateTime, isHidden, thumbData);
 
                             return child.get()
                                     .setProperties(fileProps, network, Optional.empty())
@@ -1401,32 +1401,32 @@ public class FileWrapper {
         return new byte[0];
     }
 
-    private CompletableFuture<byte[]> generateThumbnail(NetworkAccess network, AsyncReader fileData, int fileSize, String filename) {
-        CompletableFuture<byte[]> fut = new CompletableFuture<>();
+    private CompletableFuture<Optional<byte[]>> generateThumbnail(NetworkAccess network, AsyncReader fileData, int fileSize, String filename) {
+        CompletableFuture<Optional<byte[]>> fut = new CompletableFuture<>();
         if (fileSize > MimeTypes.HEADER_BYTES_TO_IDENTIFY_MIME_TYPE) {
             getFileType(fileData).thenAccept(mimeType -> {
                 if (mimeType.startsWith("image")) {
                     if (network.isJavascript()) {
                         thumbnail.generateThumbnail(fileData, fileSize, filename).thenAccept(base64Str -> {
                             byte[] bytesOfData = Base64.getDecoder().decode(base64Str);
-                            fut.complete(bytesOfData);
+                            fut.complete(Optional.of(bytesOfData));
                         });
                     } else {
                         byte[] bytes = new byte[fileSize];
                         fileData.readIntoArray(bytes, 0, fileSize).thenAccept(data -> {
-                            fut.complete(generateThumbnail(bytes));
+                            fut.complete(Optional.of(generateThumbnail(bytes)));
                         });
                     }
                 } else if (mimeType.startsWith("video")) {
                     if (network.isJavascript()) {
                         thumbnail.generateVideoThumbnail(fileData, fileSize, filename).thenAccept(base64Str -> {
                             byte[] bytesOfData = Base64.getDecoder().decode(base64Str);
-                            fut.complete(bytesOfData);
+                            fut.complete(Optional.of(bytesOfData));
                         });
                     } else {
                         byte[] bytes = new byte[fileSize];
                         fileData.readIntoArray(bytes, 0, fileSize).thenAccept(data -> {
-                            fut.complete(generateVideoThumbnail(bytes));
+                            fut.complete(Optional.of(generateVideoThumbnail(bytes)));
                         });
                     }
                 } else if (mimeType.startsWith("audio/mpeg")) {
@@ -1438,18 +1438,18 @@ public class FileWrapper {
                             thumbnail.generateThumbnail(imageBlob, mp3CoverImage.imageData.length, filename)
                                     .thenAccept(base64Str -> {
                                         byte[] bytesOfData = Base64.getDecoder().decode(base64Str);
-                                        fut.complete(bytesOfData);
+                                        fut.complete(Optional.of(bytesOfData));
                                     });
                         } else {
-                            fut.complete(generateThumbnail(mp3CoverImage.imageData));
+                            fut.complete(Optional.of(generateThumbnail(mp3CoverImage.imageData)));
                         }
                     });
                 } else {
-                    fut.complete(new byte[0]);
+                    fut.complete(Optional.empty());
                 }
             });
         } else {
-            fut.complete(new byte[0]);
+            fut.complete(Optional.empty());
         }
         return fut;
     }

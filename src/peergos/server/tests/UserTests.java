@@ -488,6 +488,7 @@ public abstract class UserTests {
         FileWrapper file = context.getByPath(Paths.get(username, filename).toString()).get().get();
         String mimeType = file.getFileProperties().mimeType;
         Assert.assertTrue("Incorrect mimetype: " + mimeType, mimeType.equals("text/plain"));
+        Assert.assertTrue("No thumbnail", ! file.getFileProperties().thumbnail.isPresent());
         AbsoluteCapability cap = file.getPointer().capability;
         CryptreeNode fileAccess = file.getPointer().fileAccess;
         RelativeCapability toParent = fileAccess.getParentCapability(fileAccess.getParentKey(cap.rBaseKey)).get();
