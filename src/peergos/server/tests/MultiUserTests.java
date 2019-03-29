@@ -24,8 +24,10 @@ import java.net.*;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.stream.*;
 
+import static junit.framework.TestCase.assertSame;
 import static org.junit.Assert.assertTrue;
 import static peergos.server.util.PeergosNetworkUtils.ensureSignedUp;
 import static peergos.server.util.PeergosNetworkUtils.getUserContextsForNode;
@@ -489,26 +491,40 @@ public class MultiUserTests {
         UserContext u1 = PeergosNetworkUtils.ensureSignedUp("peergos", "testpassword", network, crypto);
         UserContext u2 = PeergosNetworkUtils.ensureSignedUp("w", "w", network, crypto);
 
+        u2.sendFollowRequest(u1.username, SymmetricKey.random()).get();
+
         List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
         assertTrue("Receive a follow request", u1Requests.size() > 0);
+    }
+
+    @Test
+    public void sendFeedbackToPeergos() throws Exception {
+        UserContext u1 = PeergosNetworkUtils.ensureSignedUp("peergos", "testpassword", network, crypto);
+        UserContext u2 = PeergosNetworkUtils.ensureSignedUp("w", "w", network, crypto);
 
         // Check that user w can send feedback to the user peergos.
         String feedback = "Here's some constructive feedback!";
         CompletableFuture<Boolean> testFeedbackSubmission = u2.submitFeedback(feedback);
         assertTrue("Feedback submission was successful!", testFeedbackSubmission.get() == true);
 
+        List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
+        u1.sendReplyFollowRequest(u1Requests.get(0), true, true).get();
+
         // Can peergos read the feedback file?
-        Path filePath = Paths.get(u1.username, "feedback");
-        Optional<FileWrapper> feedbackFile = u1.getByPath(filePath).get();
-        assertTrue("Feedback file present", feedbackFile.isPresent());
+        Path feedbackDirectory = Paths.get(u2.username, "feedback");
+        Set<FileWrapper> feedbackDirectoryContents = u1.getChildren(feedbackDirectory.toString()).get();
+        assertTrue("Feedback directory is non-empty", !feedbackDirectoryContents.isEmpty());
 
-        AsyncReader inputStream = feedbackFile
-            .get()
-            .getInputStream(u1.network, u1.crypto.random, l -> {})
-            .get();
+        for (FileWrapper feedbackFile : feedbackDirectoryContents) {
+            assertTrue("Feedback file is readable", feedbackFile.isReadable());
 
-        byte[] fileContents = Serialize.readFully(inputStream, feedbackFile.get().getFileProperties().size).get();
-        assertTrue("Feedback file contents correct", feedback.getBytes() == fileContents);
+            AsyncReader inputStream = feedbackFile
+                        .getInputStream(u1.network, u1.crypto.random, l -> {})
+                        .get();
+
+            byte[] fileContents = Serialize.readFully(inputStream, feedbackFile.getFileProperties().size).get();
+            assertSame("Feedback file contents correct", feedback.getBytes(), fileContents);
+        }
     }
 
     @Test
