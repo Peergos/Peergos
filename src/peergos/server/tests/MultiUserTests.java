@@ -511,8 +511,8 @@ public class MultiUserTests {
         u1.sendReplyFollowRequest(u1Requests.get(0), true, true).get();
 
         // Can peergos read the feedback file?
-        Path feedbackDirectory = Paths.get(u2.username, "feedback");
-        Set<FileWrapper> feedbackDirectoryContents = u1.getChildren(feedbackDirectory.toString()).get();
+        Optional<FileWrapper> u2ToU1 = u1.getByPath("/" + u2.username + "/feedback").get();
+        Set<FileWrapper> feedbackDirectoryContents = u2ToU1.get().getChildren(u2.network).get();
         assertTrue("Feedback directory is non-empty", !feedbackDirectoryContents.isEmpty());
 
         for (FileWrapper feedbackFile : feedbackDirectoryContents) {
@@ -523,7 +523,8 @@ public class MultiUserTests {
                         .get();
 
             byte[] fileContents = Serialize.readFully(inputStream, feedbackFile.getFileProperties().size).get();
-            assertSame("Feedback file contents correct", feedback.getBytes(), fileContents);
+            String reportedFeedback = new String(fileContents);
+            assertTrue("Feedback file contents correct", Objects.equals(feedback, reportedFeedback));
         }
     }
 
