@@ -1,4 +1,5 @@
 package peergos.server.tests;
+import java.util.concurrent.atomic.*;
 import java.util.logging.*;
 
 import peergos.server.util.Args;
@@ -482,13 +483,15 @@ public abstract class UserTests {
 
         String filename = "small.txt";
         byte[] data = "G'day mate".getBytes();
+        AtomicLong writeCount = new AtomicLong(0);
         userRoot.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
-                context.crypto.random, hasher, l -> {},
+                context.crypto.random, hasher, writeCount::addAndGet,
                 userRoot.generateChildLocationsFromSize(data.length, context.crypto.random)).get();
         FileWrapper file = context.getByPath(Paths.get(username, filename).toString()).get().get();
         String mimeType = file.getFileProperties().mimeType;
         Assert.assertTrue("Incorrect mimetype: " + mimeType, mimeType.equals("text/plain"));
         Assert.assertTrue("No thumbnail", ! file.getFileProperties().thumbnail.isPresent());
+        Assert.assertTrue("Completed progress monitor", writeCount.get() == data.length);
         AbsoluteCapability cap = file.getPointer().capability;
         CryptreeNode fileAccess = file.getPointer().fileAccess;
         RelativeCapability toParent = fileAccess.getParentCapability(fileAccess.getParentKey(cap.rBaseKey)).get();

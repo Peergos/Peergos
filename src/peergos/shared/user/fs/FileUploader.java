@@ -136,6 +136,9 @@ public class FileUploader implements AutoCloseable {
                 .filter(f -> ! f.hash.isIdentity())
                 .map(f -> f.fragment)
                 .collect(Collectors.toList());
+
+        if (fragments.size() < file.right.size())
+            monitor.accept((long)chunk.chunk.data().length);
         LOG.info(StringUtils.format("Uploading chunk with %d fragments\n", fragments.size()));
         return IpfsTransaction.call(chunk.location.owner,
                 tid -> network.uploadFragments(fragments, chunk.location.owner, writer, monitor, tid)
