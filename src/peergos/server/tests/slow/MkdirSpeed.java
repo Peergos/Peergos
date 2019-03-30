@@ -27,16 +27,8 @@ public class MkdirSpeed {
 
     private static Random random = new Random(RANDOM_SEED);
 
-    public MkdirSpeed(boolean useHttp, String useIPFS, Random r) throws Exception {
-        this.network = ! useHttp ? buildInProcessAccess(r) : buildHttpNetworkAccess(useIPFS.equals("IPFS"), r);
-    }
-
-    private static NetworkAccess buildInProcessAccess(Random r) throws Exception {
-        ContentAddressedStorage dht = new FileContentAddressedStorage(Paths.get("blockstore"));
-        UserRepository core = UserRepository.buildSqlLite(":memory:", dht, CoreNode.MAX_USERNAME_COUNT);
-        WriteSynchronizer synchronizer = new WriteSynchronizer(core, dht);
-        MutableTree btree = new MutableTreeImpl(core, dht, synchronizer);
-        return new NetworkAccess(core, core, dht, core, btree, synchronizer, null, Collections.emptyList());
+    public MkdirSpeed(String useIPFS, Random r) throws Exception {
+        this.network = buildHttpNetworkAccess(useIPFS.equals("IPFS"), r);
     }
 
     private static NetworkAccess buildHttpNetworkAccess(boolean useIpfs, Random r) throws Exception {
@@ -54,7 +46,6 @@ public class MkdirSpeed {
         return Arrays.asList(new Object[][] {
 //                {true, "IPFS", new Random(0)}
                 {true, "NOTIPFS", new Random(0)}
-//                {false, "IPFS", new Random(0)}
         });
     }
 

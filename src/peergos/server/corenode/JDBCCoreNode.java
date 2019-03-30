@@ -7,28 +7,16 @@ import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.social.*;
-import peergos.shared.util.*;
 
-import java.io.*;
 import java.sql.*;
-import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.*;
 
 public class JDBCCoreNode {
 	private static final Logger LOG = Logging.LOG();
-    public static final boolean LOGGING = false;
-
-    public static final long MIN_USERNAME_SET_REFRESH_PERIOD = 60*1000000000L;
 
     private static final String TABLE_NAMES_SELECT_STMT = "SELECT * FROM sqlite_master WHERE type='table';";
-    private static final String CREATE_USERNAMES_TABLE =
-            "create table usernames (id integer primary key autoincrement, name text not null unique);";
-    private static final String CREATE_LINKS_TABLE =
-            "create table links (id integer primary key autoincrement, publickey text not null unique, link text not null);";
-    private static final String CREATE_CHAINS_TABLE =
-            "create table chains (userID int references usernames(id), linkID int references links(id), lindex int, primary key (userID, lindex)); create unique index uniq1 on chains(userID, linkID)";
     private static final String CREATE_FOLLOW_REQUESTS_TABLE = "create table followrequests (id integer primary key autoincrement, name text not null, followrequest text not null);";
     private static final String CREATE_METADATA_BLOBS_TABLE = "create table metadatablobs (writingkey text primary key not null, hash text not null); " +
             "CREATE UNIQUE INDEX index_name on metadatablobs (writingkey);";
@@ -36,31 +24,11 @@ public class JDBCCoreNode {
     private static final Map<String,String> TABLES = new HashMap<>();
     static
     {
-        TABLES.put("usernames", CREATE_USERNAMES_TABLE);
-        TABLES.put("links", CREATE_LINKS_TABLE);
-        TABLES.put("chains", CREATE_CHAINS_TABLE);
         TABLES.put("followrequests", CREATE_FOLLOW_REQUESTS_TABLE);
         TABLES.put("metadatablobs", CREATE_METADATA_BLOBS_TABLE);
     }
 
     private Connection conn;
-    private final UserSetCache userSet = new UserSetCache();
-
-    private static class UserSetCache {
-        private volatile List<String> userSet = null;
-        private volatile LocalDateTime nextExpiry = LocalDateTime.MIN;
-
-        public Optional<List<String>> getMostRecent() {
-            if (LocalDateTime.now().isBefore(nextExpiry))
-                return Optional.of(userSet);
-            return Optional.empty();
-        }
-
-        public void setUserSet(List<String> set) {
-            userSet = set;
-            nextExpiry = LocalDateTime.now().plusNanos(MIN_USERNAME_SET_REFRESH_PERIOD);
-        }
-    }
 
     private abstract class RowData
     {
@@ -372,205 +340,6 @@ public class JDBCCoreNode {
         }
     }
 
-    public CompletableFuture<String> getUsername(PublicKeyHash encodedKey)
-    {
-        String b64key = Base64.getEncoder().encodeToString(encodedKey.serialize());
-        try {
-            try (PreparedStatement preparedStatement = conn.prepareStatement("select name from usernames u inner join chains ch on u.id=ch.userid inner join links ln on ch.linkid=ln.id and ln.publickey = ? limit 1")) {
-                preparedStatement.setString(1, b64key);
-                ResultSet resultSet = preparedStatement.executeQuery();
-                boolean next = resultSet.next();
-                if (! next)
-                    return CompletableFuture.completedFuture("");
-                String username = resultSet.getString(1);
-                return getChain(username).thenApply(chain -> {
-                    if (!chain.get(chain.size() - 1).owner.equals(encodedKey))
-                        return "";
-                    return username;
-                });
-            }
-        } catch (SQLException sqle) {
-            throw new IllegalStateException(sqle);
-        }
-    }
-
-    public CompletableFuture<List<UserPublicKeyLink>> getChain(String username) {
-        try {
-            try (PreparedStatement preparedStatement = conn.prepareStatement("select chains.lindex, links.publickey, links.link from links inner join chains on links.id=chains.linkid \n" +
-                    "inner join usernames on chains.userid=usernames.id where usernames.name=? order by chains.lindex;")) {
-                preparedStatement.setString(1, username);
-                ResultSet resultSet = preparedStatement.executeQuery();
-                Map<Integer, UserPublicKeyLink> serializedChain = new HashMap<>();
-                while (resultSet.next()) {
-                    serializedChain.put(resultSet.getInt(1), UserPublicKeyLink.fromCbor(CborObject.fromByteArray(
-                            Base64.getDecoder().decode(resultSet.getString(3)))));
-                }
-                ArrayList<UserPublicKeyLink> result = new ArrayList<>();
-                for (int i=0; i < serializedChain.size(); i++) {
-                    if (!serializedChain.containsKey(i))
-                        throw new IllegalStateException("Missing UserPublicKeyLink at index: "+i);
-                    result.add(serializedChain.get(i));
-                }
-                return CompletableFuture.completedFuture(result);
-            }
-        } catch (SQLException sqle) {
-            throw new IllegalStateException(sqle);
-        }
-    }
-
-    /**
-     *
-     * @param username
-     * @param existing
-     * @param tail
-     * @param merged
-     * @return
-     */
-    public boolean updateChain(String username,
-                               List<UserPublicKeyLink> existing,
-                               List<UserPublicKeyLink> tail,
-                               List<UserPublicKeyLink> merged) {
-        if (! UsernameValidator.isValidUsername(username))
-            throw new IllegalStateException("Invalid username '" +username+"'");
-
-
-        List<String> toWrite = merged.stream().map(x -> new String(Base64.getEncoder().encode(x.serialize()))).collect(Collectors.toList());
-        Optional<PublicKeyHash> oldKey = existing.size() == 0 ? Optional.empty() : Optional.of(existing.get(existing.size() - 1).owner);
-        PublicKeyHash newKey = tail.get(tail.size() - 1).owner;
-
-        // Conceptually this should be a CAS of the new chain in for the old one under the username
-        // The last one or two elements will have changed
-        // Ensure usernamesandkeys table is uptodate as well
-        Optional<String> existingKeyb64 = oldKey.map(x -> new String(Base64.getEncoder().encode(x.serialize())));
-        String newKeyb64 = new String(Base64.getEncoder().encode(newKey.serialize()));
-        List<String> existingStrings = existing.stream().map(x -> new String(Base64.getEncoder().encode(x.serialize()))).collect(Collectors.toList());
-        if (existingStrings.size() == 0 && toWrite.size() == 1) {
-            // single link to claim a new username
-            try {
-                PreparedStatement user = null, link = null, chain = null;
-                try {
-                    conn.setAutoCommit(false);
-
-                    long userCount = conn.createStatement().executeQuery("select count(name) from usernames;").getLong(1);
-                    if (userCount >= this.maxUsernameCount)
-                        throw new IllegalStateException("Not currently accepting new users.");
-
-                    user = conn.prepareStatement("insert into usernames (name) VALUES(?);");
-                    user.setString(1, username);
-                    user.execute();
-                    link = conn.prepareStatement("insert into links (publickey, link) VALUES(?, ?);");
-                    link.setString(1, newKeyb64);
-                    link.setString(2, toWrite.get(0));
-                    link.execute();
-                    chain = conn.prepareStatement("insert into chains (userid, linkid, lindex) select usernames.id, links.id, 0 "
-                            + "from usernames join links where links.publickey=? and usernames.name=?;");
-                    chain.setString(1, newKeyb64);
-                    chain.setString(2, username);
-                    chain.execute();
-                    conn.commit();
-                    // updated cached list of usernames
-                    List<String> updatedUsernames = Stream.concat(
-                            Stream.of(username),
-                            userSet.getMostRecent().orElse(Collections.emptyList()).stream()
-                    ).sorted().collect(Collectors.toList());
-                    userSet.setUserSet(updatedUsernames);
-                    return true;
-                } catch (SQLException sqe) {
-                    throw new IllegalStateException(sqe);
-                } finally {
-                    if (user != null) {
-                        user.close();
-                    }
-                    if (link != null) {
-                        link.close();
-                    }
-                    if (chain != null) {
-                        chain.close();
-                    }
-                    conn.setAutoCommit(true);
-                }
-            } catch (SQLException e) {
-                throw new IllegalStateException(e);
-            }
-        } else if (toWrite.size() == existingStrings.size() + 1) {
-            // two link update ( a key change to an existing username)
-            try {
-                PreparedStatement update = null, link = null, chain = null;
-                try {
-                    conn.setAutoCommit(false);
-                    update = conn.prepareStatement("update links set link=? where links.publickey=?;");
-                    update.setString(1, toWrite.get(toWrite.size() - 2));
-                    update.setString(2, existingKeyb64.get());
-                    update.execute();
-                    link = conn.prepareStatement("insert into links (publickey, link) VALUES(?, ?);");
-                    link.setString(1, newKeyb64);
-                    link.setString(2, toWrite.get(toWrite.size() - 1));
-                    link.execute();
-                    chain = conn.prepareStatement("insert into chains (userid, linkid, lindex) " +
-                            "select usernames.id, links.id, " +
-                            "((select max(lindex) from chains inner join usernames where " +
-                            "chains.userid=usernames.id and usernames.name=?)+1) " +
-                            "from usernames join links where links.publickey=? and usernames.name=?;");
-                    chain.setString(1, username);
-                    chain.setString(2, newKeyb64);
-                    chain.setString(3, username);
-                    chain.execute();
-                    conn.commit();
-                    return true;
-                } catch (SQLException sqe) {
-                    throw new IllegalStateException(sqe);
-                } finally {
-                    if (update != null) {
-                        update.close();
-                    }
-                    if (link != null) {
-                        link.close();
-                    }
-                    if (chain != null) {
-                        chain.close();
-                    }
-                    conn.setAutoCommit(true);
-                }
-            } catch (SQLException e) {
-                throw new IllegalStateException(e);
-            }
-        } else if (toWrite.size() == existingStrings.size()) {
-            // single link update to existing username and key (changing expiry date)
-            try (PreparedStatement stmt = conn.prepareStatement("update links set link=? where links.publickey=?;")) {
-                stmt.setString(1, toWrite.get(toWrite.size() - 1));
-                stmt.setString(2, existingKeyb64.get());
-                stmt.execute();
-
-                return true;
-            } catch (SQLException sqe) {
-                throw new IllegalStateException(sqe);
-            }
-        } else
-            throw new IllegalStateException("Tried to shorten key chain for username: " + username + "!");
-    }
-
-    public CompletableFuture<List<String>> getUsernames(String prefix) {
-        Optional<List<String>> cached = userSet.getMostRecent();
-        if (cached.isPresent())
-            return CompletableFuture.completedFuture(cached.get());
-        try (PreparedStatement stmt = conn.prepareStatement("select name from usernames where name like ?"))
-        {
-            stmt.setString(1, prefix + "%");
-            ResultSet rs = stmt.executeQuery();
-            List<String> list = new ArrayList<>();
-            while (rs.next())
-            {
-                String username = rs.getString("name");
-                list.add(username);
-            }
-
-            userSet.setUserSet(list);
-            return CompletableFuture.completedFuture(list);
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
     public CompletableFuture<Boolean> addFollowRequest(PublicKeyHash owner, byte[] encryptedPermission)
     {
         byte[] dummy = null;
@@ -667,5 +436,4 @@ public class JDBCCoreNode {
         conn.setAutoCommit(true);
         return conn;
     }
-
 }
