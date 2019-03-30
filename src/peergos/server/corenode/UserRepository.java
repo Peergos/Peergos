@@ -89,11 +89,9 @@ public class UserRepository implements SocialNetwork, MutablePointers {
 
     }
 
-    public static UserRepository buildSqlLite(String dbPath, ContentAddressedStorage ipfs, int maxUserCount) throws SQLException
+    public static UserRepository buildSqlLite(String dbPath, ContentAddressedStorage ipfs) throws SQLException
     {
-        JDBCCoreNode coreNode = new JDBCCoreNode(
-            JDBCCoreNode.buildSqlLite(dbPath), maxUserCount);
-
+        JDBCCoreNode coreNode = new JDBCCoreNode(JDBCCoreNode.buildSqlLite(dbPath));
         return new UserRepository(ipfs, coreNode);
     }
 }
