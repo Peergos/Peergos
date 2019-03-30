@@ -491,35 +491,33 @@ public class MultiUserTests {
         UserContext u1 = PeergosNetworkUtils.ensureSignedUp("peergos", "testpassword", network, crypto);
         UserContext u2 = PeergosNetworkUtils.ensureSignedUp("w", "w", network, crypto);
 
-        u2.sendFollowRequest(u1.username, SymmetricKey.random()).get();
-
         List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
         assertTrue("Receive a follow request", u1Requests.size() > 0);
     }
 
     @Test
     public void sendFeedbackToPeergos() throws Exception {
-        UserContext u1 = PeergosNetworkUtils.ensureSignedUp("peergos", "testpassword", network, crypto);
-        UserContext u2 = PeergosNetworkUtils.ensureSignedUp("w", "w", network, crypto);
+        UserContext peergos = PeergosNetworkUtils.ensureSignedUp("peergos", "testpassword", network, crypto);
+        UserContext newUser = PeergosNetworkUtils.ensureSignedUp("w", "w", network, crypto);
 
         // Check that user w can send feedback to the user peergos.
         String feedback = "Here's some constructive feedback!";
-        CompletableFuture<Boolean> testFeedbackSubmission = u2.submitFeedback(feedback);
+        CompletableFuture<Boolean> testFeedbackSubmission = newUser.submitFeedback(feedback);
         assertTrue("Feedback submission was successful!", testFeedbackSubmission.get() == true);
 
-        List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
-        u1.sendReplyFollowRequest(u1Requests.get(0), true, true).get();
+        List<FollowRequestWithCipherText> peergosRequests = peergos.processFollowRequests().get();
+        peergos.sendReplyFollowRequest(peergosRequests.get(0), true, true).get();
 
         // Can peergos read the feedback file?
-        Optional<FileWrapper> u2ToU1 = u1.getByPath("/" + u2.username + "/feedback").get();
-        Set<FileWrapper> feedbackDirectoryContents = u2ToU1.get().getChildren(u2.network).get();
+        Optional<FileWrapper> newUserToPeergos = peergos.getByPath("/" + newUser.username + "/feedback").get();
+        Set<FileWrapper> feedbackDirectoryContents = newUserToPeergos.get().getChildren(newUser.network).get();
         assertTrue("Feedback directory is non-empty", !feedbackDirectoryContents.isEmpty());
 
         for (FileWrapper feedbackFile : feedbackDirectoryContents) {
             assertTrue("Feedback file is readable", feedbackFile.isReadable());
 
             AsyncReader inputStream = feedbackFile
-                        .getInputStream(u1.network, u1.crypto.random, l -> {})
+                        .getInputStream(peergos.network, peergos.crypto.random, l -> {})
                         .get();
 
             byte[] fileContents = Serialize.readFully(inputStream, feedbackFile.getFileProperties().size).get();
