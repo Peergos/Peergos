@@ -498,9 +498,9 @@ public class MultiUserTests {
     @Test
     public void sendFeedbackToPeergos() throws Exception {
         UserContext peergos = PeergosNetworkUtils.ensureSignedUp("peergos", "testpassword", network, crypto);
-        UserContext newUser = PeergosNetworkUtils.ensureSignedUp("w", "w", network, crypto);
+        UserContext newUser = PeergosNetworkUtils.ensureSignedUp(random(), "newUserPassword", network, crypto);
 
-        // Check that user w can send feedback to the user peergos.
+        // Check that new user can send feedback to the user peergos.
         String feedback = "Here's some constructive feedback!";
         CompletableFuture<Boolean> testFeedbackSubmission = newUser.submitFeedback(feedback);
         assertTrue("Feedback submission was successful!", testFeedbackSubmission.get() == true);
