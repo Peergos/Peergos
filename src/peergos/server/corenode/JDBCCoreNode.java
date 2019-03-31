@@ -98,86 +98,6 @@ public class JDBCCoreNode {
         }
     }
 
-    private class MetadataBlob {
-        final byte[] writingKey, hash;
-        final String b64WritingKey, b64hash;
-
-        MetadataBlob(byte[] writingKey, byte[] hash) {
-            this(writingKey, new String(Base64.getEncoder().encode(writingKey)), hash, hash == null ? null : new String(Base64.getEncoder().encode(hash)));
-        }
-
-        MetadataBlob(String b64WritingKey, String b64hash) {
-            this(Base64.getDecoder().decode(b64WritingKey), b64WritingKey, Base64.getDecoder().decode(b64hash), b64hash);
-        }
-
-        MetadataBlob(byte[] writingKey, String b64WritingKey, byte[] hash, String b64hash) {
-            this.writingKey = writingKey;
-            this.b64WritingKey = b64WritingKey;
-            this.hash = hash;
-            this.b64hash = b64hash;
-        }
-
-        public boolean insert() {
-            try (PreparedStatement stmt = conn.prepareStatement("INSERT OR REPLACE INTO metadatablobs (writingkey, hash) VALUES(?, ?)")) {
-                stmt.setString(1,this.b64WritingKey);
-                stmt.setString(2,this.b64hash);
-                stmt.executeUpdate();
-                return true;
-            } catch (SQLException sqe) {
-                LOG.log(Level.WARNING, sqe.getMessage(), sqe);
-                return false;
-            }
-        }
-
-        public boolean delete() {
-            PreparedStatement stmt = null;
-            try {
-                stmt = conn.prepareStatement("DELETE from metadatablobs where writingkey=? AND hash=?");
-
-                stmt.setString(1,this.b64WritingKey);
-                stmt.setString(2,this.b64hash);
-                stmt.executeUpdate();
-                return true;
-            } catch (SQLException sqe) {
-                LOG.log(Level.WARNING, sqe.getMessage(), sqe);
-                return false;
-            } finally {
-                if (stmt != null)
-                    try
-                    {
-                        stmt.close();
-                    } catch (SQLException sqe2) {
-                        sqe2.printStackTrace();
-                    }
-            }
-        }
-
-        public MetadataBlob selectOne() {
-            MetadataBlob[] fd = select("where writingKey = '"+ b64WritingKey +"'");
-            if (fd == null || fd.length != 1)
-                return null;
-            return fd[0];
-        }
-
-        public MetadataBlob[] select(String selectString)
-        {
-            try (PreparedStatement stmt = conn.prepareStatement("select writingKey, hash from metadatablobs "+ selectString + ";")) {
-                ResultSet rs = stmt.executeQuery();
-                List<MetadataBlob> list = new ArrayList<MetadataBlob>();
-                while (rs.next()) {
-                    MetadataBlob f = new MetadataBlob(rs.getString("writingkey"), rs.getString("hash"));
-                    list.add(f);
-                }
-
-                return list.toArray(new MetadataBlob[0]);
-            } catch (SQLException sqe) {
-                LOG.severe("Error selecting: "+selectString);
-                LOG.log(Level.WARNING, sqe.getMessage(), sqe);
-                return null;
-            }
-        }
-    }
-
     private volatile boolean isClosed;
 
     public JDBCCoreNode(Connection conn) throws SQLException {
@@ -242,18 +162,31 @@ public class JDBCCoreNode {
         return CompletableFuture.completedFuture(resp.serialize());
     }
 
-    public CompletableFuture<Boolean> setPointer(PublicKeyHash owner, PublicKeyHash writerHash, byte[] writingKeySignedHash) {
-        MetadataBlob blob = new MetadataBlob(writerHash.serialize(), writingKeySignedHash);
-        return CompletableFuture.completedFuture(blob.insert());
+    public CompletableFuture<Boolean> setPointer(PublicKeyHash owner, PublicKeyHash writingKey, byte[] writingKeySignedHash) {
+        try (PreparedStatement stmt = conn.prepareStatement("INSERT OR REPLACE INTO metadatablobs (writingkey, hash) VALUES(?, ?)")) {
+            stmt.setString(1, new String(Base64.getEncoder().encode(writingKey.serialize())));
+            stmt.setString(2, new String(Base64.getEncoder().encode(writingKeySignedHash)));
+            stmt.executeUpdate();
+            return CompletableFuture.completedFuture(true);
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            return CompletableFuture.completedFuture(false);
+        }
     }
 
     public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash writingKey) {
-        byte[] dummy = null;
-        MetadataBlob blob = new MetadataBlob(writingKey.serialize(), dummy);
-        MetadataBlob users = blob.selectOne();
-        if (users == null)
+        try (PreparedStatement stmt = conn.prepareStatement("SELECT * FROM metadatablobs WHERE writingKey = ? LIMIT 1;")) {
+            stmt.setString(1, new String(Base64.getEncoder().encode(writingKey.serialize())));
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                return CompletableFuture.completedFuture(Optional.of(Base64.getDecoder().decode(rs.getString("hash"))));
+            }
+
             return CompletableFuture.completedFuture(Optional.empty());
-        return CompletableFuture.completedFuture(Optional.of(users.hash));
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            return null;
+        }
     }
 
     public synchronized void close() {
