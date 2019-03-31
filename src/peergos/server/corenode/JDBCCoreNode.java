@@ -202,27 +202,6 @@ public class JDBCCoreNode {
         }
     }
 
-    public boolean delete(String table, String deleteString) {
-        Statement stmt = null;
-        try
-        {
-            stmt = conn.createStatement();
-            stmt.executeUpdate("delete from "+table+" where "+ deleteString +";");
-            return true;
-        } catch (SQLException sqe) {
-            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
-            return false;
-        } finally {
-            if (stmt != null)
-                try
-                {
-                    stmt.close();
-                } catch (SQLException sqe2) {
-                    sqe2.printStackTrace();
-                }
-        }
-    }
-
     public static Connection buildSqlLite(String dbPath) throws SQLException {
         try
         {
