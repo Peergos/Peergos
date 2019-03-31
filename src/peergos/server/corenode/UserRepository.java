@@ -80,7 +80,7 @@ public class UserRepository implements SocialNetwork, MutablePointers {
                                 if (! MutablePointers.isValidUpdate(writerKey, current, writerSignedBtreeRootHash))
                                     return CompletableFuture.completedFuture(false);
 
-                                return store.setPointer(owner, writer, writerSignedBtreeRootHash);
+                                return store.setPointer(writer, current, writerSignedBtreeRootHash);
                             } catch (TweetNaCl.InvalidSignatureException e) {
                                 System.err.println("Invalid signature during setMetadataBlob for sharer: " + writer);
                                 return CompletableFuture.completedFuture(false);

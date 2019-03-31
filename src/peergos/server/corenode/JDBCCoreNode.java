@@ -6,6 +6,7 @@ import peergos.server.util.Logging;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.social.*;
+import peergos.shared.util.*;
 
 import java.sql.*;
 import java.util.*;
@@ -162,15 +163,31 @@ public class JDBCCoreNode {
         return CompletableFuture.completedFuture(resp.serialize());
     }
 
-    public CompletableFuture<Boolean> setPointer(PublicKeyHash owner, PublicKeyHash writingKey, byte[] writingKeySignedHash) {
-        try (PreparedStatement stmt = conn.prepareStatement("INSERT OR REPLACE INTO metadatablobs (writingkey, hash) VALUES(?, ?)")) {
-            stmt.setString(1, new String(Base64.getEncoder().encode(writingKey.serialize())));
-            stmt.setString(2, new String(Base64.getEncoder().encode(writingKeySignedHash)));
-            stmt.executeUpdate();
-            return CompletableFuture.completedFuture(true);
-        } catch (SQLException sqe) {
-            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
-            return CompletableFuture.completedFuture(false);
+    public CompletableFuture<Boolean> setPointer(PublicKeyHash writingKey, Optional<byte[]> existingCas, byte[] newCas) {
+        if (existingCas.isPresent()) {
+            try (PreparedStatement insert = conn.prepareStatement("UPDATE metadatablobs SET hash=? WHERE writingkey = ? AND hash = ?")) {
+                conn.setTransactionIsolation(Connection.TRANSACTION_SERIALIZABLE);
+                String key = new String(Base64.getEncoder().encode(writingKey.serialize()));
+
+                insert.setString(1, new String(Base64.getEncoder().encode(newCas)));
+                insert.setString(2, key);
+                insert.setString(3, new String(Base64.getEncoder().encode(existingCas.get())));
+                int changed = insert.executeUpdate();
+                return CompletableFuture.completedFuture(changed > 0);
+            } catch (SQLException sqe) {
+                LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+                return CompletableFuture.completedFuture(false);
+            }
+        } else {
+            try (PreparedStatement stmt = conn.prepareStatement("INSERT INTO metadatablobs (writingkey, hash) VALUES(?, ?)")) {
+                stmt.setString(1, new String(Base64.getEncoder().encode(writingKey.serialize())));
+                stmt.setString(2, new String(Base64.getEncoder().encode(newCas)));
+                stmt.executeUpdate();
+                return CompletableFuture.completedFuture(true);
+            } catch (SQLException sqe) {
+                LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+                return CompletableFuture.completedFuture(false);
+            }
         }
     }
 
@@ -185,15 +202,14 @@ public class JDBCCoreNode {
             return CompletableFuture.completedFuture(Optional.empty());
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
-            return null;
+            return Futures.errored(sqe);
         }
     }
 
     public synchronized void close() {
         if (isClosed)
             return;
-        try
-        {
+        try {
             if (conn != null)
                 conn.close();
             isClosed = true;
