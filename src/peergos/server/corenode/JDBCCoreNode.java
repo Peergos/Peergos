@@ -52,14 +52,8 @@ public class JDBCCoreNode {
             this.b64string = b64string;
         }
 
-        public String b64DataName(){return DATA_NAME;}
-        public String insertStatement(){return "insert into followrequests (name, followrequest) VALUES(?, ?);";}
-        public String selectStatement(){return "select name, "+b64DataName()+" from followrequests where name = \""+name+"\";";}
-        public String deleteStatement(){return "delete from followrequests where name = \""+ name +"\" and "+ b64DataName()+ " = \""+ b64string + "\";";}
-        static final String DATA_NAME = "followrequest";
-
         public boolean insert() {
-            try (PreparedStatement stmt = conn.prepareStatement(insertStatement())) {
+            try (PreparedStatement stmt = conn.prepareStatement("INSERT INTO followrequests (name, followrequest) VALUES(?, ?);")) {
                 stmt.setString(1,this.name);
                 stmt.setString(2,this.b64string);
                 stmt.executeUpdate();
@@ -71,13 +65,14 @@ public class JDBCCoreNode {
         }
 
         public FollowRequestData[] select() {
-            try (PreparedStatement stmt = conn.prepareStatement(selectStatement())) {
+            try (PreparedStatement stmt = conn.prepareStatement("SELECT name, followrequest FROM followrequests WHERE name = ?;")) {
+                stmt.setString(1, name);
                 ResultSet rs = stmt.executeQuery();
                 List<FollowRequestData> list = new ArrayList<>();
                 while (rs.next())
                 {
                     String username = rs.getString("name");
-                    String b64string = rs.getString(b64DataName());
+                    String b64string = rs.getString("followrequest");
                     list.add(new FollowRequestData(username, b64string));
                 }
                 return list.toArray(new FollowRequestData[0]);
@@ -88,11 +83,12 @@ public class JDBCCoreNode {
         }
 
         public boolean delete() {
-            try (Statement stmt = conn.createStatement()) {
-                stmt.executeUpdate(deleteStatement());
+            try (PreparedStatement stmt = conn.prepareStatement("DELETE FROM followrequests WHERE name = ? AND followrequest = ?;")) {
+                stmt.setString(1, name);
+                stmt.setString(2, b64string);
+                stmt.executeUpdate();
                 return true;
             } catch (SQLException sqe) {
-                LOG.severe(deleteStatement());
                 LOG.log(Level.WARNING, sqe.getMessage(), sqe);
                 return false;
             }
