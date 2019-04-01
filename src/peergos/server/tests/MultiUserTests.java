@@ -24,8 +24,10 @@ import java.net.*;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.stream.*;
 
+import static junit.framework.TestCase.assertSame;
 import static org.junit.Assert.assertTrue;
 import static peergos.server.util.PeergosNetworkUtils.ensureSignedUp;
 import static peergos.server.util.PeergosNetworkUtils.getUserContextsForNode;
@@ -491,6 +493,39 @@ public class MultiUserTests {
 
         List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
         assertTrue("Receive a follow request", u1Requests.size() > 0);
+    }
+
+    @Test
+    public void sendFeedbackToPeergos() throws Exception {
+        UserContext peergos = PeergosNetworkUtils.ensureSignedUp("peergos", "testpassword", network, crypto);
+        UserContext newUser = PeergosNetworkUtils.ensureSignedUp("newUser", "newUserPassword", network, crypto);
+
+        // Check that new user can send feedback to the user peergos.
+        String feedback = "Here's some constructive feedback!";
+        CompletableFuture<Boolean> testFeedbackSubmission = newUser.submitFeedback(feedback);
+        assertTrue("Feedback submission was successful!", testFeedbackSubmission.get() == true);
+
+        // Can peergos read the feedback file?
+        List<FollowRequestWithCipherText> peergosRequests = peergos.processFollowRequests().get();
+        for (FollowRequestWithCipherText request : peergosRequests) {
+            peergos.sendReplyFollowRequest(request, true, true).get();
+        }
+
+        Optional<FileWrapper> newUserToPeergos = peergos.getByPath("/" + newUser.username + "/feedback").get();
+        Set<FileWrapper> feedbackDirectoryContents = newUserToPeergos.get().getChildren(newUser.network).get();
+        assertTrue("Feedback directory is non-empty", !feedbackDirectoryContents.isEmpty());
+
+        for (FileWrapper feedbackFile : feedbackDirectoryContents) {
+            assertTrue("Feedback file is readable", feedbackFile.isReadable());
+
+            AsyncReader inputStream = feedbackFile
+                        .getInputStream(peergos.network, peergos.crypto.random, l -> {})
+                        .get();
+
+            byte[] fileContents = Serialize.readFully(inputStream, feedbackFile.getFileProperties().size).get();
+            String reportedFeedback = new String(fileContents);
+            assertTrue("Feedback file contents correct", Objects.equals(feedback, reportedFeedback));
+        }
     }
 
     @Test
