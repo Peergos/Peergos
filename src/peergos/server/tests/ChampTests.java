@@ -210,6 +210,7 @@ public class ChampTests {
         MaybeMultihash currentValue = current.get(key, key.data, 0, bitWidth, storage).get();
         Pair<Champ, Multihash> updated = current.remove(user.publicKeyHash, user, key, key.data, 0, currentValue,
                 bitWidth, maxCollisions, tid, storage, currentHash).get();
+        current = updated.left;
         state.remove(key);
         MaybeMultihash result = updated.left.get(key, key.data, 0, bitWidth, storage).get();
         if (! result.equals(MaybeMultihash.empty()))
