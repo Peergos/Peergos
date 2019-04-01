@@ -164,6 +164,65 @@ public class ChampTests {
             }
     }
 
+    @Test
+    public void correctDelete() throws Exception {
+        ContentAddressedStorage storage = new FileContentAddressedStorage(Files.createTempDirectory("peergos-tmp"));
+        SigningPrivateKeyAndPublicHash user = createUser(storage, crypto);
+        Random r = new Random(28);
+
+        Supplier<Multihash> randomHash = () -> {
+            byte[] hash = new byte[32];
+            r.nextBytes(hash);
+            return new Multihash(Multihash.Type.sha2_256, hash);
+        };
+
+        Map<ByteArrayWrapper, MaybeMultihash> state = new HashMap<>();
+
+        Champ current = Champ.empty();
+        TransactionId tid = storage.startTransaction(user.publicKeyHash).get();
+        Multihash currentHash = storage.put(user.publicKeyHash, user, current.serialize(), tid).get();
+        int bitWidth = 4;
+        int maxCollisions = 2;
+        // build a random tree and keep track of the state
+        for (int i = 0; i < 3; i++) {
+            ByteArrayWrapper key = new ByteArrayWrapper(new byte[]{0, (byte)i, 0});
+            Multihash value = randomHash.get();
+            Pair<Champ, Multihash> updated = current.put(user.publicKeyHash, user, key, key.data, 0,
+                    MaybeMultihash.empty(), MaybeMultihash.of(value), bitWidth, maxCollisions, x -> x.data, tid, storage, currentHash).get();
+            current = updated.left;
+            currentHash = updated.right;
+            state.put(key, MaybeMultihash.of(value));
+        }
+
+        // check every mapping
+        for (Map.Entry<ByteArrayWrapper, MaybeMultihash> e : state.entrySet()) {
+            MaybeMultihash res = current.get(e.getKey(), e.getKey().data, 0, bitWidth, storage).get();
+            if (! res.equals(e.getValue()))
+                throw new IllegalStateException("Incorrect state!");
+        }
+
+        long size = current.size(0, storage).get();
+        if (size != 3)
+            throw new IllegalStateException("Incorrect number of mappings! " + size);
+
+        // delete one entry
+        ByteArrayWrapper key = new ByteArrayWrapper(new byte[]{0, 1, 0});
+        MaybeMultihash currentValue = current.get(key, key.data, 0, bitWidth, storage).get();
+        Pair<Champ, Multihash> updated = current.remove(user.publicKeyHash, user, key, key.data, 0, currentValue,
+                bitWidth, maxCollisions, tid, storage, currentHash).get();
+        state.remove(key);
+        MaybeMultihash result = updated.left.get(key, key.data, 0, bitWidth, storage).get();
+        if (! result.equals(MaybeMultihash.empty()))
+            throw new IllegalStateException("Incorrect state!");
+
+        // check every mapping
+        for (Map.Entry<ByteArrayWrapper, MaybeMultihash> e : state.entrySet()) {
+            MaybeMultihash res = current.get(e.getKey(), e.getKey().data, 0, bitWidth, storage).get();
+            if (! res.equals(e.getValue()))
+                throw new IllegalStateException("Incorrect state!");
+        }
+    }
+
     private static byte[] randomKey(byte[] startingWith, int extraBytes, Random r) {
         byte[] suffix = new byte[extraBytes];
         r.nextBytes(suffix);
