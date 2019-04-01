@@ -498,17 +498,19 @@ public class MultiUserTests {
     @Test
     public void sendFeedbackToPeergos() throws Exception {
         UserContext peergos = PeergosNetworkUtils.ensureSignedUp("peergos", "testpassword", network, crypto);
-        UserContext newUser = PeergosNetworkUtils.ensureSignedUp(random(), "newUserPassword", network, crypto);
+        UserContext newUser = PeergosNetworkUtils.ensureSignedUp("newUser", "newUserPassword", network, crypto);
 
         // Check that new user can send feedback to the user peergos.
         String feedback = "Here's some constructive feedback!";
         CompletableFuture<Boolean> testFeedbackSubmission = newUser.submitFeedback(feedback);
         assertTrue("Feedback submission was successful!", testFeedbackSubmission.get() == true);
 
-        List<FollowRequestWithCipherText> peergosRequests = peergos.processFollowRequests().get();
-        peergos.sendReplyFollowRequest(peergosRequests.get(0), true, true).get();
-
         // Can peergos read the feedback file?
+        List<FollowRequestWithCipherText> peergosRequests = peergos.processFollowRequests().get();
+        for (FollowRequestWithCipherText request : peergosRequests) {
+            peergos.sendReplyFollowRequest(request, true, true).get();
+        }
+
         Optional<FileWrapper> newUserToPeergos = peergos.getByPath("/" + newUser.username + "/feedback").get();
         Set<FileWrapper> feedbackDirectoryContents = newUserToPeergos.get().getChildren(newUser.network).get();
         assertTrue("Feedback directory is non-empty", !feedbackDirectoryContents.isEmpty());
