@@ -5,7 +5,6 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.storage.*;
 
 import java.io.*;
-import java.sql.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.*;
@@ -13,23 +12,25 @@ import java.util.stream.*;
 public class NonWriteThroughCoreNode implements CoreNode {
 
     private final CoreNode source;
-    private final CoreNode temp;
+    private final ContentAddressedStorage ipfs;
+    private final Map<String, List<UserPublicKeyLink>> tempChains;
+    private final Map<PublicKeyHash, String> tempOwnerToUsername;
 
     public NonWriteThroughCoreNode(CoreNode source, ContentAddressedStorage ipfs) {
         this.source = source;
-        try {
-            this.temp = UserRepository.buildSqlLite(":memory:", ipfs, 1000);
-        } catch (SQLException e) {
-            throw new RuntimeException(e.getMessage(), e);
-        }
+        this.ipfs = ipfs;
+        this.tempChains = new ConcurrentHashMap<>();
+        this.tempOwnerToUsername = new ConcurrentHashMap<>();
     }
 
     @Override
     public CompletableFuture<Optional<PublicKeyHash>> getPublicKeyHash(String username) {
         try {
-            Optional<PublicKeyHash> modified = temp.getPublicKeyHash(username).get();
-            if (modified.isPresent())
-                return CompletableFuture.completedFuture(modified);
+            List<UserPublicKeyLink> chain = tempChains.get(username);
+            if (chain != null) {
+                PublicKeyHash modified = chain.get(chain.size() - 1).owner;
+                return CompletableFuture.completedFuture(Optional.of(modified));
+            }
             return source.getPublicKeyHash(username);
         } catch (Exception e) {
             throw new RuntimeException(e.getMessage(), e);
@@ -39,8 +40,8 @@ public class NonWriteThroughCoreNode implements CoreNode {
     @Override
     public CompletableFuture<String> getUsername(PublicKeyHash key) {
         try {
-            String modified = temp.getUsername(key).get();
-            if (! modified.isEmpty())
+            String modified = tempOwnerToUsername.get(key);
+            if (modified != null)
                 return CompletableFuture.completedFuture(modified);
             return source.getUsername(key);
         } catch (Exception e) {
@@ -51,8 +52,8 @@ public class NonWriteThroughCoreNode implements CoreNode {
     @Override
     public CompletableFuture<List<UserPublicKeyLink>> getChain(String username) {
         try {
-            List<UserPublicKeyLink> modified = temp.getChain(username).get();
-            if (! modified.isEmpty())
+            List<UserPublicKeyLink> modified = tempChains.get(username);
+            if (modified != null)
                 return CompletableFuture.completedFuture(modified);
             return source.getChain(username);
         } catch (Exception e) {
@@ -61,14 +62,16 @@ public class NonWriteThroughCoreNode implements CoreNode {
     }
 
     @Override
-    public CompletableFuture<Boolean> updateChain(String username, List<UserPublicKeyLink> chain) {
+    public CompletableFuture<Boolean> updateChain(String username, List<UserPublicKeyLink> updated) {
         try {
-            List<UserPublicKeyLink> modified = temp.getChain(username).get();
-            if (! modified.isEmpty())
-                return temp.updateChain(username, chain);
-            List<UserPublicKeyLink> existing = source.getChain(username).get();
-            temp.updateChain(username, existing).get();
-            return temp.updateChain(username, chain);
+            List<UserPublicKeyLink> modified = tempChains.get(username);
+            if (modified != null)
+                modified = source.getChain(username).get();
+            List<UserPublicKeyLink> mergedChain = UserPublicKeyLink.merge(modified, updated, ipfs).get();
+            tempChains.put(username, mergedChain);
+            UserPublicKeyLink last = mergedChain.get(mergedChain.size() - 1);
+            tempOwnerToUsername.put(last.owner, username);
+            return CompletableFuture.completedFuture(true);
         } catch (Exception e) {
             throw new RuntimeException(e.getMessage(), e);
         }
@@ -80,7 +83,7 @@ public class NonWriteThroughCoreNode implements CoreNode {
             return CompletableFuture.completedFuture(
                     Stream.concat(
                             source.getUsernames(prefix).get().stream(),
-                            temp.getUsernames(prefix).get().stream())
+                            tempChains.keySet().stream().filter(u -> u.startsWith(prefix)))
                             .distinct()
                             .collect(Collectors.toList()));
         } catch (Exception e) {

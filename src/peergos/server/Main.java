@@ -331,14 +331,13 @@ public class Main {
                     new FileContentAddressedStorage(blockstorePath(a));
 
             String hostname = a.getArg("domain");
-            int maxUserCount = a.getInt("max-user-count", CoreNode.MAX_USERNAME_COUNT);
             Multihash nodeId = localDht.id().get();
 
             String mutablePointersSqlFile = a.getArg("mutable-pointers-file");
             String path = mutablePointersSqlFile.equals(":memory:") ?
                     mutablePointersSqlFile :
                     a.fromPeergosDir("mutable-pointers-file").toString();
-            MutablePointers sqlMutable = UserRepository.buildSqlLite(path, localDht, maxUserCount);
+            MutablePointers sqlMutable = UserRepository.buildSqlLite(path, localDht);
             MutablePointersProxy proxingMutable = new HttpMutablePointers(ipfsGateway, pkiServerNodeId);
 
             PublicKeyHash peergosId = PublicKeyHash.fromString(a.getArg("peergos.identity.hash"));
@@ -376,7 +375,7 @@ public class Main {
             String socialPath = socialNodeFile.equals(":memory:") ?
                     socialNodeFile :
                     a.fromPeergosDir("social-sql-file").toString();
-            SocialNetwork local = UserRepository.buildSqlLite(socialPath, p2pDht, maxUserCount);
+            SocialNetwork local = UserRepository.buildSqlLite(socialPath, p2pDht);
             SocialNetwork p2pSocial = new ProxyingSocialNetwork(nodeId, core, local, httpSocial);
 
             Path userPath = a.fromPeergosDir("whitelist_file", "user_whitelist.txt");
@@ -463,7 +462,6 @@ public class Main {
                 mutablePointersSqlFile :
                 a.fromPeergosDir("mutable.sql").toString();
         int corenodePort = a.getInt("corenode-port");
-        int maxUserCount = a.getInt("max-user-count", CoreNode.MAX_USERNAME_COUNT);
         System.out.println("Using mutable-pointers path " + path);
         boolean useIPFS = a.getBoolean("useIPFS");
 
@@ -474,8 +472,7 @@ public class Main {
                 new FileContentAddressedStorage(blockstorePath(a));
         try {
             Crypto crypto = Crypto.initJava();
-            MutablePointers mutable = UserRepository.buildSqlLite(path
-                    , dht, maxUserCount);
+            MutablePointers mutable = UserRepository.buildSqlLite(path, dht);
             PublicKeyHash peergosIdentity = PublicKeyHash.fromString(a.getArg("peergos.identity.hash"));
 
             String pkiSecretKeyfilePassword = a.getArg("pki.keyfile.password");
