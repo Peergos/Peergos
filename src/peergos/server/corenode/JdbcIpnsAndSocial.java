@@ -13,18 +13,32 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.*;
 
-public class JDBCCoreNode {
+public class JdbcIpnsAndSocial {
 	private static final Logger LOG = Logging.LOG();
 
     private static final String TABLE_NAMES_SELECT_STMT = "SELECT * FROM sqlite_master WHERE type='table';";
-    private static final String CREATE_FOLLOW_REQUESTS_TABLE = "create table followrequests (id integer primary key autoincrement, name text not null, followrequest text not null);";
-    private static final String CREATE_METADATA_BLOBS_TABLE = "create table metadatablobs (writingkey text primary key not null, hash text not null); " +
-            "CREATE UNIQUE INDEX index_name on metadatablobs (writingkey);";
+
+    private static final String FOLLOW_REQUEST_USER_NAME = "name";
+    private static final String FOLLOW_REQUEST_DATA_NAME = "followrequest";
+    private static final String CREATE_FOLLOW_REQUESTS_TABLE =
+            "CREATE TABLE followrequests (id integer primary key autoincrement, " +
+                    "name text not null, followrequest text not null);";
+    private static final String INSERT_FOLLOW_REQUEST = "INSERT INTO followrequests (name, followrequest) VALUES(?, ?);";
+    private static final String SELECT_FOLLOW_REQUESTS = "SELECT name, followrequest FROM followrequests WHERE name = ?;";
+    private static final String DELETE_FOLLOW_REQUEST = "DELETE FROM followrequests WHERE name = ? AND followrequest = ?;";
+
+    private static final String CREATE_IPNS_TABLE =
+            "CREATE TABLE metadatablobs (writingkey text primary key not null, hash text not null); " +
+            "CREATE UNIQUE INDEX index_name ON metadatablobs (writingkey);";
+    private static final String IPNS_TARGET_NAME = "hash";
+    private static final String IPNS_CREATE = "INSERT INTO metadatablobs (writingkey, hash) VALUES(?, ?)";
+    private static final String IPNS_UPDATE = "UPDATE metadatablobs SET hash=? WHERE writingkey = ? AND hash = ?";
+    private static final String IPNS_GET = "SELECT * FROM metadatablobs WHERE writingKey = ? LIMIT 1;";
 
     private static final Map<String,String> TABLES = new HashMap<>();
     static {
         TABLES.put("followrequests", CREATE_FOLLOW_REQUESTS_TABLE);
-        TABLES.put("metadatablobs", CREATE_METADATA_BLOBS_TABLE);
+        TABLES.put("metadatablobs", CREATE_IPNS_TABLE);
     }
 
     private Connection conn;
@@ -53,10 +67,10 @@ public class JDBCCoreNode {
         }
 
         public boolean insert() {
-            try (PreparedStatement stmt = conn.prepareStatement("INSERT INTO followrequests (name, followrequest) VALUES(?, ?);")) {
-                stmt.setString(1,this.name);
-                stmt.setString(2,this.b64string);
-                stmt.executeUpdate();
+            try (PreparedStatement insert = conn.prepareStatement(INSERT_FOLLOW_REQUEST)) {
+                insert.setString(1,this.name);
+                insert.setString(2,this.b64string);
+                insert.executeUpdate();
                 return true;
             } catch (SQLException sqe) {
                 LOG.log(Level.WARNING, sqe.getMessage(), sqe);
@@ -65,14 +79,14 @@ public class JDBCCoreNode {
         }
 
         public FollowRequestData[] select() {
-            try (PreparedStatement stmt = conn.prepareStatement("SELECT name, followrequest FROM followrequests WHERE name = ?;")) {
-                stmt.setString(1, name);
-                ResultSet rs = stmt.executeQuery();
+            try (PreparedStatement select = conn.prepareStatement(SELECT_FOLLOW_REQUESTS)) {
+                select.setString(1, name);
+                ResultSet rs = select.executeQuery();
                 List<FollowRequestData> list = new ArrayList<>();
                 while (rs.next())
                 {
-                    String username = rs.getString("name");
-                    String b64string = rs.getString("followrequest");
+                    String username = rs.getString(FOLLOW_REQUEST_USER_NAME);
+                    String b64string = rs.getString(FOLLOW_REQUEST_DATA_NAME);
                     list.add(new FollowRequestData(username, b64string));
                 }
                 return list.toArray(new FollowRequestData[0]);
@@ -83,10 +97,10 @@ public class JDBCCoreNode {
         }
 
         public boolean delete() {
-            try (PreparedStatement stmt = conn.prepareStatement("DELETE FROM followrequests WHERE name = ? AND followrequest = ?;")) {
-                stmt.setString(1, name);
-                stmt.setString(2, b64string);
-                stmt.executeUpdate();
+            try (PreparedStatement delete = conn.prepareStatement(DELETE_FOLLOW_REQUEST)) {
+                delete.setString(1, name);
+                delete.setString(2, b64string);
+                delete.executeUpdate();
                 return true;
             } catch (SQLException sqe) {
                 LOG.log(Level.WARNING, sqe.getMessage(), sqe);
@@ -97,7 +111,7 @@ public class JDBCCoreNode {
 
     private volatile boolean isClosed;
 
-    public JDBCCoreNode(Connection conn) throws SQLException {
+    public JdbcIpnsAndSocial(Connection conn) throws SQLException {
         this.conn = conn;
         init();
     }
@@ -161,7 +175,7 @@ public class JDBCCoreNode {
 
     public CompletableFuture<Boolean> setPointer(PublicKeyHash writingKey, Optional<byte[]> existingCas, byte[] newCas) {
         if (existingCas.isPresent()) {
-            try (PreparedStatement insert = conn.prepareStatement("UPDATE metadatablobs SET hash=? WHERE writingkey = ? AND hash = ?")) {
+            try (PreparedStatement insert = conn.prepareStatement(IPNS_UPDATE)) {
                 conn.setTransactionIsolation(Connection.TRANSACTION_SERIALIZABLE);
                 String key = new String(Base64.getEncoder().encode(writingKey.serialize()));
 
@@ -175,7 +189,7 @@ public class JDBCCoreNode {
                 return CompletableFuture.completedFuture(false);
             }
         } else {
-            try (PreparedStatement stmt = conn.prepareStatement("INSERT INTO metadatablobs (writingkey, hash) VALUES(?, ?)")) {
+            try (PreparedStatement stmt = conn.prepareStatement(IPNS_CREATE)) {
                 stmt.setString(1, new String(Base64.getEncoder().encode(writingKey.serialize())));
                 stmt.setString(2, new String(Base64.getEncoder().encode(newCas)));
                 stmt.executeUpdate();
@@ -188,11 +202,11 @@ public class JDBCCoreNode {
     }
 
     public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash writingKey) {
-        try (PreparedStatement stmt = conn.prepareStatement("SELECT * FROM metadatablobs WHERE writingKey = ? LIMIT 1;")) {
+        try (PreparedStatement stmt = conn.prepareStatement(IPNS_GET)) {
             stmt.setString(1, new String(Base64.getEncoder().encode(writingKey.serialize())));
             ResultSet rs = stmt.executeQuery();
             if (rs.next()) {
-                return CompletableFuture.completedFuture(Optional.of(Base64.getDecoder().decode(rs.getString("hash"))));
+                return CompletableFuture.completedFuture(Optional.of(Base64.getDecoder().decode(rs.getString(IPNS_TARGET_NAME))));
             }
 
             return CompletableFuture.completedFuture(Optional.empty());

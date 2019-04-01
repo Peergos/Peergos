@@ -1,7 +1,6 @@
 package peergos.server.corenode;
 
 import peergos.shared.cbor.*;
-import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
@@ -9,18 +8,16 @@ import peergos.shared.mutable.*;
 import peergos.shared.social.*;
 import peergos.shared.storage.*;
 
-import java.io.*;
 import java.sql.*;
-import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 
 public class UserRepository implements SocialNetwork, MutablePointers {
 
     private final ContentAddressedStorage ipfs;
-    private final JDBCCoreNode store;
+    private final JdbcIpnsAndSocial store;
 
-    public UserRepository(ContentAddressedStorage ipfs, JDBCCoreNode store) {
+    public UserRepository(ContentAddressedStorage ipfs, JdbcIpnsAndSocial store) {
         this.ipfs = ipfs;
         this.store = store;
     }
@@ -91,7 +88,7 @@ public class UserRepository implements SocialNetwork, MutablePointers {
 
     public static UserRepository buildSqlLite(String dbPath, ContentAddressedStorage ipfs) throws SQLException
     {
-        JDBCCoreNode coreNode = new JDBCCoreNode(JDBCCoreNode.buildSqlLite(dbPath));
+        JdbcIpnsAndSocial coreNode = new JdbcIpnsAndSocial(JdbcIpnsAndSocial.buildSqlLite(dbPath));
         return new UserRepository(ipfs, coreNode);
     }
 }
