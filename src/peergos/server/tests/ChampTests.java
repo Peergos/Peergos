@@ -216,6 +216,10 @@ public class ChampTests {
         if (! result.equals(MaybeMultihash.empty()))
             throw new IllegalStateException("Incorrect state!");
 
+        long size_after_delete = current.size(0, storage).get();
+        if (size_after_delete != 2)
+            throw new IllegalStateException("Incorrect number of mappings! " + size);
+
         // check every mapping
         for (Map.Entry<ByteArrayWrapper, MaybeMultihash> e : state.entrySet()) {
             MaybeMultihash res = current.get(e.getKey(), e.getKey().data, 0, bitWidth, storage).get();
