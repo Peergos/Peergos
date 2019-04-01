@@ -5,7 +5,6 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.storage.*;
 
 import java.io.*;
-import java.sql.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.*;
@@ -15,13 +14,13 @@ public class NonWriteThroughCoreNode implements CoreNode {
     private final CoreNode source;
     private final ContentAddressedStorage ipfs;
     private final Map<String, List<UserPublicKeyLink>> tempChains;
-    private final Map<PublicKeyHash, String> tempReverse;
+    private final Map<PublicKeyHash, String> tempOwnerToUsername;
 
     public NonWriteThroughCoreNode(CoreNode source, ContentAddressedStorage ipfs) {
         this.source = source;
         this.ipfs = ipfs;
         this.tempChains = new ConcurrentHashMap<>();
-        this.tempReverse = new ConcurrentHashMap<>();
+        this.tempOwnerToUsername = new ConcurrentHashMap<>();
     }
 
     @Override
@@ -41,7 +40,7 @@ public class NonWriteThroughCoreNode implements CoreNode {
     @Override
     public CompletableFuture<String> getUsername(PublicKeyHash key) {
         try {
-            String modified = tempReverse.get(key);
+            String modified = tempOwnerToUsername.get(key);
             if (modified != null)
                 return CompletableFuture.completedFuture(modified);
             return source.getUsername(key);
@@ -70,6 +69,8 @@ public class NonWriteThroughCoreNode implements CoreNode {
                 modified = source.getChain(username).get();
             List<UserPublicKeyLink> mergedChain = UserPublicKeyLink.merge(modified, updated, ipfs).get();
             tempChains.put(username, mergedChain);
+            UserPublicKeyLink last = mergedChain.get(mergedChain.size() - 1);
+            tempOwnerToUsername.put(last.owner, username);
             return CompletableFuture.completedFuture(true);
         } catch (Exception e) {
             throw new RuntimeException(e.getMessage(), e);
