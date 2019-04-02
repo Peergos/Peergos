@@ -34,8 +34,8 @@ public class UserRepository implements SocialNetwork, MutablePointers {
                 throw new IllegalStateException("Invalid cbor for getFollowRequests authorisation!");
             long utcMillis = ((CborObject.CborLong) cbor).value;
             long now = System.currentTimeMillis();
-            if (Math.abs(now - utcMillis) > 30_000)
-                throw new IllegalStateException("Stale auth in getFollowRequests, is this a replay attack?");
+            if (Math.abs(now - utcMillis) > 300_000)
+                throw new IllegalStateException("Stale auth time in getFollowRequests, is your clock accurate?");
             // This is a valid request
         } catch (Exception e) {
             throw new RuntimeException(e);
