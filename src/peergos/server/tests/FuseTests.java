@@ -211,7 +211,7 @@ public class FuseTests {
             assertEquals("initial size", initialLength, raf.length());
 
             for (int pow = -1; pow < 4; pow++) {
-                int newSize = (int) (Math.pow(2, pow) * initialLength);
+                long newSize = (long) (Math.pow(2, pow) * initialLength);
                 raf.setLength(newSize);
                 assertEquals("truncated size equals", newSize, raf.length());
             }
