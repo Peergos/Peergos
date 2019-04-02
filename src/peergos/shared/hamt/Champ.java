@@ -408,30 +408,52 @@ public class Champ implements Cborable {
                     }
 
                     if (this.keyCount() == maxCollisions + 1 && this.nodeCount() == 0) {
-                    /*
-						 * Create new node with remaining pairs. The new node
-						 * will a) either become the new root returned, or b)
-						 * unwrapped and inlined during returning.
-						 */
-                        final BitSet newDataMap = BitSet.valueOf((depth == 0) ? dataMap.toByteArray() : new byte[0]);
-                        boolean lastInPrefix = mappings.length == 1;
-                        if (depth == 0 && lastInPrefix)
-                            newDataMap.clear(bitpos);
-                        else
+                        /*
+				         * Create new node with remaining pairs. The new node
+					     * will either
+					     * a) become the new root returned, or
+					     * b) be unwrapped and inlined during returning.
+					     */
+                        Champ champ;
+                        if (depth > 0) {
+                            // inline all mappings into a single node because at a higher level, all mappings have the
+                            // same hash prefix
+                            final BitSet newDataMap = new BitSet();
                             newDataMap.set(mask(hash, 0, bitWidth));
 
-                        HashPrefixPayload[] src = this.contents;
-                        HashPrefixPayload[] dst = new HashPrefixPayload[src.length - (lastInPrefix ? 1 : 0)];
-                        System.arraycopy(src, 0, dst, 0, dataIndex);
-                        System.arraycopy(src, dataIndex + 1, dst, dataIndex + (lastInPrefix ? 0 : 1), src.length - dataIndex - 1);
-                        if (! lastInPrefix) {
-                            KeyElement[] remaining = new KeyElement[mappings.length - 1];
-                            System.arraycopy(mappings, 0, remaining, 0, payloadIndex);
-                            System.arraycopy(mappings, payloadIndex + 1, remaining, payloadIndex, mappings.length - payloadIndex - 1);
-                            dst[dataIndex] = new HashPrefixPayload(remaining);
-                        }
+                            KeyElement[] remainingMappings = new KeyElement[maxCollisions];
+                            int nextIndex = 0;
+                            for (HashPrefixPayload grouped : contents) {
+                                for (KeyElement pair : grouped.mappings) {
+                                    if (!pair.key.equals(key))
+                                        remainingMappings[nextIndex++] = pair;
+                                }
+                            }
+                            Arrays.sort(remainingMappings, Comparator.comparing(x -> x.key));
+                            HashPrefixPayload[] oneBucket = new HashPrefixPayload[]{new HashPrefixPayload(remainingMappings)};
 
-                        Champ champ = new Champ(newDataMap, new BitSet(), dst);
+                            champ = new Champ(newDataMap, new BitSet(), oneBucket);
+                        } else {
+                            final BitSet newDataMap = BitSet.valueOf(dataMap.toByteArray());
+                            boolean lastInPrefix = mappings.length == 1;
+                            if (lastInPrefix)
+                                newDataMap.clear(bitpos);
+                            else
+                                newDataMap.set(mask(hash, 0, bitWidth));
+
+                            HashPrefixPayload[] src = this.contents;
+                            HashPrefixPayload[] dst = new HashPrefixPayload[src.length - (lastInPrefix ? 1 : 0)];
+                            System.arraycopy(src, 0, dst, 0, dataIndex);
+                            System.arraycopy(src, dataIndex + 1, dst, dataIndex + (lastInPrefix ? 0 : 1), src.length - dataIndex - 1);
+                            if (! lastInPrefix) {
+                                KeyElement[] remaining = new KeyElement[mappings.length - 1];
+                                System.arraycopy(mappings, 0, remaining, 0, payloadIndex);
+                                System.arraycopy(mappings, payloadIndex + 1, remaining, payloadIndex, mappings.length - payloadIndex - 1);
+                                dst[dataIndex] = new HashPrefixPayload(remaining);
+                            }
+
+                            champ = new Champ(newDataMap, new BitSet(), dst);
+                        }
                         return storage.put(owner, writer, champ.serialize(), tid).thenApply(h -> new Pair<>(champ, h));
                     } else {
                         Champ champ = removeMapping(bitpos, payloadIndex);
