@@ -513,8 +513,9 @@ public class SpaceCheckingKeyFilter {
             long pending = usage.getPending(writer);
             usage.clearPending(writer);
             usage.setErrored(true);
-            throw new IllegalStateException("Storage quota reached! Used "
-                    + usage.usage + " out of " + quota + " bytes. Rejecting write of size " + (size + pending) + ". Please delete some files.");
+            throw new IllegalStateException("Storage quota reached! \nUsed "
+                    + usage.usage + " out of " + quota + " bytes. Rejecting write of size " + (size + pending) + ". \n" +
+                    "Please delete some files or request more space.");
         }
         usage.addPending(writer, size);
         return true;
