@@ -132,7 +132,7 @@ You will need Java >= 8 installed.
 
 Run Peergos with:
 ```
-java -jar PeergosServer.jar -peergos -pki-node-id QmXZXGXsNhxh2LiWFsa7CLHeRWJS5wb8RHxcTvQhvCzAeu -peergos.identity.hash zdpuArqSqUUncNsLSRVvUhdcT3GKAeA5yhDkPNSMf1bkEujsk -logToConsole true
+java -jar PeergosServer.jar -peergos -pki-node-id QmdM1TrjBJnYzzESATtrrMNPAtjJdqfcV2vF1kM39DY7cc -peergos.identity.hash zdpuArqSqUUncNsLSRVvUhdcT3GKAeA5yhDkPNSMf1bkEujsk -logToConsole true
 ```
 You can then access the web interface over http:/localhost:8000/
 
