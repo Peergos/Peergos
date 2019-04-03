@@ -41,14 +41,14 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
             this.swarmPort = swarmPort;
         }
 
-        private List<String[]> configCmds() {
+        private List<String[]> configCmds(boolean quoteEscape) {
             return Stream.of(
                     "config --json Experimental.Libp2pStreamMounting true",
                     "config --json Experimental.P2pHttpProxy true",
-                    String.format("config --json Addresses.API \"/ip4/127.0.0.1/tcp/%d\"", apiPort),
-                    String.format("config --json Addresses.Gateway \"/ip4/127.0.0.1/tcp/%d\"", gatewayPort),
+                    String.format("config Addresses.API /ip4/127.0.0.1/tcp/%d", apiPort),
+                    String.format("config Addresses.Gateway /ip4/127.0.0.1/tcp/%d", gatewayPort),
                     String.format("config --json Addresses.Swarm [\"/ip4/127.0.0.1/tcp/%d\",\"/ip6/::/tcp/%d\"]", swarmPort, swarmPort))
-                    .map(e -> e.replaceAll("\"", "\\\""))  //escape "
+                    .map(e -> quoteEscape ? e.replaceAll("\"", "\\\\\"") : e)  //escape quotes for windows
                     .map(e -> e.split("\\s+"))
                     .collect(Collectors.toList());
         }
@@ -124,7 +124,9 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
         }
 
         LOG().info("Running ipfs config");
-        for (String[] configCmd : config.configCmds()) {
+        // Windows cmd requires and extra escape for quotes
+        boolean extraQuoteEscape = System.getProperty("os.name").toLowerCase().contains("windows");
+        for (String[] configCmd : config.configCmds(extraQuoteEscape)) {
             //ipfs config x y z
             runIpfsCmd(configCmd);
         }
@@ -136,9 +138,6 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
         //ipfs daemon
         LOG().info("Starting ipfs daemon");
         process = startIpfsCmd("daemon");
-
-        new Thread(() -> Logging.log(process.getInputStream(), "$(ipfs daemon) out: ")).start();
-        new Thread(() -> Logging.log(process.getErrorStream(), "$(ipfs daemon) err: ")).start();
     }
 
     /**
@@ -243,7 +242,14 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
         ProcessBuilder pb = new ProcessBuilder(list);
         pb.environment().put(IPFS_DIR, ipfsDir.toString());
         try {
-            return pb.start();
+            for (String arg : subCmd) {
+                System.out.printf(arg + " ");
+            }
+            System.out.println();
+            Process started = pb.start();
+            new Thread(() -> Logging.log(started.getInputStream(), "$(ipfs " + subCmd + ") out: ")).start();
+            new Thread(() -> Logging.log(started.getErrorStream(), "$(ipfs " + subCmd + ") err: ")).start();
+            return started;
         } catch (IOException ioe) {
             throw new IllegalStateException(ioe.getMessage(), ioe);
         }

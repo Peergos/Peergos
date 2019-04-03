@@ -128,7 +128,12 @@ public class IpfsInstaller {
                 byte[] raw = Files.readAllBytes(cacheFile);
                 Multihash computed = new Multihash(Multihash.Type.sha2_256, Hash.sha256(raw));
                 if (computed.equals(downloadTarget.multihash)) {
-                    Files.createSymbolicLink(targetFile, cacheFile);
+                    try {
+                        Files.createSymbolicLink(targetFile, cacheFile);
+                    } catch (Throwable t) {
+                        // Windows requires extra privilege to symlink, so just copy it
+                        Files.copy(cacheFile, targetFile);
+                    }
                     targetFile.toFile().setExecutable(true);
                     return;
                 }
