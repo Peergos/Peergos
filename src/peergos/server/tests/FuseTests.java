@@ -219,7 +219,54 @@ public class FuseTests {
     }
 
     @Test
-    public  void lastModifiedTimeTest() throws IOException {
+    public void anotherTruncateTest() throws IOException {
+        long kiloByte = 1024; // 1KB
+        int initialLength = (int) (4 * kiloByte);
+        long testLengthOne = 2 * kiloByte;
+        long testLengthTwo = 4 * kiloByte;
+        long testLengthThree = 8 * kiloByte;
+        long testLengthFour = 16 * kiloByte;
+        long testLengthFive = 32 * kiloByte;
+
+        Path path = createRandomFile(initialLength);
+
+        RandomAccessFile raf = null;
+
+        try {
+            raf = new RandomAccessFile(path.toFile(), "rw");
+            raf.setLength(testLengthOne);
+            assertEquals("truncated size equals", testLengthOne, raf.length());
+
+            raf = new RandomAccessFile(path.toFile(), "rw");
+            raf.setLength(testLengthTwo);
+            assertEquals("truncated size equals", testLengthTwo, raf.length());
+
+            raf = new RandomAccessFile(path.toFile(), "rw");
+            raf.setLength(testLengthThree);
+            assertEquals("truncated size equals", testLengthThree, raf.length());
+
+            raf = new RandomAccessFile(path.toFile(), "rw");
+            raf.setLength(testLengthFour);
+            assertEquals("truncated size equals", testLengthFour, raf.length());
+
+            raf = new RandomAccessFile(path.toFile(), "rw");
+            raf.setLength(testLengthFive);
+            assertEquals("truncated size equals", testLengthFive, raf.length());
+        } catch (Exception e) {
+            System.err.println(e);
+        } finally {
+            if (raf != null) {
+                try { 
+                    raf.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+
+    @Test
+    public void lastModifiedTimeTest() throws IOException {
         Path path = createRandomFile();
 
         ZonedDateTime now = ZonedDateTime.now();
