@@ -115,7 +115,8 @@ public class QuotaTests {
         UserContext context = ensureSignedUp(username, password, network, crypto);
         FileWrapper home = context.getByPath(Paths.get(username).toString()).get().get();
         // signing up uses just under 32k and the quota is 2 MiB, so use close to our quota
-        byte[] data = new byte[2 * 1024 * 1024 - 44 * 1024];
+        int used = context.getTotalSpaceUsed(context.signer.publicKeyHash, context.signer.publicKeyHash).get().intValue();
+        byte[] data = new byte[2 * 1024 * 1024 - used - 16 * 1024];
         random.nextBytes(data);
         String filename = "file-1";
         home = home.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length,
