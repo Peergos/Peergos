@@ -25,7 +25,6 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.function.*;
 import java.util.stream.Collectors;
 
 /** This class checks whether a given user is using more storage space than their quota
@@ -33,7 +32,7 @@ import java.util.stream.Collectors;
  */
 public class SpaceCheckingKeyFilter {
     private static final Logger LOG = Logging.LOG();
-    private static final long DEFAULT_STORE_PERIOD = 60*1000*10; //10M
+    private static final long USAGE_TOLERANCE = 1024 * 1024;
     private final CoreNode core;
     private final MutablePointers mutable;
     private final ContentAddressedStorage dht;
@@ -209,6 +208,7 @@ public class SpaceCheckingKeyFilter {
 
     public static class Usage implements Cborable {
         private long usage;
+        private boolean errored;
         private Map<PublicKeyHash, Long> pending = new HashMap<>();
 
         public Usage(long usage) {
@@ -218,6 +218,7 @@ public class SpaceCheckingKeyFilter {
         protected synchronized void confirmUsage(PublicKeyHash writer, long usageDelta) {
             pending.remove(writer);
             usage += usageDelta;
+            errored = false;
         }
 
         protected synchronized void addPending(PublicKeyHash writer, long usageDelta) {
@@ -232,8 +233,16 @@ public class SpaceCheckingKeyFilter {
             return pending.getOrDefault(writer, 0L);
         }
 
-        protected synchronized long usage() {
+        protected synchronized long expectedUsage() {
             return usage + pending.values().stream().mapToLong(x -> x).sum();
+        }
+
+        protected synchronized void setErrored(boolean errored) {
+            this.errored = errored;
+        }
+
+        protected synchronized boolean isErrored() {
+            return errored;
         }
 
         @Override
@@ -497,13 +506,16 @@ public class SpaceCheckingKeyFilter {
             throw new IllegalStateException("Unknown writing key hash: " + writer);
 
         Usage usage = state.usage.get(stat.owner);
-        long spaceUsed = usage.usage();
         long quota = quotaSupplier.getQuota(stat.owner);
-        if (spaceUsed > quota || quota - spaceUsed - size <= 0) {
+        long expectedUsage = usage.expectedUsage();
+        boolean errored = usage.isErrored();
+        if ((! errored && expectedUsage + size > quota) || (errored && expectedUsage + size > quota + USAGE_TOLERANCE)) {
             long pending = usage.getPending(writer);
             usage.clearPending(writer);
-            throw new IllegalStateException("Storage quota reached! Used "
-                    + usage.usage + " out of " + quota + " bytes. Rejecting write of size " + (size + pending) + ". Please delete some files.");
+            usage.setErrored(true);
+            throw new IllegalStateException("Storage quota reached! \nUsed "
+                    + usage.usage + " out of " + quota + " bytes. Rejecting write of size " + (size + pending) + ". \n" +
+                    "Please delete some files or request more space.");
         }
         usage.addPending(writer, size);
         return true;
