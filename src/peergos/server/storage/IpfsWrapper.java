@@ -242,13 +242,11 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
         ProcessBuilder pb = new ProcessBuilder(list);
         pb.environment().put(IPFS_DIR, ipfsDir.toString());
         try {
-            for (String arg : subCmd) {
-                System.out.printf(arg + " ");
-            }
-            System.out.println();
+            String command = Arrays.stream(subCmd).collect(Collectors.joining(" "));
+            System.out.println(command);
             Process started = pb.start();
-            new Thread(() -> Logging.log(started.getInputStream(), "$(ipfs " + subCmd + ") out: ")).start();
-            new Thread(() -> Logging.log(started.getErrorStream(), "$(ipfs " + subCmd + ") err: ")).start();
+            new Thread(() -> Logging.log(started.getInputStream(), "$(ipfs " + command + ") out: ")).start();
+            new Thread(() -> Logging.log(started.getErrorStream(), "$(ipfs " + command + ") err: ")).start();
             return started;
         } catch (IOException ioe) {
             throw new IllegalStateException(ioe.getMessage(), ioe);
