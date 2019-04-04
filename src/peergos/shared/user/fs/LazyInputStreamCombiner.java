@@ -51,30 +51,47 @@ public class LazyInputStreamCombiner implements AsyncReader {
     }
 
     public CompletableFuture<Boolean> getNextStream(int len) {
-        if (this.nextChunkPointer != null) {
-            AbsoluteCapability nextCap = this.nextChunkPointer;
-            return network.getMetadata(nextCap).thenCompose(meta -> {
-                if (!meta.isPresent()) {
-                    CompletableFuture<Boolean> err = new CompletableFuture<>();
-                    err.completeExceptionally(new EOFException());
-                    return err;
-                }
-                CryptreeNode access = meta.get();
-                if (access.isDirectory())
-                    throw new IllegalStateException("File linked to a directory for its next chunk!");
-                FileRetriever nextRet = access.retriever(baseKey);
-                AbsoluteCapability newNextChunkPointer = nextCap.withMapKey(access.getNextChunkLocation(baseKey));
-                return nextRet.getChunk(network, random, 0, len, nextCap, access.committedHash(), monitor)
-                        .thenApply(x -> {
-                            byte[] nextData = x.get().chunk.data();
-                            updateState(0,globalIndex + Chunk.MAX_SIZE, nextData, newNextChunkPointer);
-                            return true;
-                        });
-            });
+        return getSubsequentMetadata(this.nextChunkPointer, 0)
+                .thenCompose(access -> getChunk(access, len))
+                .thenApply(p -> {
+                    updateState(0,globalIndex + Chunk.MAX_SIZE, p.left, p.right);
+                    return true;
+                });
+    }
+
+    private CompletableFuture<Pair<byte[], AbsoluteCapability>> getChunk(CryptreeNode access, int truncateTo) {
+        if (access.isDirectory())
+                throw new IllegalStateException("File linked to a directory for its next chunk!");
+        FileRetriever nextRet = access.retriever(baseKey);
+        AbsoluteCapability newNextChunkPointer = nextChunkPointer.withMapKey(access.getNextChunkLocation(baseKey));
+        return nextRet.getChunk(network, random, 0, truncateTo, nextChunkPointer, access.committedHash(), monitor)
+                .thenApply(x -> {
+                    byte[] nextData = x.get().chunk.data();
+                    return new Pair<>(nextData, newNextChunkPointer);
+                });
+    }
+
+    private CompletableFuture<CryptreeNode> getSubsequentMetadata(AbsoluteCapability nextCap, long chunks) {
+        if (nextCap == null) {
+            CompletableFuture<CryptreeNode> err = new CompletableFuture<>();
+            err.completeExceptionally(new EOFException());
+            return err;
         }
-        CompletableFuture<Boolean> err = new CompletableFuture<>();
-        err.completeExceptionally(new EOFException());
-        return err;
+
+        return network.getMetadata(nextCap)
+                .thenCompose(meta -> {
+                    if (!meta.isPresent()) {
+                        CompletableFuture<CryptreeNode> err = new CompletableFuture<>();
+                        err.completeExceptionally(new EOFException());
+                        return err;
+                    }
+                    return CompletableFuture.completedFuture(meta.get());
+                }).thenCompose(access -> {
+                    if (chunks == 0)
+                        return CompletableFuture.completedFuture(access);
+                    AbsoluteCapability newNextCap = nextCap.withMapKey(access.getNextChunkLocation(baseKey));
+                    return getSubsequentMetadata(newNextCap, chunks - 1);
+                });
     }
 
     private CompletableFuture<AsyncReader> skip(long skip) {
@@ -87,17 +104,29 @@ public class LazyInputStreamCombiner implements AsyncReader {
 
         long toRead = Math.min(available, skip);
 
-        int remainingToRead = totalLength - globalIndex > Chunk.MAX_SIZE ? Chunk.MAX_SIZE : (int) (totalLength - globalIndex);
-        return getNextStream(remainingToRead)
-                .thenCompose(done -> this.skip(skip - toRead));
+        long toSkipAfterThisChunk = skip - toRead;
+            // skip through the cryptree nodes without downloading the data
+            long finalOffset = globalIndex + skip;
+            long finalInternalIndex = finalOffset % Chunk.MAX_SIZE;
+            long startOfTargetChunk = finalOffset - finalInternalIndex;
+            long chunksToSkip = toSkipAfterThisChunk / Chunk.MAX_SIZE;
+            int truncateTo = (int) Math.min(Chunk.MAX_SIZE, totalLength - startOfTargetChunk);
+            return getSubsequentMetadata(nextChunkPointer, chunksToSkip)
+                    .thenCompose(access -> getChunk(access, truncateTo))
+                    .thenApply(p -> new LazyInputStreamCombiner(finalOffset, p.left, p.right.getLocation(),
+                            originalChunk, originalNextPointer.getLocation(), network, random, baseKey, totalLength, x -> {}))
+                    .thenCompose(reader -> reader.skip(finalInternalIndex));
     }
 
     @Override
     public CompletableFuture<AsyncReader> seekJS(int hi32, int low32) {
-        long seek = ((long) (hi32) << 32) | low32;
+        long seek = ((long) (hi32) << 32) | (low32 & 0xFFFFFFFFL);
 
         if (totalLength < seek)
             throw new IllegalStateException("Cannot seek to position "+ seek);
+        long globalOffset = globalIndex + index;
+        if (seek > globalOffset)
+            return skip(seek - globalOffset);
         return reset().thenCompose(x -> ((LazyInputStreamCombiner)x).skip(seek));
     }
 

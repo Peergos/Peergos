@@ -651,6 +651,32 @@ public abstract class UserTests {
     }
 
     @Test
+    public void fileSeek() throws Exception {
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        FileWrapper userRoot = context.getUserRoot().get();
+
+        String filename = "mediumfile.bin";
+
+        int MB = 1024*1024;
+        byte[] data = new byte[15 * MB];
+        random.nextBytes(data);
+        uploadFileSection(userRoot, filename, new AsyncReader.ArrayBacked(data), 0, data.length, context.network,
+                context.crypto.random, hasher, l -> {}).join();
+        byte[] buf = new byte[2 * MB];
+
+        for (int offset: Arrays.asList(10, 4*MB, 6*MB, 11*MB)) {
+            AsyncReader reader = context.getByPath(Paths.get(username, filename)).join()
+                    .get().getInputStream(network, crypto.random, x -> { }).join();
+            AsyncReader seeked = reader.seek(offset).join();
+            seeked.readIntoArray(buf, 0, buf.length).join();
+            if (! Arrays.equals(buf, Arrays.copyOfRange(data, offset, offset + buf.length)))
+                throw new IllegalStateException("Seeked data incorrect! Offset: " + offset);
+        }
+    }
+
+    @Test
     public void writeTiming() throws Exception {
         String username = generateUsername();
         String password = "test01";
