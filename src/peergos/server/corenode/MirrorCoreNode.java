@@ -1,5 +1,6 @@
 package peergos.server.corenode;
 
+import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
@@ -9,6 +10,7 @@ import peergos.shared.user.*;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.logging.*;
 
 public class MirrorCoreNode implements CoreNode {
 
@@ -40,8 +42,10 @@ public class MirrorCoreNode implements CoreNode {
             while (running) {
                 try {
                     Thread.sleep(60_000);
-                } catch (InterruptedException i) {}
-                update();
+                    update();
+                } catch (Throwable t) {
+                    Logging.LOG().log(Level.SEVERE, t.getMessage(), t);
+                }
             }
         }, "Mirroring PKI node").start();
     }
