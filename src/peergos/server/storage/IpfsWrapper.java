@@ -47,7 +47,7 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
                     "config --json Experimental.P2pHttpProxy true",
                     String.format("config Addresses.API /ip4/127.0.0.1/tcp/%d", apiPort),
                     String.format("config Addresses.Gateway /ip4/127.0.0.1/tcp/%d", gatewayPort),
-                    String.format("config --json Addresses.Swarm [\"/ip4/127.0.0.1/tcp/%d\",\"/ip6/::/tcp/%d\"]", swarmPort, swarmPort))
+                    String.format("config --json Addresses.Swarm [\"/ip4/0.0.0.0/tcp/%d\",\"/ip6/::/tcp/%d\"]", swarmPort, swarmPort))
                     .map(e -> quoteEscape ? e.replaceAll("\"", "\\\\\"") : e)  //escape quotes for windows
                     .map(e -> e.split("\\s+"))
                     .collect(Collectors.toList());
