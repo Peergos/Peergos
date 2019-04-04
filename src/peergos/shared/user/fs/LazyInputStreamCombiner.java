@@ -120,10 +120,13 @@ public class LazyInputStreamCombiner implements AsyncReader {
 
     @Override
     public CompletableFuture<AsyncReader> seekJS(int hi32, int low32) {
-        long seek = ((long) (hi32) << 32) | low32;
+        long seek = ((long) (hi32) << 32) | (low32 & 0xFFFFFFFFL);
 
         if (totalLength < seek)
             throw new IllegalStateException("Cannot seek to position "+ seek);
+        long globalOffset = globalIndex + index;
+        if (seek > globalOffset)
+            return skip(seek - globalOffset);
         return reset().thenCompose(x -> ((LazyInputStreamCombiner)x).skip(seek));
     }
 
