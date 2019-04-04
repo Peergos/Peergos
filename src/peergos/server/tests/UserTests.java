@@ -674,6 +674,17 @@ public abstract class UserTests {
             if (! Arrays.equals(buf, Arrays.copyOfRange(data, offset, offset + buf.length)))
                 throw new IllegalStateException("Seeked data incorrect! Offset: " + offset);
         }
+
+        for (int mb = 0; mb < 13; mb++) {
+            AsyncReader reader = context.getByPath(Paths.get(username, filename)).join()
+                    .get().getInputStream(network, crypto.random, x -> { }).join();
+            for (int count = 0; count < mb; count++) {
+                reader = reader.seek(count * MB).join();
+                reader.readIntoArray(buf, 0, buf.length).join();
+                if (!Arrays.equals(buf, Arrays.copyOfRange(data, count * MB, count * MB + buf.length)))
+                    throw new IllegalStateException("Seeked data incorrect! Offset: " + count * MB);
+            }
+        }
     }
 
     @Test
