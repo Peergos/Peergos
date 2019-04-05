@@ -96,6 +96,10 @@ public class AbsoluteCapability implements Cborable {
         return new AbsoluteCapability(owner, writer, mapKey, newBaseKey, wBaseKey);
     }
 
+    public AbsoluteCapability withOwner(PublicKeyHash owner) {
+        return new AbsoluteCapability(owner, writer, mapKey, rBaseKey, wBaseKey);
+    }
+
     public boolean isNull() {
         PublicKeyHash nullUser = PublicKeyHash.NULL;
         return nullUser.equals(owner) &&

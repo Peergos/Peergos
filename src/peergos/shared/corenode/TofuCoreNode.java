@@ -59,6 +59,7 @@ public class TofuCoreNode implements CoreNode {
                 }).thenApply(x -> true);
     }
 
+    @Override
     public CompletableFuture<Boolean> updateUser(String username) {
         return source.getChain(username)
                 .thenCompose(chain -> tofu.updateChain(username, chain, context.network.dhtClient)

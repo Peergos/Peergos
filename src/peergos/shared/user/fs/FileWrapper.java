@@ -1169,7 +1169,7 @@ public class FileWrapper {
         // create the new signing subspace move subtree to it
         PublicKeyHash owner = owner();
 
-        network.synchronizer.putEmpty(signer.publicKeyHash);
+        network.synchronizer.putEmpty(owner, signer.publicKeyHash);
         return IpfsTransaction.call(owner,
                 tid -> network.synchronizer.applyUpdate(owner, signer.publicKeyHash, wd2 ->
                         WriterData.createEmpty(owner, signer, network.dhtClient)

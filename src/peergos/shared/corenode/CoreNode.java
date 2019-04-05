@@ -40,6 +40,13 @@ public interface CoreNode {
      */
     CompletableFuture<List<String>> getUsernames(String prefix);
 
+    /** This is only implemented by caching corenodes
+     *
+     * @param username
+     * @return
+     */
+    default CompletableFuture<Boolean> updateUser(String username) {return CompletableFuture.completedFuture(true);}
+
     /**
      *
      * @param username

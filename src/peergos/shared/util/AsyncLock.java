@@ -44,6 +44,7 @@ public class AsyncLock<T> {
                 .exceptionally(t -> {
                     // The initial supplier failed
                     result.completeExceptionally(t);
+                    newHead.completeExceptionally(t);
                     return true;
                 });
 
