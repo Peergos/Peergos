@@ -291,6 +291,7 @@ public class SpaceCheckingKeyFilter {
             state = new State(new ConcurrentHashMap<>(), new ConcurrentHashMap<>());
         }
         System.out.println("Checking for updated mutable pointers...");
+        long t1 = System.currentTimeMillis();
         for (Map.Entry<PublicKeyHash, Stat> entry : new HashSet<>(state.currentView.entrySet())) {
             PublicKeyHash ownerKey = entry.getKey();
             Stat stat = entry.getValue();
@@ -318,6 +319,8 @@ public class SpaceCheckingKeyFilter {
                 Logging.LOG().log(Level.WARNING, "Failed calculating usage for " + stat.owner, t);
             }
         }
+        long t2 = System.currentTimeMillis();
+        System.out.println(LocalDateTime.now() + " Finished updating space usage for all usernames in " + (t2 - t1)/1000 + " s");
 
         return state;
     }
@@ -366,14 +369,11 @@ public class SpaceCheckingKeyFilter {
     public void calculateUsage() {
         try {
             List<String> usernames = quotaSupplier.getLocalUsernames();
-            long t1 = System.currentTimeMillis();
             for (String username : usernames) {
                 System.out.printf("Processing %s\n", username);
                 Optional<PublicKeyHash> publicKeyHash = core.getPublicKeyHash(username).get();
                 publicKeyHash.ifPresent(keyHash -> processCorenodeEvent(username, keyHash));
             }
-            long t2 = System.currentTimeMillis();
-            System.out.println(LocalDateTime.now() + " Finished loading space usage for all usernames in " + (t2 - t1)/1000 + " s");
         } catch (Exception e) {
             LOG.log(Level.WARNING, e.getMessage(), e);
         }

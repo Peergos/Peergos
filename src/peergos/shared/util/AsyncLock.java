@@ -40,7 +40,12 @@ public class AsyncLock<T> {
                             .exceptionally(e -> newHead.complete(current) && result.completeExceptionally(e));
                     t.printStackTrace();
                     return true;
-                }));
+                }))
+                .exceptionally(t -> {
+                    // The initial supplier failed
+                    result.completeExceptionally(t);
+                    return true;
+                });
 
         return result;
     }
