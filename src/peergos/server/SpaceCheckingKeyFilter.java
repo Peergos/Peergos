@@ -290,13 +290,13 @@ public class SpaceCheckingKeyFilter {
             // calculate usage from scratch
             state = new State(new ConcurrentHashMap<>(), new ConcurrentHashMap<>());
         }
-        try {
-            System.out.println("Checking for updated mutable pointers...");
-            for (Map.Entry<PublicKeyHash, Stat> entry : new HashSet<>(state.currentView.entrySet())) {
-                PublicKeyHash ownerKey = entry.getKey();
-                Stat stat = entry.getValue();
-                System.out.println("Checking for updates from user " + stat.owner);
+        System.out.println("Checking for updated mutable pointers...");
+        for (Map.Entry<PublicKeyHash, Stat> entry : new HashSet<>(state.currentView.entrySet())) {
+            PublicKeyHash ownerKey = entry.getKey();
+            Stat stat = entry.getValue();
+            System.out.println("Checking for updates from user " + stat.owner);
 
+            try {
                 MaybeMultihash rootHash = mutable.getPointerTarget(ownerKey, ownerKey, dht).join();
                 boolean isChanged = stat.target.equals(rootHash);
                 if (isChanged) {
@@ -314,9 +314,9 @@ public class SpaceCheckingKeyFilter {
                     }
                     stat.update(rootHash, directOwnedKeys, updatedSize);
                 }
+            } catch (Throwable t) {
+                Logging.LOG().log(Level.WARNING, "Failed calculating usage for " + stat.owner, t);
             }
-        } catch (InterruptedException | ExecutionException ex) {
-            throw new IOException(ex);
         }
 
         return state;
