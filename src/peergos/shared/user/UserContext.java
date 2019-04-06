@@ -86,8 +86,8 @@ public class UserContext {
         this.sharedWithCache = new SharedWithCache();
         this.transactionService = buildTransactionService();
         this.writeSynchronizer = network.synchronizer;
-        if(signer != null) {
-            writeSynchronizer.put(signer.publicKeyHash, userData);
+        if (signer != null) {
+            writeSynchronizer.put(signer.publicKeyHash, signer.publicKeyHash, userData);
         }
     }
 
@@ -1292,17 +1292,24 @@ public class UserContext {
         return network.retrieveEntryPoint(e).thenCompose(metadata -> {
             if (metadata.isPresent()) {
                 return metadata.get().getPath(network)
-                        .thenCompose(path -> addRetrievedEntryPoint(ourName, root, e, path, network, random, hasher)
-                                .exceptionally(t -> {
-                                    LOG.log(Level.WARNING, t.getMessage(), t);
-                                    LOG.severe("Couldn't add entry point (failed retrieving parent dir or it was invalid): " + metadata.get().getName());
-                                    // Allow the system to continue without this entry point
-                                    return root;
-                                })
-                        );
+                        .thenCompose(path -> addRetrievedEntryPoint(ourName, root, e, path, network, random, hasher));
             }
-            return CompletableFuture.completedFuture(root);
-        }).exceptionally(Futures::logAndThrow);
+            // User might have changed their password and thus identity key, check for an update
+            return network.coreNode.updateUser(e.ownerName)
+                    .thenCompose(x -> network.coreNode.getPublicKeyHash(e.ownerName))
+                    .thenCompose(currentIdOpt -> {
+                        if (! currentIdOpt.isPresent() || currentIdOpt.get().equals(e.pointer.owner))
+                            throw new IllegalStateException("Couldn't retrieve entry point for user " + e.ownerName);
+                        EntryPoint updated = new EntryPoint(e.pointer.withOwner(currentIdOpt.get()), e.ownerName);
+                        return addEntryPoint(ourName, root, updated, network, random, hasher);
+                    })
+                    .exceptionally(ex -> {
+                        LOG.log(Level.WARNING, ex.getMessage(), ex);
+                        LOG.severe("Couldn't add entry point (failed retrieving parent dir or it was invalid) owner: " + e.ownerName);
+                        // Allow the system to continue without this entry point
+                        return root;
+                    });
+        });
     }
 
     public static CompletableFuture<CommittedWriterData> getWriterData(NetworkAccess network, PublicKeyHash owner, PublicKeyHash writer) {
