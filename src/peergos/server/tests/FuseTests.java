@@ -222,7 +222,8 @@ public class FuseTests {
     @Test
     public void anotherTruncateTest() throws IOException {
         long kiloByte = 1024; // 1KB
-        int initialLength = (int) (4 * kiloByte);
+        //int initialLength = (int) (4 * kiloByte);
+        int initialLength = 0;
         long testLengthThree = 8 * kiloByte;
 
         Path path = createRandomFile(initialLength);
