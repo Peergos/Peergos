@@ -3,6 +3,7 @@ package peergos.shared.user.fs;
 public class MimeTypes {
     final static int[] ID3 = new int[]{'I', 'D', '3'};
     final static int[] MP3 = new int[]{0xff, 0xfb};
+    final static int[] MP3_2 = new int[]{0xff, 0xfa};
     final static int[] WAV_1 = new int[]{'R', 'I', 'F', 'F'};
     final static int[] WAV_2 = new int[]{'W', 'A', 'V', 'E'};
 
@@ -75,6 +76,8 @@ public class MimeTypes {
         if (equalArrays(start, ID3))
             return "audio/mpeg";
         if (equalArrays(start, MP3))
+            return "audio/mpeg";
+        if (equalArrays(start, MP3_2))
             return "audio/mpeg";
         if (equalArrays(start, OGG)) // not sure how to distinguish from ogg video easily
             return "audio/ogg";
