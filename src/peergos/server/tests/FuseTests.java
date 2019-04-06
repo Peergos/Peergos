@@ -208,7 +208,7 @@ public class FuseTests {
         int initialLength = 0x1000;
         Path path = createRandomFile(initialLength);
 
-        try (RandomAccessFile raf = new RandomAccessFile(path.toFile(), "rw")) {
+        try (RandomAccessFile raf = new RandomAccessFile(path.toFile(), "rws")) {
             assertEquals("initial size", initialLength, raf.length());
 
             for (int pow = -1; pow < 4; pow++) {
@@ -226,7 +226,7 @@ public class FuseTests {
         long testLengthThree = 8 * kiloByte;
 
         Path path = createRandomFile(initialLength);
-        RandomAccessFile raf = new RandomAccessFile(path.toFile(), "rw");
+        RandomAccessFile raf = new RandomAccessFile(path.toFile(), "rws");
         raf.seek(0);
         raf.setLength(testLengthThree);
         raf.close();
