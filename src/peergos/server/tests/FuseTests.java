@@ -226,10 +226,11 @@ public class FuseTests {
         long testLengthThree = 8 * kiloByte;
 
         Path path = createRandomFile(initialLength);
-        RandomAccessFile raf = new RandomAccessFile(path.toString(), "rw");
+        RandomAccessFile raf = new RandomAccessFile(path.toFile(), "rw");
         raf.seek(0);
         raf.setLength(testLengthThree);
-        assertEquals("truncated size equals", testLengthThree, raf.length());
+        long newLength = raf.length();
+        assertEquals("truncated size equals", testLengthThree, newLength);
 
         raf.close();
     }
