@@ -203,7 +203,8 @@ public class FuseTests {
         assertTrue("Correct contents", Arrays.equals(expected, extendedContents));
     }
 
-    @Test public void truncateTest() throws IOException {
+    @Test 
+    public void truncateTest() throws IOException {
         int initialLength = 0x1000;
         Path path = createRandomFile(initialLength);
 
@@ -229,34 +230,28 @@ public class FuseTests {
         long testLengthFive = 32 * kiloByte;
 
         Path path = createRandomFile(initialLength);
-
-        RandomAccessFile raf = null;
+        RandomAccessFile raf = new RandomAccessFile(path.toFile(), "rw");
 
         try {
-            raf = new RandomAccessFile(path.toFile(), "rw");
             raf.setLength(testLengthOne);
             assertEquals("truncated size equals", testLengthOne, raf.length());
 
-            raf = new RandomAccessFile(path.toFile(), "rw");
             raf.setLength(testLengthTwo);
             assertEquals("truncated size equals", testLengthTwo, raf.length());
 
-            raf = new RandomAccessFile(path.toFile(), "rw");
             raf.setLength(testLengthThree);
             assertEquals("truncated size equals", testLengthThree, raf.length());
 
-            raf = new RandomAccessFile(path.toFile(), "rw");
             raf.setLength(testLengthFour);
             assertEquals("truncated size equals", testLengthFour, raf.length());
 
-            raf = new RandomAccessFile(path.toFile(), "rw");
             raf.setLength(testLengthFive);
             assertEquals("truncated size equals", testLengthFive, raf.length());
-        } catch (Exception e) {
-            System.err.println(e);
+        } catch (IOException e) {
+            System.out.println(e.getMessage());
         } finally {
             if (raf != null) {
-                try { 
+                try {
                     raf.close();
                 } catch (IOException e) {
                     e.printStackTrace();
@@ -328,7 +323,7 @@ public class FuseTests {
         resolve.toFile().createNewFile();
 
         if (length > 0) {
-            byte[] data =  new byte[length];
+            byte[] data = new byte[length];
             RANDOM.nextBytes(data);
             Files.write(resolve, data);
         }
