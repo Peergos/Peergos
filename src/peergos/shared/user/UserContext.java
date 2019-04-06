@@ -171,7 +171,7 @@ public class UserContext {
         try {
             progressCallback.accept("Logging in");
             WriterData userData = WriterData.fromCbor(pair.right);
-            return createOurFileTreeOnly(username, userWithRoot.getRoot(), userData, network, crypto.random, crypto.hasher, Fragmenter.getInstance())
+            return createOurFileTreeOnly(username, userWithRoot.getRoot(), userData, network, crypto.random, crypto.hasher)
                     .thenCompose(root -> TofuCoreNode.load(username, root, network, crypto.random)
                             .thenCompose(keystore -> {
                                 TofuCoreNode tofu = new TofuCoreNode(network.coreNode, keystore);
@@ -1205,8 +1205,7 @@ public class UserContext {
                                                                      WriterData userData,
                                                                      NetworkAccess network,
                                                                      SafeRandom random,
-                                                                     Hasher hasher,
-                                                                     Fragmenter fragmenter) {
+                                                                     Hasher hasher) {
         TrieNode root = TrieNodeImpl.empty();
         if (!userData.staticData.isPresent())
             throw new IllegalStateException("Cannot retrieve file tree for a filesystem without entrypoints!");
@@ -1230,7 +1229,23 @@ public class UserContext {
         // need to to retrieve all the entry points of our friends
         return getFriendsEntryPoints()
                 .thenCompose(friendEntries -> Futures.reduceAll(friendEntries, ourRoot,
-                        (t, e) -> addEntryPoint(ourName, t, e, network, random, hasher), (a, b) -> a))
+                        (t, e) -> Futures.asyncExceptionally(() -> addEntryPoint(ourName, t, e, network, random, hasher),
+                                // User might have changed their password and thus identity key, check for an update
+                                // and append the updated EntryPoint to the entry store
+                                ex -> network.coreNode.updateUser(e.ownerName)
+                                        .thenCompose(x -> network.coreNode.getPublicKeyHash(e.ownerName))
+                                        .thenCompose(currentIdOpt -> {
+                                            if (! currentIdOpt.isPresent() || currentIdOpt.get().equals(e.pointer.owner))
+                                                throw new IllegalStateException("Couldn't retrieve entry point for user " + e.ownerName);
+                                            EntryPoint updated = new EntryPoint(e.pointer.withOwner(currentIdOpt.get()), e.ownerName);
+                                            return addExternalEntryPoint(t, updated);
+                                        })
+                                        .exceptionally(ex2 -> {
+                                            LOG.log(Level.WARNING, ex2.getMessage(), ex2);
+                                            LOG.severe("Couldn't add entry point (failed retrieving parent dir or it was invalid) owner: " + e.ownerName);
+                                            // Allow the system to continue without this entry point
+                                            return t;
+                                        })), (a, b) -> a))
                 .exceptionally(Futures::logAndThrow);
     }
 
@@ -1256,6 +1271,13 @@ public class UserContext {
                             .thenApply(toRemove -> fromFriends.stream()
                                     .filter(e -> ! toRemove.contains(e.ownerName))
                                     .collect(Collectors.toList()));
+                }).thenApply(entries -> {
+                    // Only take the most recent version of each entry
+                    Map<PublicKeyHash, EntryPoint> latest = new LinkedHashMap<>();
+                    entries.forEach(e -> latest.put(e.pointer.writer, e));
+                    return latest.values()
+                            .stream()
+                            .collect(Collectors.toList());
                 });
     }
 
@@ -1294,21 +1316,7 @@ public class UserContext {
                 return metadata.get().getPath(network)
                         .thenCompose(path -> addRetrievedEntryPoint(ourName, root, e, path, network, random, hasher));
             }
-            // User might have changed their password and thus identity key, check for an update
-            return network.coreNode.updateUser(e.ownerName)
-                    .thenCompose(x -> network.coreNode.getPublicKeyHash(e.ownerName))
-                    .thenCompose(currentIdOpt -> {
-                        if (! currentIdOpt.isPresent() || currentIdOpt.get().equals(e.pointer.owner))
-                            throw new IllegalStateException("Couldn't retrieve entry point for user " + e.ownerName);
-                        EntryPoint updated = new EntryPoint(e.pointer.withOwner(currentIdOpt.get()), e.ownerName);
-                        return addEntryPoint(ourName, root, updated, network, random, hasher);
-                    })
-                    .exceptionally(ex -> {
-                        LOG.log(Level.WARNING, ex.getMessage(), ex);
-                        LOG.severe("Couldn't add entry point (failed retrieving parent dir or it was invalid) owner: " + e.ownerName);
-                        // Allow the system to continue without this entry point
-                        return root;
-                    });
+            throw new IllegalStateException("Couldn't add entry point (failed retrieving parent dir or it was invalid) owner: " + e.ownerName);
         });
     }
 
