@@ -18,6 +18,7 @@ import java.util.function.Function;
 public class WriteSynchronizer {
     private final MutablePointers mutable;
     private final ContentAddressedStorage dht;
+    // The keys are <owner, writer> pairs. The owner is only needed to handle identity changes
     private final Map<Pair<PublicKeyHash, PublicKeyHash>, AsyncLock<CommittedWriterData>> pending = new ConcurrentHashMap<>();
 
     public WriteSynchronizer(MutablePointers mutable, ContentAddressedStorage dht) {
