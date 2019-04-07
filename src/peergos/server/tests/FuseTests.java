@@ -70,8 +70,8 @@ public class FuseTests {
     @Test public void createFileTest() throws IOException  {
         Path resolve = home.resolve(UUID.randomUUID().toString());
         assertFalse("file already exists", resolve.toFile().exists());
-        File newFile = new File(resolve);
-        //resolve.toFile().createNewFile();
+        File newFile = new File(resolve.toString());
+        newFile.createNewFile();
         assertTrue("file exists after creation", newFile.exists());
     }
 
