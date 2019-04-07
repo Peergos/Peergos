@@ -63,6 +63,20 @@ public class Futures {
         );
     }
 
+    public static <T> CompletableFuture<T> asyncExceptionally(Supplier<CompletableFuture<T>> normal,
+                                                              Function<Throwable, CompletableFuture<T>> exceptional) {
+        CompletableFuture<T> result = new CompletableFuture<>();
+        normal.get()
+                .thenApply(result::complete)
+                .exceptionally(t -> {
+                    exceptional.apply(t)
+                            .thenApply(result::complete)
+                            .exceptionally(result::completeExceptionally);
+                    return true;
+                });
+        return result;
+    }
+
     public static <T> T logAndThrow(Throwable t) {
         return logAndThrow(t, Optional.empty());
     }

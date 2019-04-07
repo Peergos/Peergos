@@ -284,18 +284,18 @@ public class SpaceCheckingKeyFilter {
         try {
             // Read stored usages and update current view.
             state = load(statePath);
-            System.out.println("Successfully loaded usage-state from "+ statePath);
+            Logging.LOG().info("Successfully loaded usage-state from "+ statePath);
         } catch (IOException ioe) {
-            System.out.println("Could not read usage-state from "+ statePath);
+            Logging.LOG().info("Could not read usage-state from "+ statePath);
             // calculate usage from scratch
             state = new State(new ConcurrentHashMap<>(), new ConcurrentHashMap<>());
         }
-        System.out.println("Checking for updated mutable pointers...");
+        Logging.LOG().info("Checking for updated mutable pointers...");
         long t1 = System.currentTimeMillis();
         for (Map.Entry<PublicKeyHash, Stat> entry : new HashSet<>(state.currentView.entrySet())) {
             PublicKeyHash ownerKey = entry.getKey();
             Stat stat = entry.getValue();
-            System.out.println("Checking for updates from user " + stat.owner);
+            Logging.LOG().info("Checking for updates from user " + stat.owner);
 
             try {
                 MaybeMultihash rootHash = mutable.getPointerTarget(ownerKey, ownerKey, dht).join();
@@ -320,7 +320,7 @@ public class SpaceCheckingKeyFilter {
             }
         }
         long t2 = System.currentTimeMillis();
-        System.out.println(LocalDateTime.now() + " Finished updating space usage for all usernames in " + (t2 - t1)/1000 + " s");
+        Logging.LOG().info(LocalDateTime.now() + " Finished updating space usage for all usernames in " + (t2 - t1)/1000 + " s");
 
         return state;
     }
@@ -332,9 +332,9 @@ public class SpaceCheckingKeyFilter {
         try {
             isRunning.set(false);
             store();
-            System.out.println("Successfully stored usage-state to " + this.statePath);
+            Logging.LOG().info("Successfully stored usage-state to " + this.statePath);
         } catch (Throwable t) {
-            System.out.println("Failed to  store "+ this);
+            Logging.LOG().info("Failed to  store "+ this);
             t.printStackTrace();
         }
     }
@@ -344,7 +344,7 @@ public class SpaceCheckingKeyFilter {
      * @throws IOException
      */
     private static State load(Path statePath) throws IOException {
-        System.out.println("Reading state from "+ statePath +" which exists ? "+ Files.exists(statePath) +" from cwd "+ System.getProperty("cwd"));
+        Logging.LOG().info("Reading state from "+ statePath +" which exists ? "+ Files.exists(statePath) +" from cwd "+ System.getProperty("cwd"));
         byte[] data = Files.readAllBytes(statePath);
         CborObject object = CborObject.deserialize(new CborDecoder(new ByteArrayInputStream(data)), 1000);
         return State.fromCbor(object);
@@ -356,7 +356,7 @@ public class SpaceCheckingKeyFilter {
      */
     private synchronized void store() throws IOException {
         byte[] serialized = state.toCbor().serialize();
-        System.out.println("Writing "+ serialized.length +" bytes to "+ statePath);
+        Logging.LOG().info("Writing "+ serialized.length +" bytes to "+ statePath);
         Files.write(
             statePath,
             serialized,
@@ -370,7 +370,7 @@ public class SpaceCheckingKeyFilter {
         try {
             List<String> usernames = quotaSupplier.getLocalUsernames();
             for (String username : usernames) {
-                System.out.printf("Processing %s\n", username);
+                Logging.LOG().info("Processing "+username);
                 Optional<PublicKeyHash> publicKeyHash = core.getPublicKeyHash(username).get();
                 publicKeyHash.ifPresent(keyHash -> processCorenodeEvent(username, keyHash));
             }
