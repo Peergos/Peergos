@@ -112,7 +112,7 @@
     <junit fork="true" printsummary="true" haltonfailure="yes">
       <jvmarg value="-Xmx2g"/>
       <classpath>
-	<pathelement location="lib/jnr-fuse-0.3-all.jar" />
+	<pathelement location="lib/jnr-fuse-0.5.3-all.jar" />
 	<pathelement location="lib/sqlite-jdbc-3.7.2.jar" />
 	<pathelement location="lib-build/junit-4.11.jar" />
 	<pathelement location="lib-build/hamcrest-core-1.3.jar" />
@@ -169,7 +169,7 @@
       <junit fork="true" printsummary="true" haltonfailure="yes">
           <jvmarg value="-Xmx2g"/>
           <classpath>
-              <pathelement location="lib/jnr-fuse-0.3-all.jar" />
+              <pathelement location="lib/jnr-fuse-0.5.3-all.jar" />
               <pathelement location="lib/sqlite-jdbc-3.7.2.jar" />
               <pathelement location="lib-build/junit-4.11.jar" />
               <pathelement location="lib-build/hamcrest-core-1.3.jar" />
@@ -189,7 +189,7 @@
     <copy todir="war/WEB-INF/lib" file="${gwt.sdk}/gwt-servlet.jar" />
     <copy todir="war/WEB-INF/lib" file="${gwt.sdk}/gwt-servlet-deps.jar" />
     <!-- Add any additional server libs that need to be copied -->
-    <copy todir="war/WEB-INF/lib" file="lib/jnr-fuse-0.3-all.jar" />
+    <copy todir="war/WEB-INF/lib" file="lib/jnr-fuse-0.5.3-all.jar" />
   </target>
 
   <target name="javac" depends="libs" description="Compile java source to bytecode">
