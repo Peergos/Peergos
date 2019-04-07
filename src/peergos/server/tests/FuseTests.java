@@ -71,7 +71,12 @@ public class FuseTests {
         Path resolve = home.resolve(UUID.randomUUID().toString());
         assertFalse("file already exists", resolve.toFile().exists());
         //File newFile = new File(resolve.toString());
-        Files.createTempFile(resolve, "tmp", "rws");
+        try {
+            Files.createTempFile(resolve, "", "");
+        }
+        catch(FileSystemException e) {
+            System.out.println(e.getMessage());
+        }
         assertTrue("file exists after creation", resolve.toFile().exists());
     }
 
