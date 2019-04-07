@@ -13,9 +13,9 @@ public class JarHandler extends StaticHandler {
 
     @Override
     public Asset getAsset(String resourcePath) throws IOException {
-        String pathWithinJar = root.resolve(resourcePath).toString();
-        ClassLoader context = Thread.currentThread().getContextClassLoader();
-        byte[] data = StaticHandler.readResource(context.getResourceAsStream(pathWithinJar), isGzip());
+        String pathWithinJar = "/" + root.resolve(resourcePath).toString()
+                .replaceAll("\\\\", "/"); // needed for Windows!
+        byte[] data = StaticHandler.readResource(JarHandler.class.getResourceAsStream(pathWithinJar), isGzip());
         return new Asset(data);
     }
 }
