@@ -1230,23 +1230,27 @@ public class UserContext {
         return getFriendsEntryPoints()
                 .thenCompose(friendEntries -> Futures.reduceAll(friendEntries, ourRoot,
                         (t, e) -> Futures.asyncExceptionally(() -> addEntryPoint(ourName, t, e, network, random, hasher),
-                                // User might have changed their password and thus identity key, check for an update
-                                // and append the updated EntryPoint to the entry store
-                                ex -> network.coreNode.updateUser(e.ownerName)
-                                        .thenCompose(x -> network.coreNode.getPublicKeyHash(e.ownerName))
-                                        .thenCompose(currentIdOpt -> {
-                                            if (! currentIdOpt.isPresent() || currentIdOpt.get().equals(e.pointer.owner))
-                                                throw new IllegalStateException("Couldn't retrieve entry point for user " + e.ownerName);
-                                            EntryPoint updated = new EntryPoint(e.pointer.withOwner(currentIdOpt.get()), e.ownerName);
-                                            return addExternalEntryPoint(t, updated);
-                                        })
-                                        .exceptionally(ex2 -> {
-                                            LOG.log(Level.WARNING, ex2.getMessage(), ex2);
-                                            LOG.severe("Couldn't add entry point (failed retrieving parent dir or it was invalid) owner: " + e.ownerName);
-                                            // Allow the system to continue without this entry point
-                                            return t;
-                                        })), (a, b) -> a))
+                                ex -> updateEntryPoint(e, t)), (a, b) -> a))
                 .exceptionally(Futures::logAndThrow);
+    }
+
+    private CompletableFuture<TrieNode> updateEntryPoint(EntryPoint e, TrieNode inputRoot) {
+        // User might have changed their password and thus identity key, check for an update
+        // and append the updated EntryPoint to the entry store
+        return network.coreNode.updateUser(e.ownerName)
+                .thenCompose(x -> network.coreNode.getPublicKeyHash(e.ownerName))
+                .thenCompose(currentIdOpt -> {
+                    if (! currentIdOpt.isPresent() || currentIdOpt.get().equals(e.pointer.owner))
+                        throw new IllegalStateException("Couldn't retrieve entry point for user " + e.ownerName);
+                    EntryPoint updated = new EntryPoint(e.pointer.withOwner(currentIdOpt.get()), e.ownerName);
+                    return addExternalEntryPoint(inputRoot, updated);
+                })
+                .exceptionally(ex2 -> {
+                    LOG.log(Level.WARNING, ex2.getMessage(), ex2);
+                    LOG.severe("Couldn't add entry point (failed retrieving parent dir or it was invalid) owner: " + e.ownerName);
+                    // Allow the system to continue without this entry point
+                    return inputRoot;
+                });
     }
 
     private CompletableFuture<List<EntryPoint>> getFriendsEntryPoints() {
