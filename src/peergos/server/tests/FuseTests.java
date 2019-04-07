@@ -227,11 +227,11 @@ public class FuseTests {
 
         Path path = createRandomFile(initialLength);
         assertTrue("file exists after creation", path.toFile().exists());
-        assertEquals("file lenght equals initial length", path.toFile().length(), initialLength);
+        assertEquals("file length equals initial length", path.toFile().length(), initialLength);
 
-        RandomAccessFile raf = new RandomAccessFile(path.toFile(), "rws");
-        raf.setLength(testLengthThree);
-        raf.close();
+        RandomAccessFile testFile = new RandomAccessFile(path.toFile(), "rws");
+        testFile.setLength(testLengthThree);
+        testFile.close();
 
         long truncatedFileLength = path.toFile().length();
         assertEquals("truncated size equals", testLengthThree, truncatedFileLength);
