@@ -58,7 +58,7 @@ public class FuseTests {
         PeergosFS peergosFS = new CachingPeergosFS(userContext);
         fuseProcess = new FuseProcess(peergosFS, mountPoint);
 
-        Runtime.getRuntime().addShutdownHook(new Thread(()  -> fuseProcess.close()));
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> fuseProcess.close()));
 
         fuseProcess.start();
     }
@@ -67,18 +67,18 @@ public class FuseTests {
         return new String(Serialize.readFully(p.getInputStream())).trim();
     }
 
-    @Test public void  createFileTest() throws IOException  {
+    @Test public void createFileTest() throws IOException  {
         Path resolve = home.resolve(UUID.randomUUID().toString());
         assertFalse("file already exists", resolve.toFile().exists());
-        resolve.toFile().createNewFile();
-        assertTrue("file exists after creation", resolve.toFile().exists());
+        File newFile = new File(resolve);
+        //resolve.toFile().createNewFile();
+        assertTrue("file exists after creation", newFile.exists());
     }
 
     @Test public void moveTest() throws IOException {
         Path initial = createRandomFile(0x1000);
 
         byte[] initialData = Files.readAllBytes(initial);
-
 
         String[] stem = Stream.generate(() -> randomUUID().toString())
                 .limit(2)
@@ -254,8 +254,6 @@ public class FuseTests {
         }
     }
 
-
-
     @Test public void mkdirsTest() throws IOException {
 
         String[] stem = Stream.generate(() -> randomUUID().toString())
@@ -347,10 +345,10 @@ public class FuseTests {
 
     @Test
     public void readWriteTest() throws IOException {
-        Random  random =  new Random(3); // repeatable with same seed 3 leads to failure with bulk upload at size of 137
+        Random random = new Random(3); // repeatable with same seed 3 leads to failure with bulk upload at size of 137
         for (int power = 5; power < 20; power++) {
             int length =  (int) Math.pow(2, power);
-            length +=  random.nextInt(length);
+            length += random.nextInt(length);
             fileTest(length, random);
         }
     }
