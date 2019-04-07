@@ -226,8 +226,10 @@ public class FuseTests {
         long testLengthThree = 8 * kiloByte;
 
         Path path = createRandomFile(initialLength);
+        assertTrue("file exists after creation", path.toFile().exists());
+        assertEquals("file lenght equals initial length", path.toFile().length(), initialLength);
+
         RandomAccessFile raf = new RandomAccessFile(path.toFile(), "rws");
-        raf.seek(0);
         raf.setLength(testLengthThree);
         raf.close();
 
