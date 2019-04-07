@@ -23,7 +23,7 @@ import java.util.*;
 import java.util.stream.*;
 
 public class FuseTests {
-	private static final Logger LOG = Logging.LOG();
+    private static final Logger LOG = Logging.LOG();
     public static int WEB_PORT = 8888;
     public static String username = "test02";
     public static String password = username;
@@ -70,9 +70,9 @@ public class FuseTests {
     @Test public void createFileTest() throws IOException  {
         Path resolve = home.resolve(UUID.randomUUID().toString());
         assertFalse("file already exists", resolve.toFile().exists());
-        File newFile = new File(resolve.toString());
-        newFile.createNewFile();
-        assertTrue("file exists after creation", newFile.exists());
+        //File newFile = new File(resolve.toString());
+        Files.createTempFile(resolve, "tmp", "rws");
+        assertTrue("file exists after creation", resolve.toFile().exists());
     }
 
     @Test public void moveTest() throws IOException {
@@ -149,7 +149,7 @@ public class FuseTests {
         new Random(0).nextBytes(data);
         Files.write(initial, data);
 
-        Path target = home.resolve(randomUUID().toString());
+        Path target = home.resolve(UUID.randomUUID().toString());
 
         assertFalse("target exists", target.toFile().exists());
         Files.copy(initial, target);
