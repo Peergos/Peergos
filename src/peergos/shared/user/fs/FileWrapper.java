@@ -1105,6 +1105,23 @@ public class FileWrapper {
                                                  NetworkAccess network,
                                                  SafeRandom random,
                                                  Hasher hasher) {
+        return copyTo(target, false, network, random, hasher);
+    }
+
+    @JsMethod
+    public CompletableFuture<Boolean> moveTo(FileWrapper target, FileWrapper parent, NetworkAccess network,
+                        SafeRandom random,
+                        Hasher hasher) {
+        return copyTo(target, true, network, random, hasher)
+                .thenCompose(fw -> remove(parent, network, hasher))
+                .thenApply(newAccess -> true);
+    }
+
+    private CompletableFuture<FileWrapper> copyTo(FileWrapper target,
+                                                 boolean copySharedWith,
+                                                 NetworkAccess network,
+                                                 SafeRandom random,
+                                                 Hasher hasher) {
         ensureUnmodified();
         CompletableFuture<FileWrapper> result = new CompletableFuture<>();
         if (! target.isDirectory()) {
@@ -1123,20 +1140,33 @@ public class FileWrapper {
                 WritableAbsoluteCapability newRFP = new WritableAbsoluteCapability(target.owner(), target.writer(), newMapKey, newBaseKey,
                         newWriterBaseKey);
                 SymmetricKey newParentParentKey = target.getParentKey();
-
                 return pointer.fileAccess.copyTo(pointer.capability, newBaseKey, target.writableFilePointer(), target.entryWriter, newParentParentKey,
                         newMapKey, network, random, hasher)
                         .thenCompose(newAccess -> {
                             // upload new metadatablob
                             RetrievedCapability newRetrievedCapability = new RetrievedCapability(newRFP, newAccess);
                             FileWrapper newFileWrapper = new FileWrapper(newRetrievedCapability, target.entryWriter, target.getOwnerName());
-                            return target.addLinkTo(newFileWrapper, network, random, hasher);
+                            return target.addLinkTo(newFileWrapper, network, random, hasher)
+                                    .thenCompose(updatedDir ->
+                                        updatedDir.getChild(getFileProperties().name, network).thenApply( newFile -> {
+                                            if(copySharedWith) {
+                                                network.sharedWithCache.copySharedWith(pointer.capability,
+                                                        newFile.get().pointer.capability);
+                                            }
+                                            return updatedDir;
+                                        }));
                         });
             } else {
                 return getInputStream(network, random, x -> {})
                         .thenCompose(stream -> target.uploadFileSection(getName(), stream, false, 0, getSize(),
                                 Optional.empty(), false, network, random, hasher, x -> {}, target.generateChildLocations(props.getNumberOfChunks(), random))
-                        .thenApply(b -> target));
+                        .thenCompose(newAccess ->
+                            newAccess.getChild(getFileProperties().name, network).thenApply( newFile -> {
+                                if(copySharedWith) {
+                                    network.sharedWithCache.copySharedWith(pointer.capability, newFile.get().pointer.capability);
+                                }
+                            return target;
+                            })));
             }
         });
     }
@@ -1276,7 +1306,10 @@ public class FileWrapper {
                 .thenCompose(updatedParent -> IpfsTransaction.call(owner(),
                         tid -> FileWrapper.deleteAllChunks(writableFilePointer(),
                                 writableParent ? parent.signingPair() : signingPair(), tid, network), network.dhtClient)
-                        .thenApply(b -> updatedParent));
+                        .thenApply(b -> {
+                            network.sharedWithCache.clearSharedWith(pointer.capability);
+                            return updatedParent;
+                        }));
     }
 
     public static CompletableFuture<Boolean> removeSigningKey(PublicKeyHash signerToRemove,

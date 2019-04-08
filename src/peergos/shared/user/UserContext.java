@@ -52,7 +52,6 @@ public class UserContext {
     private final BoxingKeyPair boxer;
     private final SymmetricKey rootKey;
 
-    private SharedWithCache sharedWithCache;
     private final WriteSynchronizer writeSynchronizer;
     private final TransactionService transactionService;
 
@@ -83,7 +82,6 @@ public class UserContext {
         this.network = network;
         this.crypto = crypto;
         this.entrie = entrie;
-        this.sharedWithCache = new SharedWithCache();
         this.transactionService = buildTransactionService();
         this.writeSynchronizer = network.synchronizer;
         if(signer != null) {
@@ -376,15 +374,15 @@ public class UserContext {
                                             this.username, network, crypto.random, crypto.hasher, false)
                                             .thenCompose(readCaps -> {
                                                 readCaps.getRetrievedCapabilities().stream().forEach(rc -> {
-                                                    sharedWithCache.addSharedWith(SharedWithCache.Access.READ,
-                                                            rc.path, friendDirectory.getName());
+                                                    network.sharedWithCache.addSharedWith(SharedWithCache.Access.READ,
+                                                            rc.cap, friendDirectory.getName());
                                                 });
                                                 return CapabilityStore.loadWriteAccessSharingLinks(homeDirSupplier, friendDirectory,
                                                         this.username, network, crypto.random, crypto.hasher, false)
                                                         .thenApply(writeCaps -> {
                                                             writeCaps.getRetrievedCapabilities().stream().forEach(rc -> {
-                                                                sharedWithCache.addSharedWith(SharedWithCache.Access.WRITE,
-                                                                        rc.path, friendDirectory.getName());
+                                                                network.sharedWithCache.addSharedWith(SharedWithCache.Access.WRITE,
+                                                                        rc.cap, friendDirectory.getName());
                                                             });
                                                             return true;
                                                         });
@@ -875,8 +873,11 @@ public class UserContext {
                                     .thenCompose(x -> removeOwnedKeyFromParent(parent.get().owner(),
                                             parent.get().signingPair(), toUnshare.writer(), network))
                                     .thenCompose(x -> {
-                                        sharedWithCache.removeSharedWith(SharedWithCache.Access.WRITE, absolutePathString, writersToRemove);
-                                        return shareWriteAccessWith(path, sharedWithCache.getSharedWith(SharedWithCache.Access.WRITE, absolutePathString));
+                                        network.sharedWithCache.removeSharedWith(SharedWithCache.Access.WRITE,
+                                                toUnshare.getPointer().capability, writersToRemove);
+                                        return shareWriteAccessWith(path,
+                                                network.sharedWithCache.getSharedWith(SharedWithCache.Access.WRITE,
+                                                        toUnshare.getPointer().capability));
                                     })
                             )
                     );
@@ -893,8 +894,9 @@ public class UserContext {
                     .thenCompose(parent ->
                             toUnshare.rotateReadKeys(network, crypto.random, crypto.hasher, parent.get())
                                     .thenCompose(markedDirty -> {
-                                        sharedWithCache.removeSharedWith(SharedWithCache.Access.READ, absolutePathString, readersToRemove);
-                                        return shareReadAccessWith(path, sharedWithCache.getSharedWith(SharedWithCache.Access.READ, absolutePathString));
+                                        AbsoluteCapability cap = toUnshare.getPointer().capability;
+                                        network.sharedWithCache.removeSharedWith(SharedWithCache.Access.READ, cap, readersToRemove);
+                                        return shareReadAccessWith(path, network.sharedWithCache.getSharedWith(SharedWithCache.Access.READ, cap));
                                     }));
         });
     }
@@ -902,8 +904,9 @@ public class UserContext {
     @JsMethod
     public CompletableFuture<Pair<Set<String>, Set<String>>> sharedWith(FileWrapper file) {
         return file.getPath(network).thenCompose(path -> {
-            Set<String> sharedReadAccessWith = sharedWithCache.getSharedWith(SharedWithCache.Access.READ, path);
-            Set<String> sharedWriteAccessWith = sharedWithCache.getSharedWith(SharedWithCache.Access.WRITE, path);
+            AbsoluteCapability cap = file.getPointer().capability;
+            Set<String> sharedReadAccessWith = network.sharedWithCache.getSharedWith(SharedWithCache.Access.READ, cap);
+            Set<String> sharedWriteAccessWith = network.sharedWithCache.getSharedWith(SharedWithCache.Access.WRITE, cap);
             return CompletableFuture.completedFuture(new Pair<>(sharedReadAccessWith, sharedWriteAccessWith));
         });
     }
@@ -1018,7 +1021,7 @@ public class UserContext {
     private CompletableFuture<Boolean> updatedSharedWithCache(FileWrapper file, Set<String> usersToAdd,
                                                               SharedWithCache.Access access) {
         return file.getPath(network).thenCompose(path -> {
-            sharedWithCache.addSharedWith(access, path, usersToAdd);
+            network.sharedWithCache.addSharedWith(access, file.getPointer().capability, usersToAdd);
             CompletableFuture<Boolean> res = new CompletableFuture<>();
             res.complete(true);
             return res;
