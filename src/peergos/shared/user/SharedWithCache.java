@@ -44,7 +44,7 @@ public class SharedWithCache {
     }
 
     private synchronized Set<String> getSharedWith(Map<ByteArrayWrapper, Set<String>> cache, AbsoluteCapability cap) {
-        return new HashSet<>(cache.computeIfAbsent(generateKey(cap), k -> new HashSet<>()));
+        return new HashSet<>(cache.getOrDefault(generateKey(cap), new HashSet<>()));
     }
 
     public void addSharedWith(Access access, AbsoluteCapability cap, String name) {

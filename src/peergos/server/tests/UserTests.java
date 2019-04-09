@@ -288,7 +288,7 @@ public abstract class UserTests {
         //rename
         String newname = "newname.txt";
         updatedRoot4.getDescendentByPath(otherName, context.network).get().get()
-                .rename(newname, context.network, updatedRoot4, hasher).get();
+                .rename(newname, updatedRoot4, context).get();
         checkFileContents(data3, updatedRoot4.getDescendentByPath(newname, context.network).get().get(), context);
         // check from the root as well
         checkFileContents(data3, context.getByPath(username + "/" + newname).get().get(), context);
@@ -318,7 +318,7 @@ public abstract class UserTests {
         FileWrapper parent = context.getUserRoot().get();
         FileWrapper file = context.getByPath(parent.getName() + "/" + filename).get().get();
 
-        file.rename(newname, context.network, parent, hasher).get();
+        file.rename(newname, parent, context).get();
 
         FileWrapper updatedRoot = context.getUserRoot().get();
         FileWrapper updatedFile = context.getByPath(updatedRoot.getName() + "/" + newname).get().get();
@@ -807,7 +807,7 @@ public abstract class UserTests {
         String path = "/" + username + "/" + dirName;
         FileWrapper theDir = context.getByPath(path).get().get();
         FileWrapper userRoot2 = context.getByPath("/" + username).get().get();
-        FileWrapper renamed = theDir.rename("subdir2", network, userRoot2, hasher).get();
+        FileWrapper renamed = theDir.rename("subdir2", userRoot2, context).get();
     }
 
     // This one takes a while, so disable most of the time
@@ -947,7 +947,7 @@ public abstract class UserTests {
         assertTrue("retrieved same data", dataEquals);
 
         //delete the file
-        fileWrapper.remove(updatedRoot2, context.network, hasher).get();
+        fileWrapper.remove(updatedRoot2, context).get();
 
         //re-create user-context
         UserContext context2 = PeergosNetworkUtils.ensureSignedUp(username, password, network.clear(), crypto);
@@ -997,7 +997,7 @@ public abstract class UserTests {
         String foldername = "afolder";
         updatedUserRoot.mkdir(foldername, network, false, crypto.random, hasher).get();
         FileWrapper subfolder = context.getByPath(home.resolve(foldername).toString()).get().get();
-        FileWrapper parentDir = original.copyTo(subfolder, network, crypto.random, hasher).get();
+        FileWrapper parentDir = original.copyTo(subfolder, context).get();
         FileWrapper copy = context.getByPath(home.resolve(foldername).resolve(filename).toString()).get().get();
         Assert.assertTrue("Different base key", ! copy.getPointer().capability.rBaseKey.equals(original.getPointer().capability.rBaseKey));
         Assert.assertTrue("Different metadata key", ! getMetaKey(copy).equals(getMetaKey(original)));
@@ -1050,7 +1050,7 @@ public abstract class UserTests {
                 ! toParent.writer.isPresent());
 
         //remove the directory
-        directory.remove(updatedUserRoot, context.network, hasher).get();
+        directory.remove(updatedUserRoot, context).get();
 
         //ensure folder directory not  present
         boolean isPresent = context.getUserRoot().get().getChildren(context.network)

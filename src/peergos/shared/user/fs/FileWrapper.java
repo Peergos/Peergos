@@ -559,8 +559,8 @@ public class FileWrapper {
     }
 
     @JsMethod
-    public boolean isShared(NetworkAccess network) {
-        return network.sharedWithCache.isShared(pointer.capability);
+    public boolean isShared(UserContext context) {
+        return context.sharedWithCache.isShared(pointer.capability);
     }
 
     public boolean isDirty() {
@@ -1002,37 +1002,35 @@ public class FileWrapper {
 
     @JsMethod
     public CompletableFuture<FileWrapper> rename(String newFilename,
-                                                 NetworkAccess network,
                                                  FileWrapper parent,
-                                                 Hasher hasher) {
-        return rename(newFilename, network, parent, false, hasher);
+                                                 UserContext context) {
+        return rename(newFilename, parent, false, context);
     }
 
     /**
      * @param newFilename
-     * @param network
      * @param parent
      * @param overwrite
+     * @param userContext
      * @return the updated parent
      */
     public CompletableFuture<FileWrapper> rename(String newFilename,
-                                                 NetworkAccess network,
                                                  FileWrapper parent,
                                                  boolean overwrite,
-                                                 Hasher hasher) {
+                                                 UserContext userContext) {
         setModified();
         if (! isLegalName(newFilename))
             return CompletableFuture.completedFuture(parent);
         CompletableFuture<Optional<FileWrapper>> childExists = parent == null ?
                 CompletableFuture.completedFuture(Optional.empty()) :
-                parent.getDescendentByPath(newFilename, network);
+                parent.getDescendentByPath(newFilename, userContext.network);
         return childExists
                 .thenCompose(existing -> {
                     if (existing.isPresent() && !overwrite)
                         throw new IllegalStateException("Cannot rename, child already exists with name: " + newFilename);
 
                     return ((overwrite && existing.isPresent()) ?
-                            existing.get().remove(parent, network, hasher) :
+                            existing.get().remove(parent, userContext) :
                             CompletableFuture.completedFuture(parent)
                     ).thenCompose(res -> {
 
@@ -1048,7 +1046,7 @@ public class FileWrapper {
                         FileProperties newProps = new FileProperties(newFilename, isDir, currentProps.mimeType, currentProps.size,
                                 currentProps.modified, currentProps.isHidden, currentProps.thumbnail);
 
-                        return fileAccess.updateProperties(writableFilePointer(), entryWriter, newProps, network)
+                        return fileAccess.updateProperties(writableFilePointer(), entryWriter, newProps, userContext.network)
                                 .thenApply(fa -> res);
                     });
                 });
@@ -1106,20 +1104,18 @@ public class FileWrapper {
     }
 
     @JsMethod
-    public CompletableFuture<Boolean> moveTo(FileWrapper target, FileWrapper parent, NetworkAccess network,
-                        SafeRandom random,
-                        Hasher hasher) {
-        return copyTo(target, network, random, hasher)
-                .thenCompose(fw -> remove(parent, network, hasher))
+    public CompletableFuture<Boolean> moveTo(FileWrapper target, FileWrapper parent, UserContext context) {
+        return copyTo(target, context)
+                .thenCompose(fw -> remove(parent, context))
                 .thenApply(newAccess -> true);
     }
 
     @JsMethod
-    public CompletableFuture<FileWrapper> copyTo(FileWrapper target,
-                                                 NetworkAccess network,
-                                                 SafeRandom random,
-                                                 Hasher hasher) {
+    public CompletableFuture<FileWrapper> copyTo(FileWrapper target, UserContext context) {
         ensureUnmodified();
+        NetworkAccess network = context.network;
+        SafeRandom random = context.crypto.random;
+        Hasher hasher = context.crypto.hasher;
         CompletableFuture<FileWrapper> result = new CompletableFuture<>();
         if (! target.isDirectory()) {
             result.completeExceptionally(new IllegalStateException("CopyTo target " + target + " must be a directory"));
@@ -1275,11 +1271,13 @@ public class FileWrapper {
 
     /**
      * @param parent
-     * @param network
+     * @param userContext
      * @return updated parent
      */
     @JsMethod
-    public CompletableFuture<FileWrapper> remove(FileWrapper parent, NetworkAccess network, Hasher hasher) {
+    public CompletableFuture<FileWrapper> remove(FileWrapper parent, UserContext userContext) {
+        NetworkAccess network = userContext.network;
+        Hasher hasher = userContext.crypto.hasher;
         ensureUnmodified();
         if (! pointer.capability.isWritable())
             return Futures.errored(new IllegalStateException("Cannot delete file without write access to it"));
@@ -1290,7 +1288,7 @@ public class FileWrapper {
                         tid -> FileWrapper.deleteAllChunks(writableFilePointer(),
                                 writableParent ? parent.signingPair() : signingPair(), tid, network), network.dhtClient)
                         .thenApply(b -> {
-                            network.sharedWithCache.clearSharedWith(pointer.capability);
+                            userContext.sharedWithCache.clearSharedWith(pointer.capability);
                             return updatedParent;
                         }));
     }

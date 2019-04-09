@@ -37,7 +37,6 @@ public class NetworkAccess {
     public final MutableTree tree;
     public final WriteSynchronizer synchronizer;
     public final InstanceAdmin instanceAdmin;
-    public final SharedWithCache sharedWithCache;
 
     @JsProperty
     public final List<String> usernames;
@@ -74,7 +73,6 @@ public class NetworkAccess {
         this.usernames = usernames;
         this.creationTime = LocalDateTime.now();
         this.isJavascript = isJavascript;
-        this.sharedWithCache = new SharedWithCache();
     }
 
     public boolean isJavascript() {

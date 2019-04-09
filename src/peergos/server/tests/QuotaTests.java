@@ -84,7 +84,7 @@ public class QuotaTests {
                     network, crypto.random, crypto.hasher, x -> {},
                     home.generateChildLocationsFromSize(data.length, crypto.random)).get();
             FileWrapper file = context.getByPath("/" + username + "/" + filename).get().get();
-            home = file.remove(home, network, crypto.hasher).get();
+            home = file.remove(home, context).get();
         }
     }
 
@@ -104,7 +104,7 @@ public class QuotaTests {
                 network, crypto.random, crypto.hasher, x -> {},
                 home.generateChildLocationsFromSize(data.length, crypto.random)).get();
         FileWrapper file = context.getByPath("/" + username + "/" + filename).get().get();
-        file.remove(home, network, crypto.hasher).get();
+        file.remove(home, context).get();
     }
 
     @Test
@@ -129,6 +129,6 @@ public class QuotaTests {
                     home.generateChildLocationsFromSize(data.length, crypto.random)).get();
             Assert.fail();
         } catch (Exception e) {}
-        file.remove(home, network, crypto.hasher).get();
+        file.remove(home, context).get();
     }
 }
