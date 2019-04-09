@@ -1,6 +1,7 @@
 package peergos.shared.user;
 
 import peergos.shared.user.fs.AbsoluteCapability;
+import peergos.shared.util.ByteArrayWrapper;
 
 import java.util.HashSet;
 import java.util.Map;
@@ -12,21 +13,17 @@ public class SharedWithCache {
     public enum Access { READ, WRITE }
 
     //K,V
-    // K = ?? of absolute capability
+    // K = mapKey of absolute capability
     // V = list of usernames the file/dir is shared with
-    private Map<Integer, Set<String>> sharedWithReadAccessCache = new ConcurrentHashMap<>();
-    private Map<Integer, Set<String>> sharedWithWriteAccessCache = new ConcurrentHashMap<>();
+    private Map<ByteArrayWrapper, Set<String>> sharedWithReadAccessCache = new ConcurrentHashMap<>();
+    private Map<ByteArrayWrapper, Set<String>> sharedWithWriteAccessCache = new ConcurrentHashMap<>();
 
     public SharedWithCache() {
 
     }
 
-    private Integer generateKey(AbsoluteCapability cap) {
-        int result = 1;
-        for(byte b : cap.getMapKey()) { //TODO need to change
-            result = 31 * result + b;
-        }
-        return result;
+    private ByteArrayWrapper generateKey(AbsoluteCapability cap) {
+        return new ByteArrayWrapper(cap.getMapKey());
     }
 
     public boolean isShared(AbsoluteCapability cap) {
@@ -46,7 +43,7 @@ public class SharedWithCache {
             getSharedWith(sharedWithReadAccessCache, cap) : getSharedWith(sharedWithWriteAccessCache, cap);
     }
 
-    private synchronized Set<String> getSharedWith(Map<Integer, Set<String>> cache, AbsoluteCapability cap) {
+    private synchronized Set<String> getSharedWith(Map<ByteArrayWrapper, Set<String>> cache, AbsoluteCapability cap) {
         return new HashSet<>(cache.computeIfAbsent(generateKey(cap), k -> new HashSet<>()));
     }
 
@@ -64,12 +61,12 @@ public class SharedWithCache {
         }
     }
 
-    private synchronized void addCacheEntry(Map<Integer, Set<String>> cache, AbsoluteCapability cap, Set<String> names) {
+    private synchronized void addCacheEntry(Map<ByteArrayWrapper, Set<String>> cache, AbsoluteCapability cap, Set<String> names) {
         cache.computeIfAbsent(generateKey(cap), k -> new HashSet<>()).addAll(names);
     }
 
     public void clearSharedWith(AbsoluteCapability cap) {
-        Integer key = generateKey(cap);
+        ByteArrayWrapper key = generateKey(cap);
         sharedWithReadAccessCache.computeIfPresent(key, (k, v) -> new HashSet<>());
         sharedWithWriteAccessCache.computeIfPresent(key, (k, v) -> new HashSet<>());
     }
@@ -82,7 +79,7 @@ public class SharedWithCache {
         }
     }
 
-    private synchronized void removeCacheEntry(Map<Integer, Set<String>> cache, AbsoluteCapability cap, Set<String> names) {
+    private synchronized void removeCacheEntry(Map<ByteArrayWrapper, Set<String>> cache, AbsoluteCapability cap, Set<String> names) {
         cache.computeIfAbsent(generateKey(cap), k -> new HashSet<>()).removeAll(names);
     }
 

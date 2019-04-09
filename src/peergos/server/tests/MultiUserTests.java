@@ -678,9 +678,9 @@ public class MultiUserTests {
         theFile = u1.getByPath(filePath).get().get();
         cap = theFile.getPointer().capability;
 
-        //new copy sharedWith entry should be present
+        //new copy sharedWith entry should also be empty
         Set<String> sharedWriteAccessWithNewCopy = u1.network.sharedWithCache.getSharedWith(sharedWithAccess, cap);
-        Assert.assertTrue("file shared", !sharedWriteAccessWithNewCopy.isEmpty());
+        Assert.assertTrue("file shared", sharedWriteAccessWithNewCopy.isEmpty());
     }
 
     @Test
@@ -752,9 +752,9 @@ public class MultiUserTests {
         theDir = u1.getByPath(dirPath).get().get();
         cap = theDir.getPointer().capability;
 
-        //new copy sharedWith entry should be present
+        //new copy sharedWith entry should also be empty
         Set<String> sharedWriteAccessWithNewCopy = u1.network.sharedWithCache.getSharedWith(sharedWithAccess, cap);
-        Assert.assertTrue("directory shared", !sharedWriteAccessWithNewCopy.isEmpty());
+        Assert.assertTrue("directory shared", sharedWriteAccessWithNewCopy.isEmpty());
     }
 
     @Test

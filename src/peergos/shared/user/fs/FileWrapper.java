@@ -1106,24 +1106,16 @@ public class FileWrapper {
     }
 
     @JsMethod
-    public CompletableFuture<FileWrapper> copyTo(FileWrapper target,
-                                                 NetworkAccess network,
-                                                 SafeRandom random,
-                                                 Hasher hasher) {
-        return copyTo(target, false, network, random, hasher);
-    }
-
-    @JsMethod
     public CompletableFuture<Boolean> moveTo(FileWrapper target, FileWrapper parent, NetworkAccess network,
                         SafeRandom random,
                         Hasher hasher) {
-        return copyTo(target, true, network, random, hasher)
+        return copyTo(target, network, random, hasher)
                 .thenCompose(fw -> remove(parent, network, hasher))
                 .thenApply(newAccess -> true);
     }
 
-    private CompletableFuture<FileWrapper> copyTo(FileWrapper target,
-                                                 boolean copySharedWith,
+    @JsMethod
+    public CompletableFuture<FileWrapper> copyTo(FileWrapper target,
                                                  NetworkAccess network,
                                                  SafeRandom random,
                                                  Hasher hasher) {
@@ -1152,26 +1144,13 @@ public class FileWrapper {
                             RetrievedCapability newRetrievedCapability = new RetrievedCapability(newRFP, newAccess);
                             FileWrapper newFileWrapper = new FileWrapper(newRetrievedCapability, target.entryWriter, target.getOwnerName());
                             return target.addLinkTo(newFileWrapper, network, random, hasher)
-                                    .thenCompose(updatedDir ->
-                                        updatedDir.getChild(getFileProperties().name, network).thenApply( newFile -> {
-                                            if(copySharedWith) {
-                                                network.sharedWithCache.copySharedWith(pointer.capability,
-                                                        newFile.get().pointer.capability);
-                                            }
-                                            return updatedDir;
-                                        }));
+                                    .thenApply(updatedDir -> updatedDir);
                         });
             } else {
                 return getInputStream(network, random, x -> {})
                         .thenCompose(stream -> target.uploadFileSection(getName(), stream, false, 0, getSize(),
                                 Optional.empty(), false, network, random, hasher, x -> {}, target.generateChildLocations(props.getNumberOfChunks(), random))
-                        .thenCompose(newAccess ->
-                            newAccess.getChild(getFileProperties().name, network).thenApply( newFile -> {
-                                if(copySharedWith) {
-                                    network.sharedWithCache.copySharedWith(pointer.capability, newFile.get().pointer.capability);
-                                }
-                            return target;
-                            })));
+                        .thenApply(newAccess -> target));
             }
         });
     }
