@@ -1159,11 +1159,21 @@ public class UserContext {
                             if (entry.ownerName.equals(username))
                                 throw new IllegalStateException("Received a follow request claiming to be owned by us!");
                             return addExternalEntryPoint(trie, entryWeSentToThem)
-                                    .thenCompose(newRoot -> network.retrieveEntryPoint(entry)
-                                            .thenCompose(treeNode ->
-                                                    treeNode.get().getPath(network))
-                                            .thenApply(path -> newRoot.put(path, entry)
-                                            ).thenCompose(trieres -> addToStatic.apply(trieres, p)));
+                                    .thenCompose(newRoot ->
+                                            Futures.asyncExceptionally(() -> network.retrieveEntryPoint(entry)
+                                                            .thenApply(fileOpt -> {
+                                                                if (! fileOpt.isPresent())
+                                                                    throw new IllegalStateException("Couldn't retrieve entry point!");
+                                                                return new Pair<>(entry, fileOpt);
+                                                            }),
+                                                    ex -> getUptodateEntryPoint(entry)
+                                                            .thenCompose(updated -> network.retrieveEntryPoint(updated)
+                                                                    .thenApply(fileOpt -> new Pair<>(updated, fileOpt))))
+                                                    .thenCompose(pair ->
+                                                            pair.right.get().getPath(network)
+                                                                    .thenApply(path -> newRoot.put(path, pair.left))
+                                                                    .thenCompose(trieres -> addToStatic.apply(trieres, p.withEntryPoint(pair.left)))))
+                                    .exceptionally(t -> trie);
                         }
                     };
                     List<FollowRequestWithCipherText> initialRequests = withDecrypted.stream()
@@ -1234,17 +1244,21 @@ public class UserContext {
                 .exceptionally(Futures::logAndThrow);
     }
 
+    private CompletableFuture<EntryPoint> getUptodateEntryPoint(EntryPoint e) {
+        return network.coreNode.updateUser(e.ownerName)
+                .thenCompose(x -> network.coreNode.getPublicKeyHash(e.ownerName))
+                .thenApply(currentIdOpt -> {
+                    if (!currentIdOpt.isPresent() || currentIdOpt.get().equals(e.pointer.owner))
+                        throw new IllegalStateException("Couldn't retrieve entry point for user " + e.ownerName);
+                    return new EntryPoint(e.pointer.withOwner(currentIdOpt.get()), e.ownerName);
+                });
+    }
+
     private CompletableFuture<TrieNode> updateEntryPoint(EntryPoint e, TrieNode inputRoot) {
         // User might have changed their password and thus identity key, check for an update
         // and append the updated EntryPoint to the entry store
-        return network.coreNode.updateUser(e.ownerName)
-                .thenCompose(x -> network.coreNode.getPublicKeyHash(e.ownerName))
-                .thenCompose(currentIdOpt -> {
-                    if (! currentIdOpt.isPresent() || currentIdOpt.get().equals(e.pointer.owner))
-                        throw new IllegalStateException("Couldn't retrieve entry point for user " + e.ownerName);
-                    EntryPoint updated = new EntryPoint(e.pointer.withOwner(currentIdOpt.get()), e.ownerName);
-                    return addExternalEntryPoint(inputRoot, updated);
-                })
+        return getUptodateEntryPoint(e)
+                .thenCompose(updated -> addExternalEntryPoint(inputRoot, updated))
                 .exceptionally(ex2 -> {
                     LOG.log(Level.WARNING, ex2.getMessage(), ex2);
                     LOG.severe("Couldn't add entry point (failed retrieving parent dir or it was invalid) owner: " + e.ownerName);
