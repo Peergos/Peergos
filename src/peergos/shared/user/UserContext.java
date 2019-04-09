@@ -1067,8 +1067,8 @@ public class UserContext {
                             .commit(signer.publicKeyHash, signer, wd.hash, network, tid),
                     network.dhtClient
             );
-        }).thenCompose(res -> addExternalEntryPoint(entry)
-                .thenCompose(x -> retrieveAndAddEntryPointToTrie(root, entry)));
+        }).thenCompose(res -> addRetrievedEntryPointToTrie(username, root, entry, "/" + username,
+                network, crypto.random, crypto.hasher));
     }
 
     private synchronized CompletableFuture<FileWrapper> addExternalEntryPoint(EntryPoint entry) {
