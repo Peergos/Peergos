@@ -1143,14 +1143,13 @@ public class FileWrapper {
                             // upload new metadatablob
                             RetrievedCapability newRetrievedCapability = new RetrievedCapability(newRFP, newAccess);
                             FileWrapper newFileWrapper = new FileWrapper(newRetrievedCapability, target.entryWriter, target.getOwnerName());
-                            return target.addLinkTo(newFileWrapper, network, random, hasher)
-                                    .thenApply(updatedDir -> updatedDir);
+                            return target.addLinkTo(newFileWrapper, network, random, hasher);
                         });
             } else {
                 return getInputStream(network, random, x -> {})
                         .thenCompose(stream -> target.uploadFileSection(getName(), stream, false, 0, getSize(),
                                 Optional.empty(), false, network, random, hasher, x -> {}, target.generateChildLocations(props.getNumberOfChunks(), random))
-                        .thenApply(newAccess -> target));
+                        .thenApply(b -> target));
             }
         });
     }
