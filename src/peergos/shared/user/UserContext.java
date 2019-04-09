@@ -101,18 +101,6 @@ public class UserContext {
         return transactionService;
     }
 
-    @JsMethod
-    public boolean isShared(FileWrapper file) {
-        return false;
-    }
-    /*
-    @JsMethod
-    public CompletableFuture<Boolean> isShared(FileWrapper file) {
-        return file.getPath(network).thenApply(pathString ->
-                sharedWithCache.containsKey(pathString)
-        );
-    }*/
-
     public boolean isJavascript() {
         return this.network.isJavascript();
     }

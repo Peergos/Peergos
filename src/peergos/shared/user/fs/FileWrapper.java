@@ -558,6 +558,11 @@ public class FileWrapper {
         return isNull || pointer.fileAccess.isDirectory();
     }
 
+    @JsMethod
+    public boolean isShared(NetworkAccess network) {
+        return network.sharedWithCache.isShared(pointer.capability);
+    }
+
     public boolean isDirty() {
         ensureUnmodified();
         return pointer.fileAccess.isDirty(pointer.capability.rBaseKey);

@@ -2,7 +2,6 @@ package peergos.shared.user;
 
 import peergos.shared.user.fs.AbsoluteCapability;
 
-import java.io.ByteArrayOutputStream;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -30,6 +29,10 @@ public class SharedWithCache {
         return result;
     }
 
+    public boolean isShared(AbsoluteCapability cap) {
+        return ! getSharedWith(SharedWithCache.Access.READ, cap).isEmpty()
+                || ! getSharedWith(SharedWithCache.Access.WRITE, cap).isEmpty();
+    }
 
     public void copySharedWith(AbsoluteCapability oldCap, AbsoluteCapability newCap) {
         Set<String> sharedReadAccessWith = getSharedWith(SharedWithCache.Access.READ, oldCap);
