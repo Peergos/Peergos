@@ -1,8 +1,6 @@
 package peergos.server.tests;
 
 import org.junit.*;
-import org.junit.runner.*;
-import org.junit.runners.*;
 import peergos.server.storage.ResetableFileInputStream;
 import peergos.server.util.Args;
 import peergos.server.util.PeergosNetworkUtils;
@@ -24,10 +22,8 @@ import java.net.*;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 import java.util.stream.*;
 
-import static junit.framework.TestCase.assertSame;
 import static org.junit.Assert.assertTrue;
 import static peergos.server.util.PeergosNetworkUtils.ensureSignedUp;
 import static peergos.server.util.PeergosNetworkUtils.getUserContextsForNode;
@@ -119,7 +115,7 @@ public class MultiUserTests {
 
         // copy the friend's file to our own space, this should reupload the file encrypted with a new key
         // this prevents us exposing to the network our social graph by the fact that we pin the same file fragments
-        sharedFile.copyTo(targetDir, network, crypto.random, crypto.hasher).get();
+        sharedFile.copyTo(targetDir, u2).get();
         FileWrapper copy = u2.getByPath(Paths.get(u2.username, dirname, filename).toString()).get().get();
 
         // check that the copied file has the correct contents
@@ -281,9 +277,16 @@ public class MultiUserTests {
                 u1.network.mutable, u1.network.dhtClient).join();
         Assert.assertTrue("New writer key present", keysOwnedByRootSigner.contains(theFile.writer()));
 
-        parentFolder.remove(u1.getUserRoot().get(), u1.network, crypto.hasher).get();
+        AbsoluteCapability cap = theFile.getPointer().capability;
+        Set<String> sharedWriteAccessWithBefore = u1.sharedWithCache.getSharedWith(SharedWithCache.Access.WRITE, cap);
+        Assert.assertTrue("file shared", ! sharedWriteAccessWithBefore.isEmpty());
+
+        theFile.remove(parentFolder, u1).get();
         Optional<FileWrapper> removedFile = u1.getByPath(filePath).get();
         Assert.assertTrue("file removed", ! removedFile.isPresent());
+
+        Set<String> sharedWriteAccessWithAfter = u1.sharedWithCache.getSharedWith(SharedWithCache.Access.WRITE, cap);
+        Assert.assertTrue("file shared", sharedWriteAccessWithAfter.isEmpty());
 
         for (UserContext userContext : userContexts) {
             Optional<FileWrapper> sharedFile = userContext.getByPath(filePath).get();
@@ -292,6 +295,461 @@ public class MultiUserTests {
         Set<PublicKeyHash> updatedKeysOwnedByRootSigner = WriterData.getDirectOwnedKeys(theFile.owner(),
                 parentFolder.writer(), u1.network.mutable, u1.network.dhtClient).join();
         Assert.assertTrue("New writer key not present", ! updatedKeysOwnedByRootSigner.contains(theFile.writer()));
+    }
+
+
+    @Test
+    public void renamedFileSharedWith() throws Exception {
+        //read access
+        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> readAccessSharingFunction =
+                (u1, u2List, filePath) ->
+                        u1.shareReadAccessWith(filePath, u2List.stream().map(u -> u.username).collect(Collectors.toSet()));
+
+        renamedFileSharedWith(readAccessSharingFunction, SharedWithCache.Access.READ);
+        //write access
+        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> writeAccessSharingFunction =
+                (u1, u2List, filePath) ->
+                        u1.shareWriteAccessWith(filePath, u2List.stream().map(u -> u.username).collect(Collectors.toSet()));
+        renamedFileSharedWith(writeAccessSharingFunction, SharedWithCache.Access.WRITE);
+    }
+
+    private void renamedFileSharedWith(
+            TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> shareFunction,
+            SharedWithCache.Access sharedWithAccess)
+            throws Exception {
+        UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
+
+        // send follow requests from each other user to "a"
+        List<UserContext> userContexts = getUserContexts(1);
+        for (UserContext userContext : userContexts) {
+            userContext.sendFollowRequest(u1.username, SymmetricKey.random()).get();
+        }
+
+        // make "a" reciprocate all the follow requests
+        List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
+        for (FollowRequestWithCipherText u1Request : u1Requests) {
+            boolean accept = true;
+            boolean reciprocate = true;
+            u1.sendReplyFollowRequest(u1Request, accept, reciprocate).get();
+        }
+
+        // complete the friendship connection
+        for (UserContext userContext : userContexts) {
+            userContext.processFollowRequests().get();//needed for side effect
+        }
+
+        // upload a file to "a"'s space
+        FileWrapper u1Root = u1.getUserRoot().get();
+        String filename = "somefile.txt";
+        byte[] data1 = "Hello Peergos friend!".getBytes();
+        AsyncReader file1Reader = new AsyncReader.ArrayBacked(data1);
+        String subdirName = "subdir";
+        u1Root.mkdir(subdirName, u1.network, false, crypto.random, crypto.hasher).get();
+        Path subdirPath = Paths.get(u1.username, subdirName);
+        FileWrapper subdir = u1.getByPath(subdirPath).get().get();
+        FileWrapper uploaded = subdir.uploadOrOverwriteFile(filename, file1Reader, data1.length,
+                u1.network, u1.crypto.random, crypto.hasher, l -> {},
+                subdir.generateChildLocationsFromSize(data1.length, u1.crypto.random)).get();
+
+        Path filePath = Paths.get(u1.username, subdirName, filename);
+
+        shareFunction.apply(u1, userContexts, filePath).join();
+
+        //rename file
+        FileWrapper theFile = u1.getByPath(filePath).get().get();
+        FileWrapper parentFolder = u1.getByPath(subdirPath).get().get();
+
+        AbsoluteCapability cap = theFile.getPointer().capability;
+        Set<String> sharedAccessWithBefore = u1.sharedWithCache.getSharedWith(sharedWithAccess, cap);
+        Assert.assertTrue("file shared", ! sharedAccessWithBefore.isEmpty());
+
+        String newFilename = "newfilename.txt";
+        theFile.rename(newFilename, parentFolder, false, u1).get();
+
+        filePath = Paths.get(u1.username, subdirName, newFilename);
+        theFile = u1.getByPath(filePath).get().get();
+        cap = theFile.getPointer().capability;
+
+        Set<String> sharedAccessWithAfter = u1.sharedWithCache.getSharedWith(sharedWithAccess, cap);
+        Assert.assertTrue("file shared", ! sharedAccessWithAfter.isEmpty());
+    }
+
+    @Test
+    public void renamedDirectorySharedWith() throws Exception {
+        //read access
+        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> readAccessSharingFunction =
+                (u1, u2List, filePath) ->
+                        u1.shareReadAccessWith(filePath, u2List.stream().map(u -> u.username).collect(Collectors.toSet()));
+
+        renamedDirectorySharedWith(readAccessSharingFunction, SharedWithCache.Access.READ);
+        //write access
+        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> writeAccessSharingFunction =
+                (u1, u2List, filePath) ->
+                        u1.shareWriteAccessWith(filePath, u2List.stream().map(u -> u.username).collect(Collectors.toSet()));
+        renamedDirectorySharedWith(writeAccessSharingFunction, SharedWithCache.Access.WRITE);
+    }
+
+    private void renamedDirectorySharedWith(
+            TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> shareFunction,
+            SharedWithCache.Access sharedWithAccess)
+            throws Exception {
+        UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
+
+        // send follow requests from each other user to "a"
+        List<UserContext> userContexts = getUserContexts(1);
+        for (UserContext userContext : userContexts) {
+            userContext.sendFollowRequest(u1.username, SymmetricKey.random()).get();
+        }
+
+        // make "a" reciprocate all the follow requests
+        List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
+        for (FollowRequestWithCipherText u1Request : u1Requests) {
+            boolean accept = true;
+            boolean reciprocate = true;
+            u1.sendReplyFollowRequest(u1Request, accept, reciprocate).get();
+        }
+
+        // complete the friendship connection
+        for (UserContext userContext : userContexts) {
+            userContext.processFollowRequests().get();//needed for side effect
+        }
+
+        // upload a file to "a"'s space
+        FileWrapper u1Root = u1.getUserRoot().get();
+        String subdirName = "subdir";
+        u1Root.mkdir(subdirName, u1.network, false, crypto.random, crypto.hasher).get();
+        Path subdirPath = Paths.get(u1.username, subdirName);
+
+        Path filePath = Paths.get(u1.username, subdirName);
+
+        shareFunction.apply(u1, userContexts, filePath).join();
+
+        //rename directory
+        FileWrapper theDir = u1.getByPath(filePath).get().get();
+        FileWrapper parentFolder = u1.getUserRoot().get();
+
+        AbsoluteCapability cap = theDir.getPointer().capability;
+        Set<String> sharedAccessWithBefore = u1.sharedWithCache.getSharedWith(sharedWithAccess, cap);
+        Assert.assertTrue("directory shared", ! sharedAccessWithBefore.isEmpty());
+
+        String newDirectoryName = "newDir";
+        theDir.rename(newDirectoryName, parentFolder, false, u1).get();
+
+        filePath = Paths.get(u1.username, newDirectoryName);
+        theDir = u1.getByPath(filePath).get().get();
+        cap = theDir.getPointer().capability;
+
+        Set<String> sharedAccessWithAfter = u1.sharedWithCache.getSharedWith(sharedWithAccess, cap);
+        Assert.assertTrue("directory shared", ! sharedAccessWithAfter.isEmpty());
+    }
+
+    @Test
+    public void copyToFileSharedWith() throws Exception {
+        //read access
+        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> readAccessSharingFunction =
+                (u1, u2List, filePath) ->
+                        u1.shareReadAccessWith(filePath, u2List.stream().map(u -> u.username).collect(Collectors.toSet()));
+
+        copyToFileSharedWith(readAccessSharingFunction, SharedWithCache.Access.READ);
+        //write access
+        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> writeAccessSharingFunction =
+                (u1, u2List, filePath) ->
+                        u1.shareWriteAccessWith(filePath, u2List.stream().map(u -> u.username).collect(Collectors.toSet()));
+        copyToFileSharedWith(writeAccessSharingFunction, SharedWithCache.Access.WRITE);
+    }
+
+    private void copyToFileSharedWith(
+            TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> shareFunction,
+            SharedWithCache.Access sharedWithAccess)
+            throws Exception {
+        UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
+
+        // send follow requests from each other user to "a"
+        List<UserContext> userContexts = getUserContexts(1);
+        for (UserContext userContext : userContexts) {
+            userContext.sendFollowRequest(u1.username, SymmetricKey.random()).get();
+        }
+
+        // make "a" reciprocate all the follow requests
+        List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
+        for (FollowRequestWithCipherText u1Request : u1Requests) {
+            boolean accept = true;
+            boolean reciprocate = true;
+            u1.sendReplyFollowRequest(u1Request, accept, reciprocate).get();
+        }
+
+        // complete the friendship connection
+        for (UserContext userContext : userContexts) {
+            userContext.processFollowRequests().get();//needed for side effect
+        }
+
+        // upload a file to "a"'s space
+        String filename = "somefile.txt";
+        byte[] data1 = "Hello Peergos friend!".getBytes();
+        AsyncReader file1Reader = new AsyncReader.ArrayBacked(data1);
+        String subdirName = "subdir";
+        String destinationSubdirName = "destdir";
+        u1.getUserRoot().get().mkdir(subdirName, u1.network, false, crypto.random, crypto.hasher).get();
+        u1.getUserRoot().get().mkdir(destinationSubdirName, u1.network, false, crypto.random, crypto.hasher).get();
+        Path subdirPath = Paths.get(u1.username, subdirName);
+        FileWrapper subdir = u1.getByPath(subdirPath).get().get();
+        FileWrapper uploaded = subdir.uploadOrOverwriteFile(filename, file1Reader, data1.length,
+                u1.network, u1.crypto.random, crypto.hasher, l -> {},
+                subdir.generateChildLocationsFromSize(data1.length, u1.crypto.random)).get();
+
+        Path filePath = Paths.get(u1.username, subdirName, filename);
+
+        shareFunction.apply(u1, userContexts, filePath);
+
+        FileWrapper theFile = u1.getByPath(filePath).get().get();
+        AbsoluteCapability cap = theFile.getPointer().capability;
+        Set<String> sharedWriteAccessWithBefore = u1.sharedWithCache.getSharedWith(sharedWithAccess, cap);
+        Assert.assertTrue("file shared", ! sharedWriteAccessWithBefore.isEmpty());
+
+        //copy file
+        Path destSubdirPath = Paths.get(u1.username, destinationSubdirName);
+        FileWrapper destSubdir = u1.getByPath(destSubdirPath).get().get();
+        theFile.copyTo(destSubdir, u1);
+
+        //old copy should retain sharedWith entries
+        Set<String> sharedWriteAccessWithOriginal = u1.sharedWithCache.getSharedWith(sharedWithAccess, cap);
+        Assert.assertTrue("file shared", ! sharedWriteAccessWithOriginal.isEmpty());
+
+        filePath = Paths.get(u1.username, destinationSubdirName, filename);
+        theFile = u1.getByPath(filePath).get().get();
+        cap = theFile.getPointer().capability;
+
+        Set<String> sharedWriteAccessWithNewCopy = u1.sharedWithCache.getSharedWith(sharedWithAccess, cap);
+        Assert.assertTrue("file shared", sharedWriteAccessWithNewCopy.isEmpty());
+    }
+
+    @Test
+    public void copyToDirectorySharedWith() throws Exception {
+        //read access
+        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> readAccessSharingFunction =
+                (u1, u2List, filePath) ->
+                        u1.shareReadAccessWith(filePath, u2List.stream().map(u -> u.username).collect(Collectors.toSet()));
+
+        copyToDirectorySharedWith(readAccessSharingFunction, SharedWithCache.Access.READ);
+        //write access
+        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> writeAccessSharingFunction =
+                (u1, u2List, filePath) ->
+                        u1.shareWriteAccessWith(filePath, u2List.stream().map(u -> u.username).collect(Collectors.toSet()));
+        copyToDirectorySharedWith(writeAccessSharingFunction, SharedWithCache.Access.WRITE);
+    }
+
+    private void copyToDirectorySharedWith(
+            TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> shareFunction,
+            SharedWithCache.Access sharedWithAccess)
+            throws Exception {
+        UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
+
+        // send follow requests from each other user to "a"
+        List<UserContext> userContexts = getUserContexts(1);
+        for (UserContext userContext : userContexts) {
+            userContext.sendFollowRequest(u1.username, SymmetricKey.random()).get();
+        }
+
+        // make "a" reciprocate all the follow requests
+        List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
+        for (FollowRequestWithCipherText u1Request : u1Requests) {
+            boolean accept = true;
+            boolean reciprocate = true;
+            u1.sendReplyFollowRequest(u1Request, accept, reciprocate).get();
+        }
+
+        // complete the friendship connection
+        for (UserContext userContext : userContexts) {
+            userContext.processFollowRequests().get();//needed for side effect
+        }
+
+        // upload a file to "a"'s space
+        String subdirName = "subdir";
+        String destinationDirName = "destdir";
+        u1.getUserRoot().get().mkdir(subdirName, u1.network, false, crypto.random, crypto.hasher).get();
+        u1.getUserRoot().get().mkdir(destinationDirName, u1.network, false, crypto.random, crypto.hasher).get();
+
+        Path dirPath = Paths.get(u1.username, subdirName);
+
+        shareFunction.apply(u1, userContexts, dirPath);
+
+        FileWrapper theDir = u1.getByPath(dirPath).get().get();
+        AbsoluteCapability cap = theDir.getPointer().capability;
+        Set<String> sharedWriteAccessWithBefore = u1.sharedWithCache.getSharedWith(sharedWithAccess, cap);
+        Assert.assertTrue("directory shared", ! sharedWriteAccessWithBefore.isEmpty());
+
+        //copy file
+        Path destDirPath = Paths.get(u1.username, destinationDirName);
+        FileWrapper destDir = u1.getByPath(destDirPath).get().get();
+        theDir.copyTo(destDir, u1);
+
+        //old copy should retain sharedWith entries
+        Set<String> sharedWriteAccessWithOriginal = u1.sharedWithCache.getSharedWith(sharedWithAccess, cap);
+        Assert.assertTrue("directory shared", ! sharedWriteAccessWithOriginal.isEmpty());
+
+        dirPath = Paths.get(u1.username, destinationDirName, subdirName);
+        theDir = u1.getByPath(dirPath).get().get();
+        cap = theDir.getPointer().capability;
+
+        Set<String> sharedWriteAccessWithNewCopy = u1.sharedWithCache.getSharedWith(sharedWithAccess, cap);
+        Assert.assertTrue("directory shared", sharedWriteAccessWithNewCopy.isEmpty());
+    }
+
+    @Test
+    public void moveToFileSharedWith()
+            throws Exception {
+        //read access
+        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> readAccessSharingFunction =
+                (u1, u2List, filePath) ->
+                        u1.shareReadAccessWith(filePath, u2List.stream().map(u -> u.username).collect(Collectors.toSet()));
+
+        moveToFileSharedWith(readAccessSharingFunction, SharedWithCache.Access.READ);
+        //write access
+        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> writeAccessSharingFunction =
+                (u1, u2List, filePath) ->
+                        u1.shareWriteAccessWith(filePath, u2List.stream().map(u -> u.username).collect(Collectors.toSet()));
+        moveToFileSharedWith(writeAccessSharingFunction, SharedWithCache.Access.WRITE);
+    }
+
+    private void moveToFileSharedWith(TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> shareFunction,
+            SharedWithCache.Access sharedWithAccess)
+            throws Exception {
+        UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
+
+        // send follow requests from each other user to "a"
+        List<UserContext> userContexts = getUserContexts(1);
+        for (UserContext userContext : userContexts) {
+            userContext.sendFollowRequest(u1.username, SymmetricKey.random()).get();
+        }
+
+        // make "a" reciprocate all the follow requests
+        List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
+        for (FollowRequestWithCipherText u1Request : u1Requests) {
+            boolean accept = true;
+            boolean reciprocate = true;
+            u1.sendReplyFollowRequest(u1Request, accept, reciprocate).get();
+        }
+
+        // complete the friendship connection
+        for (UserContext userContext : userContexts) {
+            userContext.processFollowRequests().get();//needed for side effect
+        }
+
+        // upload a file to "a"'s space
+        String filename = "somefile.txt";
+        byte[] data1 = "Hello Peergos friend!".getBytes();
+        AsyncReader file1Reader = new AsyncReader.ArrayBacked(data1);
+        String subdirName = "subdir";
+        String destinationSubdirName = "destdir";
+        u1.getUserRoot().get().mkdir(subdirName, u1.network, false, crypto.random, crypto.hasher).get();
+        u1.getUserRoot().get().mkdir(destinationSubdirName, u1.network, false, crypto.random, crypto.hasher).get();
+        Path subdirPath = Paths.get(u1.username, subdirName);
+        FileWrapper subdir = u1.getByPath(subdirPath).get().get();
+        FileWrapper uploaded = subdir.uploadOrOverwriteFile(filename, file1Reader, data1.length,
+                u1.network, u1.crypto.random, crypto.hasher, l -> {},
+                subdir.generateChildLocationsFromSize(data1.length, u1.crypto.random)).get();
+
+        Path filePath = Paths.get(u1.username, subdirName, filename);
+        shareFunction.apply(u1, userContexts, filePath);
+
+        FileWrapper theFile = u1.getByPath(filePath).get().get();
+        Path parentPath = Paths.get(u1.username, subdirName);
+        FileWrapper theParent = u1.getByPath(parentPath).get().get();
+        AbsoluteCapability cap = theFile.getPointer().capability;
+        Set<String> sharedWriteAccessWithBefore = u1.sharedWithCache.getSharedWith(sharedWithAccess, cap);
+        Assert.assertTrue("file shared", ! sharedWriteAccessWithBefore.isEmpty());
+
+        //move file
+        Path destSubdirPath = Paths.get(u1.username, destinationSubdirName);
+        FileWrapper destSubdir = u1.getByPath(destSubdirPath).get().get();
+
+        theFile.moveTo(destSubdir, theParent, u1);
+
+        //old copy sharedWith entries should be removed
+        Set<String> sharedWriteAccessWithOriginal = u1.sharedWithCache.getSharedWith(sharedWithAccess, cap);
+        Assert.assertTrue("file shared", sharedWriteAccessWithOriginal.isEmpty());
+
+        filePath = Paths.get(u1.username, destinationSubdirName, filename);
+        theFile = u1.getByPath(filePath).get().get();
+        cap = theFile.getPointer().capability;
+
+        //new copy sharedWith entry should also be empty
+        Set<String> sharedWriteAccessWithNewCopy = u1.sharedWithCache.getSharedWith(sharedWithAccess, cap);
+        Assert.assertTrue("file shared", sharedWriteAccessWithNewCopy.isEmpty());
+    }
+
+    @Test
+    public void moveToDirectorySharedWith()
+            throws Exception {
+        //read access
+        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> readAccessSharingFunction =
+                (u1, u2List, filePath) ->
+                        u1.shareReadAccessWith(filePath, u2List.stream().map(u -> u.username).collect(Collectors.toSet()));
+
+        moveToDirectorySharedWith(readAccessSharingFunction, SharedWithCache.Access.READ);
+        //write access
+        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> writeAccessSharingFunction =
+                (u1, u2List, filePath) ->
+                        u1.shareWriteAccessWith(filePath, u2List.stream().map(u -> u.username).collect(Collectors.toSet()));
+        moveToDirectorySharedWith(writeAccessSharingFunction, SharedWithCache.Access.WRITE);
+    }
+
+    private void moveToDirectorySharedWith(TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> shareFunction,
+                                      SharedWithCache.Access sharedWithAccess)
+            throws Exception {
+        UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
+
+        // send follow requests from each other user to "a"
+        List<UserContext> userContexts = getUserContexts(1);
+        for (UserContext userContext : userContexts) {
+            userContext.sendFollowRequest(u1.username, SymmetricKey.random()).get();
+        }
+
+        // make "a" reciprocate all the follow requests
+        List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
+        for (FollowRequestWithCipherText u1Request : u1Requests) {
+            boolean accept = true;
+            boolean reciprocate = true;
+            u1.sendReplyFollowRequest(u1Request, accept, reciprocate).get();
+        }
+
+        // complete the friendship connection
+        for (UserContext userContext : userContexts) {
+            userContext.processFollowRequests().get();//needed for side effect
+        }
+
+        String subdirName = "subdir";
+        String destinationSubdirName = "destdir";
+        u1.getUserRoot().get().mkdir(subdirName, u1.network, false, crypto.random, crypto.hasher).get();
+        u1.getUserRoot().get().mkdir(destinationSubdirName, u1.network, false, crypto.random, crypto.hasher).get();
+
+        Path dirPath = Paths.get(u1.username, subdirName);
+        shareFunction.apply(u1, userContexts, dirPath);
+
+        FileWrapper theDir = u1.getByPath(dirPath).get().get();
+        Path parentPath = Paths.get(u1.username);
+        FileWrapper theParent = u1.getByPath(parentPath).get().get();
+        AbsoluteCapability cap = theDir.getPointer().capability;
+        Set<String> sharedWriteAccessWithBefore = u1.sharedWithCache.getSharedWith(sharedWithAccess, cap);
+        Assert.assertTrue("directory shared", ! sharedWriteAccessWithBefore.isEmpty());
+
+        //move directory
+        Path destSubdirPath = Paths.get(u1.username, destinationSubdirName);
+        FileWrapper destSubdir = u1.getByPath(destSubdirPath).get().get();
+
+        theDir.moveTo(destSubdir, theParent, u1);
+
+        //old copy sharedWith entries should be removed
+        Set<String> sharedWriteAccessWithOriginal = u1.sharedWithCache.getSharedWith(sharedWithAccess, cap);
+        Assert.assertTrue("directory shared", sharedWriteAccessWithOriginal.isEmpty());
+
+        dirPath = Paths.get(u1.username, destinationSubdirName, subdirName);
+        theDir = u1.getByPath(dirPath).get().get();
+        cap = theDir.getPointer().capability;
+
+        //new copy sharedWith entry should also be empty
+        Set<String> sharedWriteAccessWithNewCopy = u1.sharedWithCache.getSharedWith(sharedWithAccess, cap);
+        Assert.assertTrue("directory shared", sharedWriteAccessWithNewCopy.isEmpty());
     }
 
     @Test
@@ -359,7 +817,7 @@ public class MultiUserTests {
 
         String newname = "newname.txt";
         FileWrapper updatedParent = u1.getByPath(originalPath).get().get()
-                .rename(newname, network, u1.getUserRoot().get(), crypto.hasher).get();
+                .rename(newname, u1.getUserRoot().get(), u1).get();
 
         // check still logged in user can't read the new name
         Optional<FileWrapper> unsharedView = userToUnshareWith.getByPath(friendsPathToFile).get();

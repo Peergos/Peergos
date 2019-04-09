@@ -37,6 +37,7 @@ public class NetworkAccess {
     public final MutableTree tree;
     public final WriteSynchronizer synchronizer;
     public final InstanceAdmin instanceAdmin;
+
     @JsProperty
     public final List<String> usernames;
     private final LocalDateTime creationTime;
