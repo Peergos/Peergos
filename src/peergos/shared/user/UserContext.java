@@ -3,6 +3,7 @@ package peergos.shared.user;
 import java.util.logging.*;
 
 import peergos.shared.user.fs.cryptree.*;
+import peergos.shared.user.fs.transaction.Transaction;
 import peergos.shared.user.fs.transaction.TransactionService;
 import peergos.shared.user.fs.transaction.TransactionServiceImpl;
 import peergos.shared.*;
@@ -53,6 +54,7 @@ public class UserContext {
     private final SymmetricKey rootKey;
 
     private final WriteSynchronizer writeSynchronizer;
+    private final UploadSynchronizer uploadSynchronizer;
     private final TransactionService transactionService;
 
     public final SharedWithCache sharedWithCache;
@@ -90,6 +92,7 @@ public class UserContext {
             writeSynchronizer.put(signer.publicKeyHash, signer.publicKeyHash, userData);
         }
         this.sharedWithCache = new SharedWithCache();
+        this.uploadSynchronizer = new UploadSynchronizer();
     }
 
     private TransactionService buildTransactionService() {
@@ -97,6 +100,22 @@ public class UserContext {
                 () -> getByPath(Paths.get(username, TRANSACTIONS_DIR_NAME).toString())
                         .thenApply(Optional::get);
         return new TransactionServiceImpl(network, crypto.random, crypto.hasher, getTransactionsDir::get);
+    }
+
+    @JsMethod
+    public CompletableFuture<FileWrapper> uploadFile(FileWrapper directory,
+                                                       String filename,
+                                                       AsyncReader fileData,
+                                                       int lengthHi,
+                                                       int lengthLow,
+                                                       boolean overwriteExisting,
+                                                       ProgressConsumer<Long> monitor) {
+        return directory.getPath(network).thenCompose(directoryPath -> {
+            Function<FileWrapper, CompletableFuture<FileWrapper>> updater = dir ->
+              dir.uploadFile(filename, fileData, lengthHi, lengthLow, overwriteExisting,
+              this.network, this.crypto.random, this.crypto.hasher, monitor, this.transactionService);
+            return uploadSynchronizer.applyUpdate(directoryPath, directory, this, updater);
+        });
     }
 
     @JsMethod
