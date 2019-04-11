@@ -1468,7 +1468,8 @@ public class FileWrapper {
         return fut;
     }
 
-    private CompletableFuture<String> getFileType(AsyncReader imageBlob) {
+    @JsMethod
+    public CompletableFuture<String> getFileType(AsyncReader imageBlob) {
         CompletableFuture<String> result = new CompletableFuture<>();
         byte[] data = new byte[MimeTypes.HEADER_BYTES_TO_IDENTIFY_MIME_TYPE];
         imageBlob.readIntoArray(data, 0, data.length).thenAccept(numBytesRead -> {
