@@ -279,7 +279,7 @@ public class SpaceCheckingKeyFilter {
      */
     private static State initState(Path statePath,
                                    MutablePointers mutable,
-                                   ContentAddressedStorage dht) throws IOException {
+                                   ContentAddressedStorage dht) {
         State state;
         try {
             // Read stored usages and update current view.
@@ -293,27 +293,30 @@ public class SpaceCheckingKeyFilter {
         Logging.LOG().info("Checking for updated mutable pointers...");
         long t1 = System.currentTimeMillis();
         for (Map.Entry<PublicKeyHash, Stat> entry : new HashSet<>(state.currentView.entrySet())) {
-            PublicKeyHash ownerKey = entry.getKey();
+            PublicKeyHash writerKey = entry.getKey();
             Stat stat = entry.getValue();
-            Logging.LOG().info("Checking for updates from user " + stat.owner);
+            Logging.LOG().info("Checking for updates from user: " + stat.owner + ", writer key: " + writerKey);
 
             try {
-                MaybeMultihash rootHash = mutable.getPointerTarget(ownerKey, ownerKey, dht).join();
-                boolean isChanged = stat.target.equals(rootHash);
+                PublicKeyHash owner = writerKey; //NB: owner is a dummy value
+                MaybeMultihash rootHash = mutable.getPointerTarget(owner, writerKey, dht).join();
+                boolean isChanged = ! stat.target.equals(rootHash);
                 if (isChanged) {
+                    Logging.LOG().info("Root hash changed from " + stat.target + " to " + rootHash);
                     long updatedSize = dht.getRecursiveBlockSize(rootHash.get()).get();
                     long deltaUsage = updatedSize - stat.directRetainedStorage;
-                    state.usage.get(stat.owner).confirmUsage(ownerKey, deltaUsage); //NB: ownerKey is a dummy value
-                    Set<PublicKeyHash> directOwnedKeys = WriterData.getDirectOwnedKeys(ownerKey, ownerKey, mutable, dht).join();
+                    state.usage.get(stat.owner).confirmUsage(writerKey, deltaUsage);
+                    Set<PublicKeyHash> directOwnedKeys = WriterData.getDirectOwnedKeys(owner, writerKey, mutable, dht).join();
                     List<PublicKeyHash> newOwnedKeys = directOwnedKeys.stream()
                             .filter(key -> !stat.ownedKeys.contains(key))
                             .collect(Collectors.toList());
                     for (PublicKeyHash newOwnedKey : newOwnedKeys) {
                         state.currentView.putIfAbsent(newOwnedKey, new Stat(stat.owner, MaybeMultihash.empty(), 0, Collections.emptySet()));
-                        processMutablePointerEvent(state, ownerKey, newOwnedKey, MaybeMultihash.empty(),
-                                mutable.getPointerTarget(ownerKey, newOwnedKey, dht).get(), mutable, dht);
+                        processMutablePointerEvent(state, owner, newOwnedKey, MaybeMultihash.empty(),
+                                mutable.getPointerTarget(owner, newOwnedKey, dht).get(), mutable, dht);
                     }
                     stat.update(rootHash, directOwnedKeys, updatedSize);
+                    Logging.LOG().info("Updated space used by " + writerKey + " to " + updatedSize);
                 }
             } catch (Throwable t) {
                 Logging.LOG().log(Level.WARNING, "Failed calculating usage for " + stat.owner, t);
@@ -370,9 +373,10 @@ public class SpaceCheckingKeyFilter {
         try {
             List<String> usernames = quotaSupplier.getLocalUsernames();
             for (String username : usernames) {
-                Logging.LOG().info("Processing "+username);
+                Logging.LOG().info("Calculating space usage of "+username);
                 Optional<PublicKeyHash> publicKeyHash = core.getPublicKeyHash(username).get();
                 publicKeyHash.ifPresent(keyHash -> processCorenodeEvent(username, keyHash));
+                LOG.info("Updated space usage of user: " + username + " to " + state.usage.get(username).usage);
             }
         } catch (Exception e) {
             LOG.log(Level.WARNING, e.getMessage(), e);
@@ -388,16 +392,16 @@ public class SpaceCheckingKeyFilter {
     /** Update our view of the world because a user has changed their public key (or registered)
      *
      * @param username
-     * @param owner
+     * @param writer
      */
-    public void processCorenodeEvent(String username, PublicKeyHash owner) {
+    public void processCorenodeEvent(String username, PublicKeyHash writer) {
         try {
             state.usage.putIfAbsent(username, new Usage(0));
-            Set<PublicKeyHash> childrenKeys = WriterData.getDirectOwnedKeys(owner, owner, mutable, dht).join();
-            state.currentView.computeIfAbsent(owner, k -> new Stat(username, MaybeMultihash.empty(), 0, childrenKeys));
-            Stat current = state.currentView.get(owner);
-            MaybeMultihash updatedRoot = mutable.getPointerTarget(owner, owner, dht).get();
-            processMutablePointerEvent(state, owner, owner, current.target, updatedRoot, mutable, dht);
+            Set<PublicKeyHash> childrenKeys = WriterData.getDirectOwnedKeys(writer, writer, mutable, dht).join();
+            state.currentView.computeIfAbsent(writer, k -> new Stat(username, MaybeMultihash.empty(), 0, childrenKeys));
+            Stat current = state.currentView.get(writer);
+            MaybeMultihash updatedRoot = mutable.getPointerTarget(writer, writer, dht).get();
+            processMutablePointerEvent(state, writer, writer, current.target, updatedRoot, mutable, dht);
             for (PublicKeyHash childKey : childrenKeys) {
                 processCorenodeEvent(username, childKey);
             }
