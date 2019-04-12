@@ -610,8 +610,7 @@ public class FileWrapper {
                 .collect(Collectors.toList());
     }
 
-    @JsMethod
-    public CompletableFuture<FileWrapper> uploadFileJS(String filename,
+    public CompletableFuture<FileWrapper> uploadFile(String filename,
                                                        AsyncReader fileData,
                                                        int lengthHi,
                                                        int lengthLow,
