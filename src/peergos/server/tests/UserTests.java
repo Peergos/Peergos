@@ -298,24 +298,24 @@ public abstract class UserTests {
         checkFileContents(data3, renamed.get(), context);
     }
 
-
-    @Test
-    public void kevTest() throws Exception {
-        String username = generateUsername();
-        String password = "test";
-        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
-        FileWrapper userRoot = context.getUserRoot().get();
-
-        String filename = "somedata.txt";
-        // write empty file
-        byte[] data = new byte[0];
-
-        context.uploadFile("/" + username, userRoot, filename, new AsyncReader.ArrayBacked(data),
-                0,data.length, false, l -> {}).get();
-        checkFileContents(data, context.getUserRoot().get().getDescendentByPath(filename, context.network).get().get(), context);
-
-        System.out.println("done");
-    }
+//
+//    @Test
+//    public void kevTest() throws Exception {
+//        String username = generateUsername();
+//        String password = "test";
+//        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+//        FileWrapper userRoot = context.getUserRoot().get();
+//
+//        String filename = "somedata.txt";
+//        // write empty file
+//        byte[] data = new byte[0];
+//
+//        context.uploadFile("/" + username, userRoot, filename, new AsyncReader.ArrayBacked(data),
+//                0,data.length, false, l -> {}).get();
+//        checkFileContents(data, context.getUserRoot().get().getDescendentByPath(filename, context.network).get().get(), context);
+//
+//        System.out.println("done");
+//    }
 
     @Test
     public void renameFile() throws Exception {

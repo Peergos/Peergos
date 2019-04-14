@@ -359,7 +359,7 @@ public class NetworkAccess {
                     + " with " + metadata.toCbor().links().size() + " fragments");
             byte[] metaBlob = metadata.serialize();
             return dhtClient.put(owner, writer.publicKeyHash, writer.secret.signatureOnly(metaBlob), metaBlob, tid)
-                    .thenCompose(blobHash -> tree.put(owner, writer, mapKey, metadata.committedHash(), blobHash, tid)
+                    .thenCompose(blobHash -> tree.put(owner, writer, mapKey, metadata.committedHash(), blobHash)
                             .thenApply(res -> blobHash));
         } catch (Exception e) {
             LOG.severe(e.getMessage());
@@ -370,27 +370,24 @@ public class NetworkAccess {
     public CompletableFuture<Multihash> addPreexistingChunk(CryptreeNode metadata,
                                                             PublicKeyHash owner,
                                                             byte[] mapKey,
-                                                            SigningPrivateKeyAndPublicHash writer,
-                                                            TransactionId tid) {
-        return tree.put(owner, writer, mapKey, metadata.committedHash(), metadata.committedHash().get(), tid)
+                                                            SigningPrivateKeyAndPublicHash writer) {
+        return tree.put(owner, writer, mapKey, metadata.committedHash(), metadata.committedHash().get())
                 .thenApply(res -> metadata.committedHash().get());
     }
 
     public CompletableFuture<Multihash> deleteChunk(CryptreeNode metadata,
                                                     PublicKeyHash owner,
                                                     byte[] mapKey,
-                                                    SigningPrivateKeyAndPublicHash writer,
-                                                    TransactionId tid) {
-        return tree.remove(owner, writer, mapKey, metadata.committedHash(), tid)
+                                                    SigningPrivateKeyAndPublicHash writer) {
+        return tree.remove(owner, writer, mapKey, metadata.committedHash())
                 .thenApply(res -> metadata.committedHash().get());
     }
 
     public CompletableFuture<Boolean> deleteChunkIfPresent(PublicKeyHash owner,
                                                              SigningPrivateKeyAndPublicHash writer,
-                                                             byte[] mapKey,
-                                                             TransactionId tid) {
+                                                             byte[] mapKey) {
         return tree.get(owner, writer.publicKeyHash, mapKey)
-                .thenCompose(valueHash -> valueHash.ifPresent(h -> tree.remove(owner, writer, mapKey, valueHash, tid)));
+                .thenCompose(valueHash -> valueHash.ifPresent(h -> tree.remove(owner, writer, mapKey, valueHash)));
     }
 
     public CompletableFuture<Optional<CryptreeNode>> getMetadata(AbsoluteCapability cap) {

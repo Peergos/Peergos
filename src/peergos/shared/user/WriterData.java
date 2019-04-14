@@ -158,38 +158,32 @@ public class WriterData implements Cborable {
         return new CommittedWriterData(hash, this);
     }
 
-    public CompletableFuture<CommittedWriterData> changeKeys(SigningPrivateKeyAndPublicHash oldSigner,
-                                                             SigningPrivateKeyAndPublicHash signer,
-                                                             MaybeMultihash currentHash,
-                                                             PublicBoxingKey followRequestReceiver,
-                                                             SymmetricKey currentKey,
-                                                             SymmetricKey newKey,
-                                                             SecretGenerationAlgorithm newAlgorithm,
-                                                             NetworkAccess network) {
-        return IpfsTransaction.call(oldSigner.publicKeyHash, tid -> {
-            // auth new key by adding to existing writer data first
-            OwnerProof proof = OwnerProof.build(signer, oldSigner.publicKeyHash);
-            return addOwnedKey(oldSigner.publicKeyHash, oldSigner, proof, network.dhtClient).thenCompose(tmp ->
-                    tmp.commit(oldSigner.publicKeyHash, oldSigner, currentHash, network, tid)
-                            .thenCompose(tmpCommited -> {
-                                Optional<UserStaticData> newEntryPoints = staticData
-                                        .map(sd -> new UserStaticData(sd.getEntryPoints(currentKey), newKey));
-                                return network.dhtClient.putBoxingKey(oldSigner.publicKeyHash,
-                                        oldSigner.secret.signatureOnly(followRequestReceiver.serialize()),
-                                        followRequestReceiver, tid
-                                ).thenCompose(boxerHash -> {
-                                    WriterData updated = new WriterData(signer.publicKeyHash,
-                                            Optional.of(newAlgorithm),
-                                            publicData,
-                                            Optional.of(new PublicKeyHash(boxerHash)),
-                                            ownedKeys,
-                                            namedOwnedKeys,
-                                            newEntryPoints,
-                                            tree);
-                                    return updated.commit(oldSigner.publicKeyHash, signer, MaybeMultihash.empty(), network, tid);
-                                });
-                    }));
-        }, network.dhtClient);
+    public CompletableFuture<WriterData> changeKeys(SigningPrivateKeyAndPublicHash oldSigner,
+                                                    SigningPrivateKeyAndPublicHash signer,
+                                                    PublicBoxingKey followRequestReceiver,
+                                                    SymmetricKey currentKey,
+                                                    SymmetricKey newKey,
+                                                    SecretGenerationAlgorithm newAlgorithm,
+                                                    NetworkAccess network) {
+
+        network.synchronizer.putEmpty(oldSigner.publicKeyHash, signer.publicKeyHash);
+        return network.synchronizer.applyUpdate(oldSigner.publicKeyHash, signer,
+                (wd, tid) -> {
+                    Optional<UserStaticData> newEntryPoints = staticData
+                            .map(sd -> new UserStaticData(sd.getEntryPoints(currentKey), newKey));
+                    return network.dhtClient.putBoxingKey(oldSigner.publicKeyHash,
+                            oldSigner.secret.signatureOnly(followRequestReceiver.serialize()),
+                            followRequestReceiver, tid
+                    ).thenApply(boxerHash -> new WriterData(signer.publicKeyHash,
+                            Optional.of(newAlgorithm),
+                            publicData,
+                            Optional.of(new PublicKeyHash(boxerHash)),
+                            ownedKeys,
+                            namedOwnedKeys,
+                            newEntryPoints,
+                            tree));
+                })
+                .thenApply(cwd -> cwd.props);
     }
 
     public CompletableFuture<CommittedWriterData> commit(PublicKeyHash owner,

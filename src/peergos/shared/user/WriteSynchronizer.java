@@ -2,10 +2,11 @@ package peergos.shared.user;
 
 import peergos.shared.MaybeMultihash;
 import peergos.shared.cbor.CborObject;
+import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.mutable.HashCasPair;
 import peergos.shared.mutable.MutablePointers;
-import peergos.shared.storage.ContentAddressedStorage;
+import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
 import java.util.Collections;
@@ -52,15 +53,24 @@ public class WriteSynchronizer {
                         .thenCompose(x -> WriterData.getWriterData(x.get(), dht)));
     }
 
+    public CompletableFuture<CommittedWriterData> getValue(PublicKeyHash owner,
+                                                           PublicKeyHash writer) {
+        return pending.computeIfAbsent(new Pair<>(owner, writer), p -> new AsyncLock<>(getWriterData(owner, p.right)))
+                .runWithLock(CompletableFuture::completedFuture, () -> getWriterData(owner, writer));
+    }
+
     public CompletableFuture<CommittedWriterData> applyUpdate(PublicKeyHash owner,
-                                                              PublicKeyHash writer,
-                                                              Function<CommittedWriterData, CompletableFuture<CommittedWriterData>> updater) {
+                                                              SigningPrivateKeyAndPublicHash writer,
+                                                              Mutation transformer) {
         // This is subtle, but we need to ensure that there is only ever 1 thenAble waiting on the future for a given key
         // otherwise when the future completes, then the two or more waiters will both proceed with the existing hash,
         // and whoever commits first will win. We also need to retrieve the writer data again from the network after
-        // a previous transaction has completed (another node/user may have updated the mapping)
-        return pending.computeIfAbsent(new Pair<>(owner, writer), p -> new AsyncLock<>(getWriterData(owner, p.right)))
-                .runWithLock(current -> updater.apply(current), () -> getWriterData(owner, writer));
+        // a previous transaction has completed (another node/user with write access may have concurrently updated the mapping)
+        return pending.computeIfAbsent(new Pair<>(owner, writer.publicKeyHash), p -> new AsyncLock<>(getWriterData(owner, p.right)))
+                .runWithLock(current -> IpfsTransaction.call(owner,
+                        tid -> transformer.apply(current.props, tid)
+                                .thenCompose(wd -> wd.commit(owner, writer, current.hash, mutable, dht, tid)
+                                ), dht), () -> getWriterData(owner, writer.publicKeyHash));
     }
 
 }

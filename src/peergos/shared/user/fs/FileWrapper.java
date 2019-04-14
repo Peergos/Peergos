@@ -1178,19 +1178,15 @@ public class FileWrapper {
         PublicKeyHash owner = owner();
 
         network.synchronizer.putEmpty(owner, signer.publicKeyHash);
-        return IpfsTransaction.call(owner,
-                tid -> network.synchronizer.applyUpdate(owner, signer.publicKeyHash, wd2 ->
-                        WriterData.createEmpty(owner, signer, network.dhtClient)
-                                .thenCompose(wd -> wd.commit(owner, signer, MaybeMultihash.empty(), network, tid))),
-                network.dhtClient)
+        return network.synchronizer.applyUpdate(owner, signer, (wd, tid) -> CompletableFuture.completedFuture(wd))
                 .thenCompose(empty -> IpfsTransaction.call(owner,
-                    tid -> network.uploadChunk(newFileAccess, owner, getPointer().capability.getMapKey(), signer, tid)
-                        .thenCompose(ourNewHash -> copyAllChunks(false, cap, signer, tid, network)
-                                .thenCompose(y -> parent.getPointer().fileAccess.updateChildLink(parent.writableFilePointer(),
-                                        parent.entryWriter,
-                                        getPointer(),
-                                        newRetrievedCapability, network, random, hasher))
-                                .thenCompose(updatedParentDA -> deleteAllChunks(cap, signingPair(), tid, network)
+                        tid -> network.uploadChunk(newFileAccess, owner, getPointer().capability.getMapKey(), signer, tid)
+                                .thenCompose(ourNewHash -> copyAllChunks(false, cap, signer, network)
+                                        .thenCompose(y -> parent.getPointer().fileAccess.updateChildLink(parent.writableFilePointer(),
+                                                parent.entryWriter,
+                                                getPointer(),
+                                                newRetrievedCapability, network, random, hasher))
+                                        .thenCompose(updatedParentDA -> deleteAllChunks(cap, signingPair(), tid, network)
                                         .thenApply(x -> new FileWrapper(parent.pointer
                                                 .withCryptree(updatedParentDA), parent.entryWriter, parent.ownername)))
                                 .thenApply(updatedParent -> new Pair<>(new FileWrapper(newRetrievedCapability.withHash(ourNewHash),
@@ -1203,14 +1199,12 @@ public class FileWrapper {
      * @param includeFirst
      * @param currentCap
      * @param targetSigner
-     * @param tid
      * @param network
      * @return
      */
     private static CompletableFuture<Boolean> copyAllChunks(boolean includeFirst,
                                                             AbsoluteCapability currentCap,
                                                             SigningPrivateKeyAndPublicHash targetSigner,
-                                                            TransactionId tid,
                                                             NetworkAccess network) {
 
         return network.getMetadata(currentCap)
@@ -1219,12 +1213,12 @@ public class FileWrapper {
                         return CompletableFuture.completedFuture(true);
                     }
                     return (includeFirst ?
-                            network.addPreexistingChunk(mOpt.get(), currentCap.owner, currentCap.getMapKey(), targetSigner, tid) :
+                            network.addPreexistingChunk(mOpt.get(), currentCap.owner, currentCap.getMapKey(), targetSigner) :
                             CompletableFuture.completedFuture(true))
                             .thenCompose(b -> {
                                 CryptreeNode chunk = mOpt.get();
                                 byte[] nextChunkMapKey = chunk.getNextChunkLocation(currentCap.rBaseKey);
-                                return copyAllChunks(true, currentCap.withMapKey(nextChunkMapKey), targetSigner, tid, network);
+                                return copyAllChunks(true, currentCap.withMapKey(nextChunkMapKey), targetSigner, network);
                             })
                             .thenCompose(b -> {
                                 if (! mOpt.get().isDirectory())
@@ -1232,7 +1226,7 @@ public class FileWrapper {
                                 return mOpt.get().getDirectChildrenCapabilities(currentCap, network).thenCompose(childCaps ->
                                         Futures.reduceAll(childCaps,
                                                 true,
-                                                (x, cap) -> copyAllChunks(true, cap, targetSigner, tid, network),
+                                                (x, cap) -> copyAllChunks(true, cap, targetSigner, network),
                                                 (x, y) -> x && y));
                             });
                 });
@@ -1249,7 +1243,7 @@ public class FileWrapper {
                     }
                     SigningPrivateKeyAndPublicHash ourSigner = mOpt.get()
                             .getSigner(currentCap.rBaseKey, currentCap.wBaseKey.get(), Optional.of(signer));
-                    return network.deleteChunk(mOpt.get(), currentCap.owner, currentCap.getMapKey(), ourSigner, tid)
+                    return network.deleteChunk(mOpt.get(), currentCap.owner, currentCap.getMapKey(), ourSigner)
                             .thenCompose(b -> {
                                 CryptreeNode chunk = mOpt.get();
                                 byte[] nextChunkMapKey = chunk.getNextChunkLocation(currentCap.rBaseKey);
@@ -1299,11 +1293,8 @@ public class FileWrapper {
         if (parentSigner.publicKeyHash.equals(signerToRemove))
             return CompletableFuture.completedFuture(true);
 
-        return network.synchronizer.applyUpdate(owner, parentSigner.publicKeyHash, parentWriterData -> parentWriterData.props
-                        .removeOwnedKey(owner, parentSigner, signerToRemove, network.dhtClient)
-                        .thenCompose(updatedParentWD -> IpfsTransaction.call(owner,
-                                tid ->  updatedParentWD.commit(owner, parentSigner, parentWriterData.hash, network, tid)
-                                , network.dhtClient)))
+        return network.synchronizer.applyUpdate(owner, parentSigner, (parentWriterData, tid) -> parentWriterData
+                .removeOwnedKey(owner, parentSigner, signerToRemove, network.dhtClient))
                 .thenApply(cwd -> true);
     }
 

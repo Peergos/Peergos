@@ -17,7 +17,6 @@ public interface MutableTree {
      * @param sharingKey
      * @param mapKey
      * @param value
-     * @param tid
      * @return the new root hash of the tree
      * @throws IOException
      */
@@ -25,8 +24,7 @@ public interface MutableTree {
                                    SigningPrivateKeyAndPublicHash sharingKey,
                                    byte[] mapKey,
                                    MaybeMultihash existing,
-                                   Multihash value,
-                                   TransactionId tid);
+                                   Multihash value);
 
     /**
      *
@@ -49,8 +47,7 @@ public interface MutableTree {
     CompletableFuture<Boolean> remove(PublicKeyHash owner,
                                       SigningPrivateKeyAndPublicHash sharingKey,
                                       byte[] mapKey,
-                                      MaybeMultihash existing,
-                                      TransactionId tid);
+                                      MaybeMultihash existing);
 
 
     class CasException extends RuntimeException {

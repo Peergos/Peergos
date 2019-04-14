@@ -343,8 +343,8 @@ public class UserContext {
 
     private CompletableFuture<UserContext> init(Consumer<String> progressCallback) {
         progressCallback.accept("Retrieving Friends");
-        return writeSynchronizer.applyUpdate(signer.publicKeyHash, signer.publicKeyHash,
-                wd -> createFileTree(entrie, username, network, crypto.random, crypto.hasher)
+        return writeSynchronizer.getValue(signer.publicKeyHash, signer.publicKeyHash)
+                .thenCompose(wd -> createFileTree(entrie, username, network, crypto.random, crypto.hasher)
                         .thenCompose(root -> {
                             this.entrie = root;
                             return getByPath("/" + username + "/" + "shared")
@@ -353,8 +353,8 @@ public class UserContext {
                                             throw new IllegalStateException("Couldn't find shared folder!");
                                         return buildSharedWithCache(sharedOpt.get(), this::getUserRoot);
                                     });
-                        }).thenApply(b -> wd)
-        ).thenApply(res -> this);
+                        })
+                ).thenApply(res -> this);
     }
 
     public CompletableFuture<Boolean> buildSharedWithCache(FileWrapper sharedFolder, Supplier<CompletableFuture<FileWrapper>> homeDirSupplier) {
@@ -513,33 +513,35 @@ public class UserContext {
                                                 newPublicSigningKey,
                                                 tid),
                                         network.dhtClient
-                                ).thenCompose(newSignerHash ->
-                                        writeSynchronizer.applyUpdate(signer.publicKeyHash, signer.publicKeyHash, wd ->
-                                                wd.props.changeKeys(
-                                                        signer,
-                                                        new SigningPrivateKeyAndPublicHash(newSignerHash, updatedUser.getUser().secretSigningKey),
-                                                        wd.hash,
-                                                        updatedUser.getBoxingPair().publicBoxingKey,
-                                                        existingUser.getRoot(),
-                                                        updatedUser.getRoot(),
-                                                        newAlgorithm,
-                                                        network)
-                                        ).thenCompose(writerData -> {
-                                            SigningPrivateKeyAndPublicHash newUser =
-                                                    new SigningPrivateKeyAndPublicHash(newSignerHash, updatedUser.getUser().secretSigningKey);
-                                            return network.coreNode.getChain(username).thenCompose(existing -> {
-                                                List<Multihash> storage = existing.get(existing.size() - 1).claim.storageProviders;
-                                                List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createChain(signer, newUser, username, expiry, storage);
-                                                return network.coreNode.updateChain(username, claimChain)
-                                                        .thenCompose(updatedChain -> {
-                                                            if (!updatedChain)
-                                                                throw new IllegalStateException("Couldn't register new public keys during password change!");
+                                ).thenCompose(newSignerHash -> {
+                                    SigningPrivateKeyAndPublicHash newSigner =
+                                            new SigningPrivateKeyAndPublicHash(newSignerHash, updatedUser.getUser().secretSigningKey);
+                                    // auth new key by adding to existing writer data first
+                                    OwnerProof proof = OwnerProof.build(newSigner, signer.publicKeyHash);
+                                    return writeSynchronizer.applyUpdate(signer.publicKeyHash, signer, (wd, tid) ->
+                                            wd.addOwnedKey(signer.publicKeyHash, signer, proof, network.dhtClient))
+                                            .thenCompose(wd -> wd.props.changeKeys(signer,
+                                                    newSigner,
+                                                    updatedUser.getBoxingPair().publicBoxingKey,
+                                                    existingUser.getRoot(),
+                                                    updatedUser.getRoot(),
+                                                    newAlgorithm,
+                                                    network)).thenCompose(writerData -> {
+                                                SigningPrivateKeyAndPublicHash newUser =
+                                                        new SigningPrivateKeyAndPublicHash(newSignerHash, updatedUser.getUser().secretSigningKey);
+                                                return network.coreNode.getChain(username).thenCompose(existing -> {
+                                                    List<Multihash> storage = existing.get(existing.size() - 1).claim.storageProviders;
+                                                    List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createChain(signer, newUser, username, expiry, storage);
+                                                    return network.coreNode.updateChain(username, claimChain)
+                                                            .thenCompose(updatedChain -> {
+                                                                if (!updatedChain)
+                                                                    throw new IllegalStateException("Couldn't register new public keys during password change!");
 
-                                                            return UserContext.ensureSignedUp(username, newPassword, network, crypto);
-                                                        });
+                                                                return UserContext.ensureSignedUp(username, newPassword, network, crypto);
+                                                            });
+                                                });
                                             });
-                                        })
-                                );
+                                });
                             });
                 });
     }
@@ -564,7 +566,7 @@ public class UserContext {
             WritableAbsoluteCapability rootPointer =
                     new WritableAbsoluteCapability(owner.publicKeyHash, writerHash, rootMapKey, rootRKey, rootWKey);
             EntryPoint entry = new EntryPoint(rootPointer, this.username);
-            return addOwnedKeyAndCommit(writerWithHash, tid)
+            return addOwnedKeyAndCommit(writerWithHash)
                     .thenCompose(x -> {
                         long t2 = System.currentTimeMillis();
                         RelativeCapability nextChunk =
@@ -606,46 +608,36 @@ public class UserContext {
                                         .thenApply(boxer -> Optional.of(new Pair<>(signerOpt.get(), boxer))))));
     }
 
-    private CompletableFuture<CommittedWriterData> addOwnedKeyAndCommit(SigningPrivateKeyAndPublicHash owned,
-                                                                        TransactionId tid) {
-        return writeSynchronizer.applyUpdate(signer.publicKeyHash, signer.publicKeyHash, wd ->
-            wd.props.addOwnedKey(signer.publicKeyHash, signer, OwnerProof.build(owned, signer.publicKeyHash), network.dhtClient)
-                    .thenCompose(updated -> updated.commit(signer.publicKeyHash, signer, wd.hash, network, tid)));
+    private CompletableFuture<CommittedWriterData> addOwnedKeyAndCommit(SigningPrivateKeyAndPublicHash owned) {
+        return writeSynchronizer.applyUpdate(signer.publicKeyHash, signer,
+                (wd, tid) -> wd.addOwnedKey(signer.publicKeyHash, signer,
+                        OwnerProof.build(owned, signer.publicKeyHash), network.dhtClient));
     }
 
     public CompletableFuture<CommittedWriterData> addNamedOwnedKeyAndCommit(String keyName,
                                                                             SigningPrivateKeyAndPublicHash owned) {
-        return writeSynchronizer.applyUpdate(signer.publicKeyHash, signer.publicKeyHash, wd -> {
-            WriterData writerData = wd.props.addNamedKey(keyName, OwnerProof.build(owned, signer.publicKeyHash));
-            return IpfsTransaction.call(signer.publicKeyHash,
-                    tid -> writerData.commit(signer.publicKeyHash, signer, wd.hash, network, tid),
-                    network.dhtClient);
-        });
+        return writeSynchronizer.applyUpdate(signer.publicKeyHash, signer,
+                (wd, tid) -> CompletableFuture.completedFuture(wd.addNamedKey(keyName, OwnerProof.build(owned, signer.publicKeyHash))));
     }
 
     public CompletableFuture<CommittedWriterData> makePublic(FileWrapper file) {
         if (! file.getOwnerName().equals(username))
             return Futures.errored(new IllegalStateException("Only the owner of a file can make it public!"));
-        return writeSynchronizer.applyUpdate(signer.publicKeyHash, signer.publicKeyHash, wd -> file.getPath(network).thenCompose(path -> {
+        return writeSynchronizer.applyUpdate(signer.publicKeyHash, signer, (wd, tid) -> file.getPath(network).thenCompose(path -> {
             ensureAllowedToShare(file, username, false);
-            return IpfsTransaction.call(signer.publicKeyHash,
-                    tid -> {
-                        Optional<Multihash> publicData = wd.props.publicData;
+            Optional<Multihash> publicData = wd.publicData;
 
-                        Function<ByteArrayWrapper, byte[]> hasher = x -> Hash.sha256(x.data);
-                        CompletableFuture<ChampWrapper> champ = publicData.isPresent() ?
-                                ChampWrapper.create(publicData.get(), hasher, network.dhtClient) :
-                                ChampWrapper.create(signer.publicKeyHash, signer, hasher, tid, network.dhtClient);
+            Function<ByteArrayWrapper, byte[]> hasher = x -> Hash.sha256(x.data);
+            CompletableFuture<ChampWrapper> champ = publicData.isPresent() ?
+                    ChampWrapper.create(publicData.get(), hasher, network.dhtClient) :
+                    ChampWrapper.create(signer.publicKeyHash, signer, hasher, tid, network.dhtClient);
 
-                        AbsoluteCapability cap = file.getPointer().capability.readOnly();
-                        return network.dhtClient.put(signer.publicKeyHash, signer, cap.serialize(), tid)
-                                .thenCompose(capHash ->
-                                        champ.thenCompose(c -> c.put(signer.publicKeyHash, signer, path.getBytes(),
-                                                MaybeMultihash.empty(), capHash, tid))
-                                                .thenCompose(newRoot -> wd.props.withPublicRoot(newRoot)
-                                                        .commit(signer.publicKeyHash, signer, wd.hash, network, tid)));
-                    },
-                    network.dhtClient);
+            AbsoluteCapability cap = file.getPointer().capability.readOnly();
+            return network.dhtClient.put(signer.publicKeyHash, signer, cap.serialize(), tid)
+                    .thenCompose(capHash ->
+                            champ.thenCompose(c -> c.put(signer.publicKeyHash, signer, path.getBytes(),
+                                    MaybeMultihash.empty(), capHash, tid))
+                                    .thenApply(newRoot -> wd.withPublicRoot(newRoot)));
         }));
     }
 
@@ -979,18 +971,15 @@ public class UserContext {
                                                                                         SigningKeyPair newSignerPair,
                                                                                         NetworkAccess network) {
         byte[] signature = parentSigner.secret.signatureOnly(newSignerPair.publicSigningKey.serialize());
-        return IpfsTransaction.call(owner,
-                tid -> network.dhtClient.putSigningKey(signature, owner, parentSigner.publicKeyHash,
-                        newSignerPair.publicSigningKey, tid)
-                        .thenCompose(newSignerHash -> writeSynchronizer.applyUpdate(owner, parentSigner.publicKeyHash, wd -> {
-                                    SigningPrivateKeyAndPublicHash newSigner =
-                                            new SigningPrivateKeyAndPublicHash(newSignerHash, newSignerPair.secretSigningKey);
-                                    return wd.props.addOwnedKey(owner, parentSigner,
-                                            OwnerProof.build(newSigner, parentSigner.publicKeyHash), network.dhtClient)
-                                            .thenCompose(updated -> updated.commit(owner, parentSigner, wd.hash, network, tid));
-                                }).thenApply(cwd -> newSignerHash)
-                        ).thenApply(newSignerHash -> new SigningPrivateKeyAndPublicHash(newSignerHash, newSignerPair.secretSigningKey))
-                , network.dhtClient);
+        return writeSynchronizer.applyUpdate(owner, parentSigner,
+                (wd, tid) -> network.dhtClient.putSigningKey(signature, owner, parentSigner.publicKeyHash,
+                        newSignerPair.publicSigningKey, tid).thenCompose(newSignerHash -> {
+                    SigningPrivateKeyAndPublicHash newSigner =
+                            new SigningPrivateKeyAndPublicHash(newSignerHash, newSignerPair.secretSigningKey);
+                    return wd.addOwnedKey(owner, parentSigner,
+                            OwnerProof.build(newSigner, parentSigner.publicKeyHash), network.dhtClient);
+                }))
+                .thenApply(cwd -> new SigningPrivateKeyAndPublicHash(ContentAddressedStorage.hashKey(newSignerPair.publicSigningKey), newSignerPair.secretSigningKey));
     }
 
     /**
@@ -1005,11 +994,8 @@ public class UserContext {
                                                                                   SigningPrivateKeyAndPublicHash parentSigner,
                                                                                   PublicKeyHash toRemove,
                                                                                   NetworkAccess network) {
-        return IpfsTransaction.call(owner,
-                tid -> writeSynchronizer.applyUpdate(owner, parentSigner.publicKeyHash, wd ->
-                        wd.props.removeOwnedKey(owner, parentSigner, toRemove, network.dhtClient)
-                                .thenCompose(updated -> updated.commit(owner, parentSigner, wd.hash, network, tid))),
-                network.dhtClient);
+        return writeSynchronizer.applyUpdate(owner, parentSigner,
+                (wd, tid) -> wd.removeOwnedKey(owner, parentSigner, toRemove, network.dhtClient));
     }
 
     private CompletableFuture<Boolean> updatedSharedWithCache(FileWrapper file, Set<String> usersToAdd,
@@ -1035,25 +1021,25 @@ works
     }
 
  */
-    @JsMethod
-    public CompletableFuture<CommittedWriterData> uploadFile(String path,
-                                                     FileWrapper directory,
-                                                     String filename,
-                                                     AsyncReader fileData,
-                                                     int lengthHi,
-                                                     int lengthLow,
-                                                     boolean overwriteExisting,
-                                                     ProgressConsumer<Long> monitor) {
-        System.out.println("KEV in here");
-
-        return writeSynchronizer.applyUpdate(directory.owner(), directory.writer(),
-                wd ->
-                    getUpdatedDirectory(path, this).thenCompose(dir ->
-                        dir.uploadFile(filename, fileData, lengthHi, lengthLow, overwriteExisting,
-                            this.network, this.crypto.random, this.crypto.hasher, monitor, this.transactionService)
-                        .thenCompose(b -> writeSynchronizer.getWriterData(directory.owner(), directory.writer())))
-        );
-    }
+//    @JsMethod
+//    public CompletableFuture<CommittedWriterData> uploadFile(String path,
+//                                                     FileWrapper directory,
+//                                                     String filename,
+//                                                     AsyncReader fileData,
+//                                                     int lengthHi,
+//                                                     int lengthLow,
+//                                                     boolean overwriteExisting,
+//                                                     ProgressConsumer<Long> monitor) {
+//        System.out.println("KEV in here");
+//
+//        return writeSynchronizer.applyUpdate(directory.owner(), directory.writer(),
+//                wd ->
+//                    getUpdatedDirectory(path, this).thenCompose(dir ->
+//                        dir.uploadFile(filename, fileData, lengthHi, lengthLow, overwriteExisting,
+//                            this.network, this.crypto.random, this.crypto.hasher, monitor, this.transactionService)
+//                        .thenCompose(b -> writeSynchronizer.getWriterData(directory.owner(), directory.writer())))
+//        );
+//    }
 
     /*
     public CompletableFuture<FileWrapper> uploadFile(FileWrapper directory,
@@ -1107,17 +1093,13 @@ works
     }
 
     private synchronized CompletableFuture<TrieNode> addRootEntryPointAndCommit(TrieNode root, EntryPoint entry) {
-        return writeSynchronizer.applyUpdate(signer.publicKeyHash, signer.publicKeyHash, wd -> {
-            Optional<UserStaticData> updated = wd.props.staticData.map(sd -> {
+        return writeSynchronizer.applyUpdate(signer.publicKeyHash, signer, (wd, tid) -> {
+            Optional<UserStaticData> updated = wd.staticData.map(sd -> {
                 List<EntryPoint> entryPoints = sd.getEntryPoints(rootKey);
                 entryPoints.add(entry);
                 return new UserStaticData(entryPoints, rootKey);
             });
-            return IpfsTransaction.call(signer.publicKeyHash,
-                    tid -> wd.props.withStaticData(updated)
-                            .commit(signer.publicKeyHash, signer, wd.hash, network, tid),
-                    network.dhtClient
-            );
+            return CompletableFuture.completedFuture(wd.withStaticData(updated));
         }).thenCompose(res -> addRetrievedEntryPointToTrie(username, root, entry, "/" + username,
                 network, crypto.random, crypto.hasher));
     }
