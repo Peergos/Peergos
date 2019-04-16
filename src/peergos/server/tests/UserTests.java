@@ -298,24 +298,26 @@ public abstract class UserTests {
         checkFileContents(data3, renamed.get(), context);
     }
 
-//
-//    @Test
-//    public void kevTest() throws Exception {
-//        String username = generateUsername();
-//        String password = "test";
-//        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
-//        FileWrapper userRoot = context.getUserRoot().get();
-//
-//        String filename = "somedata.txt";
-//        // write empty file
-//        byte[] data = new byte[0];
-//
-//        context.uploadFile("/" + username, userRoot, filename, new AsyncReader.ArrayBacked(data),
-//                0,data.length, false, l -> {}).get();
-//        checkFileContents(data, context.getUserRoot().get().getDescendentByPath(filename, context.network).get().get(), context);
-//
-//        System.out.println("done");
-//    }
+    @Test
+    public void concurrentUploadSucceeds() {
+        String username = generateUsername();
+        String password = "test";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        FileWrapper userRoot = context.getUserRoot().join();
+        FileWrapper userRootCopy = context.getUserRoot().join();
+
+        String filename = "file1.bin";
+        byte[] data = randomData(6*1024*1024);
+        userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data), 0,data.length, false,
+                network, crypto.random, crypto.hasher, l -> {}, context.getTransactionService()).join();
+        checkFileContents(data, context.getUserRoot().join().getDescendentByPath(filename, context.network).join().get(), context);
+
+        String file2name = "file2.bin";
+        byte[] data2 = randomData(6*1024*1024);
+        userRootCopy.uploadFile(file2name, new AsyncReader.ArrayBacked(data2), 0,data2.length, false,
+                network, crypto.random, crypto.hasher, l -> {}, context.getTransactionService()).join();
+        checkFileContents(data2, context.getUserRoot().join().getDescendentByPath(file2name, context.network).join().get(), context);
+    }
 
     @Test
     public void renameFile() throws Exception {

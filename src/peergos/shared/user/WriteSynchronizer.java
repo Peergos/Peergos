@@ -67,10 +67,21 @@ public class WriteSynchronizer {
         // and whoever commits first will win. We also need to retrieve the writer data again from the network after
         // a previous transaction has completed (another node/user with write access may have concurrently updated the mapping)
         return pending.computeIfAbsent(new Pair<>(owner, writer.publicKeyHash), p -> new AsyncLock<>(getWriterData(owner, p.right)))
-                .runWithLock(current -> IpfsTransaction.call(owner,
-                        tid -> transformer.apply(current.props, tid)
-                                .thenCompose(wd -> wd.commit(owner, writer, current.hash, mutable, dht, tid)
-                                ), dht), () -> getWriterData(owner, writer.publicKeyHash));
+                .runWithLock(current -> IpfsTransaction.call(owner, tid -> transformer.apply(current.props, tid)
+                                .thenCompose(wd -> wd.commit(owner, writer, current.hash, mutable, dht, tid)), dht),
+                        () -> getWriterData(owner, writer.publicKeyHash));
     }
 
+    public CompletableFuture<CommittedWriterData> applyComplexUpdate(PublicKeyHash owner,
+                                                                     SigningPrivateKeyAndPublicHash writer,
+                                                                     ComplexMutation transformer) {
+        return pending.computeIfAbsent(new Pair<>(owner, writer.publicKeyHash), p -> new AsyncLock<>(getWriterData(owner, p.right)))
+                .runWithLock(current -> transformer.apply(current,
+                        (wd, existing, tid) -> wd.commit(owner, writer, existing, mutable, dht, tid)),
+                        () -> getWriterData(owner, writer.publicKeyHash));
+    }
+
+    public interface Committer {
+        CompletableFuture<CommittedWriterData> commit(WriterData wd, MaybeMultihash existing, TransactionId tid);
+    }
 }

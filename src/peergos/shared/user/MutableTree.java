@@ -17,7 +17,7 @@ public interface MutableTree {
      * @param sharingKey
      * @param mapKey
      * @param value
-     * @return the new root hash of the tree
+     * @return true when complete
      * @throws IOException
      */
     CompletableFuture<Boolean> put(PublicKeyHash owner,
@@ -28,13 +28,42 @@ public interface MutableTree {
 
     /**
      *
+     * @param base
      * @param owner
      * @param sharingKey
+     * @param mapKey
+     * @param value
+     * @return the new root WriterData
+     * @throws IOException
+     */
+    CompletableFuture<WriterData> put(WriterData base,
+                                   PublicKeyHash owner,
+                                   SigningPrivateKeyAndPublicHash sharingKey,
+                                   byte[] mapKey,
+                                   MaybeMultihash existing,
+                                   Multihash value,
+                                   TransactionId tid);
+
+    /**
+     *
+     * @param owner
+     * @param writer
      * @param mapKey
      * @return  the value stored under mapKey for sharingKey
      * @throws IOException
      */
-    CompletableFuture<MaybeMultihash> get(PublicKeyHash owner, PublicKeyHash sharingKey, byte[] mapKey);
+    CompletableFuture<MaybeMultihash> get(PublicKeyHash owner, PublicKeyHash writer, byte[] mapKey);
+
+    /**
+     *
+     * @param base The WriterData at the current mutable pointer for the writer
+     * @param owner
+     * @param writer
+     * @param mapKey
+     * @return  the value stored under mapKey for sharingKey
+     * @throws IOException
+     */
+    CompletableFuture<MaybeMultihash> get(WriterData base, PublicKeyHash owner, PublicKeyHash writer, byte[] mapKey);
 
     /**
      *

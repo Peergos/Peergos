@@ -8,6 +8,7 @@ import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
+import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
@@ -153,6 +154,16 @@ public class CryptreeNode implements Cborable {
                     .thenCompose(hashes -> dir.commit(us, entryWriter, network, tid));
         }
 
+        public CompletableFuture<CommittedWriterData> commit(CommittedWriterData current,
+                                                             WriteSynchronizer.Committer committer,
+                                                             WritableAbsoluteCapability us,
+                                                             Optional<SigningPrivateKeyAndPublicHash> entryWriter,
+                                                             NetworkAccess network,
+                                                             TransactionId tid) {
+            return commitChildrenLinks(us, entryWriter, network, tid)
+                    .thenCompose(hashes -> dir.commit(current, committer, us, entryWriter, network, tid));
+        }
+
         public CompletableFuture<List<Multihash>> commitChildrenLinks(WritableAbsoluteCapability us,
                                                                       Optional<SigningPrivateKeyAndPublicHash> entryWriter,
                                                                       NetworkAccess network,
@@ -287,6 +298,15 @@ public class CryptreeNode implements Cborable {
                         .thenApply(HashSet::new));
     }
 
+    public CompletableFuture<Set<RetrievedCapability>> getDirectChildren(WriterData base, AbsoluteCapability us, NetworkAccess network) {
+        Map<PublicKeyHash, WriterData> existing = new HashMap<>();
+        existing.put(us.writer, base);
+        return getDirectChildrenCapabilities(us, network)
+                .thenCompose(c -> network.retrieveAllMetadata(c.stream()
+                        .collect(Collectors.toList()), existing)
+                        .thenApply(HashSet::new));
+    }
+
     public CompletableFuture<Set<RetrievedCapability>> getChildren(NetworkAccess network,
                                                                    AbsoluteCapability us) {
         CompletableFuture<Set<RetrievedCapability>> childrenFuture = getDirectChildren(us, network);
@@ -296,6 +316,28 @@ public class CryptreeNode implements Cborable {
         return childrenFuture.thenCompose(children -> moreChildrenFuture.thenCompose(moreChildrenSource -> {
                     CompletableFuture<Set<RetrievedCapability>> moreChildren = moreChildrenSource
                             .map(d -> d.fileAccess.getChildren(network, d.capability))
+                            .orElse(CompletableFuture.completedFuture(Collections.emptySet()));
+                    return moreChildren.thenApply(moreRetrievedChildren -> {
+                        Set<RetrievedCapability> results = Stream.concat(
+                                children.stream(),
+                                moreRetrievedChildren.stream())
+                                .collect(Collectors.toSet());
+                        return results;
+                    });
+                })
+        );
+    }
+
+    public CompletableFuture<Set<RetrievedCapability>> getChildren(WriterData base,
+                                                                   NetworkAccess network,
+                                                                   AbsoluteCapability us) {
+        CompletableFuture<Set<RetrievedCapability>> childrenFuture = getDirectChildren(base, us, network);
+
+        CompletableFuture<Optional<RetrievedCapability>> moreChildrenFuture = getNextChunk(base, us, network);
+
+        return childrenFuture.thenCompose(children -> moreChildrenFuture.thenCompose(moreChildrenSource -> {
+                    CompletableFuture<Set<RetrievedCapability>> moreChildren = moreChildrenSource
+                            .map(d -> d.fileAccess.getChildren(base, network, d.capability))
                             .orElse(CompletableFuture.completedFuture(Collections.emptySet()));
                     return moreChildren.thenApply(moreRetrievedChildren -> {
                         Set<RetrievedCapability> results = Stream.concat(
@@ -323,6 +365,23 @@ public class CryptreeNode implements Cborable {
                         .thenApply(b -> updated),
                 network.dhtClient);
 
+    }
+
+    public CompletableFuture<CommittedWriterData> updateProperties(CommittedWriterData base,
+                                                                   WriteSynchronizer.Committer committer,
+                                                                   WritableAbsoluteCapability us,
+                                                                   Optional<SigningPrivateKeyAndPublicHash> entryWriter,
+                                                                   FileProperties newProps,
+                                                                   NetworkAccess network) {
+
+        SymmetricKey parentKey = getParentKey(us.rBaseKey);
+        FromParent parentBlock = getParentBlock(parentKey);
+        FromParent newParentBlock = new FromParent(parentBlock.parentLink, newProps);
+        CryptreeNode updated = new CryptreeNode(lastCommittedHash, isDirectory, fromBaseKey, childrenOrData,
+                PaddedCipherText.build(parentKey, newParentBlock, META_DATA_PADDING_BLOCKSIZE));
+        return IpfsTransaction.call(us.owner,
+                tid -> network.uploadChunk(base, committer, updated, us.owner, us.getMapKey(), getSigner(us.rBaseKey, us.wBaseKey.get(), entryWriter), tid),
+                network.dhtClient);
     }
 
     public boolean isDirty(SymmetricKey baseKey) {
@@ -383,6 +442,11 @@ public class CryptreeNode implements Cborable {
         return network.retrieveMetadata(us.withMapKey(getNextChunkLocation(us.rBaseKey)));
     }
 
+    public CompletableFuture<Optional<RetrievedCapability>> getNextChunk(WriterData base, AbsoluteCapability us, NetworkAccess network) {
+        return network.retrieveMetadata(base, us.withMapKey(getNextChunkLocation(us.rBaseKey)))
+                .thenApply(faOpt -> faOpt.map(fa -> new RetrievedCapability(us, fa)));
+    }
+
     public CompletableFuture<CryptreeNode> rotateBaseReadKey(WritableAbsoluteCapability us,
                                                              Optional<SigningPrivateKeyAndPublicHash> entryWriter,
                                                              RelativeCapability toParent,
@@ -419,14 +483,16 @@ public class CryptreeNode implements Cborable {
                 network.dhtClient);
     }
 
-    public CompletableFuture<CryptreeNode> cleanAndCommit(WritableAbsoluteCapability cap,
-                                                        SigningPrivateKeyAndPublicHash writer,
-                                                        SymmetricKey newDataKey,
-                                                        Location parentLocation,
-                                                        SymmetricKey parentParentKey,
-                                                        NetworkAccess network,
-                                                        SafeRandom random,
-                                                        Hasher hasher) {
+    public CompletableFuture<CommittedWriterData> cleanAndCommit(CommittedWriterData current,
+                                                                 WriteSynchronizer.Committer committer,
+                                                                 WritableAbsoluteCapability cap,
+                                                                 SigningPrivateKeyAndPublicHash writer,
+                                                                 SymmetricKey newDataKey,
+                                                                 Location parentLocation,
+                                                                 SymmetricKey parentParentKey,
+                                                                 NetworkAccess network,
+                                                                 SafeRandom random,
+                                                                 Hasher hasher) {
         FileProperties props = getProperties(cap.rBaseKey);
         AbsoluteCapability nextCap = cap.withMapKey(getNextChunkLocation(cap.rBaseKey));
         return retriever(cap.rBaseKey).getFile(network, random, cap, props.size, committedHash(), x -> {})
@@ -440,16 +506,18 @@ public class CryptreeNode implements Cborable {
 
                                 Chunk chunk = new Chunk(chunkData, newDataKey, mapKey, nonce);
                                 LocatedChunk locatedChunk = new LocatedChunk(cap.getLocation(), lastCommittedHash, chunk);
-                                return FileUploader.uploadChunk(writer, props, parentLocation, parentParentKey, cap.rBaseKey, locatedChunk,
-                                        nextCap.getLocation(), getWriterLink(cap.rBaseKey), hasher, network, x -> {});
-                            }).thenCompose(h -> network.getMetadata(nextCap));
-                }).thenCompose(mOpt -> {
-                    if (! mOpt.isPresent())
-                        return CompletableFuture.completedFuture(null);
-                    return mOpt.get().cleanAndCommit(cap.withMapKey(nextCap.getMapKey()),
-                            writer, newDataKey, parentLocation, parentParentKey, network, random, hasher);
-                }).thenCompose(x -> network.getMetadata(cap))
-                .thenApply(opt -> opt.get());
+                                return FileUploader.uploadChunk(current, committer, writer, props, parentLocation,
+                                        parentParentKey, cap.rBaseKey, locatedChunk,
+                                        nextCap.getLocation(), getWriterLink(cap.rBaseKey), hasher, network, x -> {
+                                        });
+                            });
+                }).thenCompose(updated -> network.retrieveMetadata(updated.props, nextCap)
+                        .thenCompose(mOpt -> {
+                            if (! mOpt.isPresent())
+                                return CompletableFuture.completedFuture(updated);
+                            return mOpt.get().cleanAndCommit(updated, committer, cap.withMapKey(nextCap.getMapKey()),
+                                    writer, newDataKey, parentLocation, parentParentKey, network, random, hasher);
+                        }));
     }
 
     public CompletableFuture<CryptreeNode> addChildAndCommit(RelativeCapability targetCAP,
@@ -459,6 +527,17 @@ public class CryptreeNode implements Cborable {
                                                           SafeRandom random,
                                                           Hasher hasher) {
         return addChildrenAndCommit(Arrays.asList(targetCAP), us, entryWriter, network, random, hasher);
+    }
+
+    public CompletableFuture<CommittedWriterData> addChildAndCommit(CommittedWriterData current,
+                                                                    WriteSynchronizer.Committer committer,
+                                                                    RelativeCapability targetCAP,
+                                                                    WritableAbsoluteCapability us,
+                                                                    Optional<SigningPrivateKeyAndPublicHash> entryWriter,
+                                                                    NetworkAccess network,
+                                                                    SafeRandom random,
+                                                                    Hasher hasher) {
+        return addChildrenAndCommit(current, committer, Arrays.asList(targetCAP), us, entryWriter, network, random, hasher);
     }
 
     public CompletableFuture<CryptreeNode> addChildrenAndCommit(List<RelativeCapability> targetCAPs,
@@ -515,6 +594,65 @@ public class CryptreeNode implements Cborable {
                 return IpfsTransaction.call(us.owner,
                         tid -> withChildren(us.rBaseKey, new ChildrenLinks(newFiles), hasher)
                                 .commit(us, entryWriter, network, tid), network.dhtClient);
+            }
+        });
+    }public CompletableFuture<CommittedWriterData> addChildrenAndCommit(CommittedWriterData current,
+                                                                       WriteSynchronizer.Committer committer,
+                                                                       List<RelativeCapability> targetCAPs,
+                                                                       WritableAbsoluteCapability us,
+                                                                       Optional<SigningPrivateKeyAndPublicHash> entryWriter,
+                                                                       NetworkAccess network,
+                                                                       SafeRandom random,
+                                                                       Hasher hasher) {
+        // Make sure subsequent blobs use a different transaction to obscure linkage of different parts of this dir
+        return getDirectChildren(us.rBaseKey, network).thenCompose(children -> {
+            if (children.size() + targetCAPs.size() > getMaxChildLinksPerBlob()) {
+                return getNextChunk(us, network).thenCompose(nextMetablob -> {
+                    if (nextMetablob.isPresent()) {
+                        AbsoluteCapability nextPointer = nextMetablob.get().capability;
+                        CryptreeNode nextBlob = nextMetablob.get().fileAccess;
+                        return nextBlob.addChildrenAndCommit(current, committer, targetCAPs,
+                                nextPointer.toWritable(us.wBaseKey.get()), entryWriter, network, random, hasher);
+                    } else {
+                        // first fill this directory, then overflow into a new one
+                        int freeSlots = getMaxChildLinksPerBlob() - children.size();
+                        List<RelativeCapability> addToUs = targetCAPs.subList(0, freeSlots);
+                        List<RelativeCapability> addToNext = targetCAPs.subList(freeSlots, targetCAPs.size());
+                        return addChildrenAndCommit(current, committer, addToUs, us, entryWriter, network, random, hasher)
+                                .thenCompose(newBase -> {
+                                    // create and upload new metadata blob
+                                    SymmetricKey nextSubfoldersKey = us.rBaseKey;
+                                    SymmetricKey ourParentKey = getParentKey(us.rBaseKey);
+                                    Optional<RelativeCapability> parentCap = getParentBlock(ourParentKey).parentLink;
+                                    RelativeCapability nextChunk = RelativeCapability.buildSubsequentChunk(random.randomBytes(32), nextSubfoldersKey);
+                                    List<RelativeCapability> addToNextChunk = addToNext.stream()
+                                            .limit(getMaxChildLinksPerBlob())
+                                            .collect(Collectors.toList());
+                                    List<RelativeCapability> remaining = addToNext.stream()
+                                            .skip(getMaxChildLinksPerBlob())
+                                            .collect(Collectors.toList());
+                                    DirAndChildren next = CryptreeNode.createDir(MaybeMultihash.empty(), nextSubfoldersKey,
+                                            null, Optional.empty(), FileProperties.EMPTY, parentCap,
+                                            ourParentKey, nextChunk, new ChildrenLinks(addToNextChunk), hasher);
+                                    byte[] nextMapKey = getNextChunkLocation(us.rBaseKey);
+                                    WritableAbsoluteCapability nextPointer = new WritableAbsoluteCapability(us.owner,
+                                            us.writer, nextMapKey, nextSubfoldersKey, us.wBaseKey.get());
+                                    return IpfsTransaction.call(us.owner,
+                                            tid -> next.commit(newBase, committer, nextPointer, entryWriter, network, tid)
+                                                    .thenCompose(updatedBase -> addChildrenAndCommit(
+                                                            updatedBase, committer, remaining,
+                                                            nextPointer, entryWriter, network, random, hasher))
+                                            , network.dhtClient);
+                                });
+                    }
+                });
+            } else {
+                ArrayList<RelativeCapability> newFiles = new ArrayList<>(children);
+                newFiles.addAll(targetCAPs);
+
+                return IpfsTransaction.call(us.owner,
+                        tid -> withChildren(us.rBaseKey, new ChildrenLinks(newFiles), hasher)
+                                .commit(current, committer, us, entryWriter, network, tid), network.dhtClient);
             }
         });
     }
@@ -653,7 +791,14 @@ public class CryptreeNode implements Cborable {
                 .thenApply(this::withHash);
     }
 
-
+    public CompletableFuture<CommittedWriterData> commit(CommittedWriterData current,
+                                                         WriteSynchronizer.Committer committer,
+                                                         WritableAbsoluteCapability us,
+                                                         Optional<SigningPrivateKeyAndPublicHash> entryWriter,
+                                                         NetworkAccess network,
+                                                         TransactionId tid) {
+        return network.uploadChunk(current, committer, this, us.owner, us.getMapKey(), getSigner(us.rBaseKey, us.wBaseKey.get(), entryWriter), tid);
+    }
 
     public boolean hasParentLink(SymmetricKey baseKey) {
         SymmetricKey parentKey = getParentKey(baseKey);

@@ -1006,67 +1006,6 @@ public class UserContext {
         return res;
     }
 
-/*
-works
-    public CompletableFuture<FileWrapper> uploadFile(FileWrapper directory,
-                                                     String filename,
-                                                     AsyncReader fileData,
-                                                     int lengthHi,
-                                                     int lengthLow,
-                                                     boolean overwriteExisting,
-                                                     ProgressConsumer<Long> monitor) {
-        System.out.println("KEV in here");
-        return directory.uploadFile(filename, fileData, lengthHi, lengthLow, overwriteExisting,
-                                this.network, this.crypto.random, this.crypto.hasher, monitor, this.transactionService);
-    }
-
- */
-//    @JsMethod
-//    public CompletableFuture<CommittedWriterData> uploadFile(String path,
-//                                                     FileWrapper directory,
-//                                                     String filename,
-//                                                     AsyncReader fileData,
-//                                                     int lengthHi,
-//                                                     int lengthLow,
-//                                                     boolean overwriteExisting,
-//                                                     ProgressConsumer<Long> monitor) {
-//        System.out.println("KEV in here");
-//
-//        return writeSynchronizer.applyUpdate(directory.owner(), directory.writer(),
-//                wd ->
-//                    getUpdatedDirectory(path, this).thenCompose(dir ->
-//                        dir.uploadFile(filename, fileData, lengthHi, lengthLow, overwriteExisting,
-//                            this.network, this.crypto.random, this.crypto.hasher, monitor, this.transactionService)
-//                        .thenCompose(b -> writeSynchronizer.getWriterData(directory.owner(), directory.writer())))
-//        );
-//    }
-
-    /*
-    public CompletableFuture<FileWrapper> uploadFile(FileWrapper directory,
-                                                     String filename,
-                                                     AsyncReader fileData,
-                                                     int lengthHi,
-                                                     int lengthLow,
-                                                     boolean overwriteExisting,
-                                                     ProgressConsumer<Long> monitor) {
-        System.out.println("KEV in here");
-        return writeSynchronizer.applyUpdate(directory.owner(), directory.writer(),
-                wd -> getUpdatedDirectory(directory, this)
-                        .thenCompose(dir -> dir.uploadFile(filename, fileData, lengthHi, lengthLow, overwriteExisting,
-                                this.network, this.crypto.random, this.crypto.hasher, monitor, this.transactionService))
-                        //.thenCompose(b -> writeSynchronizer.getWriterData(directory.owner(), directory.writer()))
-                        .thenApply(b -> wd)
-        ).thenCompose(res -> getUpdatedDirectory(directory, this));
-    }
-    */
-    private CompletableFuture<FileWrapper> getUpdatedDirectory(String path, UserContext context) {
-        return context.getByPath(path).thenApply(opt -> {
-                    if(! opt.isPresent())
-                        throw new IllegalStateException("Directory not found: " + path);
-                    return opt.get();
-                });
-    }
-
     @JsMethod
     public CompletableFuture<Boolean> shareReadAccessWith(FileWrapper file, String usernameToGrantReadAccess) {
         Set<String> readersToAdd = new HashSet<>();

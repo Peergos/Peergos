@@ -609,7 +609,7 @@ public class PeergosNetworkUtils {
         Assert.assertTrue("File present through link", fileThroughLink.isPresent());
     }
 
-    public static UserContext ensureSignedUp(String username, String password, NetworkAccess network, Crypto crypto) throws Exception {
-        return UserContext.ensureSignedUp(username, password, network, crypto).get();
+    public static UserContext ensureSignedUp(String username, String password, NetworkAccess network, Crypto crypto) {
+        return UserContext.ensureSignedUp(username, password, network, crypto).join();
     }
 }

@@ -39,29 +39,43 @@ public class MutableTreeImpl implements MutableTree {
                                           byte[] mapKey,
                                           MaybeMultihash existing,
                                           Multihash value) {
-        return synchronizer.applyUpdate(owner, writer, (wd, tid) -> {
-            return (wd.tree.isPresent() ?
-                    ChampWrapper.create(wd.tree.get(), hasher, dht) :
-                    ChampWrapper.create(owner, writer, x -> x.data, tid, dht)
-            ).thenCompose(tree -> tree.put(owner, writer, mapKey, existing, value, tid))
-                    .thenApply(newRoot -> LOGGING ? log(newRoot, "TREE.put (" + ArrayOps.bytesToHex(mapKey)
-                            + ", " + value + ") => CAS(" + wd.tree + ", " + newRoot + ")") : newRoot)
-                    .thenApply(newTreeRoot -> wd.withChamp(newTreeRoot));
-        }).thenApply(x -> true);
+        return synchronizer.applyUpdate(owner, writer,
+                (wd, tid) -> put(wd, owner, writer, mapKey, existing, value, tid))
+                .thenApply(x -> true);
+    }
+
+    @Override
+    public CompletableFuture<WriterData> put(WriterData base,
+                                             PublicKeyHash owner,
+                                             SigningPrivateKeyAndPublicHash writer,
+                                             byte[] mapKey,
+                                             MaybeMultihash existing,
+                                             Multihash value,
+                                             TransactionId tid) {
+        return (base.tree.isPresent() ?
+                ChampWrapper.create(base.tree.get(), hasher, dht) :
+                ChampWrapper.create(owner, writer, x -> x.data, tid, dht)
+        ).thenCompose(tree -> tree.put(owner, writer, mapKey, existing, value, tid))
+                .thenApply(newRoot -> LOGGING ? log(newRoot, "TREE.put (" + ArrayOps.bytesToHex(mapKey)
+                        + ", " + value + ") => CAS(" + base.tree + ", " + newRoot + ")") : newRoot)
+                .thenApply(base::withChamp);
     }
 
     @Override
     public CompletableFuture<MaybeMultihash> get(PublicKeyHash owner, PublicKeyHash writer, byte[] mapKey) {
         return synchronizer.getValue(owner, writer)
-                .thenCompose(old -> synchronizer.getWriterData(owner, writer).thenCompose(committed -> {
-                    WriterData holder = committed.props;
-                    if (! holder.tree.isPresent())
-                        throw new IllegalStateException("Tree root not present for " + writer);
-                    return ChampWrapper.create(holder.tree.get(), hasher, dht).thenCompose(tree -> tree.get(mapKey))
-                            .thenApply(maybe -> LOGGING ?
-                                    log(maybe, "TREE.get (" + ArrayOps.bytesToHex(mapKey)
-                                            + ", root="+holder.tree.get()+" => " + maybe) : maybe);
-                }));
+                .thenCompose(old -> synchronizer.getWriterData(owner, writer)
+                        .thenCompose(committed -> get(committed.props, owner, writer, mapKey)));
+    }
+
+    @Override
+    public CompletableFuture<MaybeMultihash> get(WriterData base, PublicKeyHash owner, PublicKeyHash writer, byte[] mapKey) {
+        if (! base.tree.isPresent())
+            throw new IllegalStateException("Tree root not present for " + writer);
+        return ChampWrapper.create(base.tree.get(), hasher, dht).thenCompose(tree -> tree.get(mapKey))
+                .thenApply(maybe -> LOGGING ?
+                        log(maybe, "TREE.get (" + ArrayOps.bytesToHex(mapKey)
+                                + ", root="+base.tree.get()+" => " + maybe) : maybe);
     }
 
     @Override
