@@ -20,11 +20,11 @@ public interface MutableTree {
      * @return true when complete
      * @throws IOException
      */
-    CompletableFuture<Boolean> put(PublicKeyHash owner,
-                                   SigningPrivateKeyAndPublicHash sharingKey,
-                                   byte[] mapKey,
-                                   MaybeMultihash existing,
-                                   Multihash value);
+    CompletableFuture<CommittedWriterData> put(PublicKeyHash owner,
+                                                       SigningPrivateKeyAndPublicHash sharingKey,
+                                                       byte[] mapKey,
+                                                       MaybeMultihash existing,
+                                                       Multihash value);
 
     /**
      *
@@ -37,12 +37,12 @@ public interface MutableTree {
      * @throws IOException
      */
     CompletableFuture<WriterData> put(WriterData base,
-                                   PublicKeyHash owner,
-                                   SigningPrivateKeyAndPublicHash sharingKey,
-                                   byte[] mapKey,
-                                   MaybeMultihash existing,
-                                   Multihash value,
-                                   TransactionId tid);
+                                      PublicKeyHash owner,
+                                      SigningPrivateKeyAndPublicHash sharingKey,
+                                      byte[] mapKey,
+                                      MaybeMultihash existing,
+                                      Multihash value,
+                                      TransactionId tid);
 
     /**
      *

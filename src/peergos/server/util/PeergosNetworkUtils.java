@@ -44,8 +44,7 @@ public class PeergosNetworkUtils {
     public static void checkFileContents(byte[] expected, FileWrapper f, UserContext context) throws Exception {
         long size = f.getFileProperties().size;
         byte[] retrievedData = Serialize.readFully(f.getInputStream(context.network, context.crypto.random,
-                size, l -> {
-                }).get(), f.getSize()).get();
+                size, l -> {}).get(), f.getSize()).get();
         assertEquals(expected.length, size);
         assertTrue("Correct contents", Arrays.equals(retrievedData, expected));
     }

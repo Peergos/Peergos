@@ -415,12 +415,12 @@ public class NetworkAccess {
     }
 
     public CompletableFuture<CommittedWriterData> uploadChunk(CommittedWriterData current,
-                                                    WriteSynchronizer.Committer committer,
-                                                    CryptreeNode metadata,
-                                                    PublicKeyHash owner,
-                                                    byte[] mapKey,
-                                                    SigningPrivateKeyAndPublicHash writer,
-                                                    TransactionId tid) {
+                                                              WriteSynchronizer.Committer committer,
+                                                              CryptreeNode metadata,
+                                                              PublicKeyHash owner,
+                                                              byte[] mapKey,
+                                                              SigningPrivateKeyAndPublicHash writer,
+                                                              TransactionId tid) {
         try {
             System.out.println("Uploading chunk: " + (metadata.isDirectory() ? "dir" : "file")
                     + " at " + ArrayOps.bytesToHex(mapKey)

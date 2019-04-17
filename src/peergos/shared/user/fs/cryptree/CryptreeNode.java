@@ -658,14 +658,16 @@ public class CryptreeNode implements Cborable {
     }
 
     // returns pointer to new child directory
-    public CompletableFuture<RelativeCapability> mkdir(String name,
-                                                       NetworkAccess network,
-                                                       WritableAbsoluteCapability us,
-                                                       Optional<SigningPrivateKeyAndPublicHash> entryWriter,
-                                                       SymmetricKey optionalBaseKey,
-                                                       boolean isSystemFolder,
-                                                       SafeRandom random,
-                                                       Hasher hasher) {
+    public CompletableFuture<CommittedWriterData> mkdir(CommittedWriterData base,
+                                                        WriteSynchronizer.Committer committer,
+                                                        String name,
+                                                        NetworkAccess network,
+                                                        WritableAbsoluteCapability us,
+                                                        Optional<SigningPrivateKeyAndPublicHash> entryWriter,
+                                                        SymmetricKey optionalBaseKey,
+                                                        boolean isSystemFolder,
+                                                        SafeRandom random,
+                                                        Hasher hasher) {
         SymmetricKey dirReadKey = optionalBaseKey != null ? optionalBaseKey : SymmetricKey.random();
         SymmetricKey dirWriteKey = SymmetricKey.random();
         byte[] dirMapKey = random.randomBytes(32); // root will be stored under this in the tree
@@ -680,23 +682,24 @@ public class CryptreeNode implements Cborable {
         SymmetricLink toChildWriteKey = SymmetricLink.fromPair(us.wBaseKey.get(), dirWriteKey);
         // Use two transactions to not expose the child linkage
         return IpfsTransaction.call(us.owner,
-                tid -> child.commit(childCap, entryWriter, network, tid), network.dhtClient)
-                .thenCompose(resultHash -> {
+                tid -> child.commit(base, committer, childCap, entryWriter, network, tid), network.dhtClient)
+                .thenCompose(updatedBase -> {
                     RelativeCapability subdirPointer = new RelativeCapability(dirMapKey, dirReadKey, toChildWriteKey);
-                    return addChildAndCommit(subdirPointer, us, entryWriter, network, random, hasher)
-                            .thenApply(modified -> new RelativeCapability(dirMapKey, dirReadKey, toChildWriteKey));
+                    return addChildAndCommit(updatedBase, committer, subdirPointer, us, entryWriter, network, random, hasher);
                 });
     }
 
-    public CompletableFuture<? extends CryptreeNode> copyTo(AbsoluteCapability us,
-                                                            SymmetricKey newReadBaseKey,
-                                                            WritableAbsoluteCapability newParentCap,
-                                                            Optional<SigningPrivateKeyAndPublicHash> newEntryWriter,
-                                                            SymmetricKey parentparentKey,
-                                                            byte[] newMapKey,
-                                                            NetworkAccess network,
-                                                            SafeRandom random,
-                                                            Hasher hasher) {
+    public CompletableFuture<CommittedWriterData> copyTo(CommittedWriterData base,
+                                                         WriteSynchronizer.Committer committer,
+                                                         AbsoluteCapability us,
+                                                         SymmetricKey newReadBaseKey,
+                                                         WritableAbsoluteCapability newParentCap,
+                                                         Optional<SigningPrivateKeyAndPublicHash> newEntryWriter,
+                                                         SymmetricKey parentparentKey,
+                                                         byte[] newMapKey,
+                                                         NetworkAccess network,
+                                                         SafeRandom random,
+                                                         Hasher hasher) {
         if (! isDirectory) {
             throw new IllegalStateException("Copy to only valid for directories!");
         }
@@ -710,30 +713,36 @@ public class CryptreeNode implements Cborable {
                 Optional.of(parentLink), parentKey, nextChunk, hasher);
         CryptreeNode da = dirWithLinked.dir;
         SymmetricKey ourNewParentKey = da.getParentKey(newReadBaseKey);
-        WritableAbsoluteCapability ourNewCap = new WritableAbsoluteCapability(newParentCap.owner, newParentCap.writer, newMapKey, newReadBaseKey, newWriteBaseKey);
+        WritableAbsoluteCapability ourNewCap = new WritableAbsoluteCapability(newParentCap.owner, newParentCap.writer,
+                newMapKey, newReadBaseKey, newWriteBaseKey);
 
-        return this.getChildren(network, us).thenCompose(RFPs -> {
+        return this.getChildren(base.props, network, us).thenCompose(RFPs -> {
             // upload new metadata blob for each child and re-add child
-            CompletableFuture<CryptreeNode> reduce = RFPs.stream().reduce(CompletableFuture.completedFuture(da), (dirFuture, rfp) -> {
-                SymmetricKey newChildReadKey = rfp.fileAccess.isDirectory() ? SymmetricKey.random() : rfp.capability.rBaseKey;
-                SymmetricKey newChildWriteKey = SymmetricKey.random();
-                byte[] newChildMapKey = random.randomBytes(32);
-                WritableAbsoluteCapability newChildCap = new WritableAbsoluteCapability(ourNewCap.owner,
-                        ourNewCap.writer, newChildMapKey, newChildReadKey, newChildWriteKey);
-                return rfp.fileAccess.copyTo(rfp.capability, newChildReadKey,
-                        ourNewCap, newEntryWriter, ourNewParentKey, newChildMapKey, network, random, hasher)
-                        .thenCompose(newChildFileAccess -> {
-                            return dirFuture.thenCompose(dirAccess ->
-                                    dirAccess.addChildAndCommit(ourNewCap.relativise(newChildCap), ourNewCap,
-                                            newEntryWriter, network, random, hasher));
-                        });
-            }, (a, b) -> a.thenCompose(x -> b)); // TODO Think about this combiner function
+            CompletableFuture<Pair<CryptreeNode, CommittedWriterData>> reduce = RFPs.stream()
+                    .reduce(CompletableFuture.completedFuture(new Pair<>(da, base)),
+                            (dirFuture, rfp) -> {
+                                return dirFuture.thenCompose(pair -> {
+                                    SymmetricKey newChildReadKey = rfp.fileAccess.isDirectory() ?
+                                            SymmetricKey.random() :
+                                            rfp.capability.rBaseKey;
+                                    SymmetricKey newChildWriteKey = SymmetricKey.random();
+                                    byte[] newChildMapKey = random.randomBytes(32);
+                                    WritableAbsoluteCapability newChildCap = new WritableAbsoluteCapability(ourNewCap.owner,
+                                            ourNewCap.writer, newChildMapKey, newChildReadKey, newChildWriteKey);
+                                    return rfp.fileAccess.copyTo(pair.right, committer, rfp.capability, newChildReadKey,
+                                            ourNewCap, newEntryWriter, ourNewParentKey, newChildMapKey, network, random, hasher)
+                                            .thenCompose(updatedBase -> pair.left.addChildAndCommit(updatedBase, committer,
+                                                    ourNewCap.relativise(newChildCap), ourNewCap, newEntryWriter,
+                                                    network, random, hasher)
+                                                    .thenCompose(cwd -> network.getMetadata(cwd.props, ourNewCap)
+                                                            .thenApply(updatedDir -> new Pair<>(updatedDir.get(), cwd)))
+                                            );
+                                });
+                            }, (a, b) -> a.thenCompose(x -> b)); // TODO Think about this combiner function
             return reduce;
-        }).thenCompose(finalDir -> IpfsTransaction.call(newParentCap.owner,
-                tid -> {
-                    return finalDir.commit(new WritableAbsoluteCapability(newParentCap.owner, newParentCap.writer,
-                                    newMapKey, newReadBaseKey, newWriteBaseKey), newEntryWriter, network, tid);
-                }, network.dhtClient));
+        }).thenCompose(finalPair -> IpfsTransaction.call(newParentCap.owner,
+                tid -> finalPair.left.commit(finalPair.right, committer, ourNewCap, newEntryWriter, network, tid),
+                network.dhtClient));
     }
 
     public CompletableFuture<CryptreeNode> updateChildLink(WritableAbsoluteCapability ourPointer,

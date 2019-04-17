@@ -104,7 +104,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
         throw new IllegalStateException("Unimplemented");
     }
 
-    private Optional<RelativeCapability> mkdir(String name, FileWrapper node)  {
+    private Optional<FileWrapper> mkdir(String name, FileWrapper node)  {
         boolean isSystemFolder = false;
         try {
             return Optional.of(node.mkdir(name, context.network, isSystemFolder, context.crypto.random, context.crypto.hasher).get());

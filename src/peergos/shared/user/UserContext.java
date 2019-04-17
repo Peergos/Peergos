@@ -738,9 +738,7 @@ public class UserContext {
                     return sharing.mkdir(theirUsername, network, initialRequest.key.get(), true, crypto.random, crypto.hasher)
                             .thenCompose(friendRoot -> {
                                 // add a note to our entry point store so we know who we sent the read access to
-                                EntryPoint entry = new EntryPoint(friendRoot
-                                        .withWritingKey(sharing.writer())
-                                        .toAbsolute(sharing.getPointer().capability.readOnly()),
+                                EntryPoint entry = new EntryPoint(friendRoot.getPointer().capability.readOnly(),
                                         username);
 
                                 return addExternalEntryPoint(entry)
@@ -818,9 +816,7 @@ public class UserContext {
                         return sharing.mkdir(targetUsername, network, null, true, crypto.random, crypto.hasher).thenCompose(friendRoot -> {
 
                             // if they accept the request we will add a note to our static data so we know who we sent the read access to
-                            EntryPoint entry = new EntryPoint(friendRoot
-                                    .withWritingKey(sharing.writer())
-                                    .toAbsolute(sharing.getPointer().capability.readOnly()), username);
+                            EntryPoint entry = new EntryPoint(friendRoot.getPointer().capability.readOnly(), username);
 
                             FollowRequest followReq = new FollowRequest(Optional.of(entry), Optional.ofNullable(requestedKey));
 

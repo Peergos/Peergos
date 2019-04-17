@@ -998,11 +998,11 @@ public abstract class UserTests {
     }
 
     @Test
-    public void internalCopy() throws Exception {
+    public void internalCopy() {
         String username = generateUsername();
         String password = "test01";
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network.clear(), crypto);
-        FileWrapper userRoot = context.getUserRoot().get();
+        FileWrapper userRoot = context.getUserRoot().join();
         Path home = Paths.get(username);
 
         String filename = "initialfile.bin";
@@ -1010,16 +1010,16 @@ public abstract class UserTests {
 
         FileWrapper updatedUserRoot = userRoot.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data),
                 data.length, network, crypto.random, hasher, x -> {},
-                userRoot.generateChildLocationsFromSize(data.length, context.crypto.random)).get();
+                userRoot.generateChildLocationsFromSize(data.length, context.crypto.random)).join();
 
-        FileWrapper original = context.getByPath(home.resolve(filename).toString()).get().get();
 
         // copy the file
         String foldername = "afolder";
-        updatedUserRoot.mkdir(foldername, network, false, crypto.random, hasher).get();
-        FileWrapper subfolder = context.getByPath(home.resolve(foldername).toString()).get().get();
-        FileWrapper parentDir = original.copyTo(subfolder, context).get();
-        FileWrapper copy = context.getByPath(home.resolve(foldername).resolve(filename).toString()).get().get();
+        updatedUserRoot.mkdir(foldername, network, false, crypto.random, hasher).join();
+        FileWrapper subfolder = context.getByPath(home.resolve(foldername)).join().get();
+        FileWrapper original = context.getByPath(home.resolve(filename)).join().get();
+        CommittedWriterData res = original.copyTo(subfolder, context).join();
+        FileWrapper copy = context.getByPath(home.resolve(foldername).resolve(filename)).join().get();
         Assert.assertTrue("Different base key", ! copy.getPointer().capability.rBaseKey.equals(original.getPointer().capability.rBaseKey));
         Assert.assertTrue("Different metadata key", ! getMetaKey(copy).equals(getMetaKey(original)));
         Assert.assertTrue("Different data key", ! getDataKey(copy).equals(getDataKey(original)));
