@@ -17,7 +17,7 @@ public class Mp3CoverImage {
         this.mimeType = mimeType;
     }
 
-    public static Mp3CoverImage extractCoverArt(byte[] rawMp3) {
+    public static Mp3CoverImage extractCoverArt(byte[] rawMp3) throws  NoSuchTagException, UnsupportedTagException, InvalidDataException {
         byte[] bytes = Arrays.copyOfRange(rawMp3, 0, 10);
 
         sanityCheckTag(bytes);
@@ -33,14 +33,14 @@ public class Mp3CoverImage {
         return new Mp3CoverImage(tag.getAlbumImage(), tag.getAlbumImageMimeType());
     }
 
-    public static class NoSuchTagException extends RuntimeException {
+    public static class NoSuchTagException extends Exception {
         public NoSuchTagException(String msg) {super(msg);}
         public NoSuchTagException() {super();}
     }
-    public static class UnsupportedTagException extends RuntimeException {
+    public static class UnsupportedTagException extends Exception {
         public UnsupportedTagException(String msg) {super(msg);}
     }
-    public static class InvalidDataException extends RuntimeException {
+    public static class InvalidDataException extends Exception {
         public InvalidDataException(String msg) {super(msg);}
 
         public InvalidDataException(String msg, Throwable cause) {super(msg, cause);}

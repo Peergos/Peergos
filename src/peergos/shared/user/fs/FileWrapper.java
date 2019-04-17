@@ -1373,7 +1373,7 @@ public class FileWrapper {
         return new FileWrapper(Optional.of(root), null, Optional.empty(), null);
     }
 
-    public static byte[] generateThumbnail(byte[] imageBlob) {
+    public static Optional<byte[]> generateThumbnail(byte[] imageBlob) {
         try {
             BufferedImage image = ImageIO.read(new ByteArrayInputStream(imageBlob));
             BufferedImage thumbnailImage = new BufferedImage(THUMBNAIL_SIZE, THUMBNAIL_SIZE, image.getType());
@@ -1388,11 +1388,11 @@ public class FileWrapper {
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             ImageIO.write(thumbnailImage, "JPG", baos);
             baos.close();
-            return baos.toByteArray();
+            return Optional.of(baos.toByteArray());
         } catch (IOException ioe) {
             LOG.log(Level.WARNING, ioe.getMessage(), ioe);
         }
-        return new byte[0];
+        return Optional.empty();
     }
 
     public static byte[] generateVideoThumbnail(byte[] videoBlob) {
@@ -1428,7 +1428,7 @@ public class FileWrapper {
                     } else {
                         byte[] bytes = new byte[fileSize];
                         fileData.readIntoArray(bytes, 0, fileSize).thenAccept(data -> {
-                            fut.complete(Optional.of(generateThumbnail(bytes)));
+                            fut.complete(generateThumbnail(bytes));
                         });
                     }
                 } else if (mimeType.startsWith("video")) {
@@ -1446,16 +1446,22 @@ public class FileWrapper {
                 } else if (mimeType.startsWith("audio/mpeg")) {
                     byte[] mp3Data = new byte[fileSize];
                     fileData.readIntoArray(mp3Data, 0, fileSize).thenAccept(read -> {
-                        Mp3CoverImage mp3CoverImage = Mp3CoverImage.extractCoverArt(mp3Data);
-                        if (network.isJavascript()) {
-                            AsyncReader.ArrayBacked imageBlob = new AsyncReader.ArrayBacked(mp3CoverImage.imageData);
-                            thumbnail.generateThumbnail(imageBlob, mp3CoverImage.imageData.length, filename)
-                                    .thenAccept(base64Str -> {
-                                        byte[] bytesOfData = Base64.getDecoder().decode(base64Str);
-                                        fut.complete(Optional.of(bytesOfData));
-                                    });
-                        } else {
-                            fut.complete(Optional.of(generateThumbnail(mp3CoverImage.imageData)));
+                        try {
+                            Mp3CoverImage mp3CoverImage = Mp3CoverImage.extractCoverArt(mp3Data);
+                            if (network.isJavascript()) {
+                                AsyncReader.ArrayBacked imageBlob = new AsyncReader.ArrayBacked(mp3CoverImage.imageData);
+                                thumbnail.generateThumbnail(imageBlob, mp3CoverImage.imageData.length, filename)
+                                        .thenAccept(base64Str -> {
+                                            byte[] bytesOfData = Base64.getDecoder().decode(base64Str);
+                                            fut.complete(Optional.of(bytesOfData));
+                                        });
+                            } else {
+                                fut.complete(generateThumbnail(mp3CoverImage.imageData));
+                            }
+                        } catch(Mp3CoverImage.NoSuchTagException |
+                                Mp3CoverImage.UnsupportedTagException |
+                                Mp3CoverImage.InvalidDataException e) {
+                            fut.complete(Optional.empty());
                         }
                     });
                 } else {
