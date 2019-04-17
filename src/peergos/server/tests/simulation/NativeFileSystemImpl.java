@@ -23,6 +23,14 @@ public class NativeFileSystemImpl implements FileSystem {
     public NativeFileSystemImpl(Path root, String user) {
         this.root = root;
         this.user = user;
+        init();
+    }
+
+    private void init() {
+        Path userRoot = Paths.get("/" + user);
+        accessControl.add(userRoot, user(), Permission.WRITE);
+        accessControl.add(userRoot, user(), Permission.READ);
+        mkdir(userRoot);
     }
 
     @Override
@@ -146,19 +154,16 @@ public class NativeFileSystemImpl implements FileSystem {
 
     @Override
     public void mkdir(Path path) {
-        Path parentDir = path.getParent();
-        ensureCan(parentDir, Permission.WRITE);
+        if (! path.equals(Paths.get("/"+ user()))) {
+            Path parentDir = path.getParent();
+            ensureCan(parentDir, Permission.WRITE);
+        }
+
+
         Path nativePath = virtualToNative(path);
         boolean mkdir = nativePath.toFile().mkdir();
         if (! mkdir)
             throw new IllegalStateException("Could not make dir "+ nativePath);
-
-
-        try {
-            Files.delete(nativePath);
-        } catch (IOException ioe) {
-            throw new IllegalStateException(ioe);
-        }
     }
 
     @Override

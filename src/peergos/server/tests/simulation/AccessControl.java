@@ -47,7 +47,11 @@ public interface AccessControl {
             /**
              * Should be "/owner/..."
              */
-            return path.getName(0).toString();
+            try {
+                return path.getName(0).toString();
+            } catch (Throwable t) {
+                throw t;
+            }
         }
 
         @Override
