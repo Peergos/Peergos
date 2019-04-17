@@ -13,10 +13,6 @@ public interface AccessControl {
 
     void remove(Path path, String reader, FileSystem.Permission permission);
 
-    default List<String> getWithAncestors(Path path, FileSystem.Permission permission)  {
-
-    }
-
 
     /**
      * Model owners, reader and writers
@@ -43,13 +39,15 @@ public interface AccessControl {
     }
 
     class MemoryImpl implements AccessControl {
-        private Map<Path, String> owners = new HashMap<>();
         public AccessControlUnit readers = new AccessControlUnit();
         public AccessControlUnit writers = new AccessControlUnit();
 
         @Override
         public String getOwner(Path path) {
-            return owners.get(path);
+            /**
+             * Should be "/owner/..."
+             */
+            return path.getName(0).toString();
         }
 
         @Override

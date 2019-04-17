@@ -10,7 +10,9 @@ import java.nio.file.Paths;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 public class NativeFileSystemImpl implements FileSystem {
 
@@ -33,7 +35,7 @@ public class NativeFileSystemImpl implements FileSystem {
     }
 
     private void ensureCan(Path path, Permission permission, String user) {
-        if (! Files.exists(path))
+        if (! Files.exists(path) && permission == Permission.READ)
             throw new IllegalStateException("Cannot read "+ path +" : does not exist");
 
         if (! accessControl.can(path, user, permission))
@@ -56,6 +58,7 @@ public class NativeFileSystemImpl implements FileSystem {
     public void write(Path path, byte[] data) {
 
         Path nativePath = virtualToNative(path);
+        ensureCan(path.getParent(), Permission.READ);
         ensureCan(path, Permission.WRITE);
 
         try {
@@ -158,6 +161,16 @@ public class NativeFileSystemImpl implements FileSystem {
         }
     }
 
+    @Override
+    public List<Path> ls(Path path) {
+        Path nativePath = virtualToNative(path);
+        try {
+            return Files.list(nativePath).collect(Collectors.toList());
+        } catch (IOException ioe) {
+            throw new IllegalStateException(ioe);
+        }
+    }
+
     public static void main(String[] args) {
         System.out.println("HELO");
 
@@ -168,6 +181,9 @@ public class NativeFileSystemImpl implements FileSystem {
         Path p4 = Paths.get(p1.toString(), p3.toString());
 
         System.out.println(p4);
+
+        Path p5 = Paths.get("/some/thing/else");
+        System.out.println(p5.getName(1));
 
     }
 }

@@ -59,6 +59,15 @@ public class PeergosFileSystemImpl implements FileSystem {
     }
 
     @Override
+    public List<Path> ls(Path path) {
+        return getPath(path).getDirectChildren(userContext.network)
+                .join()
+                .stream()
+                .map(e -> path.resolve(e.getName()))
+                .collect(Collectors.toList());
+    }
+
+    @Override
     public void grant(Path path, String user, Permission permission) {
         Set<String> userSet = Stream.of(user).collect(Collectors.toSet());
         switch (permission) {

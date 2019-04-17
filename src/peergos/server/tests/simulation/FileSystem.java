@@ -2,6 +2,10 @@ package peergos.server.tests.simulation;
 
 
 import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Iterator;
+import java.util.List;
+import java.util.function.Consumer;
 
 public interface FileSystem {
 /**
@@ -31,5 +35,21 @@ public interface FileSystem {
     Stat stat(Path path);
 
     void mkdir(Path path);
+
+    List<Path> ls(Path path);
+
+
+    default void walk(Path path, Consumer<Path> func)  {
+        //DFS
+        for (Path child : ls(path)) {
+            walk(child, func);
+        }
+        func.accept(path);
+    }
+
+    default void walk(Consumer<Path> func)  {
+        walk(Paths.get("/"+  user()), func);
+    }
+
 }
 
