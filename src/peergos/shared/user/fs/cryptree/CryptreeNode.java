@@ -443,7 +443,7 @@ public class CryptreeNode implements Cborable {
     }
 
     public CompletableFuture<Optional<RetrievedCapability>> getNextChunk(WriterData base, AbsoluteCapability us, NetworkAccess network) {
-        return network.retrieveMetadata(base, us.withMapKey(getNextChunkLocation(us.rBaseKey)))
+        return network.getMetadata(base, us.withMapKey(getNextChunkLocation(us.rBaseKey)))
                 .thenApply(faOpt -> faOpt.map(fa -> new RetrievedCapability(us, fa)));
     }
 
@@ -495,7 +495,7 @@ public class CryptreeNode implements Cborable {
                                                                  Hasher hasher) {
         FileProperties props = getProperties(cap.rBaseKey);
         AbsoluteCapability nextCap = cap.withMapKey(getNextChunkLocation(cap.rBaseKey));
-        return retriever(cap.rBaseKey).getFile(network, random, cap, props.size, committedHash(), x -> {})
+        return retriever(cap.rBaseKey).getFile(current.props, network, random, cap, props.size, committedHash(), x -> {})
                 .thenCompose(data -> {
                     int chunkSize = (int) Math.min(props.size, Chunk.MAX_SIZE);
                     byte[] chunkData = new byte[chunkSize];
@@ -511,7 +511,7 @@ public class CryptreeNode implements Cborable {
                                         nextCap.getLocation(), getWriterLink(cap.rBaseKey), hasher, network, x -> {
                                         });
                             });
-                }).thenCompose(updated -> network.retrieveMetadata(updated.props, nextCap)
+                }).thenCompose(updated -> network.getMetadata(updated.props, nextCap)
                         .thenCompose(mOpt -> {
                             if (! mOpt.isPresent())
                                 return CompletableFuture.completedFuture(updated);

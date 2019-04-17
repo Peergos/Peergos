@@ -331,13 +331,13 @@ public class NetworkAccess {
                                                             AbsoluteCapability cap,
                                                             Optional<SigningPrivateKeyAndPublicHash> entryWriter,
                                                             String ownerName) {
-        return retrieveMetadata(base, cap)
+        return getMetadata(base, cap)
                 .thenApply(faOpt -> faOpt.map(fa -> new FileWrapper(Optional.empty(),
                         new RetrievedCapability(cap, fa),
                         cap.wBaseKey.map(wBase -> fa.getSigner(cap.rBaseKey, wBase, entryWriter)), ownerName)));
     }
 
-    public CompletableFuture<Optional<CryptreeNode>> retrieveMetadata(WriterData base, AbsoluteCapability cap) {
+    public CompletableFuture<Optional<CryptreeNode>> getMetadata(WriterData base, AbsoluteCapability cap) {
         return tree.get(base, cap.owner, cap.writer, cap.getMapKey()).thenCompose(btreeValue -> {
             if (btreeValue.isPresent())
                 return dhtClient.get(btreeValue.get())

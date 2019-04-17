@@ -859,10 +859,10 @@ public class FileWrapper {
             BiFunction<CommittedWriterData, Long, CompletableFuture<CommittedWriterData>> composer = (cwd, startIndex) -> {
                 WritableAbsoluteCapability childCap = child.writableFilePointer();
                 MaybeMultihash currentHash = child.pointer.fileAccess.committedHash();
-                return retriever.getChunk(network, random, startIndex, filesSize.get(), childCap, currentHash, monitor)
+                return retriever.getChunk(cwd.props, network, random, startIndex, filesSize.get(), childCap, currentHash, monitor)
                         .thenCompose(currentLocation -> {
                                     CompletableFuture<Optional<Location>> locationAt = retriever
-                                            .getMapLabelAt(childCap, startIndex + Chunk.MAX_SIZE, network)
+                                            .getMapLabelAt(cwd.props, childCap, startIndex + Chunk.MAX_SIZE, network)
                                             .thenApply(x -> x.map(m -> getLocation().withMapKey(m)));
                                     return locationAt.thenCompose(location ->
                                             CompletableFuture.completedFuture(new Pair<>(currentLocation, location)));
@@ -1309,8 +1309,9 @@ public class FileWrapper {
         if (pointer.fileAccess.isDirectory())
             throw new IllegalStateException("Cannot get input stream for a directory!");
         CryptreeNode fileAccess = pointer.fileAccess;
-        return fileAccess.retriever(pointer.capability.rBaseKey)
-                .getFile(network, random, pointer.capability, fileSize, fileAccess.committedHash(), monitor);
+        return network.synchronizer.getValue(owner(), writer())
+                .thenCompose(cwd -> fileAccess.retriever(pointer.capability.rBaseKey)
+                        .getFile(cwd.props, network, random, pointer.capability, fileSize, fileAccess.committedHash(), monitor));
     }
 
     private FileRetriever getRetriever() {

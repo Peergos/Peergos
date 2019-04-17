@@ -3,6 +3,7 @@ package peergos.shared.user.fs;
 import peergos.shared.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
+import peergos.shared.user.*;
 import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.*;
 
@@ -10,6 +11,7 @@ import java.io.*;
 import java.util.concurrent.*;
 
 public class LazyInputStreamCombiner implements AsyncReader {
+    private final WriterData version;
     private final NetworkAccess network;
     private final SafeRandom random;
     private final SymmetricKey baseKey;
@@ -25,7 +27,8 @@ public class LazyInputStreamCombiner implements AsyncReader {
     private long globalIndex; // index of beginning of current chunk in file
     private int index; // index within current chunk
 
-    public LazyInputStreamCombiner(long globalIndex,
+    public LazyInputStreamCombiner(WriterData version,
+                                   long globalIndex,
                                    byte[] chunk,
                                    Location nextChunkPointer,
                                    byte[] originalChunk,
@@ -37,6 +40,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
                                    ProgressConsumer<Long> monitor) {
         if (chunk == null)
             throw new IllegalStateException("Null initial chunk!");
+        this.version = version;
         this.network = network;
         this.random = random;
         this.baseKey = baseKey;
@@ -64,7 +68,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
                 throw new IllegalStateException("File linked to a directory for its next chunk!");
         FileRetriever nextRet = access.retriever(baseKey);
         AbsoluteCapability newNextChunkPointer = nextChunkPointer.withMapKey(access.getNextChunkLocation(baseKey));
-        return nextRet.getChunk(network, random, 0, truncateTo, nextChunkPointer, access.committedHash(), monitor)
+        return nextRet.getChunk(version, network, random, 0, truncateTo, nextChunkPointer, access.committedHash(), monitor)
                 .thenApply(x -> {
                     byte[] nextData = x.get().chunk.data();
                     return new Pair<>(nextData, newNextChunkPointer);
@@ -78,7 +82,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
             return err;
         }
 
-        return network.getMetadata(nextCap)
+        return network.getMetadata(version, nextCap)
                 .thenCompose(meta -> {
                     if (!meta.isPresent()) {
                         CompletableFuture<CryptreeNode> err = new CompletableFuture<>();
@@ -113,7 +117,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
             int truncateTo = (int) Math.min(Chunk.MAX_SIZE, totalLength - startOfTargetChunk);
             return getSubsequentMetadata(nextChunkPointer, chunksToSkip)
                     .thenCompose(access -> getChunk(access, truncateTo))
-                    .thenApply(p -> new LazyInputStreamCombiner(finalOffset, p.left, p.right.getLocation(),
+                    .thenApply(p -> new LazyInputStreamCombiner(version, finalOffset, p.left, p.right.getLocation(),
                             originalChunk, originalNextPointer.getLocation(), network, random, baseKey, totalLength, x -> {}))
                     .thenCompose(reader -> reader.skip(finalInternalIndex));
     }
