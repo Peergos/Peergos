@@ -94,7 +94,7 @@ public class UserContext {
 
     private TransactionService buildTransactionService() {
         Supplier<CompletableFuture<FileWrapper>> getTransactionsDir =
-                () -> getByPath(Paths.get(username, TRANSACTIONS_DIR_NAME).toString())
+                () -> getByPath(Paths.get(username, TRANSACTIONS_DIR_NAME))
                         .thenApply(Optional::get);
         return new TransactionServiceImpl(network, crypto.random, crypto.hasher, getTransactionsDir::get);
     }

@@ -1009,13 +1009,12 @@ public abstract class UserTests {
         byte[] data = randomData(10*1024*1024); // 2 chunks to test block chaining
 
         FileWrapper updatedUserRoot = userRoot.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data),
-                data.length, network, crypto.random, hasher, x -> {},
+                data.length, context.network, crypto.random, hasher, x -> {},
                 userRoot.generateChildLocationsFromSize(data.length, context.crypto.random)).join();
-
 
         // copy the file
         String foldername = "afolder";
-        updatedUserRoot.mkdir(foldername, network, false, crypto.random, hasher).join();
+        updatedUserRoot.mkdir(foldername, context.network, false, crypto.random, hasher).join();
         FileWrapper subfolder = context.getByPath(home.resolve(foldername)).join().get();
         FileWrapper original = context.getByPath(home.resolve(filename)).join().get();
         CommittedWriterData res = original.copyTo(subfolder, context).join();

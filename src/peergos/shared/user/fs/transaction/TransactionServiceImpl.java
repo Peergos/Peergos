@@ -45,13 +45,13 @@ public class TransactionServiceImpl implements TransactionService {
 
     @Override
     public CompletableFuture<Boolean> close(Transaction transaction) {
-        return transactionDirUpdater.updated().thenCompose(dirWrapper ->
-                dirWrapper.getChild(transaction.name(), networkAccess).thenApply(fileOpt -> {
+        return transactionDirUpdater.updated().thenCompose(dir ->
+                dir.getChild(transaction.name(), networkAccess).thenApply(fileOpt -> {
                     boolean hasChild = fileOpt.isPresent();
                     if (!hasChild)
                         return CompletableFuture.completedFuture(false);
                     FileWrapper fileWrapper = fileOpt.get();
-                    return dirWrapper.removeChild(fileWrapper, networkAccess, hasher);
+                    return dir.removeChild(fileWrapper, networkAccess, hasher);
                 }).thenApply(e -> true));
     }
 

@@ -792,6 +792,29 @@ public class CryptreeNode implements Cborable {
         });
     }
 
+    public CompletableFuture<CommittedWriterData> removeChildren(CommittedWriterData current,
+                                                                 WriteSynchronizer.Committer committer,
+                                                                 List<RetrievedCapability> childrenToRemove,
+                                                                 WritableAbsoluteCapability ourPointer,
+                                                                 Optional<SigningPrivateKeyAndPublicHash> entryWriter,
+                                                                 NetworkAccess network,
+                                                                 Hasher hasher) {
+        Set<Location> locsToRemove = childrenToRemove.stream()
+                .map(r -> r.capability.getLocation())
+                .collect(Collectors.toSet());
+        return getDirectChildren(current.props, ourPointer, network).thenCompose(children -> {
+            List<RelativeCapability> withRemoval = children.stream()
+                    .filter(e -> ! locsToRemove.contains(e.capability.getLocation()))
+                    .map(c -> ourPointer.relativise(c.capability))
+                    .collect(Collectors.toList());
+
+            return IpfsTransaction.call(ourPointer.owner,
+                    tid -> withChildren(ourPointer.rBaseKey, new ChildrenLinks(withRemoval), hasher)
+                            .commit(current, committer, ourPointer, entryWriter, network, tid),
+                    network.dhtClient);
+        });
+    }
+
     public CompletableFuture<CryptreeNode> commit(WritableAbsoluteCapability us,
                                                   Optional<SigningPrivateKeyAndPublicHash> entryWriter,
                                                   NetworkAccess network,

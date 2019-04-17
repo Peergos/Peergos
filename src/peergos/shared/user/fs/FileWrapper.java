@@ -407,10 +407,10 @@ public class FileWrapper {
      */
     public CompletableFuture<FileWrapper> removeChild(FileWrapper child, NetworkAccess network, Hasher hasher) {
         setModified();
-        return pointer.fileAccess
-                .removeChildren(Arrays.asList(child.getPointer()), writableFilePointer(), entryWriter, network, hasher)
-                .thenApply(updated -> new FileWrapper(globalRoot,
-                        new RetrievedCapability(getPointer().capability, updated), entryWriter, ownername));
+        return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
+                (cwd, committer) -> pointer.fileAccess
+                .removeChildren(cwd, committer, Arrays.asList(child.getPointer()), writableFilePointer(), entryWriter, network, hasher))
+                .thenCompose(newRoot -> updated(newRoot.props, network));
     }
 
     public CompletableFuture<CommittedWriterData> addLinkTo(CommittedWriterData version,
@@ -1137,10 +1137,7 @@ public class FileWrapper {
         if (! target.isDirectory()) {
             return Futures.errored(new IllegalStateException("CopyTo target " + target + " must be a directory"));
         }
-        Optional<FileWrapper> dir = context.getByPath(Paths.get(context.username, target.getName())).join();
-        Optional<FileWrapper> dirFromRoot = context.getUserRoot().join().getChild(
-                context.network.synchronizer.getValue(owner(), writer()).join().props, target.getName(), network).join();
-        FileWrapper dir2 = target.updated(context.network.synchronizer.getValue(owner(), writer()).join().props, network).join();
+
         return context.network.synchronizer.applyComplexUpdate(target.owner(), target.signingPair(), (base, committer) -> {
             return target.hasChildWithName(base.props, getFileProperties().name, network).thenCompose(childExists -> {
                 if (childExists) {
