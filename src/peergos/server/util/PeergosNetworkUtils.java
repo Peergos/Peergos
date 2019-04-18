@@ -105,7 +105,10 @@ public class PeergosNetworkUtils {
 
         // share the file from sharer to each of the sharees
         FileWrapper u1File = sharerUser.getByPath(sharerUser.username + "/" + filename).get().get();
-        sharerUser.shareReadAccessWith(Paths.get(sharerUser.username, filename), shareeUsers.stream().map(u -> u.username).collect(Collectors.toSet())).get();
+        Set<String> shareeNames = shareeUsers.stream()
+                .map(u -> u.username)
+                .collect(Collectors.toSet());
+        sharerUser.shareReadAccessWith(Paths.get(sharerUser.username, filename), shareeNames).join();
 
         // check other users can read the file
         for (UserContext userContext : shareeUsers) {

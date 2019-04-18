@@ -53,10 +53,16 @@ public class WriteSynchronizer {
                         .thenCompose(x -> WriterData.getWriterData(x.get(), dht)));
     }
 
+    /**
+     *
+     * @param owner
+     * @param writer
+     * @return The current WriterData committed by writer
+     */
     public CompletableFuture<CommittedWriterData> getValue(PublicKeyHash owner,
                                                            PublicKeyHash writer) {
         return pending.computeIfAbsent(new Pair<>(owner, writer), p -> new AsyncLock<>(getWriterData(owner, p.right)))
-                .runWithLock(CompletableFuture::completedFuture, () -> getWriterData(owner, writer));
+                .runWithLock(x -> getWriterData(owner, writer), () -> getWriterData(owner, writer));
     }
 
     public CompletableFuture<CommittedWriterData> applyUpdate(PublicKeyHash owner,
