@@ -410,21 +410,21 @@ public class FileWrapper {
         return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
                 (cwd, committer) -> pointer.fileAccess
                 .removeChildren(cwd, committer, Arrays.asList(child.getPointer()), writableFilePointer(), entryWriter, network, hasher))
-                .thenCompose(newRoot -> updated(newRoot.props, network));
+                .thenCompose(newRoot -> updated(newRoot.base.props, network));
     }
 
-    public CompletableFuture<CommittedWriterData> addLinkTo(CommittedWriterData version,
-                                                    WriteSynchronizer.Committer committer,
-                                                    String name,
-                                                    WritableAbsoluteCapability fileCap,
-                                                    NetworkAccess network,
-                                                    SafeRandom random,
-                                                    Hasher hasher) {
+    public CompletableFuture<MutableVersion> addLinkTo(MutableVersion version,
+                                                            WriteSynchronizer.Committer committer,
+                                                            String name,
+                                                            WritableAbsoluteCapability fileCap,
+                                                            NetworkAccess network,
+                                                            SafeRandom random,
+                                                            Hasher hasher) {
         ensureUnmodified();
         if (!this.isDirectory() || !this.isWritable()) {
             return Futures.errored(new IllegalArgumentException("Can only add link to a writable directory!"));
         }
-        return hasChildWithName(version.props, name, network).thenCompose(hasChild -> {
+        return hasChildWithName(version.base.props, name, network).thenCompose(hasChild -> {
             if (hasChild) {
                 return Futures.errored(new IllegalStateException("Child already exists with name: " + name));
             }
@@ -618,12 +618,12 @@ public class FileWrapper {
      * @param parent
      * @return updated parent dir
      */
-    public CompletableFuture<Pair<FileWrapper, CommittedWriterData>> clean(CommittedWriterData current,
-                                                                           WriteSynchronizer.Committer committer,
-                                                                           NetworkAccess network,
-                                                                           SafeRandom random,
-                                                                           FileWrapper parent,
-                                                                           Hasher hasher) {
+    public CompletableFuture<Pair<FileWrapper, MutableVersion>> clean(MutableVersion current,
+                                                                      WriteSynchronizer.Committer committer,
+                                                                      NetworkAccess network,
+                                                                      SafeRandom random,
+                                                                      FileWrapper parent,
+                                                                      Hasher hasher) {
         if (!isDirty())
             return CompletableFuture.completedFuture(new Pair<>(this, current));
         if (isDirectory()) {
@@ -727,24 +727,24 @@ public class FileWrapper {
         return network.synchronizer.applyComplexUpdate(owner(), signingPair(), (current, committer) ->
                 uploadFileSection(current, committer, filename, fileData, isHidden, startIndex, endIndex,
                         baseKey, overwriteExisting, network, random, hasher, monitor, locations))
-                .thenCompose(finalBase -> updated(finalBase.props, network));
+                .thenCompose(finalBase -> updated(finalBase.base.props, network));
     }
 
-    public CompletableFuture<CommittedWriterData> uploadFileSection(CommittedWriterData current,
-                                                                    WriteSynchronizer.Committer committer,
-                                                                    String filename,
-                                                                    AsyncReader fileData,
-                                                                    boolean isHidden,
-                                                                    long startIndex,
-                                                                    long endIndex,
-                                                                    Optional<SymmetricKey> baseKey,
-                                                                    boolean overwriteExisting,
-                                                                    NetworkAccess network,
-                                                                    SafeRandom random,
-                                                                    Hasher hasher,
-                                                                    ProgressConsumer<Long> monitor,
-                                                                    List<Location> locations) {
-        return updated(current.props, network).thenCompose(latest -> latest.getChild(current.props, filename, network)
+    public CompletableFuture<MutableVersion> uploadFileSection(MutableVersion current,
+                                                               WriteSynchronizer.Committer committer,
+                                                               String filename,
+                                                               AsyncReader fileData,
+                                                               boolean isHidden,
+                                                               long startIndex,
+                                                               long endIndex,
+                                                               Optional<SymmetricKey> baseKey,
+                                                               boolean overwriteExisting,
+                                                               NetworkAccess network,
+                                                               SafeRandom random,
+                                                               Hasher hasher,
+                                                               ProgressConsumer<Long> monitor,
+                                                               List<Location> locations) {
+        return updated(current.base.props, network).thenCompose(latest -> latest.getChild(current.base.props, filename, network)
                 .thenCompose(childOpt -> {
                     if (childOpt.isPresent()) {
                         if (! overwriteExisting)
@@ -792,34 +792,34 @@ public class FileWrapper {
         );
     }
 
-    private CompletableFuture<CommittedWriterData> generateThumbnailAndUpdate(CommittedWriterData base,
-                                                                              WriteSynchronizer.Committer committer,
-                                                                              WritableAbsoluteCapability cap,
-                                                                              String fileName,
-                                                                              AsyncReader fileData,
-                                                                              NetworkAccess network,
-                                                                              int thumbNailSize,
-                                                                              Boolean isHidden,
-                                                                              String mimeType,
-                                                                              long endIndex,
-                                                                              LocalDateTime updatedDateTime) {
+    private CompletableFuture<MutableVersion> generateThumbnailAndUpdate(MutableVersion base,
+                                                                         WriteSynchronizer.Committer committer,
+                                                                         WritableAbsoluteCapability cap,
+                                                                         String fileName,
+                                                                         AsyncReader fileData,
+                                                                         NetworkAccess network,
+                                                                         int thumbNailSize,
+                                                                         Boolean isHidden,
+                                                                         String mimeType,
+                                                                         long endIndex,
+                                                                         LocalDateTime updatedDateTime) {
         return generateThumbnail(network, fileData, thumbNailSize, fileName)
                 .thenCompose(thumbData -> {
                     FileProperties fileProps = new FileProperties(fileName, false, mimeType, endIndex,
                             updatedDateTime, isHidden, thumbData);
 
-                    return network.getFile(base.props, cap, getChildsEntryWriter(), ownername)
+                    return network.getFile(base.base.props, cap, getChildsEntryWriter(), ownername)
                             .thenCompose(child -> child.get()
                                     .getPointer().fileAccess.updateProperties(base, committer, cap, entryWriter, fileProps, network));
                 });
     }
 
-    private CompletableFuture<CommittedWriterData> addChildPointer(CommittedWriterData current,
-                                                                   WriteSynchronizer.Committer committer,
-                                                                   WritableAbsoluteCapability childPointer,
-                                                                   NetworkAccess network,
-                                                                   SafeRandom random,
-                                                                   Hasher hasher) {
+    private CompletableFuture<MutableVersion> addChildPointer(MutableVersion current,
+                                                              WriteSynchronizer.Committer committer,
+                                                              WritableAbsoluteCapability childPointer,
+                                                              NetworkAccess network,
+                                                              SafeRandom random,
+                                                              Hasher hasher) {
         return pointer.fileAccess.addChildAndCommit(current, committer, writableFilePointer().relativise(childPointer),
                 writableFilePointer(), entryWriter, network, random, hasher)
                 .thenApply(newBase -> {
@@ -858,17 +858,17 @@ public class FileWrapper {
      * @param monitor
      * @return The committed root for the parent (this) directory
      */
-    private CompletableFuture<CommittedWriterData> updateExistingChild(CommittedWriterData current,
-                                                                       WriteSynchronizer.Committer committer,
-                                                                       FileWrapper parent,
-                                                                       FileWrapper existingChild,
-                                                                       AsyncReader fileData,
-                                                                       long inputStartIndex,
-                                                                       long endIndex,
-                                                                       NetworkAccess network,
-                                                                       SafeRandom random,
-                                                                       Hasher hasher,
-                                                                       ProgressConsumer<Long> monitor) {
+    private CompletableFuture<MutableVersion> updateExistingChild(MutableVersion current,
+                                                                  WriteSynchronizer.Committer committer,
+                                                                  FileWrapper parent,
+                                                                  FileWrapper existingChild,
+                                                                  AsyncReader fileData,
+                                                                  long inputStartIndex,
+                                                                  long endIndex,
+                                                                  NetworkAccess network,
+                                                                  SafeRandom random,
+                                                                  Hasher hasher,
+                                                                  ProgressConsumer<Long> monitor) {
 
         FileProperties existingProps = existingChild.getFileProperties();
         String filename = existingProps.name;
@@ -878,115 +878,115 @@ public class FileWrapper {
 
         WritableAbsoluteCapability childCap = existingChild.writableFilePointer();
         AbsoluteCapability ourCap = getPointer().capability;
-        return getCorrectReadBase(current, childCap, ourCap, network)
+        return getCorrectReadBase(current, existingChild.owner(), existingChild.writer(), network)
                 .thenCompose(baseForChild -> (existingChild.isDirty() ?
                         existingChild.clean(baseForChild, committer, network, random, parent, hasher)
-                        .thenCompose(pair -> pair.left.getChild(pair.right.props, filename, network)
+                        .thenCompose(pair -> pair.left.getChild(pair.right.base.props, filename, network)
                                 .thenApply(cleanedChild -> new Triple<>(pair.left, cleanedChild.get(), pair.right))) :
                 CompletableFuture.completedFuture(new Triple<>(this, existingChild, baseForChild)))
-        ).thenCompose(updatedTriple -> {
-            FileWrapper us = updatedTriple.left;
-            FileWrapper child = updatedTriple.middle;
-            CommittedWriterData base = updatedTriple.right;
-            FileProperties childProps = child.getFileProperties();
-            final AtomicLong filesSize = new AtomicLong(childProps.size);
-            FileRetriever retriever = child.getRetriever();
-            SymmetricKey baseKey = child.pointer.capability.rBaseKey;
-            CryptreeNode fileAccess = child.pointer.fileAccess;
-            SymmetricKey dataKey = fileAccess.getDataKey(baseKey);
+                ).thenCompose(updatedTriple -> {
+                    FileWrapper us = updatedTriple.left;
+                    FileWrapper child = updatedTriple.middle;
+                    MutableVersion base = updatedTriple.right;
+                    FileProperties childProps = child.getFileProperties();
+                    final AtomicLong filesSize = new AtomicLong(childProps.size);
+                    FileRetriever retriever = child.getRetriever();
+                    SymmetricKey baseKey = child.pointer.capability.rBaseKey;
+                    CryptreeNode fileAccess = child.pointer.fileAccess;
+                    SymmetricKey dataKey = fileAccess.getDataKey(baseKey);
 
-            List<Long> startIndexes = new ArrayList<>();
+                    List<Long> startIndexes = new ArrayList<>();
 
-            for (long startIndex = inputStartIndex; startIndex < endIndex; startIndex = startIndex + Chunk.MAX_SIZE - (startIndex % Chunk.MAX_SIZE))
-                startIndexes.add(startIndex);
+                    for (long startIndex = inputStartIndex; startIndex < endIndex; startIndex = startIndex + Chunk.MAX_SIZE - (startIndex % Chunk.MAX_SIZE))
+                        startIndexes.add(startIndex);
 
-            BiFunction<CommittedWriterData, Long, CompletableFuture<CommittedWriterData>> composer = (cwd, startIndex) -> {
-                MaybeMultihash currentHash = child.pointer.fileAccess.committedHash();
-                return retriever.getChunk(cwd.props, network, random, startIndex, filesSize.get(), childCap, currentHash, monitor)
-                        .thenCompose(currentLocation -> {
+                    BiFunction<MutableVersion, Long, CompletableFuture<MutableVersion>> composer = (version, startIndex) -> {
+                        MaybeMultihash currentHash = child.pointer.fileAccess.committedHash();
+                        return retriever.getChunk(version.base.props, network, random, startIndex, filesSize.get(), childCap, currentHash, monitor)
+                                .thenCompose(currentLocation -> {
                                     CompletableFuture<Optional<Location>> locationAt = retriever
-                                            .getMapLabelAt(cwd.props, childCap, startIndex + Chunk.MAX_SIZE, network)
+                                            .getMapLabelAt(version.base.props, childCap, startIndex + Chunk.MAX_SIZE, network)
                                             .thenApply(x -> x.map(m -> getLocation().withMapKey(m)));
                                     return locationAt.thenCompose(location ->
                                             CompletableFuture.completedFuture(new Pair<>(currentLocation, location)));
                                 }
-                        ).thenCompose(pair -> {
+                                ).thenCompose(pair -> {
 
-                            if (!pair.left.isPresent()) {
-                                CompletableFuture<CommittedWriterData> result = new CompletableFuture<>();
-                                result.completeExceptionally(new IllegalStateException("Current chunk not present"));
-                                return result;
-                            }
-
-                            LocatedChunk currentOriginal = pair.left.get();
-                            Optional<Location> nextChunkLocationOpt = pair.right;
-                            Location nextChunkLocation = nextChunkLocationOpt.orElseGet(locationSupplier);
-                            LOG.info("********** Writing to chunk at mapkey: " + ArrayOps.bytesToHex(currentOriginal.location.getMapKey()) + " next: " + nextChunkLocation);
-
-                            // modify chunk, re-encrypt and upload
-                            int internalStart = (int) (startIndex % Chunk.MAX_SIZE);
-                            int internalEnd = endIndex - (startIndex - internalStart) > Chunk.MAX_SIZE ?
-                                    Chunk.MAX_SIZE : (int) (endIndex - (startIndex - internalStart));
-                            byte[] rawData = currentOriginal.chunk.data();
-                            // extend data array if necessary
-                            if (rawData.length < internalEnd)
-                                rawData = Arrays.copyOfRange(rawData, 0, internalEnd);
-                            byte[] raw = rawData;
-                            Optional<SymmetricLinkToSigner> writerLink = startIndex < Chunk.MAX_SIZE ?
-                                    child.pointer.fileAccess.getWriterLink(child.pointer.capability.rBaseKey) :
-                                    Optional.empty();
-
-                            return fileData.readIntoArray(raw, internalStart, internalEnd - internalStart).thenCompose(read -> {
-
-                                Chunk updated = new Chunk(raw, dataKey, currentOriginal.location.getMapKey(), dataKey.createNonce());
-                                LocatedChunk located = new LocatedChunk(currentOriginal.location, currentOriginal.existingHash, updated);
-                                long currentSize = filesSize.get();
-                                FileProperties newProps = new FileProperties(childProps.name, false, childProps.mimeType,
-                                        endIndex > currentSize ? endIndex : currentSize,
-                                        LocalDateTime.now(), childProps.isHidden, childProps.thumbnail);
-
-                                CompletableFuture<CommittedWriterData> chunkUploaded = FileUploader.uploadChunk(cwd, committer, child.signingPair(),
-                                        newProps, getLocation(), us.getParentKey(), baseKey, located,
-                                        nextChunkLocation, writerLink, hasher, network, monitor);
-
-                                return chunkUploaded.thenCompose(updatedBase -> {
-                                    //update indices to be relative to next chunk
-                                    long updatedLength = startIndex + internalEnd - internalStart;
-                                    if (updatedLength > filesSize.get()) {
-                                        filesSize.set(updatedLength);
-
-                                        if (updatedLength > Chunk.MAX_SIZE) {
-                                            // update file size in FileProperties of first chunk
-                                            return network.getFile(updatedBase.props, childCap, getChildsEntryWriter(), ownername)
-                                                    .thenCompose(updatedChild -> {
-                                                        FileProperties correctedSize = updatedChild.get()
-                                                                .getPointer().fileAccess.getProperties(childCap.rBaseKey)
-                                                                .withSize(endIndex);
-                                                        return updatedChild.get()
-                                                                .getPointer().fileAccess.updateProperties(updatedBase,
-                                                                        committer, childCap, entryWriter, correctedSize, network);
-                                                    });
-                                        }
+                                    if (!pair.left.isPresent()) {
+                                        CompletableFuture<MutableVersion> result = new CompletableFuture<>();
+                                        result.completeExceptionally(new IllegalStateException("Current chunk not present"));
+                                        return result;
                                     }
-                                    return CompletableFuture.completedFuture(updatedBase);
-                                });
-                            });
-                        });
-            };
 
-            return Futures.reduceAll(startIndexes, base, composer, (a, b) -> b)
-                    .thenCompose(updatedBase -> {
-                        // update file size
-                        if (existingProps.size >= endIndex)
-                            return CompletableFuture.completedFuture(updatedBase);
-                        WritableAbsoluteCapability cap = child.writableFilePointer();
-                        FileProperties newProps = existingProps.withSize(endIndex);
-                        return network.getFile(updatedBase.props, cap, getChildsEntryWriter(), ownername)
-                                .thenCompose(updatedChild -> updatedChild.get()
-                                        .getPointer().fileAccess.updateProperties(updatedBase, committer, cap,
-                                                entryWriter, newProps, network));
-                    });
-        }).thenApply(cwd -> childCap.writer.equals(ourCap.writer) ? cwd : current);
+                                    LocatedChunk currentOriginal = pair.left.get();
+                                    Optional<Location> nextChunkLocationOpt = pair.right;
+                                    Location nextChunkLocation = nextChunkLocationOpt.orElseGet(locationSupplier);
+                                    LOG.info("********** Writing to chunk at mapkey: " + ArrayOps.bytesToHex(currentOriginal.location.getMapKey()) + " next: " + nextChunkLocation);
+
+                                    // modify chunk, re-encrypt and upload
+                                    int internalStart = (int) (startIndex % Chunk.MAX_SIZE);
+                                    int internalEnd = endIndex - (startIndex - internalStart) > Chunk.MAX_SIZE ?
+                                            Chunk.MAX_SIZE : (int) (endIndex - (startIndex - internalStart));
+                                    byte[] rawData = currentOriginal.chunk.data();
+                                    // extend data array if necessary
+                                    if (rawData.length < internalEnd)
+                                        rawData = Arrays.copyOfRange(rawData, 0, internalEnd);
+                                    byte[] raw = rawData;
+                                    Optional<SymmetricLinkToSigner> writerLink = startIndex < Chunk.MAX_SIZE ?
+                                            child.pointer.fileAccess.getWriterLink(child.pointer.capability.rBaseKey) :
+                                            Optional.empty();
+
+                                    return fileData.readIntoArray(raw, internalStart, internalEnd - internalStart).thenCompose(read -> {
+
+                                        Chunk updated = new Chunk(raw, dataKey, currentOriginal.location.getMapKey(), dataKey.createNonce());
+                                        LocatedChunk located = new LocatedChunk(currentOriginal.location, currentOriginal.existingHash, updated);
+                                        long currentSize = filesSize.get();
+                                        FileProperties newProps = new FileProperties(childProps.name, false, childProps.mimeType,
+                                                endIndex > currentSize ? endIndex : currentSize,
+                                                LocalDateTime.now(), childProps.isHidden, childProps.thumbnail);
+
+                                        CompletableFuture<MutableVersion> chunkUploaded = FileUploader.uploadChunk(version, committer, child.signingPair(),
+                                                newProps, getLocation(), us.getParentKey(), baseKey, located,
+                                                nextChunkLocation, writerLink, hasher, network, monitor);
+
+                                        return chunkUploaded.thenCompose(updatedBase -> {
+                                            //update indices to be relative to next chunk
+                                            long updatedLength = startIndex + internalEnd - internalStart;
+                                            if (updatedLength > filesSize.get()) {
+                                                filesSize.set(updatedLength);
+
+                                                if (updatedLength > Chunk.MAX_SIZE) {
+                                                    // update file size in FileProperties of first chunk
+                                                    return network.getFile(updatedBase.base.props, childCap, getChildsEntryWriter(), ownername)
+                                                            .thenCompose(updatedChild -> {
+                                                                FileProperties correctedSize = updatedChild.get()
+                                                                        .getPointer().fileAccess.getProperties(childCap.rBaseKey)
+                                                                        .withSize(endIndex);
+                                                                return updatedChild.get()
+                                                                        .getPointer().fileAccess.updateProperties(updatedBase,
+                                                                                committer, childCap, entryWriter, correctedSize, network);
+                                                            });
+                                                }
+                                            }
+                                            return CompletableFuture.completedFuture(updatedBase);
+                                        });
+                                    });
+                                });
+                    };
+
+                    return Futures.reduceAll(startIndexes, base, composer, (a, b) -> b)
+                            .thenCompose(updatedBase -> {
+                                // update file size
+                                if (existingProps.size >= endIndex)
+                                    return CompletableFuture.completedFuture(updatedBase);
+                                WritableAbsoluteCapability cap = child.writableFilePointer();
+                                FileProperties newProps = existingProps.withSize(endIndex);
+                                return network.getFile(updatedBase.base.props, cap, getChildsEntryWriter(), ownername)
+                                        .thenCompose(updatedChild -> updatedChild.get()
+                                                .getPointer().fileAccess.updateProperties(updatedBase, committer, cap,
+                                                        entryWriter, newProps, network));
+                            });
+                }).thenApply(cwd -> childCap.writer.equals(ourCap.writer) ? cwd : current);
     }
 
     static boolean isLegalName(String name) {
@@ -1019,9 +1019,9 @@ public class FileWrapper {
             return result;
         }
         return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
-                (cwd, committer) -> hasChildWithName(cwd.props, newFolderName, network).thenCompose(hasChild -> {
+                (cwd, committer) -> hasChildWithName(cwd.base.props, newFolderName, network).thenCompose(hasChild -> {
                     if (hasChild) {
-                        CompletableFuture<CommittedWriterData> error = new CompletableFuture<>();
+                        CompletableFuture<MutableVersion> error = new CompletableFuture<>();
                         error.completeExceptionally(new IllegalStateException("Child already exists with name: " + newFolderName));
                         return error;
                     }
@@ -1030,8 +1030,8 @@ public class FileWrapper {
                         setModified();
                         return x;
                     });
-                })).thenCompose(base -> updated(base.props, network)
-                .thenCompose(newUs -> newUs.getChild(base.props, newFolderName, network))
+                })).thenCompose(version -> updated(version.base.props, network)
+                .thenCompose(newUs -> newUs.getChild(version.base.props, newFolderName, network))
                 .thenApply(Optional::get));
     }
 
@@ -1146,7 +1146,7 @@ public class FileWrapper {
     }
 
     @JsMethod
-    public CompletableFuture<CommittedWriterData> copyTo(FileWrapper target, UserContext context) {
+    public CompletableFuture<MutableVersion> copyTo(FileWrapper target, UserContext context) {
         ensureUnmodified();
         NetworkAccess network = context.network;
         SafeRandom random = context.crypto.random;
@@ -1156,9 +1156,9 @@ public class FileWrapper {
         }
 
         return context.network.synchronizer.applyComplexUpdate(target.owner(), target.signingPair(), (base, committer) -> {
-            return target.hasChildWithName(base.props, getFileProperties().name, network).thenCompose(childExists -> {
+            return target.hasChildWithName(base.base.props, getFileProperties().name, network).thenCompose(childExists -> {
                 if (childExists) {
-                    CompletableFuture<CommittedWriterData> error = new CompletableFuture<>();
+                    CompletableFuture<MutableVersion> error = new CompletableFuture<>();
                     error.completeExceptionally(new IllegalStateException("CopyTo target " + target + " already has child with name " + getFileProperties().name));
                     return error;
                 }
@@ -1169,7 +1169,7 @@ public class FileWrapper {
                     WritableAbsoluteCapability newCap = new WritableAbsoluteCapability(target.owner(), target.writer(),
                             newMapKey, newBaseKey, newWriterBaseKey);
                     SymmetricKey newParentParentKey = target.getParentKey();
-                    return getCorrectReadBase(base, getPointer().capability, target.getPointer().capability, network)
+                    return getCorrectReadBase(base, owner(), writer(), network)
                             .thenCompose(sourceBase -> pointer.fileAccess.copyTo(sourceBase, committer, pointer.capability, newBaseKey,
                                     target.writableFilePointer(), target.entryWriter, newParentParentKey,
                                     newMapKey, network, random, hasher))
@@ -1177,8 +1177,8 @@ public class FileWrapper {
                                 return target.addLinkTo(updatedBase, committer, getName(), newCap, network, random, hasher);
                             });
                 } else {
-                    return getCorrectReadBase(base, getPointer().capability, target.getPointer().capability, network)
-                            .thenCompose(sourceBase -> getInputStream(sourceBase.props, network, random, x -> {}))
+                    return getCorrectReadBase(base, target.owner(), target.writer(), network)
+                            .thenCompose(sourceBase -> getInputStream(sourceBase.base.props, network, random, x -> {}))
                             .thenCompose(stream -> target.uploadFileSection(base, committer, getName(), stream, false, 0, getSize(),
                                     Optional.empty(), false, network, random, hasher, x -> {},
                                     target.generateChildLocations(props.getNumberOfChunks(), random)));
@@ -1187,13 +1187,13 @@ public class FileWrapper {
         });
     }
 
-    private CompletableFuture<CommittedWriterData> getCorrectReadBase(CommittedWriterData baseForTarget,
-                                                                      AbsoluteCapability source,
-                                                                      AbsoluteCapability target,
-                                                                      NetworkAccess network) {
-        if (source.writer.equals(target.writer))
-            return CompletableFuture.completedFuture(baseForTarget);
-        return network.synchronizer.getValue(source.owner, source.writer);
+    private static CompletableFuture<MutableVersion> getCorrectReadBase(MutableVersion base,
+                                                                 PublicKeyHash targetOwner,
+                                                                 PublicKeyHash targetWriter,
+                                                                 NetworkAccess network) {
+        if (base.writer.equals(targetWriter))
+            return CompletableFuture.completedFuture(base);
+        return network.synchronizer.getValue(targetOwner, targetWriter);
     }
 
     /**
@@ -1349,7 +1349,7 @@ public class FileWrapper {
                                                                    SafeRandom random,
                                                                    ProgressConsumer<Long> monitor) {
         return network.synchronizer.getValue(owner(), writer())
-                .thenCompose(cwd -> getInputStream(cwd.props, network, random, getFileProperties().size, monitor));
+                .thenCompose(cwd -> getInputStream(cwd.base.props, network, random, getFileProperties().size, monitor));
     }
 
     public CompletableFuture<? extends AsyncReader> getInputStream(WriterData version,
@@ -1367,7 +1367,7 @@ public class FileWrapper {
                                                                    ProgressConsumer<Long> monitor) {
         long fileSize = (fileSizeLow & 0xFFFFFFFFL) + ((fileSizeHi & 0xFFFFFFFFL) << 32);
         return network.synchronizer.getValue(owner(), writer())
-                .thenCompose(cwd -> getInputStream(cwd.props, network, random, fileSize, monitor));
+                .thenCompose(cwd -> getInputStream(cwd.base.props, network, random, fileSize, monitor));
     }
 
     public CompletableFuture<? extends AsyncReader> getInputStream(NetworkAccess network,
@@ -1375,7 +1375,7 @@ public class FileWrapper {
                                                                    long fileSize,
                                                                    ProgressConsumer<Long> monitor) {
         return network.synchronizer.getValue(owner(), writer())
-                .thenCompose(cwd -> getInputStream(cwd.props, network, random, fileSize, monitor));
+                .thenCompose(cwd -> getInputStream(cwd.base.props, network, random, fileSize, monitor));
     }
 
     public CompletableFuture<? extends AsyncReader> getInputStream(WriterData version,

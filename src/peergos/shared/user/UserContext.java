@@ -520,7 +520,7 @@ public class UserContext {
                                     OwnerProof proof = OwnerProof.build(newSigner, signer.publicKeyHash);
                                     return writeSynchronizer.applyUpdate(signer.publicKeyHash, signer, (wd, tid) ->
                                             wd.addOwnedKey(signer.publicKeyHash, signer, proof, network.dhtClient))
-                                            .thenCompose(wd -> wd.props.changeKeys(signer,
+                                            .thenCompose(version -> version.base.props.changeKeys(signer,
                                                     newSigner,
                                                     updatedUser.getBoxingPair().publicBoxingKey,
                                                     existingUser.getRoot(),
@@ -611,13 +611,15 @@ public class UserContext {
     private CompletableFuture<CommittedWriterData> addOwnedKeyAndCommit(SigningPrivateKeyAndPublicHash owned) {
         return writeSynchronizer.applyUpdate(signer.publicKeyHash, signer,
                 (wd, tid) -> wd.addOwnedKey(signer.publicKeyHash, signer,
-                        OwnerProof.build(owned, signer.publicKeyHash), network.dhtClient));
+                        OwnerProof.build(owned, signer.publicKeyHash), network.dhtClient))
+                .thenApply(v -> v.base);
     }
 
     public CompletableFuture<CommittedWriterData> addNamedOwnedKeyAndCommit(String keyName,
                                                                             SigningPrivateKeyAndPublicHash owned) {
         return writeSynchronizer.applyUpdate(signer.publicKeyHash, signer,
-                (wd, tid) -> CompletableFuture.completedFuture(wd.addNamedKey(keyName, OwnerProof.build(owned, signer.publicKeyHash))));
+                (wd, tid) -> CompletableFuture.completedFuture(wd.addNamedKey(keyName, OwnerProof.build(owned, signer.publicKeyHash))))
+                .thenApply(v -> v.base);
     }
 
     public CompletableFuture<CommittedWriterData> makePublic(FileWrapper file) {
@@ -638,7 +640,7 @@ public class UserContext {
                             champ.thenCompose(c -> c.put(signer.publicKeyHash, signer, path.getBytes(),
                                     MaybeMultihash.empty(), capHash, tid))
                                     .thenApply(newRoot -> wd.withPublicRoot(newRoot)));
-        }));
+        })).thenApply(v -> v.base);
     }
 
     private static void ensureAllowedToShare(FileWrapper file, String ourname, boolean isWrite) {
@@ -991,7 +993,8 @@ public class UserContext {
                                                                                   PublicKeyHash toRemove,
                                                                                   NetworkAccess network) {
         return writeSynchronizer.applyUpdate(owner, parentSigner,
-                (wd, tid) -> wd.removeOwnedKey(owner, parentSigner, toRemove, network.dhtClient));
+                (wd, tid) -> wd.removeOwnedKey(owner, parentSigner, toRemove, network.dhtClient))
+                .thenApply(v -> v.base);
     }
 
     private CompletableFuture<Boolean> updatedSharedWithCache(FileWrapper file, Set<String> usersToAdd,

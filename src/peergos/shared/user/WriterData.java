@@ -183,10 +183,10 @@ public class WriterData implements Cborable {
                             newEntryPoints,
                             tree));
                 })
-                .thenApply(cwd -> cwd.props);
+                .thenApply(version -> version.base.props);
     }
 
-    public CompletableFuture<CommittedWriterData> commit(PublicKeyHash owner,
+    public CompletableFuture<MutableVersion> commit(PublicKeyHash owner,
                                                          SigningPrivateKeyAndPublicHash signer,
                                                          MaybeMultihash currentHash,
                                                          NetworkAccess network,
@@ -194,12 +194,12 @@ public class WriterData implements Cborable {
         return commit(owner, signer, currentHash, network.mutable, network.dhtClient, tid);
     }
 
-    public CompletableFuture<CommittedWriterData> commit(PublicKeyHash owner,
-                                                         SigningPrivateKeyAndPublicHash signer,
-                                                         MaybeMultihash currentHash,
-                                                         MutablePointers mutable,
-                                                         ContentAddressedStorage immutable,
-                                                         TransactionId tid) {
+    public CompletableFuture<MutableVersion> commit(PublicKeyHash owner,
+                                                    SigningPrivateKeyAndPublicHash signer,
+                                                    MaybeMultihash currentHash,
+                                                    MutablePointers mutable,
+                                                    ContentAddressedStorage immutable,
+                                                    TransactionId tid) {
         byte[] raw = serialize();
         
         return immutable.put(owner, signer.publicKeyHash, signer.secret.signatureOnly(raw), raw, tid)
@@ -208,7 +208,7 @@ public class WriterData implements Cborable {
                     if (newHash.equals(currentHash)) {
                         // nothing has changed
                         CommittedWriterData committed = committed(newHash);
-                        return CompletableFuture.completedFuture(committed);
+                        return CompletableFuture.completedFuture(new MutableVersion(signer.publicKeyHash, committed));
                     }
                     HashCasPair cas = new HashCasPair(currentHash, newHash);
                     byte[] signed = signer.secret.signMessage(cas.serialize());
@@ -217,7 +217,7 @@ public class WriterData implements Cborable {
                                 if (!res)
                                     throw new IllegalStateException("Corenode Crypto CAS failed!");
                                 CommittedWriterData committed = committed(newHash);
-                                return committed;
+                                return new MutableVersion(signer.publicKeyHash, committed);
                             });
                 });
     }

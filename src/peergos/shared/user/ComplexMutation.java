@@ -4,5 +4,5 @@ import java.util.concurrent.*;
 
 public interface ComplexMutation {
 
-    CompletableFuture<CommittedWriterData> apply(CommittedWriterData input, WriteSynchronizer.Committer committer);
+    CompletableFuture<MutableVersion> apply(MutableVersion input, WriteSynchronizer.Committer committer);
 }

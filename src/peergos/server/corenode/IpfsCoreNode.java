@@ -178,7 +178,7 @@ public class IpfsCoreNode implements CoreNode {
                         PublicKeyHash owner = updatedChain.get(updatedChain.size() - 1).owner;
                         reverseLookup.put(owner, username);
                         chains.put(username, mergedChain);
-                        currentRoot = committed.hash;
+                        currentRoot = committed.base.hash;
                         return true;
                     });
                 }
