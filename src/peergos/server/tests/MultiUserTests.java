@@ -61,6 +61,16 @@ public class MultiUserTests {
     }
 
     @Test
+    public void grantAndRevokeDirReadAccess() throws Exception {
+        PeergosNetworkUtils.grantAndRevokeDirReadAccess(network, network, 2, random);
+    }
+
+    @Test
+    public void grantAndRevokeDirWriteAccess() throws Exception {
+        PeergosNetworkUtils.grantAndRevokeDirWriteAccess(network, network, 2, random);
+    }
+
+    @Test
     public void safeCopyOfFriendsReadAccess() throws Exception {
         TriFunction<UserContext, UserContext, String, CompletableFuture<Boolean>> readAccessSharingFunction =
                 (u1, u2, filename) ->
@@ -886,16 +896,6 @@ public class MultiUserTests {
 
     private String random() {
         return ArrayOps.bytesToHex(crypto.random.randomBytes(15));
-    }
-
-    @Test
-    public void grantAndRevokeDirReadAccess() throws Exception {
-        PeergosNetworkUtils.grantAndRevokeDirReadAccess(network, network, 2, random);
-    }
-
-    @Test
-    public void grantAndRevokeDirWriteAccess() throws Exception {
-        PeergosNetworkUtils.grantAndRevokeDirWriteAccess(network, network, 2, random);
     }
 
     @Test

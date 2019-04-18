@@ -596,7 +596,9 @@ public class CryptreeNode implements Cborable {
                                 .commit(us, entryWriter, network, tid), network.dhtClient);
             }
         });
-    }public CompletableFuture<CommittedWriterData> addChildrenAndCommit(CommittedWriterData current,
+    }
+
+    public CompletableFuture<CommittedWriterData> addChildrenAndCommit(CommittedWriterData current,
                                                                        WriteSynchronizer.Committer committer,
                                                                        List<RelativeCapability> targetCAPs,
                                                                        WritableAbsoluteCapability us,
@@ -607,7 +609,7 @@ public class CryptreeNode implements Cborable {
         // Make sure subsequent blobs use a different transaction to obscure linkage of different parts of this dir
         return getDirectChildren(us.rBaseKey, network).thenCompose(children -> {
             if (children.size() + targetCAPs.size() > getMaxChildLinksPerBlob()) {
-                return getNextChunk(us, network).thenCompose(nextMetablob -> {
+                return getNextChunk(current.props, us, network).thenCompose(nextMetablob -> {
                     if (nextMetablob.isPresent()) {
                         AbsoluteCapability nextPointer = nextMetablob.get().capability;
                         CryptreeNode nextBlob = nextMetablob.get().fileAccess;
@@ -618,7 +620,9 @@ public class CryptreeNode implements Cborable {
                         int freeSlots = getMaxChildLinksPerBlob() - children.size();
                         List<RelativeCapability> addToUs = targetCAPs.subList(0, freeSlots);
                         List<RelativeCapability> addToNext = targetCAPs.subList(freeSlots, targetCAPs.size());
-                        return addChildrenAndCommit(current, committer, addToUs, us, entryWriter, network, random, hasher)
+                        return (addToUs.isEmpty() ?
+                                CompletableFuture.completedFuture(current) :
+                                addChildrenAndCommit(current, committer, addToUs, us, entryWriter, network, random, hasher))
                                 .thenCompose(newBase -> {
                                     // create and upload new metadata blob
                                     SymmetricKey nextSubfoldersKey = us.rBaseKey;
@@ -639,9 +643,10 @@ public class CryptreeNode implements Cborable {
                                             us.writer, nextMapKey, nextSubfoldersKey, us.wBaseKey.get());
                                     return IpfsTransaction.call(us.owner,
                                             tid -> next.commit(newBase, committer, nextPointer, entryWriter, network, tid)
-                                                    .thenCompose(updatedBase -> addChildrenAndCommit(
-                                                            updatedBase, committer, remaining,
-                                                            nextPointer, entryWriter, network, random, hasher))
+                                                    .thenCompose(updatedBase -> network.getMetadata(updatedBase.props, nextPointer)
+                                                            .thenCompose(nextOpt -> nextOpt.get().
+                                                                    addChildrenAndCommit(updatedBase, committer, remaining,
+                                                                            nextPointer, entryWriter, network, random, hasher)))
                                             , network.dhtClient);
                                 });
                     }
