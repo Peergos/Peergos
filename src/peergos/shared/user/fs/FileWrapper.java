@@ -1152,20 +1152,31 @@ public class FileWrapper {
                     WritableAbsoluteCapability newCap = new WritableAbsoluteCapability(target.owner(), target.writer(),
                             newMapKey, newBaseKey, newWriterBaseKey);
                     SymmetricKey newParentParentKey = target.getParentKey();
-                    return pointer.fileAccess.copyTo(base, committer, pointer.capability, newBaseKey,
-                            target.writableFilePointer(), target.entryWriter, newParentParentKey,
-                            newMapKey, network, random, hasher)
+                    return getCorrectReadBase(base, getPointer().capability, target.getPointer().capability, network)
+                            .thenCompose(sourceBase -> pointer.fileAccess.copyTo(sourceBase, committer, pointer.capability, newBaseKey,
+                                    target.writableFilePointer(), target.entryWriter, newParentParentKey,
+                                    newMapKey, network, random, hasher))
                             .thenCompose(updatedBase -> {
                                 return target.addLinkTo(updatedBase, committer, getName(), newCap, network, random, hasher);
                             });
                 } else {
-                    return getInputStream(base.props, network, random, x -> {})
+                    return getCorrectReadBase(base, getPointer().capability, target.getPointer().capability, network)
+                            .thenCompose(sourceBase -> getInputStream(sourceBase.props, network, random, x -> {}))
                             .thenCompose(stream -> target.uploadFileSection(base, committer, getName(), stream, false, 0, getSize(),
                                     Optional.empty(), false, network, random, hasher, x -> {},
                                     target.generateChildLocations(props.getNumberOfChunks(), random)));
                 }
             });
         });
+    }
+
+    private CompletableFuture<CommittedWriterData> getCorrectReadBase(CommittedWriterData baseForTarget,
+                                                                      AbsoluteCapability source,
+                                                                      AbsoluteCapability target,
+                                                                      NetworkAccess network) {
+        if (source.writer.equals(target.writer))
+            return CompletableFuture.completedFuture(baseForTarget);
+        return network.synchronizer.getValue(source.owner, source.writer);
     }
 
     /**
