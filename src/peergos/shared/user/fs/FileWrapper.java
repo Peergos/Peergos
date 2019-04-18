@@ -843,6 +843,21 @@ public class FileWrapper {
                         hasher, monitor, generateChildLocationsFromSize(fileData.length, random)));
     }
 
+    /**
+     *
+     * @param current
+     * @param committer
+     * @param parent
+     * @param existingChild
+     * @param fileData
+     * @param inputStartIndex
+     * @param endIndex
+     * @param network
+     * @param random
+     * @param hasher
+     * @param monitor
+     * @return The committed root for the parent (this) directory
+     */
     private CompletableFuture<CommittedWriterData> updateExistingChild(CommittedWriterData current,
                                                                        WriteSynchronizer.Committer committer,
                                                                        FileWrapper parent,
@@ -861,11 +876,14 @@ public class FileWrapper {
 
         Supplier<Location> locationSupplier = () -> new Location(getLocation().owner, getLocation().writer, random.randomBytes(32));
 
-        return (existingChild.isDirty() ?
-                existingChild.clean(current, committer, network, random, parent, hasher)
+        WritableAbsoluteCapability childCap = existingChild.writableFilePointer();
+        AbsoluteCapability ourCap = getPointer().capability;
+        return getCorrectReadBase(current, childCap, ourCap, network)
+                .thenCompose(baseForChild -> (existingChild.isDirty() ?
+                        existingChild.clean(baseForChild, committer, network, random, parent, hasher)
                         .thenCompose(pair -> pair.left.getChild(pair.right.props, filename, network)
                                 .thenApply(cleanedChild -> new Triple<>(pair.left, cleanedChild.get(), pair.right))) :
-                CompletableFuture.completedFuture(new Triple<>(this, existingChild, current))
+                CompletableFuture.completedFuture(new Triple<>(this, existingChild, baseForChild)))
         ).thenCompose(updatedTriple -> {
             FileWrapper us = updatedTriple.left;
             FileWrapper child = updatedTriple.middle;
@@ -883,7 +901,6 @@ public class FileWrapper {
                 startIndexes.add(startIndex);
 
             BiFunction<CommittedWriterData, Long, CompletableFuture<CommittedWriterData>> composer = (cwd, startIndex) -> {
-                WritableAbsoluteCapability childCap = child.writableFilePointer();
                 MaybeMultihash currentHash = child.pointer.fileAccess.committedHash();
                 return retriever.getChunk(cwd.props, network, random, startIndex, filesSize.get(), childCap, currentHash, monitor)
                         .thenCompose(currentLocation -> {
@@ -969,7 +986,7 @@ public class FileWrapper {
                                         .getPointer().fileAccess.updateProperties(updatedBase, committer, cap,
                                                 entryWriter, newProps, network));
                     });
-        });
+        }).thenApply(cwd -> childCap.writer.equals(ourCap.writer) ? cwd : current);
     }
 
     static boolean isLegalName(String name) {

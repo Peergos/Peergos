@@ -83,11 +83,11 @@ public class WriteSynchronizer {
                                                                      ComplexMutation transformer) {
         return pending.computeIfAbsent(new Pair<>(owner, writer.publicKeyHash), p -> new AsyncLock<>(getWriterData(owner, p.right)))
                 .runWithLock(current -> transformer.apply(current,
-                        (wd, existing, tid) -> wd.commit(owner, writer, existing, mutable, dht, tid)),
+                        (signer, wd, existing, tid) -> wd.commit(owner, signer, existing, mutable, dht, tid)),
                         () -> getWriterData(owner, writer.publicKeyHash));
     }
 
     public interface Committer {
-        CompletableFuture<CommittedWriterData> commit(WriterData wd, MaybeMultihash existing, TransactionId tid);
+        CompletableFuture<CommittedWriterData> commit(SigningPrivateKeyAndPublicHash signer, WriterData wd, MaybeMultihash existing, TransactionId tid);
     }
 }

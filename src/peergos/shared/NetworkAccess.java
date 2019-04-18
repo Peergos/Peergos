@@ -428,7 +428,7 @@ public class NetworkAccess {
             byte[] metaBlob = metadata.serialize();
             return dhtClient.put(owner, writer.publicKeyHash, writer.secret.signatureOnly(metaBlob), metaBlob, tid)
                     .thenCompose(blobHash -> tree.put(current.props, owner, writer, mapKey, metadata.committedHash(), blobHash, tid)
-                            .thenCompose(wd -> committer.commit(wd, current.hash, tid)));
+                            .thenCompose(wd -> committer.commit(writer, wd, current.hash, tid)));
         } catch (Exception e) {
             LOG.severe(e.getMessage());
             throw new RuntimeException(e);
