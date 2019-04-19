@@ -877,7 +877,6 @@ public class FileWrapper {
         Supplier<Location> locationSupplier = () -> new Location(getLocation().owner, getLocation().writer, random.randomBytes(32));
 
         WritableAbsoluteCapability childCap = existingChild.writableFilePointer();
-        AbsoluteCapability ourCap = getPointer().capability;
         return current.withWriter(existingChild.owner(), existingChild.writer(), network)
                 .thenCompose(state -> (existingChild.isDirty() ?
                                 existingChild.clean(state, committer, network, random, parent, hasher)
@@ -984,9 +983,9 @@ public class FileWrapper {
                                 return network.getFile(updatedBase.get(child.writer()).props, cap, getChildsEntryWriter(), ownername)
                                         .thenCompose(updatedChild -> updatedChild.get()
                                                 .getPointer().fileAccess.updateProperties(updatedBase, committer, cap,
-                                                        entryWriter, newProps, network));
+                                                        getChildsEntryWriter(), newProps, network));
                             });
-                }).thenApply(cwd -> childCap.writer.equals(ourCap.writer) ? cwd : current);
+                });
     }
 
     static boolean isLegalName(String name) {

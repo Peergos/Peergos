@@ -1,6 +1,5 @@
 package peergos.shared.user;
 
-import peergos.server.util.*;
 import peergos.shared.MaybeMultihash;
 import peergos.shared.cbor.CborObject;
 import peergos.shared.crypto.*;
@@ -15,7 +14,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.logging.*;
 
 public class WriteSynchronizer {
 
@@ -87,11 +85,7 @@ public class WriteSynchronizer {
                                                           ComplexMutation transformer) {
         return pending.computeIfAbsent(new Pair<>(owner, writer.publicKeyHash), p -> new AsyncLock<>(getWriterData(owner, p.right)))
                 .runWithLock(current -> transformer.apply(current,
-                        (aOwner, signer, wd, existing, tid) -> wd.commit(aOwner, signer, existing.hash, mutable, dht, tid)
-                        .exceptionally(t -> {
-                            Logging.LOG().log(Level.SEVERE, t.getMessage(), t);
-                            return new Snapshot(signer.publicKeyHash, existing);
-                        })),
+                        (aOwner, signer, wd, existing, tid) -> wd.commit(aOwner, signer, existing.hash, mutable, dht, tid)),
                         () -> getWriterData(owner, writer.publicKeyHash));
     }
 
