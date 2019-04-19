@@ -443,8 +443,9 @@ public class CryptreeNode implements Cborable {
     }
 
     public CompletableFuture<Optional<RetrievedCapability>> getNextChunk(WriterData base, AbsoluteCapability us, NetworkAccess network) {
-        return network.getMetadata(base, us.withMapKey(getNextChunkLocation(us.rBaseKey)))
-                .thenApply(faOpt -> faOpt.map(fa -> new RetrievedCapability(us, fa)));
+        AbsoluteCapability nextChunkCap = us.withMapKey(getNextChunkLocation(us.rBaseKey));
+        return network.getMetadata(base, nextChunkCap)
+                .thenApply(faOpt -> faOpt.map(fa -> new RetrievedCapability(nextChunkCap, fa)));
     }
 
     public CompletableFuture<CryptreeNode> rotateBaseReadKey(WritableAbsoluteCapability us,
