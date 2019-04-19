@@ -1176,10 +1176,12 @@ public class FileWrapper {
                                 return target.addLinkTo(updatedBase, committer, getName(), newCap, network, random, hasher);
                             });
                 } else {
-                    return getInputStream(base.get(writer()).props, network, random, x -> {})
-                            .thenCompose(stream -> target.uploadFileSection(base, committer, getName(), stream, false, 0, getSize(),
-                                    Optional.empty(), false, network, random, hasher, x -> {},
-                                    target.generateChildLocations(props.getNumberOfChunks(), random)));
+                    return base.withWriter(owner(), writer(), network).thenCompose(snapshot ->
+                            getInputStream(snapshot.get(writer()).props, network, random, x -> {})
+                                    .thenCompose(stream -> target.uploadFileSection(snapshot, committer,
+                                            getName(), stream, false, 0, getSize(),
+                                            Optional.empty(), false, network, random, hasher, x -> {},
+                                            target.generateChildLocations(props.getNumberOfChunks(), random))));
                 }
             });
         });
