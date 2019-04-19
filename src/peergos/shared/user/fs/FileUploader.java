@@ -71,15 +71,15 @@ public class FileUploader implements AutoCloseable {
                 baseKey, dataKey, parentLocation, parentparentKey, monitor, fileProperties, locations);
     }
 
-    public CompletableFuture<MutableVersion> uploadChunk(MutableVersion current,
-                                                         WriteSynchronizer.Committer committer,
-                                                         NetworkAccess network,
-                                                         PublicKeyHash owner,
-                                                         SigningPrivateKeyAndPublicHash writer,
-                                                         long chunkIndex,
-                                                         MaybeMultihash ourExistingHash,
-                                                         ProgressConsumer<Long> monitor,
-                                                         Hasher hasher) {
+    public CompletableFuture<Snapshot> uploadChunk(Snapshot current,
+                                                   WriteSynchronizer.Committer committer,
+                                                   NetworkAccess network,
+                                                   PublicKeyHash owner,
+                                                   SigningPrivateKeyAndPublicHash writer,
+                                                   long chunkIndex,
+                                                   MaybeMultihash ourExistingHash,
+                                                   ProgressConsumer<Long> monitor,
+                                                   Hasher hasher) {
         LOG.info("uploading chunk: "+chunkIndex + " of "+name);
         long position = chunkIndex * Chunk.MAX_SIZE;
 
@@ -98,12 +98,12 @@ public class FileUploader implements AutoCloseable {
         });
     }
 
-    public CompletableFuture<MutableVersion> upload(MutableVersion current,
-                                                    WriteSynchronizer.Committer committer,
-                                                    NetworkAccess network,
-                                                    PublicKeyHash owner,
-                                                    SigningPrivateKeyAndPublicHash writer,
-                                                    Hasher hasher) {
+    public CompletableFuture<Snapshot> upload(Snapshot current,
+                                              WriteSynchronizer.Committer committer,
+                                              NetworkAccess network,
+                                              PublicKeyHash owner,
+                                              SigningPrivateKeyAndPublicHash writer,
+                                              Hasher hasher) {
         long t1 = System.currentTimeMillis();
 
         List<Integer> input = IntStream.range(0, (int) nchunks).mapToObj(i -> Integer.valueOf(i)).collect(Collectors.toList());
@@ -115,19 +115,19 @@ public class FileUploader implements AutoCloseable {
                 });
     }
 
-    public static CompletableFuture<MutableVersion> uploadChunk(MutableVersion current,
-                                                                WriteSynchronizer.Committer committer,
-                                                                SigningPrivateKeyAndPublicHash writer,
-                                                                FileProperties props,
-                                                                Location parentLocation,
-                                                                SymmetricKey parentparentKey,
-                                                                SymmetricKey baseKey,
-                                                                LocatedChunk chunk,
-                                                                Location nextChunkLocation,
-                                                                Optional<SymmetricLinkToSigner> writerLink,
-                                                                Hasher hasher,
-                                                                NetworkAccess network,
-                                                                ProgressConsumer<Long> monitor) {
+    public static CompletableFuture<Snapshot> uploadChunk(Snapshot current,
+                                                          WriteSynchronizer.Committer committer,
+                                                          SigningPrivateKeyAndPublicHash writer,
+                                                          FileProperties props,
+                                                          Location parentLocation,
+                                                          SymmetricKey parentparentKey,
+                                                          SymmetricKey baseKey,
+                                                          LocatedChunk chunk,
+                                                          Location nextChunkLocation,
+                                                          Optional<SymmetricLinkToSigner> writerLink,
+                                                          Hasher hasher,
+                                                          NetworkAccess network,
+                                                          ProgressConsumer<Long> monitor) {
         if (! writer.publicKeyHash.equals(chunk.location.writer))
             throw new IllegalStateException("Trying to write a chunk to the wrong signing key space!");
         RelativeCapability nextChunk = RelativeCapability.buildSubsequentChunk(nextChunkLocation.getMapKey(), baseKey);

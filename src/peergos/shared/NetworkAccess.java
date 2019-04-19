@@ -414,23 +414,24 @@ public class NetworkAccess {
         }
     }
 
-    public CompletableFuture<MutableVersion> uploadChunk(MutableVersion current,
-                                                         WriteSynchronizer.Committer committer,
-                                                         CryptreeNode metadata,
-                                                         PublicKeyHash owner,
-                                                         byte[] mapKey,
-                                                         SigningPrivateKeyAndPublicHash writer,
-                                                         TransactionId tid) {
-        if (! current.writer.equals(writer.publicKeyHash))
+    public CompletableFuture<Snapshot> uploadChunk(Snapshot current,
+                                                   WriteSynchronizer.Committer committer,
+                                                   CryptreeNode metadata,
+                                                   PublicKeyHash owner,
+                                                   byte[] mapKey,
+                                                   SigningPrivateKeyAndPublicHash writer,
+                                                   TransactionId tid) {
+        if (! current.versions.containsKey(writer.publicKeyHash))
             throw new IllegalStateException("Trying to commit to incorrect writer!");
         try {
             System.out.println("Uploading chunk: " + (metadata.isDirectory() ? "dir" : "file")
                     + " at " + ArrayOps.bytesToHex(mapKey)
                     + " with " + metadata.toCbor().links().size() + " fragments");
             byte[] metaBlob = metadata.serialize();
+            CommittedWriterData version = current.get(writer);
             return dhtClient.put(owner, writer.publicKeyHash, writer.secret.signatureOnly(metaBlob), metaBlob, tid)
-                    .thenCompose(blobHash -> tree.put(current.base.props, owner, writer, mapKey, metadata.committedHash(), blobHash, tid)
-                            .thenCompose(wd -> committer.commit(writer, wd, current.base.hash, tid)));
+                    .thenCompose(blobHash -> tree.put(version.props, owner, writer, mapKey, metadata.committedHash(), blobHash, tid)
+                            .thenCompose(wd -> committer.commit(owner, writer, wd, version, tid)));
         } catch (Exception e) {
             LOG.severe(e.getMessage());
             throw new RuntimeException(e);

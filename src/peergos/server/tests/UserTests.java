@@ -1017,7 +1017,7 @@ public abstract class UserTests {
         updatedUserRoot.mkdir(foldername, context.network, false, crypto.random, hasher).join();
         FileWrapper subfolder = context.getByPath(home.resolve(foldername)).join().get();
         FileWrapper original = context.getByPath(home.resolve(filename)).join().get();
-        MutableVersion res = original.copyTo(subfolder, context).join();
+        Snapshot res = original.copyTo(subfolder, context).join();
         FileWrapper copy = context.getByPath(home.resolve(foldername).resolve(filename)).join().get();
         Assert.assertTrue("Different base key", ! copy.getPointer().capability.rBaseKey.equals(original.getPointer().capability.rBaseKey));
         Assert.assertTrue("Different metadata key", ! getMetaKey(copy).equals(getMetaKey(original)));

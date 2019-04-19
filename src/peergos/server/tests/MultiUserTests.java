@@ -591,7 +591,7 @@ public class MultiUserTests {
         //copy file
         Path destDirPath = Paths.get(u1.username, destinationDirName);
         FileWrapper destDir = u1.getByPath(destDirPath).get().get();
-        theDir.copyTo(destDir, u1);
+        theDir.copyTo(destDir, u1).join();
 
         //old copy should retain sharedWith entries
         Set<String> sharedWriteAccessWithOriginal = u1.sharedWithCache.getSharedWith(sharedWithAccess, cap);
@@ -673,7 +673,7 @@ public class MultiUserTests {
         Path destSubdirPath = Paths.get(u1.username, destinationSubdirName);
         FileWrapper destSubdir = u1.getByPath(destSubdirPath).get().get();
 
-        theFile.moveTo(destSubdir, theParent, u1);
+        theFile.moveTo(destSubdir, theParent, u1).join();
 
         //old copy sharedWith entries should be removed
         Set<String> sharedWriteAccessWithOriginal = u1.sharedWithCache.getSharedWith(sharedWithAccess, cap);

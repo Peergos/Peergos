@@ -10,7 +10,6 @@ import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
-import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -114,6 +113,12 @@ public class WriterData implements Cborable {
                 .orElseThrow(() -> new IllegalStateException("Owned key champ absent!"));
     }
 
+    private <T> CompletableFuture<Set<T>> applyToOwnedKeys(Function<OwnedKeyChamp, CompletableFuture<Set<T>>> processor,
+                                                           ContentAddressedStorage ipfs) {
+        return ownedKeys.map(x -> getOwnedKeyChamp(ipfs).thenCompose(processor))
+                .orElse(CompletableFuture.completedFuture(Collections.emptySet()));
+    }
+
     public WriterData addNamedKey(String name, OwnerProof newNamedKey) {
         Map<String, OwnerProof> updated = new TreeMap<>(namedOwnedKeys);
         updated.put(name, newNamedKey);
@@ -183,23 +188,23 @@ public class WriterData implements Cborable {
                             newEntryPoints,
                             tree));
                 })
-                .thenApply(version -> version.base.props);
+                .thenApply(version -> version.get(signer).props);
     }
 
-    public CompletableFuture<MutableVersion> commit(PublicKeyHash owner,
-                                                         SigningPrivateKeyAndPublicHash signer,
-                                                         MaybeMultihash currentHash,
-                                                         NetworkAccess network,
-                                                         TransactionId tid) {
+    public CompletableFuture<Snapshot> commit(PublicKeyHash owner,
+                                              SigningPrivateKeyAndPublicHash signer,
+                                              MaybeMultihash currentHash,
+                                              NetworkAccess network,
+                                              TransactionId tid) {
         return commit(owner, signer, currentHash, network.mutable, network.dhtClient, tid);
     }
 
-    public CompletableFuture<MutableVersion> commit(PublicKeyHash owner,
-                                                    SigningPrivateKeyAndPublicHash signer,
-                                                    MaybeMultihash currentHash,
-                                                    MutablePointers mutable,
-                                                    ContentAddressedStorage immutable,
-                                                    TransactionId tid) {
+    public CompletableFuture<Snapshot> commit(PublicKeyHash owner,
+                                              SigningPrivateKeyAndPublicHash signer,
+                                              MaybeMultihash currentHash,
+                                              MutablePointers mutable,
+                                              ContentAddressedStorage immutable,
+                                              TransactionId tid) {
         byte[] raw = serialize();
         
         return immutable.put(owner, signer.publicKeyHash, signer.secret.signatureOnly(raw), raw, tid)
@@ -208,7 +213,7 @@ public class WriterData implements Cborable {
                     if (newHash.equals(currentHash)) {
                         // nothing has changed
                         CommittedWriterData committed = committed(newHash);
-                        return CompletableFuture.completedFuture(new MutableVersion(signer.publicKeyHash, committed));
+                        return CompletableFuture.completedFuture(new Snapshot(signer.publicKeyHash, committed));
                     }
                     HashCasPair cas = new HashCasPair(currentHash, newHash);
                     byte[] signed = signer.secret.signMessage(cas.serialize());
@@ -217,7 +222,7 @@ public class WriterData implements Cborable {
                                 if (!res)
                                     throw new IllegalStateException("Corenode Crypto CAS failed!");
                                 CommittedWriterData committed = committed(newHash);
-                                return new MutableVersion(signer.publicKeyHash, committed);
+                                return new Snapshot(signer.publicKeyHash, committed);
                             });
                 });
     }
@@ -313,8 +318,8 @@ public class WriterData implements Cborable {
                                 Stream.empty()).collect(Collectors.toSet()));
 
         return getWriterData(root.get(), ipfs)
-                .thenCompose(wd -> wd.props.getOwnedKeyChamp(ipfs)
-                        .thenCompose(owned -> owned.applyToAllMappings(Collections.emptySet(), composer, ipfs))
+                .thenCompose(wd -> wd.props.applyToOwnedKeys(owned ->
+                        owned.applyToAllMappings(Collections.emptySet(), composer, ipfs), ipfs)
                         .thenApply(owned -> Stream.concat(owned.stream(),
                                 wd.props.namedOwnedKeys.values().stream()).collect(Collectors.toSet())))
                 .thenCompose(all -> Futures.reduceAll(all, Collections.emptySet(),

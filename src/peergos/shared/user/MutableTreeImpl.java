@@ -41,7 +41,7 @@ public class MutableTreeImpl implements MutableTree {
                                                       Multihash value) {
         return synchronizer.applyUpdate(owner, writer,
                 (wd, tid) -> put(wd, owner, writer, mapKey, existing, value, tid))
-                .thenApply(version -> version.base);
+                .thenApply(version -> version.get(writer));
     }
 
     @Override
@@ -64,7 +64,7 @@ public class MutableTreeImpl implements MutableTree {
     @Override
     public CompletableFuture<MaybeMultihash> get(PublicKeyHash owner, PublicKeyHash writer, byte[] mapKey) {
         return synchronizer.getValue(owner, writer)
-                .thenCompose(committed -> get(committed.base.props, owner, writer, mapKey));
+                .thenCompose(version -> get(version.get(writer).props, owner, writer, mapKey));
     }
 
     @Override
