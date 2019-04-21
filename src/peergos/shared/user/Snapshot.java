@@ -43,6 +43,12 @@ public class Snapshot {
         return versions.get(writer.publicKeyHash);
     }
 
+    public Snapshot withVersion(PublicKeyHash writer, CommittedWriterData version) {
+        HashMap<PublicKeyHash, CommittedWriterData> result = new HashMap<>(versions);
+        result.put(writer, version);
+        return new Snapshot(result);
+    }
+
     public CompletableFuture<Snapshot> withWriter(PublicKeyHash owner, PublicKeyHash writer, NetworkAccess network) {
         if (versions.containsKey(writer))
             return CompletableFuture.completedFuture(this);

@@ -431,7 +431,8 @@ public class NetworkAccess {
             CommittedWriterData version = current.get(writer);
             return dhtClient.put(owner, writer.publicKeyHash, writer.secret.signatureOnly(metaBlob), metaBlob, tid)
                     .thenCompose(blobHash -> tree.put(version.props, owner, writer, mapKey, metadata.committedHash(), blobHash, tid)
-                            .thenCompose(wd -> committer.commit(owner, writer, wd, version, tid)));
+                            .thenCompose(wd -> committer.commit(owner, writer, wd, version, tid)))
+                    .thenApply(committed -> current.withVersion(writer.publicKeyHash, committed.get(writer)));
         } catch (Exception e) {
             LOG.severe(e.getMessage());
             throw new RuntimeException(e);
