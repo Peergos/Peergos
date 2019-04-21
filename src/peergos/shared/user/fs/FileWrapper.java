@@ -89,7 +89,7 @@ public class FileWrapper {
         return pointer.equals(((FileWrapper) other).getPointer());
     }
 
-    public CompletableFuture<FileWrapper> updated(WriterData wd, NetworkAccess network) {
+    public CompletableFuture<FileWrapper> getUpdated(WriterData wd, NetworkAccess network) {
         return network.getFile(wd, pointer.capability, entryWriter, ownername)
                 .thenApply(Optional::get);
     }
@@ -410,7 +410,7 @@ public class FileWrapper {
         return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
                 (cwd, committer) -> pointer.fileAccess
                 .removeChildren(cwd, committer, Arrays.asList(child.getPointer()), writableFilePointer(), entryWriter, network, hasher))
-                .thenCompose(newRoot -> updated(newRoot.get(writer()).props, network));
+                .thenCompose(newRoot -> getUpdated(newRoot.get(writer()).props, network));
     }
 
     public CompletableFuture<Snapshot> addLinkTo(Snapshot version,
@@ -655,7 +655,8 @@ public class FileWrapper {
                 .collect(Collectors.toList());
     }
 
-    public CompletableFuture<FileWrapper> uploadFile(String filename,
+    @JsMethod
+    public CompletableFuture<FileWrapper> uploadFileJS(String filename,
                                                        AsyncReader fileData,
                                                        int lengthHi,
                                                        int lengthLow,
@@ -727,7 +728,7 @@ public class FileWrapper {
         return network.synchronizer.applyComplexUpdate(owner(), signingPair(), (current, committer) ->
                 uploadFileSection(current, committer, filename, fileData, isHidden, startIndex, endIndex,
                         baseKey, overwriteExisting, network, random, hasher, monitor, locations))
-                .thenCompose(finalBase -> updated(finalBase.get(writer()).props, network));
+                .thenCompose(finalBase -> getUpdated(finalBase.get(writer()).props, network));
     }
 
     public CompletableFuture<Snapshot> uploadFileSection(Snapshot current,
@@ -744,7 +745,7 @@ public class FileWrapper {
                                                          Hasher hasher,
                                                          ProgressConsumer<Long> monitor,
                                                          List<Location> locations) {
-        return updated(current.get(writer()).props, network).thenCompose(latest -> latest.getChild(current.get(writer()).props, filename, network)
+        return getUpdated(current.get(writer()).props, network).thenCompose(latest -> latest.getChild(current.get(writer()).props, filename, network)
                 .thenCompose(childOpt -> {
                     if (childOpt.isPresent()) {
                         if (! overwriteExisting)
@@ -1029,7 +1030,7 @@ public class FileWrapper {
                         setModified();
                         return x;
                     });
-                })).thenCompose(version -> updated(version.get(writer()).props, network)
+                })).thenCompose(version -> getUpdated(version.get(writer()).props, network)
                 .thenCompose(newUs -> newUs.getChild(version.get(writer()).props, newFolderName, network))
                 .thenApply(Optional::get));
     }
@@ -1145,7 +1146,7 @@ public class FileWrapper {
     }
 
     @JsMethod
-    public CompletableFuture<Snapshot> copyTo(FileWrapper target, UserContext context) {
+    public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context) {
         ensureUnmodified();
         NetworkAccess network = context.network;
         SafeRandom random = context.crypto.random;
@@ -1183,7 +1184,7 @@ public class FileWrapper {
                                             target.generateChildLocations(props.getNumberOfChunks(), random))));
                 }
             });
-        });
+        }).thenApply(newAccess -> true);
     }
 
     /**

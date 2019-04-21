@@ -7,6 +7,9 @@ import peergos.shared.crypto.hash.*;
 import java.util.*;
 import java.util.concurrent.*;
 
+/** This class represents a snapshot of a group of signing subspaces.
+ *
+ */
 public class Snapshot {
 
     public final Map<PublicKeyHash, CommittedWriterData> versions;

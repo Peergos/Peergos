@@ -308,13 +308,13 @@ public abstract class UserTests {
 
         String filename = "file1.bin";
         byte[] data = randomData(6*1024*1024);
-        userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data), 0,data.length, false,
+        userRoot.uploadFileJS(filename, new AsyncReader.ArrayBacked(data), 0,data.length, false,
                 network, crypto.random, crypto.hasher, l -> {}, context.getTransactionService()).join();
         checkFileContents(data, context.getUserRoot().join().getDescendentByPath(filename, context.network).join().get(), context);
 
         String file2name = "file2.bin";
         byte[] data2 = randomData(6*1024*1024);
-        userRootCopy.uploadFile(file2name, new AsyncReader.ArrayBacked(data2), 0,data2.length, false,
+        userRootCopy.uploadFileJS(file2name, new AsyncReader.ArrayBacked(data2), 0,data2.length, false,
                 network, crypto.random, crypto.hasher, l -> {}, context.getTransactionService()).join();
         checkFileContents(data2, context.getUserRoot().join().getDescendentByPath(file2name, context.network).join().get(), context);
     }
@@ -1017,7 +1017,7 @@ public abstract class UserTests {
         updatedUserRoot.mkdir(foldername, context.network, false, crypto.random, hasher).join();
         FileWrapper subfolder = context.getByPath(home.resolve(foldername)).join().get();
         FileWrapper original = context.getByPath(home.resolve(filename)).join().get();
-        Snapshot res = original.copyTo(subfolder, context).join();
+        Boolean res = original.copyTo(subfolder, context).join();
         FileWrapper copy = context.getByPath(home.resolve(foldername).resolve(filename)).join().get();
         Assert.assertTrue("Different base key", ! copy.getPointer().capability.rBaseKey.equals(original.getPointer().capability.rBaseKey));
         Assert.assertTrue("Different metadata key", ! getMetaKey(copy).equals(getMetaKey(original)));

@@ -17,7 +17,7 @@ public interface MutableTree {
      * @param sharingKey
      * @param mapKey
      * @param value
-     * @return true when complete
+     * @return The committed result of setting the value in this tree
      * @throws IOException
      */
     CompletableFuture<CommittedWriterData> put(PublicKeyHash owner,
