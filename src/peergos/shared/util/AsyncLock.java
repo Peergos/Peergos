@@ -54,4 +54,9 @@ public class AsyncLock<T> {
     public synchronized CompletableFuture<T> getValue() {
         return runWithLock(CompletableFuture::completedFuture);
     }
+
+    @Override
+    public String toString() {
+        return queueHead.toString();
+    }
 }

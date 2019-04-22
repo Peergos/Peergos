@@ -299,6 +299,27 @@ public abstract class UserTests {
     }
 
     @Test
+    public void concurrentUploadSucceeds() {
+        String username = generateUsername();
+        String password = "test";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        FileWrapper userRoot = context.getUserRoot().join();
+        FileWrapper userRootCopy = context.getUserRoot().join();
+
+        String filename = "file1.bin";
+        byte[] data = randomData(6*1024*1024);
+        userRoot.uploadFileJS(filename, new AsyncReader.ArrayBacked(data), 0,data.length, false,
+                network, crypto.random, crypto.hasher, l -> {}, context.getTransactionService()).join();
+        checkFileContents(data, context.getUserRoot().join().getDescendentByPath(filename, context.network).join().get(), context);
+
+        String file2name = "file2.bin";
+        byte[] data2 = randomData(6*1024*1024);
+        userRootCopy.uploadFileJS(file2name, new AsyncReader.ArrayBacked(data2), 0,data2.length, false,
+                network, crypto.random, crypto.hasher, l -> {}, context.getTransactionService()).join();
+        checkFileContents(data2, context.getUserRoot().join().getDescendentByPath(file2name, context.network).join().get(), context);
+    }
+
+    @Test
     public void renameFile() throws Exception {
         String username = generateUsername();
         String password = "test";
@@ -977,28 +998,27 @@ public abstract class UserTests {
     }
 
     @Test
-    public void internalCopy() throws Exception {
+    public void internalCopy() {
         String username = generateUsername();
         String password = "test01";
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network.clear(), crypto);
-        FileWrapper userRoot = context.getUserRoot().get();
+        FileWrapper userRoot = context.getUserRoot().join();
         Path home = Paths.get(username);
 
         String filename = "initialfile.bin";
         byte[] data = randomData(10*1024*1024); // 2 chunks to test block chaining
 
         FileWrapper updatedUserRoot = userRoot.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data),
-                data.length, network, crypto.random, hasher, x -> {},
-                userRoot.generateChildLocationsFromSize(data.length, context.crypto.random)).get();
-
-        FileWrapper original = context.getByPath(home.resolve(filename).toString()).get().get();
+                data.length, context.network, crypto.random, hasher, x -> {},
+                userRoot.generateChildLocationsFromSize(data.length, context.crypto.random)).join();
 
         // copy the file
         String foldername = "afolder";
-        updatedUserRoot.mkdir(foldername, network, false, crypto.random, hasher).get();
-        FileWrapper subfolder = context.getByPath(home.resolve(foldername).toString()).get().get();
-        FileWrapper parentDir = original.copyTo(subfolder, context).get();
-        FileWrapper copy = context.getByPath(home.resolve(foldername).resolve(filename).toString()).get().get();
+        updatedUserRoot.mkdir(foldername, context.network, false, crypto.random, hasher).join();
+        FileWrapper subfolder = context.getByPath(home.resolve(foldername)).join().get();
+        FileWrapper original = context.getByPath(home.resolve(filename)).join().get();
+        Boolean res = original.copyTo(subfolder, context).join();
+        FileWrapper copy = context.getByPath(home.resolve(foldername).resolve(filename)).join().get();
         Assert.assertTrue("Different base key", ! copy.getPointer().capability.rBaseKey.equals(original.getPointer().capability.rBaseKey));
         Assert.assertTrue("Different metadata key", ! getMetaKey(copy).equals(getMetaKey(original)));
         Assert.assertTrue("Different data key", ! getDataKey(copy).equals(getDataKey(original)));

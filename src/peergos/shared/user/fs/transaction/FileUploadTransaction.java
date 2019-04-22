@@ -54,10 +54,7 @@ public class FileUploadTransaction implements Transaction {
     }
 
     private CompletableFuture<Boolean> clear(NetworkAccess networkAccess, Location location) {
-        Function<TransactionId, CompletableFuture<Boolean>> clear =
-                tid -> networkAccess.deleteChunkIfPresent(location.owner, writer, location.getMapKey(), tid);
-
-        return IpfsTransaction.call(location.owner, clear, networkAccess.dhtClient);
+        return networkAccess.deleteChunkIfPresent(location.owner, writer, location.getMapKey());
     }
 
     public CompletableFuture<Boolean> clear(NetworkAccess networkAccess) {

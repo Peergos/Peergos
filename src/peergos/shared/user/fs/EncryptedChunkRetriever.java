@@ -5,6 +5,7 @@ import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
+import peergos.shared.user.*;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -29,35 +30,41 @@ public class EncryptedChunkRetriever implements FileRetriever {
     }
 
     @Override
-    public CompletableFuture<AsyncReader> getFile(NetworkAccess network,
+    public CompletableFuture<AsyncReader> getFile(WriterData version,
+                                                  NetworkAccess network,
                                                   SafeRandom random,
                                                   AbsoluteCapability ourCap,
                                                   long fileSize,
                                                   MaybeMultihash ourExistingHash,
                                                   ProgressConsumer<Long> monitor) {
-        return getChunk(network, random, 0, fileSize, ourCap, ourExistingHash, monitor)
+        return getChunk(version, network, random, 0, fileSize, ourCap, ourExistingHash, monitor)
                 .thenApply(chunk -> {
                     Location nextChunkPointer = ourCap.withMapKey(nextChunkLabel).getLocation();
-                    return new LazyInputStreamCombiner(0,
+                    return new LazyInputStreamCombiner(version, 0,
                             chunk.get().chunk.data(), nextChunkPointer,
                             chunk.get().chunk.data(), nextChunkPointer,
                             network, random, ourCap.rBaseKey, fileSize, monitor);
                 });
     }
 
-    public CompletableFuture<Optional<byte[]>> getMapLabelAt(AbsoluteCapability startCap, long offset, NetworkAccess network) {
+    public CompletableFuture<Optional<byte[]>> getMapLabelAt(WriterData version,
+                                                             AbsoluteCapability startCap,
+                                                             long offset,
+                                                             NetworkAccess network) {
         if (offset < Chunk.MAX_SIZE)
             return CompletableFuture.completedFuture(Optional.of(startCap.getMapKey()));
         if (offset < 2*Chunk.MAX_SIZE)
             return CompletableFuture.completedFuture(Optional.of(nextChunkLabel)); // chunk at this location hasn't been written yet, only referenced by previous chunk
-        return network.getMetadata(startCap.withMapKey(nextChunkLabel))
+        return network.getMetadata(version, startCap.withMapKey(nextChunkLabel))
                 .thenCompose(meta -> meta.isPresent() ?
-                        meta.get().retriever(startCap.rBaseKey).getMapLabelAt(startCap.withMapKey(nextChunkLabel), offset - Chunk.MAX_SIZE, network) :
+                        meta.get().retriever(startCap.rBaseKey).getMapLabelAt(version,
+                                startCap.withMapKey(nextChunkLabel), offset - Chunk.MAX_SIZE, network) :
                         CompletableFuture.completedFuture(Optional.empty())
                 );
     }
 
-    public CompletableFuture<Optional<LocatedChunk>> getChunk(NetworkAccess network,
+    public CompletableFuture<Optional<LocatedChunk>> getChunk(WriterData version,
+                                                              NetworkAccess network,
                                                               SafeRandom random,
                                                               long startIndex,
                                                               long truncateTo,
@@ -66,11 +73,11 @@ public class EncryptedChunkRetriever implements FileRetriever {
                                                               ProgressConsumer<Long> monitor) {
         if (startIndex >= Chunk.MAX_SIZE) {
             AbsoluteCapability nextChunkCap = ourCap.withMapKey(nextChunkLabel);
-            return network.getMetadata(nextChunkCap)
+            return network.getMetadata(version, nextChunkCap)
                     .thenCompose(meta -> {
                         if (meta.isPresent())
                             return meta.get().retriever(ourCap.rBaseKey)
-                                    .getChunk(network, random, startIndex - Chunk.MAX_SIZE,
+                                    .getChunk(version, network, random, startIndex - Chunk.MAX_SIZE,
                                             truncateTo - Chunk.MAX_SIZE,
                                             nextChunkCap, meta.get().committedHash(), l -> {});
                         Chunk newEmptyChunk = new Chunk(new byte[0], dataKey, nextChunkLabel, dataKey.createNonce());

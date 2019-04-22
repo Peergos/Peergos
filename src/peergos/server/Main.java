@@ -527,7 +527,7 @@ public class Main {
                 currentPkiRoot = IpfsTransaction.call(peergosIdentity,
                         tid -> WriterData.createEmpty(peergosIdentity, pkiSigner, dht).join()
                                 .commit(peergosIdentity, pkiSigner, MaybeMultihash.empty(), mutable, dht, tid)
-                                .thenApply(cwd -> cwd.hash), dht).join();
+                                .thenApply(version -> version.get(pkiSigner).hash), dht).join();
 
             return new IpfsCoreNode(pkiSigner, currentPkiRoot, dht, mutable, peergosIdentity);
         } catch (Exception e) {

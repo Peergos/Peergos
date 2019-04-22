@@ -4,6 +4,7 @@ import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
+import peergos.shared.user.*;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -11,18 +12,21 @@ import java.util.concurrent.*;
 
 public interface FileRetriever {
 
-    CompletableFuture<AsyncReader> getFile(NetworkAccess network,
+    CompletableFuture<AsyncReader> getFile(WriterData version,
+                                           NetworkAccess network,
                                            SafeRandom random,
                                            AbsoluteCapability ourCap,
                                            long fileSize,
                                            MaybeMultihash ourExistingHash,
                                            ProgressConsumer<Long> monitor);
 
-    CompletableFuture<Optional<byte[]>> getMapLabelAt(AbsoluteCapability startCap,
+    CompletableFuture<Optional<byte[]>> getMapLabelAt(WriterData version,
+                                                      AbsoluteCapability startCap,
                                                       long offset,
                                                       NetworkAccess network);
 
-    CompletableFuture<Optional<LocatedChunk>> getChunk(NetworkAccess network,
+    CompletableFuture<Optional<LocatedChunk>> getChunk(WriterData version,
+                                                       NetworkAccess network,
                                                        SafeRandom random,
                                                        long startIndex,
                                                        long truncateTo,

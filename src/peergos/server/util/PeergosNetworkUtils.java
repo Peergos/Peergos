@@ -44,8 +44,7 @@ public class PeergosNetworkUtils {
     public static void checkFileContents(byte[] expected, FileWrapper f, UserContext context) throws Exception {
         long size = f.getFileProperties().size;
         byte[] retrievedData = Serialize.readFully(f.getInputStream(context.network, context.crypto.random,
-                size, l -> {
-                }).get(), f.getSize()).get();
+                size, l -> {}).get(), f.getSize()).get();
         assertEquals(expected.length, size);
         assertTrue("Correct contents", Arrays.equals(retrievedData, expected));
     }
@@ -106,7 +105,10 @@ public class PeergosNetworkUtils {
 
         // share the file from sharer to each of the sharees
         FileWrapper u1File = sharerUser.getByPath(sharerUser.username + "/" + filename).get().get();
-        sharerUser.shareReadAccessWith(Paths.get(sharerUser.username, filename), shareeUsers.stream().map(u -> u.username).collect(Collectors.toSet())).get();
+        Set<String> shareeNames = shareeUsers.stream()
+                .map(u -> u.username)
+                .collect(Collectors.toSet());
+        sharerUser.shareReadAccessWith(Paths.get(sharerUser.username, filename), shareeNames).join();
 
         // check other users can read the file
         for (UserContext userContext : shareeUsers) {
@@ -609,7 +611,7 @@ public class PeergosNetworkUtils {
         Assert.assertTrue("File present through link", fileThroughLink.isPresent());
     }
 
-    public static UserContext ensureSignedUp(String username, String password, NetworkAccess network, Crypto crypto) throws Exception {
-        return UserContext.ensureSignedUp(username, password, network, crypto).get();
+    public static UserContext ensureSignedUp(String username, String password, NetworkAccess network, Crypto crypto) {
+        return UserContext.ensureSignedUp(username, password, network, crypto).join();
     }
 }

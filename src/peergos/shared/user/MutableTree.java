@@ -17,26 +17,53 @@ public interface MutableTree {
      * @param sharingKey
      * @param mapKey
      * @param value
-     * @param tid
-     * @return the new root hash of the tree
+     * @return The committed result of setting the value in this tree
      * @throws IOException
      */
-    CompletableFuture<Boolean> put(PublicKeyHash owner,
-                                   SigningPrivateKeyAndPublicHash sharingKey,
-                                   byte[] mapKey,
-                                   MaybeMultihash existing,
-                                   Multihash value,
-                                   TransactionId tid);
+    CompletableFuture<CommittedWriterData> put(PublicKeyHash owner,
+                                                       SigningPrivateKeyAndPublicHash sharingKey,
+                                                       byte[] mapKey,
+                                                       MaybeMultihash existing,
+                                                       Multihash value);
+
+    /**
+     *
+     * @param base
+     * @param owner
+     * @param sharingKey
+     * @param mapKey
+     * @param value
+     * @return the new root WriterData
+     * @throws IOException
+     */
+    CompletableFuture<WriterData> put(WriterData base,
+                                      PublicKeyHash owner,
+                                      SigningPrivateKeyAndPublicHash sharingKey,
+                                      byte[] mapKey,
+                                      MaybeMultihash existing,
+                                      Multihash value,
+                                      TransactionId tid);
 
     /**
      *
      * @param owner
-     * @param sharingKey
+     * @param writer
      * @param mapKey
      * @return  the value stored under mapKey for sharingKey
      * @throws IOException
      */
-    CompletableFuture<MaybeMultihash> get(PublicKeyHash owner, PublicKeyHash sharingKey, byte[] mapKey);
+    CompletableFuture<MaybeMultihash> get(PublicKeyHash owner, PublicKeyHash writer, byte[] mapKey);
+
+    /**
+     *
+     * @param base The WriterData at the current mutable pointer for the writer
+     * @param owner
+     * @param writer
+     * @param mapKey
+     * @return  the value stored under mapKey for sharingKey
+     * @throws IOException
+     */
+    CompletableFuture<MaybeMultihash> get(WriterData base, PublicKeyHash owner, PublicKeyHash writer, byte[] mapKey);
 
     /**
      *
@@ -49,8 +76,7 @@ public interface MutableTree {
     CompletableFuture<Boolean> remove(PublicKeyHash owner,
                                       SigningPrivateKeyAndPublicHash sharingKey,
                                       byte[] mapKey,
-                                      MaybeMultihash existing,
-                                      TransactionId tid);
+                                      MaybeMultihash existing);
 
 
     class CasException extends RuntimeException {

@@ -61,6 +61,16 @@ public class MultiUserTests {
     }
 
     @Test
+    public void grantAndRevokeDirReadAccess() throws Exception {
+        PeergosNetworkUtils.grantAndRevokeDirReadAccess(network, network, 2, random);
+    }
+
+    @Test
+    public void grantAndRevokeDirWriteAccess() throws Exception {
+        PeergosNetworkUtils.grantAndRevokeDirWriteAccess(network, network, 2, random);
+    }
+
+    @Test
     public void safeCopyOfFriendsReadAccess() throws Exception {
         TriFunction<UserContext, UserContext, String, CompletableFuture<Boolean>> readAccessSharingFunction =
                 (u1, u2, filename) ->
@@ -581,7 +591,7 @@ public class MultiUserTests {
         //copy file
         Path destDirPath = Paths.get(u1.username, destinationDirName);
         FileWrapper destDir = u1.getByPath(destDirPath).get().get();
-        theDir.copyTo(destDir, u1);
+        theDir.copyTo(destDir, u1).join();
 
         //old copy should retain sharedWith entries
         Set<String> sharedWriteAccessWithOriginal = u1.sharedWithCache.getSharedWith(sharedWithAccess, cap);
@@ -663,7 +673,7 @@ public class MultiUserTests {
         Path destSubdirPath = Paths.get(u1.username, destinationSubdirName);
         FileWrapper destSubdir = u1.getByPath(destSubdirPath).get().get();
 
-        theFile.moveTo(destSubdir, theParent, u1);
+        theFile.moveTo(destSubdir, theParent, u1).join();
 
         //old copy sharedWith entries should be removed
         Set<String> sharedWriteAccessWithOriginal = u1.sharedWithCache.getSharedWith(sharedWithAccess, cap);
@@ -886,16 +896,6 @@ public class MultiUserTests {
 
     private String random() {
         return ArrayOps.bytesToHex(crypto.random.randomBytes(15));
-    }
-
-    @Test
-    public void grantAndRevokeDirReadAccess() throws Exception {
-        PeergosNetworkUtils.grantAndRevokeDirReadAccess(network, network, 2, random);
-    }
-
-    @Test
-    public void grantAndRevokeDirWriteAccess() throws Exception {
-        PeergosNetworkUtils.grantAndRevokeDirWriteAccess(network, network, 2, random);
     }
 
     @Test
