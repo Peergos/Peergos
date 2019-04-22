@@ -1,13 +1,13 @@
 package peergos.shared.user.fs;
 
-import javafx.application.Platform;
-import javafx.embed.swing.JFXPanel;
-import javafx.embed.swing.SwingFXUtils;
-import javafx.scene.image.WritableImage;
-import javafx.scene.media.Media;
-import javafx.scene.media.MediaPlayer;
-import javafx.scene.media.MediaView;
-import javafx.util.Duration;
+//import javafx.application.Platform;
+//import javafx.embed.swing.JFXPanel;
+//import javafx.embed.swing.SwingFXUtils;
+//import javafx.scene.image.WritableImage;
+//import javafx.scene.media.Media;
+//import javafx.scene.media.MediaPlayer;
+//import javafx.scene.media.MediaView;
+//import javafx.util.Duration;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
@@ -25,23 +25,23 @@ public class VideoThumbnail {
         }
     }
 
-    private static double getDuration(Media video) {
-        boolean finished = false;
-        int counter = 0;
-        while(!finished) {
-            Duration duration = video.getDuration();
-            if(duration.isUnknown()) {
-                sleep(1000);
-                counter++;
-                if(counter > 10) {
-                    return 0;
-                }
-            } else {
-                return duration.toSeconds();
-            }
-        }
-        return 0;
-    }
+//    private static double getDuration(Media video) {
+//        boolean finished = false;
+//        int counter = 0;
+//        while(!finished) {
+//            Duration duration = video.getDuration();
+//            if(duration.isUnknown()) {
+//                sleep(1000);
+//                counter++;
+//                if(counter > 10) {
+//                    return 0;
+//                }
+//            } else {
+//                return duration.toSeconds();
+//            }
+//        }
+//        return 0;
+//    }
     private static boolean isLikelyValidImage(BufferedImage image) {
         int width = image.getWidth();
         int height = image.getHeight();
@@ -70,41 +70,41 @@ public class VideoThumbnail {
     }
 
     public static byte[] create(String filename, int height, int width) {
-        new JFXPanel(); // initialises toolkit
-        Media video = new Media("file://" + filename);
-        MediaPlayer mediaPlayer = new MediaPlayer(video);
-        WritableImage wim = new WritableImage(width, height);
-        MediaView mv = new MediaView();
-        mv.setFitWidth(width);
-        mv.setFitHeight(height);
-        mv.setMediaPlayer(mediaPlayer);
-        mv.setPreserveRatio(false);
-
-        double duration = getDuration(video);
-        double increment = duration/10; //seconds
-        double currentIncrement = 0;
-        while(currentIncrement < duration) {
-            currentIncrement = currentIncrement + increment;
-            mediaPlayer.seek(Duration.seconds(currentIncrement));
-            CompletableFuture<BufferedImage> res = new CompletableFuture<>();
-            Platform.runLater(() -> {
-                mv.snapshot(null, wim);
-                BufferedImage image = SwingFXUtils.fromFXImage(wim, null);
-                res.complete(image);
-            });
-            ByteArrayOutputStream bout = new ByteArrayOutputStream();
-            try {
-                BufferedImage image = res.get();
-                if(isLikelyValidImage(image)){
-                    ImageIO.write(image, "png", bout);
-                    bout.flush();
-                    bout.close();
-                    return bout.toByteArray();
-                }
-            }catch(IOException | InterruptedException | ExecutionException ex){
-                ex.printStackTrace();
-            }
-        }
+//        new JFXPanel(); // initialises toolkit
+//        Media video = new Media("file://" + filename);
+//        MediaPlayer mediaPlayer = new MediaPlayer(video);
+//        WritableImage wim = new WritableImage(width, height);
+//        MediaView mv = new MediaView();
+//        mv.setFitWidth(width);
+//        mv.setFitHeight(height);
+//        mv.setMediaPlayer(mediaPlayer);
+//        mv.setPreserveRatio(false);
+//
+//        double duration = getDuration(video);
+//        double increment = duration/10; //seconds
+//        double currentIncrement = 0;
+//        while(currentIncrement < duration) {
+//            currentIncrement = currentIncrement + increment;
+//            mediaPlayer.seek(Duration.seconds(currentIncrement));
+//            CompletableFuture<BufferedImage> res = new CompletableFuture<>();
+//            Platform.runLater(() -> {
+//                mv.snapshot(null, wim);
+//                BufferedImage image = SwingFXUtils.fromFXImage(wim, null);
+//                res.complete(image);
+//            });
+//            ByteArrayOutputStream bout = new ByteArrayOutputStream();
+//            try {
+//                BufferedImage image = res.get();
+//                if(isLikelyValidImage(image)){
+//                    ImageIO.write(image, "png", bout);
+//                    bout.flush();
+//                    bout.close();
+//                    return bout.toByteArray();
+//                }
+//            }catch(IOException | InterruptedException | ExecutionException ex){
+//                ex.printStackTrace();
+//            }
+//        }
         return new byte[0];
     }
 }
