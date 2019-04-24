@@ -89,7 +89,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
     @Override
     public int getattr(String s, FileStat fileStat) {
         ensureNotClosed();
-        int aDefault = ErrorCodes.ENOENT();
+        int aDefault = -ErrorCodes.ENOENT();
         return applyIfPresent(s, (peergosStat) -> annotateAttributes(s,
                 peergosStat, fileStat), aDefault);
     }
@@ -241,7 +241,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
         Path path = Paths.get(s);
         String parentPath = path.getParent().toString();
         String name = path.getFileName().toString();
-        return applyIfPresent(parentPath, (parent) -> write(parent, name, pointer, size, offset), ErrorCodes.ENOENT());
+        return applyIfPresent(parentPath, (parent) -> write(parent, name, pointer, size, offset), -ErrorCodes.ENOENT());
     }
 
     @Override
@@ -366,7 +366,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
 //    @Override
     public int utimens(String s, Timespec[] timespecs) {
         ensureNotClosed();
-        int aDefault = ErrorCodes.ENOENT();
+        int aDefault = -ErrorCodes.ENOENT();
 
         Optional<PeergosStat> parentOpt = getParentByPath(s);
         if (! parentOpt.isPresent())
