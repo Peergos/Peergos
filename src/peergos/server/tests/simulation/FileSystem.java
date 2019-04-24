@@ -42,7 +42,8 @@ public interface FileSystem {
     default void walk(Path path, Consumer<Path> func)  {
         //DFS
         for (Path child : ls(path)) {
-            walk(child, func);
+            if (stat(path).fileProperties().isDirectory)
+                walk(child, func);
         }
         func.accept(path);
     }

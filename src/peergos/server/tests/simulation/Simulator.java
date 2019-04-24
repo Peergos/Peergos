@@ -231,8 +231,11 @@ public class Simulator implements Runnable {
         Crypto crypto = Crypto.initJava();
         Args args = buildArgs()
                 .with("useIPFS", "true")
+                .with("peergos.password", "testpassword")
+                .with("pki.keygen.password", "testpkipassword")
+                .with("pki.keyfile.password", "testpassword")
                 .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, ""); // no bootstrapping
-        Main.PKI.main(args);
+        Main.PKI_INIT.main(args);
 
         NetworkAccess networkAccess = NetworkAccess.buildJava(new URL("http://localhost:" + args.getInt("port"))).get();
 

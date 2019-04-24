@@ -131,7 +131,7 @@ public class NativeFileSystemImpl implements FileSystem {
                 boolean isHidden = false;
                 String mimeType="NOT_SUPPORTED";
 
-                return new FileProperties(file.getName(), mimeType, sizeHi, sizeLo, lastModified, isHidden, thumbnail);
+                return new FileProperties(file.getName(), file.isDirectory(), mimeType, sizeHi, sizeLo, lastModified, isHidden, thumbnail);
 
             }
 

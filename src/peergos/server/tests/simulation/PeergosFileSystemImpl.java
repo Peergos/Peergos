@@ -46,8 +46,7 @@ public class PeergosFileSystemImpl implements FileSystem {
         AsyncReader resetableFileInputStream = new AsyncReader.ArrayBacked(data);
         String fileName = path.getFileName().toString();
         FileWrapper fileWrapper = directory.uploadOrOverwriteFile(fileName, resetableFileInputStream, data.length,
-                userContext.network, userContext.crypto.random, (l) -> {
-                }, userContext.fragmenter(),
+                userContext.network, userContext.crypto.random, userContext.crypto.hasher, x -> {},
                 userContext.getUserRoot().join().generateChildLocationsFromSize(data.length, userContext.crypto.random)).join();
 
     }
@@ -55,7 +54,7 @@ public class PeergosFileSystemImpl implements FileSystem {
     @Override
     public void delete(Path path) {
         FileWrapper directory = getDirectory(path);
-        FileWrapper updatedParent = getPath(path).remove(directory, userContext.network).join();
+        FileWrapper updatedParent = getPath(path).remove(directory, userContext).join();
     }
 
     @Override
@@ -127,7 +126,8 @@ public class PeergosFileSystemImpl implements FileSystem {
         getDirectory(path.getParent()).mkdir(path.getFileName().toString(),
                 userContext.network,
                 false,
-                userContext.crypto.random).join();
+                userContext.crypto.random,
+                userContext.crypto.hasher).join();
     }
 }
 
