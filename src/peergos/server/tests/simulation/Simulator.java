@@ -78,7 +78,7 @@ public class Simulator implements Runnable {
 
         Path path = getRandomExistingDirectory().resolve(dirBaseName);
         simulatedDirectoryToFiles.putIfAbsent(path, new ArrayList<>());
-
+        LOG.info("mkdir-ing  "+ path);
         testFileSystem.mkdir(path);
         referenceFileSystem.mkdir(path);
         return path;
@@ -249,7 +249,7 @@ public class Simulator implements Runnable {
         NetworkAccess networkAccess = NetworkAccess.buildJava(new URL("http://localhost:" + args.getInt("port"))).get();
 
 
-        LOG.info("***NETWORK READ***");
+        LOG.info("***NETWORK READY***");
 
 
         UserContext userContext = PeergosNetworkUtils.ensureSignedUp("some-user", "some password", networkAccess, crypto);
@@ -259,11 +259,12 @@ public class Simulator implements Runnable {
         Path root = Files.createTempDirectory("test_filesystem");
         NativeFileSystemImpl nativeFileSystem = new NativeFileSystemImpl(root, "some-user");
 
-        Simulator simulator = new Simulator(1, 1, 0.1, 0.1, 0.8, 100, nativeFileSystem, peergosFileSystem);
+        int opCount = 10;  //change-me to 100 to create a cycle?
+        Simulator simulator = new Simulator(opCount, 1, 0.1, 0.1, 0.8, 100, nativeFileSystem, peergosFileSystem);
         try {
             simulator.run();
         } catch (Throwable t) {
-            LOG.log(Level.SEVERE, t, () -> "so long");
+            LOG.log(Level.SEVERE, t, () -> "So long");
         } finally {
             System.exit(0);
         }
