@@ -1,7 +1,8 @@
-package peergos.server.tests;
+package peergos.server.tests.slow;
 import java.util.logging.*;
 
 import peergos.server.Main;
+import peergos.server.tests.*;
 import peergos.server.util.Args;
 import peergos.server.util.Logging;
 
