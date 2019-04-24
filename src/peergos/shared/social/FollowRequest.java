@@ -26,6 +26,7 @@ public class FollowRequest implements Cborable {
         return key.isPresent();
     }
 
+    @SuppressWarnings("unusable-by-js")
     public CborObject toCbor() {
         Map<String, CborObject> result = new TreeMap<>();
         entry.ifPresent(e -> result.put("e", e.toCbor()));
@@ -33,6 +34,7 @@ public class FollowRequest implements Cborable {
         return CborObject.CborMap.build(result);
     }
 
+    @SuppressWarnings("unusable-by-js")
     public static FollowRequest fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("Invalid cbor for FollowRequest: " + cbor);

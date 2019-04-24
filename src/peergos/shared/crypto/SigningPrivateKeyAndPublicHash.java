@@ -1,11 +1,13 @@
 package peergos.shared.crypto;
 
+import jsinterop.annotations.JsType;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 
 import java.util.*;
 
+@JsType
 public class SigningPrivateKeyAndPublicHash implements Cborable {
     public final PublicKeyHash publicKeyHash;
     public final SecretSigningKey secret;
@@ -16,6 +18,7 @@ public class SigningPrivateKeyAndPublicHash implements Cborable {
     }
 
     @Override
+    @SuppressWarnings("unusable-by-js")
     public CborObject toCbor() {
         Map<String, CborObject> result = new TreeMap<>();
         result.put("p", publicKeyHash.toCbor());
@@ -23,6 +26,7 @@ public class SigningPrivateKeyAndPublicHash implements Cborable {
         return CborObject.CborMap.build(result);
     }
 
+    @SuppressWarnings("unusable-by-js")
     public static SigningPrivateKeyAndPublicHash fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("Invalid cbor for SigningPrivateKeyAndPublicHash: " + cbor);

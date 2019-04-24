@@ -1,6 +1,7 @@
 package peergos.shared.io.ipfs.multihash;
 
 import jsinterop.annotations.JsConstructor;
+import jsinterop.annotations.JsIgnore;
 import jsinterop.annotations.JsType;
 import peergos.shared.io.ipfs.multibase.*;
 
@@ -143,6 +144,7 @@ public class Multihash implements Comparable<Multihash> {
         return Multihash.decode(Base58.decode(base58));
     }
 
+    @JsIgnore
     public static long readVarint(InputStream in) throws IOException {
         long x = 0;
         int s=0;
@@ -160,6 +162,7 @@ public class Multihash implements Comparable<Multihash> {
         throw new IllegalStateException("Varint too long!");
     }
 
+    @JsIgnore
     public static void putUvarint(OutputStream out, long x) throws IOException {
         while (x >= 0x80) {
             out.write((byte)(x | 0x80));

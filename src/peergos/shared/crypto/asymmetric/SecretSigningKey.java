@@ -1,5 +1,6 @@
 package peergos.shared.crypto.asymmetric;
 
+import jsinterop.annotations.JsType;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
 import peergos.shared.crypto.hash.*;
@@ -10,7 +11,7 @@ import peergos.shared.util.*;
 
 import java.io.*;
 import java.util.*;
-
+@JsType
 public interface SecretSigningKey extends Cborable {
 
     PublicSigningKey.Type type();
@@ -29,6 +30,7 @@ public interface SecretSigningKey extends Cborable {
      */
     byte[] signatureOnly(byte[] message);
 
+    @SuppressWarnings("unusable-by-js")
     static SecretSigningKey fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Invalid cbor for SecretSigningKey! " + cbor);
