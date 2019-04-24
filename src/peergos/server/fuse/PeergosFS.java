@@ -291,13 +291,13 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
     @Override
     public int opendir(String s, FuseFileInfo fuseFileInfo) {
         ensureNotClosed();
-        return  0;
+        return 0;
     }
 
     @Override
     public int readdir(String s, Pointer pointer, FuseFillDir fuseFillDir, @off_t long l, FuseFileInfo fuseFileInfo) {
         ensureNotClosed();
-        return applyIfPresent(s, (stat) ->readdir(stat,  fuseFillDir, pointer));
+        return applyIfPresent(s, (stat) ->readdir(stat, fuseFillDir, pointer));
     }
 
     @Override
@@ -391,7 +391,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
 
             try {
                 boolean isUpdated = stat.treeNode.setProperties(updated, context.network, Optional.of(parentOpt.get().treeNode)).get();
-                return isUpdated ? 0 : 1;
+                return isUpdated ? 0 : -ErrorCodes.ENOENT();
             } catch (Exception ex) {
                 LOG.log(Level.WARNING, ex.getMessage(), ex);
                 return -ErrorCodes.ENOENT();
