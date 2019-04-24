@@ -451,8 +451,6 @@ public class Main {
         }
         // wait for daemon to finish starting
         ipfs.waitForDaemon(10);
-        // set up p2p proxy receiver
-        ipfs.startP2pProxy(new MultiAddress(a.getArg("proxy-target")));
         return ipfs;
     }
 
