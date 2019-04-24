@@ -147,11 +147,19 @@ public class IpfsInstaller {
             if (! computed.equals(downloadTarget.multihash))
                 throw new IllegalStateException("Incorrect hash for ipfs binary, aborting install!");
 
-            LOG().info("Writing ipfs-binary to "+ targetFile);
-            atomicallySaveToFile(targetFile, raw);
             // save to local cache
             cacheFile.getParent().toFile().mkdirs();
             atomicallySaveToFile(cacheFile, raw);
+
+            LOG().info("Writing ipfs-binary to "+ targetFile);
+            try {
+                atomicallySaveToFile(targetFile, raw);
+            } catch (FileAlreadyExistsException e) {
+                boolean delete = targetFile.toFile().delete();
+                if (! delete)
+                    throw new IllegalStateException("Couldn't delete old version of ipfs!");
+                atomicallySaveToFile(targetFile, raw);
+            }
 
             targetFile.toFile().setExecutable(true);
         } catch (Exception e) {
