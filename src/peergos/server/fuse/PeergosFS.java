@@ -82,7 +82,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
             return 0;
         } catch (Throwable t) {
             LOG.log(Level.WARNING, t.getMessage(), t);
-            return -1;
+            return -ErrorCodes.ENOENT();
         }
     }
 
@@ -118,7 +118,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
         ensureNotClosed();
         Optional<PeergosStat> current = getByPath(s);
         if (current.isPresent())
-            return -1;
+            return -ErrorCodes.ENOENT();
         Path path = Paths.get(s);
         String parentPath = path.getParent().toString();
 
@@ -127,7 +127,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
         String name = path.getFileName().toString();
 
         if (! parentOpt.isPresent())
-            return -1;
+            return -ErrorCodes.ENOENT();
 
         PeergosStat parent = parentOpt.get();
         return mkdir(name, parent.treeNode).isPresent() ? 0 : 1;
@@ -140,17 +140,17 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
             Path requested = Paths.get(s);
             Optional<FileWrapper> file = context.getByPath(s).get();
             if (!file.isPresent())
-                return -1;
+                return -ErrorCodes.ENOENT();
 
             Optional<FileWrapper> parent = context.getByPath(requested.getParent().toString()).get();;
             if (!parent.isPresent())
-                return -1;
+                return -ErrorCodes.ENOENT();
 
             FileWrapper updatedParent = file.get().remove(parent.get(), context).get();
             return updatedParent != parent.get() ? 0 : 1;
         } catch (Exception ioe) {
             LOG.log(Level.WARNING, ioe.getMessage(), ioe);
-            return -1;
+            return -ErrorCodes.ENOENT();
         }
     }
 
@@ -172,7 +172,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
             Path requested = Paths.get(name);
             Optional<FileWrapper> newParent = context.getByPath(requested.getParent().toString()).get();;
             if (!newParent.isPresent())
-                return -1;
+                return -ErrorCodes.ENOENT();
 
             FileWrapper parent = sourceParent.treeNode;
             FileWrapper updatedParent = source.treeNode.rename(requested.getFileName().toString(), parent, context).get();
@@ -181,14 +181,14 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
                 Path renamedInPlacePath = Paths.get(sourcePath).getParent().resolve(requested.getFileName().toString());
                 Optional<FileWrapper> renamedOriginal = context.getByPath(renamedInPlacePath.toString()).get();;
                 if (! renamedOriginal.isPresent())
-                    return -1;
+                    return -ErrorCodes.ENOENT();
                 renamedOriginal.get().copyTo(newParent.get(), context).get();
                 FileWrapper updatedParent2 = renamedOriginal.get().remove(parent, context).get();
             }
             return 0;
         } catch (Exception ioe) {
             LOG.log(Level.WARNING, ioe.getMessage(), ioe);
-            return -1;
+            return -ErrorCodes.ENOENT();
         }
     }
     @Override
@@ -394,7 +394,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
                 return isUpdated ? 0 : 1;
             } catch (Exception ex) {
                 LOG.log(Level.WARNING, ex.getMessage(), ex);
-                return -1;
+                return -ErrorCodes.ENOENT();
             }
         }, aDefault);
 
@@ -491,7 +491,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
             return 0;
         } catch (Exception ioe) {
             LOG.log(Level.WARNING, ioe.getMessage(), ioe);
-            return -1;
+            return -ErrorCodes.ENOENT();
         }
     }
 
@@ -504,7 +504,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
             return 0;
         } catch (Exception e) {
             LOG.log(Level.WARNING, e.getMessage(), e);
-            return -1;
+            return -ErrorCodes.ENOENT();
         }
     }
 
@@ -543,7 +543,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
         Optional<byte[]> dataOpt = read(stat, requestedSize, offset);
 
         if  (! dataOpt.isPresent())
-            return -1;
+            return -ErrorCodes.ENOENT();
 
         byte[] data = dataOpt.get();
         for (int i = 0; i < data.length; i++) {
@@ -582,7 +582,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
             return (int) size;
         } catch (Throwable t) {
             LOG.log(Level.WARNING, t.getMessage(), t);
-            return -1;
+            return -ErrorCodes.ENOENT();
         }
     }
 
@@ -601,7 +601,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
             return (int) size;
         } catch (Throwable t) {
             LOG.log(Level.WARNING, t.getMessage(), t);
-            return -1;
+            return -ErrorCodes.ENOENT();
         }
     }
 
