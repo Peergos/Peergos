@@ -601,7 +601,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
             return (int) size;
         } catch (Throwable t) {
             LOG.log(Level.WARNING, t.getMessage(), t);
-            return 1;
+            return -1;
         }
     }
 
