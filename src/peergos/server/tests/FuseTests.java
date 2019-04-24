@@ -39,7 +39,7 @@ public class FuseTests {
     public static void init() throws Exception {
         Args args = UserTests.buildArgs().with("useIPFS", "false");
         setWebPort(args.getInt("port"));
-        LOG.info("Using web-port "+ WEB_PORT);
+        LOG.info("Using web-port " + WEB_PORT);
         System.out.flush();
 
         Main.PKI_INIT.main(args);
@@ -270,6 +270,7 @@ public class FuseTests {
 
         path.toFile().mkdirs();
 
+        assertTrue("path exists", path.toFile().exists());
         assertTrue("path is directory", path.toFile().isDirectory());
     }
 
