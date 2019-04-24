@@ -130,7 +130,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
             return -ErrorCodes.ENOENT();
 
         PeergosStat parent = parentOpt.get();
-        return mkdir(name, parent.treeNode).isPresent() ? 0 : 1;
+        return mkdir(name, parent.treeNode).isPresent() ? 0 : -ErrorCodes.ENOENT();
     }
 
     @Override
