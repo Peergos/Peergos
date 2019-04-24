@@ -46,7 +46,8 @@ public class FuseTests {
         NetworkAccess network = NetworkAccess.buildJava(WEB_PORT).get();
         UserContext userContext = UserContext.ensureSignedUp(username, password, network, Crypto.initJava()).get();
 
-        String mountPath = args.getArg("mountPoint", "/tmp/peergos/tmp");
+        Path mount = Files.createTempDirectory("peergos");
+        String mountPath = args.getArg("mountPoint", mount.toString());
 
         mountPoint = Paths.get(mountPath);
         mountPoint = mountPoint.resolve(UUID.randomUUID().toString());
