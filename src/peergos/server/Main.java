@@ -345,7 +345,8 @@ public class Main {
             boolean isPkiNode = nodeId.equals(pkiServerNodeId);
             CoreNode core = isPkiNode ?
                     buildPkiCorenode(sqlMutable, localDht, a) :
-                    new MirrorCoreNode(new HTTPCoreNode(ipfsGateway, pkiServerNodeId), localDht, proxingMutable, peergosId);
+                    new MirrorCoreNode(new HTTPCoreNode(ipfsGateway, pkiServerNodeId), proxingMutable, localDht,
+                            peergosId, a.fromPeergosDir("pki-mirror-state-path","pki-state.cbor"));
 
             long defaultQuota = a.getLong("default-quota");
             long maxUsers = a.getLong("max-users");

@@ -15,7 +15,7 @@ import java.util.concurrent.*;
 import java.util.function.*;
 import java.util.stream.*;
 
-public class UserPublicKeyLink implements Cborable{
+public class UserPublicKeyLink implements Cborable {
     public static final int MAX_SIZE = 2*1024*1024;
     public static final int MAX_USERNAME_SIZE = CoreNode.MAX_USERNAME_SIZE;
 
