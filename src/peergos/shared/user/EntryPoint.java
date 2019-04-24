@@ -56,6 +56,7 @@ public class EntryPoint implements Cborable {
         return CborObject.CborMap.build(cbor);
     }
 
+    @SuppressWarnings("unusable-by-js")
     public static EntryPoint fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("Incorrect cbor type for EntryPoint: " + cbor);

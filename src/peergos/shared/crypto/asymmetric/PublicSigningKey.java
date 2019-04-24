@@ -11,6 +11,7 @@ public interface PublicSigningKey extends Cborable {
     int MAX_SIZE = 10*1024*1024;
 
     Map<Integer, Type> byValue = new HashMap<>();
+    @JsType
     enum Type {
         Ed25519(0x1);
 

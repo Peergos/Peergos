@@ -13,6 +13,7 @@ public interface AsyncReader extends AutoCloseable {
 
     CompletableFuture<AsyncReader> seekJS(int high32, int low32);
 
+    @JsIgnore
     default CompletableFuture<AsyncReader> seek(long offset) {
         return seekJS((int)(offset >> 32), (int)offset);
     }
@@ -37,6 +38,7 @@ public interface AsyncReader extends AutoCloseable {
      */
     void close();
 
+    @JsIgnore
     default <T> CompletableFuture<Long> parseStream(Function<Cborable, T> fromCbor, Consumer<T> accumulator, long maxBytesToRead) {
         return parseStreamRecurse(new byte[0], fromCbor, accumulator, maxBytesToRead);
     }
@@ -50,6 +52,7 @@ public interface AsyncReader extends AutoCloseable {
      * @param <T>
      * @return
      */
+    @JsIgnore
     default <T> CompletableFuture<Long> parseStreamRecurse(byte[] prefix, Function<Cborable, T> fromCbor, Consumer<T> accumulator, long maxBytesToRead) {
         if (maxBytesToRead == 0)
             return CompletableFuture.completedFuture(0L);

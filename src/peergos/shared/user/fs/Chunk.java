@@ -20,10 +20,6 @@ public class Chunk {
         this.nonce = nonce;
     }
 
-    public CompletableFuture<EncryptedChunk> encrypt() {
-        return dataKey.encryptAsync(data, nonce).thenApply(EncryptedChunk::new);
-    }
-
     public SymmetricKey key() {
         return dataKey;
     }
