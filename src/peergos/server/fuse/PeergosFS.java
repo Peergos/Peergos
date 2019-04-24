@@ -470,7 +470,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
     }
 
     protected int applyIfPresent(String path, Function<PeergosStat,  Integer> func) {
-        int aDefault = 1;
+        int aDefault = -ErrorCodes.ENOENT();
         return applyIfPresent(path, func, aDefault);
     }
 
@@ -480,7 +480,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
     }
 
     private int applyIfBothPresent(String parentPath, String filePath, BiFunction<PeergosStat, PeergosStat,  Integer> func) {
-        int aDefault = 1;
+        int aDefault = -ErrorCodes.ENOENT();
         return applyIfPresent(parentPath, parentStat -> applyIfPresent(filePath, fileStat -> func.apply(parentStat, fileStat)), aDefault);
     }
 
