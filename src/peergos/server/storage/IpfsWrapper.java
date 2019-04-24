@@ -92,11 +92,12 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
      */
     public final Path ipfsPath, ipfsDir;
     public final Config config;
+    public final MultiAddress proxyTarget;
     //ipfs config commands (everything after config)
     private Process process;
 
 
-    public IpfsWrapper(Path ipfsPath, Path ipfsDir, Config config) {
+    public IpfsWrapper(Path ipfsPath, Path ipfsDir, Config config, MultiAddress proxytarget) {
 
         File ipfsDirF = ipfsDir.toFile();
         if (! ipfsDirF.isDirectory() && ! ipfsDirF.mkdirs()) {
@@ -106,6 +107,7 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
         this.ipfsPath = ipfsPath;
         this.ipfsDir = ipfsDir;
         this.config = config;
+        this.proxyTarget = proxytarget;
         // add shutdown-hook to ensure ipfs daemon is killed on exit
         ALL_IPFSES.add(this);
     }
@@ -291,8 +293,10 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
         while (shouldBeRunning) {
             // start daemon if it isn't running
             synchronized (this) {
-                if (process == null || !process.isAlive())
+                if (process == null || !process.isAlive()) {
                     start();
+                    startP2pProxy(proxyTarget);
+                }
             }
 
             try {
@@ -315,7 +319,9 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
         Logging.init(Paths.get("log.log"), 1_000_000, 1, false, true, false);
 
         Config config = new Config(Optional.empty(), 5001, 8080, 4001);
-        IpfsWrapper ipfsWrapper = new IpfsWrapper(ipfsPath, ipfsDir, config);
+        Args a = Args.parse(args);
+        MultiAddress proxytarget = new MultiAddress(a.getArg("proxy-target"));
+        IpfsWrapper ipfsWrapper = new IpfsWrapper(ipfsPath, ipfsDir, config, proxytarget);
 
         ipfsWrapper.configure();
 
@@ -341,7 +347,7 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
 
         LOG().info("Using IPFS dir " + ipfsDir + " and IPFS binary " + ipfsExe);
         Config config = buildConfig(args);
-        return new IpfsWrapper(ipfsExe, ipfsDir, config);
+        return new IpfsWrapper(ipfsExe, ipfsDir, config, new MultiAddress(args.getArg("proxy-target")));
     }
 
     /**
