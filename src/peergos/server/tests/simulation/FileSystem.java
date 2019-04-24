@@ -1,6 +1,8 @@
 package peergos.server.tests.simulation;
 
 
+import peergos.shared.user.fs.FileProperties;
+
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Iterator;
@@ -40,11 +42,20 @@ public interface FileSystem {
 
 
     default void walk(Path path, Consumer<Path> func)  {
+        FileProperties fileProperties = stat(path).fileProperties();
+
+        // skip hidden
+        if (fileProperties.isHidden)
+            return;
+
         //DFS
-        for (Path child : ls(path)) {
-            if (stat(path).fileProperties().isDirectory)
+        if (fileProperties.isDirectory) {
+            List<Path> ls = ls(path);
+            for (Path child : ls) {
                 walk(child, func);
+            }
         }
+
         func.accept(path);
     }
 

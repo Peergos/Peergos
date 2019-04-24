@@ -10,9 +10,11 @@ import java.nio.file.Paths;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class NativeFileSystemImpl implements FileSystem {
 
@@ -28,9 +30,19 @@ public class NativeFileSystemImpl implements FileSystem {
 
     private void init() {
         Path userRoot = Paths.get("/" + user);
-        accessControl.add(userRoot, user(), Permission.WRITE);
-        accessControl.add(userRoot, user(), Permission.READ);
-        mkdir(userRoot);
+//        Path sharedRoot = userRoot.resolve("shared");
+//        Path peergosShare = sharedRoot.resolve("peergos");
+
+        for (Path path : Arrays.asList(
+                userRoot
+//                , sharedRoot,
+//                peergosShare
+        )) {
+            accessControl.add(path, user(), Permission.WRITE);
+            accessControl.add(path, user(), Permission.READ);
+            mkdir(path);
+        }
+
     }
 
     @Override
@@ -43,8 +55,9 @@ public class NativeFileSystemImpl implements FileSystem {
     }
 
     private void ensureCan(Path path, Permission permission, String user) {
-        if (! Files.exists(path) && permission == Permission.READ)
-            throw new IllegalStateException("Cannot read "+ path +" : does not exist");
+        Path nativePath = virtualToNative(path);
+        if (! Files.exists(nativePath) && permission == Permission.READ)
+            throw new IllegalStateException("Cannot read "+ path +" : native file "+ nativePath + " does not exist.");
 
         if (! accessControl.can(path, user, permission))
             throw new IllegalStateException("User " + user() +" not permitted to "+ permission + " " + path);
@@ -170,7 +183,10 @@ public class NativeFileSystemImpl implements FileSystem {
     public List<Path> ls(Path path) {
         Path nativePath = virtualToNative(path);
         try {
-            return Files.list(nativePath).collect(Collectors.toList());
+            return Files.list(nativePath)
+                    .map(e -> path.resolve(e.getFileName().toString()))
+                    .collect(Collectors.toList());
+
         } catch (IOException ioe) {
             throw new IllegalStateException(ioe);
         }

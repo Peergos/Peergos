@@ -123,7 +123,7 @@ public class PeergosFileSystemImpl implements FileSystem {
 
     @Override
     public void mkdir(Path path) {
-        getDirectory(path.getParent()).mkdir(path.getFileName().toString(),
+        getDirectory(path).mkdir(path.getFileName().toString(),
                 userContext.network,
                 false,
                 userContext.crypto.random,

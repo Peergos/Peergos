@@ -108,7 +108,12 @@ public class FileWrapper {
     }
 
     public PublicKeyHash owner() {
-        return pointer.capability.owner;
+        try {
+            return pointer.capability.owner;
+        } catch (Exception e)  {
+            System.out.println();
+            throw e;
+        }
     }
 
     public PublicKeyHash writer() {

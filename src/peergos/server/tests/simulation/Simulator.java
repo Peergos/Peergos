@@ -78,6 +78,9 @@ public class Simulator implements Runnable {
 
         Path path = getRandomExistingDirectory().resolve(dirBaseName);
         simulatedDirectoryToFiles.putIfAbsent(path, new ArrayList<>());
+
+        testFileSystem.mkdir(path);
+        referenceFileSystem.mkdir(path);
         return path;
     }
 
@@ -171,31 +174,37 @@ public class Simulator implements Runnable {
         //seed file-system
         run(Simulation.MKDIR);
         run(Simulation.WRITE);
-        for (int iOp = 0; iOp < opCount; iOp++) {
+        for (int iOp = 2; iOp < opCount; iOp++) {
             Simulation simulation = getNextSimulation();
             run(simulation);
         }
 
         LOG.info("Running file-system verification");
-        verify();
+        boolean isVerified = verify();
+        LOG.info("System verified =  "+ isVerified);
     }
 
     private boolean verify() {
-        Set<Path> expectedPaths = simulatedDirectoryToFiles.entrySet().stream()
+        Set<Path> expectedFiles = simulatedDirectoryToFiles.entrySet().stream()
                 .flatMap(e -> e.getValue().stream()
                         .map(file -> e.getKey().resolve(file)))
                 .collect(Collectors.toSet());
 
-        Set<Path> paths = new HashSet<>();
+
+
         boolean isVerified = true;
 
         for (FileSystem fs : Arrays.asList(testFileSystem, referenceFileSystem)) {
 
-            fs.walk(file -> paths.add(file));
+            Set<Path> paths = new HashSet<>();
+            fs.walk(paths::add);
+
+            Set<Path> expectedFilesAndFolders  =  new HashSet<>(expectedFiles);
+            expectedFilesAndFolders.addAll(simulatedDirectoryToFiles.keySet());
 
             // extras?
-            Set<Path> extras = new HashSet<>(expectedPaths);
-            paths.removeAll(extras);
+            Set<Path> extras = new HashSet<>(paths);
+            extras.removeAll(expectedFilesAndFolders);
 
             for (Path extra : extras) {
                 LOG.info("filesystem " + fs + " has an extra path " + extra);
@@ -203,15 +212,15 @@ public class Simulator implements Runnable {
             }
 
             // missing?
-            paths.removeAll(expectedPaths);
-            for (Path missing : paths) {
+            expectedFilesAndFolders.removeAll(paths);
+            for (Path missing : expectedFilesAndFolders) {
                 LOG.info("filesystem " + fs + " is missing  the path " + missing);
                 isVerified = false;
             }
         }
 
         // contents
-        for (Path path : expectedPaths) {
+        for (Path path : expectedFiles) {
             try {
                 byte[] testData = testFileSystem.read(path);
                 byte[] refData = referenceFileSystem.read(path);
