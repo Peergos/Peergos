@@ -18,6 +18,7 @@ import java.io.*;
 import java.util.*;
 import java.util.function.*;
 import java.util.logging.*;
+import java.util.stream.*;
 
 public class PublicFileHandler implements HttpHandler {
 	private static final Logger LOG = Logging.LOG();
@@ -90,7 +91,10 @@ public class PublicFileHandler implements HttpHandler {
             if (file.isDirectory()) {
                 String fullPath = httpExchange.getRequestURI().getPath();
                 String canonicalFullPath = fullPath + (! fullPath.endsWith("/") ? "/" : "");
-                Set<FileWrapper> children = file.getChildren(network).get();
+                List<FileWrapper> children = file.getChildren(network).get()
+                        .stream()
+                        .sorted(Comparator.comparing(f -> f.getName()))
+                        .collect(Collectors.toList());
                 StringBuilder resp = new StringBuilder();
                 resp.append("<!DOCTYPE html><html lang=\"en\">");
                 resp.append("<body>");
