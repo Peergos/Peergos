@@ -19,28 +19,28 @@ import java.util.stream.*;
 public class IpfsInstaller {
 
     public enum DownloadTarget {
-        DARWIN_386("https://github.com/peergos/ipfs-releases/blob/master/v0.4.19/darwin-386/ipfs?raw=true",
-                Cid.decode("QmUXvJed2cfPRiapifvQBz3R7nPEqiXGoz8sx7GYqnU1LQ")),
-        DARWIN_AMD64("https://github.com/peergos/ipfs-releases/blob/master/v0.4.19/darwin-amd64/ipfs?raw=true",
-                Cid.decode("QmVbPzHTEvj9YEsGfd19qmp8aVxKG1Jsrp4fVdxPYcu7b7")),
-        FREEBSD_386("https://github.com/peergos/ipfs-releases/blob/master/v0.4.19/freebsd-386/ipfs?raw=true",
-                Cid.decode("QmfRjAyiacie7g7U551acuHp7tBB6JuXyBZ75eWtNEfYqs")),
-        FREEBSD_AMD64("https://github.com/peergos/ipfs-releases/blob/master/v0.4.19/freebsd-amd64/ipfs?raw=true",
-                Cid.decode("QmctZnHuehmM5fJmmeHERMe5rB4eatq27t5gmQFLRDxQnp")),
-        FREEBSD_ARM("https://github.com/peergos/ipfs-releases/blob/master/v0.4.19/freebsd-arm/ipfs?raw=true",
-                Cid.decode("QmPu6x7pQHnXVa3uagMDJMzpvY3GWnbFjoxDd7WjPHYyGA")),
-        LINUX_386("https://github.com/peergos/ipfs-releases/blob/master/v0.4.19/linux-386/ipfs?raw=true",
-                Cid.decode("QmW7oUFHk21MQWKTHA9cg5XP1uL564BEaajTEWtQj1vS4X")),
-        LINUX_AMD64("https://github.com/peergos/ipfs-releases/blob/master/v0.4.19/linux-amd64/ipfs?raw=true",
-                Cid.decode("Qmdpq7PfNA4HuFdURnFd55DBU1DSFqBAaEFKfXbECRnRQW")),
-        LINUX_ARM("https://github.com/peergos/ipfs-releases/blob/master/v0.4.19/linux-arm/ipfs?raw=true",
-                Cid.decode("QmfYciSxAwcEzvb7VoWsdfM6odjWXkeocNUbdPtDLnf9Ze")),
-        LINUX_ARM64("https://github.com/peergos/ipfs-releases/blob/master/v0.4.19/linux-arm64/ipfs?raw=true",
-                Cid.decode("QmZku7a3AfqKsLSAu2ey3yU4StAuVJzuaWahxCGubVmdYH")),
-        WINDOWS_386("https://github.com/peergos/ipfs-releases/blob/master/v0.4.19/windows-386/ipfs.exe?raw=true",
-                Cid.decode("QmQXYuKs8wonW4ioTWPyq1u1Gs88MYYdiiKCSNAsinqfEj")),
-        WINDOWS_AMD64("https://github.com/peergos/ipfs-releases/blob/master/v0.4.19/windows-amd64/ipfs.exe?raw=true",
-                Cid.decode("QmeGbmQHX9ojyDAWWfdtCsXgAQNupgPipu2pVRCgsvHuEs"));
+        DARWIN_386("https://github.com/peergos/ipfs-releases/blob/master/v0.4.20/darwin-386/ipfs?raw=true",
+                Cid.decode("Qma27kfXKiUvNquDyoEKHFM69gtGBDC9NDciFRnN9zo3zP")),
+        DARWIN_AMD64("https://github.com/peergos/ipfs-releases/blob/master/v0.4.20/darwin-amd64/ipfs?raw=true",
+                Cid.decode("QmTbC8c5454EyXCQwBR85xwfzSGGKKrrYqiXoKrygnm5K3")),
+        FREEBSD_386("https://github.com/peergos/ipfs-releases/blob/master/v0.4.20/freebsd-386/ipfs?raw=true",
+                Cid.decode("QmbXJAa1AGvZegsAXNk7b1TkaWjsuzo1u69ctK1DFqDLyx")),
+        FREEBSD_AMD64("https://github.com/peergos/ipfs-releases/blob/master/v0.4.20/freebsd-amd64/ipfs?raw=true",
+                Cid.decode("QmbZUER5uoGzUp9U3LNBq8urPaXy7muEiZ8r1kURWu1tQj")),
+        FREEBSD_ARM("https://github.com/peergos/ipfs-releases/blob/master/v0.4.20/freebsd-arm/ipfs?raw=true",
+                Cid.decode("QmbHemtrhayfLb9mqqEZx87rWuLP5qegi9dh5FXExkYsZa")),
+        LINUX_386("https://github.com/peergos/ipfs-releases/blob/master/v0.4.20/linux-386/ipfs?raw=true",
+                Cid.decode("QmVdsP7fD1gg8KaY4TD23PKKDAhFfgbX9Y3WaKpjgjAV1f")),
+        LINUX_AMD64("https://github.com/peergos/ipfs-releases/blob/master/v0.4.20/linux-amd64/ipfs?raw=true",
+                Cid.decode("QmUQiCjgjhCQayb7N1VxtuEYvaduEfbc6xjg7R56E6hdcp")),
+        LINUX_ARM("https://github.com/peergos/ipfs-releases/blob/master/v0.4.20/linux-arm/ipfs?raw=true",
+                Cid.decode("QmewfkEfLGqHtRJNU9MuTKwdYykCtMiEeAEVuSWSkNgJem")),
+        LINUX_ARM64("https://github.com/peergos/ipfs-releases/blob/master/v0.4.20/linux-arm64/ipfs?raw=true",
+                Cid.decode("QmRWqo1pZ6LgK7ne9KoyNB8wM9sqdvo38CojwLRMs1U244")),
+        WINDOWS_386("https://github.com/peergos/ipfs-releases/blob/master/v0.4.20/windows-386/ipfs.exe?raw=true",
+                Cid.decode("QmRqUTcaZiKengp3eTgUGhx69c7jroyxwKronp2uZvfYDT")),
+        WINDOWS_AMD64("https://github.com/peergos/ipfs-releases/blob/master/v0.4.20/windows-amd64/ipfs.exe?raw=true",
+                Cid.decode("Qmd7rUCrcADcGQ5GK6ewHUmAeeCpmsh4fiQUhHzcnQNnPG")),;
 
         public final String url;
         public final Multihash multihash;
@@ -177,11 +177,11 @@ public class IpfsInstaller {
         Path ipfsPath = Files.createTempFile("something", ".tmp");
         System.out.println("ipfsPath "+ ipfsPath);
         install(ipfsPath);
-//        codegen(Paths.get("/home/ian/ipfs-releases/v0.4.19"));
+//        codegen(Paths.get("/home/ian/ipfs-releases/v0.4.20"));
     }
 
     private static void codegen(Path root) throws Exception {
-        String urlBase = "https://github.com/peergos/ipfs-releases/blob/master/";
+        String urlBase = "https://github.com/peergos/ipfs-releases/blob/master/" + root.getFileName() + "/";
         for (File arch: Arrays.asList(root.toFile().listFiles()).stream().sorted().collect(Collectors.toList())) {
             for (File binary: arch.listFiles()) {
                 byte[] bytes = Files.readAllBytes(binary.toPath());
@@ -195,7 +195,7 @@ public class IpfsInstaller {
 
     private static class ReleasePreparation {
         public static void main(String[] a) throws Exception {
-            String version = "v0.4.19";
+            String version = "v0.4.20";
             Path baseDir = Files.createTempDirectory("ipfs");
             for (String os: Arrays.asList("linux", "windows", "darwin", "freebsd")) {
                 for (String arch: Arrays.asList("386", "amd64", "arm", "arm64")) {
