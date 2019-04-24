@@ -75,7 +75,7 @@ public class FuseTests {
             Files.createTempFile(resolve, "", "");
         }
         catch(FileSystemException e) {
-            System.out.println(e.getCause().getMessage());
+            System.out.println(e.getMessage());
         }
         assertTrue("file exists after creation", resolve.toFile().exists());
     }
