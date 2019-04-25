@@ -1139,7 +1139,7 @@ public class UserContext {
                                 throw new IllegalStateException("Received a follow request claiming to be owned by us!");
                             return addExternalEntryPoint(entryWeSentToThem)
                                     .thenCompose(x -> retrieveAndAddEntryPointToTrie(trie, entryWeSentToThem))
-                                    .thenCompose(newRoot -> getLatestEntryPoint(entry)
+                                    .thenCompose(newRoot -> getLatestEntryPoint(entry, network)
                                             .thenCompose(r -> addToStatic.apply(newRoot.put(r.getPath(), r.entry), p.withEntryPoint(r.entry))))
                                     .exceptionally(t -> trie);
                         }
@@ -1193,8 +1193,8 @@ public class UserContext {
                 .filter(e -> e.ownerName.equals(ourName))
                 .collect(Collectors.toList());
         return Futures.reduceAll(ourFileSystemEntries, root,
-                (t, e) -> retrieveEntryPoint(e, network)
-                        .thenCompose(r -> addRetrievedEntryPointToTrie(ourName, t, e, r.getPath(), network, random, hasher)),
+                (t, e) -> getLatestEntryPoint(e, network)
+                        .thenCompose(r -> addRetrievedEntryPointToTrie(ourName, t, r.entry, r.getPath(), network, random, hasher)),
                 (a, b) -> a)
                 .exceptionally(Futures::logAndThrow);
     }
@@ -1210,16 +1210,16 @@ public class UserContext {
         // need to to retrieve all the entry points of our friends
         return getFriendsEntryPoints()
                 .thenCompose(friendEntries -> Futures.reduceAll(friendEntries, ourRoot,
-                        (t, e) -> getLatestEntryPoint(e)
+                        (t, e) -> getLatestEntryPoint(e, network)
                                 .thenCompose(r -> addRetrievedEntryPointToTrie(ourName, t, r.entry, r.getPath(), network, random, hasher))
                                 .exceptionally(ex -> t),
                         (a, b) -> a))
                 .exceptionally(Futures::logAndThrow);
     }
 
-    private CompletableFuture<RetrievedEntryPoint> getLatestEntryPoint(EntryPoint e) {
+    private static CompletableFuture<RetrievedEntryPoint> getLatestEntryPoint(EntryPoint e, NetworkAccess network) {
         return Futures.asyncExceptionally(() -> retrieveEntryPoint(e, network),
-                ex -> getUptodateEntryPoint(e)
+                ex -> getUptodateEntryPoint(e, network)
                         .thenCompose(updated -> retrieveEntryPoint(updated, network)));
     }
 
@@ -1239,7 +1239,7 @@ public class UserContext {
                 });
     }
 
-    private CompletableFuture<EntryPoint> getUptodateEntryPoint(EntryPoint e) {
+    private static CompletableFuture<EntryPoint> getUptodateEntryPoint(EntryPoint e, NetworkAccess network) {
         // User might have changed their password and thus identity key, check for an update
         return network.coreNode.updateUser(e.ownerName)
                 .thenCompose(x -> network.coreNode.getPublicKeyHash(e.ownerName))
