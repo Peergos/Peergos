@@ -4,17 +4,13 @@ import org.junit.*;
 import org.junit.runner.*;
 import org.junit.runners.*;
 import peergos.server.*;
-import peergos.server.corenode.*;
-import peergos.server.storage.*;
+import peergos.server.tests.*;
 import peergos.server.util.Args;
 import peergos.shared.*;
-import peergos.shared.corenode.*;
-import peergos.shared.storage.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 
 import java.net.*;
-import java.nio.file.*;
 import java.util.*;
 import java.util.stream.*;
 
@@ -32,20 +28,16 @@ public class MkdirSpeed {
     }
 
     private static NetworkAccess buildHttpNetworkAccess(boolean useIpfs, Random r) throws Exception {
-        int portMin = 9000;
-        int portRange = 2000;
-        int webPort = portMin + r.nextInt(portRange);
-        int corePort = portMin + portRange + r.nextInt(portRange);
-        Args args = Args.parse(new String[]{"useIPFS", "" + useIpfs, "-port", Integer.toString(webPort), "-corenodePort", Integer.toString(corePort)});
+        Args args = UserTests.buildArgs().with("useIPFS", "" + useIpfs);
         Main.PKI_INIT.main(args);
-        return NetworkAccess.buildJava(new URL("http://localhost:" + webPort)).get();
+        return NetworkAccess.buildJava(new URL("http://localhost:" + args.getInt("port"))).get();
     }
 
     @Parameterized.Parameters()
     public static Collection<Object[]> parameters() {
         return Arrays.asList(new Object[][] {
-//                {true, "IPFS", new Random(0)}
-                {true, "NOTIPFS", new Random(0)}
+//                {"IPFS", new Random(0)}
+                {"NOTIPFS", new Random(0)}
         });
     }
 
@@ -61,6 +53,8 @@ public class MkdirSpeed {
     // All ram, not http =>  40 -   54 ms
     // All ram, http     => 400 -  416 ms
     // IPFS, http        => 660 -  840 ms
+    //
+    // current baseline: MKDIR(99) duration: 1106 mS, best: 867 mS, worst: 1467 mS, av: 1063 mS
     @Test
     public void hugeFolder() throws Exception {
         String username = generateUsername();
@@ -74,7 +68,7 @@ public class MkdirSpeed {
         for (int i=0; i < names.size(); i++) {
             String filename = names.get(i);
             long t1 = System.currentTimeMillis();
-            userRoot.mkdir(filename, context.network, false, crypto.random, crypto.hasher).get();
+            userRoot = userRoot.mkdir(filename, context.network, false, crypto.random, crypto.hasher).join();
             long duration = System.currentTimeMillis() - t1;
             worst = Math.max(worst, duration);
             best = Math.min(best, duration);
