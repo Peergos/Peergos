@@ -1,7 +1,8 @@
-package peergos.server.tests;
+package peergos.server.tests.slow;
 import java.util.logging.*;
 
 import peergos.server.Main;
+import peergos.server.tests.*;
 import peergos.server.util.Args;
 import peergos.server.util.Logging;
 
@@ -23,7 +24,7 @@ import java.util.*;
 import java.util.stream.*;
 
 public class FuseTests {
-	private static final Logger LOG = Logging.LOG();
+    private static final Logger LOG = Logging.LOG();
     public static int WEB_PORT = 8888;
     public static String username = "test02";
     public static String password = username;
@@ -39,14 +40,15 @@ public class FuseTests {
     public static void init() throws Exception {
         Args args = UserTests.buildArgs().with("useIPFS", "false");
         setWebPort(args.getInt("port"));
-        LOG.info("Using web-port "+ WEB_PORT);
+        LOG.info("Using web-port " + WEB_PORT);
         System.out.flush();
 
         Main.PKI_INIT.main(args);
         NetworkAccess network = NetworkAccess.buildJava(WEB_PORT).get();
         UserContext userContext = UserContext.ensureSignedUp(username, password, network, Crypto.initJava()).get();
 
-        String mountPath = args.getArg("mountPoint", "/tmp/peergos/tmp");
+        Path mount = Files.createTempDirectory("peergos");
+        String mountPath = args.getArg("mountPoint", mount.toString());
 
         mountPoint = Paths.get(mountPath);
         mountPoint = mountPoint.resolve(UUID.randomUUID().toString());
@@ -58,7 +60,7 @@ public class FuseTests {
         PeergosFS peergosFS = new CachingPeergosFS(userContext);
         fuseProcess = new FuseProcess(peergosFS, mountPoint);
 
-        Runtime.getRuntime().addShutdownHook(new Thread(()  -> fuseProcess.close()));
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> fuseProcess.close()));
 
         fuseProcess.start();
     }
@@ -67,7 +69,7 @@ public class FuseTests {
         return new String(Serialize.readFully(p.getInputStream())).trim();
     }
 
-    @Test public void  createFileTest() throws IOException  {
+    @Test public void createFileTest() throws IOException  {
         Path resolve = home.resolve(UUID.randomUUID().toString());
         assertFalse("file already exists", resolve.toFile().exists());
         resolve.toFile().createNewFile();
@@ -78,7 +80,6 @@ public class FuseTests {
         Path initial = createRandomFile(0x1000);
 
         byte[] initialData = Files.readAllBytes(initial);
-
 
         String[] stem = Stream.generate(() -> randomUUID().toString())
                 .limit(2)
@@ -149,7 +150,7 @@ public class FuseTests {
         new Random(0).nextBytes(data);
         Files.write(initial, data);
 
-        Path target = home.resolve(randomUUID().toString());
+        Path target = home.resolve(UUID.randomUUID().toString());
 
         assertFalse("target exists", target.toFile().exists());
         Files.copy(initial, target);
@@ -203,15 +204,16 @@ public class FuseTests {
         assertTrue("Correct contents", Arrays.equals(expected, extendedContents));
     }
 
-    @Test public void truncateTest() throws IOException {
+    @Test 
+    public void truncateTest() throws IOException {
         int initialLength = 0x1000;
         Path path = createRandomFile(initialLength);
 
-        try (RandomAccessFile raf = new RandomAccessFile(path.toFile(), "rw")) {
+        try (RandomAccessFile raf = new RandomAccessFile(path.toFile(), "rws")) {
             assertEquals("initial size", initialLength, raf.length());
 
             for (int pow = -1; pow < 4; pow++) {
-                int newSize = (int) (Math.pow(2, pow) * initialLength);
+                long newSize = (long) (Math.pow(2, pow) * initialLength);
                 raf.setLength(newSize);
                 assertEquals("truncated size equals", newSize, raf.length());
             }
@@ -219,7 +221,26 @@ public class FuseTests {
     }
 
     @Test
-    public  void lastModifiedTimeTest() throws IOException {
+    public void anotherTruncateTest() throws IOException {
+        long kiloByte = 1024; // 1KB
+        int initialLength = (int) (4 * kiloByte);
+        long testLengthThree = 8 * kiloByte;
+
+        Path path = createRandomFile(initialLength);
+        assertTrue("file exists after creation", path.toFile().exists());
+        assertEquals("file length equals initial length", path.toFile().length(), initialLength);
+
+        RandomAccessFile testFile = new RandomAccessFile(path.toFile(), "rws");
+        testFile.setLength(testLengthThree);
+        testFile.close();
+
+        long truncatedFileLength = path.toFile().length();
+        assertEquals("truncated size equals", testLengthThree, truncatedFileLength);
+
+    }
+
+    @Test
+    public void lastModifiedTimeTest() throws IOException {
         Path path = createRandomFile();
 
         ZonedDateTime now = ZonedDateTime.now();
@@ -234,8 +255,6 @@ public class FuseTests {
         }
     }
 
-
-
     @Test public void mkdirsTest() throws IOException {
 
         String[] stem = Stream.generate(() -> randomUUID().toString())
@@ -247,6 +266,7 @@ public class FuseTests {
 
         path.toFile().mkdirs();
 
+        assertTrue("path exists", path.toFile().exists());
         assertTrue("path is directory", path.toFile().isDirectory());
     }
 
@@ -281,7 +301,7 @@ public class FuseTests {
         resolve.toFile().createNewFile();
 
         if (length > 0) {
-            byte[] data =  new byte[length];
+            byte[] data = new byte[length];
             RANDOM.nextBytes(data);
             Files.write(resolve, data);
         }
@@ -327,10 +347,10 @@ public class FuseTests {
 
     @Test
     public void readWriteTest() throws IOException {
-        Random  random =  new Random(3); // repeatable with same seed 3 leads to failure with bulk upload at size of 137
+        Random random = new Random(3); // repeatable with same seed 3 leads to failure with bulk upload at size of 137
         for (int power = 5; power < 20; power++) {
             int length =  (int) Math.pow(2, power);
-            length +=  random.nextInt(length);
+            length += random.nextInt(length);
             fileTest(length, random);
         }
     }
