@@ -11,6 +11,7 @@ import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 
 import java.net.*;
+import java.nio.file.*;
 import java.util.*;
 import java.util.stream.*;
 
@@ -54,7 +55,8 @@ public class MkdirSpeed {
     // All ram, http     => 400 -  416 ms
     // IPFS, http        => 660 -  840 ms
     //
-    // current baseline: MKDIR(99) duration: 1106 mS, best: 867 mS, worst: 1467 mS, av: 1063 mS
+    // current baseline:
+    // MKDIR(99) duration: 1106 mS, best: 867 mS, worst: 1467 mS, av: 1063 mS
     @Test
     public void hugeFolder() throws Exception {
         String username = generateUsername();
@@ -72,7 +74,19 @@ public class MkdirSpeed {
             long duration = System.currentTimeMillis() - t1;
             worst = Math.max(worst, duration);
             best = Math.min(best, duration);
-            System.err.printf("MKDIR(%d) duration: %d mS, best: %d mS, worst: %d mS, av: %d mS\n", i, duration, best, worst, (t1 + duration - start) / (i + 1));
+            System.err.printf("MKDIR(%d) duration: %d mS, best: %d mS, worst: %d mS, av: %d mS\n", i,
+                    duration, best, worst, (t1 + duration - start) / (i + 1));
+        }
+
+        long worstRead = 0, bestRead = Long.MAX_VALUE, startRead = System.currentTimeMillis();
+        for (int i=0; i < 100; i++) {
+            long t1 = System.currentTimeMillis();
+            context.getByPath(Paths.get(username, names.get(random.nextInt(names.size())))).join();
+            long duration = System.currentTimeMillis() - t1;
+            worstRead = Math.max(worstRead, duration);
+            bestRead = Math.min(bestRead, duration);
+            System.err.printf("GetByPath(%d) duration: %d mS, best: %d mS, worst: %d mS, av: %d mS\n", i,
+                    duration, bestRead, worstRead, (t1 + duration - startRead) / (i + 1));
         }
     }
 
