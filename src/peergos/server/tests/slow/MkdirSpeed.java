@@ -55,8 +55,12 @@ public class MkdirSpeed {
     // All ram, http     => 400 -  416 ms
     // IPFS, http        => 660 -  840 ms
     //
-    // current baseline:
+    // current baselines:
     // MKDIR(99) duration: 1106 mS, best: 867 mS, worst: 1467 mS, av: 1063 mS
+    //    mutable.set 130 mS
+    //    block.put 62 mS
+    // GetByPath(99) duration: 295 mS, best: 288 mS, worst: 345 mS, av: 302 mS
+    //    mutable.get 260 mS
     @Test
     public void hugeFolder() throws Exception {
         String username = generateUsername();
