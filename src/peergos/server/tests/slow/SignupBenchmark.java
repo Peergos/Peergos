@@ -39,10 +39,10 @@ public class SignupBenchmark {
         });
     }
 
-    // SIGNUP(10) duration: 9996 mS, best: 9888 mS, worst: 10355 mS, av: 10120 mS
+    // SIGNUP(10) duration: 9447 mS, best: 9336 mS, worst: 9994 mS, av: 9646 mS
     //    scrypt: 1377 mS
     //    pointers.set: 15*75 mS = 1125 mS
-    //    pointers.get: 7*45 mS = 315 mS
+    //    pointers.get: 1*45 mS = 45 mS
     //    and the other 7s  ???
     @Test
     public void signup() throws Exception {

@@ -55,7 +55,7 @@ public class SmallFileBenchmark {
     // to
     // UPLOAD(99) duration: 1772 mS, best: 1226 mS, worst: 2132 mS, av: 1638 mS
     //
-    // GetData(99) duration: 919 mS, best: 832 mS, worst: 1164 mS, av: 928 mS
+    // GetData(99) duration: 816 mS, best: 801 mS, worst: 1136 mS, av: 868 mS
     @Test
     public void smallFiles() throws Exception {
         String username = generateUsername();
