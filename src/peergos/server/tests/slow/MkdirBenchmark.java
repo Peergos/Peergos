@@ -16,7 +16,7 @@ import java.util.*;
 import java.util.stream.*;
 
 @RunWith(Parameterized.class)
-public class MkdirSpeed {
+public class MkdirBenchmark {
 
     private static int RANDOM_SEED = 666;
     private final NetworkAccess network;
@@ -24,7 +24,7 @@ public class MkdirSpeed {
 
     private static Random random = new Random(RANDOM_SEED);
 
-    public MkdirSpeed(String useIPFS, Random r) throws Exception {
+    public MkdirBenchmark(String useIPFS, Random r) throws Exception {
         this.network = buildHttpNetworkAccess(useIPFS.equals("IPFS"), r);
     }
 
