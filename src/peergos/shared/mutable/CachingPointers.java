@@ -40,6 +40,13 @@ public class CachingPointers implements MutablePointers {
         synchronized (cache) {
             cache.remove(writer);
         }
-        return target.setPointer(ownerPublicKey, writer, writerSignedBtreeRootHash);
+        return target.setPointer(ownerPublicKey, writer, writerSignedBtreeRootHash).thenApply(res -> {
+            if (res) {
+                synchronized (cache) {
+                    cache.put(writer, new Pair<>(Optional.of(writerSignedBtreeRootHash), System.currentTimeMillis()));
+                }
+            }
+            return res;
+        });
     }
 }

@@ -218,6 +218,11 @@ public class NetworkAccess {
     }
 
     public static CompletableFuture<NetworkAccess> buildJava(URL target) {
+        return buildNonCachingJava(target)
+                .thenApply(e -> e.withMutablePointerCache(7_000));
+    }
+
+    public static CompletableFuture<NetworkAccess> buildNonCachingJava(URL target) {
         JavaPoster poster = new JavaPoster(target);
         CoreNode direct = buildDirectCorenode(poster);
         try {
