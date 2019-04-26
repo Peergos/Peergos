@@ -218,14 +218,18 @@ public class NetworkAccess {
     }
 
     public static CompletableFuture<NetworkAccess> buildJava(URL target) {
+        return buildNonCachingJava(target)
+                .thenApply(e -> e.withMutablePointerCache(7_000));
+    }
+
+    public static CompletableFuture<NetworkAccess> buildNonCachingJava(URL target) {
         JavaPoster poster = new JavaPoster(target);
         CoreNode direct = buildDirectCorenode(poster);
         try {
             List<String> usernames = direct.getUsernames("").get();
             boolean isPeergosServer = true;
             ContentAddressedStorage localDht = buildLocalDht(poster, isPeergosServer);
-            return build(direct, localDht, poster, poster, usernames, isPeergosServer, false)
-                    .thenApply(e -> e.withMutablePointerCache(7_000));
+            return build(direct, localDht, poster, poster, usernames, isPeergosServer, false);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

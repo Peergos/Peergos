@@ -102,11 +102,11 @@ public class MultiNodeNetworkTests {
     }
 
     private static NetworkAccess buildApi(Args args) throws Exception {
-        return NetworkAccess.buildJava(new URL("http://localhost:" + args.getInt("port"))).get();
+        return NetworkAccess.buildNonCachingJava(new URL("http://localhost:" + args.getInt("port"))).get();
     }
 
     @Test
-    public void signUp() throws Exception {
+    public void signUp() {
         UserContext context = ensureSignedUp(generateUsername(random), randomString(), getNode(iNode1), crypto);
     }
 
