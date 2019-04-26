@@ -813,6 +813,28 @@ public abstract class UserTests {
     }
 
     @Test
+    public void recursiveDelete() {
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network.clear(), crypto);
+        FileWrapper userRoot = context.getUserRoot().join();
+        Path home = Paths.get(username);
+
+        String foldername = "afolder";
+        userRoot.mkdir(foldername, context.network, false, crypto.random, hasher).join();
+        FileWrapper folder = context.getByPath(home.resolve(foldername)).join().get();
+
+        String subfoldername = "subfolder";
+        folder = folder.mkdir(subfoldername, context.network, false, crypto.random, hasher).join();
+        FileWrapper subfolder = context.getByPath(home.resolve(foldername).resolve(subfoldername)).join().get();
+
+        folder.remove(context.getUserRoot().join(), context).join();
+
+        Optional<CryptreeNode> subdir = network.getMetadata(subfolder.getPointer().capability).join();
+        Assert.assertTrue("Child deleted", ! subdir.isPresent());
+    }
+
+    @Test
     public void rename() throws Exception {
         String username = generateUsername();
         String password = "test01";
