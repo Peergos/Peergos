@@ -47,9 +47,8 @@ public class LoginBenchmark {
         return UserContext.ensureSignedUp(username, password, network, crypto).get();
     }
 
-    // LOGIN(93) duration: 3083 mS, best: 2744 mS, worst: 3409 mS, av: 2858 mS
-    //    scrypt: 1429 mS
-    //    pointers.get: 27*45ms = 1300 mS This should only be 2 calls which would halve login time
+    // LOGIN(19) duration: 2323 mS, best: 2134 mS, worst: 2619 mS, av: 2328 mS
+    //    scrypt: 2019 mS
     @Test
     public void login() throws Exception {
         String username = generateUsername();

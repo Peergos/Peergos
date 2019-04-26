@@ -224,7 +224,8 @@ public class NetworkAccess {
             List<String> usernames = direct.getUsernames("").get();
             boolean isPeergosServer = true;
             ContentAddressedStorage localDht = buildLocalDht(poster, isPeergosServer);
-            return build(direct, localDht, poster, poster, usernames, isPeergosServer, false);
+            return build(direct, localDht, poster, poster, usernames, isPeergosServer, false)
+                    .thenApply(e -> e.withMutablePointerCache(7_000));
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

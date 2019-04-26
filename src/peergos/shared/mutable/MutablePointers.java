@@ -17,7 +17,7 @@ public interface MutablePointers {
      * @param owner The owner of this signing key
      * @param writer The public signing key
      * @param writerSignedBtreeRootHash the signed serialization of the HashCasPair
-     * @return True when sucessfully completed
+     * @return True when successfully completed
      */
     CompletableFuture<Boolean> setPointer(PublicKeyHash owner, PublicKeyHash writer, byte[] writerSignedBtreeRootHash);
 
