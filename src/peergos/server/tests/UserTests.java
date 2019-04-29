@@ -287,9 +287,9 @@ public abstract class UserTests {
 
         //rename
         String newname = "newname.txt";
-        updatedRoot4.getDescendentByPath(otherName, context.network).get().get()
+        FileWrapper updatedRoot5 = updatedRoot4.getDescendentByPath(otherName, context.network).get().get()
                 .rename(newname, updatedRoot4, context).get();
-        checkFileContents(data3, updatedRoot4.getDescendentByPath(newname, context.network).get().get(), context);
+        checkFileContents(data3, updatedRoot5.getDescendentByPath(newname, context.network).get().get(), context);
         // check from the root as well
         checkFileContents(data3, context.getByPath(username + "/" + newname).get().get(), context);
         // check from a fresh log in too

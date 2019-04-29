@@ -82,6 +82,10 @@ public class FileWrapper {
         return new FileWrapper(Optional.of(trie), pointer, entryWriter, ownername, version);
     }
 
+    public FileWrapper withVersion(Snapshot version) {
+        return new FileWrapper(globalRoot, pointer, entryWriter, ownername, version);
+    }
+
     @JsMethod
     public boolean equals(Object other) {
         if (other == null)
@@ -1101,9 +1105,11 @@ public class FileWrapper {
 
                         FileProperties newProps = new FileProperties(newFilename, isDir, currentProps.mimeType, currentProps.size,
                                 currentProps.modified, currentProps.isHidden, currentProps.thumbnail);
-
-                        return fileAccess.updateProperties(writableFilePointer(), entryWriter, newProps, userContext.network)
-                                .thenApply(fa -> res);
+                        SigningPrivateKeyAndPublicHash signer = signingPair();
+                        return userContext.network.synchronizer.applyComplexUpdate(owner(), signer,
+                                (s, committer) -> fileAccess.updateProperties(s, committer, writableFilePointer(),
+                                        entryWriter, newProps, userContext.network))
+                                .thenApply(newVersion -> res.withVersion(newVersion));
                     });
                 });
     }
