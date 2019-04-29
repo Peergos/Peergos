@@ -312,10 +312,12 @@ public class NetworkAccess {
     }
 
     public CompletableFuture<Optional<FileWrapper>> retrieveEntryPoint(EntryPoint e) {
-        return downloadEntryPoint(e)
-                .thenApply(faOpt ->faOpt.map(fa -> new FileWrapper(Optional.empty(),
-                        new RetrievedCapability(e.pointer, fa),
-                        e.pointer.wBaseKey.map(wBase -> fa.getSigner(e.pointer.rBaseKey, wBase, Optional.empty())), e.ownerName)))
+        return synchronizer.getValue(e.pointer.owner, e.pointer.writer)
+                .thenCompose(version -> downloadEntryPoint(e)
+                        .thenApply(faOpt ->faOpt.map(fa -> new FileWrapper(Optional.empty(),
+                                new RetrievedCapability(e.pointer, fa),
+                                e.pointer.wBaseKey.map(wBase -> fa.getSigner(e.pointer.rBaseKey, wBase, Optional.empty())),
+                                e.ownerName, version))))
                 .exceptionally(t -> {
                     LOG.log(Level.SEVERE, t.getMessage(), t);
                     return Optional.empty();
@@ -332,14 +334,14 @@ public class NetworkAccess {
         });
     }
 
-    public CompletableFuture<Optional<FileWrapper>> getFile(WriterData base,
+    public CompletableFuture<Optional<FileWrapper>> getFile(Snapshot version,
                                                             AbsoluteCapability cap,
                                                             Optional<SigningPrivateKeyAndPublicHash> entryWriter,
                                                             String ownerName) {
-        return getMetadata(base, cap)
+        return getMetadata(version.get(cap.writer).props, cap)
                 .thenApply(faOpt -> faOpt.map(fa -> new FileWrapper(Optional.empty(),
                         new RetrievedCapability(cap, fa),
-                        cap.wBaseKey.map(wBase -> fa.getSigner(cap.rBaseKey, wBase, entryWriter)), ownerName)));
+                        cap.wBaseKey.map(wBase -> fa.getSigner(cap.rBaseKey, wBase, entryWriter)), ownerName, version)));
     }
 
     public CompletableFuture<Optional<CryptreeNode>> getMetadata(WriterData base, AbsoluteCapability cap) {
