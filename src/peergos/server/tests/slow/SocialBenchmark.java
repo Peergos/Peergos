@@ -40,8 +40,7 @@ public class SocialBenchmark {
         });
     }
 
-    // SendFollowRequest(10) duration: 2967 mS, best: 2296 mS, worst: 2967 mS, av: 2572 mS
-    //    pointers.get: 19 * 45 mS = 855 mS
+    // SendFollowRequest(19) duration: 2132 mS, best: 1891 mS, worst: 2576 mS, av: 2110 mS
     //    pointers.set: 4 * 80 mS = 320 mS
     @Test
     public void social() {

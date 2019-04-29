@@ -55,8 +55,7 @@ public class MediumFileBenchmark {
     // to
     // UPLOAD(99) duration: 9864 mS, best: 7959 mS, worst: 10653 mS, av: 8974 mS or 1.1 MiB/s
     //
-    // GetData(10) duration: 6674 mS, best: 6605 mS, worst: 6994 mS, av: 6732 mS or 1.5 MiB/s
-    //    pointers.get: 106 * 45 mS = 4770 mS <== This should be 0 or 1 gets!! which would be ~ 4.8 MiB/s
+    // GetData(10) duration: 1037 mS, best: 868 mS, worst: 1167 mS, av: 944 mS or 10.5 MiB/s
     @Test
     public void mediumFiles() throws Exception {
         String username = generateUsername();

@@ -243,8 +243,8 @@ public class NetworkAccess {
         }
     }
 
-    public CompletableFuture<Optional<RetrievedCapability>> retrieveMetadata(AbsoluteCapability cap) {
-        return retrieveAllMetadata(Collections.singletonList(cap))
+    public CompletableFuture<Optional<RetrievedCapability>> retrieveMetadata(AbsoluteCapability cap, Snapshot version) {
+        return retrieveAllMetadata(Collections.singletonList(cap), version)
                 .thenApply(res -> res.isEmpty() ? Optional.empty() : Optional.of(res.get(0)));
     }
 
@@ -274,15 +274,14 @@ public class NetworkAccess {
                 .collect(Collectors.toList()));
     }
 
-    public CompletableFuture<List<RetrievedCapability>> retrieveAllMetadata(List<AbsoluteCapability> links, Map<PublicKeyHash, WriterData> current) {
+    public CompletableFuture<List<RetrievedCapability>> retrieveAllMetadata(List<AbsoluteCapability> links, Snapshot current) {
         List<CompletableFuture<Optional<RetrievedCapability>>> all = links.stream()
                 .map(link -> {
                     PublicKeyHash owner = link.owner;
                     PublicKeyHash writer = link.writer;
                     byte[] mapKey = link.getMapKey();
-                    return (current.containsKey(writer) ?
-                            tree.get(current.get(writer), owner, writer, mapKey) :
-                            tree.get(owner, writer, mapKey))
+                    return current.withWriter(owner, writer, this).thenCompose(version ->
+                            tree.get(version.get(writer).props, owner, writer, mapKey))
                             .thenCompose(key -> {
                                 if (key.isPresent())
                                     return dhtClient.get(key.get())
@@ -313,7 +312,7 @@ public class NetworkAccess {
 
     public CompletableFuture<Optional<FileWrapper>> retrieveEntryPoint(EntryPoint e) {
         return synchronizer.getValue(e.pointer.owner, e.pointer.writer)
-                .thenCompose(version -> downloadEntryPoint(e)
+                .thenCompose(version -> getMetadata(version.get(e.pointer.writer).props, e.pointer)
                         .thenApply(faOpt ->faOpt.map(fa -> new FileWrapper(Optional.empty(),
                                 new RetrievedCapability(e.pointer, fa),
                                 e.pointer.wBaseKey.map(wBase -> fa.getSigner(e.pointer.rBaseKey, wBase, Optional.empty())),
@@ -322,16 +321,6 @@ public class NetworkAccess {
                     LOG.log(Level.SEVERE, t.getMessage(), t);
                     return Optional.empty();
                 });
-    }
-
-    private CompletableFuture<Optional<CryptreeNode>> downloadEntryPoint(EntryPoint entry) {
-        // download the metadata blob for this entry point
-        return tree.get(entry.pointer.owner, entry.pointer.writer, entry.pointer.getMapKey()).thenCompose(btreeValue -> {
-            if (btreeValue.isPresent())
-                return dhtClient.get(btreeValue.get())
-                        .thenApply(value -> value.map(cbor -> CryptreeNode.fromCbor(cbor,  entry.pointer.rBaseKey, btreeValue.get())));
-            return CompletableFuture.completedFuture(Optional.empty());
-        });
     }
 
     public CompletableFuture<Optional<FileWrapper>> getFile(Snapshot version,
@@ -446,27 +435,38 @@ public class NetworkAccess {
         }
     }
 
-    public CompletableFuture<Multihash> addPreexistingChunk(CryptreeNode metadata,
-                                                            PublicKeyHash owner,
-                                                            byte[] mapKey,
-                                                            SigningPrivateKeyAndPublicHash writer) {
-        return tree.put(owner, writer, mapKey, metadata.committedHash(), metadata.committedHash().get())
-                .thenApply(res -> metadata.committedHash().get());
+    public CompletableFuture<Snapshot> addPreexistingChunk(CryptreeNode metadata,
+                                                           PublicKeyHash owner,
+                                                           byte[] mapKey,
+                                                           SigningPrivateKeyAndPublicHash writer,
+                                                           TransactionId tid,
+                                                           Snapshot current,
+                                                           WriteSynchronizer.Committer committer) {
+        CommittedWriterData version = current.get(writer);
+        return tree.put(version.props, owner, writer, mapKey, metadata.committedHash(), metadata.committedHash().get(), tid)
+                .thenCompose(wd -> committer.commit(owner, writer, wd, version, tid));
     }
 
-    public CompletableFuture<Multihash> deleteChunk(CryptreeNode metadata,
-                                                    PublicKeyHash owner,
-                                                    byte[] mapKey,
-                                                    SigningPrivateKeyAndPublicHash writer) {
-        return tree.remove(owner, writer, mapKey, metadata.committedHash())
-                .thenApply(res -> metadata.committedHash().get());
+    public CompletableFuture<Snapshot> deleteChunk(Snapshot current,
+                                                   WriteSynchronizer.Committer committer,
+                                                   CryptreeNode metadata,
+                                                   PublicKeyHash owner,
+                                                   byte[] mapKey,
+                                                   SigningPrivateKeyAndPublicHash writer,
+                                                   TransactionId tid) {
+        CommittedWriterData version = current.get(writer);
+        return tree.remove(version.props, owner, writer, mapKey, metadata.committedHash(), tid)
+                .thenCompose(wd -> committer.commit(owner, writer, wd, version, tid))
+                .thenApply(committed -> current.withVersion(writer.publicKeyHash, committed.get(writer)));
     }
 
     public CompletableFuture<Boolean> deleteChunkIfPresent(PublicKeyHash owner,
-                                                             SigningPrivateKeyAndPublicHash writer,
-                                                             byte[] mapKey) {
+                                                           SigningPrivateKeyAndPublicHash writer,
+                                                           byte[] mapKey) {
         return tree.get(owner, writer.publicKeyHash, mapKey)
-                .thenCompose(valueHash -> valueHash.ifPresent(h -> tree.remove(owner, writer, mapKey, valueHash)));
+                .thenCompose(valueHash -> valueHash.ifPresent(h -> synchronizer.applyUpdate(owner, writer,
+                        (wd, tid) -> tree.remove(wd, owner, writer, mapKey, valueHash, tid))
+                .thenApply(s -> true)));
     }
 
     public CompletableFuture<Optional<CryptreeNode>> getMetadata(AbsoluteCapability cap) {
