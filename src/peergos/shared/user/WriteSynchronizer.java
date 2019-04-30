@@ -85,7 +85,17 @@ public class WriteSynchronizer {
                                                           ComplexMutation transformer) {
         return pending.computeIfAbsent(new Pair<>(owner, writer.publicKeyHash), p -> new AsyncLock<>(getWriterData(owner, p.right)))
                 .runWithLock(current -> transformer.apply(current,
-                        (aOwner, signer, wd, existing, tid) -> wd.commit(aOwner, signer, existing.hash, mutable, dht, tid)),
+                        (aOwner, signer, wd, existing, tid) -> wd.commit(aOwner, signer, existing.hash, mutable, dht, tid)
+                        .thenCompose(s -> {
+                            if (signer.publicKeyHash.equals(writer.publicKeyHash))
+                                return CompletableFuture.completedFuture(s);
+                            // need to update local queue for other writer
+                            return pending.computeIfAbsent(
+                                    new Pair<>(owner, signer.publicKeyHash),
+                                    p -> new AsyncLock<>(getWriterData(owner, p.right))
+                            ).runWithLock(v -> CompletableFuture.completedFuture(v.withVersion(signer.publicKeyHash, s.get(signer))))
+                                    .thenApply(x -> s);
+                        })),
                         () -> getWriterData(owner, writer.publicKeyHash));
     }
 
