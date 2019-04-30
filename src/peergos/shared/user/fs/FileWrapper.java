@@ -545,16 +545,8 @@ public class FileWrapper {
             Optional<SigningPrivateKeyAndPublicHash> childsEntryWriter = pointer.capability.wBaseKey
                     .map(wBase -> pointer.fileAccess.getSigner(pointer.capability.rBaseKey, wBase, entryWriter));
             return pointer.fileAccess.getAllChildrenCapabilities(version, pointer.capability, network)
-                    .thenCompose(childCaps -> {
-                        Set<PublicKeyHash> childWriters = childCaps.stream()
-                                .map(c -> c.writer)
-                                .collect(Collectors.toSet());
-                        return version.withWriters(owner(), childWriters, network)
-                                .thenCompose(fullVersion -> network.retrieveAllMetadata(new ArrayList<>(childCaps), fullVersion)
-                                        .thenApply(rcs -> rcs.stream()
-                                                .map(rc -> new FileWrapper(rc, childsEntryWriter, ownername, fullVersion))
-                                                .collect(Collectors.toSet())));
-                    });
+                    .thenCompose(childCaps ->
+                            getFiles(owner(), childCaps, childsEntryWriter, ownername, network, version));
         }
         throw new IllegalStateException("Unreadable FileWrapper!");
     }
@@ -567,18 +559,26 @@ public class FileWrapper {
             Optional<SigningPrivateKeyAndPublicHash> childsEntryWriter = pointer.capability.wBaseKey
                     .map(wBase -> pointer.fileAccess.getSigner(pointer.capability.rBaseKey, wBase, entryWriter));
             return pointer.fileAccess.getDirectChildrenCapabilities(pointer.capability, network)
-                    .thenCompose(childCaps -> {
-                        Set<PublicKeyHash> childWriters = childCaps.stream()
-                                .map(c -> c.writer)
-                                .collect(Collectors.toSet());
-                        return version.withWriters(owner(), childWriters, network)
-                                .thenCompose(fullVersion -> network.retrieveAllMetadata(new ArrayList<>(childCaps), fullVersion)
-                                        .thenApply(rcs -> rcs.stream()
-                                                .map(rc -> new FileWrapper(rc, childsEntryWriter, ownername, fullVersion))
-                                                .collect(Collectors.toSet())));
-                    });
+                    .thenCompose(childCaps ->
+                            getFiles(owner(), childCaps, childsEntryWriter, ownername, network, version));
         }
         throw new IllegalStateException("Unreadable FileWrapper!");
+    }
+
+    public static CompletableFuture<Set<FileWrapper>> getFiles(PublicKeyHash owner,
+                                                               Set<AbsoluteCapability> caps,
+                                                               Optional<SigningPrivateKeyAndPublicHash> entryWriter,
+                                                               String ownername,
+                                                               NetworkAccess network,
+                                                               Snapshot version) {
+        Set<PublicKeyHash> childWriters = caps.stream()
+                .map(c -> c.writer)
+                .collect(Collectors.toSet());
+        return version.withWriters(owner, childWriters, network)
+                .thenCompose(fullVersion -> network.retrieveAllMetadata(new ArrayList<>(caps), fullVersion)
+                        .thenApply(rcs -> rcs.stream()
+                                .map(rc -> new FileWrapper(rc, entryWriter, ownername, fullVersion))
+                                .collect(Collectors.toSet())));
     }
 
     public CompletableFuture<Optional<FileWrapper>> getChild(String name, NetworkAccess network) {
