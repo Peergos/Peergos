@@ -171,7 +171,7 @@ public class FileWrapper {
             Hasher hasher) {
         return pointer.fileAccess
                 .updateChildLinks(version, committer, (WritableAbsoluteCapability) pointer.capability, entryWriter,
-                        childCases, network, random, hasher);
+                        childCases, network, hasher);
     }
 
     /**
@@ -272,13 +272,13 @@ public class FileWrapper {
                                                             .updateChildLink(finished, committer,
                                                                     (WritableAbsoluteCapability) parent.pointer.capability,
                                                                     parent.entryWriter, this.pointer,
-                                                                    theNewUs.pointer, network, random, hasher) :
+                                                                    theNewUs.pointer, network, hasher) :
                                                             CompletableFuture.completedFuture(null))
                                             );
                                 });
                             })
                     ).thenCompose(updated -> {
-                        return network.getMetadata(nextChunkCap)
+                        return network.getMetadata(version.get(nextChunkCap.writer).props, nextChunkCap)
                                 .thenCompose(mOpt -> {
                                     if (! mOpt.isPresent())
                                         return CompletableFuture.completedFuture(updated);
@@ -299,7 +299,7 @@ public class FileWrapper {
                     .thenCompose(updatedVersion -> {
                         byte[] nextChunkMapKey = pointer.fileAccess.getNextChunkLocation(cap.rBaseKey);
                         WritableAbsoluteCapability nextChunkCap = cap.withMapKey(nextChunkMapKey);
-                        return network.getMetadata(nextChunkCap)
+                        return network.getMetadata(version.get(nextChunkCap.writer).props, nextChunkCap)
                                 .thenCompose(mOpt -> {
                                     if (! mOpt.isPresent())
                                         return CompletableFuture.completedFuture(updatedVersion);
@@ -312,7 +312,7 @@ public class FileWrapper {
                                 network.retrieveMetadata(this.writableFilePointer(), newVersion)
                                         .thenCompose(meta -> parent.pointer.fileAccess
                                                 .updateChildLink(newVersion, committer, parent.writableFilePointer(),
-                                                        parent.entryWriter, pointer, meta.get(), network, random, hasher)) :
+                                                        parent.entryWriter, pointer, meta.get(), network, hasher)) :
                                 CompletableFuture.completedFuture(newVersion)
                         );
                     }).thenApply(x -> {
@@ -389,10 +389,10 @@ public class FileWrapper {
                                                     .updateChildLink(updatedVersion, committer,
                                                             (WritableAbsoluteCapability) parent.pointer.capability,
                                                             parent.entryWriter, this.pointer,
-                                                            updatedUs.get(), network, random, hasher)) :
+                                                            updatedUs.get(), network, hasher)) :
                                     CompletableFuture.completedFuture(updatedVersion))
                     ).thenCompose(updatedVersion -> {
-                        return network.getMetadata(nextChunkCap)
+                        return network.getMetadata(version.get(nextChunkCap.writer).props, nextChunkCap)
                                 .thenCompose(mOpt -> {
                                     if (! mOpt.isPresent())
                                         return CompletableFuture.completedFuture(updatedVersion);
@@ -434,7 +434,7 @@ public class FileWrapper {
         setModified();
         return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
                 (cwd, committer) -> pointer.fileAccess
-                .removeChildren(cwd, committer, Arrays.asList(child.getPointer()), writableFilePointer(), entryWriter, network, hasher))
+                .removeChildren(cwd, committer, Arrays.asList(child.getPointer().capability), writableFilePointer(), entryWriter, network, hasher))
                 .thenCompose(newRoot -> getUpdated(newRoot, network));
     }
 
@@ -1251,7 +1251,7 @@ public class FileWrapper {
                                 .updateChildLink(copiedVersion, committer, parent.writableFilePointer(),
                                         parent.entryWriter,
                                         getPointer(),
-                                        newRetrievedCapability, network, random, hasher))
+                                        newRetrievedCapability, network, hasher))
                         .thenCompose(updatedParentVersion -> deleteAllChunks(cap, signingPair(), tid, network,
                                 updatedParentVersion, committer)),
                 network.dhtClient)
@@ -1275,7 +1275,7 @@ public class FileWrapper {
                                                              Snapshot version,
                                                              WriteSynchronizer.Committer committer) {
 
-        return network.getMetadata(currentCap)
+        return network.getMetadata(version.get(currentCap.writer).props, currentCap)
                 .thenCompose(mOpt -> {
                     if (! mOpt.isPresent()) {
                         return CompletableFuture.completedFuture(version);

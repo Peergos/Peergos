@@ -669,12 +669,9 @@ public class CryptreeNode implements Cborable {
                                                        RetrievedCapability original,
                                                        RetrievedCapability modified,
                                                        NetworkAccess network,
-                                                       SafeRandom random,
                                                        Hasher hasher) {
-        return removeChildren(Arrays.asList(original.capability), ourPointer, entryWriter, network, hasher)
-                .thenCompose(res ->
-                        res.addChildAndCommit(base, committer, ourPointer.relativise(modified.capability), ourPointer, entryWriter,
-                                network, random, hasher));
+        return updateChildLinks(base, committer, ourPointer, entryWriter,
+                Arrays.asList(new Pair<>(original.capability, modified.capability)), network, hasher);
     }
 
     public CompletableFuture<Snapshot> updateChildLinks(Snapshot base,
@@ -683,45 +680,39 @@ public class CryptreeNode implements Cborable {
                                                         Optional<SigningPrivateKeyAndPublicHash> entryWriter,
                                                         Collection<Pair<AbsoluteCapability, AbsoluteCapability>> childCasPairs,
                                                         NetworkAccess network,
-                                                        SafeRandom random,
                                                         Hasher hasher) {
-        return removeChildren(childCasPairs.stream()
-                .map(p -> p.left)
-                .collect(Collectors.toList()), ourPointer, entryWriter, network, hasher)
-                .thenCompose(res -> res.addChildrenAndCommit(base, committer, childCasPairs.stream()
-                        .map(p -> ourPointer.relativise(p.right))
-                        .collect(Collectors.toList()), ourPointer, entryWriter, network, random, hasher));
-    }
-
-    public CompletableFuture<CryptreeNode> removeChildren(List<AbsoluteCapability> childrenToRemove,
-                                                          WritableAbsoluteCapability ourPointer,
-                                                          Optional<SigningPrivateKeyAndPublicHash> entryWriter,
-                                                          NetworkAccess network,
-                                                          Hasher hasher) {
-        Set<Location> locsToRemove = childrenToRemove.stream()
-                .map(c -> c.getLocation())
+        Set<Location> locsToRemove = childCasPairs.stream()
+                .map(p -> p.left.getLocation())
                 .collect(Collectors.toSet());
-        return getDirectChildren(ourPointer.rBaseKey, network).thenCompose(newSubfolders -> {
-            List<RelativeCapability> withRemoval = newSubfolders.stream()
-                    .filter(e -> !locsToRemove.contains(e.toAbsolute(ourPointer).getLocation()))
+        return getDirectChildren(base, ourPointer, network).thenCompose(children -> {
+            List<RelativeCapability> withRemoval = children.stream()
+                    .filter(e -> ! locsToRemove.contains(e.capability.getLocation()))
+                    .map(c -> ourPointer.relativise(c.capability))
+                    .collect(Collectors.toList());
+
+            List<RelativeCapability> toAdd = childCasPairs.stream()
+                    .map(p -> ourPointer.relativise(p.right))
+                    .collect(Collectors.toList());
+
+            List<RelativeCapability> updatedChildren = Stream.concat(withRemoval.stream(), toAdd.stream())
                     .collect(Collectors.toList());
 
             return IpfsTransaction.call(ourPointer.owner,
-                    tid -> withChildren(ourPointer.rBaseKey, new ChildrenLinks(withRemoval), hasher)
-                            .commit(ourPointer, entryWriter, network, tid),
+                    tid -> withChildren(ourPointer.rBaseKey, new ChildrenLinks(updatedChildren), hasher)
+                            .commit(base, committer, ourPointer, entryWriter, network, tid),
                     network.dhtClient);
         });
     }
 
     public CompletableFuture<Snapshot> removeChildren(Snapshot current,
                                                       WriteSynchronizer.Committer committer,
-                                                      List<RetrievedCapability> childrenToRemove,
+                                                      List<AbsoluteCapability> childrenToRemove,
                                                       WritableAbsoluteCapability ourPointer,
                                                       Optional<SigningPrivateKeyAndPublicHash> entryWriter,
                                                       NetworkAccess network,
                                                       Hasher hasher) {
         Set<Location> locsToRemove = childrenToRemove.stream()
-                .map(r -> r.capability.getLocation())
+                .map(r -> r.getLocation())
                 .collect(Collectors.toSet());
         return getDirectChildren(current, ourPointer, network).thenCompose(children -> {
             List<RelativeCapability> withRemoval = children.stream()
