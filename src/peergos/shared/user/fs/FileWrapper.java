@@ -252,11 +252,11 @@ public class FileWrapper {
                                 FileWrapper theNewUs = usOpt.get();
 
                                 // clean all subtree keys except file dataKeys (lazily re-key and re-encrypt them)
-                                return getDirectChildren(network, version).thenCompose(childFiles -> {
+                                return getDirectChildren(network, updatedVersion).thenCompose(childFiles -> {
                                     List<Pair<FileWrapper, SymmetricKey>> childrenWithNewKeys = childFiles.stream()
                                             .map(c -> new Pair<>(c, SymmetricKey.random()))
                                             .collect(Collectors.toList());
-                                    return Futures.reduceAll(childrenWithNewKeys, version,
+                                    return Futures.reduceAll(childrenWithNewKeys, updatedVersion,
                                             (s, childAndKey) -> childAndKey.left.rotateReadKeys(false,
                                                     network, random, hasher, theNewUs,
                                                     Optional.of(childAndKey.right), s, committer), (a, b) -> b)
@@ -273,17 +273,17 @@ public class FileWrapper {
                                                                     (WritableAbsoluteCapability) parent.pointer.capability,
                                                                     parent.entryWriter, this.pointer,
                                                                     theNewUs.pointer, network, hasher) :
-                                                            CompletableFuture.completedFuture(null))
+                                                            CompletableFuture.completedFuture(finished))
                                             );
                                 });
                             })
                     ).thenCompose(updated -> {
-                        return network.getMetadata(version.get(nextChunkCap.writer).props, nextChunkCap)
+                        return network.getMetadata(updated.get(nextChunkCap.writer).props, nextChunkCap)
                                 .thenCompose(mOpt -> {
                                     if (! mOpt.isPresent())
                                         return CompletableFuture.completedFuture(updated);
                                     return new FileWrapper(new RetrievedCapability(nextChunkCap, mOpt.get()),
-                                            entryWriter, ownername, version)
+                                            entryWriter, ownername, updated)
                                             .rotateReadKeys(false, network, random, hasher, parent,
                                                     Optional.of(newSubfoldersKey), updated, committer);
                                 });
@@ -299,7 +299,7 @@ public class FileWrapper {
                     .thenCompose(updatedVersion -> {
                         byte[] nextChunkMapKey = pointer.fileAccess.getNextChunkLocation(cap.rBaseKey);
                         WritableAbsoluteCapability nextChunkCap = cap.withMapKey(nextChunkMapKey);
-                        return network.getMetadata(version.get(nextChunkCap.writer).props, nextChunkCap)
+                        return network.getMetadata(updatedVersion.get(nextChunkCap.writer).props, nextChunkCap)
                                 .thenCompose(mOpt -> {
                                     if (! mOpt.isPresent())
                                         return CompletableFuture.completedFuture(updatedVersion);
