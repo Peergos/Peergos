@@ -382,17 +382,18 @@ public class FileWrapper {
                                 .collect(Collectors.toList());
                         return Futures.reduceAll(childFiles, version,
                                 (s, child) -> child.rotateWriteKeys(false, theNewUs, Optional.empty(),
-                                        network, random, hasher, version, committer), (a, b) -> b)
+                                        network, random, hasher, s, committer), (a, b) -> b)
                                 .thenCompose(version2 -> theNewUs.addChildLinks(version2, committer, childPointers, network, random, hasher));
                     }).thenCompose(updatedVersion ->
                             // update pointer from parent to us
                             (updateParent ?
-                                    network.retrieveMetadata(this.writableFilePointer(), updatedVersion)
-                                            .thenCompose(updatedUs -> parent.pointer.fileAccess
-                                                    .updateChildLink(updatedVersion, committer,
-                                                            (WritableAbsoluteCapability) parent.pointer.capability,
-                                                            parent.entryWriter, this.pointer,
-                                                            updatedUs.get(), network, hasher)) :
+                                    updatedVersion.withWriter(owner(), parent.writer(), network)
+                                            .thenCompose(withParent -> network.retrieveMetadata(this.writableFilePointer(), withParent)
+                                                    .thenCompose(updatedUs -> parent.pointer.fileAccess
+                                                            .updateChildLink(withParent, committer,
+                                                                    parent.writableFilePointer(),
+                                                                    parent.entryWriter, this.pointer,
+                                                                    updatedUs.get(), network, hasher))) :
                                     CompletableFuture.completedFuture(updatedVersion))
                     ).thenCompose(updatedVersion -> {
                         return network.getMetadata(version.get(nextChunkCap.writer).props, nextChunkCap)
