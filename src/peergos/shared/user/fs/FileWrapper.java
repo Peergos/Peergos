@@ -303,13 +303,15 @@ public class FileWrapper {
                                 .thenCompose(mOpt -> {
                                     if (! mOpt.isPresent())
                                         return CompletableFuture.completedFuture(updatedVersion);
-                                    return new FileWrapper(new RetrievedCapability(nextChunkCap, mOpt.get()), entryWriter, ownername, version)
-                                            .rotateReadKeys(false, network, random, hasher, parent, Optional.of(baseReadKey), updatedVersion, committer);
+                                    return new FileWrapper(new RetrievedCapability(nextChunkCap, mOpt.get()),
+                                            entryWriter, ownername, updatedVersion)
+                                            .rotateReadKeys(false, network, random, hasher, parent,
+                                                    Optional.of(baseReadKey), updatedVersion, committer);
                                 });
                     }).thenCompose(newVersion -> {
                         // only update link from parent folder to file if we are the first chunk
                         return (updateParent ?
-                                network.retrieveMetadata(this.writableFilePointer(), newVersion)
+                                network.retrieveMetadata(this.writableFilePointer().withBaseKey(baseReadKey), newVersion)
                                         .thenCompose(meta -> parent.pointer.fileAccess
                                                 .updateChildLink(newVersion, committer, parent.writableFilePointer(),
                                                         parent.entryWriter, pointer, meta.get(), network, hasher)) :
