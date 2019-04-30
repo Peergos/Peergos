@@ -1272,36 +1272,38 @@ public class FileWrapper {
                                                              AbsoluteCapability currentCap,
                                                              SigningPrivateKeyAndPublicHash targetSigner,
                                                              NetworkAccess network,
-                                                             Snapshot version,
+                                                             Snapshot initialVersion,
                                                              WriteSynchronizer.Committer committer) {
 
-        return network.getMetadata(version.get(currentCap.writer).props, currentCap)
-                .thenCompose(mOpt -> {
-                    if (! mOpt.isPresent()) {
-                        return CompletableFuture.completedFuture(version);
-                    }
-                    return (includeFirst ?
-                            IpfsTransaction.call(currentCap.owner,
-                                    tid -> network.addPreexistingChunk(mOpt.get(), currentCap.owner, currentCap.getMapKey(),
-                                    targetSigner, tid, version, committer), network.dhtClient) :
-                            CompletableFuture.completedFuture(version))
-                            .thenCompose(updated -> {
-                                CryptreeNode chunk = mOpt.get();
-                                byte[] nextChunkMapKey = chunk.getNextChunkLocation(currentCap.rBaseKey);
-                                return copyAllChunks(true, currentCap.withMapKey(nextChunkMapKey),
-                                        targetSigner, network, updated, committer);
-                            })
-                            .thenCompose(updatedVersion -> {
-                                if (! mOpt.get().isDirectory())
-                                    return CompletableFuture.completedFuture(updatedVersion);
-                                return mOpt.get().getDirectChildrenCapabilities(currentCap, network).thenCompose(childCaps ->
-                                        Futures.reduceAll(childCaps,
-                                                updatedVersion,
-                                                (v, cap) -> copyAllChunks(true, cap, targetSigner, network,
-                                                        v, committer),
-                                                (x, y) -> y));
-                            });
-                });
+        return initialVersion.withWriter(currentCap.owner, currentCap.writer, network)
+                .thenCompose(version -> network.getMetadata(version.get(currentCap.writer).props, currentCap)
+                        .thenCompose(mOpt -> {
+                            if (! mOpt.isPresent()) {
+                                return CompletableFuture.completedFuture(version);
+                            }
+                            return (includeFirst ?
+                                    IpfsTransaction.call(currentCap.owner,
+                                            tid -> network.addPreexistingChunk(mOpt.get(), currentCap.owner, currentCap.getMapKey(),
+                                                    targetSigner, tid, version, committer), network.dhtClient) :
+                                    CompletableFuture.completedFuture(version))
+                                    .thenCompose(updated -> {
+                                        CryptreeNode chunk = mOpt.get();
+                                        byte[] nextChunkMapKey = chunk.getNextChunkLocation(currentCap.rBaseKey);
+                                        return copyAllChunks(true, currentCap.withMapKey(nextChunkMapKey),
+                                                targetSigner, network, updated, committer);
+                                    })
+                                    .thenCompose(updatedVersion -> {
+                                        if (! mOpt.get().isDirectory())
+                                            return CompletableFuture.completedFuture(updatedVersion);
+                                        return mOpt.get().getDirectChildrenCapabilities(currentCap, network)
+                                                .thenCompose(childCaps ->
+                                                        Futures.reduceAll(childCaps,
+                                                                updatedVersion,
+                                                                (v, cap) -> copyAllChunks(true, cap,
+                                                                        targetSigner, network, v, committer),
+                                                                (x, y) -> y));
+                                    });
+                        }));
     }
 
     public static CompletableFuture<Snapshot> deleteAllChunks(WritableAbsoluteCapability currentCap,
