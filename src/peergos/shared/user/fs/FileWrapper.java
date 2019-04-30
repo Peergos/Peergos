@@ -142,7 +142,7 @@ public class FileWrapper {
         int slash = path.indexOf("/");
         String prefix = slash > 0 ? path.substring(0, slash) : path;
         String suffix = slash > 0 ? path.substring(slash + 1) : "";
-        return getChildren(network).thenCompose(children -> {
+        return getChildren(version, network).thenCompose(children -> {
             for (FileWrapper child : children)
                 if (child.getFileProperties().name.equals(prefix)) {
                     return child.getDescendentByPath(suffix, network);
@@ -535,19 +535,7 @@ public class FileWrapper {
 
     @JsMethod
     public CompletableFuture<Set<FileWrapper>> getChildren(NetworkAccess network) {
-        ensureUnmodified();
-        if (globalRoot.isPresent())
-            return globalRoot.get().getChildren("/", network);
-        if (isReadable()) {
-            Optional<SigningPrivateKeyAndPublicHash> childsEntryWriter = getChildsEntryWriter();
-            return retrieveChildren(network).thenApply(childrenRFPs -> {
-                Set<FileWrapper> newChildren = childrenRFPs.stream()
-                        .map(x -> new FileWrapper(x, childsEntryWriter, ownername, version))
-                        .collect(Collectors.toSet());
-                return newChildren.stream().collect(Collectors.toSet());
-            });
-        }
-        throw new IllegalStateException("Unreadable FileWrapper!");
+        return getChildren(version, network);
     }
 
     public CompletableFuture<Set<FileWrapper>> getChildren(Snapshot version, NetworkAccess network) {
@@ -556,12 +544,17 @@ public class FileWrapper {
         if (isReadable()) {
             Optional<SigningPrivateKeyAndPublicHash> childsEntryWriter = pointer.capability.wBaseKey
                     .map(wBase -> pointer.fileAccess.getSigner(pointer.capability.rBaseKey, wBase, entryWriter));
-            return retrieveChildren(version, network).thenApply(childrenRFPs -> {
-                Set<FileWrapper> newChildren = childrenRFPs.stream()
-                        .map(x -> new FileWrapper(x, childsEntryWriter, ownername, version))
-                        .collect(Collectors.toSet());
-                return newChildren.stream().collect(Collectors.toSet());
-            });
+            return pointer.fileAccess.getAllChildrenCapabilities(version, pointer.capability, network)
+                    .thenCompose(childCaps -> {
+                        Set<PublicKeyHash> childWriters = childCaps.stream()
+                                .map(c -> c.writer)
+                                .collect(Collectors.toSet());
+                        return version.withWriters(owner(), childWriters, network)
+                                .thenCompose(fullVersion -> network.retrieveAllMetadata(new ArrayList<>(childCaps), fullVersion)
+                                        .thenApply(rcs -> rcs.stream()
+                                                .map(rc -> new FileWrapper(rc, childsEntryWriter, ownername, fullVersion))
+                                                .collect(Collectors.toSet())));
+                    });
         }
         throw new IllegalStateException("Unreadable FileWrapper!");
     }
@@ -573,7 +566,17 @@ public class FileWrapper {
         if (isReadable()) {
             Optional<SigningPrivateKeyAndPublicHash> childsEntryWriter = pointer.capability.wBaseKey
                     .map(wBase -> pointer.fileAccess.getSigner(pointer.capability.rBaseKey, wBase, entryWriter));
-            return retrieveDirectChildren(network, childsEntryWriter, version);
+            return pointer.fileAccess.getDirectChildrenCapabilities(pointer.capability, network)
+                    .thenCompose(childCaps -> {
+                        Set<PublicKeyHash> childWriters = childCaps.stream()
+                                .map(c -> c.writer)
+                                .collect(Collectors.toSet());
+                        return version.withWriters(owner(), childWriters, network)
+                                .thenCompose(fullVersion -> network.retrieveAllMetadata(new ArrayList<>(childCaps), fullVersion)
+                                        .thenApply(rcs -> rcs.stream()
+                                                .map(rc -> new FileWrapper(rc, childsEntryWriter, ownername, fullVersion))
+                                                .collect(Collectors.toSet())));
+                    });
         }
         throw new IllegalStateException("Unreadable FileWrapper!");
     }
@@ -586,43 +589,6 @@ public class FileWrapper {
     public CompletableFuture<Optional<FileWrapper>> getChild(Snapshot version, String name, NetworkAccess network) {
         return getChildren(version, network)
                 .thenApply(children -> children.stream().filter(f -> f.getName().equals(name)).findAny());
-    }
-
-    private CompletableFuture<Set<RetrievedCapability>> retrieveChildren(NetworkAccess network) {
-        CryptreeNode fileAccess = pointer.fileAccess;
-
-        if (isReadable())
-            return fileAccess.getChildren(version, network, pointer.capability);
-        throw new IllegalStateException("No credentials to retrieve children!");
-    }
-
-    private CompletableFuture<Set<RetrievedCapability>> retrieveChildren(Snapshot version, NetworkAccess network) {
-        CryptreeNode fileAccess = pointer.fileAccess;
-
-        if (isReadable())
-            return fileAccess.getChildren(version, network, pointer.capability);
-        throw new IllegalStateException("No credentials to retrieve children!");
-    }
-
-    private CompletableFuture<Set<FileWrapper>> retrieveDirectChildren(NetworkAccess network,
-                                                                       Optional<SigningPrivateKeyAndPublicHash> childsEntryWriter,
-                                                                       Snapshot version) {
-        CryptreeNode fileAccess = pointer.fileAccess;
-
-        if (isReadable())
-            return fileAccess.getDirectChildrenCapabilities(pointer.capability, network)
-                    .thenCompose(childCaps -> {
-                        Set<PublicKeyHash> childWriters = childCaps.stream()
-                                .map(c -> c.writer)
-                                .collect(Collectors.toSet());
-                        return Futures.reduceAll(childWriters, version,
-                                (s, writer) -> s.withWriter(owner(), writer, network), (a, b) -> b)
-                                .thenCompose(fullVersion -> network.retrieveAllMetadata(new ArrayList<>(childCaps), version)
-                                .thenApply(rcs -> rcs.stream()
-                                        .map(rc -> new FileWrapper(rc, childsEntryWriter, ownername, fullVersion))
-                                        .collect(Collectors.toSet())));
-                    });
-        throw new IllegalStateException("No credentials to retrieve children!");
     }
 
     @JsMethod
