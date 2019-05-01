@@ -95,7 +95,12 @@ public class FileWrapper {
         return pointer.equals(((FileWrapper) other).getPointer());
     }
 
-    public CompletableFuture<FileWrapper> getUpdated(Snapshot version, NetworkAccess network) {
+    public CompletableFuture<FileWrapper> getUpdated(NetworkAccess network) {
+        return network.synchronizer.getValue(owner(), writer())
+                .thenCompose(s -> getUpdated(s, network));
+    }
+
+    private CompletableFuture<FileWrapper> getUpdated(Snapshot version, NetworkAccess network) {
         if (this.version.get(writer()).equals(version.get(writer())))
             return CompletableFuture.completedFuture(this);
         return network.getFile(version, pointer.capability, entryWriter, ownername)
