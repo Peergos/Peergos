@@ -3,6 +3,7 @@ package peergos.shared.user;
 import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
@@ -56,6 +57,11 @@ public class Snapshot {
         if (versions.containsKey(writer))
             return CompletableFuture.completedFuture(this);
         return network.synchronizer.getValue(owner, writer).thenApply(s -> s.merge(this));
+    }
+
+    public CompletableFuture<Snapshot> withWriters(PublicKeyHash owner, Set<PublicKeyHash> writers, NetworkAccess network) {
+        return Futures.reduceAll(writers, this,
+                (s, writer) -> s.withWriter(owner, writer, network), (a, b) -> b);
     }
 
     @Override

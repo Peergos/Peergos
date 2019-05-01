@@ -59,7 +59,7 @@ public class MkdirBenchmark {
     // MKDIR(99) duration: 1106 mS, best: 867 mS, worst: 1467 mS, av: 1063 mS
     //    mutable.set 130 mS
     //    block.put 62 mS
-    // GetByPath(99) duration: 48 mS, best: 46 mS, worst: 165 mS, av: 53 mS
+    // GetByPath(99) duration: 9 mS, best: 8 mS, worst: 54 mS, av: 9 mS
     @Test
     public void hugeFolder() throws Exception {
         String username = generateUsername();

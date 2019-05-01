@@ -21,10 +21,10 @@ public interface MutableTree {
      * @throws IOException
      */
     CompletableFuture<CommittedWriterData> put(PublicKeyHash owner,
-                                                       SigningPrivateKeyAndPublicHash sharingKey,
-                                                       byte[] mapKey,
-                                                       MaybeMultihash existing,
-                                                       Multihash value);
+                                               SigningPrivateKeyAndPublicHash sharingKey,
+                                               byte[] mapKey,
+                                               MaybeMultihash existing,
+                                               Multihash value);
 
     /**
      *
@@ -73,10 +73,12 @@ public interface MutableTree {
      * @return  hash(sharingKey.metadata) | the new root hash of the tree
      * @throws IOException
      */
-    CompletableFuture<Boolean> remove(PublicKeyHash owner,
-                                      SigningPrivateKeyAndPublicHash sharingKey,
-                                      byte[] mapKey,
-                                      MaybeMultihash existing);
+    CompletableFuture<WriterData> remove(WriterData base,
+                                         PublicKeyHash owner,
+                                         SigningPrivateKeyAndPublicHash sharingKey,
+                                         byte[] mapKey,
+                                         MaybeMultihash existing,
+                                         TransactionId tid);
 
 
     class CasException extends RuntimeException {

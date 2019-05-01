@@ -47,8 +47,8 @@ public class LoginBenchmark {
         return UserContext.ensureSignedUp(username, password, network, crypto).get();
     }
 
-    // LOGIN(19) duration: 2323 mS, best: 2134 mS, worst: 2619 mS, av: 2328 mS
-    //    scrypt: 2019 mS
+    // LOGIN(19) duration: 1971 mS, best: 1901 mS, worst: 2246 mS, av: 2039 mS
+    //    scrypt: 1900 mS
     @Test
     public void login() throws Exception {
         String username = generateUsername();

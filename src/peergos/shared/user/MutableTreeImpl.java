@@ -78,18 +78,18 @@ public class MutableTreeImpl implements MutableTree {
     }
 
     @Override
-    public CompletableFuture<Boolean> remove(PublicKeyHash owner,
-                                             SigningPrivateKeyAndPublicHash writer,
-                                             byte[] mapKey,
-                                             MaybeMultihash existing) {
-        return synchronizer.applyUpdate(owner, writer, (wd, tid) -> {
-            if (! wd.tree.isPresent())
-                throw new IllegalStateException("Tree root not present!");
-            return ChampWrapper.create(wd.tree.get(), hasher, dht)
-                    .thenCompose(tree -> tree.remove(owner, writer, mapKey, existing, tid))
-                    .thenApply(pair -> LOGGING ? log(pair, "TREE.rm ("
-                            + ArrayOps.bytesToHex(mapKey) + "  => " + pair) : pair)
-                    .thenApply(newTreeRoot -> wd.withChamp(newTreeRoot));
-        }).thenApply(x -> true);
+    public CompletableFuture<WriterData> remove(WriterData base,
+                                                PublicKeyHash owner,
+                                                SigningPrivateKeyAndPublicHash writer,
+                                                byte[] mapKey,
+                                                MaybeMultihash existing,
+                                                TransactionId tid) {
+        if (! base.tree.isPresent())
+            throw new IllegalStateException("Tree root not present!");
+        return ChampWrapper.create(base.tree.get(), hasher, dht)
+                .thenCompose(tree -> tree.remove(owner, writer, mapKey, existing, tid))
+                .thenApply(pair -> LOGGING ? log(pair, "TREE.rm ("
+                        + ArrayOps.bytesToHex(mapKey) + "  => " + pair) : pair)
+                .thenApply(newTreeRoot -> base.withChamp(newTreeRoot));
     }
 }
