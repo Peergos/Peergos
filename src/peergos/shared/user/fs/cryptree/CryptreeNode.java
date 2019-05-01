@@ -500,11 +500,15 @@ public class CryptreeNode implements Cborable {
         return getDirectChildren(us.rBaseKey, network).thenCompose(children -> {
             if (children.size() + targetCAPs.size() > getMaxChildLinksPerBlob()) {
                 return getNextChunk(current, us, network).thenCompose(nextMetablob -> {
+                    SigningPrivateKeyAndPublicHash subsequentChunkSigner =
+                            getSigner(us.rBaseKey, us.wBaseKey.get(), entryWriter);
+                    Optional<SigningPrivateKeyAndPublicHash> subsequentEntrySigner = Optional.of(subsequentChunkSigner);
+
                     if (nextMetablob.isPresent()) {
                         AbsoluteCapability nextPointer = nextMetablob.get().capability;
                         CryptreeNode nextBlob = nextMetablob.get().fileAccess;
                         return nextBlob.addChildrenAndCommit(current, committer, targetCAPs,
-                                nextPointer.toWritable(us.wBaseKey.get()), entryWriter, network, crypto);
+                                nextPointer.toWritable(us.wBaseKey.get()), subsequentEntrySigner, network, crypto);
                     } else {
                         // first fill this directory, then overflow into a new one
                         int freeSlots = getMaxChildLinksPerBlob() - children.size();
@@ -532,12 +536,12 @@ public class CryptreeNode implements Cborable {
                                     WritableAbsoluteCapability nextPointer = new WritableAbsoluteCapability(us.owner,
                                             us.writer, nextMapKey, nextSubfoldersKey, us.wBaseKey.get());
                                     return IpfsTransaction.call(us.owner,
-                                            tid -> next.commit(newBase, committer, nextPointer, entryWriter, network, tid)
+                                            tid -> next.commit(newBase, committer, nextPointer, subsequentEntrySigner, network, tid)
                                                     .thenCompose(updatedBase ->
                                                             network.getMetadata(updatedBase.get(nextPointer.writer).props, nextPointer)
                                                             .thenCompose(nextOpt -> nextOpt.get().
                                                                     addChildrenAndCommit(updatedBase, committer, remaining,
-                                                                            nextPointer, entryWriter, network, crypto)))
+                                                                            nextPointer, subsequentEntrySigner, network, crypto)))
                                             , network.dhtClient);
                                 });
                     }
