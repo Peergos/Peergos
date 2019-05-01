@@ -1,5 +1,8 @@
 package java.time;
 
+import jsinterop.annotations.JsType;
+
+@SuppressWarnings("unusable-by-js")
 public class LocalTime implements Comparable<LocalTime>{
 
 	static final int SECONDS_PER_MINUTE = 60;
