@@ -91,13 +91,16 @@ public class NativeFileSystemImpl implements FileSystem {
 
     @Override
     public void delete(Path path) {
-        Path nativePath = virtualToNative(path);
         ensureCan(path, Permission.WRITE);
-        try {
-            Files.delete(nativePath);
-        } catch (IOException ioe) {
-            throw new IllegalStateException(ioe);
-        }
+
+        walk(path, p -> {
+                try {
+                    Files.delete(virtualToNative(p));
+                } catch (IOException ioe) {
+                    throw new IllegalStateException(ioe);
+                }
+        });
+
     }
 
     private boolean isOwner(Path path) {

@@ -17,8 +17,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -45,7 +43,7 @@ public class Simulator implements Runnable {
     private static final int MIN_FILE_LENGTH = 256;
     private static final int MAX_FILE_LENGTH = Integer.MAX_VALUE;
 
-    enum Simulation {READ, WRITE, MKDIR, RM}
+    enum Simulation {READ, WRITE, MKDIR, RM, RMDIR}
 
     private final int opCount;
     private final Random random;
@@ -91,6 +89,19 @@ public class Simulator implements Runnable {
     private void rm() {
         Path path = getRandomExistingFile();
         simulatedDirectoryToFiles.get(path.getParent()).remove(path.getFileName().toString());
+
+        testFileSystem.delete(path);
+        referenceFileSystem.delete(path);
+    }
+
+    private void rmdir() {
+        Path path = getRandomExistingDirectory();
+        //rm -r
+
+        for (Path p : new ArrayList<>(simulatedDirectoryToFiles.keySet())) {
+            if (p.startsWith(path))
+                simulatedDirectoryToFiles.remove(p);
+        }
 
         testFileSystem.delete(path);
         referenceFileSystem.delete(path);
@@ -178,6 +189,9 @@ public class Simulator implements Runnable {
                 break;
             case RM:
                 rm();
+                break;
+            case RMDIR:
+                rmdir();
                 break;
             default:
                 throw new IllegalStateException("Unexpected simulation " + simulation);
@@ -278,10 +292,11 @@ public class Simulator implements Runnable {
         int opCount = 100;
 
         Map<Simulation, Double> probabilities = Stream.of(
-                new Pair<>(Simulation.READ, 0.05),
-                new Pair<>(Simulation.WRITE, 0.75),
-                new Pair<>(Simulation.RM, 0.15),
-                new Pair<>(Simulation.MKDIR, 0.05)
+                new Pair<>(Simulation.READ, 0.0),
+                new Pair<>(Simulation.WRITE, 0.5),
+                new Pair<>(Simulation.RM, 0.0),
+                new Pair<>(Simulation.MKDIR, 0.45),
+                new Pair<>(Simulation.RMDIR, 0.05)
         ).collect(
                 Collectors.toMap(e -> e.left, e-> e.right));
 
