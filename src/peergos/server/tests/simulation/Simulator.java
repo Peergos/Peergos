@@ -10,6 +10,7 @@ import peergos.shared.Crypto;
 import peergos.shared.NetworkAccess;
 import peergos.shared.user.UserContext;
 import peergos.shared.user.fs.cryptree.CryptreeNode;
+import peergos.shared.util.Pair;
 
 import java.net.URL;
 import java.nio.file.Files;
@@ -22,6 +23,7 @@ import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static peergos.server.tests.UserTests.buildArgs;
 
@@ -275,29 +277,34 @@ public class Simulator implements Runnable {
 
         int opCount = 100;
 
-        double readProb =  0.05;
-        double writeProb  = 0.75;
-        double mkdirProb =  0.0;
-        double deleteProb = 0.2;
+        Map<Simulation, Double> probabilities = Stream.of(
+                new Pair<>(Simulation.READ, 0.05),
+                new Pair<>(Simulation.WRITE, 0.75),
+                new Pair<>(Simulation.RM, 0.15),
+                new Pair<>(Simulation.MKDIR, 0.05)
+        ).collect(
+                Collectors.toMap(e -> e.left, e-> e.right));
+
         final Random random = new Random(1);
 
         Supplier<Simulation> getNextSimulation = () -> {
-            float p = random.nextFloat();
-            if (p < readProb)
-                return Simulation.READ;
-            if (p < readProb + writeProb)
-                return Simulation.WRITE;
-            if (p < readProb + writeProb + deleteProb)
-                return Simulation.RM;
-            if (p < readProb + writeProb + deleteProb + mkdirProb)
-                return Simulation.MKDIR;
+            double acc = 0;
+            double p = random.nextDouble();
+            for (Map.Entry<Simulation, Double> e : probabilities.entrySet()) {
+                Simulation simulation = e.getKey();
+                Double prob = e.getValue();
+                acc += prob;
+                if (p < acc)
+                    return simulation;
+            }
             throw new IllegalStateException();
         };
 
         //hard-mode
         CryptreeNode.setMaxChildLinkPerBlob(10);
 
-        Simulator simulator = new Simulator(opCount, random, getNextSimulation, 256, nativeFileSystem, peergosFileSystem);
+        int meanFileLength = 256;
+        Simulator simulator = new Simulator(opCount, random, getNextSimulation, meanFileLength, nativeFileSystem, peergosFileSystem);
 
         try {
             simulator.run();
