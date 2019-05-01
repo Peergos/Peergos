@@ -2,6 +2,8 @@ package peergos.server.tests.simulation;
 
 import java.nio.file.Path;
 import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public interface AccessControl {
 
@@ -57,10 +59,12 @@ public interface AccessControl {
         @Override
         public List<String> get(Path path, FileSystem.Permission permission) {
             switch (permission) {
-                case READ:
-                    return readers.getAllowed(path);
                 case WRITE:
                     return writers.getAllowed(path);
+                case READ:
+                    List<String> allowed = readers.getAllowed(path);
+                    List<String> allowed2 = writers.getAllowed(path);
+                    return new ArrayList<>(Stream.of(allowed, allowed2).flatMap(e -> e.stream()).collect(Collectors.toSet()));
                 default:
                     throw new IllegalStateException("Unimplemented");
             }
