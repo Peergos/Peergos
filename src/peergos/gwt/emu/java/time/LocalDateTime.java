@@ -5,8 +5,6 @@ import jsinterop.annotations.*;
 import java.time.chrono.ChronoLocalDateTime;
 import java.time.format.DateTimeFormatter;
 
-@JsType
-@SuppressWarnings("unusable-by-js")
 public class LocalDateTime implements Comparable<LocalDateTime>{
 
 	private LocalDate date;
@@ -50,7 +48,7 @@ public class LocalDateTime implements Comparable<LocalDateTime>{
         LocalTime time = LocalTime.ofNanoOfDay(secsOfDay * NANOS_PER_SECOND + nanoOfSecond);
         return new LocalDateTime(date, time);
     }
-    @JsIgnore
+
     public static LocalDateTime now(Clock clock) {
         final Instant now = clock.instant();  // called once
         ZoneOffset offset = clock.getZone().getRules().getOffset(now);
@@ -60,7 +58,7 @@ public class LocalDateTime implements Comparable<LocalDateTime>{
     public static LocalDateTime now() {
         return now(Clock.systemDefaultZone());
     }
-    
+
     public LocalDateTime plusNanos(long nanos) {
         return null;
     }
@@ -73,9 +71,10 @@ public class LocalDateTime implements Comparable<LocalDateTime>{
         return null;
     }
     public boolean isBefore(LocalDateTime other) {
-    	return false;
+    	return this.compareTo(other) < 0;
     }
 
+    @JsMethod
     @Override
     public int compareTo(LocalDateTime other) {
         int cmp = date.compareTo(other.toLocalDate());

@@ -1,11 +1,14 @@
 package java.time;
 
+import jsinterop.annotations.JsType;
+
 import java.time.chrono.ChronoLocalDate;
 import java.time.chrono.IsoChronology;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.Objects;
 
+@SuppressWarnings("unusable-by-js")
 public class LocalDate implements Comparable<LocalDate>{
 
     private final int year;
