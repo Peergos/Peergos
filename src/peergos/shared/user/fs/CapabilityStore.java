@@ -1,6 +1,6 @@
 package peergos.shared.user.fs;
 
-import peergos.shared.NetworkAccess;
+import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.SafeRandom;
@@ -32,24 +32,21 @@ public class CapabilityStore {
     public static CompletableFuture<FileWrapper> addReadOnlySharingLinkTo(FileWrapper sharedDir,
                                                                           AbsoluteCapability capability,
                                                                           NetworkAccess network,
-                                                                          SafeRandom random,
-                                                                          Hasher hasher) {
-        return addSharingLinkTo(sharedDir, capability.readOnly(), network, random, hasher, CapabilityStore.READ_SHARING_FILE_NAME);
+                                                                          Crypto crypto) {
+        return addSharingLinkTo(sharedDir, capability.readOnly(), network, crypto, CapabilityStore.READ_SHARING_FILE_NAME);
     }
 
     public static CompletableFuture<FileWrapper> addEditSharingLinkTo(FileWrapper sharedDir,
                                                                       WritableAbsoluteCapability capability,
                                                                       NetworkAccess network,
-                                                                      SafeRandom random,
-                                                                      Hasher hasher) {
-        return addSharingLinkTo(sharedDir, capability, network, random, hasher, CapabilityStore.EDIT_SHARING_FILE_NAME);
+                                                                      Crypto crypto) {
+        return addSharingLinkTo(sharedDir, capability, network, crypto, CapabilityStore.EDIT_SHARING_FILE_NAME);
     }
 
     private static CompletableFuture<FileWrapper> addSharingLinkTo(FileWrapper sharedDir,
                                                                   AbsoluteCapability capability,
                                                                   NetworkAccess network,
-                                                                  SafeRandom random,
-                                                                  Hasher hasher,
+                                                                  Crypto crypto,
                                                                   String capStoreFilename) {
         if (! sharedDir.isDirectory() || ! sharedDir.isWritable()) {
             CompletableFuture<FileWrapper> error = new CompletableFuture<>();
@@ -64,7 +61,7 @@ public class CapabilityStore {
                     long startIndex = capStore.map(f -> f.getSize()).orElse(0L);
                     return sharedDir.uploadFileSection(capStoreFilename, newCapability, false,
                             startIndex, startIndex + serializedCapability.length, Optional.empty(), true,
-                            network, random, hasher, x -> {}, sharedDir.generateChildLocations(1, random));
+                            network, crypto, x -> {}, sharedDir.generateChildLocations(1, crypto.random));
                 });
     }
 
@@ -74,7 +71,7 @@ public class CapabilityStore {
      * @param friendSharedDir
      * @param friendName
      * @param network
-     * @param random
+     * @param crypto
      * @param saveCache
      * @return a pair of the current capability index, and the valid capabilities
      */
@@ -82,10 +79,9 @@ public class CapabilityStore {
                                                                                      FileWrapper friendSharedDir,
                                                                                      String friendName,
                                                                                      NetworkAccess network,
-                                                                                     SafeRandom random,
-                                                                                     Hasher hasher,
+                                                                                     Crypto crypto,
                                                                                      boolean saveCache) {
-        return loadSharingLinks( homeDirSupplier, friendSharedDir, friendName, network, random, hasher,
+        return loadSharingLinks( homeDirSupplier, friendSharedDir, friendName, network, crypto,
                 saveCache, READ_SHARING_FILE_NAME);
     }
 
@@ -95,7 +91,7 @@ public class CapabilityStore {
      * @param friendSharedDir
      * @param friendName
      * @param network
-     * @param random
+     * @param crypto
      * @param saveCache
      * @return a pair of the current capability index, and the valid capabilities
      */
@@ -103,11 +99,10 @@ public class CapabilityStore {
                                                                                       FileWrapper friendSharedDir,
                                                                                       String friendName,
                                                                                       NetworkAccess network,
-                                                                                      SafeRandom random,
-                                                                                      Hasher hasher,
+                                                                                      Crypto crypto,
                                                                                       boolean saveCache) {
 
-        return loadSharingLinks( homeDirSupplier, friendSharedDir, friendName, network, random, hasher,
+        return loadSharingLinks( homeDirSupplier, friendSharedDir, friendName, network, crypto,
                 saveCache, EDIT_SHARING_FILE_NAME);
     }
 
@@ -115,8 +110,7 @@ public class CapabilityStore {
                                                                             FileWrapper friendSharedDir,
                                                                             String friendName,
                                                                             NetworkAccess network,
-                                                                            SafeRandom random,
-                                                                            Hasher hasher,
+                                                                            Crypto crypto,
                                                                             boolean saveCache,
                                                                             String capStoreFilename) {
         return friendSharedDir.getChild(capStoreFilename, network)
@@ -124,28 +118,28 @@ public class CapabilityStore {
                     if (! capFile.isPresent())
                         return CompletableFuture.completedFuture(new CapabilitiesFromUser(0, Collections.emptyList()));
                     long capFilesize = capFile.get().getSize();
-                    return getSharingCacheFile(friendName, homeDirSupplier, network, random, hasher, capStoreFilename).thenCompose(optCachedFile -> {
+                    return getSharingCacheFile(friendName, homeDirSupplier, network, crypto, capStoreFilename).thenCompose(optCachedFile -> {
                         if(! optCachedFile.isPresent()) {
-                            return readSharingFile(friendSharedDir.getName(), friendSharedDir.owner(), capFile.get(), network, random)
+                            return readSharingFile(friendSharedDir.getName(), friendSharedDir.owner(), capFile.get(), network, crypto.random)
                                     .thenCompose(res -> {
                                         if(saveCache && res.size() > 0) {
                                             return saveRetrievedCapabilityCache(capFilesize, homeDirSupplier, friendName,
-                                                    network, random, hasher, res, capStoreFilename);
+                                                    network, crypto, res, capStoreFilename);
                                         } else {
                                             return CompletableFuture.completedFuture(new CapabilitiesFromUser(capFilesize, res));
                                         }
                                     });
                         } else {
                             FileWrapper cachedFile = optCachedFile.get();
-                            return readRetrievedCapabilityCache(cachedFile, network, random).thenCompose(cache -> {
+                            return readRetrievedCapabilityCache(cachedFile, network, crypto.random).thenCompose(cache -> {
                                 if (capFilesize == cache.getBytesRead())
                                     return CompletableFuture.completedFuture(cache);
                                 return readSharingFile(cache.getBytesRead(), friendSharedDir.getName(),
-                                        friendSharedDir.owner(), capFile.get(), network, random)
+                                        friendSharedDir.owner(), capFile.get(), network, crypto.random)
                                         .thenCompose(res -> {
                                             if (saveCache) {
                                                 return saveRetrievedCapabilityCache(capFilesize, homeDirSupplier, friendName,
-                                                        network, random, hasher, res, capStoreFilename);
+                                                        network, crypto, res, capStoreFilename);
                                             } else {
                                                 return CompletableFuture.completedFuture(new CapabilitiesFromUser(capFilesize, res));
                                             }
@@ -161,12 +155,11 @@ public class CapabilityStore {
                                                                                               FileWrapper friendSharedDir,
                                                                                               String friendName,
                                                                                               NetworkAccess network,
-                                                                                              SafeRandom random,
-                                                                                              Hasher hasher,
+                                                                                              Crypto crypto,
                                                                                               long startOffset,
                                                                                               boolean saveCache) {
 
-        return loadSharingLinksFromIndex(homeDirSupplier, friendSharedDir, friendName, network, random, hasher,
+        return loadSharingLinksFromIndex(homeDirSupplier, friendSharedDir, friendName, network, crypto,
                 startOffset, saveCache, READ_SHARING_FILE_NAME);
     }
 
@@ -174,12 +167,11 @@ public class CapabilityStore {
                                                                                                FileWrapper friendSharedDir,
                                                                                                String friendName,
                                                                                                NetworkAccess network,
-                                                                                               SafeRandom random,
-                                                                                               Hasher hasher,
+                                                                                               Crypto crypto,
                                                                                                long startOffset,
                                                                                                boolean saveCache) {
 
-        return loadSharingLinksFromIndex(homeDirSupplier, friendSharedDir, friendName, network, random, hasher,
+        return loadSharingLinksFromIndex(homeDirSupplier, friendSharedDir, friendName, network, crypto,
                 startOffset, saveCache, EDIT_SHARING_FILE_NAME);
     }
 
@@ -187,8 +179,7 @@ public class CapabilityStore {
                                                                                      FileWrapper friendSharedDir,
                                                                                      String friendName,
                                                                                      NetworkAccess network,
-                                                                                     SafeRandom random,
-                                                                                     Hasher hasher,
+                                                                                     Crypto crypto,
                                                                                      long startOffset,
                                                                                      boolean saveCache,
                                                                                      String capFilename) {
@@ -197,11 +188,11 @@ public class CapabilityStore {
                     if (! file.isPresent())
                         return CompletableFuture.completedFuture(new CapabilitiesFromUser(0, Collections.emptyList()));
                     long capFileSize = file.get().getSize();
-                    return readSharingFile(startOffset, friendSharedDir.getName(), friendSharedDir.owner(), file.get(), network, random)
+                    return readSharingFile(startOffset, friendSharedDir.getName(), friendSharedDir.owner(), file.get(), network, crypto.random)
                             .thenCompose(res -> {
                                 if (saveCache) {
                                     return saveRetrievedCapabilityCache(capFileSize - startOffset, homeDirSupplier, friendName,
-                                            network, random, hasher, res, capFilename);
+                                            network, crypto, res, capFilename);
                                 } else {
                                     return CompletableFuture.completedFuture(new CapabilitiesFromUser(capFileSize - startOffset, res));
                                 }
@@ -282,40 +273,37 @@ public class CapabilityStore {
     private static CompletableFuture<Optional<FileWrapper>> getSharingCacheFile(String friendName,
                                                                                 Supplier<CompletableFuture<FileWrapper>> getHome,
                                                                                 NetworkAccess network,
-                                                                                SafeRandom random,
-                                                                                Hasher hasher,
+                                                                                Crypto crypto,
                                                                                 String capabilityType) {
-        return getCapabilityCacheDir(getHome, network, random, hasher)
+        return getCapabilityCacheDir(getHome, network, crypto)
                 .thenCompose(cacheDir -> cacheDir.getChild(friendName + capabilityType, network));
     }
 
     private static CompletableFuture<FileWrapper> getCapabilityCacheDir(Supplier<CompletableFuture<FileWrapper>> getHome,
                                                                         NetworkAccess network,
-                                                                        SafeRandom random,
-                                                                        Hasher hasher) {
+                                                                        Crypto crypto) {
         return getHome.get()
                 .thenCompose(home -> home.getChild(CAPABILITY_CACHE_DIR, network)
                         .thenCompose(opt ->
                                 opt.map(CompletableFuture::completedFuture)
-                                        .orElseGet(() -> home.mkdir(CAPABILITY_CACHE_DIR, network, true, random, hasher)
-                                                .thenCompose(x -> getCapabilityCacheDir(getHome, network, random, hasher)))));
+                                        .orElseGet(() -> home.mkdir(CAPABILITY_CACHE_DIR, network, true, crypto)
+                                                .thenCompose(x -> getCapabilityCacheDir(getHome, network, crypto)))));
     }
 
     public static CompletableFuture<CapabilitiesFromUser> saveRetrievedCapabilityCache(long recordsRead,
                                                                                        Supplier<CompletableFuture<FileWrapper>> homeDirSupplier,
                                                                                        String friendName,
                                                                                        NetworkAccess network,
-                                                                                       SafeRandom random,
-                                                                                       Hasher hasher,
+                                                                                       Crypto crypto,
                                                                                        List<CapabilityWithPath> retrievedCapabilities,
                                                                                        String capabilityType) {
         CapabilitiesFromUser capabilitiesFromUser = new CapabilitiesFromUser(recordsRead, retrievedCapabilities);
         byte[] data = capabilitiesFromUser.serialize();
         AsyncReader.ArrayBacked dataReader = new AsyncReader.ArrayBacked(data);
-        return getCapabilityCacheDir(homeDirSupplier, network, random, hasher)
+        return getCapabilityCacheDir(homeDirSupplier, network, crypto)
                 .thenCompose(cacheDir -> cacheDir.uploadOrOverwriteFile(friendName + capabilityType, dataReader,
-                        (long) data.length, network, random, hasher, x-> {},
-                        cacheDir.generateChildLocationsFromSize(data.length, random))
+                        (long) data.length, network, crypto, x-> {},
+                        cacheDir.generateChildLocationsFromSize(data.length, crypto.random))
                         .thenApply(x -> capabilitiesFromUser));
     }
 

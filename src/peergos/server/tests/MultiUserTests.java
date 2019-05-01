@@ -110,7 +110,7 @@ public class MultiUserTests {
         byte[] data = UserTests.randomData(10*1024*1024);
 
         FileWrapper uploaded = u1Root.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length,
-                u1.network, crypto.random, crypto.hasher, l -> {},
+                u1.network, crypto, l -> {},
                 u1Root.generateChildLocationsFromSize(data.length, u1.crypto.random)).get();
 
         // share the file from "a" to each of the others
@@ -120,7 +120,7 @@ public class MultiUserTests {
         // check other user can read the file
         FileWrapper sharedFile = u2.getByPath(u1.username + "/" + filename).get().get();
         String dirname = "adir";
-        u2.getUserRoot().get().mkdir(dirname, network, false, crypto.random, crypto.hasher).get();
+        u2.getUserRoot().get().mkdir(dirname, network, false, crypto).get();
         FileWrapper targetDir = u2.getByPath(Paths.get(u2.username, dirname).toString()).get().get();
 
         // copy the friend's file to our own space, this should reupload the file encrypted with a new key
@@ -180,16 +180,16 @@ public class MultiUserTests {
         byte[] data1 = "Hello Peergos friend!".getBytes();
         AsyncReader file1Reader = new AsyncReader.ArrayBacked(data1);
         FileWrapper uploaded = u1Root.uploadOrOverwriteFile(filename, file1Reader, data1.length,
-                u1.network, u1.crypto.random, crypto.hasher, l -> {},
+                u1.network, u1.crypto, l -> {},
                 u1Root.generateChildLocationsFromSize(data1.length, u1.crypto.random)).get();
 
         // upload a different file with the same name in a sub folder
-        uploaded.mkdir("subdir", u1.network, false, crypto.random, crypto.hasher).get();
+        uploaded.mkdir("subdir", u1.network, false, crypto).get();
         FileWrapper subdir = u1.getByPath("/" + u1.username + "/subdir").get().get();
         byte[] data2 = "Goodbye Peergos friend!".getBytes();
         AsyncReader file2Reader = new AsyncReader.ArrayBacked(data2);
         subdir.uploadOrOverwriteFile(filename, file2Reader, data2.length,
-                u1.network, u1.crypto.random, crypto.hasher, l -> {},
+                u1.network, u1.crypto, l -> {},
                 u1Root.generateChildLocationsFromSize(data2.length, u1.crypto.random)).get();
 
         // share the file from "a" to each of the others
@@ -254,11 +254,11 @@ public class MultiUserTests {
         byte[] data1 = "Hello Peergos friend!".getBytes();
         AsyncReader file1Reader = new AsyncReader.ArrayBacked(data1);
         String subdirName = "subdir";
-        u1Root.mkdir(subdirName, u1.network, false, crypto.random, crypto.hasher).get();
+        u1Root.mkdir(subdirName, u1.network, false, crypto).get();
         Path subdirPath = Paths.get(u1.username, subdirName);
         FileWrapper subdir = u1.getByPath(subdirPath).get().get();
         FileWrapper uploaded = subdir.uploadOrOverwriteFile(filename, file1Reader, data1.length,
-                u1.network, u1.crypto.random, crypto.hasher, l -> {},
+                u1.network, u1.crypto, l -> {},
                 subdir.generateChildLocationsFromSize(data1.length, u1.crypto.random)).get();
 
         Path filePath = Paths.get(u1.username, subdirName, filename);
@@ -354,11 +354,11 @@ public class MultiUserTests {
         byte[] data1 = "Hello Peergos friend!".getBytes();
         AsyncReader file1Reader = new AsyncReader.ArrayBacked(data1);
         String subdirName = "subdir";
-        u1Root.mkdir(subdirName, u1.network, false, crypto.random, crypto.hasher).get();
+        u1Root.mkdir(subdirName, u1.network, false, crypto).get();
         Path subdirPath = Paths.get(u1.username, subdirName);
         FileWrapper subdir = u1.getByPath(subdirPath).get().get();
         FileWrapper uploaded = subdir.uploadOrOverwriteFile(filename, file1Reader, data1.length,
-                u1.network, u1.crypto.random, crypto.hasher, l -> {},
+                u1.network, u1.crypto, l -> {},
                 subdir.generateChildLocationsFromSize(data1.length, u1.crypto.random)).get();
 
         Path filePath = Paths.get(u1.username, subdirName, filename);
@@ -427,7 +427,7 @@ public class MultiUserTests {
         // upload a file to "a"'s space
         FileWrapper u1Root = u1.getUserRoot().get();
         String subdirName = "subdir";
-        u1Root.mkdir(subdirName, u1.network, false, crypto.random, crypto.hasher).get();
+        u1Root.mkdir(subdirName, u1.network, false, crypto).get();
         Path subdirPath = Paths.get(u1.username, subdirName);
 
         Path filePath = Paths.get(u1.username, subdirName);
@@ -499,12 +499,12 @@ public class MultiUserTests {
         AsyncReader file1Reader = new AsyncReader.ArrayBacked(data1);
         String subdirName = "subdir";
         String destinationSubdirName = "destdir";
-        u1.getUserRoot().get().mkdir(subdirName, u1.network, false, crypto.random, crypto.hasher).get();
-        u1.getUserRoot().get().mkdir(destinationSubdirName, u1.network, false, crypto.random, crypto.hasher).get();
+        u1.getUserRoot().get().mkdir(subdirName, u1.network, false, crypto).get();
+        u1.getUserRoot().get().mkdir(destinationSubdirName, u1.network, false, crypto).get();
         Path subdirPath = Paths.get(u1.username, subdirName);
         FileWrapper subdir = u1.getByPath(subdirPath).get().get();
         FileWrapper uploaded = subdir.uploadOrOverwriteFile(filename, file1Reader, data1.length,
-                u1.network, u1.crypto.random, crypto.hasher, l -> {},
+                u1.network, u1.crypto, l -> {},
                 subdir.generateChildLocationsFromSize(data1.length, u1.crypto.random)).get();
 
         Path filePath = Paths.get(u1.username, subdirName, filename);
@@ -576,8 +576,8 @@ public class MultiUserTests {
         // upload a file to "a"'s space
         String subdirName = "subdir";
         String destinationDirName = "destdir";
-        u1.getUserRoot().get().mkdir(subdirName, u1.network, false, crypto.random, crypto.hasher).get();
-        u1.getUserRoot().get().mkdir(destinationDirName, u1.network, false, crypto.random, crypto.hasher).get();
+        u1.getUserRoot().get().mkdir(subdirName, u1.network, false, crypto).get();
+        u1.getUserRoot().get().mkdir(destinationDirName, u1.network, false, crypto).get();
 
         Path dirPath = Paths.get(u1.username, subdirName);
 
@@ -651,12 +651,12 @@ public class MultiUserTests {
         AsyncReader file1Reader = new AsyncReader.ArrayBacked(data1);
         String subdirName = "subdir";
         String destinationSubdirName = "destdir";
-        u1.getUserRoot().get().mkdir(subdirName, u1.network, false, crypto.random, crypto.hasher).get();
-        u1.getUserRoot().get().mkdir(destinationSubdirName, u1.network, false, crypto.random, crypto.hasher).get();
+        u1.getUserRoot().get().mkdir(subdirName, u1.network, false, crypto).get();
+        u1.getUserRoot().get().mkdir(destinationSubdirName, u1.network, false, crypto).get();
         Path subdirPath = Paths.get(u1.username, subdirName);
         FileWrapper subdir = u1.getByPath(subdirPath).get().get();
         FileWrapper uploaded = subdir.uploadOrOverwriteFile(filename, file1Reader, data1.length,
-                u1.network, u1.crypto.random, crypto.hasher, l -> {},
+                u1.network, u1.crypto, l -> {},
                 subdir.generateChildLocationsFromSize(data1.length, u1.crypto.random)).get();
 
         Path filePath = Paths.get(u1.username, subdirName, filename);
@@ -730,8 +730,8 @@ public class MultiUserTests {
 
         String subdirName = "subdir";
         String destinationSubdirName = "destdir";
-        u1.getUserRoot().get().mkdir(subdirName, u1.network, false, crypto.random, crypto.hasher).get();
-        u1.getUserRoot().get().mkdir(destinationSubdirName, u1.network, false, crypto.random, crypto.hasher).get();
+        u1.getUserRoot().get().mkdir(subdirName, u1.network, false, crypto).get();
+        u1.getUserRoot().get().mkdir(destinationSubdirName, u1.network, false, crypto).get();
 
         Path dirPath = Paths.get(u1.username, subdirName);
         shareFunction.apply(u1, userContexts, dirPath);
@@ -795,7 +795,7 @@ public class MultiUserTests {
         Files.write(f.toPath(), originalFileContents);
         ResetableFileInputStream resetableFileInputStream = new ResetableFileInputStream(f);
         FileWrapper uploaded = u1Root.uploadOrOverwriteFile(filename, resetableFileInputStream, f.length(),
-                u1.network, u1.crypto.random, crypto.hasher, l -> {},
+                u1.network, u1.crypto, l -> {},
                 u1Root.generateChildLocationsFromSize(originalFileContents.length, u1.crypto.random)).get();
 
         // share the file from "a" to each of the others
@@ -886,7 +886,7 @@ public class MultiUserTests {
         FileWrapper parent = u1New.getByPath(u1New.username).get().get();
         parent.uploadFileSection(newname, suffixStream, false, originalFileContents.length,
                 originalFileContents.length + suffix.length, Optional.empty(), true,
-                u1New.network, crypto.random, crypto.hasher, l -> {}, null).get();
+                u1New.network, crypto, l -> {}, null).get();
         AsyncReader extendedContents = u1New.getByPath(u1.username + "/" + newname).get().get()
                 .getInputStream(u1New.network, crypto.random, l -> {}).get();
         byte[] newFileContents = Serialize.readFully(extendedContents, originalFileContents.length + suffix.length).get();

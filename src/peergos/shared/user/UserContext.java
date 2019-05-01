@@ -96,7 +96,7 @@ public class UserContext {
         Supplier<CompletableFuture<FileWrapper>> getTransactionsDir =
                 () -> getByPath(Paths.get(username, TRANSACTIONS_DIR_NAME))
                         .thenApply(Optional::get);
-        return new TransactionServiceImpl(network, crypto.random, crypto.hasher, getTransactionsDir::get);
+        return new TransactionServiceImpl(network, crypto, getTransactionsDir::get);
     }
 
     @JsMethod
@@ -160,7 +160,7 @@ public class UserContext {
         try {
             progressCallback.accept("Logging in");
             WriterData userData = WriterData.fromCbor(pair.right);
-            return createOurFileTreeOnly(username, userWithRoot.getRoot(), userData, network, crypto.random, crypto.hasher)
+            return createOurFileTreeOnly(username, userWithRoot.getRoot(), userData, network, crypto)
                     .thenCompose(root -> TofuCoreNode.load(username, root, network, crypto.random)
                             .thenCompose(keystore -> {
                                 TofuCoreNode tofu = new TofuCoreNode(network.coreNode, keystore);
@@ -273,7 +273,7 @@ public class UserContext {
 
     private CompletableFuture<UserContext> createSpecialDirectory(String dirName) {
         return getUserRoot()
-                .thenCompose(root -> root.mkdir(dirName, network, true, crypto.random, crypto.hasher))
+                .thenCompose(root -> root.mkdir(dirName, network, true, crypto))
                 .thenApply(x -> this);
     }
 
@@ -299,7 +299,7 @@ public class UserContext {
         CommittedWriterData userData = new CommittedWriterData(MaybeMultihash.empty(), empty);
         UserContext context = new UserContext(null, null, null, null, network, crypto, userData, TrieNodeImpl.empty());
         return retrieveEntryPoint(entry, network)
-                .thenCompose(r -> addRetrievedEntryPointToTrie(null, context.entrie, entry, r.getPath(), network, crypto.random, crypto.hasher))
+                .thenCompose(r -> addRetrievedEntryPointToTrie(null, context.entrie, entry, r.getPath(), network, crypto))
                 .thenApply(trieNode -> {
                     context.entrie = trieNode;
                     return context;
@@ -344,7 +344,7 @@ public class UserContext {
     private CompletableFuture<UserContext> init(Consumer<String> progressCallback) {
         progressCallback.accept("Retrieving Friends");
         return writeSynchronizer.getValue(signer.publicKeyHash, signer.publicKeyHash)
-                .thenCompose(wd -> createFileTree(entrie, username, network, crypto.random, crypto.hasher)
+                .thenCompose(wd -> createFileTree(entrie, username, network, crypto)
                         .thenCompose(root -> {
                             this.entrie = root;
                             return getByPath("/" + username + "/" + "shared")
@@ -364,14 +364,14 @@ public class UserContext {
                                 true,
                                 (x, friendDirectory) -> {
                                     return CapabilityStore.loadReadAccessSharingLinks(homeDirSupplier, friendDirectory,
-                                            this.username, network, crypto.random, crypto.hasher, false)
+                                            this.username, network, crypto, false)
                                             .thenCompose(readCaps -> {
                                                 readCaps.getRetrievedCapabilities().stream().forEach(rc -> {
                                                     sharedWithCache.addSharedWith(SharedWithCache.Access.READ,
                                                         rc.cap, friendDirectory.getName());
                                                 });
                                                 return CapabilityStore.loadWriteAccessSharingLinks(homeDirSupplier, friendDirectory,
-                                                        this.username, network, crypto.random, crypto.hasher, false)
+                                                        this.username, network, crypto, false)
                                                         .thenApply(writeCaps -> {
                                                             writeCaps.getRetrievedCapabilities().stream().forEach(rc -> {
                                                                 sharedWithCache.addSharedWith(SharedWithCache.Access.WRITE,
@@ -737,7 +737,7 @@ public class UserContext {
         return CompletableFuture.completedFuture(true).thenCompose(b -> {
             if (accept) {
                 return getSharingFolder().thenCompose(sharing -> {
-                    return sharing.mkdir(theirUsername, network, initialRequest.key.get(), true, crypto.random, crypto.hasher)
+                    return sharing.mkdir(theirUsername, network, initialRequest.key.get(), true, crypto)
                             .thenCompose(friendRoot -> {
                                 // add a note to our entry point store so we know who we sent the read access to
                                 EntryPoint entry = new EntryPoint(friendRoot.getPointer().capability.readOnly(),
@@ -815,7 +815,7 @@ public class UserContext {
                         if (!targetUserOpt.isPresent())
                             return CompletableFuture.completedFuture(false);
                         PublicBoxingKey targetUser = targetUserOpt.get().right;
-                        return sharing.mkdir(targetUsername, network, null, true, crypto.random, crypto.hasher).thenCompose(friendRoot -> {
+                        return sharing.mkdir(targetUsername, network, null, true, crypto).thenCompose(friendRoot -> {
 
                             // if they accept the request we will add a note to our static data so we know who we sent the read access to
                             EntryPoint entry = new EntryPoint(friendRoot.getPointer().capability.readOnly(), username);
@@ -853,8 +853,8 @@ public class UserContext {
             return getByPath(path.getParent().toString())
                     .thenCompose(parent -> addOwnedKeyToParent(parent.get().owner(), parent.get().signingPair(),
                             SigningKeyPair.random(crypto.random, crypto.signer), network)
-                            .thenCompose(newSigner -> toUnshare.rotateWriteKeys(parent.get(), network, crypto.random, crypto.hasher)
-                                    .thenCompose(pair -> pair.left.changeSigningKey(newSigner, pair.right, network, crypto.random, crypto.hasher))
+                            .thenCompose(newSigner -> toUnshare.rotateWriteKeys(parent.get(), network, crypto)
+                                    .thenCompose(pair -> pair.left.changeSigningKey(newSigner, pair.right, network, crypto.hasher))
                                     .thenCompose(pair -> pair.left.rotateReadKeys(network, crypto.random, crypto.hasher, pair.right))
                                     .thenCompose(x -> removeOwnedKeyFromParent(parent.get().owner(),
                                             parent.get().signingPair(), toUnshare.writer(), network))
@@ -919,7 +919,7 @@ public class UserContext {
         ensureAllowedToShare(file, username, false);
         BiFunction<FileWrapper, FileWrapper, CompletableFuture<Boolean>> sharingFunction = (sharedDir, fileWrapper) ->
                 CapabilityStore.addReadOnlySharingLinkTo(sharedDir, fileWrapper.getPointer().capability,
-                        network, crypto.random, crypto.hasher)
+                        network, crypto)
                         .thenCompose(ee -> CompletableFuture.completedFuture(true));
         return Futures.reduceAll(readersToAdd,
                 true,
@@ -941,11 +941,11 @@ public class UserContext {
         SigningKeyPair newSignerPair = SigningKeyPair.random(crypto.random, crypto.signer);
 
         return addOwnedKeyToParent(parent.owner(), parent.signingPair(), newSignerPair, network)
-                .thenCompose(newSigner -> file.changeSigningKey(newSigner, parent, network, crypto.random, crypto.hasher)
+                .thenCompose(newSigner -> file.changeSigningKey(newSigner, parent, network, crypto.hasher)
                         .thenCompose(updatedFile -> {
                             BiFunction<FileWrapper, FileWrapper, CompletableFuture<Boolean>> sharingFunction =
                                     (sharedDir, fileToShare) -> CapabilityStore.addEditSharingLinkTo(sharedDir,
-                                            updatedFile.left.writableFilePointer(), network, crypto.random, crypto.hasher)
+                                            updatedFile.left.writableFilePointer(), network, crypto)
                                             .thenCompose(ee -> CompletableFuture.completedFuture(true));
                             return Futures.reduceAll(writersToAdd,
                                     true,
@@ -1038,8 +1038,7 @@ public class UserContext {
                 return new UserStaticData(entryPoints, rootKey);
             });
             return CompletableFuture.completedFuture(wd.withStaticData(updated));
-        }).thenCompose(res -> addRetrievedEntryPointToTrie(username, root, entry, "/" + username,
-                network, crypto.random, crypto.hasher));
+        }).thenCompose(res -> addRetrievedEntryPointToTrie(username, root, entry, "/" + username, network, crypto));
     }
 
     private synchronized CompletableFuture<FileWrapper> addExternalEntryPoint(EntryPoint entry) {
@@ -1053,8 +1052,7 @@ public class UserContext {
                     Optional<SymmetricKey> base = existing.map(f -> f.getPointer().capability.rBaseKey);
                     return getUserRoot().thenCompose(home ->
                             home.uploadFileSection(filename, reader, true, offset,
-                                    offset + data.length, base, true, network,
-                                    crypto.random, crypto.hasher, x -> {},
+                                    offset + data.length, base, true, network, crypto, x -> {},
                                     home.generateChildLocations(1, crypto.random)));
                 });
     }
@@ -1182,8 +1180,7 @@ public class UserContext {
                                                                      SymmetricKey rootKey,
                                                                      WriterData userData,
                                                                      NetworkAccess network,
-                                                                     SafeRandom random,
-                                                                     Hasher hasher) {
+                                                                     Crypto crypto) {
         TrieNode root = TrieNodeImpl.empty();
         if (!userData.staticData.isPresent())
             throw new IllegalStateException("Cannot retrieve file tree for a filesystem without entrypoints!");
@@ -1194,7 +1191,7 @@ public class UserContext {
                 .collect(Collectors.toList());
         return Futures.reduceAll(ourFileSystemEntries, root,
                 (t, e) -> getLatestEntryPoint(e, network)
-                        .thenCompose(r -> addRetrievedEntryPointToTrie(ourName, t, r.entry, r.getPath(), network, random, hasher)),
+                        .thenCompose(r -> addRetrievedEntryPointToTrie(ourName, t, r.entry, r.getPath(), network, crypto)),
                 (a, b) -> a)
                 .exceptionally(Futures::logAndThrow);
     }
@@ -1205,13 +1202,12 @@ public class UserContext {
     private CompletableFuture<TrieNode> createFileTree(TrieNode ourRoot,
                                                        String ourName,
                                                        NetworkAccess network,
-                                                       SafeRandom random,
-                                                       Hasher hasher) {
+                                                       Crypto crypto) {
         // need to to retrieve all the entry points of our friends
         return getFriendsEntryPoints()
                 .thenCompose(friendEntries -> Futures.reduceAll(friendEntries, ourRoot,
                         (t, e) -> getLatestEntryPoint(e, network)
-                                .thenCompose(r -> addRetrievedEntryPointToTrie(ourName, t, r.entry, r.getPath(), network, random, hasher))
+                                .thenCompose(r -> addRetrievedEntryPointToTrie(ourName, t, r.entry, r.getPath(), network, crypto))
                                 .exceptionally(ex -> t),
                         (a, b) -> a))
                 .exceptionally(Futures::logAndThrow);
@@ -1225,8 +1221,7 @@ public class UserContext {
 
     private CompletableFuture<TrieNode> retrieveAndAddEntryPointToTrie(TrieNode root, EntryPoint e) {
         return retrieveEntryPoint(e, network)
-                .thenCompose(r -> addRetrievedEntryPointToTrie(username, root, r.entry, r.getPath(),
-                        network, crypto.random, crypto.hasher));
+                .thenCompose(r -> addRetrievedEntryPointToTrie(username, root, r.entry, r.getPath(), network, crypto));
     }
 
     private static CompletableFuture<RetrievedEntryPoint> retrieveEntryPoint(EntryPoint e, NetworkAccess network) {
@@ -1287,8 +1282,7 @@ public class UserContext {
                                                                             EntryPoint fileCap,
                                                                             String path,
                                                                             NetworkAccess network,
-                                                                            SafeRandom random,
-                                                                            Hasher hasher) {
+                                                                            Crypto crypto) {
         // check entrypoint doesn't forge the owner
         return (fileCap.ownerName.equals(ourName) ? CompletableFuture.completedFuture(true) :
                 fileCap.isValid(path, network)).thenCompose(valid -> {
@@ -1301,7 +1295,7 @@ public class UserContext {
             // This is a friend's sharing directory, create a wrapper to read the capabilities lazily from it
             Supplier<CompletableFuture<FileWrapper>> cacheDirSupplier =
                     () -> root.getByPath(Paths.get(ourName).toString(), network).thenApply(opt -> opt.get());
-            return FriendSourcedTrieNode.build(cacheDirSupplier, fileCap, network, random, hasher)
+            return FriendSourcedTrieNode.build(cacheDirSupplier, fileCap, network, crypto)
                     .thenApply(fromUser -> fromUser.map(userEntrie -> root.putNode(username, userEntrie)).orElse(root));
         });
     }
@@ -1337,7 +1331,7 @@ public class UserContext {
         LOG.info("Unfollowing: " + friendName);
         return getUserRoot()
                 .thenCompose(home -> home.appendToChild(BLOCKED_USERNAMES_FILE, (friendName + "\n").getBytes(), true,
-                        network, crypto.random, crypto.hasher, x -> {}))
+                        network, crypto, x -> {}))
                 .thenApply(b -> {
                     entrie = entrie.removeEntry("/" + friendName + "/");
                     return true;
@@ -1374,7 +1368,7 @@ public class UserContext {
                 } else {
                     LOG.info("Creating a directory for feedback!");
                     return getUserRoot()
-                        .thenCompose(root -> root.mkdir(FEEDBACK_DIR_NAME, network, false, crypto.random, crypto.hasher))
+                        .thenCompose(root -> root.mkdir(FEEDBACK_DIR_NAME, network, false, crypto))
                         .thenCompose(dir -> getByPath(path))
                         .thenApply(Optional::get);
                 }
@@ -1384,7 +1378,7 @@ public class UserContext {
                 LOG.info("Posting the feedback!");
                 byte[] feedbackBytes = feedback.getBytes();
                 return feedbackWrapper.uploadOrOverwriteFile(filename, AsyncReader.build(feedbackBytes), feedbackBytes.length,
-                        network, crypto.random, crypto.hasher, x -> {}, feedbackWrapper.generateChildLocationsFromSize(feedbackBytes.length, crypto.random));
+                        network, crypto, x -> {}, feedbackWrapper.generateChildLocationsFromSize(feedbackBytes.length, crypto.random));
             }
             )
             .thenCompose(x -> shareReadAccessWith(path.resolve(filename), Collections.singleton(PEERGOS_USERNAME)));
