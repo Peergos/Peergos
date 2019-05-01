@@ -1,6 +1,6 @@
 package peergos.shared.user.fs.transaction;
 
-import peergos.shared.NetworkAccess;
+import peergos.shared.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.SafeRandom;
 import peergos.shared.user.FileWrapperUpdater;
@@ -19,17 +19,14 @@ public class TransactionServiceImpl implements TransactionService {
 
     private final FileWrapperUpdater transactionDirUpdater;
     private final NetworkAccess networkAccess;
-    private final SafeRandom random;
-    private final Hasher hasher;
+    private final Crypto crypto;
 
     public TransactionServiceImpl(NetworkAccess networkAccess,
-                                  SafeRandom random,
-                                  Hasher hasher,
+                                  Crypto crypto,
                                   FileWrapperUpdater transactionDirUpdater) {
         this.transactionDirUpdater = transactionDirUpdater;
         this.networkAccess = networkAccess;
-        this.random = random;
-        this.hasher = hasher;
+        this.crypto = crypto;
     }
 
     @Override
@@ -38,8 +35,8 @@ public class TransactionServiceImpl implements TransactionService {
         AsyncReader asyncReader = AsyncReader.build(data);
         return transactionDirUpdater.updated().thenCompose(dirWrapper ->
                 dirWrapper.uploadOrOverwriteFile(transaction.name(), asyncReader, data.length, networkAccess,
-                        random, hasher, VOID_PROGRESS,
-                        dirWrapper.generateChildLocations(1, random))
+                        crypto, VOID_PROGRESS,
+                        dirWrapper.generateChildLocations(1, crypto.random))
                         .thenApply(e -> true));
     }
 
@@ -51,7 +48,7 @@ public class TransactionServiceImpl implements TransactionService {
                     if (!hasChild)
                         return CompletableFuture.completedFuture(false);
                     FileWrapper fileWrapper = fileOpt.get();
-                    return dir.removeChild(fileWrapper, networkAccess, hasher);
+                    return dir.removeChild(fileWrapper, networkAccess, crypto.hasher);
                 }).thenApply(e -> true));
     }
 
@@ -65,7 +62,7 @@ public class TransactionServiceImpl implements TransactionService {
         int size = (int) props.size;
         byte[] data = new byte[size];
 
-        return fileWrapper.getInputStream(networkAccess, random, VOID_PROGRESS).thenApply(
+        return fileWrapper.getInputStream(networkAccess, crypto.random, VOID_PROGRESS).thenApply(
                 asyncReader -> Serialize.readFullArray(asyncReader, data)
         ).thenApply(done -> Transaction.deserialize(data));
     }

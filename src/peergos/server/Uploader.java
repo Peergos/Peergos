@@ -37,21 +37,21 @@ public class Uploader {
         System.out.println("Upload took " + (t2-t1) + " mS");
     }
 
-    private static void createPath(FileWrapper parent, Path path, NetworkAccess network, SafeRandom random, Hasher hasher) throws Exception {
+    private static void createPath(FileWrapper parent, Path path, NetworkAccess network, Crypto crypto) throws Exception {
         String name = path.getName(0).toString();
         Optional<FileWrapper> child = parent.getChild(name, network).get();
         if (path.getNameCount() == 1) {
             if (! child.isPresent())
-                parent.mkdir(name, network, false, random, hasher).get();
+                parent.mkdir(name, network, false, crypto).get();
             return;
         }
         Path subpath = path.subpath(1, path.getNameCount());
 
         if (! child.isPresent() && path.getNameCount() > 1) {
-            parent.mkdir(name, network, false, random, hasher).get();
-            createPath(child.get(), subpath, network, random, hasher);
+            parent.mkdir(name, network, false, crypto).get();
+            createPath(child.get(), subpath, network, crypto);
         } else
-            createPath(child.get(), subpath, network, random, hasher);
+            createPath(child.get(), subpath, network, crypto);
     }
 
     /**
@@ -73,7 +73,7 @@ public class Uploader {
         Optional<FileWrapper> file = context.getByPath(targetDir.toString()).get();
         if (! file.isPresent()) {
             Optional<FileWrapper> root = context.getByPath("/").get();
-            createPath(root.get(), targetDir, context.network, context.crypto.random, context.crypto.hasher);
+            createPath(root.get(), targetDir, context.network, context.crypto);
             pool.submit(() -> uploadTo(context, localSource, targetDir, filter)).get();
         } else
             pool.submit(() -> uploadTo(context, localSource, targetDir, filter)).get();
@@ -93,7 +93,7 @@ public class Uploader {
             try {
                 if (! existing.isPresent())
                     context.getByPath(targetParent.toString()).join().get()
-                            .mkdir(file.getName(), context.network, false, context.crypto.random, context.crypto.hasher).get();
+                            .mkdir(file.getName(), context.network, false, context.crypto).get();
 
                 Optional<FileWrapper> childDir = context.getByPath(targetParent.resolve(source.getFileName()).toString()).join();
                 childDir.ifPresent(newDir -> Optional.ofNullable(file.list())
@@ -111,7 +111,7 @@ public class Uploader {
                 ResetableFileInputStream fileData = new ResetableFileInputStream(file);
                 FileWrapper parent = context.getByPath(targetParent.toString()).join().get();
                 parent.uploadOrOverwriteFile(file.getName(), fileData, file.length(),
-                        context.network, context.crypto.random, context.crypto.hasher, l -> {},
+                        context.network, context.crypto, l -> {},
                         parent.generateChildLocationsFromSize(file.length(), context.crypto.random)).get();
             } catch (Exception e) {
                 System.err.println("Error uploading " + source);
