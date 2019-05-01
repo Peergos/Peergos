@@ -9,16 +9,19 @@ import peergos.server.util.PeergosNetworkUtils;
 import peergos.shared.Crypto;
 import peergos.shared.NetworkAccess;
 import peergos.shared.user.UserContext;
+import peergos.shared.user.fs.cryptree.CryptreeNode;
+import peergos.shared.util.Pair;
 
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
+import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static peergos.server.tests.UserTests.buildArgs;
 
@@ -26,25 +29,33 @@ import static peergos.server.tests.UserTests.buildArgs;
  * Run some I/O and then check the file-system is as expected.
  */
 public class Simulator implements Runnable {
+    private class SimulationRecord {
+        private final List<Simulation> simuations =  new ArrayList<>();
+        private final List<Long> timestamps =  new ArrayList<>();
+        public void add(Simulation simulation) {
+            long now = System.currentTimeMillis();
+            timestamps.add(now);
+            simuations.add(simulation);
+        }
+    }
+
     private static final Logger LOG = Logging.LOG();
     private static final int MIN_FILE_LENGTH = 256;
     private static final int MAX_FILE_LENGTH = Integer.MAX_VALUE;
 
-    enum Simulation {READ, WRITE, MKDIR}
+    enum Simulation {READ, WRITE, MKDIR, RM, RMDIR}
 
-    private final int opCount, seed;
+    private final int opCount;
     private final Random random;
-    private final double readProbability; // fraction of read ops
-    private final double mkdirProbability; // fraction of mkdir ops
-    private final double writeProbability; // fraction of mkdir ops
+    private final Supplier<Simulation> getNextSimulation;
     private final long meanFileLength;
+    private final SimulationRecord simulationRecord = new SimulationRecord();
 
     private final FileSystem referenceFileSystem, testFileSystem;
 
     private final Map<Path, List<String>> simulatedDirectoryToFiles = new HashMap<>();
 
     long fileNameCounter;
-    long directoryNameCounter;
 
     private String getNextName() {
         return "" + fileNameCounter++;
@@ -55,6 +66,8 @@ public class Simulator implements Runnable {
 
         Path dir = getRandomExistingDirectory();
         List<String> fileNames = simulatedDirectoryToFiles.get(dir);
+        if (fileNames.isEmpty())
+            return getRandomExistingFile();
         int pos = random.nextInt(fileNames.size());
         String fileName = fileNames.get(pos);
         return dir.resolve(fileName);
@@ -73,6 +86,27 @@ public class Simulator implements Runnable {
 
     }
 
+    private void rm() {
+        Path path = getRandomExistingFile();
+        simulatedDirectoryToFiles.get(path.getParent()).remove(path.getFileName().toString());
+
+        testFileSystem.delete(path);
+        referenceFileSystem.delete(path);
+    }
+
+    private void rmdir() {
+        Path path = getRandomExistingDirectory();
+        //rm -r
+
+        for (Path p : new ArrayList<>(simulatedDirectoryToFiles.keySet())) {
+            if (p.startsWith(path))
+                simulatedDirectoryToFiles.remove(p);
+        }
+
+        testFileSystem.delete(path);
+        referenceFileSystem.delete(path);
+    }
+
     private Path mkdir() {
         String dirBaseName = getNextName();
 
@@ -88,15 +122,6 @@ public class Simulator implements Runnable {
         return getRandomExistingDirectory().resolve(getNextName());
     }
 
-    private Simulation getNextSimulation() {
-        double d = random.nextDouble();
-        if (d < readProbability)
-            return Simulation.READ;
-        if (d < readProbability + writeProbability)
-            return Simulation.WRITE;
-        return Simulation.MKDIR;
-    }
-
     private int getNextFileLength() {
         double pos = random.nextGaussian();
         int targetLength = (int) (pos * meanFileLength);
@@ -110,24 +135,18 @@ public class Simulator implements Runnable {
         return bytes;
     }
 
-    public Simulator(int opCount, int seed, double readProbability, double mkdirProbability, double writeProbability, long meanFileLength, FileSystem referenceFileSystem, FileSystem testFileSystem) {
-        if (readProbability + mkdirProbability > 1.0)
-            throw new IllegalStateException();
-
+    public Simulator(int opCount, Random  random, Supplier<Simulation> getNextSimulation, long meanFileLength, FileSystem referenceFileSystem, FileSystem testFileSystem) {
         if (! referenceFileSystem.user().equals(testFileSystem.user()))
             throw new IllegalStateException("Users must be the same");
 
         simulatedDirectoryToFiles.put(Paths.get("/"+ referenceFileSystem.user()), new ArrayList<>());
 
         this.opCount = opCount;
-        this.seed = seed;
-        this.readProbability = readProbability;
-        this.mkdirProbability = mkdirProbability;
-        this.writeProbability = writeProbability;
+        this.random = random;
+        this.getNextSimulation = getNextSimulation;
         this.meanFileLength = meanFileLength;
         this.referenceFileSystem = referenceFileSystem;
         this.testFileSystem = testFileSystem;
-        this.random = new Random(seed);
     }
 
     private boolean read(Path path) {
@@ -151,6 +170,11 @@ public class Simulator implements Runnable {
         referenceFileSystem.write(path, fileContents);
     }
 
+    private void init() {
+        //seed file-system with a directory and a file
+        run(Simulation.MKDIR);
+        run(Simulation.WRITE);
+    }
 
     private void run(Simulation simulation) {
         switch (simulation) {
@@ -163,19 +187,25 @@ public class Simulator implements Runnable {
             case MKDIR:
                 mkdir();
                 break;
+            case RM:
+                rm();
+                break;
+            case RMDIR:
+                rmdir();
+                break;
             default:
                 throw new IllegalStateException("Unexpected simulation " + simulation);
         }
+        simulationRecord.add(simulation);
     }
 
     public void run() {
         LOG.info("Running file-system IO-simulation");
 
-        //seed file-system
-        run(Simulation.MKDIR);
-        run(Simulation.WRITE);
+        init();
+
         for (int iOp = 2; iOp < opCount; iOp++) {
-            Simulation simulation = getNextSimulation();
+            Simulation simulation = getNextSimulation.get();
             run(simulation);
         }
 
@@ -259,8 +289,38 @@ public class Simulator implements Runnable {
         Path root = Files.createTempDirectory("test_filesystem");
         NativeFileSystemImpl nativeFileSystem = new NativeFileSystemImpl(root, "some-user");
 
-        int opCount = 10;  //change-me to 100 to create a cycle?
-        Simulator simulator = new Simulator(opCount, 1, 0.1, 0.1, 0.8, 100, nativeFileSystem, peergosFileSystem);
+        int opCount = 100;
+
+        Map<Simulation, Double> probabilities = Stream.of(
+                new Pair<>(Simulation.READ, 0.0),
+                new Pair<>(Simulation.WRITE, 0.5),
+                new Pair<>(Simulation.RM, 0.0),
+                new Pair<>(Simulation.MKDIR, 0.45),
+                new Pair<>(Simulation.RMDIR, 0.05)
+        ).collect(
+                Collectors.toMap(e -> e.left, e-> e.right));
+
+        final Random random = new Random(1);
+
+        Supplier<Simulation> getNextSimulation = () -> {
+            double acc = 0;
+            double p = random.nextDouble();
+            for (Map.Entry<Simulation, Double> e : probabilities.entrySet()) {
+                Simulation simulation = e.getKey();
+                Double prob = e.getValue();
+                acc += prob;
+                if (p < acc)
+                    return simulation;
+            }
+            throw new IllegalStateException();
+        };
+
+        //hard-mode
+        CryptreeNode.setMaxChildLinkPerBlob(10);
+
+        int meanFileLength = 256;
+        Simulator simulator = new Simulator(opCount, random, getNextSimulation, meanFileLength, nativeFileSystem, peergosFileSystem);
+
         try {
             simulator.run();
         } catch (Throwable t) {
