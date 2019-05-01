@@ -457,15 +457,23 @@ public class PeergosNetworkUtils {
                     .mkdir("subdir"+i, sharer.network, false, crypto).join();
         }
 
-        Set<String> childNames = sharer.getByPath(path).join().get().getChildren(sharer.network).join()
-                .stream()
-                .map(f -> f.getName())
-                .collect(Collectors.toSet());
-
         // file is uploaded, do the actual sharing
         boolean finished = sharer.shareWriteAccessWithAll(sharer.getByPath(path).join().get(), sharer.getUserRoot().join(), shareeUsers.stream()
                 .map(c -> c.username)
                 .collect(Collectors.toSet())).get();
+
+        // upload a image
+        String imagename = "small.png";
+        byte[] data = Files.readAllBytes(Paths.get("assets", "logo.png"));
+        FileWrapper sharedFolderv0 = sharer.getByPath(path).join().get();
+        List<Location> chunkLocations = sharedFolderv0.generateChildLocationsFromSize(originalFileContents.length, crypto.random);
+        sharedFolderv0.uploadOrOverwriteFile(imagename, AsyncReader.build(data), data.length,
+                sharer.network, crypto, x -> {}, chunkLocations).join();
+
+        Set<String> childNames = sharer.getByPath(path).join().get().getChildren(sharer.network).join()
+                .stream()
+                .map(f -> f.getName())
+                .collect(Collectors.toSet());
 
         // check each user can see the shared folder and directory
         for (UserContext sharee : shareeUsers) {

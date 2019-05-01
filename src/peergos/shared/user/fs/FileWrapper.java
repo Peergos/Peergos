@@ -808,7 +808,8 @@ public class FileWrapper {
 
                     return network.getFile(base, cap, getChildsEntryWriter(), ownername)
                             .thenCompose(child -> child.get()
-                                    .getPointer().fileAccess.updateProperties(base, committer, cap, entryWriter, fileProps, network));
+                                    .getPointer().fileAccess.updateProperties(base, committer, cap,
+                                            getChildsEntryWriter(), fileProps, network));
                 });
     }
 
