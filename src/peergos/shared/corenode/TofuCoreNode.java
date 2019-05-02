@@ -71,9 +71,15 @@ public class TofuCoreNode implements CoreNode {
         if (local.isPresent())
             return CompletableFuture.completedFuture(local);
         return source.getChain(username)
-                .thenCompose(chain -> tofu.updateChain(username, chain, context.network.dhtClient)
-                        .thenCompose(x -> commit()))
-                .thenApply(x -> tofu.getPublicKey(username));
+                .thenCompose(chain -> {
+                        if(chain.isEmpty()) {
+                            return CompletableFuture.completedFuture(false);
+                        } else {
+                            return tofu.updateChain(username, chain, context.network.dhtClient)
+                                    .thenCompose(x -> commit());
+                        }
+                    }
+                ).thenApply(x -> x == false ? Optional.empty() : tofu.getPublicKey(username));
     }
 
     @Override
