@@ -584,7 +584,7 @@ public abstract class UserTests {
         int prior = context.getTotalSpaceUsed(context.signer.publicKeyHash, context.signer.publicKeyHash).get().intValue();
 
         TransactionService transactions = context.getTransactionService();
-        network.synchronizer.applyComplexUpdate(userRoot.owner(), transactions.getSigner(),
+        context.network.synchronizer.applyComplexUpdate(userRoot.owner(), transactions.getSigner(),
                 (s, committer) -> transactions.open(s, committer, transaction)).join();
         try {
             userRoot.uploadOrOverwriteFile(filename, throwingReader, data.length, context.network,
@@ -593,7 +593,7 @@ public abstract class UserTests {
         int during = context.getTotalSpaceUsed(context.signer.publicKeyHash, context.signer.publicKeyHash).get().intValue();
         Assert.assertTrue("One chunk uploaded", during > 5 * 1024*1024);
 
-        network.synchronizer.applyComplexUpdate(userRoot.owner(), transactions.getSigner(),
+        context.network.synchronizer.applyComplexUpdate(userRoot.owner(), transactions.getSigner(),
                 (current, committer) -> {
                     Set<Transaction> pending = transactions.getOpenTransactions(current).join();
                     return Futures.reduceAll(pending, current,

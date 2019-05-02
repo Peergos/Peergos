@@ -64,7 +64,7 @@ public class FileUploadTransaction implements Transaction {
 
     @Override
     public String name() {
-        return System.currentTimeMillis() + "" + path.hashCode();
+        return "" + path.hashCode();
     }
 
     @Override
