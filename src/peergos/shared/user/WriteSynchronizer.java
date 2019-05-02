@@ -99,12 +99,4 @@ public class WriteSynchronizer {
                         () -> getWriterData(owner, writer.publicKeyHash));
     }
 
-    public interface Committer {
-
-        CompletableFuture<Snapshot> commit(PublicKeyHash owner,
-                                           SigningPrivateKeyAndPublicHash signer,
-                                           WriterData wd,
-                                           CommittedWriterData existing,
-                                           TransactionId tid);
-    }
 }

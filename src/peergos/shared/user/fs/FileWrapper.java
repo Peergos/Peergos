@@ -174,7 +174,7 @@ public class FileWrapper {
 
     public CompletableFuture<Snapshot> updateChildLinks(
             Snapshot version,
-            WriteSynchronizer.Committer committer,
+            Committer committer,
             Collection<Pair<AbsoluteCapability, AbsoluteCapability>> childCases,
             NetworkAccess network,
             SafeRandom random,
@@ -194,7 +194,7 @@ public class FileWrapper {
      * @return An updated version of this directory
      */
     public CompletableFuture<Snapshot> addChildLinks(Snapshot version,
-                                                     WriteSynchronizer.Committer committer,
+                                                     Committer committer,
                                                      Collection<RetrievedCapability> children,
                                                      NetworkAccess network,
                                                      Crypto crypto) {
@@ -230,7 +230,7 @@ public class FileWrapper {
                                                        FileWrapper parent,
                                                        Optional<SymmetricKey> newBaseKey,
                                                        Snapshot version,
-                                                       WriteSynchronizer.Committer committer) {
+                                                       Committer committer) {
         if (!isWritable())
             throw new IllegalStateException("You cannot rotate read keys without write access!");
         WritableAbsoluteCapability cap = writableFilePointer();
@@ -361,7 +361,7 @@ public class FileWrapper {
                                                         NetworkAccess network,
                                                         Crypto crypto,
                                                         Snapshot version,
-                                                        WriteSynchronizer.Committer committer) {
+                                                        Committer committer) {
         if (!isWritable())
             throw new IllegalStateException("You cannot rotate write keys without write access!");
         WritableAbsoluteCapability cap = writableFilePointer();
@@ -445,8 +445,17 @@ public class FileWrapper {
                 .thenCompose(newRoot -> getUpdated(newRoot, network));
     }
 
+    public CompletableFuture<Snapshot> removeChild(Snapshot version,
+                                                   Committer committer,
+                                                   FileWrapper child,
+                                                   NetworkAccess network,
+                                                   Hasher hasher) {
+        return pointer.fileAccess.removeChildren(version, committer,
+                Arrays.asList(child.getPointer().capability), writableFilePointer(), entryWriter, network, hasher);
+    }
+
     public CompletableFuture<Snapshot> addLinkTo(Snapshot version,
-                                                 WriteSynchronizer.Committer committer,
+                                                 Committer committer,
                                                  String name,
                                                  WritableAbsoluteCapability fileCap,
                                                  NetworkAccess network,
@@ -625,7 +634,7 @@ public class FileWrapper {
      * @return updated parent dir
      */
     public CompletableFuture<Pair<FileWrapper, Snapshot>> clean(Snapshot current,
-                                                                WriteSynchronizer.Committer committer,
+                                                                Committer committer,
                                                                 NetworkAccess network,
                                                                 Crypto crypto,
                                                                 FileWrapper parent) {
@@ -674,11 +683,14 @@ public class FileWrapper {
         return getPath(network).thenCompose(path ->
                 Transaction.buildFileUploadTransaction(Paths.get(path).resolve(filename).toString(), fileSize, fileData, signingPair(),
                         generateChildLocationsFromSize(fileSize, crypto.random)))
-                .thenCompose(txn -> transactions.open(txn)
-                        .thenCompose(x -> fileData.reset())
-                        .thenCompose(reset -> uploadFileSection(filename, reset, false, 0, fileSize,
-                                Optional.empty(), overwriteExisting, network, crypto, monitor, txn.getLocations()))
-                        .thenCompose(res -> transactions.close(txn).thenApply(x -> res)));
+                .thenCompose(txn -> transactions.getSigner()
+                        .thenCompose(txnSigner -> network.synchronizer.applyComplexUpdate(owner(), txnSigner,
+                                (s, committer) -> transactions.open(s, committer, txn).thenCompose(v -> fileData.reset()
+                                        .thenCompose(reset -> uploadFileSection(v, committer, filename, reset,
+                                                false, 0, fileSize, Optional.empty(), overwriteExisting,
+                                                network, crypto, monitor, txn.getLocations()))
+                                        .thenCompose(uploaded -> transactions.close(uploaded, committer, txn))))))
+                .thenCompose(finished -> getUpdated(finished, network));
     }
 
     public CompletableFuture<FileWrapper> uploadOrOverwriteFile(String filename,
@@ -718,16 +730,6 @@ public class FileWrapper {
                                                             Crypto crypto,
                                                             ProgressConsumer<Long> monitor,
                                                             List<Location> locations) {
-        if (!isLegalName(filename)) {
-            CompletableFuture<FileWrapper> res = new CompletableFuture<>();
-            res.completeExceptionally(new IllegalStateException("Illegal filename: " + filename));
-            return res;
-        }
-        if (! isDirectory()) {
-            CompletableFuture<FileWrapper> res = new CompletableFuture<>();
-            res.completeExceptionally(new IllegalStateException("Cannot upload a sub file to a file!"));
-            return res;
-        }
         return network.synchronizer.applyComplexUpdate(owner(), signingPair(), (current, committer) ->
                 uploadFileSection(current, committer, filename, fileData, isHidden, startIndex, endIndex,
                         baseKey, overwriteExisting, network, crypto, monitor, locations))
@@ -735,7 +737,7 @@ public class FileWrapper {
     }
 
     public CompletableFuture<Snapshot> uploadFileSection(Snapshot current,
-                                                         WriteSynchronizer.Committer committer,
+                                                         Committer committer,
                                                          String filename,
                                                          AsyncReader fileData,
                                                          boolean isHidden,
@@ -747,6 +749,16 @@ public class FileWrapper {
                                                          Crypto crypto,
                                                          ProgressConsumer<Long> monitor,
                                                          List<Location> locations) {
+        if (!isLegalName(filename)) {
+            CompletableFuture<Snapshot> res = new CompletableFuture<>();
+            res.completeExceptionally(new IllegalStateException("Illegal filename: " + filename));
+            return res;
+        }
+        if (! isDirectory()) {
+            CompletableFuture<Snapshot> res = new CompletableFuture<>();
+            res.completeExceptionally(new IllegalStateException("Cannot upload a sub file to a file!"));
+            return res;
+        }
         return getUpdated(current, network).thenCompose(latest -> latest.getChild(current, filename, network)
                 .thenCompose(childOpt -> {
                     if (childOpt.isPresent()) {
@@ -796,7 +808,7 @@ public class FileWrapper {
     }
 
     private CompletableFuture<Snapshot> generateThumbnailAndUpdate(Snapshot base,
-                                                                   WriteSynchronizer.Committer committer,
+                                                                   Committer committer,
                                                                    WritableAbsoluteCapability cap,
                                                                    String fileName,
                                                                    AsyncReader fileData,
@@ -819,7 +831,7 @@ public class FileWrapper {
     }
 
     private CompletableFuture<Snapshot> addChildPointer(Snapshot current,
-                                                        WriteSynchronizer.Committer committer,
+                                                        Committer committer,
                                                         WritableAbsoluteCapability childPointer,
                                                         NetworkAccess network,
                                                         Crypto crypto) {
@@ -860,7 +872,7 @@ public class FileWrapper {
      * @return The committed root for the parent (this) directory
      */
     private CompletableFuture<Snapshot> updateExistingChild(Snapshot current,
-                                                            WriteSynchronizer.Committer committer,
+                                                            Committer committer,
                                                             FileWrapper parent,
                                                             FileWrapper existingChild,
                                                             AsyncReader fileData,
@@ -1247,7 +1259,7 @@ public class FileWrapper {
                                                              SigningPrivateKeyAndPublicHash targetSigner,
                                                              NetworkAccess network,
                                                              Snapshot initialVersion,
-                                                             WriteSynchronizer.Committer committer) {
+                                                             Committer committer) {
 
         return initialVersion.withWriter(currentCap.owner, currentCap.writer, network)
                 .thenCompose(version -> network.getMetadata(version.get(currentCap.writer).props, currentCap)
@@ -1285,7 +1297,7 @@ public class FileWrapper {
                                                               TransactionId tid,
                                                               NetworkAccess network,
                                                               Snapshot version,
-                                                              WriteSynchronizer.Committer committer) {
+                                                              Committer committer) {
         return network.getMetadata(version.get(currentCap.writer).props, currentCap)
                 .thenCompose(mOpt -> {
                     if (! mOpt.isPresent()) {
@@ -1346,7 +1358,7 @@ public class FileWrapper {
                                                                PublicKeyHash owner,
                                                                NetworkAccess network,
                                                                Snapshot current,
-                                                               WriteSynchronizer.Committer committer) {
+                                                               Committer committer) {
         if (parentSigner.publicKeyHash.equals(signerToRemove))
             return CompletableFuture.completedFuture(current);
 

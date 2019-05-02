@@ -583,7 +583,9 @@ public abstract class UserTests {
                         context.crypto.random)).join();
         int prior = context.getTotalSpaceUsed(context.signer.publicKeyHash, context.signer.publicKeyHash).get().intValue();
 
-        context.getTransactionService().open(transaction).join();
+        TransactionService transactions = context.getTransactionService();
+        network.synchronizer.applyComplexUpdate(userRoot.owner(), transactions.getSigner().join(),
+                (s, committer) -> transactions.open(s, committer, transaction)).join();
         try {
             userRoot.uploadOrOverwriteFile(filename, throwingReader, data.length, context.network,
                     context.crypto, l -> {}, transaction.getLocations()).get();
@@ -591,8 +593,11 @@ public abstract class UserTests {
         int during = context.getTotalSpaceUsed(context.signer.publicKeyHash, context.signer.publicKeyHash).get().intValue();
         Assert.assertTrue("One chunk uploaded", during > 5 * 1024*1024);
 
-        Set<Transaction> pending = context.getTransactionService().getOpenTransactions().join();
-        pending.forEach(t -> context.getTransactionService().clearAndClose(t).join());
+        network.synchronizer.applyComplexUpdate(userRoot.owner(), transactions.getSigner().join(),
+                (s, committer) -> {
+                    Set<Transaction> pending = transactions.getOpenTransactions(s).join();
+                    return Futures.reduceAll(pending, s, (v, t) -> transactions.clearAndClose(v, committer, t), (a, b) -> b);
+                }).join();
         int post = context.getTotalSpaceUsed(context.signer.publicKeyHash, context.signer.publicKeyHash).get().intValue();
         Assert.assertTrue("Space from failed upload reclaimed", post < prior + 5000); //TODO these should be equal figure out why not
     }

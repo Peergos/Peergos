@@ -8,6 +8,7 @@ import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.IpfsTransaction;
 import peergos.shared.storage.TransactionId;
+import peergos.shared.user.*;
 import peergos.shared.user.fs.Location;
 import peergos.shared.user.fs.cryptree.CryptreeNode;
 import peergos.shared.util.Futures;
@@ -53,15 +54,12 @@ public class FileUploadTransaction implements Transaction {
         return locations;
     }
 
-    private CompletableFuture<Boolean> clear(NetworkAccess networkAccess, Location location) {
-        return networkAccess.deleteChunkIfPresent(location.owner, writer, location.getMapKey());
+    private CompletableFuture<Snapshot> clear(Snapshot version, Committer committer, NetworkAccess networkAccess, Location location) {
+        return networkAccess.deleteChunkIfPresent(version, committer, location.owner, writer, location.getMapKey());
     }
 
-    public CompletableFuture<Boolean> clear(NetworkAccess networkAccess) {
-        List<CompletableFuture<Boolean>> futures = locations.stream().map(loc -> clear(networkAccess, loc))
-                .collect(Collectors.toList());
-        return Futures.combineAll(futures)
-                .thenApply(e -> true);
+    public CompletableFuture<Snapshot> clear(Snapshot version, Committer committer, NetworkAccess network) {
+        return Futures.reduceAll(locations, version, (s, loc) -> clear(s, committer, network, loc), (a, b) -> b);
     }
 
     @Override

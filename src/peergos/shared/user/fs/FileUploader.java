@@ -72,7 +72,7 @@ public class FileUploader implements AutoCloseable {
     }
 
     public CompletableFuture<Snapshot> uploadChunk(Snapshot current,
-                                                   WriteSynchronizer.Committer committer,
+                                                   Committer committer,
                                                    NetworkAccess network,
                                                    PublicKeyHash owner,
                                                    SigningPrivateKeyAndPublicHash writer,
@@ -99,7 +99,7 @@ public class FileUploader implements AutoCloseable {
     }
 
     public CompletableFuture<Snapshot> upload(Snapshot current,
-                                              WriteSynchronizer.Committer committer,
+                                              Committer committer,
                                               NetworkAccess network,
                                               PublicKeyHash owner,
                                               SigningPrivateKeyAndPublicHash writer,
@@ -116,7 +116,7 @@ public class FileUploader implements AutoCloseable {
     }
 
     public static CompletableFuture<Snapshot> uploadChunk(Snapshot current,
-                                                          WriteSynchronizer.Committer committer,
+                                                          Committer committer,
                                                           SigningPrivateKeyAndPublicHash writer,
                                                           FileProperties props,
                                                           Location parentLocation,
