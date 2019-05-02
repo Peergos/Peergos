@@ -594,9 +594,10 @@ public abstract class UserTests {
         Assert.assertTrue("One chunk uploaded", during > 5 * 1024*1024);
 
         network.synchronizer.applyComplexUpdate(userRoot.owner(), transactions.getSigner(),
-                (s, committer) -> {
-                    Set<Transaction> pending = transactions.getOpenTransactions(s).join();
-                    return Futures.reduceAll(pending, s, (v, t) -> transactions.clearAndClose(v, committer, t), (a, b) -> b);
+                (current, committer) -> {
+                    Set<Transaction> pending = transactions.getOpenTransactions(current).join();
+                    return Futures.reduceAll(pending, current,
+                            (version, t) -> transactions.clearAndClose(version, committer, t), (a, b) -> b);
                 }).join();
         int post = context.getTotalSpaceUsed(context.signer.publicKeyHash, context.signer.publicKeyHash).get().intValue();
         Assert.assertTrue("Space from failed upload reclaimed", post < prior + 5000); //TODO these should be equal figure out why not
