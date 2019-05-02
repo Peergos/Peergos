@@ -144,7 +144,7 @@ public abstract class UserTests {
     }
 
     @Test
-    public void randomSignup() throws Exception {
+    public void randomSignup() {
         String username = generateUsername();
         String password = "password";
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
@@ -159,7 +159,7 @@ public abstract class UserTests {
     }
 
     @Test
-    public void singleSignUp() throws Exception {
+    public void singleSignUp() {
         // This is to ensure a user can't accidentally sign in rather than login and overwrite all their data
         String username = generateUsername();
         String password = "password";
@@ -170,8 +170,8 @@ public abstract class UserTests {
     }
 
     @Test
-    public void duplicateSignUp() throws Exception {
-        UserContext.ensureSignedUp("q", "q", network, crypto).get();
+    public void duplicateSignUp() {
+        UserContext.ensureSignedUp("q", "q", network, crypto).join();
         try {
             UserContext.signUp("q", "w", network, crypto).get();
         } catch (Exception e) {
@@ -181,8 +181,8 @@ public abstract class UserTests {
     }
 
     @Test
-    public void repeatedSignUp() throws Exception {
-        UserContext.ensureSignedUp("q", "q", network, crypto).get();
+    public void repeatedSignUp() {
+        UserContext.ensureSignedUp("q", "q", network, crypto).join();
         try {
             UserContext.signUp("q", "q", network, crypto).get();
         } catch (Exception e) {
@@ -308,13 +308,13 @@ public abstract class UserTests {
         String filename = "file1.bin";
         byte[] data = randomData(6*1024*1024);
         userRoot.uploadFileJS(filename, new AsyncReader.ArrayBacked(data), 0,data.length, false,
-                network, crypto, l -> {}, context.getTransactionService().join()).join();
+                network, crypto, l -> {}, context.getTransactionService()).join();
         checkFileContents(data, context.getUserRoot().join().getDescendentByPath(filename, context.network).join().get(), context);
 
         String file2name = "file2.bin";
         byte[] data2 = randomData(6*1024*1024);
         userRootCopy.uploadFileJS(file2name, new AsyncReader.ArrayBacked(data2), 0,data2.length, false,
-                network, crypto, l -> {}, context.getTransactionService().join()).join();
+                network, crypto, l -> {}, context.getTransactionService()).join();
         checkFileContents(data2, context.getUserRoot().join().getDescendentByPath(file2name, context.network).join().get(), context);
     }
 
@@ -583,7 +583,7 @@ public abstract class UserTests {
                         context.crypto.random)).join();
         int prior = context.getTotalSpaceUsed(context.signer.publicKeyHash, context.signer.publicKeyHash).get().intValue();
 
-        TransactionService transactions = context.getTransactionService().join();
+        TransactionService transactions = context.getTransactionService();
         network.synchronizer.applyComplexUpdate(userRoot.owner(), transactions.getSigner(),
                 (s, committer) -> transactions.open(s, committer, transaction)).join();
         try {

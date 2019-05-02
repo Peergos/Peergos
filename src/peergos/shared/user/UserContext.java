@@ -53,7 +53,7 @@ public class UserContext {
     private final SymmetricKey rootKey;
 
     private final WriteSynchronizer writeSynchronizer;
-
+    private final TransactionService transactions;
     public final SharedWithCache sharedWithCache;
 
     // The root of the global filesystem as viewed by this context
@@ -75,7 +75,8 @@ public class UserContext {
                        NetworkAccess network,
                        Crypto crypto,
                        CommittedWriterData userData,
-                       TrieNode entrie) {
+                       TrieNode entrie,
+                       TransactionService transactions) {
         this.username = username;
         this.signer = signer;
         this.boxer = boxer;
@@ -87,19 +88,22 @@ public class UserContext {
         if (signer != null) {
             writeSynchronizer.put(signer.publicKeyHash, signer.publicKeyHash, userData);
         }
+        this.transactions = transactions;
         this.sharedWithCache = new SharedWithCache();
     }
 
-    private CompletableFuture<TransactionService> buildTransactionService() {
-        return getByPath(Paths.get(username, TRANSACTIONS_DIR_NAME))
+    private static CompletableFuture<TransactionService> buildTransactionService(TrieNode root,
+                                                                                 String username,
+                                                                                 NetworkAccess network,
+                                                                                 Crypto crypto) {
+        return root.getByPath(Paths.get(username, TRANSACTIONS_DIR_NAME).toString(), network)
                 .thenApply(Optional::get)
-                .thenApply(txnDir -> new TransactionServiceImpl(network, crypto,
-                        v -> txnDir.getUpdated(v, network), txnDir.signingPair()));
+                .thenApply(txnDir -> new TransactionServiceImpl(network, crypto, txnDir));
     }
 
     @JsMethod
-    public CompletableFuture<TransactionService> getTransactionService() {
-        return buildTransactionService();
+    public TransactionService getTransactionService() {
+        return transactions;
     }
 
     public boolean isJavascript() {
@@ -163,23 +167,26 @@ public class UserContext {
                             .thenCompose(keystore -> {
                                 TofuCoreNode tofu = new TofuCoreNode(network.coreNode, keystore);
                                 SigningPrivateKeyAndPublicHash signer = new SigningPrivateKeyAndPublicHash(userData.controller, userWithRoot.getUser().secretSigningKey);
-                                UserContext result = new UserContext(username,
-                                        signer,
-                                        userWithRoot.getBoxingPair(),
-                                        userWithRoot.getRoot(),
-                                        network.withCorenode(tofu),
-                                        crypto,
-                                        new CommittedWriterData(MaybeMultihash.of(pair.left), userData),
-                                        root);
-                                tofu.setContext(result);
-                                return result.getUsernameClaimExpiry()
-                                        .thenCompose(expiry -> expiry.isBefore(LocalDate.now().plusMonths(1)) ?
-                                                result.renewUsernameClaim(LocalDate.now().plusMonths(2)) :
-                                                CompletableFuture.completedFuture(true))
-                                        .thenCompose(x -> {
-                                            System.out.println("Initializing context..");
-                                            return result.init(progressCallback);
-                                        }).exceptionally(Futures::logAndThrow);
+                                return buildTransactionService(root, username, network, crypto).thenCompose(transactions -> {
+                                    UserContext result = new UserContext(username,
+                                            signer,
+                                            userWithRoot.getBoxingPair(),
+                                            userWithRoot.getRoot(),
+                                            network.withCorenode(tofu),
+                                            crypto,
+                                            new CommittedWriterData(MaybeMultihash.of(pair.left), userData),
+                                            root,
+                                            transactions);
+                                    tofu.setContext(result);
+                                    return result.getUsernameClaimExpiry()
+                                            .thenCompose(expiry -> expiry.isBefore(LocalDate.now().plusMonths(1)) ?
+                                                    result.renewUsernameClaim(LocalDate.now().plusMonths(2)) :
+                                                    CompletableFuture.completedFuture(true))
+                                            .thenCompose(x -> {
+                                                System.out.println("Initializing context..");
+                                                return result.init(progressCallback);
+                                            }).exceptionally(Futures::logAndThrow);
+                                });
                             }));
         } catch (Throwable t) {
             throw new IllegalStateException("Incorrect password");
@@ -242,24 +249,21 @@ public class UserContext {
                                 network.dhtClient).thenCompose(newUserData -> {
 
                             CommittedWriterData notCommitted = new CommittedWriterData(MaybeMultihash.empty(), newUserData);
-                            UserContext context = new UserContext(username,
-                                    signer,
-                                    userWithRoot.getBoxingPair(),
-                                    userWithRoot.getRoot(),
-                                    network,
-                                    crypto,
-                                    notCommitted,
-                                    TrieNodeImpl.empty());
-
-                            LOG.info("Creating user's root directory");
-                            long t1 = System.currentTimeMillis();
-                            return context.createEntryDirectory(signer, username).thenCompose(userRoot -> {
-                                LOG.info("Creating root directory took " + (System.currentTimeMillis() - t1) + " mS");
-                                return context.createSpecialDirectory(SHARED_DIR_NAME)
-                                        .thenCompose(x -> signIn(username, userWithRoot, network, crypto, progressCallback))
-                                        .thenCompose(c -> c.createSpecialDirectory(TRANSACTIONS_DIR_NAME));
-                            });
+                            network.synchronizer.put(signer.publicKeyHash, signer.publicKeyHash, notCommitted);
+                            return network.synchronizer.applyUpdate(signerHash, signer,
+                                    (wd, tid) -> CompletableFuture.completedFuture(wd));
                         });
+                    }).thenCompose(snapshot -> {
+                        LOG.info("Creating user's root directory");
+                        long t1 = System.currentTimeMillis();
+                        return createEntryDirectory(signer, username, userWithRoot.getRoot(), network, crypto)
+                                .thenCompose(globalRoot -> {
+                                    LOG.info("Creating root directory took " + (System.currentTimeMillis() - t1) + " mS");
+                                    return createSpecialDirectory(globalRoot, username, SHARED_DIR_NAME, network, crypto);
+                                })
+                                .thenCompose(globalRoot -> createSpecialDirectory(globalRoot, username,
+                                        TRANSACTIONS_DIR_NAME, network, crypto))
+                                .thenCompose(x -> signIn(username, userWithRoot, network, crypto, progressCallback));
                     });
                 }).thenCompose(context -> network.coreNode.getUsernames(PEERGOS_USERNAME)
                         .thenCompose(usernames -> usernames.contains(PEERGOS_USERNAME) && ! username.equals(PEERGOS_USERNAME) ?
@@ -269,10 +273,14 @@ public class UserContext {
                 .exceptionally(Futures::logAndThrow);
     }
 
-    private CompletableFuture<UserContext> createSpecialDirectory(String dirName) {
-        return getUserRoot()
-                .thenCompose(root -> root.mkdir(dirName, network, true, crypto))
-                .thenApply(x -> this);
+    private static CompletableFuture<TrieNode> createSpecialDirectory(TrieNode globalRoot,
+                                                                      String username,
+                                                                      String dirName,
+                                                                      NetworkAccess network,
+                                                                      Crypto crypto) {
+        return globalRoot.getByPath(username, network)
+                .thenCompose(root -> root.get().mkdir(dirName, network, true, crypto))
+                .thenApply(x -> globalRoot);
     }
 
     @JsMethod
@@ -295,7 +303,8 @@ public class UserContext {
                         Optional.empty(),
                         Optional.empty());
         CommittedWriterData userData = new CommittedWriterData(MaybeMultihash.empty(), empty);
-        UserContext context = new UserContext(null, null, null, null, network, crypto, userData, TrieNodeImpl.empty());
+        UserContext context = new UserContext(null, null, null, null, network,
+                crypto, userData, TrieNodeImpl.empty(), null);
         return retrieveEntryPoint(entry, network)
                 .thenCompose(r -> addRetrievedEntryPointToTrie(null, context.entrie, entry, r.getPath(), network, crypto))
                 .thenApply(trieNode -> {
@@ -544,7 +553,11 @@ public class UserContext {
                 });
     }
 
-    public CompletableFuture<RetrievedCapability> createEntryDirectory(SigningPrivateKeyAndPublicHash owner, String directoryName) {
+    private static CompletableFuture<TrieNode> createEntryDirectory(SigningPrivateKeyAndPublicHash owner,
+                                                                    String directoryName,
+                                                                    SymmetricKey userRootKey,
+                                                                    NetworkAccess network,
+                                                                    Crypto crypto) {
         long t1 = System.currentTimeMillis();
         SigningKeyPair writer = SigningKeyPair.random(crypto.random, crypto.signer);
         LOG.info("Random User generation took " + (System.currentTimeMillis() - t1) + " mS");
@@ -559,34 +572,35 @@ public class UserContext {
             LOG.info("Random keys generation took " + (System.currentTimeMillis() - t1) + " mS");
 
             // and authorise the writer key
-            SigningPrivateKeyAndPublicHash writerWithHash =
+            SigningPrivateKeyAndPublicHash writerPair =
                     new SigningPrivateKeyAndPublicHash(writerHash, writer.secretSigningKey);
             WritableAbsoluteCapability rootPointer =
                     new WritableAbsoluteCapability(owner.publicKeyHash, writerHash, rootMapKey, rootRKey, rootWKey);
-            EntryPoint entry = new EntryPoint(rootPointer, this.username);
-            return addOwnedKeyAndCommit(writerWithHash)
+            EntryPoint entry = new EntryPoint(rootPointer, directoryName);
+            return network.synchronizer.applyUpdate(owner.publicKeyHash, owner,
+                    (wd, tid2) -> wd.addOwnedKey(owner.publicKeyHash, owner,
+                            OwnerProof.build(writerPair, owner.publicKeyHash), network.dhtClient))
+                    .thenApply(v -> v.get(owner))
                     .thenCompose(x -> {
                         long t2 = System.currentTimeMillis();
                         RelativeCapability nextChunk =
                                 RelativeCapability.buildSubsequentChunk(crypto.random.randomBytes(32), rootRKey);
                         CryptreeNode.DirAndChildren root =
-                                CryptreeNode.createDir(MaybeMultihash.empty(), rootRKey, rootWKey, Optional.of(writerWithHash),
+                                CryptreeNode.createDir(MaybeMultihash.empty(), rootRKey, rootWKey, Optional.of(writerPair),
                                 new FileProperties(directoryName, true, "", 0, LocalDateTime.now(),
                                         false, Optional.empty()), Optional.empty(), SymmetricKey.random(), nextChunk, crypto.hasher);
 
                         LOG.info("Uploading entry point directory");
-                        return WriterData.createEmpty(owner.publicKeyHash, writerWithHash, network.dhtClient)
-                                .thenCompose(empty -> empty.commit(owner.publicKeyHash, writerWithHash, MaybeMultihash.empty(), network, tid))
-                                .thenCompose(empty -> root.commit(rootPointer, Optional.of(writerWithHash), network, tid)
+                        return WriterData.createEmpty(owner.publicKeyHash, writerPair, network.dhtClient)
+                                .thenCompose(empty -> empty.commit(owner.publicKeyHash, writerPair, MaybeMultihash.empty(), network, tid))
+                                .thenCompose(empty -> root.commit(rootPointer, Optional.of(writerPair), network, tid)
                                         .thenApply(rootWithHash -> {
                                             long t3 = System.currentTimeMillis();
                                             LOG.info("Uploading root dir metadata took " + (t3 - t2) + " mS");
                                             return new RetrievedCapability(rootPointer, rootWithHash);
                                         }));
-                    }).thenCompose(x -> addRootEntryPointAndCommit(entrie, entry).thenApply(y -> {
-                        this.entrie = y;
-                        return x;
-                    }));
+                    }).thenCompose(x -> addRootEntryPointAndCommit(TrieNodeImpl.empty(), entry, directoryName, owner,
+                            userRootKey, network, crypto));
         }), network.dhtClient);
     }
 
@@ -1028,8 +1042,14 @@ public class UserContext {
                 });
     }
 
-    private synchronized CompletableFuture<TrieNode> addRootEntryPointAndCommit(TrieNode root, EntryPoint entry) {
-        return writeSynchronizer.applyUpdate(signer.publicKeyHash, signer, (wd, tid) -> {
+    private static CompletableFuture<TrieNode> addRootEntryPointAndCommit(TrieNode root,
+                                                                          EntryPoint entry,
+                                                                          String username,
+                                                                          SigningPrivateKeyAndPublicHash owner,
+                                                                          SymmetricKey rootKey,
+                                                                          NetworkAccess network,
+                                                                          Crypto crypto) {
+        return network.synchronizer.applyUpdate(owner.publicKeyHash, owner, (wd, tid) -> {
             Optional<UserStaticData> updated = wd.staticData.map(sd -> {
                 List<EntryPoint> entryPoints = sd.getEntryPoints(rootKey);
                 entryPoints.add(entry);

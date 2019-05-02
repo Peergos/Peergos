@@ -24,10 +24,9 @@ public class TransactionServiceImpl implements TransactionService {
 
     public TransactionServiceImpl(NetworkAccess networkAccess,
                                   Crypto crypto,
-                                  FileWrapperUpdater transactionDirUpdater,
-                                  SigningPrivateKeyAndPublicHash signer) {
-        this.transactionDirUpdater = transactionDirUpdater;
-        this.signer = signer;
+                                  FileWrapper transactionsDir) {
+        this.transactionDirUpdater = v -> transactionsDir.getUpdated(v, networkAccess);
+        this.signer = transactionsDir.signingPair();
         this.networkAccess = networkAccess;
         this.crypto = crypto;
     }
