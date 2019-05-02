@@ -998,6 +998,14 @@ public class FileWrapper {
         return !name.contains("/");
     }
 
+    /**
+     *
+     * @param newFolderName
+     * @param network
+     * @param isSystemFolder
+     * @param crypto
+     * @return An updated version of this directory
+     */
     @JsMethod
     public CompletableFuture<FileWrapper> mkdir(String newFolderName,
                                                 NetworkAccess network,
@@ -1033,9 +1041,7 @@ public class FileWrapper {
                         setModified();
                         return x;
                     });
-                })).thenCompose(version -> getUpdated(version, network)
-                .thenCompose(newUs -> newUs.getChild(version, newFolderName, network))
-                .thenApply(Optional::get));
+                })).thenCompose(version -> getUpdated(version, network));
     }
 
     @JsMethod
