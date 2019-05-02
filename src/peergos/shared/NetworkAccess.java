@@ -411,7 +411,7 @@ public class NetworkAccess {
     }
 
     public CompletableFuture<Snapshot> uploadChunk(Snapshot current,
-                                                   WriteSynchronizer.Committer committer,
+                                                   Committer committer,
                                                    CryptreeNode metadata,
                                                    PublicKeyHash owner,
                                                    byte[] mapKey,
@@ -441,14 +441,14 @@ public class NetworkAccess {
                                                            SigningPrivateKeyAndPublicHash writer,
                                                            TransactionId tid,
                                                            Snapshot current,
-                                                           WriteSynchronizer.Committer committer) {
+                                                           Committer committer) {
         CommittedWriterData version = current.get(writer);
         return tree.put(version.props, owner, writer, mapKey, metadata.committedHash(), metadata.committedHash().get(), tid)
                 .thenCompose(wd -> committer.commit(owner, writer, wd, version, tid));
     }
 
     public CompletableFuture<Snapshot> deleteChunk(Snapshot current,
-                                                   WriteSynchronizer.Committer committer,
+                                                   Committer committer,
                                                    CryptreeNode metadata,
                                                    PublicKeyHash owner,
                                                    byte[] mapKey,
@@ -460,13 +460,19 @@ public class NetworkAccess {
                 .thenApply(committed -> current.withVersion(writer.publicKeyHash, committed.get(writer)));
     }
 
-    public CompletableFuture<Boolean> deleteChunkIfPresent(PublicKeyHash owner,
-                                                           SigningPrivateKeyAndPublicHash writer,
-                                                           byte[] mapKey) {
-        return tree.get(owner, writer.publicKeyHash, mapKey)
-                .thenCompose(valueHash -> valueHash.ifPresent(h -> synchronizer.applyUpdate(owner, writer,
-                        (wd, tid) -> tree.remove(wd, owner, writer, mapKey, valueHash, tid))
-                .thenApply(s -> true)));
+    public CompletableFuture<Snapshot> deleteChunkIfPresent(Snapshot current,
+                                                            Committer committer,
+                                                            PublicKeyHash owner,
+                                                            SigningPrivateKeyAndPublicHash writer,
+                                                            byte[] mapKey) {
+        CommittedWriterData version = current.get(writer);
+        return tree.get(version.props, owner, writer.publicKeyHash, mapKey)
+                .thenCompose(valueHash ->
+                        ! valueHash.isPresent() ? CompletableFuture.completedFuture(current) :
+                                IpfsTransaction.call(owner,
+                                        tid -> tree.remove(version.props, owner, writer, mapKey, valueHash, tid)
+                                                .thenCompose(wd -> committer.commit(owner, writer, wd, version, tid)),
+                                        dhtClient));
     }
 
     public CompletableFuture<Optional<CryptreeNode>> getMetadata(AbsoluteCapability cap) {

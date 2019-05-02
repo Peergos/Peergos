@@ -144,7 +144,7 @@ public abstract class UserTests {
     }
 
     @Test
-    public void randomSignup() throws Exception {
+    public void randomSignup() {
         String username = generateUsername();
         String password = "password";
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
@@ -159,7 +159,7 @@ public abstract class UserTests {
     }
 
     @Test
-    public void singleSignUp() throws Exception {
+    public void singleSignUp() {
         // This is to ensure a user can't accidentally sign in rather than login and overwrite all their data
         String username = generateUsername();
         String password = "password";
@@ -170,8 +170,8 @@ public abstract class UserTests {
     }
 
     @Test
-    public void duplicateSignUp() throws Exception {
-        UserContext.ensureSignedUp("q", "q", network, crypto).get();
+    public void duplicateSignUp() {
+        UserContext.ensureSignedUp("q", "q", network, crypto).join();
         try {
             UserContext.signUp("q", "w", network, crypto).get();
         } catch (Exception e) {
@@ -181,8 +181,8 @@ public abstract class UserTests {
     }
 
     @Test
-    public void repeatedSignUp() throws Exception {
-        UserContext.ensureSignedUp("q", "q", network, crypto).get();
+    public void repeatedSignUp() {
+        UserContext.ensureSignedUp("q", "q", network, crypto).join();
         try {
             UserContext.signUp("q", "q", network, crypto).get();
         } catch (Exception e) {
@@ -583,7 +583,9 @@ public abstract class UserTests {
                         context.crypto.random)).join();
         int prior = context.getTotalSpaceUsed(context.signer.publicKeyHash, context.signer.publicKeyHash).get().intValue();
 
-        context.getTransactionService().open(transaction).join();
+        TransactionService transactions = context.getTransactionService();
+        network.synchronizer.applyComplexUpdate(userRoot.owner(), transactions.getSigner(),
+                (s, committer) -> transactions.open(s, committer, transaction)).join();
         try {
             userRoot.uploadOrOverwriteFile(filename, throwingReader, data.length, context.network,
                     context.crypto, l -> {}, transaction.getLocations()).get();
@@ -591,8 +593,12 @@ public abstract class UserTests {
         int during = context.getTotalSpaceUsed(context.signer.publicKeyHash, context.signer.publicKeyHash).get().intValue();
         Assert.assertTrue("One chunk uploaded", during > 5 * 1024*1024);
 
-        Set<Transaction> pending = context.getTransactionService().getOpenTransactions().join();
-        pending.forEach(t -> context.getTransactionService().clearAndClose(t).join());
+        network.synchronizer.applyComplexUpdate(userRoot.owner(), transactions.getSigner(),
+                (current, committer) -> {
+                    Set<Transaction> pending = transactions.getOpenTransactions(current).join();
+                    return Futures.reduceAll(pending, current,
+                            (version, t) -> transactions.clearAndClose(version, committer, t), (a, b) -> b);
+                }).join();
         int post = context.getTotalSpaceUsed(context.signer.publicKeyHash, context.signer.publicKeyHash).get().intValue();
         Assert.assertTrue("Space from failed upload reclaimed", post < prior + 5000); //TODO these should be equal figure out why not
     }

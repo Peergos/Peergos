@@ -7,6 +7,7 @@ import peergos.shared.cbor.Cborable;
 import peergos.shared.crypto.SigningPrivateKeyAndPublicHash;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 
 import java.util.List;
@@ -21,7 +22,7 @@ public interface Transaction extends Cborable {
     /**
      * Clear data associated with this transaction
      */
-    CompletableFuture<Boolean> clear(NetworkAccess networkAccess);
+    CompletableFuture<Snapshot> clear(Snapshot version, Committer committer, NetworkAccess network);
 
     static Transaction deserialize(byte[] data) {
         CborObject cborObject = CborObject.fromByteArray(data);

@@ -4,7 +4,6 @@ import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
@@ -155,7 +154,7 @@ public class CryptreeNode implements Cborable {
         }
 
         public CompletableFuture<Snapshot> commit(Snapshot current,
-                                                  WriteSynchronizer.Committer committer,
+                                                  Committer committer,
                                                   WritableAbsoluteCapability us,
                                                   Optional<SigningPrivateKeyAndPublicHash> entryWriter,
                                                   NetworkAccess network,
@@ -325,7 +324,7 @@ public class CryptreeNode implements Cborable {
     }
 
     public CompletableFuture<Snapshot> updateProperties(Snapshot base,
-                                                        WriteSynchronizer.Committer committer,
+                                                        Committer committer,
                                                         WritableAbsoluteCapability us,
                                                         Optional<SigningPrivateKeyAndPublicHash> entryWriter,
                                                         FileProperties newProps,
@@ -409,7 +408,7 @@ public class CryptreeNode implements Cborable {
                                                          SymmetricKey newBaseKey,
                                                          NetworkAccess network,
                                                          Snapshot version,
-                                                         WriteSynchronizer.Committer committer) {
+                                                         Committer committer) {
         if (isDirectory())
             throw new IllegalStateException("Invalid operation for directory!");
         // keep the same data key, just marked as dirty
@@ -430,7 +429,7 @@ public class CryptreeNode implements Cborable {
                                                           SymmetricKey newBaseWriteKey,
                                                           NetworkAccess network,
                                                           Snapshot version,
-                                                          WriteSynchronizer.Committer committer) {
+                                                          Committer committer) {
         FromBase baseBlock = getBaseBlock(us.rBaseKey);
         if (! baseBlock.signer.isPresent())
             return CompletableFuture.completedFuture(version);
@@ -444,7 +443,7 @@ public class CryptreeNode implements Cborable {
     }
 
     public CompletableFuture<Snapshot> cleanAndCommit(Snapshot current,
-                                                      WriteSynchronizer.Committer committer,
+                                                      Committer committer,
                                                       WritableAbsoluteCapability cap,
                                                       SigningPrivateKeyAndPublicHash writer,
                                                       SymmetricKey newDataKey,
@@ -480,7 +479,7 @@ public class CryptreeNode implements Cborable {
     }
 
     public CompletableFuture<Snapshot> addChildAndCommit(Snapshot current,
-                                                         WriteSynchronizer.Committer committer,
+                                                         Committer committer,
                                                          RelativeCapability targetCAP,
                                                          WritableAbsoluteCapability us,
                                                          Optional<SigningPrivateKeyAndPublicHash> entryWriter,
@@ -490,7 +489,7 @@ public class CryptreeNode implements Cborable {
     }
 
     public CompletableFuture<Snapshot> addChildrenAndCommit(Snapshot current,
-                                                            WriteSynchronizer.Committer committer,
+                                                            Committer committer,
                                                             List<RelativeCapability> targetCAPs,
                                                             WritableAbsoluteCapability us,
                                                             Optional<SigningPrivateKeyAndPublicHash> entryWriter,
@@ -559,7 +558,7 @@ public class CryptreeNode implements Cborable {
 
     // returns pointer to new child directory
     public CompletableFuture<Snapshot> mkdir(Snapshot base,
-                                             WriteSynchronizer.Committer committer,
+                                             Committer committer,
                                              String name,
                                              NetworkAccess network,
                                              WritableAbsoluteCapability us,
@@ -589,7 +588,7 @@ public class CryptreeNode implements Cborable {
     }
 
     public CompletableFuture<Snapshot> copyTo(Snapshot base,
-                                              WriteSynchronizer.Committer committer,
+                                              Committer committer,
                                               AbsoluteCapability us,
                                               SymmetricKey newReadBaseKey,
                                               WritableAbsoluteCapability newParentCap,
@@ -645,7 +644,7 @@ public class CryptreeNode implements Cborable {
     }
 
     public CompletableFuture<Snapshot> updateChildLink(Snapshot base,
-                                                       WriteSynchronizer.Committer committer,
+                                                       Committer committer,
                                                        WritableAbsoluteCapability ourPointer,
                                                        Optional<SigningPrivateKeyAndPublicHash> entryWriter,
                                                        RetrievedCapability original,
@@ -657,7 +656,7 @@ public class CryptreeNode implements Cborable {
     }
 
     public CompletableFuture<Snapshot> updateChildLinks(Snapshot base,
-                                                        WriteSynchronizer.Committer committer,
+                                                        Committer committer,
                                                         WritableAbsoluteCapability ourPointer,
                                                         Optional<SigningPrivateKeyAndPublicHash> entryWriter,
                                                         Collection<Pair<AbsoluteCapability, AbsoluteCapability>> childCasPairs,
@@ -687,7 +686,7 @@ public class CryptreeNode implements Cborable {
     }
 
     public CompletableFuture<Snapshot> removeChildren(Snapshot current,
-                                                      WriteSynchronizer.Committer committer,
+                                                      Committer committer,
                                                       List<AbsoluteCapability> childrenToRemove,
                                                       WritableAbsoluteCapability ourPointer,
                                                       Optional<SigningPrivateKeyAndPublicHash> entryWriter,
@@ -718,7 +717,7 @@ public class CryptreeNode implements Cborable {
     }
 
     public CompletableFuture<Snapshot> commit(Snapshot current,
-                                              WriteSynchronizer.Committer committer,
+                                              Committer committer,
                                               WritableAbsoluteCapability us,
                                               Optional<SigningPrivateKeyAndPublicHash> entryWriter,
                                               NetworkAccess network,
