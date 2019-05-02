@@ -9,5 +9,5 @@ public interface FileWrapperUpdater {
      * If a reference to a FileWrapper has become invalid (eg. updated by another client) then this will supply an
      * updated view.
      */
-    CompletableFuture<FileWrapper> updated();
+    CompletableFuture<FileWrapper> updated(Snapshot version);
 }

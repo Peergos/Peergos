@@ -308,13 +308,13 @@ public abstract class UserTests {
         String filename = "file1.bin";
         byte[] data = randomData(6*1024*1024);
         userRoot.uploadFileJS(filename, new AsyncReader.ArrayBacked(data), 0,data.length, false,
-                network, crypto, l -> {}, context.getTransactionService()).join();
+                network, crypto, l -> {}, context.getTransactionService().join()).join();
         checkFileContents(data, context.getUserRoot().join().getDescendentByPath(filename, context.network).join().get(), context);
 
         String file2name = "file2.bin";
         byte[] data2 = randomData(6*1024*1024);
         userRootCopy.uploadFileJS(file2name, new AsyncReader.ArrayBacked(data2), 0,data2.length, false,
-                network, crypto, l -> {}, context.getTransactionService()).join();
+                network, crypto, l -> {}, context.getTransactionService().join()).join();
         checkFileContents(data2, context.getUserRoot().join().getDescendentByPath(file2name, context.network).join().get(), context);
     }
 
@@ -583,8 +583,8 @@ public abstract class UserTests {
                         context.crypto.random)).join();
         int prior = context.getTotalSpaceUsed(context.signer.publicKeyHash, context.signer.publicKeyHash).get().intValue();
 
-        TransactionService transactions = context.getTransactionService();
-        network.synchronizer.applyComplexUpdate(userRoot.owner(), transactions.getSigner().join(),
+        TransactionService transactions = context.getTransactionService().join();
+        network.synchronizer.applyComplexUpdate(userRoot.owner(), transactions.getSigner(),
                 (s, committer) -> transactions.open(s, committer, transaction)).join();
         try {
             userRoot.uploadOrOverwriteFile(filename, throwingReader, data.length, context.network,
@@ -593,7 +593,7 @@ public abstract class UserTests {
         int during = context.getTotalSpaceUsed(context.signer.publicKeyHash, context.signer.publicKeyHash).get().intValue();
         Assert.assertTrue("One chunk uploaded", during > 5 * 1024*1024);
 
-        network.synchronizer.applyComplexUpdate(userRoot.owner(), transactions.getSigner().join(),
+        network.synchronizer.applyComplexUpdate(userRoot.owner(), transactions.getSigner(),
                 (s, committer) -> {
                     Set<Transaction> pending = transactions.getOpenTransactions(s).join();
                     return Futures.reduceAll(pending, s, (v, t) -> transactions.clearAndClose(v, committer, t), (a, b) -> b);

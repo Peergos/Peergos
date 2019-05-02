@@ -95,12 +95,7 @@ public class FileWrapper {
         return pointer.equals(((FileWrapper) other).getPointer());
     }
 
-    public CompletableFuture<FileWrapper> getUpdated(NetworkAccess network) {
-        return network.synchronizer.getValue(owner(), writer())
-                .thenCompose(s -> getUpdated(s, network));
-    }
-
-    private CompletableFuture<FileWrapper> getUpdated(Snapshot version, NetworkAccess network) {
+    public CompletableFuture<FileWrapper> getUpdated(Snapshot version, NetworkAccess network) {
         if (this.version.get(writer()).equals(version.get(writer())))
             return CompletableFuture.completedFuture(this);
         return network.getFile(version, pointer.capability, entryWriter, ownername)
@@ -683,13 +678,12 @@ public class FileWrapper {
         return getPath(network).thenCompose(path ->
                 Transaction.buildFileUploadTransaction(Paths.get(path).resolve(filename).toString(), fileSize, fileData, signingPair(),
                         generateChildLocationsFromSize(fileSize, crypto.random)))
-                .thenCompose(txn -> transactions.getSigner()
-                        .thenCompose(txnSigner -> network.synchronizer.applyComplexUpdate(owner(), txnSigner,
-                                (s, committer) -> transactions.open(s, committer, txn).thenCompose(v -> fileData.reset()
-                                        .thenCompose(reset -> uploadFileSection(v, committer, filename, reset,
-                                                false, 0, fileSize, Optional.empty(), overwriteExisting,
-                                                network, crypto, monitor, txn.getLocations()))
-                                        .thenCompose(uploaded -> transactions.close(uploaded, committer, txn))))))
+                .thenCompose(txn -> network.synchronizer.applyComplexUpdate(owner(), transactions.getSigner(),
+                        (s, committer) -> transactions.open(s, committer, txn).thenCompose(v -> fileData.reset()
+                                .thenCompose(reset -> uploadFileSection(v, committer, filename, reset,
+                                        false, 0, fileSize, Optional.empty(), overwriteExisting,
+                                        network, crypto, monitor, txn.getLocations()))
+                                .thenCompose(uploaded -> transactions.close(uploaded, committer, txn)))))
                 .thenCompose(finished -> getUpdated(finished, network));
     }
 

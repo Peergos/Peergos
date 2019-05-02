@@ -12,7 +12,7 @@ import java.util.stream.Collectors;
 
 public interface TransactionService {
 
-    CompletableFuture<SigningPrivateKeyAndPublicHash> getSigner();
+    SigningPrivateKeyAndPublicHash getSigner();
 
     @JsMethod
     CompletableFuture<Snapshot> open(Snapshot version, Committer committer, Transaction transaction);

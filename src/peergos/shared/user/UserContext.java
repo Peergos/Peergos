@@ -53,7 +53,6 @@ public class UserContext {
     private final SymmetricKey rootKey;
 
     private final WriteSynchronizer writeSynchronizer;
-    private final TransactionService transactionService;
 
     public final SharedWithCache sharedWithCache;
 
@@ -84,7 +83,6 @@ public class UserContext {
         this.network = network;
         this.crypto = crypto;
         this.entrie = entrie;
-        this.transactionService = buildTransactionService();
         this.writeSynchronizer = network.synchronizer;
         if (signer != null) {
             writeSynchronizer.put(signer.publicKeyHash, signer.publicKeyHash, userData);
@@ -92,16 +90,16 @@ public class UserContext {
         this.sharedWithCache = new SharedWithCache();
     }
 
-    private TransactionService buildTransactionService() {
-        Supplier<CompletableFuture<FileWrapper>> getTransactionsDir =
-                () -> getByPath(Paths.get(username, TRANSACTIONS_DIR_NAME))
-                        .thenApply(Optional::get);
-        return new TransactionServiceImpl(network, crypto, getTransactionsDir::get);
+    private CompletableFuture<TransactionService> buildTransactionService() {
+        return getByPath(Paths.get(username, TRANSACTIONS_DIR_NAME))
+                .thenApply(Optional::get)
+                .thenApply(txnDir -> new TransactionServiceImpl(network, crypto,
+                        v -> txnDir.getUpdated(v, network), txnDir.signingPair()));
     }
 
     @JsMethod
-    public TransactionService getTransactionService() {
-        return transactionService;
+    public CompletableFuture<TransactionService> getTransactionService() {
+        return buildTransactionService();
     }
 
     public boolean isJavascript() {
