@@ -601,13 +601,13 @@ public class UserContext {
     }
 
     public CompletableFuture<Optional<Pair<PublicKeyHash, PublicBoxingKey>>> getPublicKeys(String username) {
-        CompletableFuture<Optional<Pair<PublicKeyHash, PublicBoxingKey>>> empty = new CompletableFuture<>();
-        empty.complete(Optional.empty());
         return network.coreNode.getPublicKeyHash(username)
-                .thenCompose(signerOpt -> !signerOpt.isPresent() ? empty : getSigningKey(signerOpt.get())
-                        .thenCompose(signer -> getWriterData(network, signerOpt.get(), signerOpt.get())
-                                .thenCompose(wd -> getBoxingKey(wd.props.followRequestReceiver.get())
-                                        .thenApply(boxer -> Optional.of(new Pair<>(signerOpt.get(), boxer))))));
+                .thenCompose(signerOpt ->
+                        signerOpt.map(signer -> getSigningKey(signer)
+                                .thenCompose(signer2 -> getWriterData(network, signerOpt.get(), signerOpt.get())
+                                        .thenCompose(wd -> getBoxingKey(wd.props.followRequestReceiver.get())
+                                                .thenApply(boxer -> Optional.of(new Pair<>(signerOpt.get(), boxer))))))
+                                .orElse(CompletableFuture.completedFuture(Optional.empty())));
     }
 
     private CompletableFuture<CommittedWriterData> addOwnedKeyAndCommit(SigningPrivateKeyAndPublicHash owned) {
@@ -801,26 +801,22 @@ public class UserContext {
     public CompletableFuture<Boolean> sendFollowRequest(String targetUsername, SymmetricKey requestedKey) {
         return getSharingFolder().thenCompose(sharing -> {
             return sharing.getChildren(network).thenCompose(children -> {
-                CompletableFuture<Boolean> res = new CompletableFuture<>();
                 boolean alreadySentRequest = children.stream()
                         .filter(f -> f.getFileProperties().name.equals(targetUsername))
                         .findAny()
                         .isPresent();
                 if (alreadySentRequest) {
-                    res.completeExceptionally(new Exception("Follow Request already sent!"));
-                    return res;
+                    return Futures.errored(new Exception("Follow Request already sent!"));
                 }
                 // check for them not reciprocating
                 return getFollowing().thenCompose(following -> {
                     boolean alreadyFollowing = following.stream().filter(x -> x.equals(targetUsername)).findAny().isPresent();
                     if (alreadyFollowing) {
-                        res.completeExceptionally(new Exception("User already a follower!"));
-                        return res;
+                        return Futures.errored(new Exception("User already a follower!"));
                     }
                     return getPublicKeys(targetUsername).thenCompose(targetUserOpt -> {
                         if (!targetUserOpt.isPresent()) {
-                            res.completeExceptionally(new Exception("User does not exist!"));
-                            return res;
+                            return Futures.errored(new Exception("User does not exist!"));
                         }
                         PublicBoxingKey targetUser = targetUserOpt.get().right;
                         return sharing.mkdir(targetUsername, network, null, true, crypto).thenCompose(friendRoot -> {
