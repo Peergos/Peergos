@@ -604,6 +604,27 @@ public abstract class UserTests {
     }
 
     @Test
+    public void repeatFailedUpload() throws Exception {
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        FileWrapper userRoot = context.getUserRoot().get();
+
+        String filename = "small.txt";
+        byte[] data = new byte[2*5*1024*1024];
+        ThrowingStream throwingReader = new ThrowingStream(data, 5 * 1024 * 1024);
+
+        TransactionService transactions = context.getTransactionService();
+        try {
+            userRoot.uploadFileJS(filename, throwingReader, 0, data.length, false, context.network,
+                    context.crypto, l -> {}, transactions).join();
+        } catch (Exception e) {}
+
+        userRoot.uploadFileJS(filename, AsyncReader.build(data), 0, data.length, false, context.network,
+                    context.crypto, l -> {}, transactions).join();
+    }
+
+    @Test
     public void javaThumbnail() throws Exception {
         String username = generateUsername();
         String password = "test01";

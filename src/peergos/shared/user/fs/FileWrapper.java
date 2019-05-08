@@ -683,8 +683,15 @@ public class FileWrapper {
                                 .thenCompose(reset -> uploadFileSection(v, committer, filename, reset,
                                         false, 0, fileSize, Optional.empty(), overwriteExisting,
                                         network, crypto, monitor, txn.getLocations()))
-                                .thenCompose(uploaded -> transactions.close(uploaded, committer, txn)))))
-                .thenCompose(finished -> getUpdated(finished, network));
+                                .thenCompose(uploaded -> transactions.close(uploaded, committer, txn))
+                        ))
+                        .exceptionally(t -> {
+                            // clean up after failed upload
+                            network.synchronizer.applyComplexUpdate(owner(), transactions.getSigner(),
+                                    (s, committer) -> transactions.close(s, committer, txn));
+                            throw new RuntimeException(t);
+                        })
+                ).thenCompose(finished -> getUpdated(finished, network));
     }
 
     public CompletableFuture<FileWrapper> uploadOrOverwriteFile(String filename,

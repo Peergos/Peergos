@@ -35,8 +35,8 @@ public class AsyncLock<T> {
         existing.thenCompose(current -> processor.apply(current)
                 .thenApply(res -> newHead.complete(res) && result.complete(res))
                 .exceptionally(t -> {
-                    updater.get().thenCompose(processor)
-                            .thenApply(res -> newHead.complete(res) && result.complete(res))
+                    updater.get()
+                            .thenApply(res -> newHead.complete(res) && result.completeExceptionally(t))
                             .exceptionally(e -> newHead.complete(current) && result.completeExceptionally(e));
                     t.printStackTrace();
                     return true;
