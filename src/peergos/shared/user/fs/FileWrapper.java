@@ -737,7 +737,7 @@ public class FileWrapper {
                 .thenCompose(finalBase -> getUpdated(finalBase, network));
     }
 
-    public CompletableFuture<Snapshot> uploadFileSection(Snapshot current,
+    public CompletableFuture<Snapshot> uploadFileSection(Snapshot intialVersion,
                                                          Committer committer,
                                                          String filename,
                                                          AsyncReader fileData,
@@ -760,52 +760,55 @@ public class FileWrapper {
             res.completeExceptionally(new IllegalStateException("Cannot upload a sub file to a file!"));
             return res;
         }
-        return getUpdated(current, network).thenCompose(latest -> latest.getChild(current, filename, network)
-                .thenCompose(childOpt -> {
-                    if (childOpt.isPresent()) {
-                        if (! overwriteExisting)
-                            throw new IllegalStateException("File already exists with name " + filename);
-                        return updateExistingChild(current, committer, latest, childOpt.get(), fileData,
-                                startIndex, endIndex, network, crypto, monitor);
-                    }
-                    if (startIndex > 0) {
-                        // TODO if startIndex > 0 prepend with a zero section
-                        throw new IllegalStateException("Unimplemented!");
-                    }
-                    SymmetricKey fileWriteKey = SymmetricKey.random();
-                    SymmetricKey fileKey = baseKey.orElseGet(SymmetricKey::random);
-                    SymmetricKey dataKey = SymmetricKey.random();
-                    SymmetricKey rootRKey = latest.pointer.capability.rBaseKey;
-                    CryptreeNode dirAccess = latest.pointer.fileAccess;
-                    SymmetricKey dirParentKey = dirAccess.getParentKey(rootRKey);
-                    Location parentLocation = getLocation();
-                    int thumbnailSrcImageSize = startIndex == 0 && endIndex < Integer.MAX_VALUE ? (int) endIndex : 0;
+        return intialVersion.withWriter(owner(), writer(), network)
+                .thenCompose(current -> getUpdated(current, network)
+                        .thenCompose(latest -> latest.getChild(current, filename, network)
+                                        .thenCompose(childOpt -> {
+                                            if (childOpt.isPresent()) {
+                                                if (! overwriteExisting)
+                                                    throw new IllegalStateException("File already exists with name " + filename);
+                                                return updateExistingChild(current, committer, latest, childOpt.get(), fileData,
+                                                        startIndex, endIndex, network, crypto, monitor);
+                                            }
+                                            if (startIndex > 0) {
+                                                // TODO if startIndex > 0 prepend with a zero section
+                                                throw new IllegalStateException("Unimplemented!");
+                                            }
+                                            SymmetricKey fileWriteKey = SymmetricKey.random();
+                                            SymmetricKey fileKey = baseKey.orElseGet(SymmetricKey::random);
+                                            SymmetricKey dataKey = SymmetricKey.random();
+                                            SymmetricKey rootRKey = latest.pointer.capability.rBaseKey;
+                                            CryptreeNode dirAccess = latest.pointer.fileAccess;
+                                            SymmetricKey dirParentKey = dirAccess.getParentKey(rootRKey);
+                                            Location parentLocation = getLocation();
+                                            int thumbnailSrcImageSize = startIndex == 0 && endIndex < Integer.MAX_VALUE ? (int) endIndex : 0;
 
-                    return calculateMimeType(fileData, endIndex).thenCompose(mimeType -> fileData.reset()
-                            .thenCompose(resetReader -> {
-                                FileProperties fileProps = new FileProperties(filename, false, mimeType, endIndex,
-                                        LocalDateTime.now(), isHidden, Optional.empty());
+                                            return calculateMimeType(fileData, endIndex).thenCompose(mimeType -> fileData.reset()
+                                                    .thenCompose(resetReader -> {
+                                                        FileProperties fileProps = new FileProperties(filename, false, mimeType, endIndex,
+                                                                LocalDateTime.now(), isHidden, Optional.empty());
 
-                                FileUploader chunks = new FileUploader(filename, mimeType, resetReader,
-                                        startIndex, endIndex, fileKey, dataKey, parentLocation, dirParentKey, monitor, fileProps,
-                                        locations);
+                                                        FileUploader chunks = new FileUploader(filename, mimeType, resetReader,
+                                                                startIndex, endIndex, fileKey, dataKey, parentLocation, dirParentKey, monitor, fileProps,
+                                                                locations);
 
-                                SigningPrivateKeyAndPublicHash signer = signingPair();
-                                WritableAbsoluteCapability fileWriteCap = new
-                                        WritableAbsoluteCapability(owner(),
-                                        signer.publicKeyHash,
-                                        locations.get(0).getMapKey(), fileKey,
-                                        fileWriteKey);
+                                                        SigningPrivateKeyAndPublicHash signer = signingPair();
+                                                        WritableAbsoluteCapability fileWriteCap = new
+                                                                WritableAbsoluteCapability(owner(),
+                                                                signer.publicKeyHash,
+                                                                locations.get(0).getMapKey(), fileKey,
+                                                                fileWriteKey);
 
-                                return chunks.upload(current, committer, network, parentLocation.owner, signer, crypto.hasher)
-                                        .thenCompose(updatedWD -> latest.addChildPointer(updatedWD, committer, fileWriteCap, network, crypto))
-                                        .thenCompose(cwd -> fileData.reset().thenCompose(resetAgain ->
-                                                generateThumbnailAndUpdate(cwd, committer, fileWriteCap, filename, resetAgain,
-                                                        network, thumbnailSrcImageSize, isHidden, mimeType,
-                                                        endIndex, LocalDateTime.now())));
-                            }));
-                })
-        );
+                                                        return chunks.upload(current, committer, network, parentLocation.owner, signer, crypto.hasher)
+                                                                .thenCompose(updatedWD -> latest.addChildPointer(updatedWD, committer, fileWriteCap, network, crypto))
+                                                                .thenCompose(cwd -> fileData.reset().thenCompose(resetAgain ->
+                                                                        generateThumbnailAndUpdate(cwd, committer, fileWriteCap, filename, resetAgain,
+                                                                                network, thumbnailSrcImageSize, isHidden, mimeType,
+                                                                                endIndex, LocalDateTime.now())));
+                                                    }));
+                                        })
+                        )
+                );
     }
 
     private CompletableFuture<Snapshot> generateThumbnailAndUpdate(Snapshot base,
