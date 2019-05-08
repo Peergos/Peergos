@@ -473,9 +473,8 @@ public class PeergosNetworkUtils {
         // check a sharee can upload a file
         UserContext shareeUploader = shareeUsers.get(0);
         FileWrapper sharedDir = shareeUploader.getByPath(path).join().get();
-        List<Location> fileLocs = sharedDir.generateChildLocationsFromSize(originalFileContents.length, crypto.random);
-        sharedDir.uploadOrOverwriteFile("a-new-file.png", AsyncReader.build(data), data.length,
-                shareeUploader.network, crypto, x -> {}, fileLocs).join();
+        sharedDir.uploadFileJS("a-new-file.png", AsyncReader.build(data), 0, data.length,
+                false, shareeUploader.network, crypto, x -> {}, shareeUploader.getTransactionService()).join();
 
         Set<String> childNames = sharer.getByPath(path).join().get().getChildren(sharer.network).join()
                 .stream()
