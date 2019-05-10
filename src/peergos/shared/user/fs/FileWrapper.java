@@ -1445,6 +1445,7 @@ public class FileWrapper {
         return props;
     }
 
+    @JsMethod
     public String getName() {
         return getFileProperties().name;
     }
