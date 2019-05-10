@@ -218,12 +218,17 @@ public class UserPublicKeyLink implements Cborable {
                 break;
         List<UserPublicKeyLink> tail = updated.subList(indexOfChange, updated.size());
         if (! tail.get(0).owner.equals(existing.get(existing.size()-1).owner)) {
-            CompletableFuture<List<UserPublicKeyLink>> err = new CompletableFuture<>();
             if (tail.size() == 1)
-                err.completeExceptionally(new IllegalStateException("User already exists: Invalid key change attempt!"));
+                return Futures.errored(new IllegalStateException("User already exists: Invalid key change attempt!"));
             else
-                err.completeExceptionally(new IllegalStateException("Different keys in merge chains intersection!"));
-            return err;
+                return Futures.errored(new IllegalStateException("Different keys in merge chains intersection!"));
+        }
+        Set<PublicKeyHash> previousKeys = existing.stream()
+                .map(k -> k.owner)
+                .collect(Collectors.toSet());
+        if (previousKeys.contains(tail.get(tail.size() - 1).owner)) {
+            // You cannot reuse a previous password
+            return Futures.errored(new IllegalStateException("You cannot reuse a previous password!"));
         }
         List<UserPublicKeyLink> result = Stream.concat(existing.subList(0, existing.size() - 1).stream(), tail.stream()).collect(Collectors.toList());
         return validChain(result, tail.get(0).claim.username, ipfs)

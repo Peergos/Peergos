@@ -188,7 +188,12 @@ public class WriterData implements Cborable {
                             newEntryPoints,
                             tree));
                 })
-                .thenApply(version -> version.get(signer).props);
+                .thenApply(version -> version.get(signer).props)
+                .exceptionally(t -> {
+                    if (t.getMessage().contains("cas failed"))
+                        throw new IllegalStateException("You cannot reuse a previous password!");
+                    throw new RuntimeException(t.getCause());
+                });
     }
 
     public CompletableFuture<Snapshot> commit(PublicKeyHash owner,

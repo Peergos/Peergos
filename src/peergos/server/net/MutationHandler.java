@@ -62,6 +62,7 @@ public class MutationHandler implements HttpHandler {
             exchange.getResponseBody().write(b);
         } catch (Exception e) {
             LOG.log(Level.WARNING, e.getMessage(), e);
+            exchange.getResponseHeaders().set("Trailer", e.getMessage());
             exchange.sendResponseHeaders(400, 0);
             OutputStream body = exchange.getResponseBody();
             body.write(e.getMessage().getBytes());

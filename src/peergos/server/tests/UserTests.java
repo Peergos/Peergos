@@ -39,7 +39,6 @@ public abstract class UserTests {
     public static int RANDOM_SEED = 666;
     private final NetworkAccess network;
     private final Crypto crypto = Crypto.initJava();
-    private final Hasher hasher = crypto.hasher;
     private final URL peergosUrl;
 
     private static Random random = new Random(RANDOM_SEED);
@@ -170,6 +169,21 @@ public abstract class UserTests {
     }
 
     @Test
+    public void noRepeatedPassword() {
+        // This is to ensure a user can't change their password to a previously used password
+        String username = generateUsername();
+        String password1 = "pass1";
+        String password2 = "pass2";
+        UserContext context1 = PeergosNetworkUtils.ensureSignedUp(username, password1, network, crypto);
+        UserContext context2 = context1.changePassword(password1, password2).join();
+        try {
+            context2.changePassword(password2, password1).join();
+        } catch (Throwable t) {
+            Assert.assertTrue(t.getMessage().contains("You cannot reuse a previous password"));
+        }
+    }
+
+    @Test
     public void duplicateSignUp() {
         UserContext.ensureSignedUp("q", "q", network, crypto).join();
         try {
@@ -198,7 +212,12 @@ public abstract class UserTests {
         UserContext userContext = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         String newPassword = "newPassword";
         userContext.changePassword(password, newPassword).get();
-        PeergosNetworkUtils.ensureSignedUp(username, newPassword, network, crypto);
+        UserContext changedPassword = PeergosNetworkUtils.ensureSignedUp(username, newPassword, network, crypto);
+
+        // change it again
+        String password3 = "pass3";
+        changedPassword.changePassword(newPassword, password3).get();
+        PeergosNetworkUtils.ensureSignedUp(username, password3, network, crypto);
     }
 
     @Test

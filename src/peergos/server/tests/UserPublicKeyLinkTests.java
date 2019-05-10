@@ -1,10 +1,8 @@
 package peergos.server.tests;
 
 import org.junit.*;
-import peergos.server.corenode.*;
 import peergos.server.storage.*;
 import peergos.shared.cbor.*;
-import peergos.shared.corenode.CoreNode;
 import peergos.shared.corenode.UserPublicKeyLink;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
@@ -15,10 +13,8 @@ import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
 
 import java.nio.file.*;
-import java.sql.SQLException;
 import java.time.LocalDate;
 import java.util.*;
-import java.util.concurrent.*;
 
 
 public class UserPublicKeyLinkTests {
@@ -72,5 +68,30 @@ public class UserPublicKeyLinkTests {
 
         List<UserPublicKeyLink> links = UserPublicKeyLink.createChain(oldSigner, newSigner, "someuser", LocalDate.now().plusYears(2), id);
         links.forEach(link -> testSerialization(link));
+    }
+
+    @Test
+    public void repeatedPassword() throws Exception {
+        SigningKeyPair oldUser = SigningKeyPair.random(new SafeRandom.Java(), new Ed25519.Java());
+        SigningKeyPair newUser = SigningKeyPair.random(new SafeRandom.Java(), new Ed25519.Java());
+        PublicKeyHash oldHash = putPublicSigningKey(oldUser);
+        PublicKeyHash newHash = putPublicSigningKey(newUser);
+
+        SigningPrivateKeyAndPublicHash oldSigner = new SigningPrivateKeyAndPublicHash(oldHash, oldUser.secretSigningKey);
+        SigningPrivateKeyAndPublicHash newSigner = new SigningPrivateKeyAndPublicHash(newHash, newUser.secretSigningKey);
+
+        String username = "someuser";
+        LocalDate expiry = LocalDate.now().plusYears(2);
+        List<UserPublicKeyLink> initial = UserPublicKeyLink.createInitial(oldSigner, username, expiry, id);
+        List<UserPublicKeyLink> newPassword = UserPublicKeyLink.createChain(oldSigner, newSigner, username, expiry, id);
+        List<UserPublicKeyLink> changed = UserPublicKeyLink.merge(initial, newPassword, ipfs).join();
+        List<UserPublicKeyLink> backToOldPassword = UserPublicKeyLink.createChain(newSigner, oldSigner, username, expiry, id);
+        List<UserPublicKeyLink> finalChain = Arrays.asList(changed.get(0), backToOldPassword.get(0), backToOldPassword.get(1));
+        try {
+            UserPublicKeyLink.merge(changed, finalChain, ipfs).join();
+        } catch (Exception e) {
+            return;
+        }
+        throw new IllegalStateException("Should have failed!");
     }
 }
