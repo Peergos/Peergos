@@ -49,7 +49,7 @@ public class FuseProcess implements Runnable, AutoCloseable {
                 "-o", "max_read="+transferBufferSize, "-o", "max_write="+transferBufferSize};
         peergosFS.mount(mountPoint, blocking, debug, fuseOpts);
 
-        new Thread(this).start();
+        new Thread(this, "Fuse process").start();
     }
 
     public void close() {

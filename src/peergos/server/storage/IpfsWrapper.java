@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.logging.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -247,8 +248,10 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
             String command = Arrays.stream(subCmd).collect(Collectors.joining(" "));
             System.out.println(command);
             Process started = pb.start();
-            new Thread(() -> Logging.log(started.getInputStream(), "$(ipfs " + command + ") out: ")).start();
-            new Thread(() -> Logging.log(started.getErrorStream(), "$(ipfs " + command + ") err: ")).start();
+            new Thread(() -> Logging.log(started.getInputStream(),
+                    "$(ipfs " + command + ") out: "), "IPFS output stream").start();
+            new Thread(() -> Logging.log(started.getErrorStream(),
+                    "$(ipfs " + command + ") err: "), "IPFS error stream").start();
             return started;
         } catch (IOException ioe) {
             throw new IllegalStateException(ioe.getMessage(), ioe);
@@ -291,21 +294,25 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
         shouldBeRunning = true;
 
         while (shouldBeRunning) {
-            // start daemon if it isn't running
-            synchronized (this) {
-                if (process == null || !process.isAlive()) {
-                    start();
-                    startP2pProxy(proxyTarget);
-                }
-            }
-
             try {
-                int rc = process.waitFor();
-                if (rc != 0) {
-                    LOG().warning("IPFS exited with return-code " + rc);
-                    Thread.sleep(1_000);
+                // start daemon if it isn't running
+                synchronized (this) {
+                    if (process == null || !process.isAlive()) {
+                        start();
+                        startP2pProxy(proxyTarget);
+                    }
                 }
-            } catch (InterruptedException ie) {
+
+                try {
+                    int rc = process.waitFor();
+                    if (rc != 0) {
+                        LOG().warning("IPFS exited with return-code " + rc);
+                        Thread.sleep(1_000);
+                    }
+                } catch (InterruptedException ie) {}
+            } catch (Throwable t) {
+                LOG().log(Level.SEVERE, t.getMessage(), t);
+                try {Thread.sleep(1_000);} catch (InterruptedException e) {}
             }
         }
     }
@@ -325,7 +332,7 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
 
         ipfsWrapper.configure();
 
-        new Thread(ipfsWrapper).start();
+        new Thread(ipfsWrapper, "IPFS wrapper").start();
         ipfsWrapper.waitForDaemon(30);
 
         try {
@@ -435,6 +442,6 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
             for (IpfsWrapper ipfs : ALL_IPFSES) {
                 ipfs.close();
             }
-        }));
+        }, "IPFS shutdown"));
     }
 }

@@ -54,7 +54,7 @@ public class SpaceCheckingKeyFilter {
                                   MutablePointers mutable,
                                   ContentAddressedStorage dht,
                                   UserQuotas quotaSupplier,
-                                  Path statePath) throws IOException{
+                                  Path statePath) {
         this.core = core;
         this.mutable = mutable;
         this.dht = dht;
@@ -68,9 +68,9 @@ public class SpaceCheckingKeyFilter {
                     processMutablePointerEvent(event);
                 } catch (InterruptedException e) {}
             }
-        }).start();
+        }, "SpaceCheckingKeyFilter").start();
         //add shutdown-hook to call close
-        Runtime.getRuntime().addShutdownHook(new Thread(this::close));
+        Runtime.getRuntime().addShutdownHook(new Thread(this::close, "SpaceChecker shutdown"));
     }
 
     public static class State implements Cborable {

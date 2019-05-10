@@ -427,7 +427,7 @@ public class Main {
             PeergosFS peergosFS = new PeergosFS(userContext);
             FuseProcess fuseProcess = new FuseProcess(peergosFS, path);
 
-            Runtime.getRuntime().addShutdownHook(new Thread(() -> fuseProcess.close()));
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> fuseProcess.close(), "Fuse shutdown"));
 
             fuseProcess.start();
         } catch (Exception ex) {

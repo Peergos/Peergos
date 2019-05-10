@@ -87,6 +87,6 @@ public class UserFilePinner implements Runnable {
     }
 
     public void start() {
-        new Thread(this).start();
+        new Thread(this, "File Pinner").start();
     }
 }

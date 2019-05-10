@@ -60,7 +60,7 @@ public class FuseTests {
         PeergosFS peergosFS = new CachingPeergosFS(userContext);
         fuseProcess = new FuseProcess(peergosFS, mountPoint);
 
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> fuseProcess.close()));
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> fuseProcess.close(), "Fuse shutdown"));
 
         fuseProcess.start();
     }
