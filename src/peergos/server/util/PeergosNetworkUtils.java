@@ -470,6 +470,10 @@ public class PeergosNetworkUtils {
         sharedFolderv0.uploadOrOverwriteFile(imagename, AsyncReader.build(data), data.length,
                 sharer.network, crypto, x -> {}, chunkLocations).join();
 
+        // create a directory
+        FileWrapper sharedFolderv1 = sharer.getByPath(path).join().get();
+        sharedFolderv1.mkdir("asubdir", sharer.network, false, crypto).join();
+
         // check a sharee can upload a file
         UserContext shareeUploader = shareeUsers.get(0);
         FileWrapper sharedDir = shareeUploader.getByPath(path).join().get();

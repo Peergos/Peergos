@@ -1046,7 +1046,7 @@ public class FileWrapper {
                         error.completeExceptionally(new IllegalStateException("Child already exists with name: " + newFolderName));
                         return error;
                     }
-                    return pointer.fileAccess.mkdir(state, committer, newFolderName, network, writableFilePointer(), entryWriter,
+                    return pointer.fileAccess.mkdir(state, committer, newFolderName, network, writableFilePointer(), getChildsEntryWriter(),
                             requestedBaseSymmetricKey, isSystemFolder, crypto).thenApply(x -> {
                         setModified();
                         return x;
