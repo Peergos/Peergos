@@ -37,8 +37,8 @@ public abstract class UserTests {
 	private static final Logger LOG = Logging.LOG();
 
     public static int RANDOM_SEED = 666;
-    private final NetworkAccess network;
-    private final Crypto crypto = Crypto.initJava();
+    protected final NetworkAccess network;
+    protected final Crypto crypto = Crypto.initJava();
     private final URL peergosUrl;
 
     private static Random random = new Random(RANDOM_SEED);
@@ -71,8 +71,8 @@ public abstract class UserTests {
         }
     }
 
-    private String generateUsername() {
-        return "test" + Math.abs(random.nextInt() % 10000);
+    protected String generateUsername() {
+        return "test" + Math.abs(random.nextInt() % 1_000_000);
     }
 
     private static CompletableFuture<FileWrapper> uploadFileSection(FileWrapper parent,
