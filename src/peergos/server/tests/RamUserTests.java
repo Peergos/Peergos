@@ -63,13 +63,8 @@ public class RamUserTests extends UserTests {
 
         user1.shareWriteAccessWith(Paths.get(username1, folder1), Collections.singleton(username2)).join();
 
-        try {
-            user1.unShareWriteAccess(Paths.get(username1, folder1), Collections.singleton(username2)).join();
-        } catch (Throwable t) {
-            System.out.println();
-        }
-        // next line throws when getting root dir to construct tofu corenode
+        user1.unShareWriteAccess(Paths.get(username1, folder1), Collections.singleton(username2)).join();
+        // check user1 can still log in
         UserContext freshUser1 = PeergosNetworkUtils.ensureSignedUp(username1, password, network, crypto);
-        System.out.println("Can still log in user1");
     }
 }
