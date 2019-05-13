@@ -466,6 +466,10 @@ public class UserContext {
                 .thenApply(size -> new Pair<>((int) (size >> 32), size.intValue()));
     }
 
+    public CompletableFuture<Long> getTotalSpaceUsed() {
+        return getTotalSpaceUsed(signer.publicKeyHash, signer.publicKeyHash);
+    }
+
     public CompletableFuture<Long> getTotalSpaceUsed(PublicKeyHash ownerHash, PublicKeyHash writerHash) {
         // assume no cycles in owned keys
         return WriterData.getOwnedKeysRecursive(ownerHash, writerHash, network.mutable, network.dhtClient)
@@ -1376,6 +1380,13 @@ public class UserContext {
                 .thenCompose(sharing -> getByPath(Paths.get(this.username, SHARED_DIR_NAME, username))
                         .thenCompose(dir -> dir.get().remove(sharing, this)))
                 .thenApply(x -> true);
+    }
+
+    public CompletableFuture<Snapshot> cleanPartialUploads() {
+        TransactionService txns = getTransactionService();
+        return getUserRoot().thenCompose(home -> network.synchronizer
+                .applyComplexUpdate(home.owner(), txns.getSigner(),
+                        (s, comitter) -> txns.clearAndClosePendingTransactions(s, comitter)));
     }
 
     public void logout() {

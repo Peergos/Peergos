@@ -35,11 +35,11 @@ public interface TransactionService {
     }
 
     default CompletableFuture<Snapshot> clearAndClosePendingTransactions(Snapshot version, Committer committer) {
-
+        // clear any partial upload started more than a day ago
         return getOpenTransactions(version)
                 .thenCompose(openTransactions -> {
                     List<Transaction> toClose = openTransactions.stream()
-                            .filter(e -> false) // TODO
+                            .filter(e -> e.startTimeEpochMillis() < System.currentTimeMillis() - 24*3600_000L)
                             .collect(Collectors.toList());
 
                     return Futures.reduceAll(toClose, version,
