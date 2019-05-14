@@ -183,19 +183,19 @@ public class FileWrapper {
      *
      * @param version
      * @param committer
-     * @param children
+     * @param childrenCaps
      * @param network
      * @param crypto
      * @return An updated version of this directory
      */
     public CompletableFuture<Snapshot> addChildLinks(Snapshot version,
                                                      Committer committer,
-                                                     Collection<RetrievedCapability> children,
+                                                     Collection<WritableAbsoluteCapability> childrenCaps,
                                                      NetworkAccess network,
                                                      Crypto crypto) {
         return pointer.fileAccess
-                .addChildrenAndCommit(version, committer, children.stream()
-                                .map(p -> ((WritableAbsoluteCapability)pointer.capability).relativise(p.capability))
+                .addChildrenAndCommit(version, committer, childrenCaps.stream()
+                                .map(childCap -> ((WritableAbsoluteCapability)pointer.capability).relativise(childCap))
                                 .collect(Collectors.toList()), (WritableAbsoluteCapability) pointer.capability, entryWriter,
                         network, crypto);
     }
@@ -381,11 +381,16 @@ public class FileWrapper {
                     tid -> updatedDirAccess.commitChildrenLinks(ourNewPointer, entryWriter, network, tid), network.dhtClient)
                     .thenCompose(hashes -> getDirectChildren(network, version))
                     .thenCompose(childFiles -> {
-                        List<RetrievedCapability> childPointers = childFiles.stream()
-                                .map(c -> c.pointer)
+                        Set<Pair<FileWrapper, SymmetricKey>> withNewBaseWriteKeys = childFiles.stream()
+                                .map(c -> new Pair<>(c, SymmetricKey.random()))
+                                .collect(Collectors.toSet());
+                        List<WritableAbsoluteCapability> childPointers = withNewBaseWriteKeys.stream()
+                                .map(p -> ((WritableAbsoluteCapability)p.left.pointer.capability)
+                                        .withBaseWriteKey(p.right))
                                 .collect(Collectors.toList());
-                        return Futures.reduceAll(childFiles, version,
-                                (s, child) -> child.rotateWriteKeys(false, theNewUs, Optional.empty(),
+
+                        return Futures.reduceAll(withNewBaseWriteKeys, version,
+                                (s, pair) -> pair.left.rotateWriteKeys(false, theNewUs, Optional.of(pair.right),
                                         network, crypto, s, committer), (a, b) -> b)
                                 .thenCompose(version2 -> theNewUs.addChildLinks(version2, committer, childPointers, network, crypto));
                     }).thenCompose(updatedVersion ->

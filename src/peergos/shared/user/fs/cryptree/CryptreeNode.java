@@ -19,7 +19,8 @@ import java.util.stream.*;
 
 /** A cryptree node controls read and write access to a directory or file.
  *
- * A directory contains the following distinct keys {base, parent}, and file contains {base == parent, data}
+ * A directory contains the following distinct symmetric read keys {base, parent}, and file contains {base == parent, data}
+ * A directory or file also has a single base symmetric write key
  *
  * The serialized encrypted form stores a link from the base key to the other key.
  * For a directory, the base key encrypts the links to child directories and files. For a file the datakey encrypts the
