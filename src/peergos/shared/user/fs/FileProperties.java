@@ -101,6 +101,23 @@ public class FileProperties implements Cborable {
         return new FileProperties(name, isDirectory, mimeType, size, modified, isHidden, thumbnail);
     }
 
+    public String getType() {
+        if (isDirectory)
+            return "dir";
+        if (mimeType.startsWith("image"))
+            return "image";
+        if (mimeType.startsWith("audio"))
+            return "audio";
+        if (mimeType.startsWith("video"))
+            return "video";
+        if (mimeType.startsWith("text"))
+            return "text";
+        if (mimeType.startsWith("application/pdf"))
+            return "pdf";
+
+        return "file";
+    }
+
     @Override
     public String toString() {
         return "FileProperties{" +

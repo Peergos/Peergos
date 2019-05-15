@@ -30,6 +30,8 @@ public class MimeTypes {
     final static int[] TIFF2 = new int[]{'M', 'M', 0, 0x2A};
     final static int[] PNG = new int[]{137, 'P', 'N', 'G', 13, 10, 26, 10};
 
+    final static int[] PDF = new int[]{0x25, 'P', 'D', 'F'};
+
     final static int HEADER_BYTES_TO_IDENTIFY_MIME_TYPE = 28;
 
     public static final String calculateMimeType(byte[] start) {
@@ -83,6 +85,9 @@ public class MimeTypes {
             return "audio/ogg";
         if (equalArrays(start, WAV_1) && equalArrays(start, 8, WAV_2))
             return "audio/wav";
+
+        if (equalArrays(start, PDF))
+            return "application/pdf";
 
         if (allAscii(start))
             return "text/plain";
