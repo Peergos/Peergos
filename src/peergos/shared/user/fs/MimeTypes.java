@@ -31,10 +31,11 @@ public class MimeTypes {
     final static int[] PNG = new int[]{137, 'P', 'N', 'G', 13, 10, 26, 10};
 
     final static int[] PDF = new int[]{0x25, 'P', 'D', 'F'};
+    final static int[] ZIP = new int[]{'P', 'K', 3, 4};
 
     final static int HEADER_BYTES_TO_IDENTIFY_MIME_TYPE = 28;
 
-    public static final String calculateMimeType(byte[] start) {
+    public static final String calculateMimeType(byte[] start, String filename) {
         if (equalArrays(start, BMP))
             return "image/bmp";
         if (equalArrays(start, GIF))
@@ -88,6 +89,27 @@ public class MimeTypes {
 
         if (equalArrays(start, PDF))
             return "application/pdf";
+
+        if (equalArrays(start, ZIP)) {
+            if (filename.endsWith(".jar"))
+                return "application/java-archive";
+
+            if (filename.endsWith(".pptx"))
+                return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+            if (filename.endsWith(".docx"))
+                return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+            if (filename.endsWith(".xlsx"))
+                return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+            if (filename.endsWith(".odt"))
+                return "application/vnd.oasis.opendocument.text";
+            if (filename.endsWith(".ods"))
+                return "application/vnd.oasis.opendocument.spreadsheet";
+            if (filename.endsWith(".odp"))
+                return "application/vnd.oasis.opendocument.presentation";
+
+            return "application/zip";
+        }
 
         if (allAscii(start))
             return "text/plain";

@@ -788,7 +788,7 @@ public class FileWrapper {
                                             Location parentLocation = getLocation();
                                             int thumbnailSrcImageSize = startIndex == 0 && endIndex < Integer.MAX_VALUE ? (int) endIndex : 0;
 
-                                            return calculateMimeType(fileData, endIndex).thenCompose(mimeType -> fileData.reset()
+                                            return calculateMimeType(fileData, endIndex, filename).thenCompose(mimeType -> fileData.reset()
                                                     .thenCompose(resetReader -> {
                                                         FileProperties fileProps = new FileProperties(filename, false, mimeType, endIndex,
                                                                 LocalDateTime.now(), isHidden, Optional.empty());
@@ -1512,7 +1512,7 @@ public class FileWrapper {
     private CompletableFuture<Optional<byte[]>> generateThumbnail(NetworkAccess network, AsyncReader fileData, int fileSize, String filename) {
         CompletableFuture<Optional<byte[]>> fut = new CompletableFuture<>();
         if (fileSize > MimeTypes.HEADER_BYTES_TO_IDENTIFY_MIME_TYPE) {
-            getFileType(fileData).thenAccept(mimeType -> {
+            getFileType(fileData, filename).thenAccept(mimeType -> {
                 if (mimeType.startsWith("image")) {
                     if (network.isJavascript()) {
                         thumbnail.generateThumbnail(fileData, fileSize, filename).thenAccept(base64Str -> {
@@ -1574,7 +1574,7 @@ public class FileWrapper {
         return fut;
     }
 
-    private CompletableFuture<String> getFileType(AsyncReader imageBlob) {
+    private static CompletableFuture<String> getFileType(AsyncReader imageBlob, String filename) {
         CompletableFuture<String> result = new CompletableFuture<>();
         byte[] data = new byte[MimeTypes.HEADER_BYTES_TO_IDENTIFY_MIME_TYPE];
         imageBlob.readIntoArray(data, 0, data.length).thenAccept(numBytesRead -> {
@@ -1582,7 +1582,7 @@ public class FileWrapper {
                 if (numBytesRead < data.length) {
                     result.complete("");
                 } else {
-                    String mimeType = MimeTypes.calculateMimeType(data);
+                    String mimeType = MimeTypes.calculateMimeType(data, filename);
                     result.complete(mimeType);
                 }
             });
@@ -1590,9 +1590,9 @@ public class FileWrapper {
         return result;
     }
 
-    public static CompletableFuture<String> calculateMimeType(AsyncReader data, long fileSize) {
+    public static CompletableFuture<String> calculateMimeType(AsyncReader data, long fileSize, String filename) {
         byte[] header = new byte[(int) Math.min(fileSize, MimeTypes.HEADER_BYTES_TO_IDENTIFY_MIME_TYPE)];
         return data.readIntoArray(header, 0, header.length)
-                .thenApply(read -> MimeTypes.calculateMimeType(header));
+                .thenApply(read -> MimeTypes.calculateMimeType(header, filename));
     }
 }

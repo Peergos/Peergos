@@ -112,8 +112,26 @@ public class FileProperties implements Cborable {
             return "video";
         if (mimeType.startsWith("text"))
             return "text";
-        if (mimeType.startsWith("application/pdf"))
+        if (mimeType.equals("application/pdf"))
             return "pdf";
+        if (mimeType.equals("application/zip"))
+            return "zip";
+        if (mimeType.equals("application/java-archive"))
+            return "java-archive";
+
+        if (mimeType.equals("application/vnd.openxmlformats-officedocument.presentationml.presentation"))
+            return "powerpoint presentation";
+        if (mimeType.equals("application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
+            return "word document";
+        if (mimeType.equals("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+            return "excel spreadsheet";
+
+        if (mimeType.equals("application/vnd.oasis.opendocument.text"))
+            return "text document";
+        if (mimeType.equals("application/vnd.oasis.opendocument.spreadsheet"))
+            return "spreadsheet";
+        if (mimeType.equals("application/vnd.oasis.opendocument.presentation"))
+            return "presentation";
 
         return "file";
     }
