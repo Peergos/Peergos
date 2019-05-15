@@ -1517,7 +1517,10 @@ public class FileWrapper {
                     if (network.isJavascript()) {
                         thumbnail.generateThumbnail(fileData, fileSize, filename).thenAccept(base64Str -> {
                             byte[] bytesOfData = Base64.getDecoder().decode(base64Str);
-                            fut.complete(Optional.of(bytesOfData));
+                            if (bytesOfData.length == 0)
+                                fut.complete(Optional.empty());
+                            else
+                                fut.complete(Optional.of(bytesOfData));
                         });
                     } else {
                         byte[] bytes = new byte[fileSize];
@@ -1529,7 +1532,10 @@ public class FileWrapper {
                     if (network.isJavascript()) {
                         thumbnail.generateVideoThumbnail(fileData, fileSize, filename).thenAccept(base64Str -> {
                             byte[] bytesOfData = Base64.getDecoder().decode(base64Str);
-                            fut.complete(Optional.of(bytesOfData));
+                            if (bytesOfData.length == 0)
+                                fut.complete(Optional.empty());
+                            else
+                                fut.complete(Optional.of(bytesOfData));
                         });
                     } else {
                         byte[] bytes = new byte[fileSize];
