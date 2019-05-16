@@ -1530,7 +1530,10 @@ public class FileWrapper {
                     }
                 } else if (mimeType.startsWith("video")) {
                     if (network.isJavascript()) {
-                        thumbnail.generateVideoThumbnail(fileData, fileSize, filename).thenAccept(base64Str -> {
+                        thumbnail.generateVideoThumbnail(fileData, fileSize, filename, mimeType).thenAccept(base64Str -> {
+                            if(base64Str == null) {
+                                fut.complete(Optional.empty());
+                            }
                             byte[] bytesOfData = Base64.getDecoder().decode(base64Str);
                             if (bytesOfData.length == 0)
                                 fut.complete(Optional.empty());
