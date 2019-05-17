@@ -88,7 +88,7 @@ public class EncryptedChunkRetriever implements FileRetriever {
         }
         return linksToData.getAndDecrypt(dataKey, c -> ((CborObject.CborByteArray)c).value, network, monitor)
                 .thenApply(data ->  Optional.of(new LocatedChunk(ourCap.getLocation(), ourExistingHash,
-                        new Chunk(truncate(data, Math.min(Chunk.MAX_SIZE, (int)truncateTo)),
+                        new Chunk(truncate(data, (int) Math.min(Chunk.MAX_SIZE, truncateTo)),
                                 dataKey, ourCap.getMapKey(), ourCap.rBaseKey.createNonce()))));
     }
 
