@@ -305,7 +305,7 @@ public class Main {
 
     public static void startPeergos(Args a) {
         try {
-            PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, new Ed25519.Java());
+            Crypto.initJava();
             int webPort = a.getInt("port");
             a.setIfAbsent("proxy-target", getLocalMultiAddress(webPort).toString());
 
