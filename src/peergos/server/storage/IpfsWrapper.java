@@ -205,7 +205,15 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
     }
 
     public void startP2pProxy(MultiAddress target) {
-        runIpfsCmd(true, "p2p", "listen", "--allow-custom-protocol", "/http", target.toString());
+        long sleep = 1000;
+        for (int i=0; i < 6; i++) {
+            try {
+                runIpfsCmd(true, "p2p", "listen", "--allow-custom-protocol", "/http", target.toString());
+            } catch (IllegalStateException error) {
+                try {Thread.sleep(sleep);} catch (InterruptedException e) {}
+                sleep *= 2;
+            }
+        }
     }
 
     /**
@@ -228,7 +236,7 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
                 Thread.sleep(sleepMs);
             } catch (InterruptedException  ie){}
             try {
-                if  (process.exitValue() ==  0)
+                if (process.exitValue() ==  0)
                     return process;
             } catch (IllegalThreadStateException  ex)  {
                 // still running
