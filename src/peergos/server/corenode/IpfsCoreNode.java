@@ -91,6 +91,8 @@ public class IpfsCoreNode implements CoreNode {
                                      Map<String, List<UserPublicKeyLink>> chains,
                                      Map<PublicKeyHash, String> reverseLookup,
                                      List<String> usernames) {
+        if (oldValue.equals(newValue))
+            return;
         try {
             Optional<CborObject> cborOpt = ipfs.get(newValue.get()).get();
             if (!cborOpt.isPresent()) {
