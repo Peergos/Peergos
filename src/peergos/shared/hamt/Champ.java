@@ -578,10 +578,25 @@ public class Champ implements Cborable {
                 .collect(Collectors.toList());
     }
 
+    private static Optional<HashPrefixPayload> getElement(int bitIndex, int dataIndex, int nodeIndex, Optional<Champ> c) {
+        if (! c.isPresent())
+            return Optional.empty();
+        Champ champ = c.get();
+        if (champ.dataMap.get(bitIndex))
+            return Optional.of(champ.contents[dataIndex]);
+        if (champ.nodeMap.get(bitIndex))
+            return Optional.of(champ.contents[champ.contents.length - 1 - nodeIndex]);
+        return Optional.empty();
+    }
+
     public static CompletableFuture<Boolean> applyToDiff(
             MaybeMultihash original,
             MaybeMultihash updated,
+            int depth,
+            List<KeyElement> higherLeftMappings,
+            List<KeyElement> higherRightMappings,
             Consumer<Triple<ByteArrayWrapper, MaybeMultihash, MaybeMultihash>> consumer,
+            int bitWidth,
             ContentAddressedStorage storage) {
 
         if (updated.equals(original))
@@ -591,40 +606,82 @@ public class Champ implements Cborable {
                 .thenCompose(left -> updated.map(storage::get).orElseGet(() -> CompletableFuture.completedFuture(Optional.empty()))
                         .thenApply(rawOpt -> rawOpt.map(Champ::fromCbor))
                         .thenCompose(right -> {
-                            List<KeyElement> leftMappings = left.map(Champ::getMappings).orElseGet(Collections::emptyList);
-                            List<KeyElement> rightMappings = right.map(Champ::getMappings).orElseGet(Collections::emptyList);
-                            Map<ByteArrayWrapper, MaybeMultihash> leftMap = leftMappings.stream()
-                                    .collect(Collectors.toMap(e -> e.key, e -> e.valueHash));
-                            Map<ByteArrayWrapper, MaybeMultihash> rightMap = rightMappings.stream()
-                                    .collect(Collectors.toMap(e -> e.key, e -> e.valueHash));
+                            int leftMax = left.map(c -> Math.max(c.dataMap.length(), c.nodeMap.length())).orElse(0);
+                            int rightMax = right.map(c -> Math.max(c.dataMap.length(), c.nodeMap.length())).orElse(0);
+                            int maxBit = Math.max(leftMax, rightMax);
+                            int leftDataIndex = 0, rightDataIndex = 0, leftNodeCount = 0, rightNodeCount = 0;
+                            Map<Integer, List<KeyElement>> leftHigherMappingsByBit = higherLeftMappings.stream()
+                                    .collect(Collectors.groupingBy(m -> mask(m.key.data, depth, bitWidth)));
+                            Map<Integer, List<KeyElement>> rightHigherMappingsByBit = higherRightMappings.stream()
+                                    .collect(Collectors.groupingBy(m -> mask(m.key.data, depth, bitWidth)));
 
-                            HashSet<ByteArrayWrapper> both = new HashSet<>(leftMap.keySet());
-                            both.retainAll(rightMap.keySet());
-                            for (Map.Entry<ByteArrayWrapper, MaybeMultihash> entry : leftMap.entrySet()) {
-                                if (! both.contains(entry.getKey()))
-                                    consumer.accept(new Triple<>(entry.getKey(), entry.getValue(), MaybeMultihash.empty()));
-                                else
-                                    consumer.accept(new Triple<>(entry.getKey(), entry.getValue(), rightMap.get(entry.getKey())));
+                            List<CompletableFuture<Boolean>> deeperLayers = new ArrayList<>();
+
+                            for (int i = 0; i < maxBit; i++) {
+                                // either the payload is present OR higher mappings are non empty OR the champ is absent
+                                Optional<HashPrefixPayload> leftPayload = getElement(i, leftDataIndex, leftNodeCount, left);
+                                Optional<HashPrefixPayload> rightPayload = getElement(i, rightDataIndex, rightNodeCount, right);
+
+                                List<KeyElement> leftHigherMappings = leftHigherMappingsByBit.getOrDefault(i, Collections.emptyList());
+                                List<KeyElement> leftMappings = leftPayload
+                                        .filter(p -> !p.isShard())
+                                        .map(p -> Arrays.asList(p.mappings))
+                                        .orElse(leftHigherMappings);
+                                List<KeyElement> rightHigherMappings = rightHigherMappingsByBit.getOrDefault(i, Collections.emptyList());
+                                List<KeyElement> rightMappings = rightPayload
+                                        .filter(p -> !p.isShard())
+                                        .map(p -> Arrays.asList(p.mappings))
+                                        .orElse(rightHigherMappings);
+
+                                Optional<MaybeMultihash> leftShard = leftPayload
+                                        .filter(p -> p.isShard())
+                                        .map(p -> p.link);
+
+                                Optional<MaybeMultihash> rightShard = rightPayload
+                                        .filter(p -> p.isShard())
+                                        .map(p -> p.link);
+
+                                if (leftShard.isPresent() || rightShard.isPresent()) {
+                                    deeperLayers.add(applyToDiff(
+                                            leftShard.orElse(MaybeMultihash.empty()),
+                                            rightShard.orElse(MaybeMultihash.empty()), depth + 1,
+                                            leftMappings, rightMappings, consumer, bitWidth, storage));
+                                } else {
+                                    Map<ByteArrayWrapper, MaybeMultihash> leftMap = leftMappings.stream()
+                                            .collect(Collectors.toMap(e -> e.key, e -> e.valueHash));
+                                    Map<ByteArrayWrapper, MaybeMultihash> rightMap = rightMappings.stream()
+                                            .collect(Collectors.toMap(e -> e.key, e -> e.valueHash));
+
+                                    HashSet<ByteArrayWrapper> both = new HashSet<>(leftMap.keySet());
+                                    both.retainAll(rightMap.keySet());
+
+                                    for (Map.Entry<ByteArrayWrapper, MaybeMultihash> entry : leftMap.entrySet()) {
+                                        if (! both.contains(entry.getKey()))
+                                            consumer.accept(new Triple<>(entry.getKey(), entry.getValue(), MaybeMultihash.empty()));
+                                        else if (! entry.getValue().equals(rightMap.get(entry.getKey())))
+                                            consumer.accept(new Triple<>(entry.getKey(), entry.getValue(), rightMap.get(entry.getKey())));
+                                    }
+                                    for (Map.Entry<ByteArrayWrapper, MaybeMultihash> entry : rightMap.entrySet()) {
+                                        if (! both.contains(entry.getKey()))
+                                            consumer.accept(new Triple<>(entry.getKey(), MaybeMultihash.empty(), entry.getValue()));
+                                    }
+                                }
+
+                                if (leftPayload.isPresent()) {
+                                    if (leftPayload.get().isShard())
+                                        leftNodeCount++;
+                                    else
+                                        leftDataIndex++;
+                                }
+                                if (rightPayload.isPresent()) {
+                                    if (rightPayload.get().isShard())
+                                        rightNodeCount++;
+                                    else
+                                        rightDataIndex++;
+                                }
                             }
-                            for (Map.Entry<ByteArrayWrapper, MaybeMultihash> entry : rightMap.entrySet()) {
-                                if (! both.contains(entry.getKey()))
-                                    consumer.accept(new Triple<>(entry.getKey(), MaybeMultihash.empty(), entry.getValue()));
-                            }
 
-                            // Now descend recursively, diffing equal indexed elements
-                            List<HashPrefixPayload> leftLinks = left.map(Champ::getLinks).orElseGet(Collections::emptyList);
-                            List<HashPrefixPayload> rightLinks = right.map(Champ::getLinks).orElseGet(Collections::emptyList);
-
-                            List<Pair<MaybeMultihash, MaybeMultihash>> linkPairs = new ArrayList<>();
-                            for (int i=0; i < Math.max(leftLinks.size(), rightLinks.size()); i++) {
-                                linkPairs.add(new Pair<>(i < leftLinks.size() ? leftLinks.get(i).link : MaybeMultihash.empty(),
-                                        i < rightLinks.size() ? rightLinks.get(i).link : MaybeMultihash.empty()));
-                            }
-
-                            return Futures.combineAll(linkPairs.stream()
-                                    .map(p -> applyToDiff(p.left, p.right, consumer, storage))
-                                    .collect(Collectors.toList()))
-                                    .thenApply(x -> true);
+                            return Futures.combineAll(deeperLayers).thenApply(x -> true);
                         })
         );
     }

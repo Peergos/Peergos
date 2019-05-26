@@ -13,6 +13,7 @@ import peergos.shared.util.*;
 import java.nio.file.*;
 import java.util.*;
 import java.util.function.*;
+import java.util.stream.*;
 
 public class ChampTests {
 
@@ -128,6 +129,69 @@ public class ChampTests {
             }
             if (! currentHash.equals(expectedRoot))
                 throw new IllegalStateException("Champ is not insertion order independent!");
+        }
+    }
+
+    @Test
+    public void diff() throws Exception {
+        ContentAddressedStorage storage = new FileContentAddressedStorage(Files.createTempDirectory("peergos-tmp"));
+        SigningPrivateKeyAndPublicHash user = createUser(storage, crypto);
+        Random r = new Random(28);
+
+        Supplier<Multihash> randomHash = () -> {
+            byte[] hash = new byte[32];
+            r.nextBytes(hash);
+            return new Multihash(Multihash.Type.sha2_256, hash);
+        };
+
+        Map<ByteArrayWrapper, MaybeMultihash> state = new HashMap<>();
+
+        Champ current = Champ.empty();
+        TransactionId tid = storage.startTransaction(user.publicKeyHash).get();
+        Multihash currentHash = storage.put(user.publicKeyHash, user, current.serialize(), tid).get();
+        int bitWidth = 4;
+        int maxCollisions = 2;
+        // build a random tree and keep track of the state
+        for (int i = 0; i < 3; i++) {
+            ByteArrayWrapper key = new ByteArrayWrapper(new byte[]{0, (byte)i, 0});
+            Multihash value = randomHash.get();
+            Pair<Champ, Multihash> updated = current.put(user.publicKeyHash, user, key, key.data, 0,
+                    MaybeMultihash.empty(), MaybeMultihash.of(value), bitWidth, maxCollisions, x -> x.data, tid, storage, currentHash).get();
+            current = updated.left;
+            currentHash = updated.right;
+            state.put(key, MaybeMultihash.of(value));
+        }
+
+        List<ByteArrayWrapper> keys = state.keySet().stream().collect(Collectors.toList());
+        // update random entries
+        for (int i=0; i < 100; i++) {
+            ByteArrayWrapper key = keys.get(r.nextInt(keys.size()));
+            MaybeMultihash currentValue = state.get(key);
+            MaybeMultihash newValue = r.nextBoolean() ? MaybeMultihash.of(randomHash.get()) : MaybeMultihash.empty();
+            Pair<Champ, Multihash> updated = current.put(user.publicKeyHash, user, key, key.data, 0, currentValue,
+                    newValue, bitWidth, maxCollisions, x -> x.data, tid, storage, currentHash).get();
+            List<Triple<ByteArrayWrapper, MaybeMultihash, MaybeMultihash>> diffs = new ArrayList<>();
+            Champ.applyToDiff(MaybeMultihash.of(currentHash), MaybeMultihash.of(updated.right), 0,
+                    Collections.emptyList(), Collections.emptyList(), diffs::add, bitWidth, storage).join();
+            if (diffs.size() != 1 || ! diffs.get(0).equals(new Triple<>(key, currentValue, newValue)))
+                throw new IllegalStateException("Incorrect champ diff updating element!");
+        }
+
+        // add random entries which share a key prefix
+        for (int i=0; i < 100; i++) {
+            ByteArrayWrapper keyPrefix = keys.get(r.nextInt(keys.size()));
+            byte[] longerKey = Arrays.copyOfRange(keyPrefix.data, 0, keyPrefix.data.length + 1);
+            longerKey[longerKey.length - 1] = (byte) r.nextInt();
+            ByteArrayWrapper key = new ByteArrayWrapper(longerKey);
+            MaybeMultihash currentValue = MaybeMultihash.empty();
+            MaybeMultihash newValue = MaybeMultihash.of(randomHash.get());
+            Pair<Champ, Multihash> updated = current.put(user.publicKeyHash, user, key, key.data, 0, currentValue,
+                    newValue, bitWidth, maxCollisions, x -> x.data, tid, storage, currentHash).get();
+            List<Triple<ByteArrayWrapper, MaybeMultihash, MaybeMultihash>> diffs = new ArrayList<>();
+            Champ.applyToDiff(MaybeMultihash.of(currentHash), MaybeMultihash.of(updated.right), 0,
+                    Collections.emptyList(), Collections.emptyList(), diffs::add, bitWidth, storage).join();
+            if (diffs.size() != 1 || ! diffs.get(0).equals(new Triple<>(key, currentValue, newValue)))
+                throw new IllegalStateException("Incorrect champ diff updating element!");
         }
     }
 
