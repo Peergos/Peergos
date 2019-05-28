@@ -45,7 +45,12 @@ public class CachingStorage implements ContentAddressedStorage {
                                                   List<byte[]> signatures,
                                                   List<byte[]> blocks,
                                                   TransactionId tid) {
-        return target.put(owner, writer, signatures, blocks, tid);
+        return target.put(owner, writer, signatures, blocks, tid)
+                .thenApply(res -> {
+                    for (int i=0; i < blocks.size(); i++)
+                        cache.put(res.get(i), blocks.get(i));
+                    return res;
+                });
     }
 
     @Override
@@ -84,7 +89,12 @@ public class CachingStorage implements ContentAddressedStorage {
                                                      List<byte[]> signatures,
                                                      List<byte[]> blocks,
                                                      TransactionId tid) {
-        return target.putRaw(owner, writer, signatures, blocks, tid);
+        return target.putRaw(owner, writer, signatures, blocks, tid)
+                .thenApply(res -> {
+                    for (int i=0; i < blocks.size(); i++)
+                        cache.put(res.get(i), blocks.get(i));
+                    return res;
+                });
     }
 
     @Override
