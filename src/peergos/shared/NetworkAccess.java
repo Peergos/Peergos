@@ -323,6 +323,35 @@ public class NetworkAccess {
                 });
     }
 
+    public static CompletableFuture<RetrievedEntryPoint> retrieveEntryPoint(EntryPoint e, NetworkAccess network) {
+        return network.retrieveEntryPoint(e)
+                .thenCompose(fileOpt -> {
+                    if (! fileOpt.isPresent())
+                        throw new IllegalStateException("Couldn't retrieve entry point");
+                    return fileOpt.get().getPath(network)
+                            .thenApply(path -> new RetrievedEntryPoint(e, path, fileOpt.get()));
+                });
+    }
+
+    public static CompletableFuture<RetrievedEntryPoint> getLatestEntryPoint(EntryPoint e, NetworkAccess network) {
+        return Futures.asyncExceptionally(() -> retrieveEntryPoint(e, network),
+                ex -> getUptodateEntryPoint(e, network)
+                        .thenCompose(updated -> retrieveEntryPoint(updated, network)));
+    }
+
+    private static CompletableFuture<EntryPoint> getUptodateEntryPoint(EntryPoint e, NetworkAccess network) {
+        // User might have changed their password and thus identity key, check for an update
+        return network.coreNode.updateUser(e.ownerName)
+                .thenCompose(x -> network.coreNode.getPublicKeyHash(e.ownerName))
+                .thenApply(currentIdOpt -> {
+                    if (!currentIdOpt.isPresent() || currentIdOpt.get().equals(e.pointer.owner))
+                        throw new IllegalStateException("Couldn't retrieve entry point for user " + e.ownerName);
+                    return new EntryPoint(e.pointer.withOwner(currentIdOpt.get()), e.ownerName);
+                });
+    }
+
+
+
     public CompletableFuture<Optional<FileWrapper>> getFile(Snapshot version,
                                                             AbsoluteCapability cap,
                                                             Optional<SigningPrivateKeyAndPublicHash> entryWriter,

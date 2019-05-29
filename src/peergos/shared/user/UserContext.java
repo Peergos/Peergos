@@ -305,7 +305,7 @@ public class UserContext {
         CommittedWriterData userData = new CommittedWriterData(MaybeMultihash.empty(), empty);
         UserContext context = new UserContext(null, null, null, null, network,
                 crypto, userData, TrieNodeImpl.empty(), null);
-        return retrieveEntryPoint(entry, network)
+        return NetworkAccess.retrieveEntryPoint(entry, network)
                 .thenCompose(r -> addRetrievedEntryPointToTrie(null, context.entrie, entry, r.getPath(), network, crypto))
                 .thenApply(trieNode -> {
                     context.entrie = trieNode;
@@ -1171,7 +1171,7 @@ public class UserContext {
                                 throw new IllegalStateException("Received a follow request claiming to be owned by us!");
                             return addExternalEntryPoint(entryWeSentToThem)
                                     .thenCompose(x -> retrieveAndAddEntryPointToTrie(trie, entryWeSentToThem))
-                                    .thenCompose(newRoot -> getLatestEntryPoint(entry, network)
+                                    .thenCompose(newRoot -> NetworkAccess.getLatestEntryPoint(entry, network)
                                             .thenCompose(r -> addToStatic.apply(newRoot.put(r.getPath(), r.entry), p.withEntryPoint(r.entry))))
                                     .exceptionally(t -> trie);
                         }
@@ -1224,7 +1224,7 @@ public class UserContext {
                 .filter(e -> e.ownerName.equals(ourName))
                 .collect(Collectors.toList());
         return Futures.reduceAll(ourFileSystemEntries, root,
-                (t, e) -> getLatestEntryPoint(e, network)
+                (t, e) -> NetworkAccess.getLatestEntryPoint(e, network)
                         .thenCompose(r -> addRetrievedEntryPointToTrie(ourName, t, r.entry, r.getPath(), network, crypto)),
                 (a, b) -> a)
                 .exceptionally(Futures::logAndThrow);
@@ -1240,43 +1240,16 @@ public class UserContext {
         // need to to retrieve all the entry points of our friends
         return getFriendsEntryPoints()
                 .thenCompose(friendEntries -> Futures.reduceAll(friendEntries, ourRoot,
-                        (t, e) -> getLatestEntryPoint(e, network)
+                        (t, e) -> NetworkAccess.getLatestEntryPoint(e, network)
                                 .thenCompose(r -> addRetrievedEntryPointToTrie(ourName, t, r.entry, r.getPath(), network, crypto))
                                 .exceptionally(ex -> t),
                         (a, b) -> a))
                 .exceptionally(Futures::logAndThrow);
     }
 
-    private static CompletableFuture<RetrievedEntryPoint> getLatestEntryPoint(EntryPoint e, NetworkAccess network) {
-        return Futures.asyncExceptionally(() -> retrieveEntryPoint(e, network),
-                ex -> getUptodateEntryPoint(e, network)
-                        .thenCompose(updated -> retrieveEntryPoint(updated, network)));
-    }
-
     private CompletableFuture<TrieNode> retrieveAndAddEntryPointToTrie(TrieNode root, EntryPoint e) {
-        return retrieveEntryPoint(e, network)
+        return NetworkAccess.retrieveEntryPoint(e, network)
                 .thenCompose(r -> addRetrievedEntryPointToTrie(username, root, r.entry, r.getPath(), network, crypto));
-    }
-
-    private static CompletableFuture<RetrievedEntryPoint> retrieveEntryPoint(EntryPoint e, NetworkAccess network) {
-        return network.retrieveEntryPoint(e)
-                .thenCompose(fileOpt -> {
-                    if (! fileOpt.isPresent())
-                        throw new IllegalStateException("Couldn't retrieve entry point");
-                    return fileOpt.get().getPath(network)
-                            .thenApply(path -> new RetrievedEntryPoint(e, path, fileOpt.get()));
-                });
-    }
-
-    private static CompletableFuture<EntryPoint> getUptodateEntryPoint(EntryPoint e, NetworkAccess network) {
-        // User might have changed their password and thus identity key, check for an update
-        return network.coreNode.updateUser(e.ownerName)
-                .thenCompose(x -> network.coreNode.getPublicKeyHash(e.ownerName))
-                .thenApply(currentIdOpt -> {
-                    if (!currentIdOpt.isPresent() || currentIdOpt.get().equals(e.pointer.owner))
-                        throw new IllegalStateException("Couldn't retrieve entry point for user " + e.ownerName);
-                    return new EntryPoint(e.pointer.withOwner(currentIdOpt.get()), e.ownerName);
-                });
     }
 
     private CompletableFuture<List<EntryPoint>> getFriendsEntryPoints() {
