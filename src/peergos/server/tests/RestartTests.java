@@ -46,6 +46,11 @@ public class RestartTests {
         waitUntilReady();
     }
 
+    @AfterClass
+    public static void shutdown() {
+        server.destroy();
+    }
+
     private static void restart() throws Exception {
         NetworkAccess network = NetworkAccess.buildJava(new URL("http://localhost:" + args.getInt("port")))
                 .join();
