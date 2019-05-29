@@ -15,6 +15,14 @@ public class Args {
 
     private final Map<String, String> params = paramMap();//insertion order
 
+    public List<String> getAllArgs() {
+        Map<String, String> env = System.getenv();
+        return params.entrySet().stream()
+                .filter(e -> ! env.containsKey(e.getKey()))
+                .flatMap(e -> Stream.of("-" + e.getKey(), e.getValue()))
+                .collect(Collectors.toList());
+    }
+
     public String getArg(String param, String def) {
         if (!params.containsKey(param))
             return def;
@@ -151,11 +159,14 @@ public class Args {
      * @return
      */
     public Path fromPeergosDir(String fileName, String defaultName) {
-        Path peergosDir = hasArg(Main.PEERGOS_PATH) ? Paths.get(getArg(Main.PEERGOS_PATH)) : Main.DEFAULT_PEERGOS_DIR_PATH;
+        Path peergosDir = getPeergosDir();
         String fName = defaultName == null ? getArg(fileName) : getArg(fileName, defaultName);
         return peergosDir.resolve(fName);
     }
 
+    public Path getPeergosDir() {
+        return hasArg(Main.PEERGOS_PATH) ? Paths.get(getArg(Main.PEERGOS_PATH)) : Main.DEFAULT_PEERGOS_DIR_PATH;
+    }
 
     private static Map<String, String> parseEnv() {
         Map<String, String> map = paramMap();
