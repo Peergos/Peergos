@@ -139,6 +139,9 @@ public class FriendSourcedTrieNode implements TrieNode {
                                 }
                                 return sharedOpt.get().retrieveParent(network);
                             });
+                }).exceptionally(t -> {
+                    System.out.println("Couldn't retrieve entry point for friend: " + sharedDir.ownerName + ". Did they remove you as a follower?");
+                    return Optional.empty();
                 });
     }
 
