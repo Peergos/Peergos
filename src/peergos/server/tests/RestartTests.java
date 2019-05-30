@@ -123,8 +123,8 @@ public class RestartTests {
         // restart the server
         restart();
 
-        Optional<FileWrapper> u2ToU1 = UserContext.signIn(username1, password1, network.clear(), crypto).join()
-                .getByPath("/" + u2.username).get();
+        UserContext freshU1 = UserContext.signIn(username1, password1, network.clear(), crypto).join();
+        Optional<FileWrapper> u2ToU1 = freshU1.getByPath("/" + u2.username).get();
         assertTrue("Friend root present after their password change", u2ToU1.isPresent());
     }
 }

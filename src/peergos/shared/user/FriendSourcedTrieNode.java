@@ -1,8 +1,6 @@
 package peergos.shared.user;
 
 import peergos.shared.*;
-import peergos.shared.crypto.hash.*;
-import peergos.shared.crypto.random.*;
 import peergos.shared.user.fs.*;
 
 import java.util.*;
@@ -39,14 +37,37 @@ public class FriendSourcedTrieNode implements TrieNode {
                                                                            EntryPoint e,
                                                                            NetworkAccess network,
                                                                            Crypto crypto) {
+        return CapabilityStore.loadCachedReadOnlyLinks(homeDirSupplier, e.ownerName, network, crypto)
+                .thenCompose(readCaps -> {
+                    return CapabilityStore.loadCachedWriteableLinks(homeDirSupplier, e.ownerName, network, crypto)
+                            .thenApply(writeCaps -> {
+                                List<CapabilityWithPath> allCaps = new ArrayList<>();
+                                allCaps.addAll(readCaps.getRetrievedCapabilities());
+                                allCaps.addAll(writeCaps.getRetrievedCapabilities());
+                                return Optional.of(new FriendSourcedTrieNode(homeDirSupplier,
+                                        e.ownerName,
+                                        e,
+                                        allCaps.stream()
+                                                .reduce(TrieNodeImpl.empty(),
+                                                        (root, cap) -> root.put(trimOwner(cap.path), new EntryPoint(cap.cap, e.ownerName)),
+                                                        (a, b) -> a),
+                                        readCaps.getBytesRead(), writeCaps.getBytesRead(), crypto));
+                            });
+                });
+    }
+
+    public static CompletableFuture<Optional<FriendSourcedTrieNode>> buildAndUpdate(Supplier<CompletableFuture<FileWrapper>> homeDirSupplier,
+                                                                           EntryPoint e,
+                                                                           NetworkAccess network,
+                                                                           Crypto crypto) {
         return network.retrieveEntryPoint(e)
                 .thenCompose(sharedDirOpt -> {
                     if (!sharedDirOpt.isPresent())
                         return CompletableFuture.completedFuture(Optional.empty());
-                    return CapabilityStore.loadReadAccessSharingLinks(homeDirSupplier, sharedDirOpt.get(), e.ownerName,
+                    return CapabilityStore.loadReadOnlyLinks(homeDirSupplier, sharedDirOpt.get(), e.ownerName,
                             network, crypto, true)
                             .thenCompose(readCaps -> {
-                                return CapabilityStore.loadWriteAccessSharingLinks(homeDirSupplier, sharedDirOpt.get(), e.ownerName,
+                                return CapabilityStore.loadWriteableLinks(homeDirSupplier, sharedDirOpt.get(), e.ownerName,
                                         network, crypto, true)
                                         .thenApply(writeCaps -> {
                                             List<CapabilityWithPath> allCaps = new ArrayList<>();
@@ -67,16 +88,14 @@ public class FriendSourcedTrieNode implements TrieNode {
 
     private synchronized CompletableFuture<Boolean> ensureUptodate(NetworkAccess network) {
         // check there are no new capabilities in the friend's shared directory
-        return network.retrieveEntryPoint(sharedDir)
-                .thenCompose(sharedDirOpt -> {
-                    if (!sharedDirOpt.isPresent())
-                        return CompletableFuture.completedFuture(true);
-                    return CapabilityStore.getReadOnlyCapabilityFileSize(sharedDirOpt.get(), network)
+        return NetworkAccess.getLatestEntryPoint(sharedDir, network)
+                .thenCompose(sharedDir -> {
+                    return CapabilityStore.getReadOnlyCapabilityFileSize(sharedDir.file, network)
                             .thenCompose(bytes -> {
                                 if (bytes == byteOffsetReadOnly) {
-                                    return addEditableCapabilities(sharedDirOpt, network);
+                                    return addEditableCapabilities(Optional.of(sharedDir.file), network);
                                 } else {
-                                    return CapabilityStore.loadReadAccessSharingLinksFromIndex(homeDirSupplier, sharedDirOpt.get(),
+                                    return CapabilityStore.loadReadAccessSharingLinksFromIndex(homeDirSupplier, sharedDir.file,
                                             ownerName, network, crypto, byteOffsetReadOnly, true)
                                             .thenCompose(newReadCaps -> {
                                                 byteOffsetReadOnly += newReadCaps.getBytesRead();
@@ -84,7 +103,7 @@ public class FriendSourcedTrieNode implements TrieNode {
                                                         .reduce(root,
                                                                 (root, cap) -> root.put(trimOwner(cap.path), new EntryPoint(cap.cap, ownerName)),
                                                                 (a, b) -> a);
-                                                return addEditableCapabilities(sharedDirOpt, network);
+                                                return addEditableCapabilities(Optional.of(sharedDir.file), network);
                                             });
                                 }
                             });
@@ -110,11 +129,9 @@ public class FriendSourcedTrieNode implements TrieNode {
     }
 
     private CompletableFuture<Optional<FileWrapper>> getFriendRoot(NetworkAccess network) {
-        return network.retrieveEntryPoint(sharedDir)
-                .thenCompose(sharedDirOpt -> {
-                    if (! sharedDirOpt.isPresent())
-                        return CompletableFuture.completedFuture(Optional.empty());
-                    return sharedDirOpt.get().retrieveParent(network)
+        return NetworkAccess.getLatestEntryPoint(sharedDir, network)
+                .thenCompose(sharedDir -> {
+                    return sharedDir.file.retrieveParent(network)
                             .thenCompose(sharedOpt -> {
                                 if (! sharedOpt.isPresent()) {
                                     CompletableFuture<Optional<FileWrapper>> empty = CompletableFuture.completedFuture(Optional.empty());
