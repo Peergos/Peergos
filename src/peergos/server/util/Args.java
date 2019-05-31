@@ -164,6 +164,10 @@ public class Args {
         return peergosDir.resolve(fName);
     }
 
+    public Path getPeergosDirChild(String filename) {
+        return getPeergosDir().resolve(filename);
+    }
+
     public Path getPeergosDir() {
         return hasArg(Main.PEERGOS_PATH) ? Paths.get(getArg(Main.PEERGOS_PATH)) : Main.DEFAULT_PEERGOS_DIR_PATH;
     }

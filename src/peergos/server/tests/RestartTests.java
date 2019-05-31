@@ -37,10 +37,10 @@ public class RestartTests {
 
     @BeforeClass
     public static void init() throws Exception {
-        Files.copy(Paths.get("PeergosServer.jar"), args.fromPeergosDir("dummy", "PeergosServer.jar"));
-        Files.copy(Paths.get("lib"), args.fromPeergosDir("dummy", "lib"));
+        Files.copy(Paths.get("PeergosServer.jar"), args.getPeergosDirChild("PeergosServer.jar"));
+        Files.copy(Paths.get("lib"), args.getPeergosDirChild("lib"));
         for (Path file : Files.list(Paths.get("lib")).collect(Collectors.toList()))
-            Files.copy(file, args.fromPeergosDir("dummy", "lib").resolve(file.getFileName()));
+            Files.copy(file, args.getPeergosDirChild("lib").resolve(file.getFileName()));
 
         server = start("pki-init");
         waitUntilReady();
@@ -78,7 +78,7 @@ public class RestartTests {
 
     public static Process start(String command) throws IOException {
         Stream<String> classPath = Stream.concat(Stream.of("PeergosServer.jar"),
-                Files.list(args.fromPeergosDir("dummy", "lib")).map(Path::toString));
+                Files.list(args.getPeergosDirChild("lib")).map(Path::toString));
         List<String> peergosArgs = Stream.concat(
                 Stream.of("java", "-cp", classPath.collect(Collectors.joining(System.getProperty("path.separator"))), "peergos.server.Main", "-" + command),
                 args.getAllArgs().stream())
