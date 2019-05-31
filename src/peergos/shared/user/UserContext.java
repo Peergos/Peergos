@@ -11,7 +11,6 @@ import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.crypto.random.SafeRandom;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.hamt.*;
 import peergos.shared.io.ipfs.multihash.Multihash;
@@ -305,8 +304,8 @@ public class UserContext {
         CommittedWriterData userData = new CommittedWriterData(MaybeMultihash.empty(), empty);
         UserContext context = new UserContext(null, null, null, null, network,
                 crypto, userData, TrieNodeImpl.empty(), null);
-        return retrieveEntryPoint(entry, network)
-                .thenCompose(r -> addRetrievedEntryPointToTrie(null, context.entrie, entry, r.getPath(), network, crypto))
+        return NetworkAccess.retrieveEntryPoint(entry, network)
+                .thenCompose(r -> addRetrievedEntryPointToTrie(null, context.entrie, entry, r.getPath(), true, network, crypto))
                 .thenApply(trieNode -> {
                     context.entrie = trieNode;
                     return context;
@@ -370,14 +369,14 @@ public class UserContext {
                         Futures.reduceAll(children,
                                 true,
                                 (x, friendDirectory) -> {
-                                    return CapabilityStore.loadReadAccessSharingLinks(homeDirSupplier, friendDirectory,
+                                    return CapabilityStore.loadReadOnlyLinks(homeDirSupplier, friendDirectory,
                                             this.username, network, crypto, false)
                                             .thenCompose(readCaps -> {
                                                 readCaps.getRetrievedCapabilities().stream().forEach(rc -> {
                                                     sharedWithCache.addSharedWith(SharedWithCache.Access.READ,
                                                         rc.cap, friendDirectory.getName());
                                                 });
-                                                return CapabilityStore.loadWriteAccessSharingLinks(homeDirSupplier, friendDirectory,
+                                                return CapabilityStore.loadWriteableLinks(homeDirSupplier, friendDirectory,
                                                         this.username, network, crypto, false)
                                                         .thenApply(writeCaps -> {
                                                             writeCaps.getRetrievedCapabilities().stream().forEach(rc -> {
@@ -1072,13 +1071,17 @@ public class UserContext {
                 return new UserStaticData(entryPoints, rootKey);
             });
             return CompletableFuture.completedFuture(wd.withStaticData(updated));
-        }).thenCompose(res -> addRetrievedEntryPointToTrie(username, root, entry, "/" + username, network, crypto));
+        }).thenCompose(res -> addRetrievedEntryPointToTrie(username, root, entry, "/" + username, false, network, crypto));
     }
 
     private synchronized CompletableFuture<FileWrapper> addExternalEntryPoint(EntryPoint entry) {
         boolean isOurs = username.equals(entry.ownerName);
         String filename = isOurs ? ENTRY_POINTS_FROM_US_FILENAME : ENTRY_POINTS_FROM_FRIENDS_FILENAME;
-        return getByPath(Paths.get(username, filename))
+        // verify owner before adding
+        return entry.isValid("/" + entry.ownerName, network)
+                .thenCompose(valid -> valid ?
+                        getByPath(Paths.get(username, filename)) :
+                        Futures.errored(new IllegalStateException("Incorrect claimed owner for entry point")))
                 .thenCompose(existing -> {
                     long offset = existing.map(f -> f.getSize()).orElse(0L);
                     byte[] data = entry.serialize();
@@ -1171,7 +1174,7 @@ public class UserContext {
                                 throw new IllegalStateException("Received a follow request claiming to be owned by us!");
                             return addExternalEntryPoint(entryWeSentToThem)
                                     .thenCompose(x -> retrieveAndAddEntryPointToTrie(trie, entryWeSentToThem))
-                                    .thenCompose(newRoot -> getLatestEntryPoint(entry, network)
+                                    .thenCompose(newRoot -> NetworkAccess.getLatestEntryPoint(entry, network)
                                             .thenCompose(r -> addToStatic.apply(newRoot.put(r.getPath(), r.entry), p.withEntryPoint(r.entry))))
                                     .exceptionally(t -> trie);
                         }
@@ -1224,8 +1227,8 @@ public class UserContext {
                 .filter(e -> e.ownerName.equals(ourName))
                 .collect(Collectors.toList());
         return Futures.reduceAll(ourFileSystemEntries, root,
-                (t, e) -> getLatestEntryPoint(e, network)
-                        .thenCompose(r -> addRetrievedEntryPointToTrie(ourName, t, r.entry, r.getPath(), network, crypto)),
+                (t, e) -> NetworkAccess.getLatestEntryPoint(e, network)
+                        .thenCompose(r -> addRetrievedEntryPointToTrie(ourName, t, r.entry, r.getPath(), false, network, crypto)),
                 (a, b) -> a)
                 .exceptionally(Futures::logAndThrow);
     }
@@ -1240,43 +1243,16 @@ public class UserContext {
         // need to to retrieve all the entry points of our friends
         return getFriendsEntryPoints()
                 .thenCompose(friendEntries -> Futures.reduceAll(friendEntries, ourRoot,
-                        (t, e) -> getLatestEntryPoint(e, network)
-                                .thenCompose(r -> addRetrievedEntryPointToTrie(ourName, t, r.entry, r.getPath(), network, crypto))
+                        (t, e) -> addRetrievedEntryPointToTrie(ourName, t, e,
+                                "/" + e.ownerName + "/" + SHARED_DIR_NAME + "/" + ourName, false, network, crypto)
                                 .exceptionally(ex -> t),
                         (a, b) -> a))
                 .exceptionally(Futures::logAndThrow);
     }
 
-    private static CompletableFuture<RetrievedEntryPoint> getLatestEntryPoint(EntryPoint e, NetworkAccess network) {
-        return Futures.asyncExceptionally(() -> retrieveEntryPoint(e, network),
-                ex -> getUptodateEntryPoint(e, network)
-                        .thenCompose(updated -> retrieveEntryPoint(updated, network)));
-    }
-
     private CompletableFuture<TrieNode> retrieveAndAddEntryPointToTrie(TrieNode root, EntryPoint e) {
-        return retrieveEntryPoint(e, network)
-                .thenCompose(r -> addRetrievedEntryPointToTrie(username, root, r.entry, r.getPath(), network, crypto));
-    }
-
-    private static CompletableFuture<RetrievedEntryPoint> retrieveEntryPoint(EntryPoint e, NetworkAccess network) {
-        return network.retrieveEntryPoint(e)
-                .thenCompose(fileOpt -> {
-                    if (! fileOpt.isPresent())
-                        throw new IllegalStateException("Couldn't retrieve entry point");
-                    return fileOpt.get().getPath(network)
-                            .thenApply(path -> new RetrievedEntryPoint(e, path, fileOpt.get()));
-                });
-    }
-
-    private static CompletableFuture<EntryPoint> getUptodateEntryPoint(EntryPoint e, NetworkAccess network) {
-        // User might have changed their password and thus identity key, check for an update
-        return network.coreNode.updateUser(e.ownerName)
-                .thenCompose(x -> network.coreNode.getPublicKeyHash(e.ownerName))
-                .thenApply(currentIdOpt -> {
-                    if (!currentIdOpt.isPresent() || currentIdOpt.get().equals(e.pointer.owner))
-                        throw new IllegalStateException("Couldn't retrieve entry point for user " + e.ownerName);
-                    return new EntryPoint(e.pointer.withOwner(currentIdOpt.get()), e.ownerName);
-                });
+        return NetworkAccess.retrieveEntryPoint(e, network)
+                .thenCompose(r -> addRetrievedEntryPointToTrie(username, root, r.entry, r.getPath(), false, network, crypto));
     }
 
     private CompletableFuture<List<EntryPoint>> getFriendsEntryPoints() {
@@ -1315,10 +1291,11 @@ public class UserContext {
                                                                             TrieNode root,
                                                                             EntryPoint fileCap,
                                                                             String path,
+                                                                            boolean checkOwner,
                                                                             NetworkAccess network,
                                                                             Crypto crypto) {
         // check entrypoint doesn't forge the owner
-        return (fileCap.ownerName.equals(ourName) ? CompletableFuture.completedFuture(true) :
+        return (fileCap.ownerName.equals(ourName) || ! checkOwner ? CompletableFuture.completedFuture(true) :
                 fileCap.isValid(path, network)).thenCompose(valid -> {
             String[] parts = path.split("/");
             if (parts.length < 3 || !parts[2].equals(SHARED_DIR_NAME))
