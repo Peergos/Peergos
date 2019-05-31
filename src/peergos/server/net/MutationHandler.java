@@ -9,6 +9,7 @@ import peergos.shared.mutable.*;
 import peergos.shared.util.*;
 
 import java.io.*;
+import java.net.*;
 import java.util.*;
 import java.util.logging.*;
 
@@ -62,7 +63,7 @@ public class MutationHandler implements HttpHandler {
             exchange.getResponseBody().write(b);
         } catch (Exception e) {
             LOG.log(Level.WARNING, e.getMessage(), e);
-            exchange.getResponseHeaders().set("Trailer", e.getMessage());
+            exchange.getResponseHeaders().set("Trailer", URLEncoder.encode(e.getMessage(), "UTF-8"));
             exchange.sendResponseHeaders(400, 0);
             OutputStream body = exchange.getResponseBody();
             body.write(e.getMessage().getBytes());

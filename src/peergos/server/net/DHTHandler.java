@@ -1,4 +1,5 @@
 package peergos.server.net;
+import java.net.*;
 import java.util.logging.*;
 
 import peergos.server.util.*;
@@ -233,7 +234,7 @@ public class DHTHandler implements HttpHandler {
 
     private static void replyError(HttpExchange exchange, Throwable t) {
         try {
-            exchange.getResponseHeaders().set("Trailer", t.getMessage());
+            exchange.getResponseHeaders().set("Trailer", URLEncoder.encode(t.getMessage(), "UTF-8"));
             exchange.sendResponseHeaders(400, -1);
         } catch (IOException e)
         {

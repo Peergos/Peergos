@@ -6,6 +6,7 @@ import peergos.shared.storage.controller.*;
 import peergos.shared.util.*;
 
 import java.io.*;
+import java.net.*;
 
 public class AdminHandler implements HttpHandler {
 
@@ -39,9 +40,9 @@ public class AdminHandler implements HttpHandler {
         } catch (Exception e) {
             Throwable cause = e.getCause();
             if (cause != null)
-                exchange.getResponseHeaders().set("Trailer", cause.getMessage());
+                exchange.getResponseHeaders().set("Trailer", URLEncoder.encode(cause.getMessage(), "UTF-8"));
             else
-                exchange.getResponseHeaders().set("Trailer", e.getMessage());
+                exchange.getResponseHeaders().set("Trailer", URLEncoder.encode(e.getMessage(), "UTF-8"));
 
             exchange.sendResponseHeaders(400, 0);
         } finally {
