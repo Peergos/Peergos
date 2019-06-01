@@ -46,6 +46,7 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
             return Stream.of(
                     "config --json Experimental.Libp2pStreamMounting true",
                     "config --json Experimental.P2pHttpProxy true",
+                    "config --json Experimental.PreferTLS true",
                     String.format("config Addresses.API /ip4/127.0.0.1/tcp/%d", apiPort),
                     String.format("config Addresses.Gateway /ip4/127.0.0.1/tcp/%d", gatewayPort),
                     String.format("config --json Addresses.Swarm [\"/ip4/0.0.0.0/tcp/%d\",\"/ip6/::/tcp/%d\"]", swarmPort, swarmPort))
