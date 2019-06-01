@@ -192,12 +192,8 @@ public class WriterData implements Cborable {
                 })
                 .thenApply(version -> version.get(signer).props)
                 .exceptionally(t -> {
-                    try {
-                        if (URLDecoder.decode(t.getMessage(), "UTF-8").contains("cas failed"))
-                            throw new IllegalStateException("You cannot reuse a previous password!");
-                    } catch (UnsupportedEncodingException e) {
-                        throw new RuntimeException(e);
-                    }
+                    if (t.getMessage().contains("cas+failed"))
+                        throw new IllegalStateException("You cannot reuse a previous password!");
                     throw new RuntimeException(t.getCause());
                 });
     }

@@ -89,21 +89,7 @@ public abstract class BaseNCodec implements BinaryEncoder, BinaryDecoder {
          */
         int modulus;
 
-        Context() {
-        }
-
-        /**
-         * Returns a String useful for debugging (especially within a debugger.)
-         *
-         * @return a String useful for debugging.
-         */
-        @SuppressWarnings("boxing") // OK to ignore boxing here
-        @Override
-        public String toString() {
-            return String.format("%s[buffer=%s, currentLinePos=%s, eof=%s, ibitWorkArea=%s, lbitWorkArea=%s, " +
-                    "modulus=%s, pos=%s, readPos=%s]", this.getClass().getSimpleName(), Arrays.toString(buffer),
-                    currentLinePos, eof, ibitWorkArea, lbitWorkArea, modulus, pos, readPos);
-        }
+        Context() {}
     }
 
     /**
