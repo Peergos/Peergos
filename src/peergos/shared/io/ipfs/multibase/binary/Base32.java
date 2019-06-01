@@ -20,6 +20,8 @@ package peergos.shared.io.ipfs.multibase.binary;
 /**
  * Provides Base32 encoding and decoding as defined by <a href="http://www.ietf.org/rfc/rfc4648.txt">RFC 4648</a>.
  *
+ * From https://commons.apache.org/proper/commons-codec/
+ *
  * <p>
  * The class can be parameterized in the following manner with various constructors:
  * </p>

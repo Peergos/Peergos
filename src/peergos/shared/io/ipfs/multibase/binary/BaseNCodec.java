@@ -17,8 +17,6 @@
 
 package peergos.shared.io.ipfs.multibase.binary;
 
-import java.util.Arrays;
-
 import peergos.shared.io.ipfs.multibase.BinaryDecoder;
 import peergos.shared.io.ipfs.multibase.BinaryEncoder;
 import peergos.shared.io.ipfs.multibase.DecoderException;
@@ -26,6 +24,8 @@ import peergos.shared.io.ipfs.multibase.EncoderException;
 
 /**
  * Abstract superclass for Base-N encoders and decoders.
+ *
+ * From https://commons.apache.org/proper/commons-codec/
  *
  * <p>
  * This class is thread-safe.

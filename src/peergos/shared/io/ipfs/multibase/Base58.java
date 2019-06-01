@@ -4,6 +4,8 @@ package peergos.shared.io.ipfs.multibase;
  * Copyright 2011 Google Inc.
  * Copyright 2018 Andreas Schildbach
  *
+ * From https://github.com/bitcoinj/bitcoinj/blob/master/core/src/main/java/org/bitcoinj/core/Base58.java
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at

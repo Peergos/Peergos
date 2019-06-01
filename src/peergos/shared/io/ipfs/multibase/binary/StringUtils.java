@@ -37,49 +37,6 @@ import peergos.shared.io.ipfs.multibase.Charsets;
 public class StringUtils {
 
     /**
-     * <p>
-     * Compares two CharSequences, returning <code>true</code> if they represent equal sequences of characters.
-     * </p>
-     *
-     * <p>
-     * <code>null</code>s are handled without exceptions. Two <code>null</code> references are considered to be equal.
-     * The comparison is case sensitive.
-     * </p>
-     *
-     * <pre>
-     * StringUtils.equals(null, null)   = true
-     * StringUtils.equals(null, "abc")  = false
-     * StringUtils.equals("abc", null)  = false
-     * StringUtils.equals("abc", "abc") = true
-     * StringUtils.equals("abc", "ABC") = false
-     * </pre>
-     *
-     * <p>
-     * Copied from Apache Commons Lang r1583482 on April 10, 2014 (day of 3.3.2 release).
-     * </p>
-     *
-     * @see Object#equals(Object)
-     * @param cs1
-     *            the first CharSequence, may be <code>null</code>
-     * @param cs2
-     *            the second CharSequence, may be <code>null</code>
-     * @return <code>true</code> if the CharSequences are equal (case-sensitive), or both <code>null</code>
-     * @since 1.10
-     */
-    public static boolean equals(final CharSequence cs1, final CharSequence cs2) {
-        if (cs1 == cs2) {
-            return true;
-        }
-        if (cs1 == null || cs2 == null) {
-            return false;
-        }
-        if (cs1 instanceof String && cs2 instanceof String) {
-            return cs1.equals(cs2);
-        }
-        return cs1.length() == cs2.length() && CharSequenceUtils.regionMatches(cs1, false, 0, cs2, 0, cs1.length());
-    }
-
-    /**
      * Calls {@link String#getBytes(Charset)}
      *
      * @param string
