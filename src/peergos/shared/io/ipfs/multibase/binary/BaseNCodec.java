@@ -19,10 +19,10 @@ package peergos.shared.io.ipfs.multibase.binary;
 
 import java.util.Arrays;
 
-import org.apache.commons.codec.BinaryDecoder;
-import org.apache.commons.codec.BinaryEncoder;
-import org.apache.commons.codec.DecoderException;
-import org.apache.commons.codec.EncoderException;
+import peergos.shared.io.ipfs.multibase.BinaryDecoder;
+import peergos.shared.io.ipfs.multibase.BinaryEncoder;
+import peergos.shared.io.ipfs.multibase.DecoderException;
+import peergos.shared.io.ipfs.multibase.EncoderException;
 
 /**
  * Abstract superclass for Base-N encoders and decoders.

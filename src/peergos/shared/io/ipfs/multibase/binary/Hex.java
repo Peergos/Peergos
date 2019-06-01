@@ -20,12 +20,12 @@ package peergos.shared.io.ipfs.multibase.binary;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 
-import org.apache.commons.codec.BinaryDecoder;
-import org.apache.commons.codec.BinaryEncoder;
-import org.apache.commons.codec.CharEncoding;
-import org.apache.commons.codec.Charsets;
-import org.apache.commons.codec.DecoderException;
-import org.apache.commons.codec.EncoderException;
+import peergos.shared.io.ipfs.multibase.BinaryDecoder;
+import peergos.shared.io.ipfs.multibase.BinaryEncoder;
+import peergos.shared.io.ipfs.multibase.CharEncoding;
+import peergos.shared.io.ipfs.multibase.Charsets;
+import peergos.shared.io.ipfs.multibase.DecoderException;
+import peergos.shared.io.ipfs.multibase.EncoderException;
 
 /**
  * Converts hexadecimal Strings. The charset used for certain operation can be set, the default is set in
