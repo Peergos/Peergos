@@ -33,8 +33,7 @@ public class PinningMutablePointers implements MutablePointers {
             byte[] message = signer.get().unsignMessage(sharingKeySignedBtreeRootHashes);
             HashCasPair cas = HashCasPair.fromCbor(CborObject.fromByteArray(message));
             long t1 = System.currentTimeMillis();
-            return (cas.original.isPresent() ? storage.pinUpdate(owner, cas.original.get(), cas.updated.get())
-                    .thenApply(PinningMutablePointers::convert) :
+            return (cas.original.isPresent() ? storage.pinUpdate(owner, cas.original.get(), cas.updated.get()) :
                     storage.recursivePin(owner, cas.updated.get())).thenCompose(pins -> {
                 if (!pins.contains(cas.updated.get())) {
                     CompletableFuture<Boolean> err = new CompletableFuture<>();
@@ -65,13 +64,6 @@ public class PinningMutablePointers implements MutablePointers {
                         });
             });
         });
-    }
-
-    private static List<Multihash> convert(List<MultiAddress> addresses) {
-        return addresses.stream()
-                .filter(addr -> addr.toString().startsWith("/ipfs/"))
-                .map(addr -> Cid.decode(addr.toString().substring(6)))
-                .collect(Collectors.toList());
     }
 
     @Override

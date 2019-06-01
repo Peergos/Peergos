@@ -105,8 +105,8 @@ public class RAMStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<MultiAddress>> pinUpdate(PublicKeyHash owner, Multihash existing, Multihash updated) {
-        return CompletableFuture.completedFuture(Arrays.asList(new MultiAddress("/ipfs/"+existing), new MultiAddress("/ipfs/"+updated)));
+    public CompletableFuture<List<Multihash>> pinUpdate(PublicKeyHash owner, Multihash existing, Multihash updated) {
+        return CompletableFuture.completedFuture(Arrays.asList(existing, updated));
     }
 
     @Override

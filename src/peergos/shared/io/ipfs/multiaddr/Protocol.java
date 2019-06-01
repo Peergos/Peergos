@@ -1,6 +1,8 @@
 package peergos.shared.io.ipfs.multiaddr;
 
 
+import peergos.shared.io.ipfs.multibase.*;
+import peergos.shared.io.ipfs.multibase.binary.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.io.ipfs.cid.*;
 
@@ -106,7 +108,7 @@ public class Protocol {
                     if (split[0].length() != 16)
                         throw new IllegalStateException("failed to parse "+name()+" addr: "+addr+" not a Tor onion address.");
 
-                    byte[] onionHostBytes = Base32.decode(split[0].toUpperCase());
+                    byte[] onionHostBytes = new Base32().decode(split[0].toUpperCase());
                     int port = Integer.parseInt(split[1]);
                     if (port > 65535)
                         throw new IllegalStateException("Port is > 65535: "+port);
@@ -152,7 +154,7 @@ public class Protocol {
                 byte[] host = new byte[10];
                 in.read(host);
                 String port = Integer.toString((in.read() << 8) | (in.read()));
-                return Base32.encode(host)+":"+port;
+                return new String(new Base32().encode(host))+":"+port;
         }
         throw new IllegalStateException("Unimplemented protocl type: "+type.name);
     }
