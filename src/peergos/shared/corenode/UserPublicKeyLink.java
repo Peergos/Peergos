@@ -224,6 +224,7 @@ public class UserPublicKeyLink implements Cborable {
                 return Futures.errored(new IllegalStateException("Different keys in merge chains intersection!"));
         }
         Set<PublicKeyHash> previousKeys = existing.stream()
+                .limit(existing.size() - 1)
                 .map(k -> k.owner)
                 .collect(Collectors.toSet());
         if (previousKeys.contains(tail.get(tail.size() - 1).owner)) {
