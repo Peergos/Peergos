@@ -51,16 +51,11 @@ public class IpfsInstaller {
         }
     }
 
-
     /**
      * Ensure the ipfs executable is installed and that it's contents are correct.
      */
     public static void ensureInstalled(Path targetFile) {
         ensureInstalled(targetFile, getForPlatform());
-    }
-
-    public static void install(Path targetFile) {
-        install(targetFile, getForPlatform());
     }
 
     public static Path getExecutableForOS(Path targetFile) {
@@ -109,7 +104,15 @@ public class IpfsInstaller {
                     //all present and correct
                     return;
                 }
-                LOG().info("Existing ipfs-exe " + targetFile + " has a different hash than expected, overwriting");
+                ProcessBuilder pb = new ProcessBuilder(Arrays.asList(targetFile.toString(), "version"));
+                Process started = pb.start();
+                InputStream in = started.getInputStream();
+                String output = new String(Serialize.readFully(in)).trim();
+                Version ipfsVersion = Version.parse(output.substring(output.lastIndexOf(" ") + 1));
+                LOG().info("Upgrading IPFS from " + ipfsVersion);
+                targetFile.toFile().delete();
+                install(targetFile, downloadTarget, Optional.of(ipfsVersion));
+                return;
             } catch (IOException ioe) {
                 throw new IllegalStateException(ioe.getMessage(), ioe);
             }
@@ -117,10 +120,10 @@ public class IpfsInstaller {
         else {
             LOG().info("ipfs-exe "+ targetFile + " not available");
         }
-        install(targetFile, downloadTarget);
+        install(targetFile, downloadTarget, Optional.empty());
     }
 
-    private static void install(Path targetFile, DownloadTarget downloadTarget) {
+    private static void install(Path targetFile, DownloadTarget downloadTarget, Optional<Version> previousIpfsVersion) {
         try {
             Path cacheFile = getLocalCacheDir().resolve(downloadTarget.multihash.toString());
             if (cacheFile.toFile().exists()) {
@@ -162,6 +165,8 @@ public class IpfsInstaller {
             }
 
             targetFile.toFile().setExecutable(true);
+
+            // TODO run any upgrade scripts for IPFS like converting the repo etc.
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -182,10 +187,7 @@ public class IpfsInstaller {
     }
 
     public static void main(String[] args) throws Exception {
-        Path ipfsPath = Files.createTempFile("something", ".tmp");
-        System.out.println("ipfsPath "+ ipfsPath);
-        install(ipfsPath);
-//        codegen(Paths.get("/home/ian/ipfs-releases/v0.4.21"));
+        codegen(Paths.get("/home/ian/ipfs-releases/v0.4.21"));
     }
 
     private static void codegen(Path root) throws Exception {
