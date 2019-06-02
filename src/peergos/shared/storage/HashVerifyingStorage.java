@@ -92,7 +92,7 @@ public class HashVerifyingStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<MultiAddress>> pinUpdate(PublicKeyHash owner, Multihash existing, Multihash updated) {
+    public CompletableFuture<List<Multihash>> pinUpdate(PublicKeyHash owner, Multihash existing, Multihash updated) {
         return source.pinUpdate(owner, existing, updated);
     }
 

@@ -12,6 +12,8 @@ import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
+import java.io.*;
+import java.net.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
@@ -190,7 +192,7 @@ public class WriterData implements Cborable {
                 })
                 .thenApply(version -> version.get(signer).props)
                 .exceptionally(t -> {
-                    if (t.getMessage().contains("cas failed"))
+                    if (t.getMessage().contains("cas+failed"))
                         throw new IllegalStateException("You cannot reuse a previous password!");
                     throw new RuntimeException(t.getCause());
                 });

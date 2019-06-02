@@ -115,10 +115,10 @@ public class IpfsDHT implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<MultiAddress>> pinUpdate(PublicKeyHash owner, Multihash existing, Multihash updated) {
-        CompletableFuture<List<MultiAddress>> res = new CompletableFuture<>();
+    public CompletableFuture<List<Multihash>> pinUpdate(PublicKeyHash owner, Multihash existing, Multihash updated) {
+        CompletableFuture<List<Multihash>> res = new CompletableFuture<>();
         try {
-            List<MultiAddress> added = ipfs.pin.update(existing, updated, false);
+            List<Multihash> added = ipfs.pin.update(existing, updated, false);
             res.complete(added);
         } catch (Exception e) {
             res.completeExceptionally(e);

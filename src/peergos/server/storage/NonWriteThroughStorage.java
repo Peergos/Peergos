@@ -86,7 +86,7 @@ public class NonWriteThroughStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<MultiAddress>> pinUpdate(PublicKeyHash owner, Multihash existing, Multihash updated) {
+    public CompletableFuture<List<Multihash>> pinUpdate(PublicKeyHash owner, Multihash existing, Multihash updated) {
         return modifications.pinUpdate(owner, existing, updated);
     }
 

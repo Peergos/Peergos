@@ -34,7 +34,7 @@ public interface ContentAddressedStorageProxy {
                                               List<byte[]> blocks,
                                               TransactionId tid);
 
-    CompletableFuture<List<MultiAddress>> pinUpdate(Multihash targetServerId,
+    CompletableFuture<List<Multihash>> pinUpdate(Multihash targetServerId,
                                                     PublicKeyHash owner,
                                                     Multihash existing,
                                                     Multihash updated);
@@ -145,22 +145,16 @@ public interface ContentAddressedStorageProxy {
         }
 
         @Override
-        public CompletableFuture<List<MultiAddress>> pinUpdate(Multihash targetServerId, PublicKeyHash owner, Multihash existing, Multihash updated) {
+        public CompletableFuture<List<Multihash>> pinUpdate(Multihash targetServerId, PublicKeyHash owner, Multihash existing, Multihash updated) {
             return poster.get(getProxyUrlPrefix(targetServerId) + apiPrefix + "pin/update?stream-channels=true&arg=" + existing.toString()
                     + "&arg=" + updated + "&unpin=false"
-                    + "&owner=" + encode(owner.toString())).thenApply(this::getMultiAddr);
+                    + "&owner=" + encode(owner.toString())).thenApply(this::getPins);
         }
 
         private List<Multihash> getPins(byte[] raw) {
             Map res = (Map)JSONParser.parse(new String(raw));
             List<String> pins = (List<String>)res.get("Pins");
             return pins.stream().map(Cid::decode).collect(Collectors.toList());
-        }
-
-        private List<MultiAddress> getMultiAddr(byte[] raw) {
-            Map res = (Map)JSONParser.parse(new String(raw));
-            List<String> pins = (List<String>)res.get("Pins");
-            return pins.stream().map(MultiAddress::new).collect(Collectors.toList());
         }
     }
 }

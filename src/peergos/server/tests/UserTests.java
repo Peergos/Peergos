@@ -57,8 +57,14 @@ public abstract class UserTests {
             Path peergosDir = Files.createTempDirectory("peergos");
             Random r = new Random();
             int port = 9000 + r.nextInt(8000);
+            int ipfsApiPort = 9000 + r.nextInt(50_000);
+            int ipfsGatewayPort = 9000 + r.nextInt(50_000);
+            int ipfsSwarmPort = 9000 + r.nextInt(50_000);
             return Args.parse(new String[]{
                     "-port", Integer.toString(port),
+                    "-ipfs-config-api-port", Integer.toString(ipfsApiPort),
+                    "-ipfs-config-gateway-port", Integer.toString(ipfsGatewayPort),
+                    "-ipfs-config-swarm-port", Integer.toString(ipfsSwarmPort),
                     "-logToConsole", "true",
                     "max-users", "10000",
                     Main.PEERGOS_PATH, peergosDir.toString(),
