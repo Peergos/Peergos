@@ -12,8 +12,6 @@ import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
-import java.io.*;
-import java.net.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
@@ -149,10 +147,11 @@ public class WriterData implements Cborable {
                                                                           SigningPrivateKeyAndPublicHash writer,
                                                                           Optional<PublicKeyHash> followRequestReceiver,
                                                                           SymmetricKey rootKey,
+                                                                          SecretGenerationAlgorithm algorithm,
                                                                           ContentAddressedStorage ipfs) {
         return OwnedKeyChamp.createEmpty(owner, writer, ipfs)
                 .thenApply(ownedRoot -> new WriterData(writer.publicKeyHash,
-                        Optional.of(SecretGenerationAlgorithm.getDefault()),
+                        Optional.of(algorithm),
                         Optional.empty(),
                         followRequestReceiver,
                         Optional.of(ownedRoot),

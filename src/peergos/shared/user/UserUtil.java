@@ -22,7 +22,7 @@ public class UserUtil {
                                                                SecretGenerationAlgorithm algorithm) {
         if (password.equals(username))
             return Futures.errored(new IllegalStateException("Your password cannot be the same as your username!"));
-        CompletableFuture<byte[]> fut = hasher.hashToKeyBytes(username, password, algorithm);
+        CompletableFuture<byte[]> fut = hasher.hashToKeyBytes(username + algorithm.getExtraSalt(), password, algorithm);
         return fut.thenApply(keyBytes -> {
             byte[] signBytesSeed = Arrays.copyOfRange(keyBytes, 0, 32);
             byte[] secretBoxBytes = Arrays.copyOfRange(keyBytes, 32, 64);

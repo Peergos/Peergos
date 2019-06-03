@@ -13,7 +13,7 @@ import java.util.*;
 public class PasswordProtected {
 
     public static SecretGenerationAlgorithm getDefault() {
-        return new ScryptGenerator(ScryptGenerator.MIN_MEMORY_COST, 8, 1, 32);
+        return new ScryptGenerator(ScryptGenerator.MIN_MEMORY_COST, 8, 1, 32, "");
     }
 
     public static Cborable encryptWithPassword(byte[] cleartext,

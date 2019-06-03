@@ -198,14 +198,14 @@ public class UserContext {
                                                         NetworkAccess network,
                                                         Crypto crypto,
                                                         Consumer<String> progressCallback) {
-        return signUpGeneral(username, password, network, crypto, SecretGenerationAlgorithm.getDefault(), progressCallback);
+        return signUpGeneral(username, password, network, crypto, SecretGenerationAlgorithm.getDefault(crypto.random), progressCallback);
     }
 
     public static CompletableFuture<UserContext> signUp(String username,
                                                         String password,
                                                         NetworkAccess network,
                                                         Crypto crypto) {
-        return signUpGeneral(username, password, network, crypto, SecretGenerationAlgorithm.getDefault(), t -> {});
+        return signUpGeneral(username, password, network, crypto, SecretGenerationAlgorithm.getDefault(crypto.random), t -> {});
     }
 
     public static CompletableFuture<UserContext> signUpGeneral(String username,
@@ -245,6 +245,7 @@ public class UserContext {
                                 signer,
                                 Optional.of(new PublicKeyHash(boxerHash)),
                                 userWithRoot.getRoot(),
+                                algorithm,
                                 network.dhtClient).thenCompose(newUserData -> {
 
                             CommittedWriterData notCommitted = new CommittedWriterData(MaybeMultihash.empty(), newUserData);
@@ -495,8 +496,10 @@ public class UserContext {
 
     @JsMethod
     public CompletableFuture<UserContext> changePassword(String oldPassword, String newPassword) {
-
-        return getKeyGenAlgorithm().thenCompose(alg -> changePassword(oldPassword, newPassword, alg, alg));
+        return getKeyGenAlgorithm().thenCompose(alg -> {
+            SecretGenerationAlgorithm newAlgorithm = SecretGenerationAlgorithm.withNewSalt(alg, crypto.random);
+            return changePassword(oldPassword, newPassword, alg, newAlgorithm);
+        });
     }
 
     public CompletableFuture<UserContext> changePassword(String oldPassword,
