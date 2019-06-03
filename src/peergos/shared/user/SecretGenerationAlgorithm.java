@@ -2,6 +2,7 @@ package peergos.shared.user;
 
 import jsinterop.annotations.*;
 import peergos.shared.cbor.*;
+import peergos.shared.crypto.random.*;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -30,8 +31,14 @@ public interface SecretGenerationAlgorithm extends Cborable {
     @JsMethod
     Type getType();
 
-    static SecretGenerationAlgorithm getDefault() {
-        return new ScryptGenerator(ScryptGenerator.MIN_MEMORY_COST, 8, 1, 96);
+    String getExtraSalt();
+
+    static SecretGenerationAlgorithm getDefault(SafeRandom rnd) {
+        return new ScryptGenerator(ScryptGenerator.MIN_MEMORY_COST, 8, 1, 96, ArrayOps.bytesToHex(rnd.randomBytes(32)));
+    }
+
+    static SecretGenerationAlgorithm getDefaultWithoutExtraSalt() {
+        return new ScryptGenerator(ScryptGenerator.MIN_MEMORY_COST, 8, 1, 96, "");
     }
 
     static SecretGenerationAlgorithm fromCbor(Cborable cbor) {

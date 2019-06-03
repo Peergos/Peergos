@@ -136,6 +136,12 @@ public interface CborObject extends Cborable {
             return ((CborString) get(key)).value;
         }
 
+        public String getString(String key, String defaultValue) {
+            CborString cborKey = new CborString(key);
+            Cborable val = values.get(cborKey);
+            return val != null ? ((CborString) val).value : defaultValue;
+        }
+
         public long getLong(String key) {
             return ((CborLong) get(key)).value;
         }

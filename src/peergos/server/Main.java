@@ -93,7 +93,7 @@ public class Main {
                     String testpassword = args.getArg("peergos.password");
                     String pkiUsername = "peergos";
                     UserWithRoot peergos = UserUtil.generateUser(pkiUsername, testpassword, crypto.hasher, crypto.symmetricProvider,
-                            crypto.random, crypto.signer, crypto.boxer, SecretGenerationAlgorithm.getDefault()).get();
+                            crypto.random, crypto.signer, crypto.boxer, SecretGenerationAlgorithm.getDefaultWithoutExtraSalt()).get();
 
                     boolean useIPFS = args.getBoolean("useIPFS");
                     String ipfsApiAddress = args.getArg("ipfs-api-address", "/ip4/127.0.0.1/tcp/5001");
@@ -106,7 +106,7 @@ public class Main {
 
                     String pkiPassword = args.getArg("pki.keygen.password");
                     SigningKeyPair pkiKeys = UserUtil.generateUser(pkiUsername, pkiPassword, crypto.hasher, crypto.symmetricProvider,
-                            crypto.random, crypto.signer, crypto.boxer, SecretGenerationAlgorithm.getDefault()).get().getUser();
+                            crypto.random, crypto.signer, crypto.boxer, SecretGenerationAlgorithm.getDefaultWithoutExtraSalt()).get().getUser();
                     IpfsTransaction.call(peergosPublicHash,
                             tid -> dht.putSigningKey(peergosIdentityKeys.secretSigningKey.signatureOnly(
                                     pkiKeys.publicSigningKey.serialize()),
@@ -150,7 +150,7 @@ public class Main {
                     String password = args.getArg("peergos.password");
                     String pkiUsername = "peergos";
                     UserWithRoot peergos = UserUtil.generateUser(pkiUsername, password, crypto.hasher, crypto.symmetricProvider,
-                            crypto.random, crypto.signer, crypto.boxer, SecretGenerationAlgorithm.getDefault()).get();
+                            crypto.random, crypto.signer, crypto.boxer, SecretGenerationAlgorithm.getDefaultWithoutExtraSalt()).get();
 
                     SigningKeyPair peergosIdentityKeys = peergos.getUser();
                     PublicKeyHash peergosPublicHash = ContentAddressedStorage.hashKey(peergosIdentityKeys.publicSigningKey);

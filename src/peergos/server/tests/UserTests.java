@@ -120,11 +120,12 @@ public abstract class UserTests {
         String username = generateUsername();
         String password = "letmein";
         Crypto crypto = Crypto.initJava();
+        String extraSalt = ArrayOps.bytesToHex(crypto.random.randomBytes(32));
         List<ScryptGenerator> params = Arrays.asList(
-                new ScryptGenerator(17, 8, 1, 96),
-                new ScryptGenerator(18, 8, 1, 96),
-                new ScryptGenerator(19, 8, 1, 96),
-                new ScryptGenerator(17, 9, 1, 96)
+                new ScryptGenerator(17, 8, 1, 96, extraSalt),
+                new ScryptGenerator(18, 8, 1, 96, extraSalt),
+                new ScryptGenerator(19, 8, 1, 96, extraSalt),
+                new ScryptGenerator(17, 9, 1, 96, extraSalt)
         );
         for (ScryptGenerator p: params) {
             long t1 = System.currentTimeMillis();
@@ -140,8 +141,9 @@ public abstract class UserTests {
         String username = generateUsername();
         String password = "test01";
 
+        SafeRandom.Java random = new SafeRandom.Java();
         UserUtil.generateUser(username, password, new ScryptJava(), new Salsa20Poly1305.Java(),
-                new SafeRandom.Java(), new Ed25519.Java(), new Curve25519.Java(), SecretGenerationAlgorithm.getDefault()).thenAccept(userWithRoot -> {
+                random, new Ed25519.Java(), new Curve25519.Java(), SecretGenerationAlgorithm.getDefault(random)).thenAccept(userWithRoot -> {
 		    PublicSigningKey expected = PublicSigningKey.fromString("7HvEWP6yd1UD8rOorfFrieJ8S7yC8+l3VisV9kXNiHmI7Eav7+3GTRSVBRCymItrzebUUoCi39M6rdgeOU9sXXFD");
 		    if (! expected.equals(userWithRoot.getUser().publicSigningKey))
 		        throw new IllegalStateException("Generated user different from the Javascript! \n"+userWithRoot.getUser().publicSigningKey + " != \n"+expected);
@@ -253,7 +255,7 @@ public abstract class UserTests {
         String password = "password";
         UserContext userContext = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         SecretGenerationAlgorithm algo = userContext.getKeyGenAlgorithm().get();
-        ScryptGenerator newAlgo = new ScryptGenerator(19, 8, 1, 96);
+        ScryptGenerator newAlgo = new ScryptGenerator(19, 8, 1, 96, algo.getExtraSalt());
         userContext.changePassword(password, password, algo, newAlgo).get();
         PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
     }

@@ -24,4 +24,9 @@ public class RandomSecretType implements SecretGenerationAlgorithm {
     public Type getType() {
         return Type.Random;
     }
+
+    @Override
+    public String getExtraSalt() {
+        return "";
+    }
 }
