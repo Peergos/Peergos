@@ -1,7 +1,7 @@
 package peergos.server.net;
 
 import com.sun.net.httpserver.*;
-import peergos.server.util.Logging;
+import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
@@ -126,22 +126,12 @@ public class PublicFileHandler implements HttpHandler {
         } catch (Exception e) {
             LOG.severe("Error handling " +httpExchange.getRequestURI());
             LOG.log(Level.WARNING, e.getMessage(), e);
-            replyError(httpExchange, e);
+            HttpUtil.replyError(httpExchange, e);
         } finally {
             httpExchange.close();
             long t2 = System.currentTimeMillis();
             if (LOGGING)
                 LOG.info("Public file Handler returned " + path + " query in: " + (t2 - t1) + " mS");
-        }
-    }
-
-    private static void replyError(HttpExchange exchange, Throwable t) {
-        try {
-            exchange.getResponseHeaders().set("Trailer", URLEncoder.encode(t.getMessage(), "UTF-8"));
-            exchange.sendResponseHeaders(400, -1);
-        } catch (IOException e)
-        {
-            LOG.log(Level.WARNING, e.getMessage(), e);
         }
     }
 }

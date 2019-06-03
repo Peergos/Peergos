@@ -1,6 +1,7 @@
 package peergos.server.storage.admin;
 
 import com.sun.net.httpserver.*;
+import peergos.server.util.*;
 import peergos.shared.io.ipfs.api.*;
 import peergos.shared.storage.controller.*;
 import peergos.shared.util.*;
@@ -38,13 +39,7 @@ public class AdminHandler implements HttpHandler {
             exchange.sendResponseHeaders(200, b.length);
             exchange.getResponseBody().write(b);
         } catch (Exception e) {
-            Throwable cause = e.getCause();
-            if (cause != null)
-                exchange.getResponseHeaders().set("Trailer", URLEncoder.encode(cause.getMessage(), "UTF-8"));
-            else
-                exchange.getResponseHeaders().set("Trailer", URLEncoder.encode(e.getMessage(), "UTF-8"));
-
-            exchange.sendResponseHeaders(400, 0);
+            HttpUtil.replyError(exchange, e);
         } finally {
             exchange.close();
         }

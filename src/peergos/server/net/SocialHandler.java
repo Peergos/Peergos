@@ -73,13 +73,7 @@ public class SocialHandler implements HttpHandler {
             exchange.sendResponseHeaders(200, b.length);
             exchange.getResponseBody().write(b);
         } catch (Exception e) {
-            Throwable cause = e.getCause();
-            if (cause != null)
-                exchange.getResponseHeaders().set("Trailer", URLEncoder.encode(cause.getMessage(), "UTF-8"));
-            else
-                exchange.getResponseHeaders().set("Trailer", URLEncoder.encode(e.getMessage(), "UTF-8"));
-
-            exchange.sendResponseHeaders(400, 0);
+            HttpUtil.replyError(exchange, e);
         } finally {
             exchange.close();
             long t2 = System.currentTimeMillis();

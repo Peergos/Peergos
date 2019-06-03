@@ -1,11 +1,9 @@
 package peergos.server.corenode;
 import java.util.logging.*;
 
-import peergos.server.*;
 import peergos.server.net.*;
-import peergos.server.util.Logging;
+import peergos.server.util.*;
 
-import peergos.server.mutable.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.CoreNode;
 import peergos.shared.corenode.CoreNodeUtils;
@@ -21,7 +19,6 @@ import com.sun.net.httpserver.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.api.*;
 import peergos.shared.mutable.*;
-import peergos.server.util.Args;
 import peergos.shared.util.*;
 
 public class HttpCoreNodeServer {
@@ -75,7 +72,7 @@ public class HttpCoreNodeServer {
                         getAllUsernamesGzip(subComponents.length > 1 ? subComponents[1] : "", din, dout);
                         break;
                     default:
-                        throw new IOException("Unknown method "+ method);
+                        throw new IOException("Unknown pkinode method!");
                 }
 
                 dout.flush();
@@ -84,20 +81,13 @@ public class HttpCoreNodeServer {
                 exchange.sendResponseHeaders(200, b.length);
                 exchange.getResponseBody().write(b);
             } catch (Exception e) {
-                Throwable cause = e.getCause();
-                if (cause != null)
-                    exchange.getResponseHeaders().set("Trailer", URLEncoder.encode(cause.getMessage(), "UTF-8"));
-                else
-                    exchange.getResponseHeaders().set("Trailer", URLEncoder.encode(e.getMessage(), "UTF-8"));
-
-                exchange.sendResponseHeaders(400, 0);
+                HttpUtil.replyError(exchange, e);
             } finally {
                 exchange.close();
                 long t2 = System.currentTimeMillis();
                 if (LOGGING)
                     LOG.info("Corenode server handled " + method + " request in: " + (t2 - t1) + " mS");
             }
-
         }
 
         void getChain(DataInputStream din, DataOutputStream dout) throws Exception

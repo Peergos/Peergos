@@ -55,18 +55,14 @@ public class MutationHandler implements HttpHandler {
                     dout.write(metadataBlob);
                     break;
                 default:
-                    throw new IOException("Unknown method "+ method);
+                    throw new IOException("Unknown method in mutable pointers!");
             }
 
             byte[] b = bout.toByteArray();
             exchange.sendResponseHeaders(200, b.length);
             exchange.getResponseBody().write(b);
         } catch (Exception e) {
-            LOG.log(Level.WARNING, e.getMessage(), e);
-            exchange.getResponseHeaders().set("Trailer", URLEncoder.encode(e.getMessage(), "UTF-8"));
-            exchange.sendResponseHeaders(400, 0);
-            OutputStream body = exchange.getResponseBody();
-            body.write(e.getMessage().getBytes());
+            HttpUtil.replyError(exchange, e);
         } finally {
             exchange.close();
             long t2 = System.currentTimeMillis();

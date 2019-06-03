@@ -137,55 +137,58 @@ public class IpfsCoreNode implements CoreNode {
      */
     @Override
     public synchronized CompletableFuture<Boolean> updateChain(String username, List<UserPublicKeyLink> updatedChain) {
-            try {
-                Function<ByteArrayWrapper, byte[]> identityHash = arr -> Arrays.copyOfRange(arr.data, 0, CoreNode.MAX_USERNAME_SIZE);
-                CommittedWriterData current = WriterData.getWriterData(currentRoot.get(), ipfs).get();
-                MaybeMultihash currentTree = current.props.tree.map(MaybeMultihash::of).orElseGet(MaybeMultihash::empty);
+        if (! UsernameValidator.isValidUsername(username))
+            throw new IllegalStateException("Invalid username");
 
-                ChampWrapper champ = currentTree.isPresent() ?
-                        ChampWrapper.create(currentTree.get(), identityHash, ipfs).get() :
-                        IpfsTransaction.call(peergosIdentity,
-                                tid -> ChampWrapper.create(signer.publicKeyHash, signer, identityHash, tid, ipfs),
-                                ipfs).get();
-                MaybeMultihash existing = champ.get(username.getBytes()).get();
-                Optional<CborObject> cborOpt = existing.isPresent() ?
-                        ipfs.get(existing.get()).get() :
-                        Optional.empty();
-                if (! cborOpt.isPresent() && existing.isPresent()) {
-                    LOG.severe("Couldn't retrieve existing claim chain from " + existing + " for " + username);
-                    return CompletableFuture.completedFuture(true);
-                }
-                List<UserPublicKeyLink> existingChain = cborOpt.map(cbor -> ((CborObject.CborList) cbor).value.stream()
-                        .map(UserPublicKeyLink::fromCbor)
-                        .collect(Collectors.toList()))
-                        .orElse(Collections.emptyList());
+        try {
+            Function<ByteArrayWrapper, byte[]> identityHash = arr -> Arrays.copyOfRange(arr.data, 0, CoreNode.MAX_USERNAME_SIZE);
+            CommittedWriterData current = WriterData.getWriterData(currentRoot.get(), ipfs).get();
+            MaybeMultihash currentTree = current.props.tree.map(MaybeMultihash::of).orElseGet(MaybeMultihash::empty);
 
-                List<UserPublicKeyLink> mergedChain = UserPublicKeyLink.merge(existingChain, updatedChain, ipfs).get();
-                CborObject.CborList mergedChainCbor = new CborObject.CborList(mergedChain.stream()
-                        .map(Cborable::toCbor)
-                        .collect(Collectors.toList()));
-                Multihash mergedChainHash = IpfsTransaction.call(peergosIdentity,
-                        tid -> ipfs.put(peergosIdentity, signer, mergedChainCbor.toByteArray(), tid),
-                        ipfs).get();
-                synchronized (this) {
-                    return IpfsTransaction.call(peergosIdentity,
-                            tid -> champ.put(signer.publicKeyHash, signer, username.getBytes(), existing, mergedChainHash, tid)
-                                    .thenCompose(newPkiRoot -> current.props.withChamp(newPkiRoot)
-                                            .commit(peergosIdentity, signer, currentRoot, mutable, ipfs, tid)),
-                            ipfs
-                    ).thenApply(committed -> {
-                        if (existingChain.isEmpty())
-                            usernames.add(username);
-                        PublicKeyHash owner = updatedChain.get(updatedChain.size() - 1).owner;
-                        reverseLookup.put(owner, username);
-                        chains.put(username, mergedChain);
-                        currentRoot = committed.get(signer).hash;
-                        return true;
-                    });
-                }
-            } catch (Exception e) {
-                throw new RuntimeException(e.getMessage(), e);
+            ChampWrapper champ = currentTree.isPresent() ?
+                    ChampWrapper.create(currentTree.get(), identityHash, ipfs).get() :
+                    IpfsTransaction.call(peergosIdentity,
+                            tid -> ChampWrapper.create(signer.publicKeyHash, signer, identityHash, tid, ipfs),
+                            ipfs).get();
+            MaybeMultihash existing = champ.get(username.getBytes()).get();
+            Optional<CborObject> cborOpt = existing.isPresent() ?
+                    ipfs.get(existing.get()).get() :
+                    Optional.empty();
+            if (! cborOpt.isPresent() && existing.isPresent()) {
+                LOG.severe("Couldn't retrieve existing claim chain from " + existing + " for " + username);
+                return CompletableFuture.completedFuture(true);
             }
+            List<UserPublicKeyLink> existingChain = cborOpt.map(cbor -> ((CborObject.CborList) cbor).value.stream()
+                    .map(UserPublicKeyLink::fromCbor)
+                    .collect(Collectors.toList()))
+                    .orElse(Collections.emptyList());
+
+            List<UserPublicKeyLink> mergedChain = UserPublicKeyLink.merge(existingChain, updatedChain, ipfs).get();
+            CborObject.CborList mergedChainCbor = new CborObject.CborList(mergedChain.stream()
+                    .map(Cborable::toCbor)
+                    .collect(Collectors.toList()));
+            Multihash mergedChainHash = IpfsTransaction.call(peergosIdentity,
+                    tid -> ipfs.put(peergosIdentity, signer, mergedChainCbor.toByteArray(), tid),
+                    ipfs).get();
+            synchronized (this) {
+                return IpfsTransaction.call(peergosIdentity,
+                        tid -> champ.put(signer.publicKeyHash, signer, username.getBytes(), existing, mergedChainHash, tid)
+                                .thenCompose(newPkiRoot -> current.props.withChamp(newPkiRoot)
+                                        .commit(peergosIdentity, signer, currentRoot, mutable, ipfs, tid)),
+                        ipfs
+                ).thenApply(committed -> {
+                    if (existingChain.isEmpty())
+                        usernames.add(username);
+                    PublicKeyHash owner = updatedChain.get(updatedChain.size() - 1).owner;
+                    reverseLookup.put(owner, username);
+                    chains.put(username, mergedChain);
+                    currentRoot = committed.get(signer).hash;
+                    return true;
+                });
+            }
+        } catch (Exception e) {
+            throw new RuntimeException(e.getMessage(), e);
+        }
     }
 
     @Override

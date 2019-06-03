@@ -213,7 +213,7 @@ public class DHTHandler implements HttpHandler {
         } catch (Exception e) {
             LOG.severe("Error handling " +httpExchange.getRequestURI());
             LOG.log(Level.WARNING, e.getMessage(), e);
-            replyError(httpExchange, e);
+            HttpUtil.replyError(httpExchange, e);
         } finally {
             httpExchange.close();
             long t2 = System.currentTimeMillis();
@@ -230,16 +230,6 @@ public class DHTHandler implements HttpHandler {
         Map<String, Object> json = new TreeMap<>();
         json.put(key, h.toString());
         return json;
-    }
-
-    private static void replyError(HttpExchange exchange, Throwable t) {
-        try {
-            exchange.getResponseHeaders().set("Trailer", URLEncoder.encode(t.getMessage(), "UTF-8"));
-            exchange.sendResponseHeaders(400, -1);
-        } catch (IOException e)
-        {
-            LOG.log(Level.WARNING, e.getMessage(), e);
-        }
     }
 
     private static void replyJson(HttpExchange exchange, String json, Optional<Multihash> key) {
