@@ -496,8 +496,10 @@ public class UserContext {
 
     @JsMethod
     public CompletableFuture<UserContext> changePassword(String oldPassword, String newPassword) {
-
-        return getKeyGenAlgorithm().thenCompose(alg -> changePassword(oldPassword, newPassword, alg, alg));
+        return getKeyGenAlgorithm().thenCompose(alg -> {
+            SecretGenerationAlgorithm newAlgorithm = SecretGenerationAlgorithm.withNewSalt(alg, crypto.random);
+            return changePassword(oldPassword, newPassword, alg, newAlgorithm);
+        });
     }
 
     public CompletableFuture<UserContext> changePassword(String oldPassword,
