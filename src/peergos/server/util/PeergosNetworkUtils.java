@@ -29,6 +29,10 @@ public class PeergosNetworkUtils {
         return "username_" + Math.abs(random.nextInt() % 1_000_000);
     }
 
+    public static String generatePassword() {
+        return ArrayOps.bytesToHex(crypto.random.randomBytes(32));
+    }
+
     public static final Crypto crypto = Crypto.initJava();
 
     public static String randomString() {
@@ -49,12 +53,13 @@ public class PeergosNetworkUtils {
         assertTrue("Correct contents", Arrays.equals(retrievedData, expected));
     }
 
-    public static List<UserContext> getUserContextsForNode(NetworkAccess network, Random random, int size) {
+    public static List<UserContext> getUserContextsForNode(NetworkAccess network, Random random, int size, List<String> passwords) {
         return IntStream.range(0, size)
                 .mapToObj(e -> {
                     String username = generateUsername(random);
+                    String password = passwords.get(e);
                     try {
-                        return ensureSignedUp(username, username, network.clear(), crypto);
+                        return ensureSignedUp(username, password, network.clear(), crypto);
                     } catch (Exception ioe) {
                         throw new IllegalStateException(ioe);
                     }
@@ -67,10 +72,14 @@ public class PeergosNetworkUtils {
         //sign up a user on sharerNode
 
         String sharerUsername = generateUsername(random);
-        UserContext sharerUser = ensureSignedUp(sharerUsername, sharerUsername, sharerNode.clear(), crypto);
+        String sharerPassword = generatePassword();
+        UserContext sharerUser = ensureSignedUp(sharerUsername, sharerPassword, sharerNode.clear(), crypto);
 
         //sign up some users on shareeNode
-        List<UserContext> shareeUsers = getUserContextsForNode(shareeNode, random, shareeCount);
+        List<String> shareePasswords = IntStream.range(0, shareeCount)
+                .mapToObj(i -> generatePassword())
+                .collect(Collectors.toList());
+        List<UserContext> shareeUsers = getUserContextsForNode(shareeNode, random, shareeCount, shareePasswords);
 
         // send follow requests from sharees to sharer
         for (UserContext userContext : shareeUsers) {
@@ -137,7 +146,7 @@ public class PeergosNetworkUtils {
         List<UserContext> updatedShareeUsers = shareeUsers.stream()
                 .map(e -> {
                     try {
-                        return ensureSignedUp(e.username, e.username, shareeNode, crypto);
+                        return ensureSignedUp(e.username, shareePasswords.get(shareeUsers.indexOf(e)), shareeNode, crypto);
                     } catch (Exception ex) {
                         throw new IllegalStateException(ex.getMessage(), ex);
 
@@ -152,7 +161,7 @@ public class PeergosNetworkUtils {
                 .skip(1)
                 .collect(Collectors.toList());
 
-        UserContext updatedSharerUser = ensureSignedUp(sharerUsername, sharerUsername, sharerNode.clear(), crypto);
+        UserContext updatedSharerUser = ensureSignedUp(sharerUsername, sharerPassword, sharerNode.clear(), crypto);
 
         // check remaining users can still read it
         for (UserContext userContext : remainingUsers) {
@@ -185,10 +194,14 @@ public class PeergosNetworkUtils {
         //sign up a user on sharerNode
 
         String sharerUsername = generateUsername(random);
-        UserContext sharerUser = ensureSignedUp(sharerUsername, sharerUsername, sharerNode.clear(), crypto);
+        String sharerPassword = generatePassword();
+        UserContext sharerUser = ensureSignedUp(sharerUsername, sharerPassword, sharerNode.clear(), crypto);
 
         //sign up some users on shareeNode
-        List<UserContext> shareeUsers = getUserContextsForNode(shareeNode, random, shareeCount);
+        List<String> shareePasswords = IntStream.range(0, shareeCount)
+                .mapToObj(i -> generatePassword())
+                .collect(Collectors.toList());
+        List<UserContext> shareeUsers = getUserContextsForNode(shareeNode, random, shareeCount, shareePasswords);
 
         // send follow requests from sharees to sharer
         for (UserContext userContext : shareeUsers) {
@@ -250,7 +263,7 @@ public class PeergosNetworkUtils {
         List<UserContext> updatedShareeUsers = shareeUsers.stream()
                 .map(e -> {
                     try {
-                        return ensureSignedUp(e.username, e.username, shareeNode, crypto);
+                        return ensureSignedUp(e.username, shareePasswords.get(shareeUsers.indexOf(e)), shareeNode, crypto);
                     } catch (Exception ex) {
                         throw new IllegalStateException(ex.getMessage(), ex);
 
@@ -265,7 +278,7 @@ public class PeergosNetworkUtils {
                 .skip(1)
                 .collect(Collectors.toList());
 
-        UserContext updatedSharerUser = ensureSignedUp(sharerUsername, sharerUsername, sharerNode.clear(), crypto);
+        UserContext updatedSharerUser = ensureSignedUp(sharerUsername, sharerPassword, sharerNode.clear(), crypto);
 
         // check remaining users can still read it
         for (UserContext userContext : remainingUsers) {
@@ -298,9 +311,13 @@ public class PeergosNetworkUtils {
         CryptreeNode.setMaxChildLinkPerBlob(10);
 
         String sharerUsername = generateUsername(random);
-        UserContext sharer = PeergosNetworkUtils.ensureSignedUp(sharerUsername, sharerUsername, sharerNode, crypto);
+        String sharerPassword = generatePassword();
+        UserContext sharer = PeergosNetworkUtils.ensureSignedUp(sharerUsername, sharerPassword, sharerNode, crypto);
 
-        List<UserContext> shareeUsers = getUserContextsForNode(shareeNode, random, shareeCount);
+        List<String> shareePasswords = IntStream.range(0, shareeCount)
+                .mapToObj(i -> generatePassword())
+                .collect(Collectors.toList());
+        List<UserContext> shareeUsers = getUserContextsForNode(shareeNode, random, shareeCount, shareePasswords);
 
         for (UserContext sharee : shareeUsers)
             sharee.sendFollowRequest(sharer.username, SymmetricKey.random()).get();
@@ -355,12 +372,12 @@ public class PeergosNetworkUtils {
             checkFileContents(originalFileContents, sharedFile, sharee);
         }
 
-        UserContext updatedSharer = PeergosNetworkUtils.ensureSignedUp(sharerUsername, sharerUsername, sharerNode.clear(), crypto);
+        UserContext updatedSharer = PeergosNetworkUtils.ensureSignedUp(sharerUsername, sharerPassword, sharerNode.clear(), crypto);
 
         List<UserContext> updatedSharees = shareeUsers.stream()
                 .map(e -> {
                     try {
-                        return ensureSignedUp(e.username, e.username, e.network, crypto);
+                        return ensureSignedUp(e.username, shareePasswords.get(shareeUsers.indexOf(e)), e.network, crypto);
                     } catch (Exception ex) {
                         throw new IllegalStateException(ex.getMessage(), ex);
                     }
@@ -418,9 +435,13 @@ public class PeergosNetworkUtils {
         CryptreeNode.setMaxChildLinkPerBlob(10);
 
         String sharerUsername = generateUsername(random);
-        UserContext sharer = PeergosNetworkUtils.ensureSignedUp(sharerUsername, sharerUsername, sharerNode, crypto);
+        String sharerPassword = generatePassword();
+        UserContext sharer = PeergosNetworkUtils.ensureSignedUp(sharerUsername, sharerPassword, sharerNode, crypto);
 
-        List<UserContext> shareeUsers = getUserContextsForNode(shareeNode, random, shareeCount);
+        List<String> shareePasswords = IntStream.range(0, shareeCount)
+                .mapToObj(i -> generatePassword())
+                .collect(Collectors.toList());
+        List<UserContext> shareeUsers = getUserContextsForNode(shareeNode, random, shareeCount, shareePasswords);
 
         for (UserContext sharee : shareeUsers)
             sharee.sendFollowRequest(sharer.username, SymmetricKey.random()).get();
@@ -500,12 +521,12 @@ public class PeergosNetworkUtils {
             Assert.assertTrue("Correct children", sharedChildNames.equals(childNames));
         }
 
-        UserContext updatedSharer = PeergosNetworkUtils.ensureSignedUp(sharerUsername, sharerUsername, sharerNode.clear(), crypto);
+        UserContext updatedSharer = PeergosNetworkUtils.ensureSignedUp(sharerUsername, sharerPassword, sharerNode.clear(), crypto);
 
         List<UserContext> updatedSharees = shareeUsers.stream()
                 .map(e -> {
                     try {
-                        return ensureSignedUp(e.username, e.username, e.network, crypto);
+                        return ensureSignedUp(e.username, shareePasswords.get(shareeUsers.indexOf(e)), e.network, crypto);
                     } catch (Exception ex) {
                         throw new IllegalStateException(ex.getMessage(), ex);
                     }
@@ -560,9 +581,13 @@ public class PeergosNetworkUtils {
         Assert.assertTrue(0 < shareeCount);
 
         String sharerUsername = generateUsername(random);
-        UserContext sharer = PeergosNetworkUtils.ensureSignedUp(sharerUsername, sharerUsername, sharerNode, crypto);
+        String sharerPassword = generatePassword();
+        UserContext sharer = PeergosNetworkUtils.ensureSignedUp(sharerUsername, sharerPassword, sharerNode, crypto);
 
-        List<UserContext> shareeUsers = getUserContextsForNode(shareeNode, random, shareeCount);
+        List<String> shareePasswords = IntStream.range(0, shareeCount)
+                .mapToObj(i -> generatePassword())
+                .collect(Collectors.toList());
+        List<UserContext> shareeUsers = getUserContextsForNode(shareeNode, random, shareeCount, shareePasswords);
 
         for (UserContext sharee : shareeUsers)
             sharee.sendFollowRequest(sharer.username, SymmetricKey.random()).get();

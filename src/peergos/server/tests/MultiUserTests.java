@@ -46,8 +46,8 @@ public class MultiUserTests {
         Main.PKI_INIT.main(args);
     }
 
-    private List<UserContext> getUserContexts(int size) {
-        return getUserContextsForNode(network, random, size);
+    private List<UserContext> getUserContexts(int size, List<String> passwords) {
+        return getUserContextsForNode(network, random, size, passwords);
     }
 
     @Test
@@ -156,7 +156,10 @@ public class MultiUserTests {
         UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
 
         // send follow requests from each other user to "a"
-        List<UserContext> userContexts = getUserContexts(1);
+        List<String> shareePasswords = IntStream.range(0, 1)
+                .mapToObj(i -> PeergosNetworkUtils.generatePassword())
+                .collect(Collectors.toList());
+        List<UserContext> userContexts = getUserContexts(1, shareePasswords);
         for (UserContext userContext : userContexts) {
             userContext.sendFollowRequest(u1.username, SymmetricKey.random()).get();
         }
@@ -230,7 +233,10 @@ public class MultiUserTests {
         UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
 
         // send follow requests from each other user to "a"
-        List<UserContext> userContexts = getUserContexts(1);
+        List<String> shareePasswords = IntStream.range(0, 1)
+                .mapToObj(i -> PeergosNetworkUtils.generatePassword())
+                .collect(Collectors.toList());
+        List<UserContext> userContexts = getUserContexts(1, shareePasswords);
         for (UserContext userContext : userContexts) {
             userContext.sendFollowRequest(u1.username, SymmetricKey.random()).get();
         }
@@ -330,7 +336,10 @@ public class MultiUserTests {
         UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
 
         // send follow requests from each other user to "a"
-        List<UserContext> userContexts = getUserContexts(1);
+        List<String> shareePasswords = IntStream.range(0, 1)
+                .mapToObj(i -> PeergosNetworkUtils.generatePassword())
+                .collect(Collectors.toList());
+        List<UserContext> userContexts = getUserContexts(1, shareePasswords);
         for (UserContext userContext : userContexts) {
             userContext.sendFollowRequest(u1.username, SymmetricKey.random()).get();
         }
@@ -406,7 +415,10 @@ public class MultiUserTests {
         UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
 
         // send follow requests from each other user to "a"
-        List<UserContext> userContexts = getUserContexts(1);
+        List<String> shareePasswords = IntStream.range(0, 1)
+                .mapToObj(i -> PeergosNetworkUtils.generatePassword())
+                .collect(Collectors.toList());
+        List<UserContext> userContexts = getUserContexts(1, shareePasswords);
         for (UserContext userContext : userContexts) {
             userContext.sendFollowRequest(u1.username, SymmetricKey.random()).get();
         }
@@ -475,7 +487,10 @@ public class MultiUserTests {
         UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
 
         // send follow requests from each other user to "a"
-        List<UserContext> userContexts = getUserContexts(1);
+        List<String> shareePasswords = IntStream.range(0, 1)
+                .mapToObj(i -> PeergosNetworkUtils.generatePassword())
+                .collect(Collectors.toList());
+        List<UserContext> userContexts = getUserContexts(1, shareePasswords);
         for (UserContext userContext : userContexts) {
             userContext.sendFollowRequest(u1.username, SymmetricKey.random()).get();
         }
@@ -555,7 +570,10 @@ public class MultiUserTests {
         UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
 
         // send follow requests from each other user to "a"
-        List<UserContext> userContexts = getUserContexts(1);
+        List<String> shareePasswords = IntStream.range(0, 1)
+                .mapToObj(i -> PeergosNetworkUtils.generatePassword())
+                .collect(Collectors.toList());
+        List<UserContext> userContexts = getUserContexts(1, shareePasswords);
         for (UserContext userContext : userContexts) {
             userContext.sendFollowRequest(u1.username, SymmetricKey.random()).get();
         }
@@ -627,7 +645,10 @@ public class MultiUserTests {
         UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
 
         // send follow requests from each other user to "a"
-        List<UserContext> userContexts = getUserContexts(1);
+        List<String> shareePasswords = IntStream.range(0, 1)
+                .mapToObj(i -> PeergosNetworkUtils.generatePassword())
+                .collect(Collectors.toList());
+        List<UserContext> userContexts = getUserContexts(1, shareePasswords);
         for (UserContext userContext : userContexts) {
             userContext.sendFollowRequest(u1.username, SymmetricKey.random()).get();
         }
@@ -710,7 +731,10 @@ public class MultiUserTests {
         UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
 
         // send follow requests from each other user to "a"
-        List<UserContext> userContexts = getUserContexts(1);
+        List<String> shareePasswords = IntStream.range(0, 1)
+                .mapToObj(i -> PeergosNetworkUtils.generatePassword())
+                .collect(Collectors.toList());
+        List<UserContext> userContexts = getUserContexts(1, shareePasswords);
         for (UserContext userContext : userContexts) {
             userContext.sendFollowRequest(u1.username, SymmetricKey.random()).get();
         }
@@ -769,7 +793,10 @@ public class MultiUserTests {
         UserContext u1 = PeergosNetworkUtils.ensureSignedUp(username, password, network.clear(), crypto);
 
         // send follow requests from each other user to "a"
-        List<UserContext> friends = getUserContexts(userCount);
+        List<String> shareePasswords = IntStream.range(0, userCount)
+                .mapToObj(i -> PeergosNetworkUtils.generatePassword())
+                .collect(Collectors.toList());
+        List<UserContext> friends = getUserContexts(userCount, shareePasswords);
         for (UserContext userContext : friends) {
             userContext.sendFollowRequest(u1.username, SymmetricKey.random()).get();
         }
@@ -856,7 +883,7 @@ public class MultiUserTests {
         List<UserContext> updatedUserContexts = friends.stream()
                 .map(e -> {
                     try {
-                        return ensureSignedUp(e.username, e.username, network, crypto);
+                        return ensureSignedUp(e.username, shareePasswords.get(friends.indexOf(e)), network, crypto);
                     } catch (Exception ex) {
                         throw new IllegalStateException(ex.getMessage(), ex);
                     }
@@ -947,7 +974,7 @@ public class MultiUserTests {
     @Test
     public void followPeergos() throws Exception {
         UserContext u1 = PeergosNetworkUtils.ensureSignedUp("peergos", "testpassword", network, crypto);
-        UserContext u2 = PeergosNetworkUtils.ensureSignedUp("w", "w", network, crypto);
+        UserContext u2 = PeergosNetworkUtils.ensureSignedUp("w", "somepassword", network, crypto);
 
         List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
         assertTrue("Receive a follow request", u1Requests.size() > 0);
