@@ -12,7 +12,6 @@ public interface SecretGenerationAlgorithm extends Cborable {
     enum Type {
         Random(0x0),
         Scrypt(0x1);
-        // TODO find a post-quantum algorithm
 
         public final int value;
 

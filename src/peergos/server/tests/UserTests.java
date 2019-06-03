@@ -191,9 +191,11 @@ public abstract class UserTests {
 
     @Test
     public void duplicateSignUp() {
-        UserContext.ensureSignedUp("q", "q", network, crypto).join();
+        String password1 = "password1";
+        String password2 = "password2";
+        UserContext.ensureSignedUp("q", password1, network, crypto).join();
         try {
-            UserContext.signUp("q", "w", network, crypto).get();
+            UserContext.signUp("q", password2, network, crypto).get();
         } catch (Exception e) {
             if (! e.getMessage().contains("User already exists"))
                 Assert.fail("Incorrect error message");
@@ -202,9 +204,10 @@ public abstract class UserTests {
 
     @Test
     public void repeatedSignUp() {
-        UserContext.ensureSignedUp("q", "q", network, crypto).join();
+        String password = "password";
+        UserContext.ensureSignedUp("q", password, network, crypto).join();
         try {
-            UserContext.signUp("q", "q", network, crypto).get();
+            UserContext.signUp("q", password, network, crypto).get();
         } catch (Exception e) {
             if (!Exceptions.getRootCause(e).getMessage().contains("User already exists"))
                 Assert.fail("Incorrect error message");
