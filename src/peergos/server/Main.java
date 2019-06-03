@@ -167,7 +167,8 @@ public class Main {
                                     pkiFilePassword, crypto.hasher, crypto.symmetricProvider, crypto.random)));
 
                     // sign up peergos user
-                    UserContext context = UserContext.ensureSignedUp(pkiUsername, password, network, crypto).get();
+                    SecretGenerationAlgorithm algorithm = SecretGenerationAlgorithm.getDefaultWithoutExtraSalt();
+                    UserContext context = UserContext.signUpGeneral(pkiUsername, password, network, crypto, algorithm, x -> {}).get();
                     Optional<PublicKeyHash> existingPkiKey = context.getNamedKey("pki").get();
                     if (!existingPkiKey.isPresent() || existingPkiKey.get().equals(pkiPublicHash)) {
                         SigningPrivateKeyAndPublicHash pkiKeyPair = new SigningPrivateKeyAndPublicHash(pkiPublicHash, pkiSecret);
