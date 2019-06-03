@@ -5,6 +5,7 @@ import peergos.shared.crypto.asymmetric.curve25519.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
+import peergos.shared.util.*;
 
 import java.util.Arrays;
 import java.util.concurrent.CompletableFuture;
@@ -19,6 +20,8 @@ public class UserUtil {
                                                                Ed25519 signer,
                                                                Curve25519 boxer,
                                                                SecretGenerationAlgorithm algorithm) {
+        if (password.equals(username))
+            return Futures.errored(new IllegalStateException("Your password cannot be the same as your username!"));
         CompletableFuture<byte[]> fut = hasher.hashToKeyBytes(username, password, algorithm);
         return fut.thenApply(keyBytes -> {
             byte[] signBytesSeed = Arrays.copyOfRange(keyBytes, 0, 32);
