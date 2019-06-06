@@ -91,7 +91,7 @@ public class PublicFileHandler implements HttpHandler {
 
             if (file.isDirectory()) {
                 String fullPath = httpExchange.getRequestURI().getPath();
-                String canonicalFullPath = fullPath + (! fullPath.endsWith("/") ? "/" : "");
+                String canonicalFullPath = HtmlUtil.escapeHtml4(fullPath + (! fullPath.endsWith("/") ? "/" : ""));
                 List<FileWrapper> children = file.getChildren(network).get()
                         .stream()
                         .sorted(Comparator.comparing(f -> f.getName()))
@@ -99,8 +99,10 @@ public class PublicFileHandler implements HttpHandler {
                 StringBuilder resp = new StringBuilder();
                 resp.append("<!DOCTYPE html><html lang=\"en\">");
                 resp.append("<body>");
-                resp.append("<h1>Contents of directory " + originalPath + "</h1>");
-                children.forEach(child -> resp.append("<a href=\""+canonicalFullPath + child.getName()+"\">" + child.getName() + "</a><br/>"));
+                resp.append("<h1>Contents of directory " + HtmlUtil.escapeHtml4(originalPath) + "</h1>");
+                children.forEach(child -> resp.append("<a href=\""+canonicalFullPath +
+                        HtmlUtil.escapeHtml4(child.getName())+"\">" +
+                        HtmlUtil.escapeHtml4(child.getName()) + "</a><br/>"));
                 resp.append("</body>");
                 resp.append("</html>");
 
