@@ -100,8 +100,10 @@ public class Champ implements Cborable {
         int shift = (depth * nbits) % 8;
         int lowBits = Math.min(nbits, 8 - shift);
         int hiBits = nbits - lowBits;
-        return ((hash[index] >> shift) & ((1 << lowBits) - 1)) |
-                ((hash[index + 1] & ((1 << hiBits) - 1)) << lowBits);
+        byte val1 = index < hash.length ? hash[index] : 0;
+        byte val2 = index + 1 < hash.length ? hash[index + 1] : 0;
+        return ((val1 >> shift) & ((1 << lowBits) - 1)) |
+                ((val2 & ((1 << hiBits) - 1)) << lowBits);
     }
 
     private static int getIndex(BitSet bitmap, int bitpos) {
