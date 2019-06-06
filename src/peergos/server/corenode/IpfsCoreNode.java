@@ -49,6 +49,10 @@ public class IpfsCoreNode implements CoreNode {
         this.update(currentRoot);
     }
 
+    private static byte[] keyHash(ByteArrayWrapper username) {
+        return Blake2b.Digest.newInstance().digest(username.data);
+    }
+
     /** Update the existing mappings based on the diff between the current champ and the champ with the supplied root.
      *
      * @param newRoot The root of the new champ
@@ -99,10 +103,14 @@ public class IpfsCoreNode implements CoreNode {
                 return;
             }
 
-            String username = new String(key.data);
             List<UserPublicKeyLink> updatedChain = ((CborObject.CborList) cborOpt.get()).value.stream()
                     .map(UserPublicKeyLink::fromCbor)
                     .collect(Collectors.toList());
+
+            String username = updatedChain.get(0).claim.username;
+            // double check mapping
+            if (! key.equals(new ByteArrayWrapper(keyHash(new ByteArrayWrapper(username.getBytes())))))
+                throw new IllegalStateException("Username doesn't match key in champ!");
 
             if (oldValue.isPresent()) {
                 Optional<CborObject> existingCborOpt = ipfs.get(oldValue.get()).get();
@@ -141,14 +149,13 @@ public class IpfsCoreNode implements CoreNode {
             throw new IllegalStateException("Invalid username");
 
         try {
-            Function<ByteArrayWrapper, byte[]> identityHash = arr -> Arrays.copyOfRange(arr.data, 0, CoreNode.MAX_USERNAME_SIZE);
             CommittedWriterData current = WriterData.getWriterData(currentRoot.get(), ipfs).get();
             MaybeMultihash currentTree = current.props.tree.map(MaybeMultihash::of).orElseGet(MaybeMultihash::empty);
 
             ChampWrapper champ = currentTree.isPresent() ?
-                    ChampWrapper.create(currentTree.get(), identityHash, ipfs).get() :
+                    ChampWrapper.create(currentTree.get(), IpfsCoreNode::keyHash, ipfs).get() :
                     IpfsTransaction.call(peergosIdentity,
-                            tid -> ChampWrapper.create(signer.publicKeyHash, signer, identityHash, tid, ipfs),
+                            tid -> ChampWrapper.create(signer.publicKeyHash, signer, IpfsCoreNode::keyHash, tid, ipfs),
                             ipfs).get();
             MaybeMultihash existing = champ.get(username.getBytes()).get();
             Optional<CborObject> cborOpt = existing.isPresent() ?
