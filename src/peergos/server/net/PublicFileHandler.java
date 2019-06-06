@@ -15,7 +15,6 @@ import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
 import java.io.*;
-import java.net.*;
 import java.util.*;
 import java.util.function.*;
 import java.util.logging.*;

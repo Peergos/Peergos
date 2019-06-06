@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package peergos.shared.util;
+package peergos.server.util;
 
 import java.io.*;
 import java.util.*;
