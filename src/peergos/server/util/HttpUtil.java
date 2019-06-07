@@ -1,6 +1,7 @@
 package peergos.server.util;
 
 import com.sun.net.httpserver.*;
+import peergos.shared.util.JavaScriptCompatibleURLEncoder;
 
 import java.io.*;
 import java.net.*;
@@ -36,9 +37,9 @@ public class HttpUtil {
             Logging.LOG().log(Level.WARNING, t.getMessage(), t);
             Throwable cause = t.getCause();
             if (cause != null)
-                exchange.getResponseHeaders().set("Trailer", URLEncoder.encode(cause.getMessage(), "UTF-8"));
+                exchange.getResponseHeaders().set("Trailer", JavaScriptCompatibleURLEncoder.encode(cause.getMessage(), "UTF-8"));
             else
-                exchange.getResponseHeaders().set("Trailer", URLEncoder.encode(t.getMessage(), "UTF-8"));
+                exchange.getResponseHeaders().set("Trailer", JavaScriptCompatibleURLEncoder.encode(t.getMessage(), "UTF-8"));
 
             exchange.getResponseHeaders().set("Content-Type", "text/plain");
             exchange.sendResponseHeaders(400, 0);
