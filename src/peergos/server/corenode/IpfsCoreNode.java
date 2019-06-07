@@ -107,10 +107,7 @@ public class IpfsCoreNode implements CoreNode {
                     .map(UserPublicKeyLink::fromCbor)
                     .collect(Collectors.toList());
 
-            String username = updatedChain.get(0).claim.username;
-            // double check mapping
-            if (! key.equals(new ByteArrayWrapper(keyHash(new ByteArrayWrapper(username.getBytes())))))
-                throw new IllegalStateException("Username doesn't match key in champ!");
+            String username = new String(key.data);
 
             if (oldValue.isPresent()) {
                 Optional<CborObject> existingCborOpt = ipfs.get(oldValue.get()).get();
