@@ -49,7 +49,7 @@ public class IpfsCoreNode implements CoreNode {
         this.update(currentRoot);
     }
 
-    private static byte[] keyHash(ByteArrayWrapper username) {
+    public static byte[] keyHash(ByteArrayWrapper username) {
         return Blake2b.Digest.newInstance().digest(username.data);
     }
 
