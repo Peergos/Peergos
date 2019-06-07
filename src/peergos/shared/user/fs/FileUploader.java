@@ -128,6 +128,7 @@ public class FileUploader implements AutoCloseable {
                                                           Hasher hasher,
                                                           NetworkAccess network,
                                                           ProgressConsumer<Long> monitor) {
+        CappedProgressConsumer progress = new CappedProgressConsumer(monitor, chunk.chunk.data().length);
         if (! writer.publicKeyHash.equals(chunk.location.writer))
             throw new IllegalStateException("Trying to write a chunk to the wrong signing key space!");
         RelativeCapability nextChunk = RelativeCapability.buildSubsequentChunk(nextChunkLocation.getMapKey(), baseKey);
@@ -142,10 +143,10 @@ public class FileUploader implements AutoCloseable {
                 .collect(Collectors.toList());
 
         if (fragments.size() < file.right.size())
-            monitor.accept((long)chunk.chunk.data().length);
+            progress.accept((long)chunk.chunk.data().length);
         LOG.info(StringUtils.format("Uploading chunk with %d fragments\n", fragments.size()));
         return IpfsTransaction.call(chunk.location.owner,
-                tid -> network.uploadFragments(fragments, chunk.location.owner, writer, monitor, tid)
+                tid -> network.uploadFragments(fragments, chunk.location.owner, writer, progress, tid)
                         .thenCompose(hashes -> network.uploadChunk(current, committer, metadata, chunk.location.owner,
                                 chunk.chunk.mapKey(), writer, tid)),
                 network.dhtClient);
