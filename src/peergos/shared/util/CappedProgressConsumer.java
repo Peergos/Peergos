@@ -1,12 +1,12 @@
 package peergos.shared.util;
 
-public final class OffsetProgressConsumer implements ProgressConsumer<Long> {
+public final class CappedProgressConsumer implements ProgressConsumer<Long> {
 
     private ProgressConsumer consumer;
     private final int maxLength;
     private int currentCount;
 
-    public OffsetProgressConsumer(ProgressConsumer<Long> consumer, int maxLength) {
+    public CappedProgressConsumer(ProgressConsumer<Long> consumer, int maxLength) {
         this.consumer = consumer;
         this.maxLength = maxLength;
         this.currentCount = 0;

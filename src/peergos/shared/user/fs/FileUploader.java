@@ -128,7 +128,7 @@ public class FileUploader implements AutoCloseable {
                                                           Hasher hasher,
                                                           NetworkAccess network,
                                                           ProgressConsumer<Long> monitor) {
-        OffsetProgressConsumer progress = new OffsetProgressConsumer(monitor, chunk.chunk.data().length);
+        CappedProgressConsumer progress = new CappedProgressConsumer(monitor, chunk.chunk.data().length);
         if (! writer.publicKeyHash.equals(chunk.location.writer))
             throw new IllegalStateException("Trying to write a chunk to the wrong signing key space!");
         RelativeCapability nextChunk = RelativeCapability.buildSubsequentChunk(nextChunkLocation.getMapKey(), baseKey);
