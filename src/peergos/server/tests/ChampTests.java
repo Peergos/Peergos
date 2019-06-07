@@ -37,7 +37,8 @@ public class ChampTests {
         Function<ByteArrayWrapper, byte[]> identityHash = ChampTests::identityHash;
         Function<ByteArrayWrapper, byte[]> blake2b = IpfsCoreNode::keyHash;
         return Arrays.asList(new Object[][] {
-                {identityHash, blake2b}
+                {identityHash},
+                {blake2b}
         });
     }
 
