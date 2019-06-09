@@ -1128,9 +1128,13 @@ public class MultiUserTests {
         u1.unfollow(u2.username).get();
 
         Set<String> newU1Following = u1.getFollowing().get();
-        Assert.assertTrue("u1 no longer following u2", ! newU1Following.contains(u2.username));
+        Assert.assertTrue("u1 no longer following u2", !newU1Following.contains(u2.username));
 
+        Optional<FileWrapper> u2Tou1 = u1.getByPath("/" + u2.username).get();
+        assertTrue("u1 can no longer see u2's root", !u2Tou1.isPresent());
 
+        Optional<FileWrapper> u1Tou2 = u2.getByPath("/" + u1.username).get();
+        assertTrue("u2 can still see u1's root", u1Tou2.isPresent());
     }
 
     @Test
@@ -1154,7 +1158,7 @@ public class MultiUserTests {
         Assert.assertTrue("u2 is no longer following u1", !u2Following.contains(u1.username));
 
         Optional<FileWrapper> u2Tou1 = u1.getByPath("/" + u2.username).get();
-        assertTrue("u1 can no longer see u2's root", !u2Tou1.isPresent());
+        assertTrue("u1 can still see u2's root", u2Tou1.isPresent());
 
         Optional<FileWrapper> u1Tou2 = u2.getByPath("/" + u1.username).get();
         assertTrue("u2 can no longer see u1's root", !u1Tou2.isPresent());
