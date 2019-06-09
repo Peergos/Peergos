@@ -1129,6 +1129,8 @@ public class MultiUserTests {
 
         Set<String> newU1Following = u1.getFollowing().get();
         Assert.assertTrue("u1 no longer following u2", ! newU1Following.contains(u2.username));
+
+
     }
 
     @Test
@@ -1146,6 +1148,9 @@ public class MultiUserTests {
         u1.removeFollower(u2.username).get();
 
         Set<String> newU1Followers = u1.getFollowerNames().get();
-        Assert.assertTrue("u1 no longer has u2 as follower", ! newU1Followers.contains(u2.username));
+        Assert.assertTrue("u1 no longer has u2 as follower", !newU1Followers.contains(u2.username));
+        
+        Set<String> u2Following = u2.getFollowing().get();
+        Assert.assertTrue("u2 is no longer following u1", !u2Following.contains(u1.username));
     }
 }
