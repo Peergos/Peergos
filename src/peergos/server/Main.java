@@ -456,50 +456,6 @@ public class Main {
         return ipfs;
     }
 
-    public static void startCoreNode(Args a) {
-        String mutablePointersSqlFile = a.getArg("mutable-pointers-file");
-        String path = mutablePointersSqlFile.equals(":memory:") ?
-                mutablePointersSqlFile :
-                a.fromPeergosDir("mutable.sql").toString();
-        int corenodePort = a.getInt("corenode-port");
-        System.out.println("Using mutable-pointers path " + path);
-        boolean useIPFS = a.getBoolean("useIPFS");
-
-        int dhtCacheEntries = 1000;
-        int maxValueSizeToCache = 2 * 1024 * 1024;
-        ContentAddressedStorage dht = useIPFS ?
-                new CachingStorage(new IpfsDHT(), dhtCacheEntries, maxValueSizeToCache) :
-                new FileContentAddressedStorage(blockstorePath(a));
-        try {
-            Crypto crypto = Crypto.initJava();
-            MutablePointers mutable = UserRepository.buildSqlLite(path, dht);
-            PublicKeyHash peergosIdentity = PublicKeyHash.fromString(a.getArg("peergos.identity.hash"));
-
-            String pkiSecretKeyfilePassword = a.getArg("pki.keyfile.password");
-
-            PublicSigningKey pkiPublic =
-                    PublicSigningKey.fromByteArray(
-                            Files.readAllBytes(Paths.get(a.getArg("pki.public.key.path"))));
-            SecretSigningKey pkiSecretKey = SecretSigningKey.fromCbor(CborObject.fromByteArray(
-                    PasswordProtected.decryptWithPassword(
-                            CborObject.fromByteArray(Files.readAllBytes(Paths.get(a.getArg("pki.secret.key.path")))),
-                            pkiSecretKeyfilePassword,
-                            crypto.hasher,
-                            crypto.symmetricProvider,
-                            crypto.random
-                    )));
-            PublicKeyHash pkiPublicHash = ContentAddressedStorage.hashKey(pkiPublic);
-            SigningPrivateKeyAndPublicHash pkiSigner = new SigningPrivateKeyAndPublicHash(pkiPublicHash, pkiSecretKey);
-
-            MaybeMultihash currentPkiRoot = mutable.getPointerTarget(peergosIdentity, pkiPublicHash, dht).get();
-
-            IpfsCoreNode core = new IpfsCoreNode(pkiSigner, currentPkiRoot, dht, mutable, peergosIdentity);
-            HttpCoreNodeServer.createAndStart(corenodePort, core, mutable, a);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
-    }
-
     private static CoreNode buildPkiCorenode(MutablePointers mutable, ContentAddressedStorage dht, Args a) {
         try {
             Crypto crypto = Crypto.initJava();
@@ -538,16 +494,7 @@ public class Main {
     public static final Command MAIN = new Command("Main",
             "Run a Peergos command",
             args -> {
-                Optional<String> top = args.head();
-                if (!top.isPresent()) {
-                    System.out.println("Run with -help to show options");
-                    return;
-                }
-                args.setIfAbsent("domain", "localhost");
-                if (args.getBoolean("useIPFS", true))
-                    startIpfs(args);
-                startCoreNode(args);
-                startPeergos(args);
+                System.out.println("Run with -help to show options");
             },
             Collections.emptyList(),
             Arrays.asList(
