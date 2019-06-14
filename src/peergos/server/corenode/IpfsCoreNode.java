@@ -51,6 +51,7 @@ public class IpfsCoreNode implements CoreNode {
         if (convertToBlake) {
             System.out.println("******************");
             System.out.println("WARNING: about to convert pki CHAMP");
+            System.out.println("Pre-conversion champ root is " + currentRoot);
             System.out.println("Proceed? (Y/N)?");
             Console console = System.console();
             String yes = console.readLine();
