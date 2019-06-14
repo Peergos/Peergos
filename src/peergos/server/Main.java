@@ -485,7 +485,7 @@ public class Main {
                                 .commit(peergosIdentity, pkiSigner, MaybeMultihash.empty(), mutable, dht, tid)
                                 .thenApply(version -> version.get(pkiSigner).hash), dht).join();
 
-            return new IpfsCoreNode(pkiSigner, currentPkiRoot, dht, mutable, peergosIdentity);
+            return new IpfsCoreNode(pkiSigner, currentPkiRoot, dht, mutable, peergosIdentity, a.getBoolean("convert.pki.to.blake", false));
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
