@@ -20,10 +20,7 @@ package peergos.shared.crypto.hash;
    this software. If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
 */
 
-import java.io.PrintStream;
 import java.io.Serializable;
-import java.security.Key;
-import java.security.spec.AlgorithmParameterSpec; // JCE not supported / anticipated ..
 import java.util.Arrays;
 
 import static peergos.shared.crypto.hash.Blake2b.Engine.Assert.*;
@@ -214,10 +211,6 @@ public interface Blake2b {
         public static Mac newInstance (final byte[] key, final int digestLength) {
             return new Mac (new Param().setKey(key).setDigestLength(digestLength));
         }
-        /** Blake2b.MAC - using default Blake2b.Spec settings with given java.security.Key, with given digest length */
-        public static Mac newInstance (final Key key, final int digestLength) {
-            return new Mac (new Param().setKey(key).setDigestLength(digestLength));
-        }
         /** Blake2b.MAC - using the specified Parameters.
          * @param p asserted valid configured Param with key */
         public static Mac newInstance (Param p) {
@@ -403,12 +396,6 @@ public interface Blake2b {
             if(param.hasKey){
                 this.update (param.key_bytes, 0, Spec.block_bytes);
             }
-        }
-
-        public static void main(String... args) {
-            Blake2b mac = Blake2b.Mac.newInstance("LOVE".getBytes());
-            final byte[] hash = mac.digest("Salaam!".getBytes());
-//			Debug.dumpBuffer(System.out, "-- mac hash --", hash);
         }
 
         // ---------------------------------------------------------------------
@@ -1685,59 +1672,17 @@ public interface Blake2b {
         /// Compression Kernel //////////////////////////////////////////// FINI
         ////////////////////////////////////////////////////////////////////////
 
-        /* TEMP - remove at will */
-        public static class Debug {
-            public static void dumpState (Blake2b.Engine e, final String mark) {
-                System.out.format("-- MARK == @ %s @ ===========\n", mark);
-                dumpArray("register t", e.state.t);
-                dumpArray("register h", e.state.h);
-                dumpArray("register f", e.state.f);
-                dumpArray("register offset", new long[]{e.state.buflen});
-                System.out.format("-- END MARK =================\n");
-            }
-            public static void dumpArray (final String label, final long[] b) {
-                System.out.format ( "-- %s -- :\n{\n", label );
-                for( int j = 0; j < b.length ; ++j ) {
-                    System.out.format ( "    [%2d] : %016X\n", j, b[j]);
-                }
-                System.out.format ( "}\n" );
-            }
-            public static void dumpBuffer (final PrintStream out, final String label, final byte[] b) {
-                dumpBuffer(out, label, b, 0, b.length);
-            }
-            public static void dumpBuffer (final PrintStream out, final byte[] b) {
-                dumpBuffer(out, null, b, 0, b.length);
-            }
-            public static void dumpBuffer (final PrintStream out, final byte[] b, final int offset, final int len) {
-                dumpBuffer(out, null, b, offset, len);
-            }
-            public static void dumpBuffer (final PrintStream out, final String label, final byte[] b, final int offset, final int len) {
-                if(label != null)
-                    out.format ( "-- %s -- :\n", label );
-                out.format("{\n    ", label);
-                for( int j = 0; j < len ; ++j ) {
-                    out.format ("%02X", b[j + offset]);
-                    if(j+1 < len) {
-                        if ((j+1)%8==0) out.print("\n    ");
-                        else out.print(' ');
-                    }
-                }
-                out.format("\n}\n");
-            }
-        }
-        /* TEMP - remove at will */
-
         // ---------------------------------------------------------------------
         // Helper for assert error messages
         // ---------------------------------------------------------------------
         public static final class Assert {
-            public final static String exclusiveUpperBound = "'%s' %d is >= %d";
-            public final static String inclusiveUpperBound = "'%s' %d is > %d";
-            public final static String exclusiveLowerBound = "'%s' %d is <= %d";
-            public final static String inclusiveLowerBound = "'%s' %d is < %d";
+            public final static String exclusiveUpperBound = " >= ";
+            public final static String inclusiveUpperBound = " > ";
+            public final static String exclusiveLowerBound = " <= ";
+            public final static String inclusiveLowerBound = " < ";
             static <T extends Number> String assertFail(final String name, final T v, final String err, final T spec) {
                 new Exception().printStackTrace();
-                return String.format(err, name, v, spec);
+                return "'" + name + "' " + v + " is" + err + spec;
             }
         }
         // ---------------------------------------------------------------------
@@ -1807,7 +1752,7 @@ public interface Blake2b {
     // ---------------------------------------------------------------------
     /** Blake2b configuration parameters block per spec */
     // REVU: need to review a revert back to non-lazy impl TODO: do & bench
-    public static class Param implements AlgorithmParameterSpec {
+    public static class Param {
         interface Xoff {
             int digest_length   = 0;
             int key_length      = 1;
@@ -1936,7 +1881,7 @@ public interface Blake2b {
 
         public final boolean hasKey() { return this.hasKey; }
 
-        @Override public Param clone() {
+        public Param clone() {
             final Param clone = new Param();
             System.arraycopy(this.h, 0, clone.h, 0, h.length);
             clone.lazyInitBytes();
@@ -1968,13 +1913,6 @@ public interface Blake2b {
             h[ 0 ] = readLong( bytes, 0  );
             h[ 0 ] ^= Spec.IV [ 0 ];
             return this;
-        }
-        public final Param setKey (final Key key) {
-            assert key != null : "key is null";
-            final byte[] keybytes = key.getEncoded();
-            assert keybytes != null : "key.encoded() is null";
-
-            return this.setKey(keybytes);
         }
         public final Param setKey (final byte[] key) {
             assert key != null : "key is null";
