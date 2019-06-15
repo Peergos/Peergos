@@ -80,9 +80,9 @@ public class IpfsCoreNode implements CoreNode {
                                 + " mappings converted, giving final root " + newChamp.get());
 
                         CommittedWriterData current = WriterData.getWriterData(currentRoot.get(), ipfs).join();
-                        current.props.withChamp(newChamp.currentHash)
-                                        .commit(peergosIdentity, signer, currentRoot, mutable, ipfs, tid);
-                        this.update(MaybeMultihash.of(newChamp.currentHash));
+                        Snapshot result = current.props.withChamp(newChamp.currentHash)
+                                .commit(peergosIdentity, signer, currentRoot, mutable, ipfs, tid).join();
+                        this.update(result.get(signer.publicKeyHash).hash);
                         return CompletableFuture.completedFuture(true);
                     }, ipfs).join();
         } else
