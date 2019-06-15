@@ -1,4 +1,5 @@
 package peergos.server.corenode;
+import java.util.concurrent.atomic.*;
 import java.util.logging.*;
 
 import peergos.server.util.Logging;
@@ -40,13 +41,89 @@ public class IpfsCoreNode implements CoreNode {
                         MaybeMultihash currentRoot,
                         ContentAddressedStorage ipfs,
                         MutablePointers mutable,
-                        PublicKeyHash peergosIdentity) {
+                        PublicKeyHash peergosIdentity,
+                        boolean convertToBlake) {
         this.currentRoot = MaybeMultihash.empty();
         this.ipfs = ipfs;
         this.mutable = mutable;
         this.peergosIdentity = peergosIdentity;
         this.signer = pkiSigner;
-        this.update(currentRoot);
+        if (convertToBlake) {
+            System.out.println("******************");
+            System.out.println("WARNING: about to convert pki CHAMP");
+            System.out.println("Pre-conversion champ root is " + currentRoot);
+            System.out.println("Proceed? (Y/N)?");
+            Console console = System.console();
+            String yes = console.readLine();
+            if (! yes.equals("Y")) {
+                System.out.println("Aborting champ conversion...");
+                System.exit(0);
+            }
+
+            IpfsTransaction.call(peergosIdentity,
+                    tid -> {
+                        ChampConverter newChamp = ChampConverter.build(peergosIdentity, signer, ipfs, tid);
+                        Consumer<Triple<ByteArrayWrapper, MaybeMultihash, MaybeMultihash>> consumer = t ->
+                        {
+                            Champ current = newChamp.get();
+                            Pair<Champ, Multihash> updated = current.put(peergosIdentity, signer, t.left, keyHash(t.left), 0,
+                                    MaybeMultihash.empty(), t.right, ChampWrapper.BIT_WIDTH,
+                                    ChampWrapper.MAX_HASH_COLLISIONS_PER_LEVEL, IpfsCoreNode::keyHash, tid, ipfs,
+                                    newChamp.currentHash).join();
+                            newChamp.set(updated.left, updated.right);
+                        };
+                        Champ.applyToDiff(MaybeMultihash.empty(), currentRoot, 0, Collections.emptyList(),
+                                Collections.emptyList(), consumer, ChampWrapper.BIT_WIDTH, ipfs).join();
+                        System.out.println("******************");
+                        System.out.println("About to commit pki champ conversion with " + newChamp.updates.get()
+                                + " mappings converted, giving final root " + newChamp.get());
+
+                        CommittedWriterData current = WriterData.getWriterData(currentRoot.get(), ipfs).join();
+//                        current.props.withChamp(newChamp.currentHash)
+//                                        .commit(peergosIdentity, signer, currentRoot, mutable, ipfs, tid);
+//                        this.update(MaybeMultihash.of(newChamp.currentHash));
+                        if (true)
+                            System.exit(0);
+                        return CompletableFuture.completedFuture(true);
+                    }, ipfs).join();
+        } else
+            this.update(currentRoot);
+    }
+
+    private static class ChampConverter {
+        private Champ current;
+        private Multihash currentHash;
+        private AtomicInteger updates = new AtomicInteger(0);
+
+        public ChampConverter(Champ current, Multihash currentHash) {
+            this.current = current;
+            this.currentHash = currentHash;
+        }
+
+        public static ChampConverter build(PublicKeyHash owner,
+                                           SigningPrivateKeyAndPublicHash writer,
+                                           ContentAddressedStorage ipfs,
+                                           TransactionId tid) {
+            Champ empty = Champ.empty();
+            byte[] raw = empty.serialize();
+            Multihash hash = ipfs.put(owner, writer.publicKeyHash, writer.secret.signatureOnly(raw), raw, tid).join();
+            return new ChampConverter(empty, hash);
+        }
+
+        public synchronized void set(Champ newRoot, Multihash newHash) {
+            System.out.println("Updating pki champ root from " + currentHash + " to " + newHash);
+            this.current = newRoot;
+            updates.incrementAndGet();
+            this.currentHash = newHash;
+        }
+
+        public synchronized Champ get() {
+            return current;
+        }
+    }
+
+    public static byte[] keyHash(ByteArrayWrapper username) {
+        return Blake2b.Digest.newInstance().digest(username.data);
     }
 
     /** Update the existing mappings based on the diff between the current champ and the champ with the supplied root.
@@ -99,10 +176,11 @@ public class IpfsCoreNode implements CoreNode {
                 return;
             }
 
-            String username = new String(key.data);
             List<UserPublicKeyLink> updatedChain = ((CborObject.CborList) cborOpt.get()).value.stream()
                     .map(UserPublicKeyLink::fromCbor)
                     .collect(Collectors.toList());
+
+            String username = new String(key.data);
 
             if (oldValue.isPresent()) {
                 Optional<CborObject> existingCborOpt = ipfs.get(oldValue.get()).get();
@@ -141,14 +219,13 @@ public class IpfsCoreNode implements CoreNode {
             throw new IllegalStateException("Invalid username");
 
         try {
-            Function<ByteArrayWrapper, byte[]> identityHash = arr -> Arrays.copyOfRange(arr.data, 0, CoreNode.MAX_USERNAME_SIZE);
             CommittedWriterData current = WriterData.getWriterData(currentRoot.get(), ipfs).get();
             MaybeMultihash currentTree = current.props.tree.map(MaybeMultihash::of).orElseGet(MaybeMultihash::empty);
 
             ChampWrapper champ = currentTree.isPresent() ?
-                    ChampWrapper.create(currentTree.get(), identityHash, ipfs).get() :
+                    ChampWrapper.create(currentTree.get(), IpfsCoreNode::keyHash, ipfs).get() :
                     IpfsTransaction.call(peergosIdentity,
-                            tid -> ChampWrapper.create(signer.publicKeyHash, signer, identityHash, tid, ipfs),
+                            tid -> ChampWrapper.create(signer.publicKeyHash, signer, IpfsCoreNode::keyHash, tid, ipfs),
                             ipfs).get();
             MaybeMultihash existing = champ.get(username.getBytes()).get();
             Optional<CborObject> cborOpt = existing.isPresent() ?
