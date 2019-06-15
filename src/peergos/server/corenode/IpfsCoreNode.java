@@ -59,6 +59,7 @@ public class IpfsCoreNode implements CoreNode {
                 System.out.println("Aborting champ conversion...");
                 System.exit(0);
             }
+            MaybeMultihash currentTree = getTreeRoot(currentRoot, ipfs);
 
             IpfsTransaction.call(peergosIdentity,
                     tid -> {
@@ -72,7 +73,7 @@ public class IpfsCoreNode implements CoreNode {
                                     newChamp.currentHash).join();
                             newChamp.set(updated.left, updated.right);
                         };
-                        Champ.applyToDiff(MaybeMultihash.empty(), currentRoot, 0, Collections.emptyList(),
+                        Champ.applyToDiff(MaybeMultihash.empty(), currentTree, 0, Collections.emptyList(),
                                 Collections.emptyList(), consumer, ChampWrapper.BIT_WIDTH, ipfs).join();
                         System.out.println("******************");
                         System.out.println("About to commit pki champ conversion with " + newChamp.updates.get()
