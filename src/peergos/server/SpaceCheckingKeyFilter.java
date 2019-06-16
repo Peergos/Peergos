@@ -4,7 +4,7 @@ import java.util.concurrent.atomic.*;
 import java.util.logging.*;
 
 import peergos.server.storage.*;
-import peergos.server.util.Logging;
+import peergos.server.util.*;
 
 import peergos.server.corenode.*;
 import peergos.server.mutable.*;
@@ -30,7 +30,7 @@ import java.util.stream.Collectors;
 /** This class checks whether a given user is using more storage space than their quota
  *
  */
-public class SpaceCheckingKeyFilter {
+public class SpaceCheckingKeyFilter implements SpaceUsage {
     private static final Logger LOG = Logging.LOG();
     private static final long USAGE_TOLERANCE = 1024 * 1024;
     private final CoreNode core;
@@ -502,6 +502,26 @@ public class SpaceCheckingKeyFilter {
                 LOG.log(Level.WARNING, e.getMessage(), e);
             }
         }
+    }
+
+    @Override
+    public CompletableFuture<Long> getUsage(PublicKeyHash owner) {
+        Stat stat = state.currentView.get(owner);
+        if (stat == null)
+            return CompletableFuture.completedFuture(0L);
+        Usage usage = state.usage.get(stat.owner);
+        if (usage == null)
+            return CompletableFuture.completedFuture(0L);
+        return CompletableFuture.completedFuture(usage.usage);
+    }
+
+    @Override
+    public CompletableFuture<Long> getQuota(PublicKeyHash owner, byte[] signedTime) {
+        TimeLimited.isAllowedTime(signedTime, dht, owner);
+        Stat stat = state.currentView.get(owner);
+        if (stat == null)
+            return CompletableFuture.completedFuture(0L);
+        return CompletableFuture.completedFuture(quotaSupplier.getQuota(stat.owner));
     }
 
     public boolean allowWrite(PublicKeyHash writer, int size) {

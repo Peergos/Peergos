@@ -2,6 +2,7 @@ package peergos.shared.user;
 
 import java.util.logging.*;
 
+import peergos.server.util.*;
 import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.user.fs.transaction.TransactionService;
 import peergos.shared.user.fs.transaction.TransactionServiceImpl;
@@ -1098,8 +1099,7 @@ public class UserContext {
     }
 
     private CompletableFuture<List<BlindFollowRequest>> getFollowRequests() {
-        byte[] time = new CborObject.CborLong(System.currentTimeMillis()).serialize();
-        byte[] auth = signer.secret.signMessage(time);
+        byte[] auth = TimeLimited.signNow(signer.secret);
         return network.social.getFollowRequests(signer.publicKeyHash, auth).thenApply(reqs -> {
             CborObject cbor = CborObject.fromByteArray(reqs);
             if (!(cbor instanceof CborObject.CborList))

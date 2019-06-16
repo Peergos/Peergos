@@ -22,6 +22,7 @@ public class NonWriteThroughNetwork {
                 mutableTree,
                 synchronizer,
                 source.instanceAdmin,
+                source.spaceUsage,
                 source.usernames,
                 false);
     }

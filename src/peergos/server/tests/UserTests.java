@@ -2,13 +2,11 @@ package peergos.server.tests;
 import java.util.concurrent.atomic.*;
 import java.util.logging.*;
 
-import peergos.server.util.Args;
-import peergos.server.util.Logging;
+import peergos.server.util.*;
 
 import org.junit.*;
 import static org.junit.Assert.*;
 
-import peergos.server.util.PeergosNetworkUtils;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
@@ -1102,6 +1100,18 @@ public abstract class UserTests {
         Assert.assertTrue("Different metadata key", ! getMetaKey(copy).equals(getMetaKey(original)));
         Assert.assertTrue("Different data key", ! getDataKey(copy).equals(getDataKey(original)));
         checkFileContents(data, copy, context);
+    }
+
+    @Test
+    public void usage() {
+        String username = generateUsername();
+        String password = "password";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        byte[] signedTime = TimeLimited.signNow(context.signer.secret);
+        long quota = network.spaceUsage.getQuota(context.signer.publicKeyHash, signedTime).join();
+        long usage = network.spaceUsage.getUsage(context.signer.publicKeyHash).join();
+        Assert.assertTrue(quota > 0);
+        Assert.assertTrue(usage > 0);
     }
 
     public static SymmetricKey getDataKey(FileWrapper file) {

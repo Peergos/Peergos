@@ -37,6 +37,7 @@ public class NetworkAccess {
     public final MutableTree tree;
     public final WriteSynchronizer synchronizer;
     public final InstanceAdmin instanceAdmin;
+    public final SpaceUsage spaceUsage;
 
     @JsProperty
     public final List<String> usernames;
@@ -50,8 +51,9 @@ public class NetworkAccess {
                          MutableTree tree,
                          WriteSynchronizer synchronizer,
                          InstanceAdmin instanceAdmin,
+                         SpaceUsage spaceUsage,
                          List<String> usernames) {
-        this(coreNode, social, dhtClient, mutable, tree, synchronizer, instanceAdmin, usernames, false);
+        this(coreNode, social, dhtClient, mutable, tree, synchronizer, instanceAdmin, spaceUsage, usernames, false);
     }
 
     public NetworkAccess(CoreNode coreNode,
@@ -61,6 +63,7 @@ public class NetworkAccess {
                          MutableTree tree,
                          WriteSynchronizer synchronizer,
                          InstanceAdmin instanceAdmin,
+                         SpaceUsage spaceUsage,
                          List<String> usernames,
                          boolean isJavascript) {
         this.coreNode = coreNode;
@@ -70,6 +73,7 @@ public class NetworkAccess {
         this.tree = tree;
         this.synchronizer = synchronizer;
         this.instanceAdmin = instanceAdmin;
+        this.spaceUsage = spaceUsage;
         this.usernames = usernames;
         this.creationTime = LocalDateTime.now();
         this.isJavascript = isJavascript;
@@ -80,7 +84,7 @@ public class NetworkAccess {
     }
 
     public NetworkAccess withCorenode(CoreNode newCore) {
-        return new NetworkAccess(newCore, social, dhtClient, mutable, tree, synchronizer, instanceAdmin, usernames, isJavascript);
+        return new NetworkAccess(newCore, social, dhtClient, mutable, tree, synchronizer, instanceAdmin, spaceUsage, usernames, isJavascript);
     }
 
     @JsMethod
@@ -93,14 +97,14 @@ public class NetworkAccess {
     public NetworkAccess clear() {
         WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, dhtClient);
         MutableTree mutableTree = new MutableTreeImpl(mutable, dhtClient, synchronizer);
-        return new NetworkAccess(coreNode, social, dhtClient, mutable, mutableTree, synchronizer, instanceAdmin, usernames, isJavascript);
+        return new NetworkAccess(coreNode, social, dhtClient, mutable, mutableTree, synchronizer, instanceAdmin, spaceUsage, usernames, isJavascript);
     }
 
     public NetworkAccess withMutablePointerCache(int ttl) {
         CachingPointers mutable = new CachingPointers(this.mutable, ttl);
         WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, dhtClient);
         MutableTree mutableTree = new MutableTreeImpl(mutable, dhtClient, synchronizer);
-        return new NetworkAccess(coreNode, social, dhtClient, mutable, mutableTree, synchronizer, instanceAdmin, usernames, isJavascript);
+        return new NetworkAccess(coreNode, social, dhtClient, mutable, mutableTree, synchronizer, instanceAdmin, spaceUsage, usernames, isJavascript);
     }
 
     public static CoreNode buildProxyingCorenode(HttpPoster poster, Multihash pkiServerNodeId) {
@@ -201,7 +205,11 @@ public class NetworkAccess {
                     SocialNetwork p2pSocial = isPeergosServer ?
                             httpSocial :
                             new ProxyingSocialNetwork(nodeId, core, httpSocial, httpSocial);
-                    return build(p2pDht, core, p2pMutable, p2pSocial, new InstanceAdmin.HTTP(apiPoster), usernames, isJavascript);
+                    SpaceUsageProxy httpUsage = new HttpSpaceUsage(apiPoster, p2pPoster);
+                    SpaceUsage p2pUsage = isPeergosServer ?
+                            httpUsage :
+                            new ProxyingSpaceUsage(nodeId, core, httpUsage, httpUsage);
+                    return build(p2pDht, core, p2pMutable, p2pSocial, new InstanceAdmin.HTTP(apiPoster), p2pUsage, usernames, isJavascript);
                 });
     }
 
@@ -210,11 +218,12 @@ public class NetworkAccess {
                                       MutablePointers mutable,
                                       SocialNetwork social,
                                       InstanceAdmin instanceAdmin,
+                                      SpaceUsage usage,
                                       List<String> usernames,
                                       boolean isJavascript) {
         WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, dht);
         MutableTree btree = new MutableTreeImpl(mutable, dht, synchronizer);
-        return new NetworkAccess(coreNode, social, dht, mutable, btree, synchronizer, instanceAdmin, usernames, isJavascript);
+        return new NetworkAccess(coreNode, social, dht, mutable, btree, synchronizer, instanceAdmin, usage, usernames, isJavascript);
     }
 
     public static CompletableFuture<NetworkAccess> buildJava(URL target) {
