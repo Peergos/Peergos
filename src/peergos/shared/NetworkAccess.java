@@ -52,18 +52,6 @@ public class NetworkAccess {
                          WriteSynchronizer synchronizer,
                          InstanceAdmin instanceAdmin,
                          SpaceUsage spaceUsage,
-                         List<String> usernames) {
-        this(coreNode, social, dhtClient, mutable, tree, synchronizer, instanceAdmin, spaceUsage, usernames, false);
-    }
-
-    public NetworkAccess(CoreNode coreNode,
-                         SocialNetwork social,
-                         ContentAddressedStorage dhtClient,
-                         MutablePointers mutable,
-                         MutableTree tree,
-                         WriteSynchronizer synchronizer,
-                         InstanceAdmin instanceAdmin,
-                         SpaceUsage spaceUsage,
                          List<String> usernames,
                          boolean isJavascript) {
         this.coreNode = coreNode;
