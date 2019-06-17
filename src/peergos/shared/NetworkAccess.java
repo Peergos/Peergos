@@ -44,16 +44,16 @@ public class NetworkAccess {
     private final LocalDateTime creationTime;
     private final boolean isJavascript;
 
-    public NetworkAccess(CoreNode coreNode,
-                         SocialNetwork social,
-                         ContentAddressedStorage dhtClient,
-                         MutablePointers mutable,
-                         MutableTree tree,
-                         WriteSynchronizer synchronizer,
-                         InstanceAdmin instanceAdmin,
-                         SpaceUsage spaceUsage,
-                         List<String> usernames,
-                         boolean isJavascript) {
+    protected NetworkAccess(CoreNode coreNode,
+                            SocialNetwork social,
+                            ContentAddressedStorage dhtClient,
+                            MutablePointers mutable,
+                            MutableTree tree,
+                            WriteSynchronizer synchronizer,
+                            InstanceAdmin instanceAdmin,
+                            SpaceUsage spaceUsage,
+                            List<String> usernames,
+                            boolean isJavascript) {
         this.coreNode = coreNode;
         this.social = social;
         this.dhtClient = new HashVerifyingStorage(dhtClient, isJavascript ? new ScryptJS() : new ScryptJava());
@@ -169,13 +169,13 @@ public class NetworkAccess {
         return result;
     }
 
-    public static CompletableFuture<NetworkAccess> build(CoreNode core,
-                                                         ContentAddressedStorage localDht,
-                                                         HttpPoster apiPoster,
-                                                         HttpPoster p2pPoster,
-                                                         List<String> usernames,
-                                                         boolean isPeergosServer,
-                                                         boolean isJavascript) {
+    private static CompletableFuture<NetworkAccess> build(CoreNode core,
+                                                          ContentAddressedStorage localDht,
+                                                          HttpPoster apiPoster,
+                                                          HttpPoster p2pPoster,
+                                                          List<String> usernames,
+                                                          boolean isPeergosServer,
+                                                          boolean isJavascript) {
         return localDht.id()
                 .exceptionally(t -> new Multihash(Multihash.Type.sha2_256, new byte[32]))
                 .thenApply(nodeId -> {
@@ -201,14 +201,14 @@ public class NetworkAccess {
                 });
     }
 
-    public static NetworkAccess build(ContentAddressedStorage dht,
-                                      CoreNode coreNode,
-                                      MutablePointers mutable,
-                                      SocialNetwork social,
-                                      InstanceAdmin instanceAdmin,
-                                      SpaceUsage usage,
-                                      List<String> usernames,
-                                      boolean isJavascript) {
+    private static NetworkAccess build(ContentAddressedStorage dht,
+                                       CoreNode coreNode,
+                                       MutablePointers mutable,
+                                       SocialNetwork social,
+                                       InstanceAdmin instanceAdmin,
+                                       SpaceUsage usage,
+                                       List<String> usernames,
+                                       boolean isJavascript) {
         WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, dht);
         MutableTree btree = new MutableTreeImpl(mutable, dht, synchronizer);
         return new NetworkAccess(coreNode, social, dht, mutable, btree, synchronizer, instanceAdmin, usage, usernames, isJavascript);
@@ -238,6 +238,15 @@ public class NetworkAccess {
         } catch (MalformedURLException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public static CompletableFuture<NetworkAccess> buildPublicNetworkAccess(CoreNode core,
+                                                                            MutablePointers mutable,
+                                                                            ContentAddressedStorage storage) {
+        WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, storage);
+        MutableTree mutableTree = new MutableTreeImpl(mutable, storage, synchronizer);
+        return CompletableFuture.completedFuture(new NetworkAccess(core, null, storage, mutable, mutableTree,
+                synchronizer, null, null, Collections.emptyList(), false));
     }
 
     public CompletableFuture<Optional<RetrievedCapability>> retrieveMetadata(AbsoluteCapability cap, Snapshot version) {
