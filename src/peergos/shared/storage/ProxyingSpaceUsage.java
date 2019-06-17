@@ -3,12 +3,14 @@ package peergos.shared.storage;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
-import peergos.shared.social.*;
 
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
 
+/** Implements a SpaceUsage that will proxy calls to the owner's Peergos instance
+ *
+ */
 public class ProxyingSpaceUsage implements SpaceUsage {
 
     private final Multihash serverId;

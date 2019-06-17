@@ -1110,8 +1110,8 @@ public abstract class UserTests {
         byte[] signedTime = TimeLimitedClient.signNow(context.signer.secret);
         long quota = network.spaceUsage.getQuota(context.signer.publicKeyHash, signedTime).join();
         long usage = network.spaceUsage.getUsage(context.signer.publicKeyHash).join();
-        Assert.assertTrue(quota > 0);
-        Assert.assertTrue(usage > 0);
+        Assert.assertTrue("non zero quota", quota > 0);
+        Assert.assertTrue("non zero space usage", usage > 0);
     }
 
     public static SymmetricKey getDataKey(FileWrapper file) {
