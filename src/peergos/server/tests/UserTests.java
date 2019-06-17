@@ -1107,7 +1107,7 @@ public abstract class UserTests {
         String username = generateUsername();
         String password = "password";
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
-        byte[] signedTime = TimeLimited.signNow(context.signer.secret);
+        byte[] signedTime = TimeLimitedClient.signNow(context.signer.secret);
         long quota = network.spaceUsage.getQuota(context.signer.publicKeyHash, signedTime).join();
         long usage = network.spaceUsage.getUsage(context.signer.publicKeyHash).join();
         Assert.assertTrue(quota > 0);

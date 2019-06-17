@@ -517,7 +517,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
 
     @Override
     public CompletableFuture<Long> getQuota(PublicKeyHash owner, byte[] signedTime) {
-        TimeLimited.isAllowedTime(signedTime, dht, owner);
+        TimeLimited.isAllowedTime(signedTime, 120, dht, owner);
         Stat stat = state.currentView.get(owner);
         if (stat == null)
             return CompletableFuture.completedFuture(0L);

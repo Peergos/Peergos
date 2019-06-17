@@ -24,7 +24,7 @@ public class UserRepository implements SocialNetwork, MutablePointers {
 
     @Override
     public CompletableFuture<byte[]> getFollowRequests(PublicKeyHash owner, byte[] signedTime) {
-        TimeLimited.isAllowedTime(signedTime, ipfs, owner);
+        TimeLimited.isAllowedTime(signedTime, 300, ipfs, owner);
         return store.getFollowRequests(owner);
     }
 

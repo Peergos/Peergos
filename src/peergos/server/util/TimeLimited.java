@@ -9,12 +9,7 @@ import java.util.*;
 
 public class TimeLimited {
 
-    public static byte[] signNow(SecretSigningKey signer) {
-        byte[] time = new CborObject.CborLong(System.currentTimeMillis()).serialize();
-        return signer.signMessage(time);
-    }
-
-    public static boolean isAllowedTime(byte[] signedTime, ContentAddressedStorage ipfs, PublicKeyHash owner) {
+    public static boolean isAllowedTime(byte[] signedTime, int durationSeconds, ContentAddressedStorage ipfs, PublicKeyHash owner) {
         try {
             Optional<PublicSigningKey> ownerOpt = ipfs.getSigningKey(owner).get();
             if (! ownerOpt.isPresent())
@@ -25,8 +20,8 @@ public class TimeLimited {
                 throw new IllegalStateException("Invalid cbor for getFollowRequests authorisation!");
             long utcMillis = ((CborObject.CborLong) cbor).value;
             long now = System.currentTimeMillis();
-            if (Math.abs(now - utcMillis) > 300_000)
-                throw new IllegalStateException("Stale auth time in getFollowRequests, is your clock accurate?");
+            if (Math.abs(now - utcMillis) > durationSeconds * 1_000)
+                throw new IllegalStateException("Stale auth time, is your clock accurate?");
             // This is a valid request
         } catch (Exception e) {
             throw new RuntimeException(e);
