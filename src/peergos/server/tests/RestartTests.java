@@ -66,7 +66,7 @@ public class RestartTests {
     }
 
     private static void waitUntilReady() {
-        for (int i=0; i < 20; i++) {
+        for (int i=0; i < 30; i++) {
             try {
                 NetworkAccess.buildJava(new URL("http://localhost:" + args.getInt("port"))).get();
                 return;
