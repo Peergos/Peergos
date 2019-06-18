@@ -60,6 +60,7 @@ public class RestartTests {
         args.setArg("peergos.identity.hash", peergosId.toString());
         server.destroy();
         server.waitFor();
+        try {Thread.sleep(2000);} catch (InterruptedException e) {}
         server = start("pki");
         waitUntilReady();
     }
