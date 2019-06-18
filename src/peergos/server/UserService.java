@@ -12,7 +12,7 @@ import peergos.server.corenode.*;
 import peergos.shared.corenode.*;
 import peergos.shared.mutable.*;
 import peergos.shared.social.*;
-import peergos.shared.storage.ContentAddressedStorage;
+import peergos.shared.storage.*;
 
 import peergos.server.net.*;
 import peergos.shared.storage.controller.*;
@@ -72,17 +72,20 @@ public class UserService {
     private final SocialNetwork social;
     private final MutablePointers mutable;
     private final InstanceAdmin controller;
+    private final SpaceUsage usage;
 
     public UserService(ContentAddressedStorage storage,
                        CoreNode coreNode,
                        SocialNetwork social,
                        MutablePointers mutable,
-                       InstanceAdmin controller) {
+                       InstanceAdmin controller,
+                       SpaceUsage usage) {
         this.storage = storage;
         this.coreNode = coreNode;
         this.social = social;
         this.mutable = mutable;
         this.controller = controller;
+        this.usage = usage;
     }
 
     public static class TlsProperties {
@@ -200,6 +203,8 @@ public class UserService {
                 new MutationHandler(this.mutable));
         addHandler.accept("/" + Constants.ADMIN_URL,
                 new AdminHandler(this.controller));
+        addHandler.accept("/" + Constants.SPACE_USAGE_URL,
+                new StorageHandler(this.usage));
         addHandler.accept("/" + Constants.PUBLIC_FILES_URL, new PublicFileHandler(coreNode, mutable, storage));
         addHandler.accept(UI_URL, handler);
 

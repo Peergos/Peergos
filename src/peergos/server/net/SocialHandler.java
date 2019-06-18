@@ -28,7 +28,7 @@ public class SocialHandler implements HttpHandler {
         this.social = social;
     }
 
-    public void handle(HttpExchange exchange) throws IOException
+    public void handle(HttpExchange exchange)
     {
         long t1 = System.currentTimeMillis();
         DataInputStream din = new DataInputStream(exchange.getRequestBody());
@@ -79,6 +79,5 @@ public class SocialHandler implements HttpHandler {
             long t2 = System.currentTimeMillis();
             LOG.info("Social Network server handled " + method + " request in: " + (t2 - t1) + " mS");
         }
-
     }
 }

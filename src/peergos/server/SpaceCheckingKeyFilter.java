@@ -4,7 +4,7 @@ import java.util.concurrent.atomic.*;
 import java.util.logging.*;
 
 import peergos.server.storage.*;
-import peergos.server.util.Logging;
+import peergos.server.util.*;
 
 import peergos.server.corenode.*;
 import peergos.server.mutable.*;
@@ -30,7 +30,7 @@ import java.util.stream.Collectors;
 /** This class checks whether a given user is using more storage space than their quota
  *
  */
-public class SpaceCheckingKeyFilter {
+public class SpaceCheckingKeyFilter implements SpaceUsage {
     private static final Logger LOG = Logging.LOG();
     private static final long USAGE_TOLERANCE = 1024 * 1024;
     private final CoreNode core;
@@ -207,17 +207,17 @@ public class SpaceCheckingKeyFilter {
     }
 
     public static class Usage implements Cborable {
-        private long usage;
+        private long totalBytes;
         private boolean errored;
         private Map<PublicKeyHash, Long> pending = new HashMap<>();
 
-        public Usage(long usage) {
-            this.usage = usage;
+        public Usage(long totalBytes) {
+            this.totalBytes = totalBytes;
         }
 
         protected synchronized void confirmUsage(PublicKeyHash writer, long usageDelta) {
             pending.remove(writer);
-            usage += usageDelta;
+            totalBytes += usageDelta;
             errored = false;
         }
 
@@ -234,7 +234,7 @@ public class SpaceCheckingKeyFilter {
         }
 
         protected synchronized long expectedUsage() {
-            return usage + pending.values().stream().mapToLong(x -> x).sum();
+            return totalBytes + pending.values().stream().mapToLong(x -> x).sum();
         }
 
         protected synchronized void setErrored(boolean errored) {
@@ -247,7 +247,7 @@ public class SpaceCheckingKeyFilter {
 
         @Override
         public CborObject toCbor() {
-            return new CborObject.CborLong(usage);
+            return new CborObject.CborLong(totalBytes);
         }
 
         public static Usage fromCbor(Cborable cborable) {
@@ -262,13 +262,13 @@ public class SpaceCheckingKeyFilter {
 
             Usage usage1 = (Usage) o;
 
-            if (usage != usage1.usage) return false;
+            if (totalBytes != usage1.totalBytes) return false;
             return pending != null ? pending.equals(usage1.pending) : usage1.pending == null;
         }
 
         @Override
         public int hashCode() {
-            int result = (int) (usage ^ (usage >>> 32));
+            int result = (int) (totalBytes ^ (totalBytes >>> 32));
             result = 31 * result + (pending != null ? pending.hashCode() : 0);
             return result;
         }
@@ -376,7 +376,7 @@ public class SpaceCheckingKeyFilter {
                 Logging.LOG().info("Calculating space usage of "+username);
                 Optional<PublicKeyHash> publicKeyHash = core.getPublicKeyHash(username).get();
                 publicKeyHash.ifPresent(keyHash -> processCorenodeEvent(username, keyHash));
-                LOG.info("Updated space usage of user: " + username + " to " + state.usage.get(username).usage);
+                LOG.info("Updated space usage of user: " + username + " to " + state.usage.get(username).totalBytes);
             }
         } catch (Exception e) {
             LOG.log(Level.WARNING, e.getMessage(), e);
@@ -504,6 +504,26 @@ public class SpaceCheckingKeyFilter {
         }
     }
 
+    @Override
+    public CompletableFuture<Long> getUsage(PublicKeyHash owner) {
+        Stat stat = state.currentView.get(owner);
+        if (stat == null)
+            return Futures.errored(new IllegalStateException("Unknown identity key: " + owner));
+        Usage usage = state.usage.get(stat.owner);
+        if (usage == null)
+            return Futures.errored(new IllegalStateException("No usage present for user: " + stat.owner));
+        return CompletableFuture.completedFuture(usage.totalBytes);
+    }
+
+    @Override
+    public CompletableFuture<Long> getQuota(PublicKeyHash owner, byte[] signedTime) {
+        TimeLimited.isAllowedTime(signedTime, 120, dht, owner);
+        Stat stat = state.currentView.get(owner);
+        if (stat == null)
+            return Futures.errored(new IllegalStateException("Unknown identity key: " + owner));
+        return CompletableFuture.completedFuture(quotaSupplier.getQuota(stat.owner));
+    }
+
     public boolean allowWrite(PublicKeyHash writer, int size) {
         Stat stat = state.currentView.get(writer);
         if (stat == null)
@@ -518,7 +538,7 @@ public class SpaceCheckingKeyFilter {
             usage.clearPending(writer);
             usage.setErrored(true);
             throw new IllegalStateException("Storage quota reached! \nUsed "
-                    + usage.usage + " out of " + quota + " bytes. Rejecting write of size " + (size + pending) + ". \n" +
+                    + usage.totalBytes + " out of " + quota + " bytes. Rejecting write of size " + (size + pending) + ". \n" +
                     "Please delete some files or request more space.");
         }
         usage.addPending(writer, size);
