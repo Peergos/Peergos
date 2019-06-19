@@ -3,6 +3,7 @@ package peergos.server;
 import java.util.concurrent.atomic.*;
 import java.util.logging.*;
 
+import peergos.server.space.*;
 import peergos.server.storage.*;
 import peergos.server.util.*;
 
@@ -11,6 +12,7 @@ import peergos.server.mutable.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
@@ -37,6 +39,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
     private final MutablePointers mutable;
     private final ContentAddressedStorage dht;
     private final UserQuotas quotaSupplier;
+    private final JdbcSpaceRequests spaceRequests;
     private final Path statePath;
     private final State state;
     private final AtomicBoolean isRunning = new AtomicBoolean(true);
@@ -54,11 +57,13 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                                   MutablePointers mutable,
                                   ContentAddressedStorage dht,
                                   UserQuotas quotaSupplier,
+                                  JdbcSpaceRequests spaceRequests,
                                   Path statePath) {
         this.core = core;
         this.mutable = mutable;
         this.dht = dht;
         this.quotaSupplier = quotaSupplier;
+        this.spaceRequests = spaceRequests;
         this.statePath = statePath;
         this.state = initState(statePath, mutable, dht);
         new Thread(() -> {
@@ -522,6 +527,20 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         if (stat == null)
             return Futures.errored(new IllegalStateException("Unknown identity key: " + owner));
         return CompletableFuture.completedFuture(quotaSupplier.getQuota(stat.owner));
+    }
+
+    @Override
+    public CompletableFuture<Boolean> requestSpace(PublicKeyHash owner, byte[] signedRequest) {
+        // check request is valid
+        Optional<PublicSigningKey> ownerOpt = dht.getSigningKey(owner).join();
+        if (!ownerOpt.isPresent())
+            throw new IllegalStateException("Couldn't retrieve owner key!");
+        byte[] raw = ownerOpt.get().unsignMessage(signedRequest);
+        CborObject cbor = CborObject.fromByteArray(raw);
+        SpaceUsage.SpaceRequest req = SpaceUsage.SpaceRequest.fromCbor(cbor);
+        if (req.utcMillis < System.currentTimeMillis() - 30_000)
+            throw new IllegalStateException("Stale auth time in space request!");
+        return CompletableFuture.completedFuture(spaceRequests.addSpaceRequest(req.username, signedRequest));
     }
 
     public boolean allowWrite(PublicKeyHash writer, int size) {

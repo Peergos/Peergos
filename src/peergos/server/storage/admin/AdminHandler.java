@@ -2,12 +2,17 @@ package peergos.server.storage.admin;
 
 import com.sun.net.httpserver.*;
 import peergos.server.util.*;
-import peergos.shared.io.ipfs.api.*;
+import peergos.shared.cbor.*;
+import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.cid.*;
+import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.storage.*;
 import peergos.shared.storage.controller.*;
 import peergos.shared.util.*;
 
 import java.io.*;
-import java.net.*;
+import java.util.*;
+import java.util.function.*;
 
 public class AdminHandler implements HttpHandler {
 
@@ -17,32 +22,51 @@ public class AdminHandler implements HttpHandler {
         this.target = target;
     }
 
-    public void handle(HttpExchange exchange) throws IOException {
+    public void handle(HttpExchange exchange) {
         String path = exchange.getRequestURI().getPath();
         if (path.startsWith("/"))
             path = path.substring(1);
         String[] subComponents = path.substring(Constants.ADMIN_URL.length()).split("/");
         String method = subComponents[0];
 
-        String reply;
+        Map<String, List<String>> params = HttpUtil.parseQuery(exchange.getRequestURI().getQuery());
+        Function<String, String> last = key -> params.get(key).get(params.get(key).size() - 1);
+
+        Cborable reply;
         try {
             switch (method) {
-                case InstanceAdmin.HTTP.VERSION:
+                case HttpInstanceAdmin.VERSION:
                     InstanceAdmin.VersionInfo res = target.getVersionInfo().join();
-                    reply = JSONParser.toString(res.toJSON());
+                    reply = res.toCbor();
                     break;
+                case HttpInstanceAdmin.PENDING: {
+                    PublicKeyHash admin = PublicKeyHash.fromString(params.get("admin").get(0));
+                    Multihash instance = Cid.decode(params.get("instance").get(0));
+                    byte[] signedTime = ArrayOps.hexToBytes(last.apply("auth"));
+                    List<SpaceUsage.LabelledSignedSpaceRequest> pending = target
+                            .getPendingSpaceRequests(admin, instance, signedTime).join();
+                    reply = new CborObject.CborList(pending);
+                    break;
+                }
+                case HttpInstanceAdmin.APPROVE: {
+                    PublicKeyHash admin = PublicKeyHash.fromString(params.get("admin").get(0));
+                    Multihash instance = Cid.decode(params.get("instance").get(0));
+                    byte[] signedReq = ArrayOps.hexToBytes(last.apply("req"));
+                    boolean result = target.approveSpaceRequest(admin, instance, signedReq).join();
+                    reply = new CborObject.CborBoolean(result);
+                    break;
+                }
                 default:
-                    throw new IOException("Unknown method "+ method);
+                    throw new IOException("Unknown method in admin handler!");
             }
 
-            byte[] b = reply.getBytes();
-            exchange.sendResponseHeaders(200, b.length);
-            exchange.getResponseBody().write(b);
+            byte[] res = reply.serialize();
+            exchange.sendResponseHeaders(200, res.length);
+            exchange.getResponseBody().write(res);
         } catch (Exception e) {
             HttpUtil.replyError(exchange, e);
         } finally {
             exchange.close();
         }
-
     }
 }

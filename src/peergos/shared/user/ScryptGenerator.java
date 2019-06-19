@@ -43,10 +43,10 @@ public class ScryptGenerator implements SecretGenerationAlgorithm {
 
     static ScryptGenerator fromCbor(Cborable cbor) {
         CborObject.CborMap map = (CborObject.CborMap) cbor;
-        int memoryCost = (int) ((CborObject.CborLong) map.values.get(new CborObject.CborString("m"))).value;
-        int cpuCost = (int) ((CborObject.CborLong) map.values.get(new CborObject.CborString("c"))).value;
-        int parallelsm = (int) ((CborObject.CborLong) map.values.get(new CborObject.CborString("p"))).value;
-        int outputBytes = (int) ((CborObject.CborLong) map.values.get(new CborObject.CborString("o"))).value;
+        int memoryCost = (int) map.getLong("m");
+        int cpuCost = (int) map.getLong("c");
+        int parallelsm = (int) map.getLong("p");
+        int outputBytes = (int) map.getLong("o");
         String extraSalt = map.getString("s", "");
         return new ScryptGenerator(memoryCost, cpuCost, parallelsm, outputBytes, extraSalt);
     }

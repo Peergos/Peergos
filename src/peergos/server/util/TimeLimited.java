@@ -9,7 +9,15 @@ import java.util.*;
 
 public class TimeLimited {
 
-    public static boolean isAllowedTime(byte[] signedTime, int durationSeconds, ContentAddressedStorage ipfs, PublicKeyHash owner) {
+    /**
+     *
+     * @param signedTime
+     * @param durationSeconds
+     * @param ipfs
+     * @param owner
+     * @return The time in milliseconds UTC that was signed and valid
+     */
+    public static long isAllowedTime(byte[] signedTime, int durationSeconds, ContentAddressedStorage ipfs, PublicKeyHash owner) {
         try {
             Optional<PublicSigningKey> ownerOpt = ipfs.getSigningKey(owner).get();
             if (! ownerOpt.isPresent())
@@ -23,9 +31,9 @@ public class TimeLimited {
             if (Math.abs(now - utcMillis) > durationSeconds * 1_000)
                 throw new IllegalStateException("Stale auth time, is your clock accurate?");
             // This is a valid request
+            return utcMillis;
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
-        return true;
     }
 }

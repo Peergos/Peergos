@@ -16,6 +16,8 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.server.*;
+import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.storage.*;
 import peergos.shared.storage.controller.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
@@ -63,6 +65,7 @@ public abstract class UserTests {
                     "-ipfs-config-api-port", Integer.toString(ipfsApiPort),
                     "-ipfs-config-gateway-port", Integer.toString(ipfsGatewayPort),
                     "-ipfs-config-swarm-port", Integer.toString(ipfsSwarmPort),
+                    "-admin-usernames", "peergos",
                     "-logToConsole", "true",
                     "max-users", "10000",
                     Main.PEERGOS_PATH, peergosDir.toString(),
@@ -1112,6 +1115,26 @@ public abstract class UserTests {
         long usage = network.spaceUsage.getUsage(context.signer.publicKeyHash).join();
         Assert.assertTrue("non zero quota", quota > 0);
         Assert.assertTrue("non zero space usage", usage > 0);
+
+        // Now let's request some more quota and get it approved by an admin
+        context.network.spaceUsage.requestSpace(username, context.signer, quota * 2).join();
+
+        UserContext admin = PeergosNetworkUtils.ensureSignedUp("peergos", "testpassword", network, crypto);
+        Multihash instanceId = admin.network.dhtClient.id().join();
+        byte[] adminSignedTime = TimeLimitedClient.signNow(admin.signer.secret);
+        List<SpaceUsage.LabelledSignedSpaceRequest> spaceReqs = admin.network.instanceAdmin
+                .getPendingSpaceRequests(admin.signer.publicKeyHash, instanceId, adminSignedTime).join();
+        // check we can parse the request
+        byte[] signedRequest = spaceReqs.get(0).signedRequest;
+        PublicSigningKey userPublic = context.network.dhtClient.getSigningKey(context.signer.publicKeyHash).join().get();
+        SpaceUsage.SpaceRequest req = SpaceUsage.SpaceRequest.fromCbor(CborObject
+                .fromByteArray(userPublic.unsignMessage(signedRequest)));
+
+        byte[] adminSignedRequest = admin.signer.secret.signMessage(spaceReqs.get(0).serialize());
+        admin.network.instanceAdmin.approveSpaceRequest(admin.signer.publicKeyHash, instanceId, adminSignedRequest).join();
+
+        long updatedQuota = network.spaceUsage.getQuota(context.signer.publicKeyHash, signedTime).join();
+        Assert.assertTrue("Quota updated", updatedQuota == 2 * quota);
     }
 
     public static SymmetricKey getDataKey(FileWrapper file) {
