@@ -1110,14 +1110,13 @@ public abstract class UserTests {
         String username = generateUsername();
         String password = "password";
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
-        byte[] signedTime = TimeLimitedClient.signNow(context.signer.secret);
-        long quota = network.spaceUsage.getQuota(context.signer.publicKeyHash, signedTime).join();
-        long usage = network.spaceUsage.getUsage(context.signer.publicKeyHash).join();
+        long quota = context.getQuota().join();
+        long usage = context.getSpaceUsage().join();
         Assert.assertTrue("non zero quota", quota > 0);
         Assert.assertTrue("non zero space usage", usage > 0);
 
         // Now let's request some more quota and get it approved by an admin
-        context.network.spaceUsage.requestSpace(username, context.signer, quota * 2).join();
+        context.requestSpace(quota * 2).join();
 
         UserContext admin = PeergosNetworkUtils.ensureSignedUp("peergos", "testpassword", network, crypto);
         Multihash instanceId = admin.network.dhtClient.id().join();
@@ -1133,7 +1132,7 @@ public abstract class UserTests {
         byte[] adminSignedRequest = admin.signer.secret.signMessage(spaceReqs.get(0).serialize());
         admin.network.instanceAdmin.approveSpaceRequest(admin.signer.publicKeyHash, instanceId, adminSignedRequest).join();
 
-        long updatedQuota = network.spaceUsage.getQuota(context.signer.publicKeyHash, signedTime).join();
+        long updatedQuota = context.getQuota().join();
         Assert.assertTrue("Quota updated", updatedQuota == 2 * quota);
     }
 
