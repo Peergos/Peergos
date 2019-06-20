@@ -3,6 +3,7 @@ package peergos.server.net;
 import com.sun.net.httpserver.*;
 import peergos.server.util.*;
 import peergos.server.util.Logging;
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
@@ -29,8 +30,6 @@ public class StorageHandler implements HttpHandler {
         long t1 = System.currentTimeMillis();
         DataInputStream din = new DataInputStream(exchange.getRequestBody());
 
-        ByteArrayOutputStream bout = new ByteArrayOutputStream();
-        DataOutputStream dout = new DataOutputStream(bout);
 
         String path = exchange.getRequestURI().getPath();
         if (path.startsWith("/"))
@@ -41,27 +40,29 @@ public class StorageHandler implements HttpHandler {
         Map<String, List<String>> params = HttpUtil.parseQuery(exchange.getRequestURI().getQuery());
         Function<String, String> last = key -> params.get(key).get(params.get(key).size() - 1);
         PublicKeyHash owner = PublicKeyHash.fromString(params.get("owner").get(0));
+
+        Cborable result;
         try {
             switch (method) {
                 case "usage":
                     long usage = spaceUsage.getUsage(owner).join();
-                    dout.writeLong(usage);
+                    result = new CborObject.CborLong(usage);
                     break;
                 case "quota":
                     byte[] signedTime = ArrayOps.hexToBytes(last.apply("auth"));
                     long quota = spaceUsage.getQuota(owner, signedTime).join();
-                    dout.writeLong(quota);
+                    result = new CborObject.CborLong(quota);
                     break;
                 case "request":
                     byte[] signedReq = ArrayOps.hexToBytes(last.apply("req"));
                     boolean res = spaceUsage.requestSpace(owner, signedReq).join();
-                    dout.writeBoolean(res);
+                    result = new CborObject.CborBoolean(res);
                     break;
                 default:
                     throw new IOException("Unknown method in StorageHandler!");
             }
 
-            byte[] b = bout.toByteArray();
+            byte[] b = result.serialize();
             exchange.sendResponseHeaders(200, b.length);
             exchange.getResponseBody().write(b);
         } catch (Exception e) {

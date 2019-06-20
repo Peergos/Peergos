@@ -1,5 +1,6 @@
 package peergos.shared.storage;
 
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.user.*;
@@ -39,12 +40,7 @@ public class HttpSpaceUsage implements SpaceUsageProxy {
 
     private CompletableFuture<Long> getUsage(String urlPrefix, HttpPoster poster, PublicKeyHash owner) {
         return poster.get(urlPrefix + Constants.SPACE_USAGE_URL + "usage?owner=" + encode(owner.toString())).thenApply(res -> {
-            DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
-            try {
-                return din.readLong();
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
+            return ((CborObject.CborLong)CborObject.fromByteArray(res)).value;
         });
     }
 
@@ -62,12 +58,7 @@ public class HttpSpaceUsage implements SpaceUsageProxy {
     {
         return poster.get(urlPrefix + Constants.SPACE_USAGE_URL + "quota?owner=" + encode(owner.toString())
                 + "&auth=" + ArrayOps.bytesToHex(signedTime)).thenApply(res -> {
-            DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
-            try {
-                return din.readLong();
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
+            return ((CborObject.CborLong)CborObject.fromByteArray(res)).value;
         });
     }
 
@@ -84,12 +75,7 @@ public class HttpSpaceUsage implements SpaceUsageProxy {
     public CompletableFuture<Boolean> requestSpace(String urlPrefix, HttpPoster poster, PublicKeyHash owner, byte[] signedRequest) {
         return poster.get(urlPrefix + Constants.SPACE_USAGE_URL + "request?owner=" + encode(owner.toString())
                 + "&req=" + ArrayOps.bytesToHex(signedRequest)).thenApply(res -> {
-            DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
-            try {
-                return din.readBoolean();
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
+            return ((CborObject.CborBoolean)CborObject.fromByteArray(res)).value;
         });
     }
 
