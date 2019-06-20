@@ -197,7 +197,7 @@ public class NetworkAccess {
                     SpaceUsage p2pUsage = isPeergosServer ?
                             httpUsage :
                             new ProxyingSpaceUsage(nodeId, core, httpUsage, httpUsage);
-                    return build(p2pDht, core, p2pMutable, p2pSocial, new InstanceAdmin.HTTP(apiPoster), p2pUsage, usernames, isJavascript);
+                    return build(p2pDht, core, p2pMutable, p2pSocial, new HttpInstanceAdmin(apiPoster), p2pUsage, usernames, isJavascript);
                 });
     }
 

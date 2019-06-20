@@ -1,7 +1,9 @@
 package peergos.shared.storage.controller;
 
-import peergos.shared.io.ipfs.api.*;
-import peergos.shared.user.*;
+import peergos.shared.cbor.*;
+import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -21,39 +23,32 @@ public interface InstanceAdmin {
 
     CompletableFuture<VersionInfo> getVersionInfo();
 
-    class VersionInfo {
+    CompletableFuture<List<SpaceUsage.LabelledSignedSpaceRequest>> getPendingSpaceRequests(PublicKeyHash adminIdentity,
+                                                                                           Multihash instanceIdentity,
+                                                                                           byte[] signedTime);
+
+    CompletableFuture<Boolean> approveSpaceRequest(PublicKeyHash adminIdentity,
+                                                   Multihash instanceIdentity,
+                                                   byte[] signedRequest);
+
+    class VersionInfo implements Cborable {
         public final Version version;
 
         public VersionInfo(Version version) {
             this.version = version;
         }
 
-        public Object toJSON() {
-            Map<String, Object> res = new TreeMap<>();
-            res.put("Version", version.toString());
-            return res;
-        }
-
-        public static VersionInfo fromJSON(Object json) {
-            if (! (json instanceof Map))
-                throw new IllegalStateException("Invalid json for VersionInfo");
-            return new VersionInfo(Version.parse((String)((Map) json).get("Version")));
-        }
-    }
-
-    class HTTP implements InstanceAdmin {
-        public static final String VERSION = "version";
-
-        private final HttpPoster poster;
-
-        public HTTP(HttpPoster poster) {
-            this.poster = poster;
-        }
-
         @Override
-        public CompletableFuture<VersionInfo> getVersionInfo() {
-            return poster.get(Constants.ADMIN_URL + VERSION)
-                    .thenApply(raw -> VersionInfo.fromJSON(JSONParser.parse(new String(raw))));
+        public CborObject toCbor() {
+            Map<String, CborObject> props = new TreeMap<>();
+            props.put("v", new CborObject.CborString(version.toString()));
+            return CborObject.CborMap.build(props);
+        }
+
+        public static VersionInfo fromCbor(Cborable cbor) {
+            CborObject.CborMap map = (CborObject.CborMap) cbor;
+            String version = map.getString("v");
+            return new VersionInfo(Version.parse(version));
         }
     }
 }

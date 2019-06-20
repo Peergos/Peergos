@@ -71,6 +71,28 @@ public class HttpSpaceUsage implements SpaceUsageProxy {
         });
     }
 
+    @Override
+    public CompletableFuture<Boolean> requestSpace(PublicKeyHash owner, byte[] signedRequest) {
+        return requestSpace("", direct, owner, signedRequest);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> requestSpace(Multihash targetServerId, PublicKeyHash owner, byte[] signedRequest) {
+        return requestSpace(getProxyUrlPrefix(targetServerId), p2p, owner, signedRequest);
+    }
+
+    public CompletableFuture<Boolean> requestSpace(String urlPrefix, HttpPoster poster, PublicKeyHash owner, byte[] signedRequest) {
+        return poster.get(urlPrefix + Constants.SPACE_USAGE_URL + "request?owner=" + encode(owner.toString())
+                + "&req=" + ArrayOps.bytesToHex(signedRequest)).thenApply(res -> {
+            DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
+            try {
+                return din.readBoolean();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
     private static String encode(String component) {
         try {
             return URLEncoder.encode(component, "UTF-8");

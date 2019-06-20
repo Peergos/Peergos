@@ -395,6 +395,34 @@ public class UserContext {
         return getByPath("/" + username + "/shared").thenApply(opt -> opt.get());
     }
 
+    /**
+     *
+     * @return The maximum amount of space this user is allowed to use in bytes
+     */
+    @JsMethod
+    public CompletableFuture<Long> getQuota() {
+        byte[] signedTime = TimeLimitedClient.signNow(signer.secret);
+        return network.spaceUsage.getQuota(signer.publicKeyHash, signedTime);
+    }
+
+    /**
+     *
+     * @return The total amount of space used by this account in bytes
+     */
+    @JsMethod
+    public CompletableFuture<Long> getSpaceUsage() {
+        return network.spaceUsage.getUsage(signer.publicKeyHash);
+    }
+
+    /**
+     *
+     * @return true when completed successfully
+     */
+    @JsMethod
+    public CompletableFuture<Boolean> requestSpace(long requestedQuota) {
+        return network.spaceUsage.requestSpace(username, signer, requestedQuota);
+    }
+
     @JsMethod
     public CompletableFuture<Boolean> isRegistered() {
         LOG.info("isRegistered");

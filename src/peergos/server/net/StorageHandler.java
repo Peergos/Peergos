@@ -52,6 +52,11 @@ public class StorageHandler implements HttpHandler {
                     long quota = spaceUsage.getQuota(owner, signedTime).join();
                     dout.writeLong(quota);
                     break;
+                case "request":
+                    byte[] signedReq = ArrayOps.hexToBytes(last.apply("req"));
+                    boolean res = spaceUsage.requestSpace(owner, signedReq).join();
+                    dout.writeBoolean(res);
+                    break;
                 default:
                     throw new IOException("Unknown method in StorageHandler!");
             }

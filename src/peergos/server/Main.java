@@ -1,5 +1,6 @@
 package peergos.server;
 
+import peergos.server.space.*;
 import peergos.server.storage.admin.*;
 import peergos.shared.*;
 import peergos.server.corenode.*;
@@ -78,6 +79,7 @@ public class Main {
                     new Command.Arg("useIPFS", "Use IPFS for storage or a local disk store", false, "true"),
                     new Command.Arg("mutable-pointers-file", "The filename for the mutable pointers datastore", true, "mutable.sql"),
                     new Command.Arg("social-sql-file", "The filename for the follow requests datastore", true, "social.sql"),
+                    new Command.Arg("space-requests-sql-file", "The filename for the space requests datastore", true, "space-requests.sql"),
                     new Command.Arg("webroot", "the path to the directory to serve as the web root", false),
                     new Command.Arg("default-quota", "default maximum storage per user", false, Long.toString(1024L * 1024 * 1024))
             ).collect(Collectors.toList())
@@ -237,6 +239,7 @@ public class Main {
                     new Command.Arg("useIPFS", "Whether to use IPFS or a local datastore", true, "false"),
                     new Command.Arg("mutable-pointers-file", "The filename for the mutable pointers (or :memory: or ram based)", true, ":memory:"),
                     new Command.Arg("social-sql-file", "The filename for the follow requests (or :memory: or ram based)", true, ":memory:"),
+                    new Command.Arg("space-requests-sql-file", "The filename for the space requests datastore", true, "space-requests.sql"),
                     new Command.Arg("ipfs-config-api-port", "ipfs api port", true, "5001"),
                     new Command.Arg("ipfs-config-gateway-port", "ipfs gateway port", true, "8080"),
                     new Command.Arg("pki.secret.key.path", "The path to the pki secret key file", true, "test.pki.secret.key"),
@@ -284,6 +287,7 @@ public class Main {
                     new Command.Arg("useIPFS", "Whether to use IPFS or a local datastore", true, "false"),
                     new Command.Arg("mutable-pointers-file", "The filename for the mutable pointers (or :memory: or ram based)", true, ":memory:"),
                     new Command.Arg("social-sql-file", "The filename for the follow requests (or :memory: or ram based)", true, ":memory:"),
+                    new Command.Arg("space-requests-sql-file", "The filename for the space requests datastore", true, "space-requests.sql"),
                     new Command.Arg("ipfs-config-api-port", "ipfs api port", true, "5001"),
                     new Command.Arg("ipfs-config-gateway-port", "ipfs gateway port", true, "8080"),
                     new Command.Arg("pki.secret.key.path", "The path to the pki secret key file", true, "test.pki.secret.key"),
@@ -355,9 +359,15 @@ public class Main {
             Path quotaFilePath = a.fromPeergosDir("quotas_file","quotas.txt");
             Path statePath = a.fromPeergosDir("state_path","usage-state.cbor");
 
+            String spaceRequestsSqlFile = a.getArg("space-requests-sql-file");
+            String spaceRequestsSqlPath = spaceRequestsSqlFile.equals(":memory:") ?
+                    spaceRequestsSqlFile :
+                    a.fromPeergosDir("space-requests-sql-file").toString();
+            JdbcSpaceRequests spaceRequests = JdbcSpaceRequests.buildSqlLite(spaceRequestsSqlPath);
             UserQuotas userQuotas = new UserQuotas(quotaFilePath, defaultQuota, maxUsers);
             CoreNode signupFilter = new SignUpFilter(core, userQuotas, nodeId);
-            SpaceCheckingKeyFilter spaceChecker = new SpaceCheckingKeyFilter(core, sqlMutable, localDht, userQuotas, statePath);
+            SpaceCheckingKeyFilter spaceChecker = new SpaceCheckingKeyFilter(core, sqlMutable, localDht, userQuotas,
+                    spaceRequests, statePath);
             CorenodeEventPropagator corePropagator = new CorenodeEventPropagator(signupFilter);
             corePropagator.addListener(spaceChecker::accept);
             MutableEventPropagator localMutable = new MutableEventPropagator(sqlMutable);
@@ -385,7 +395,10 @@ public class Main {
 
             new UserFilePinner(userPath, core, p2mMutable, p2pDht, delayMs).start();
 
-            Admin storageAdmin = new Admin();
+            Set<String> adminUsernames = Arrays.asList(a.getArg("admin-usernames").split(","))
+                    .stream()
+                    .collect(Collectors.toSet());
+            Admin storageAdmin = new Admin(adminUsernames, spaceRequests, userQuotas, core, localDht);
             UserService peergos = new UserService(p2pDht, corePropagator, p2pSocial, p2mMutable, storageAdmin, spaceChecker);
             InetSocketAddress localAddress = new InetSocketAddress("localhost", userAPIAddress.getPort());
             Optional<Path> webroot = a.hasArg("webroot") ?
