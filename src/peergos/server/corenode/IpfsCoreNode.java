@@ -83,7 +83,8 @@ public class IpfsCoreNode implements CoreNode {
             MaybeMultihash updatedTree = getTreeRoot(newChampRoot, ipfs);
             Consumer<Triple<ByteArrayWrapper, MaybeMultihash, MaybeMultihash>> consumer =
                     t -> updateMapping(t.left, t.middle, t.right, ipfs, chains, reverseLookup, usernames);
-            Champ.applyToDiff(currentTree, updatedTree, 0, Collections.emptyList(), Collections.emptyList(),
+            Champ.applyToDiff(currentTree, updatedTree, 0, IpfsCoreNode::keyHash,
+                    Collections.emptyList(), Collections.emptyList(),
                     consumer, ChampWrapper.BIT_WIDTH, ipfs).get();
         } catch (Exception e) {
             throw new RuntimeException(e.getMessage(), e);

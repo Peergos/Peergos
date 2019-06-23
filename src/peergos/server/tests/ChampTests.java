@@ -175,7 +175,7 @@ public class ChampTests {
         int bitWidth = 4;
         int maxCollisions = 2;
         // build a random tree and keep track of the state
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < 100; i++) {
             ByteArrayWrapper key = new ByteArrayWrapper(new byte[]{0, (byte)i, 0});
             Multihash value = randomHash.get();
             Pair<Champ, Multihash> updated = current.put(user.publicKeyHash, user, key, hasher.apply(key), 0,
@@ -194,7 +194,25 @@ public class ChampTests {
             Pair<Champ, Multihash> updated = current.put(user.publicKeyHash, user, key, hasher.apply(key), 0, currentValue,
                     newValue, bitWidth, maxCollisions, hasher, tid, storage, currentHash).get();
             List<Triple<ByteArrayWrapper, MaybeMultihash, MaybeMultihash>> diffs = new ArrayList<>();
-            Champ.applyToDiff(MaybeMultihash.of(currentHash), MaybeMultihash.of(updated.right), 0,
+            Champ.applyToDiff(MaybeMultihash.of(currentHash), MaybeMultihash.of(updated.right), 0, hasher,
+                    Collections.emptyList(), Collections.emptyList(), diffs::add, bitWidth, storage).join();
+            if (diffs.size() != 1 || ! diffs.get(0).equals(new Triple<>(key, currentValue, newValue)))
+                throw new IllegalStateException("Incorrect champ diff updating element!");
+        }
+
+        // add a random entry
+        for (int i=0; i < 100; i++) {
+            byte[] keyBytes = new byte[32];
+            r.nextBytes(keyBytes);
+            ByteArrayWrapper key = new ByteArrayWrapper(keyBytes);
+            MaybeMultihash currentValue = Optional.ofNullable(state.get(key))
+                    .orElse(MaybeMultihash.empty());
+            MaybeMultihash newValue = MaybeMultihash.of(randomHash.get());
+            Pair<Champ, Multihash> updated = current.put(user.publicKeyHash, user, key, hasher.apply(key), 0, currentValue,
+                    newValue, bitWidth, maxCollisions, hasher, tid, storage, currentHash).get();
+            List<Triple<ByteArrayWrapper, MaybeMultihash, MaybeMultihash>> diffs = new ArrayList<>();
+
+            Champ.applyToDiff(MaybeMultihash.of(currentHash), MaybeMultihash.of(updated.right), 0, hasher,
                     Collections.emptyList(), Collections.emptyList(), diffs::add, bitWidth, storage).join();
             if (diffs.size() != 1 || ! diffs.get(0).equals(new Triple<>(key, currentValue, newValue)))
                 throw new IllegalStateException("Incorrect champ diff updating element!");
@@ -211,7 +229,7 @@ public class ChampTests {
             Pair<Champ, Multihash> updated = current.put(user.publicKeyHash, user, key, hasher.apply(key), 0, currentValue,
                     newValue, bitWidth, maxCollisions, hasher, tid, storage, currentHash).get();
             List<Triple<ByteArrayWrapper, MaybeMultihash, MaybeMultihash>> diffs = new ArrayList<>();
-            Champ.applyToDiff(MaybeMultihash.of(currentHash), MaybeMultihash.of(updated.right), 0,
+            Champ.applyToDiff(MaybeMultihash.of(currentHash), MaybeMultihash.of(updated.right), 0, hasher,
                     Collections.emptyList(), Collections.emptyList(), diffs::add, bitWidth, storage).join();
             if (diffs.size() != 1 || ! diffs.get(0).equals(new Triple<>(key, currentValue, newValue)))
                 throw new IllegalStateException("Incorrect champ diff updating element!");

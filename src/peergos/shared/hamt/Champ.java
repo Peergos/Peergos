@@ -595,6 +595,7 @@ public class Champ implements Cborable {
             MaybeMultihash original,
             MaybeMultihash updated,
             int depth,
+            Function<ByteArrayWrapper, byte[]> hasher,
             List<KeyElement> higherLeftMappings,
             List<KeyElement> higherRightMappings,
             Consumer<Triple<ByteArrayWrapper, MaybeMultihash, MaybeMultihash>> consumer,
@@ -613,9 +614,9 @@ public class Champ implements Cborable {
                             int maxBit = Math.max(leftMax, rightMax);
                             int leftDataIndex = 0, rightDataIndex = 0, leftNodeCount = 0, rightNodeCount = 0;
                             Map<Integer, List<KeyElement>> leftHigherMappingsByBit = higherLeftMappings.stream()
-                                    .collect(Collectors.groupingBy(m -> mask(m.key.data, depth, bitWidth)));
+                                    .collect(Collectors.groupingBy(m -> mask(hasher.apply(m.key), depth, bitWidth)));
                             Map<Integer, List<KeyElement>> rightHigherMappingsByBit = higherRightMappings.stream()
-                                    .collect(Collectors.groupingBy(m -> mask(m.key.data, depth, bitWidth)));
+                                    .collect(Collectors.groupingBy(m -> mask(hasher.apply(m.key), depth, bitWidth)));
 
                             List<CompletableFuture<Boolean>> deeperLayers = new ArrayList<>();
 
@@ -646,7 +647,7 @@ public class Champ implements Cborable {
                                 if (leftShard.isPresent() || rightShard.isPresent()) {
                                     deeperLayers.add(applyToDiff(
                                             leftShard.orElse(MaybeMultihash.empty()),
-                                            rightShard.orElse(MaybeMultihash.empty()), depth + 1,
+                                            rightShard.orElse(MaybeMultihash.empty()), depth + 1, hasher,
                                             leftMappings, rightMappings, consumer, bitWidth, storage));
                                 } else {
                                     Map<ByteArrayWrapper, MaybeMultihash> leftMap = leftMappings.stream()
