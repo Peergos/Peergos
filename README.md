@@ -7,16 +7,20 @@ Peergos
 
 Peergos is a peer-to-peer encrypted filesystem with secure sharing of files designed to be resistant to surveillance of data content or friendship graphs. It will have a secure email replacement, with some interoperability with email. There will also be a totally private and secure social network, where users are in control of who sees what (executed cryptographically).
 
-The name Peergos comes from the Greek word Πύργος (Pyrgos), which means stronghold or tower, but phonetically spelt with the nice connection to being peer-to-peer. 
+The name Peergos comes from the Greek word Πύργος (Pyrgos), which means stronghold or tower, but phonetically spelt with the nice connection to being peer-to-peer. Pronuniation: peer-goss (as in gossip).
 
+Demo
+----
 There is a single machine demo running at [https://demo.peergos.net](https://demo.peergos.net). 
 
+More info
+---------
 You can read more detail about our features and architecture in our [book](https://book.peergos.org).
 
-The slides of a talk introducing Peergos are [here](https://speakerdeck.com/ianopolous/peergos-architecture) and [videos here](https://www.youtube.com/watch?v=h54pShffxvI) and [here](https://www.youtube.com/watch?v=dCLboQDlzds).
+The slides of a talk introducing Peergos are [here](https://speakerdeck.com/ianopolous/peergos-architecture) and [videos here](https://www.youtube.com/watch?v=h54pShffxvI) and [here](https://www.youtube.com/watch?v=dCLboQDlzds). A short [tour of Peergos](https://vimeo.com/316903779) is here.
 
-A short [tour of Peergos](https://vimeo.com/316903779) is here.
-
+Support
+-------
 If you would like to support Peergos development, then please make a 
 
 [recurring donation less than 100 EUR per week](https://liberapay.com/peergos)
@@ -25,7 +29,9 @@ or a
 
 [larger or one off donation](https://donorbox.org/peergos). 
 
-**WARNING:** Peergos is still alpha software, and needs an independent security audit. Don't use it for data you can't afford to lose or expose, yet.
+Audit
+-----
+Cure53 conducted an audit of Peergos in June 2019. The finaly report is [here](https://cure53.de/pentest-report_peergos.pdf).
 
 Peergos aims
 ------------
