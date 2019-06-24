@@ -1115,6 +1115,10 @@ public abstract class UserTests {
         Assert.assertTrue("non zero quota", quota > 0);
         Assert.assertTrue("non zero space usage", usage > 0);
 
+        CompletableFuture<List<SpaceUsage.LabelledSignedSpaceRequest>> nonAdmin = context.getPendingSpaceRequests();
+
+        Assert.assertTrue("Non admins get an error", nonAdmin.isCompletedExceptionally());
+
         // Now let's request some more quota and get it approved by an admin
         context.requestSpace(quota * 2).join();
 

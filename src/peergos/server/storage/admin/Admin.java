@@ -47,6 +47,9 @@ public class Admin implements InstanceAdmin {
             PublicKeyHash adminIdentity,
             Multihash instanceIdentity,
             byte[] signedTime) {
+        String username = core.getUsername(adminIdentity).join();
+        if (! adminUsernames.contains(username))
+            throw new IllegalStateException("User is not an admin on this instance!");
         long time = TimeLimited.isAllowedTime(signedTime, 60, ipfs, adminIdentity);
         if (lastPendingRequestTime.get() >= time)
             throw new IllegalStateException("Replay attack? Stale auth time for getPendingSpaceRequests");
