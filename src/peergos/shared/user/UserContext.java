@@ -397,6 +397,55 @@ public class UserContext {
 
     /**
      *
+     * @return The pending storage requests on the server we are talking to if we are an admin
+     */
+    @JsMethod
+    public CompletableFuture<List<SpaceUsage.LabelledSignedSpaceRequest>> getPendingSpaceRequests() {
+        byte[] signedTime = TimeLimitedClient.signNow(signer.secret);
+        return network.dhtClient.id()
+                .thenCompose(id -> network.instanceAdmin.getPendingSpaceRequests(signer.publicKeyHash, id, signedTime));
+    }
+
+    /**
+     *
+     * @param in raw space requests
+     * @return raw space requests paired with their decoded request
+     */
+    @JsMethod
+    public CompletableFuture<List<SpaceUsage.DecodedSpaceRequest>> decodeSpaceRequests(List<SpaceUsage.LabelledSignedSpaceRequest> in) {
+        return Futures.combineAllInOrder(in.stream()
+                .map(req -> network.coreNode.getPublicKeyHash(req.username)
+                        .thenCompose(keyHashOpt -> {
+                            if (! keyHashOpt.isPresent())
+                                throw new IllegalStateException("Couldn't retrieve public key for " + req.username);
+                            PublicKeyHash identityHash = keyHashOpt.get();
+                            return network.dhtClient.getSigningKey(identityHash);
+                        }).thenApply(keyOpt -> {
+                            if (! keyOpt.isPresent())
+                                throw new IllegalStateException("Couldn't retrieve public key for " + req.username);
+                            PublicSigningKey pubKey = keyOpt.get();
+                            byte[] raw = pubKey.unsignMessage(req.signedRequest);
+                            SpaceUsage.SpaceRequest parsed = SpaceUsage.SpaceRequest.fromCbor(CborObject.fromByteArray(raw));
+                            return new SpaceUsage.DecodedSpaceRequest(req, parsed);
+                        }))
+                .collect(Collectors.toList()));
+    }
+
+    /**
+     *
+     * @param req
+     * @return true when completed successfully
+     */
+    @JsMethod
+    public CompletableFuture<Boolean> approveSpaceRequest(SpaceUsage.DecodedSpaceRequest req) {
+        byte[] adminSignedRequest = signer.secret.signMessage(req.source.serialize());
+        return network.dhtClient.id()
+                .thenCompose(instanceId -> network.instanceAdmin
+                        .approveSpaceRequest(signer.publicKeyHash, instanceId, adminSignedRequest));
+    }
+
+    /**
+     *
      * @return The maximum amount of space this user is allowed to use in bytes
      */
     @JsMethod

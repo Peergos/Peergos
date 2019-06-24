@@ -1,5 +1,6 @@
 package peergos.shared.storage;
 
+import jsinterop.annotations.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
@@ -21,6 +22,18 @@ public interface SpaceUsage {
         return requestSpace(identity.publicKeyHash, signedRequest);
     }
 
+    @JsType
+    class DecodedSpaceRequest {
+        public final LabelledSignedSpaceRequest source;
+        public final SpaceRequest decoded;
+
+        public DecodedSpaceRequest(LabelledSignedSpaceRequest source, SpaceRequest decoded) {
+            this.source = source;
+            this.decoded = decoded;
+        }
+    }
+
+    @JsType
     class LabelledSignedSpaceRequest implements Cborable {
         public final String username;
         public final byte[] signedRequest;
@@ -46,6 +59,7 @@ public interface SpaceUsage {
         }
     }
 
+    @JsType
     class SpaceRequest implements Cborable {
         public final String username;
         public final long bytes;
