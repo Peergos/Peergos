@@ -16,7 +16,6 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.server.*;
-import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
 import peergos.shared.storage.controller.*;
 import peergos.shared.user.*;
@@ -1125,7 +1124,7 @@ public abstract class UserTests {
         // retrieve, decode and approve request as admin
         UserContext admin = PeergosNetworkUtils.ensureSignedUp("peergos", "testpassword", network, crypto);
         List<SpaceUsage.LabelledSignedSpaceRequest> spaceReqs = admin.getPendingSpaceRequests().join();
-        List<SpaceUsage.DecodedSpaceRequest> parsed = admin.decodeSpaceRequests(spaceReqs).join();
+        List<DecodedSpaceRequest> parsed = admin.decodeSpaceRequests(spaceReqs).join();
         admin.approveSpaceRequest(parsed.get(0)).join();
 
         long updatedQuota = context.getQuota().join();

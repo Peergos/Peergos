@@ -22,18 +22,6 @@ public interface SpaceUsage {
         return requestSpace(identity.publicKeyHash, signedRequest);
     }
 
-    @JsType
-    class DecodedSpaceRequest {
-        public final LabelledSignedSpaceRequest source;
-        public final SpaceRequest decoded;
-
-        public DecodedSpaceRequest(LabelledSignedSpaceRequest source, SpaceRequest decoded) {
-            this.source = source;
-            this.decoded = decoded;
-        }
-    }
-
-    @JsType
     class LabelledSignedSpaceRequest implements Cborable {
         public final String username;
         public final byte[] signedRequest;
@@ -41,6 +29,10 @@ public interface SpaceUsage {
         public LabelledSignedSpaceRequest(String username, byte[] signedRequest) {
             this.username = username;
             this.signedRequest = signedRequest;
+        }
+
+        public String getUsername() {
+            return username;
         }
 
         @Override
@@ -59,7 +51,6 @@ public interface SpaceUsage {
         }
     }
 
-    @JsType
     class SpaceRequest implements Cborable {
         public final String username;
         public final long bytes;
@@ -67,10 +58,16 @@ public interface SpaceUsage {
         Optional<byte[]> paymentProof;
 
         public SpaceRequest(String username, long bytes, long utcMillis, Optional<byte[]> paymentProof) {
+            if (paymentProof.isPresent() && paymentProof.get().length > 4096)
+                throw new IllegalStateException("Payment proof too big!");
             this.username = username;
             this.bytes = bytes;
             this.utcMillis = utcMillis;
             this.paymentProof = paymentProof;
+        }
+
+        public long getSizeInBytes() {
+            return bytes;
         }
 
         @Override

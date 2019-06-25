@@ -2,7 +2,6 @@ package peergos.shared.user;
 
 import java.util.logging.*;
 
-import peergos.server.util.*;
 import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.user.fs.transaction.TransactionService;
 import peergos.shared.user.fs.transaction.TransactionServiceImpl;
@@ -400,6 +399,15 @@ public class UserContext {
      * @return The pending storage requests on the server we are talking to if we are an admin
      */
     @JsMethod
+    public CompletableFuture<List<DecodedSpaceRequest>> getAndDecodePendingSpaceRequests() {
+        return getPendingSpaceRequests().thenCompose(this::decodeSpaceRequests);
+    }
+
+    /**
+     *
+     * @return The pending storage requests on the server we are talking to if we are an admin
+     */
+    @JsMethod
     public CompletableFuture<List<SpaceUsage.LabelledSignedSpaceRequest>> getPendingSpaceRequests() {
         byte[] signedTime = TimeLimitedClient.signNow(signer.secret);
         return network.dhtClient.id()
@@ -412,7 +420,7 @@ public class UserContext {
      * @return raw space requests paired with their decoded request
      */
     @JsMethod
-    public CompletableFuture<List<SpaceUsage.DecodedSpaceRequest>> decodeSpaceRequests(List<SpaceUsage.LabelledSignedSpaceRequest> in) {
+    public CompletableFuture<List<DecodedSpaceRequest>> decodeSpaceRequests(List<SpaceUsage.LabelledSignedSpaceRequest> in) {
         return Futures.combineAllInOrder(in.stream()
                 .map(req -> network.coreNode.getPublicKeyHash(req.username)
                         .thenCompose(keyHashOpt -> {
@@ -426,7 +434,7 @@ public class UserContext {
                             PublicSigningKey pubKey = keyOpt.get();
                             byte[] raw = pubKey.unsignMessage(req.signedRequest);
                             SpaceUsage.SpaceRequest parsed = SpaceUsage.SpaceRequest.fromCbor(CborObject.fromByteArray(raw));
-                            return new SpaceUsage.DecodedSpaceRequest(req, parsed);
+                            return new DecodedSpaceRequest(req, parsed);
                         }))
                 .collect(Collectors.toList()));
     }
@@ -437,11 +445,25 @@ public class UserContext {
      * @return true when completed successfully
      */
     @JsMethod
-    public CompletableFuture<Boolean> approveSpaceRequest(SpaceUsage.DecodedSpaceRequest req) {
+    public CompletableFuture<Boolean> approveSpaceRequest(DecodedSpaceRequest req) {
         byte[] adminSignedRequest = signer.secret.signMessage(req.source.serialize());
         return network.dhtClient.id()
                 .thenCompose(instanceId -> network.instanceAdmin
                         .approveSpaceRequest(signer.publicKeyHash, instanceId, adminSignedRequest));
+    }
+
+    /**
+     *
+     * @param req
+     * @return true when completed successfully
+     */
+    @JsMethod
+    public CompletableFuture<Boolean> rejectSpaceRequest(DecodedSpaceRequest req) {
+        throw new IllegalStateException("Unimplemented!");
+//        byte[] adminSignedRequest = signer.secret.signMessage(req.source.serialize());
+//        return network.dhtClient.id()
+//                .thenCompose(instanceId -> network.instanceAdmin
+//                        .rejectSpaceRequest(signer.publicKeyHash, instanceId, adminSignedRequest));
     }
 
     /**

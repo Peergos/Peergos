@@ -540,6 +540,9 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         SpaceUsage.SpaceRequest req = SpaceUsage.SpaceRequest.fromCbor(cbor);
         if (req.utcMillis < System.currentTimeMillis() - 30_000)
             throw new IllegalStateException("Stale auth time in space request!");
+        // TODO check proof of payment (if required)
+
+        // TODO check user is signed up to this server
         return CompletableFuture.completedFuture(spaceRequests.addSpaceRequest(req.username, signedRequest));
     }
 
