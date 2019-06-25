@@ -870,6 +870,42 @@ public abstract class UserTests {
     }
 
     @Test
+    public void writablePublicLinkToDir() throws Exception {
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        FileWrapper userRoot = context.getUserRoot().get();
+
+        String filename = "mediumfile.bin";
+        byte[] data = new byte[128*1024];
+        random.nextBytes(data);
+        String dirName = "subdir";
+        userRoot.mkdir(dirName, context.network, false, context.crypto).get();
+        FileWrapper subdir = context.getByPath("/" + username + "/" + dirName).get().get();
+        String anotherDirName = "anotherDir";
+        subdir.mkdir(anotherDirName, context.network, false, context.crypto).get();
+        FileWrapper anotherDir = context.getByPath("/" + username + "/" + dirName + "/" + anotherDirName).get().get();
+        uploadFileSection(anotherDir, filename, new AsyncReader.ArrayBacked(data), 0, data.length, context.network,
+                context.crypto, l -> {}).get();
+
+        String path = "/" + username + "/" + dirName + "/" + anotherDirName;
+        // move folder to new signing subspace
+        context.shareWriteAccessWith(Paths.get(path), Collections.emptySet()).join();
+
+        FileWrapper theDir = context.getByPath(path).get().get();
+        String link = theDir.toWritableLink();
+        UserContext linkContext = UserContext.fromPublicLink(link, network, crypto).get();
+        String entryPath = linkContext.getEntryPath().get();
+        Assert.assertTrue("public link to folder has correct entry path", entryPath.equals(path));
+
+        Optional<FileWrapper> fileThroughLink = linkContext.getByPath(path + "/" + filename).get();
+        Assert.assertTrue("File present through link", fileThroughLink.isPresent());
+
+        Optional<FileWrapper> dirThroughLink = linkContext.getByPath(path).get();
+        Assert.assertTrue("dir is writable", dirThroughLink.isPresent() && dirThroughLink.get().isWritable());
+    }
+
+    @Test
     public void recursiveDelete() {
         String username = generateUsername();
         String password = "test01";

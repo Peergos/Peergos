@@ -74,14 +74,17 @@ public class AbsoluteCapability implements Cborable {
             keysString = keysString.substring(1);
 
         String[] split = keysString.split("/");
-        if (split.length != 4)
+        if (split.length == 4 || split.length == 5) {
+            PublicKeyHash owner = PublicKeyHash.fromCbor(CborObject.fromByteArray(Base58.decode(split[0])));
+            PublicKeyHash writer = PublicKeyHash.fromCbor(CborObject.fromByteArray(Base58.decode(split[1])));
+            byte[] mapKey = Base58.decode(split[2]);
+            SymmetricKey baseKey = SymmetricKey.fromByteArray(Base58.decode(split[3]));
+            if (split.length == 4)
+                return new AbsoluteCapability(owner, writer, mapKey, baseKey, Optional.empty());
+            SymmetricKey baseWKey = SymmetricKey.fromByteArray(Base58.decode(split[4]));
+            return new WritableAbsoluteCapability(owner, writer, mapKey, baseKey, baseWKey);
+        } else
             throw new IllegalStateException("Invalid public link "+ keysString);
-
-        PublicKeyHash owner = PublicKeyHash.fromCbor(CborObject.fromByteArray(Base58.decode(split[0])));
-        PublicKeyHash writer = PublicKeyHash.fromCbor(CborObject.fromByteArray(Base58.decode(split[1])));
-        byte[] mapKey = Base58.decode(split[2]);
-        SymmetricKey baseKey = SymmetricKey.fromByteArray(Base58.decode(split[3]));
-        return new AbsoluteCapability(owner, writer, mapKey, baseKey, Optional.empty());
     }
 
     public AbsoluteCapability readOnly() {

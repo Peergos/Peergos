@@ -1,11 +1,12 @@
 package peergos.shared.user.fs;
 
 import peergos.shared.crypto.*;
-import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
+import peergos.shared.io.ipfs.multibase.*;
 
 import java.util.*;
+import java.util.stream.*;
 
 public class WritableAbsoluteCapability extends AbsoluteCapability {
 
@@ -43,5 +44,15 @@ public class WritableAbsoluteCapability extends AbsoluteCapability {
 
     public WritableAbsoluteCapability withSigner(PublicKeyHash newSigner) {
         return new WritableAbsoluteCapability(owner, newSigner, getMapKey(), rBaseKey, wBaseKey.get());
+    }
+
+    public String toLink() {
+        String encodedOwnerKey = Base58.encode(owner.serialize());
+        String encodedWriterKey = Base58.encode(writer.serialize());
+        String encodedMapKey = Base58.encode(getMapKey());
+        String encodedBaseKey = Base58.encode(rBaseKey.serialize());
+        String encodedWBaseKey = Base58.encode(wBaseKey.get().serialize());
+        return Stream.of(encodedOwnerKey, encodedWriterKey, encodedMapKey, encodedBaseKey, encodedWBaseKey)
+                .collect(Collectors.joining("/", "#", ""));
     }
 }

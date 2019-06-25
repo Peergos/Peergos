@@ -476,6 +476,13 @@ public class FileWrapper {
 
     @JsMethod
     public String toLink() {
+        return pointer.capability.readOnly().toLink();
+    }
+
+    @JsMethod
+    public String toWritableLink() {
+        if (! isWritable())
+            throw new IllegalStateException("You do not have write access to " + getName());
         return pointer.capability.toLink();
     }
 
