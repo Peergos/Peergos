@@ -687,6 +687,12 @@ public class FileWrapper {
                                                        ProgressConsumer<Long> monitor,
                                                        TransactionService transactions) {
         long fileSize = (lengthLow & 0xFFFFFFFFL) + ((lengthHi & 0xFFFFFFFFL) << 32);
+        if (transactions == null) // we are in a public writable link
+            return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
+                    (s, committer) -> uploadFileSection(s, committer, filename, fileData,
+                            false, 0, fileSize, Optional.empty(), overwriteExisting,
+                            network, crypto, monitor, generateChildLocationsFromSize(fileSize, crypto.random))
+            ).thenCompose(finished -> getUpdated(finished, network));
         return getPath(network).thenCompose(path ->
                 Transaction.buildFileUploadTransaction(Paths.get(path).resolve(filename).toString(), fileSize, fileData, signingPair(),
                         generateChildLocationsFromSize(fileSize, crypto.random)))

@@ -903,6 +903,10 @@ public abstract class UserTests {
 
         Optional<FileWrapper> dirThroughLink = linkContext.getByPath(path).get();
         Assert.assertTrue("dir is writable", dirThroughLink.isPresent() && dirThroughLink.get().isWritable());
+
+        byte[] newData = "Some dataaa".getBytes();
+        dirThroughLink.get().uploadFileJS("anoterfile", AsyncReader.build(newData), 0, newData.length,
+                false, linkContext.network, linkContext.crypto, x -> {}, null).join();
     }
 
     @Test
