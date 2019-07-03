@@ -861,7 +861,7 @@ public abstract class UserTests {
         String path = "/" + username + "/" + dirName + "/" + anotherDirName;
         FileWrapper theDir = context.getByPath(path).get().get();
         String link = theDir.toLink();
-        UserContext linkContext = UserContext.fromPublicLink(link, network, crypto).get();
+        UserContext linkContext = UserContext.fromSecretLink(link, network, crypto).get();
         String entryPath = linkContext.getEntryPath().get();
         Assert.assertTrue("public link to folder has correct entry path", entryPath.equals(path));
 
@@ -894,7 +894,7 @@ public abstract class UserTests {
 
         FileWrapper theDir = context.getByPath(path).get().get();
         String link = theDir.toWritableLink();
-        UserContext linkContext = UserContext.fromPublicLink(link, network, crypto).get();
+        UserContext linkContext = UserContext.fromSecretLink(link, network, crypto).get();
         String entryPath = linkContext.getEntryPath().get();
         Assert.assertTrue("public link to folder has correct entry path", entryPath.equals(path));
 

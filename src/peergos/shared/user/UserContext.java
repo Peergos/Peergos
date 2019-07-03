@@ -284,7 +284,7 @@ public class UserContext {
     }
 
     @JsMethod
-    public static CompletableFuture<UserContext> fromPublicLink(String link, NetworkAccess network, Crypto crypto) {
+    public static CompletableFuture<UserContext> fromSecretLink(String link, NetworkAccess network, Crypto crypto) {
         AbsoluteCapability cap;
         try {
             cap = AbsoluteCapability.fromLink(link);
