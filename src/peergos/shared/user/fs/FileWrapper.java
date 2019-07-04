@@ -1229,6 +1229,15 @@ public class FileWrapper {
         }).thenApply(newAccess -> true);
     }
 
+
+    @JsMethod
+    public CompletableFuture<Boolean> exists(String fileName, NetworkAccess network) {
+        if (!isLegalName(fileName)) {
+            return Futures.errored(new IllegalArgumentException("Illegal file/directory name: " + fileName));
+        }
+        return this.hasChildWithName(version, fileName, network).thenApply(childExists -> childExists);
+    }
+
     /**
      * Move this file/dir and subtree to a new signing key pair.
      * @param signer
