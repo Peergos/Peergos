@@ -473,9 +473,8 @@ public final class BitMatrix implements Cloneable {
     return result.toString();
   }
 
-  @Override
   public BitMatrix clone() {
-    return new BitMatrix(width, height, rowSize, bits.clone());
+    return new BitMatrix(width, height, rowSize, Arrays.copyOfRange(bits, 0, bits.length));
   }
 
 }

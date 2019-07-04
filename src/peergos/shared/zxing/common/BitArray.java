@@ -349,9 +349,8 @@ public final class BitArray implements Cloneable {
     return result.toString();
   }
 
-  @Override
   public BitArray clone() {
-    return new BitArray(bits.clone(), size);
+    return new BitArray(Arrays.copyOfRange(bits, 0, bits.length), size);
   }
 
 }
