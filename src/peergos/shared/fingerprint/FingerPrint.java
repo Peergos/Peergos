@@ -50,6 +50,7 @@ public class FingerPrint implements Cborable {
         }
     }
 
+    @JsMethod
     public boolean matches(FingerPrint other) {
         return version == other.version &&
                 Arrays.equals(ourFingerPrint, other.friendsFingerPrint) &&
