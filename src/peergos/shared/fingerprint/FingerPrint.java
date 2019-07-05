@@ -10,10 +10,10 @@ import peergos.shared.zxing.qrcode.*;
 
 import java.io.*;
 import java.util.*;
+import java.util.stream.*;
 import java.util.zip.*;
 
 public class FingerPrint implements Cborable {
-    private static final String QRCODE_ENCODING = "ISO-8859-1";
     private static final byte[] VERSION = new byte[] {0, 0};
     private static final long COMBINED_VERSION = 1;
 
@@ -38,9 +38,9 @@ public class FingerPrint implements Cborable {
     }
 
     public static FingerPrint generate(String ourname,
-                                       PublicKeyHash ourIdentityKey,
+                                       List<PublicKeyHash> ourIdentityKey,
                                        String friendsName,
-                                       PublicKeyHash friendsIdentityKey) {
+                                       List<PublicKeyHash> friendsIdentityKey) {
         try {
             byte[] us = calculateHalfFingerprint(ourname, ourIdentityKey);
             byte[] friend = calculateHalfFingerprint(friendsName, friendsIdentityKey);
@@ -119,12 +119,27 @@ public class FingerPrint implements Cborable {
         return friendString + ourString;
     }
 
+    private static int compareArrays(byte[] a, byte[] b) {
+        if (a.length != b.length)
+            return a.length - b.length;
+        for (int i=0; i < a.length; i++)
+            if (a[i] != b[i])
+                return a[i] - b[i];
+        return 0;
+    }
+
     private static byte[] calculateHalfFingerprint(String name,
-                                                   PublicKeyHash identityKey) throws IOException {
+                                                   List<PublicKeyHash> identityKeys) throws IOException {
         ByteArrayOutputStream bout = new ByteArrayOutputStream();
         bout.write(VERSION);
         bout.write(name.getBytes("UTF-8"));
-        bout.write(identityKey.serialize());
+        List<byte[]> serializedKeys = identityKeys.stream()
+                .map(x -> x.serialize())
+                .sorted(FingerPrint::compareArrays)
+                .collect(Collectors.toList());
+        for (byte[] serializedKey : serializedKeys) {
+            bout.write(serializedKey);
+        }
         byte[] initial = bout.toByteArray();
         return hash(initial, 5200); // 112 bits of security
     }

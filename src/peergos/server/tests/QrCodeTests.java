@@ -75,20 +75,26 @@ public class QrCodeTests {
         return reader.decode(readBitmap);
     }
 
+    private static PublicKeyHash randomKeyHash(Random rnd) {
+        byte[] keyHash = new byte[32];
+        rnd.nextBytes(keyHash);
+        return new PublicKeyHash(new Multihash(Multihash.Type.sha2_256, keyHash));
+    }
+
     @Test
     public void roundTripFingerPrint() throws Exception {
         Random rnd = new Random(1);
         String name1 = "alice";
-        byte[] aliceKeyHash = new byte[32];
-        rnd.nextBytes(aliceKeyHash);
-        byte[] bobKeyHash = new byte[32];
-        rnd.nextBytes(bobKeyHash);
         String name2 = "bob";
-        PublicKeyHash aliceId = new PublicKeyHash(new Multihash(Multihash.Type.sha2_256, aliceKeyHash));
-        PublicKeyHash bobId = new PublicKeyHash(new Multihash(Multihash.Type.sha2_256, bobKeyHash));
+        PublicKeyHash aliceId = randomKeyHash(rnd);
+        PublicKeyHash aliceBox = randomKeyHash(rnd);
+        List<PublicKeyHash> aliceKeys = Arrays.asList(aliceId, aliceBox);
+        PublicKeyHash bobId = randomKeyHash(rnd);
+        PublicKeyHash bobBox = randomKeyHash(rnd);
+        List<PublicKeyHash> bobKeys = Arrays.asList(bobId, bobBox);
 
-        FingerPrint fingerPrint1 = FingerPrint.generate(name1, aliceId, name2, bobId);
-        FingerPrint fingerPrint2 = FingerPrint.generate(name2, bobId, name1, aliceId);
+        FingerPrint fingerPrint1 = FingerPrint.generate(name1, aliceKeys, name2, bobKeys);
+        FingerPrint fingerPrint2 = FingerPrint.generate(name2, bobKeys, name1, aliceKeys);
 
         File file = new File("qr-code-bin.png");
         Files.write(Paths.get("qr-code-bin.png"), fingerPrint1.getQrCodeData());
