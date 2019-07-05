@@ -213,7 +213,7 @@ public class FingerPrint implements Cborable {
         write(head, bout, crc);
         write((int) crc.getValue(), bout, crc);
         ByteArrayOutputStream compressed = new ByteArrayOutputStream();
-        BufferedOutputStream bos = new BufferedOutputStream( new DeflaterOutputStream(compressed, new Deflater(9)));
+        OutputStream dos =  new DeflaterOutputStream(compressed, new Deflater(9));
         int pixel;
         int color;
         int colorset;
@@ -222,7 +222,7 @@ public class FingerPrint implements Cborable {
                 int rest = width % 8;
                 int bytes = width / 8;
                 for (int y=0; y < height; y++) {
-                    bos.write(0);
+                    dos.write(0);
                     for (int x=0; x < bytes; x++) {
                         colorset=0;
                         for (int sh=0; sh < 8; sh++) {
@@ -234,7 +234,7 @@ public class FingerPrint implements Cborable {
                             if (color >= 3*128)
                                 colorset |= 1;
                         }
-                        bos.write((byte)colorset);
+                        dos.write((byte)colorset);
                     }
                     if (rest>0) {
                         colorset=0;
@@ -248,35 +248,35 @@ public class FingerPrint implements Cborable {
                                 colorset |= 1;
                         }
                         colorset <<= 8-rest;
-                        bos.write((byte)colorset);
+                        dos.write((byte)colorset);
                     }
                 }
                 break;
             case GREYSCALE_MODE:
                 for (int y=0; y < height; y++) {
-                    bos.write(0);
+                    dos.write(0);
                     for (int x=0; x < width; x++) {
                         pixel = getPixel(x,y, pixels);
                         color = ((pixel >> 16) & 0xff);
                         color += ((pixel >> 8) & 0xff);
                         color += (pixel & 0xff);
-                        bos.write((byte)(color/3));
+                        dos.write((byte)(color/3));
                     }
                 }
                 break;
              case COLOR_MODE:
                 for (int y=0; y < height; y++) {
-                    bos.write(0);
+                    dos.write(0);
                     for (int x=0; x < width; x++) {
                         pixel = getPixel(x,y, pixels);
-                        bos.write((byte)((pixel >> 16) & 0xff));
-                        bos.write((byte)((pixel >> 8) & 0xff));
-                        bos.write((byte)(pixel & 0xff));
+                        dos.write((byte)((pixel >> 16) & 0xff));
+                        dos.write((byte)((pixel >> 8) & 0xff));
+                        dos.write((byte)(pixel & 0xff));
                     }
                 }
                 break;
         }
-        bos.close();
+        dos.close();
         write(compressed.size(), bout, crc);
         crc.reset();
         write("IDAT".getBytes(), bout, crc);
