@@ -3,14 +3,14 @@ package peergos.shared.fingerprint;
 import jsinterop.annotations.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.util.*;
 import peergos.shared.zxing.*;
 import peergos.shared.zxing.common.*;
 import peergos.shared.zxing.qrcode.*;
 
-import javax.imageio.*;
-import java.awt.image.*;
 import java.io.*;
 import java.util.*;
+import java.util.zip.*;
 
 public class FingerPrint implements Cborable {
     private static final String QRCODE_ENCODING = "ISO-8859-1";
@@ -50,23 +50,20 @@ public class FingerPrint implements Cborable {
         }
     }
 
-    private byte[] getQrCodeData() {
+    public boolean matches(FingerPrint other) {
+        return version == other.version &&
+                Arrays.equals(ourFingerPrint, other.friendsFingerPrint) &&
+                Arrays.equals(friendsFingerPrint, other.ourFingerPrint);
+    }
+
+    public byte[] getQrCodeData() {
         try {
             QRCodeWriter writer = new QRCodeWriter();
-            BitMatrix result = writer.encode(new String(toCbor().toByteArray(), QRCODE_ENCODING), BarcodeFormat.QR_CODE, 512, 512);
-            BufferedImage original = new BufferedImage(result.getWidth(), result.getHeight(), BufferedImage.TYPE_INT_ARGB);
+            String contents = ArrayOps.bytesToHex(toCbor().toByteArray());
+            BitMatrix result = writer.encode(contents,
+                    BarcodeFormat.QR_CODE, 512, 512);
 
-            for (int y = 0; y < result.getHeight(); y++) {
-                for (int x = 0; x < result.getWidth(); x++) {
-                    if (result.get(x, y))
-                        original.setRGB(x, y, 0xff000000);
-                    else
-                        original.setRGB(x, y, 0xffffffff);
-                }
-            }
-            ByteArrayOutputStream bout = new ByteArrayOutputStream();
-            ImageIO.write(original, "png", bout);
-            return bout.toByteArray();
+            return encodeToPng(BW_MODE, result.getWidth(), result.getHeight(), result);
         } catch (WriterException | IOException e) {
             throw new RuntimeException(e);
         }
@@ -110,12 +107,8 @@ public class FingerPrint implements Cborable {
     }
 
     public static FingerPrint fromString(String scanned) {
-        try {
-            byte[] bytes = scanned.getBytes(QRCODE_ENCODING);
-            return fromCbor(CborObject.fromByteArray(bytes));
-        } catch (UnsupportedEncodingException e) {
-            throw new RuntimeException(e);
-        }
+        byte[] bytes = ArrayOps.hexToBytes(scanned);
+        return fromCbor(CborObject.fromByteArray(bytes));
     }
 
     private static String calculateDisplayString(byte[] us, byte[] friend) {
@@ -170,5 +163,120 @@ public class FingerPrint implements Cborable {
                 ((in[start +  2] & 0xffL) << 16) |
                 ((in[start +  3] & 0xffL) << 24) |
                 ((in[start +  4] & 0xffL) << 32);
+    }
+
+    private static final int BW_MODE = 0;
+    private static final int GREYSCALE_MODE = 1;
+    private static final int COLOR_MODE = 2;
+
+    private static void write(int i, OutputStream out, CRC32 crc) throws IOException {
+        byte b[]={(byte)((i>>24)&0xff),(byte)((i>>16)&0xff),(byte)((i>>8)&0xff),(byte)(i&0xff)};
+        write(b, out, crc);
+    }
+
+    private static void write(byte b[], OutputStream out, CRC32 crc) throws IOException {
+        out.write(b);
+        crc.update(b);
+    }
+
+    private static byte[] encodeToPng(int mode, int width, int height, BitMatrix pixels) throws IOException {
+        ByteArrayOutputStream bout = new ByteArrayOutputStream();
+        final byte id[] = {-119, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13};
+        CRC32 crc = new CRC32();
+        write(id, bout, crc);
+        crc.reset();
+        write("IHDR".getBytes(), bout, crc);
+        write(width, bout, crc);
+        write(height, bout, crc);
+        byte head[]=null;
+        switch (mode) {
+            case BW_MODE: head=new byte[]{1, 0, 0, 0, 0}; break;
+            case GREYSCALE_MODE: head=new byte[]{8, 0, 0, 0, 0}; break;
+            case COLOR_MODE: head=new byte[]{8, 2, 0, 0, 0}; break;
+        }
+        write(head, bout, crc);
+        write((int) crc.getValue(), bout, crc);
+        ByteArrayOutputStream compressed = new ByteArrayOutputStream();
+        BufferedOutputStream bos = new BufferedOutputStream( new DeflaterOutputStream(compressed, new Deflater(9)));
+        int pixel;
+        int color;
+        int colorset;
+        switch (mode) {
+            case BW_MODE:
+                int rest = width % 8;
+                int bytes = width / 8;
+                for (int y=0; y < height; y++) {
+                    bos.write(0);
+                    for (int x=0; x < bytes; x++) {
+                        colorset=0;
+                        for (int sh=0; sh < 8; sh++) {
+                            pixel = getPixel(x*8 + sh,y, pixels);
+                            color = ((pixel >> 16) & 0xff);
+                            color += ((pixel >> 8) & 0xff);
+                            color += (pixel & 0xff);
+                            colorset <<= 1;
+                            if (color >= 3*128)
+                                colorset |= 1;
+                        }
+                        bos.write((byte)colorset);
+                    }
+                    if (rest>0) {
+                        colorset=0;
+                        for (int sh=0; sh < width % 8; sh++) {
+                            pixel = getPixel(bytes*8 + sh,y, pixels);
+                            color = ((pixel >> 16) & 0xff);
+                            color += ((pixel >> 8) & 0xff);
+                            color += (pixel & 0xff);
+                            colorset <<= 1;
+                            if (color >= 3*128)
+                                colorset |= 1;
+                        }
+                        colorset <<= 8-rest;
+                        bos.write((byte)colorset);
+                    }
+                }
+                break;
+            case GREYSCALE_MODE:
+                for (int y=0; y < height; y++) {
+                    bos.write(0);
+                    for (int x=0; x < width; x++) {
+                        pixel = getPixel(x,y, pixels);
+                        color = ((pixel >> 16) & 0xff);
+                        color += ((pixel >> 8) & 0xff);
+                        color += (pixel & 0xff);
+                        bos.write((byte)(color/3));
+                    }
+                }
+                break;
+             case COLOR_MODE:
+                for (int y=0; y < height; y++) {
+                    bos.write(0);
+                    for (int x=0; x < width; x++) {
+                        pixel = getPixel(x,y, pixels);
+                        bos.write((byte)((pixel >> 16) & 0xff));
+                        bos.write((byte)((pixel >> 8) & 0xff));
+                        bos.write((byte)(pixel & 0xff));
+                    }
+                }
+                break;
+        }
+        bos.close();
+        write(compressed.size(), bout, crc);
+        crc.reset();
+        write("IDAT".getBytes(), bout, crc);
+        write(compressed.toByteArray(), bout, crc);
+        write((int) crc.getValue(), bout, crc);
+        write(0, bout, crc);
+        crc.reset();
+        write("IEND".getBytes(), bout, crc);
+        write((int) crc.getValue(), bout, crc);
+        return bout.toByteArray();
+    }
+
+    private static int getPixel(int x, int y, BitMatrix pixels) {
+        if (pixels.get(x, y))
+            return  0xff000000;
+        else
+            return  0xffffffff;
     }
 }

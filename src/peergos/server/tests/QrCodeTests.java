@@ -1,6 +1,9 @@
 package peergos.server.tests;
 
 import org.junit.*;
+import peergos.shared.crypto.hash.*;
+import peergos.shared.fingerprint.*;
+import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.zxing.*;
 import peergos.shared.zxing.common.*;
 import peergos.shared.zxing.qrcode.*;
@@ -9,6 +12,8 @@ import javax.imageio.*;
 import java.awt.geom.*;
 import java.awt.image.*;
 import java.io.*;
+import java.nio.file.*;
+import java.util.*;
 
 public class QrCodeTests {
 
@@ -68,5 +73,48 @@ public class QrCodeTests {
         BinaryBitmap readBitmap = new BinaryBitmap(new HybridBinarizer(source));
         QRCodeReader reader = new QRCodeReader();
         return reader.decode(readBitmap);
+    }
+
+    @Test
+    public void roundTripFingerPrint() throws Exception {
+        Random rnd = new Random(1);
+        String name1 = "alice";
+        byte[] aliceKeyHash = new byte[32];
+        rnd.nextBytes(aliceKeyHash);
+        byte[] bobKeyHash = new byte[32];
+        rnd.nextBytes(bobKeyHash);
+        String name2 = "bob";
+        PublicKeyHash aliceId = new PublicKeyHash(new Multihash(Multihash.Type.sha2_256, aliceKeyHash));
+        PublicKeyHash bobId = new PublicKeyHash(new Multihash(Multihash.Type.sha2_256, bobKeyHash));
+
+        FingerPrint fingerPrint1 = FingerPrint.generate(name1, aliceId, name2, bobId);
+        FingerPrint fingerPrint2 = FingerPrint.generate(name2, bobId, name1, aliceId);
+
+        File file = new File("qr-code-bin.png");
+        Files.write(Paths.get("qr-code-bin.png"), fingerPrint1.getQrCodeData());
+
+        // now read back in
+        BufferedImage read = ImageIO.read(file);
+
+        int width = read.getWidth();
+        int height = read.getHeight();
+
+        // Now try a rotated and dilated image
+        int scaledHeight = (int) (height * 0.9);
+        int scaledWidth = (int) (width * 0.9);
+        AffineTransform transform = AffineTransform.getTranslateInstance((scaledHeight-scaledWidth)/2, (scaledWidth-scaledHeight)/2);
+        int degrees = 10;
+        transform.rotate(Math.toRadians(degrees), scaledWidth/2, scaledHeight/2);
+        transform.scale(.9, .9);
+        AffineTransformOp operation = new AffineTransformOp(transform, AffineTransformOp.TYPE_BICUBIC);
+        BufferedImage transformedImage = operation.createCompatibleDestImage(read, read.getColorModel());
+        BufferedImage transformed = operation.filter(read, transformedImage);
+        ImageIO.write(transformed, "png", new File("qr-code-transformed.png"));
+
+        // now decode
+        Result fromTransform = decodeRGB(transformed);
+        FingerPrint decoded = FingerPrint.fromString(fromTransform.getText());
+
+        Assert.assertTrue("Fingerprints match", fingerPrint2.matches(decoded));
     }
 }
