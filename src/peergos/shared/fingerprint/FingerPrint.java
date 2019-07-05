@@ -51,6 +51,20 @@ public class FingerPrint implements Cborable {
     }
 
     @JsMethod
+    public static FingerPrint decodeFromPixels(int[] pixels, int width, int height) {
+        // This source doesn't handle rotations or dilations
+        RGBLuminanceSource source = new RGBLuminanceSource(width, height, pixels);
+
+        BinaryBitmap readBitmap = new BinaryBitmap(new HybridBinarizer(source));
+        QRCodeReader reader = new QRCodeReader();
+        try {
+            return fromString(reader.decode(readBitmap).getText());
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @JsMethod
     public boolean matches(FingerPrint other) {
         return version == other.version &&
                 Arrays.equals(ourFingerPrint, other.friendsFingerPrint) &&
