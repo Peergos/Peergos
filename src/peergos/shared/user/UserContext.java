@@ -2,6 +2,7 @@ package peergos.shared.user;
 
 import java.util.logging.*;
 
+import peergos.shared.fingerprint.*;
 import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.user.fs.transaction.TransactionService;
 import peergos.shared.user.fs.transaction.TransactionServiceImpl;
@@ -281,6 +282,21 @@ public class UserContext {
         return globalRoot.getByPath(username, network)
                 .thenCompose(root -> root.get().mkdir(dirName, network, true, crypto))
                 .thenApply(x -> globalRoot);
+    }
+
+    @JsMethod
+    public CompletableFuture<FingerPrint> generateFingerPrint(String friendName) {
+        return getPublicKeyHashes(username)
+                .thenCompose(ourKeys -> getPublicKeyHashes(friendName)
+                        .thenApply(friendKeys -> {
+                            PublicKeyHash friendId = friendKeys.left;
+                            PublicKeyHash friendBox = friendKeys.right;
+                            return FingerPrint.generate(
+                                    username,
+                                    Arrays.asList(ourKeys.left, ourKeys.right),
+                                    friendName,
+                                    Arrays.asList(friendId, friendBox));
+                        }));
     }
 
     @JsMethod
@@ -716,6 +732,22 @@ public class UserContext {
 
     public CompletableFuture<PublicBoxingKey> getBoxingKey(PublicKeyHash keyhash) {
         return network.dhtClient.get(keyhash).thenApply(cborOpt -> cborOpt.map(PublicBoxingKey::fromCbor).get());
+    }
+
+    /**
+     *
+     * @param username
+     * @return A pair containing the identity key hash and the boxing key hash of the user
+     */
+    public CompletableFuture<Pair<PublicKeyHash, PublicKeyHash>> getPublicKeyHashes(String username) {
+        return network.coreNode.getPublicKeyHash(username)
+                .thenCompose(signerOpt -> {
+                    if (! signerOpt.isPresent())
+                        throw new IllegalStateException("Couldn't retrieve identity key for " + username);
+                    return getSigningKey(signerOpt.get())
+                            .thenCompose(signer2 -> getWriterData(network, signerOpt.get(), signerOpt.get())
+                                    .thenApply(wd -> new Pair<>(signerOpt.get(), wd.props.followRequestReceiver.get())));
+                });
     }
 
     public CompletableFuture<Optional<Pair<PublicKeyHash, PublicBoxingKey>>> getPublicKeys(String username) {
