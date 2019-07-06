@@ -1231,7 +1231,7 @@ public class FileWrapper {
 
 
     @JsMethod
-    public CompletableFuture<Boolean> exists(String fileName, NetworkAccess network) {
+    public CompletableFuture<Boolean> hasChild(String fileName, NetworkAccess network) {
         if (!isLegalName(fileName)) {
             return Futures.errored(new IllegalArgumentException("Illegal file/directory name: " + fileName));
         }
