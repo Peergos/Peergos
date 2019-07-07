@@ -231,17 +231,7 @@ final class DecodedBitStreamParser {
     for (int i = 0; i < count; i++) {
       readBytes[i] = (byte) bits.readBits(8);
     }
-    String encoding;
-    if (currentCharacterSetECI == null) {
-      // The spec isn't clear on this mode; see
-      // section 6.4.5: t does not say which encoding to assuming
-      // upon decoding. I have seen ISO-8859-1 used as well as
-      // Shift_JIS -- without anything like an ECI designator to
-      // give a hint.
-      encoding = StringUtils.guessEncoding(readBytes, hints);
-    } else {
-      encoding = currentCharacterSetECI.name();
-    }
+    String encoding = "UTF-8";
     try {
       result.append(new String(readBytes, encoding));
     } catch (UnsupportedEncodingException ignored) {
