@@ -23,6 +23,11 @@ public class FriendAnnotation implements Cborable {
         return username;
     }
 
+    @JsMethod
+    public boolean isVerified() {
+        return isVerified;
+    }
+
     @Override
     public CborObject toCbor() {
         SortedMap<String, Cborable> state = new TreeMap<>();
