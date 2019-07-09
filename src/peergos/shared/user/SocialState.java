@@ -14,11 +14,13 @@ public class SocialState {
     public final Map<String, FileWrapper> followerRoots;
     public final Set<FileWrapper> followingRoots;
     public final Map<String, FileWrapper> pendingOutgoingFollowRequests;
+    public final Map<String, FriendAnnotation> friendAnnotations;
 
     public SocialState(List<FollowRequestWithCipherText> pendingIncoming,
                        Set<String> actualFollowers,
                        Map<String, FileWrapper> followerRoots,
-                       Set<FileWrapper> followingRoots) {
+                       Set<FileWrapper> followingRoots,
+                       Map<String, FriendAnnotation> friendAnnotations) {
         this.pendingIncoming = pendingIncoming;
         this.pendingOutgoingFollowRequests = followerRoots.entrySet()
                 .stream()
@@ -32,5 +34,6 @@ public class SocialState {
         TreeSet<FileWrapper> sortedByName = new TreeSet<>((a, b) -> a.getName().compareTo(b.getName()));
         sortedByName.addAll(followingRoots);
         this.followingRoots = sortedByName;
+        this.friendAnnotations = friendAnnotations;
     }
 }
