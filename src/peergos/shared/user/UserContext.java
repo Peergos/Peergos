@@ -875,8 +875,9 @@ public class UserContext {
     @JsMethod
     public CompletableFuture<Boolean> addFriendAnnotation(FriendAnnotation annotation) {
         return getFriendAnnotations().thenCompose(existing -> {
-            existing.put(annotation.getUsername(), annotation);
-            List<FriendAnnotation> values = existing.values()
+            Map<String, FriendAnnotation> updated = new TreeMap<>(existing);
+            updated.put(annotation.getUsername(), annotation);
+            List<FriendAnnotation> values = updated.values()
                     .stream()
                     .collect(Collectors.toList());
             ByteArrayOutputStream serialized = new ByteArrayOutputStream();
