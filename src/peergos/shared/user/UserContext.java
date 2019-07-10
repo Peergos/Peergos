@@ -289,7 +289,7 @@ public class UserContext {
     /**
      *
      * @param friendName
-     * @return a pair of the firends keys used to generate the fingerprint, and the resulting fingreprint
+     * @return a pair of the friends keys used to generate the fingerprint, and the resulting fingerprint
      */
     @JsMethod
     public CompletableFuture<Pair<List<PublicKeyHash>, FingerPrint>> generateFingerPrint(String friendName) {
