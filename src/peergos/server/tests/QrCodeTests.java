@@ -1,6 +1,7 @@
 package peergos.server.tests;
 
 import org.junit.*;
+import peergos.shared.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.fingerprint.*;
 import peergos.shared.io.ipfs.multihash.*;
@@ -16,6 +17,8 @@ import java.nio.file.*;
 import java.util.*;
 
 public class QrCodeTests {
+
+    private static final Crypto crypto = Crypto.initJava();
 
     @Test
     public void invertable() throws Exception {
@@ -93,8 +96,8 @@ public class QrCodeTests {
         PublicKeyHash bobBox = randomKeyHash(rnd);
         List<PublicKeyHash> bobKeys = Arrays.asList(bobId, bobBox);
 
-        FingerPrint fingerPrint1 = FingerPrint.generate(name1, aliceKeys, name2, bobKeys);
-        FingerPrint fingerPrint2 = FingerPrint.generate(name2, bobKeys, name1, aliceKeys);
+        FingerPrint fingerPrint1 = FingerPrint.generate(name1, aliceKeys, name2, bobKeys, crypto.hasher);
+        FingerPrint fingerPrint2 = FingerPrint.generate(name2, bobKeys, name1, aliceKeys, crypto.hasher);
 
         File file = new File("qr-code-bin.png");
         Files.write(Paths.get("qr-code-bin.png"), fingerPrint1.getQrCodeData());

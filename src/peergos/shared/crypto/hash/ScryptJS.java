@@ -18,4 +18,9 @@ public class ScryptJS implements Hasher {
     public byte[] sha256(byte[] input) {
         return scriptJS.sha256(input);
     }
+
+    @Override
+    public byte[] blake2b(byte[] input, int outputBytes) {
+        return scriptJS.blake2b(input, outputBytes);
+    }
 }

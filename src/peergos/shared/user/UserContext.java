@@ -303,7 +303,8 @@ public class UserContext {
                                     username,
                                     Arrays.asList(ourKeys.left, ourKeys.right),
                                     friendName,
-                                    friendKeys));
+                                    friendKeys,
+                                    crypto.hasher));
                         }));
     }
 
