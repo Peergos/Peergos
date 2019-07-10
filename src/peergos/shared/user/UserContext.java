@@ -888,14 +888,18 @@ public class UserContext {
                     throw new RuntimeException(e);
                 }
             }
-            return getUserRoot().thenCompose(home -> home.uploadOrOverwriteFile(
-                    FRIEND_ANNOTATIONS_FILE_NAME,
-                    AsyncReader.build(serialized.toByteArray()),
-                    serialized.size(),
-                    network,
-                    crypto,
-                    x -> {},
-                    home.generateChildLocationsFromSize(serialized.size(), crypto.random)))
+            return getUserRoot().thenCompose(home -> home.uploadFileSection(
+                                    FRIEND_ANNOTATIONS_FILE_NAME,
+                                    AsyncReader.build(serialized.toByteArray()),
+                                    true,
+                                    0,
+                                    serialized.size(),
+                                    Optional.empty(),
+                                    true,
+                                    network,
+                                    crypto,
+                                    x -> {},
+                                    home.generateChildLocationsFromSize(serialized.size(), crypto.random)))
                     .thenApply(x -> true);
         });
     }
