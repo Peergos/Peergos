@@ -5,6 +5,7 @@ import peergos.server.storage.ResetableFileInputStream;
 import peergos.server.util.Args;
 import peergos.server.util.PeergosNetworkUtils;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.fingerprint.*;
 import peergos.shared.util.TriFunction;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
@@ -969,6 +970,34 @@ public class MultiUserTests {
                 .collect(Collectors.toSet());
         assertTrue("Following correct", u2Following.contains(u1.username));
         assertTrue("Followers correct", u2Social.followerRoots.containsKey(username1));
+    }
+
+    @Test
+    public void verifyFriend() {
+        String username1 = random();
+        String password1 = random();
+        UserContext u1 = PeergosNetworkUtils.ensureSignedUp(username1, password1, network, crypto);
+        String username2 = random();
+        String password2 = random();
+        UserContext u2 = PeergosNetworkUtils.ensureSignedUp(username2, password2, network, crypto);
+        u2.sendFollowRequest(u1.username, SymmetricKey.random()).join();
+        List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().join();
+        assertTrue("Receive a follow request", u1Requests.size() > 0);
+        u1.sendReplyFollowRequest(u1Requests.get(0), true, true).join();
+        List<FollowRequestWithCipherText> u2FollowRequests = u2.processFollowRequests().join();
+
+        // verify a friend and persist the result
+        Pair<List<PublicKeyHash>, FingerPrint> u2FingerPrint = u2.generateFingerPrint(username1).join();
+        Pair<List<PublicKeyHash>, FingerPrint> u1FingerPrint = u1.generateFingerPrint(username2).join();
+
+        Assert.assertTrue("Verify fingerprint", u1FingerPrint.right.matches(u2FingerPrint.right));
+
+        u1.addFriendAnnotation(new FriendAnnotation(username2, true, u1FingerPrint.left)).join();
+
+        SocialState u1Social = PeergosNetworkUtils.ensureSignedUp(username1, password1, network.clear(), crypto)
+                .getSocialState().join();
+        FriendAnnotation annotation = u1Social.friendAnnotations.get(username2);
+        Assert.assertTrue("Annotation persisted", annotation != null && annotation.isVerified());
     }
 
     @Test

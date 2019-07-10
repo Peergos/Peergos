@@ -1,5 +1,6 @@
 package peergos.shared.user;
 
+import java.io.*;
 import java.util.logging.*;
 
 import peergos.shared.fingerprint.*;
@@ -40,6 +41,7 @@ public class UserContext {
     public static final String PEERGOS_USERNAME = "peergos";
     public static final String SHARED_DIR_NAME = "shared";
     public static final String TRANSACTIONS_DIR_NAME = ".transactions";
+    public static final String FRIEND_ANNOTATIONS_FILE_NAME = ".annotations";
     public static final String FEEDBACK_DIR_NAME = "feedback";
 
     public static final String ENTRY_POINTS_FROM_FRIENDS_FILENAME = ".from-friends.cborstream";
@@ -284,18 +286,24 @@ public class UserContext {
                 .thenApply(x -> globalRoot);
     }
 
+    /**
+     *
+     * @param friendName
+     * @return a pair of the friends keys used to generate the fingerprint, and the resulting fingerprint
+     */
     @JsMethod
-    public CompletableFuture<FingerPrint> generateFingerPrint(String friendName) {
+    public CompletableFuture<Pair<List<PublicKeyHash>, FingerPrint>> generateFingerPrint(String friendName) {
         return getPublicKeyHashes(username)
                 .thenCompose(ourKeys -> getPublicKeyHashes(friendName)
-                        .thenApply(friendKeys -> {
-                            PublicKeyHash friendId = friendKeys.left;
-                            PublicKeyHash friendBox = friendKeys.right;
-                            return FingerPrint.generate(
+                        .thenApply(friendKeysPair -> {
+                            PublicKeyHash friendId = friendKeysPair.left;
+                            PublicKeyHash friendBox = friendKeysPair.right;
+                            List<PublicKeyHash> friendKeys = Arrays.asList(friendId, friendBox);
+                            return new Pair<>(friendKeys, FingerPrint.generate(
                                     username,
                                     Arrays.asList(ourKeys.left, ourKeys.right),
                                     friendName,
-                                    Arrays.asList(friendId, friendBox));
+                                    friendKeys));
                         }));
     }
 
@@ -847,13 +855,63 @@ public class UserContext {
                         }).orElse(CompletableFuture.completedFuture(Collections.emptySet())));
     }
 
+    public CompletableFuture<Map<String, FriendAnnotation>> getFriendAnnotations() {
+        return getUserRoot()
+                .thenCompose(home -> home.hasChild(FRIEND_ANNOTATIONS_FILE_NAME, network)
+                        .thenCompose(exists ->  {
+                            if (! exists)
+                                return CompletableFuture.completedFuture(Collections.emptyMap());
+                            Map<String, FriendAnnotation> res = new TreeMap<>();
+                            return home.getChild(FRIEND_ANNOTATIONS_FILE_NAME, network)
+                                    .thenCompose(fileOpt ->
+                                            fileOpt.get().getInputStream(network, crypto.random, x -> {})
+                                    .thenCompose(reader -> reader.parseStream(FriendAnnotation::fromCbor,
+                                            anno -> res.put(anno.getUsername(), anno),
+                                            fileOpt.get().getSize())))
+                                    .thenApply(x -> res);
+                        }));
+    }
+
+    @JsMethod
+    public CompletableFuture<Boolean> addFriendAnnotation(FriendAnnotation annotation) {
+        return getFriendAnnotations().thenCompose(existing -> {
+            Map<String, FriendAnnotation> updated = new TreeMap<>(existing);
+            updated.put(annotation.getUsername(), annotation);
+            List<FriendAnnotation> values = updated.values()
+                    .stream()
+                    .collect(Collectors.toList());
+            ByteArrayOutputStream serialized = new ByteArrayOutputStream();
+            for (FriendAnnotation value : values) {
+                try {
+                    serialized.write(value.serialize());
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+            return getUserRoot().thenCompose(home -> home.uploadFileSection(
+                                    FRIEND_ANNOTATIONS_FILE_NAME,
+                                    AsyncReader.build(serialized.toByteArray()),
+                                    true,
+                                    0,
+                                    serialized.size(),
+                                    Optional.empty(),
+                                    true,
+                                    network,
+                                    crypto,
+                                    x -> {},
+                                    home.generateChildLocationsFromSize(serialized.size(), crypto.random)))
+                    .thenApply(x -> true);
+        });
+    }
+
     @JsMethod
     public CompletableFuture<SocialState> getSocialState() {
         return processFollowRequests()
                 .thenCompose(pending -> getFollowerRoots()
                         .thenCompose(followerRoots -> getFriendRoots()
                                 .thenCompose(followingRoots -> getFollowers()
-                                        .thenApply(followers -> new SocialState(pending, followers, followerRoots, followingRoots)))));
+                                        .thenCompose(followers -> getFriendAnnotations()
+                                        .thenApply(annotations -> new SocialState(pending, followers, followerRoots, followingRoots, annotations))))));
     }
 
     @JsMethod
