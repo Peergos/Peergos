@@ -12,6 +12,8 @@ public interface Hasher {
 
     byte[] sha256(byte[] input);
 
+    byte[] blake2b(byte[] input, int outputBytes);
+
     default Multihash hash(byte[] input, boolean isRaw) {
         return Cid.buildCidV1(isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor, Multihash.Type.sha2_256, sha256(input));
     }

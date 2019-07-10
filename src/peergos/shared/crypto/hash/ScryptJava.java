@@ -41,4 +41,9 @@ public class ScryptJava implements Hasher {
     public byte[] sha256(byte[] input) {
         return Hash.sha256(input);
     }
+
+    @Override
+    public byte[] blake2b(byte[] input, int outputBytes) {
+        return Blake2b.Digest.newInstance(outputBytes).digest(input);
+    }
 }

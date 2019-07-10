@@ -40,10 +40,11 @@ public class FingerPrint implements Cborable {
     public static FingerPrint generate(String ourname,
                                        List<PublicKeyHash> ourIdentityKey,
                                        String friendsName,
-                                       List<PublicKeyHash> friendsIdentityKey) {
+                                       List<PublicKeyHash> friendsIdentityKey,
+                                       Hasher h) {
         try {
-            byte[] us = calculateHalfFingerprint(ourname, ourIdentityKey);
-            byte[] friend = calculateHalfFingerprint(friendsName, friendsIdentityKey);
+            byte[] us = calculateHalfFingerprint(ourname, ourIdentityKey, h);
+            byte[] friend = calculateHalfFingerprint(friendsName, friendsIdentityKey, h);
             return new FingerPrint(us, friend, COMBINED_VERSION);
         } catch (IOException e) {
             throw new RuntimeException(e);
@@ -144,7 +145,8 @@ public class FingerPrint implements Cborable {
     }
 
     private static byte[] calculateHalfFingerprint(String name,
-                                                   List<PublicKeyHash> identityKeys) throws IOException {
+                                                   List<PublicKeyHash> identityKeys,
+                                                   Hasher h) throws IOException {
         ByteArrayOutputStream bout = new ByteArrayOutputStream();
         bout.write(VERSION);
         bout.write(name.getBytes("UTF-8"));
@@ -156,12 +158,12 @@ public class FingerPrint implements Cborable {
             bout.write(serializedKey);
         }
         byte[] initial = bout.toByteArray();
-        return hash(initial, 5200); // 112 bits of security
+        return hash(initial, 5200, h); // 112 bits of security
     }
 
-    private static byte[] hash(byte[] input, int iterations) {
+    private static byte[] hash(byte[] input, int iterations, Hasher h) {
         for (int i=0; i < iterations; i++)
-            input = Blake2b.Digest.newInstance(64).digest(input);
+            input = h.blake2b(input, 64);
         return Arrays.copyOfRange(input, 0, 32);
     }
 
