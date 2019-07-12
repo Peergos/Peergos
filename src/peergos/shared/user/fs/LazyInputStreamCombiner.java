@@ -68,22 +68,22 @@ public class LazyInputStreamCombiner implements AsyncReader {
     public CompletableFuture<Boolean> getNextStream(int len) {
         return getSubsequentMetadata(this.nextChunkPointer, 0)
                 .thenCompose(access -> getChunk(access, len))
-                .thenApply(p -> {
-                    updateState(0,globalIndex + Chunk.MAX_SIZE, p.left, p.right);
+                .thenApply(t -> {
+                    updateState(0,globalIndex + Chunk.MAX_SIZE, t.left, t.middle, t.right);
                     return true;
                 });
     }
 
-    private CompletableFuture<Pair<byte[], AbsoluteCapability>> getChunk(CryptreeNode access, int truncateTo) {
+    private CompletableFuture<Triple<byte[], byte[], AbsoluteCapability>> getChunk(CryptreeNode access, int truncateTo) {
         if (access.isDirectory())
                 throw new IllegalStateException("File linked to a directory for its next chunk!");
         FileRetriever nextRet = access.retriever(baseKey, streamSecret, currentChunkLocation, crypto.hasher);
         AbsoluteCapability newNextChunkPointer = nextChunkPointer.withMapKey(access
-                .getNextChunkLocation(baseKey, streamSecret, currentChunkLocation, crypto.hasher));
+                .getNextChunkLocation(baseKey, streamSecret, nextChunkPointer.getMapKey(), crypto.hasher));
         return nextRet.getChunk(version, network, crypto, 0, truncateTo, nextChunkPointer, streamSecret, access.committedHash(), monitor)
                 .thenApply(x -> {
                     byte[] nextData = x.get().chunk.data();
-                    return new Pair<>(nextData, newNextChunkPointer);
+                    return new Triple<>(nextData, nextChunkPointer.getMapKey(), newNextChunkPointer);
                 });
     }
 
@@ -207,10 +207,12 @@ public class LazyInputStreamCombiner implements AsyncReader {
     private void updateState(int index,
                              long globalIndex,
                              byte[] chunk,
+                             byte[] currentChunkMapKey,
                              AbsoluteCapability nextChunkPointer) {
         this.index = index;
         this.globalIndex = globalIndex;
         this.currentChunk = chunk;
+        this.currentChunkLocation = currentChunkMapKey;
         this.nextChunkPointer = nextChunkPointer;
     }
 
