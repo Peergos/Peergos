@@ -49,7 +49,7 @@ public class TransactionServiceImpl implements TransactionService {
     @Override
     public CompletableFuture<Snapshot> close(Snapshot version, Committer committer, Transaction transaction) {
         return transactionDirUpdater.updated(version).thenCompose(dir ->
-                dir.getChild(transaction.name(), networkAccess).thenCompose(fileOpt -> {
+                dir.getChild(transaction.name(), crypto.hasher, networkAccess).thenCompose(fileOpt -> {
                     boolean hasChild = fileOpt.isPresent();
                     if (!hasChild)
                         return CompletableFuture.completedFuture(version);
@@ -69,7 +69,7 @@ public class TransactionServiceImpl implements TransactionService {
         byte[] data = new byte[size];
 
         CommittedWriterData cwd = version.get(txnFile.writer());
-        return txnFile.getInputStream(cwd.props, networkAccess, crypto.random, VOID_PROGRESS)
+        return txnFile.getInputStream(cwd.props, networkAccess, crypto, VOID_PROGRESS)
                 .thenApply(reader -> Serialize.readFullArray(reader, data))
                 .thenApply(done -> Transaction.deserialize(data));
     }
@@ -77,7 +77,7 @@ public class TransactionServiceImpl implements TransactionService {
     @Override
     public CompletableFuture<Set<Transaction>> getOpenTransactions(Snapshot version) {
         return transactionDirUpdater.updated(version)
-                .thenCompose(dir -> dir.getChildren(networkAccess)
+                .thenCompose(dir -> dir.getChildren(crypto.hasher, networkAccess)
                         .thenCompose(children -> {
                             List<CompletableFuture<Transaction>> collect = children.stream()
                                     .map(c -> read(version, c))

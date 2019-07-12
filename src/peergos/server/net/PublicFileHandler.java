@@ -28,14 +28,16 @@ public class PublicFileHandler implements HttpHandler {
     private final CoreNode core;
     private final MutablePointers mutable;
     private final ContentAddressedStorage dht;
+    private final Crypto crypto;
     private final NetworkAccess network;
     private static final String PATH_PREFIX = "/public/";
 
-    public PublicFileHandler(CoreNode core, MutablePointers mutable, ContentAddressedStorage dht) {
+    public PublicFileHandler(CoreNode core, MutablePointers mutable, ContentAddressedStorage dht, Crypto crypto) {
         this.core = core;
         this.mutable = mutable;
         this.dht = dht;
         this.network = NetworkAccess.buildPublicNetworkAccess(core, mutable, dht).join();
+        this.crypto = crypto;
     }
 
     @Override
@@ -79,7 +81,7 @@ public class PublicFileHandler implements HttpHandler {
             AbsoluteCapability cap = AbsoluteCapability.fromCbor(capCbor.get());
 
             TrieNodeImpl trieRoot = TrieNodeImpl.empty().put(path, new EntryPoint(cap, ownerName));
-            Optional<FileWrapper> fileOpt = trieRoot.getByPath(originalPath, network).get();
+            Optional<FileWrapper> fileOpt = trieRoot.getByPath(originalPath, crypto.hasher, network).get();
 
             if (! fileOpt.isPresent())
                 throw new IllegalStateException("Couldn't retrieve file: " + path);
@@ -89,7 +91,7 @@ public class PublicFileHandler implements HttpHandler {
             if (file.isDirectory()) {
                 String fullPath = httpExchange.getRequestURI().getPath();
                 String canonicalFullPath = HtmlUtil.escapeHtml4(fullPath + (! fullPath.endsWith("/") ? "/" : ""));
-                List<FileWrapper> children = file.getChildren(network).get()
+                List<FileWrapper> children = file.getChildren(crypto.hasher, network).get()
                         .stream()
                         .sorted(Comparator.comparing(f -> f.getName()))
                         .collect(Collectors.toList());

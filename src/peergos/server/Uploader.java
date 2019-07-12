@@ -39,7 +39,7 @@ public class Uploader {
 
     private static void createPath(FileWrapper parent, Path path, NetworkAccess network, Crypto crypto) throws Exception {
         String name = path.getName(0).toString();
-        Optional<FileWrapper> child = parent.getChild(name, network).get();
+        Optional<FileWrapper> child = parent.getChild(name, crypto.hasher, network).get();
         if (path.getNameCount() == 1) {
             if (! child.isPresent())
                 parent.mkdir(name, network, false, crypto).get();

@@ -31,15 +31,15 @@ public class TofuCoreNode implements CoreNode {
         return "/" + username + "/" + KEY_STORE_NAME;
     }
 
-    public static CompletableFuture<TofuKeyStore> load(String username, TrieNode root, NetworkAccess network, SafeRandom random) {
+    public static CompletableFuture<TofuKeyStore> load(String username, TrieNode root, NetworkAccess network, Crypto crypto) {
         if (username == null)
             return CompletableFuture.completedFuture(new TofuKeyStore());
 
-        return root.getByPath(getStorePath(username), network).thenCompose(fileOpt -> {
+        return root.getByPath(getStorePath(username), crypto.hasher, network).thenCompose(fileOpt -> {
             if (! fileOpt.isPresent())
                 return CompletableFuture.completedFuture(new TofuKeyStore());
 
-            return fileOpt.get().getInputStream(network, random, x -> {}).thenCompose(reader -> {
+            return fileOpt.get().getInputStream(network, crypto, x -> {}).thenCompose(reader -> {
                 byte[] storeData = new byte[(int) fileOpt.get().getSize()];
                 return reader.readIntoArray(storeData, 0, storeData.length)
                         .thenApply(x -> TofuKeyStore.fromCbor(CborObject.fromByteArray(storeData)));

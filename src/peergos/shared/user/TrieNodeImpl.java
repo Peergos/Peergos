@@ -3,6 +3,7 @@ package peergos.shared.user;
 import jsinterop.annotations.JsConstructor;
 import jsinterop.annotations.JsType;
 import peergos.shared.NetworkAccess;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.user.fs.FileWrapper;
 import peergos.shared.util.Futures;
 
@@ -24,7 +25,7 @@ public class TrieNodeImpl implements TrieNode {
     }
 
     @Override
-    public CompletableFuture<Optional<FileWrapper>> getByPath(String path, NetworkAccess network) {
+    public CompletableFuture<Optional<FileWrapper>> getByPath(String path, Hasher hasher, NetworkAccess network) {
         LOG.info("GetByPath: " + path);
         String finalPath = TrieNode.canonicalise(path);
         if (finalPath.length() == 0) {
@@ -32,7 +33,7 @@ public class TrieNodeImpl implements TrieNode {
                 return children.values().stream()
                         .findAny()
                         .get()
-                        .getByPath("", network)
+                        .getByPath("", hasher, network)
                         .thenCompose(child -> child.get()
                                 .retrieveParent(network)
                                 .thenApply(opt -> opt.map(f -> f.withTrieNode(this))));
@@ -43,19 +44,19 @@ public class TrieNodeImpl implements TrieNode {
         // There may be an entry point further down the tree, but it will have <= permission than this one
         if (value.isPresent())
             return network.retrieveEntryPoint(value.get())
-                    .thenCompose(dir -> dir.get().getDescendentByPath(finalPath, network));
+                    .thenCompose(dir -> dir.get().getDescendentByPath(finalPath, hasher, network));
         if (!children.containsKey(elements[0]))
             return CompletableFuture.completedFuture(Optional.empty());
-        return children.get(elements[0]).getByPath(finalPath.substring(elements[0].length()), network);
+        return children.get(elements[0]).getByPath(finalPath.substring(elements[0].length()), hasher, network);
     }
 
     @Override
-    public CompletableFuture<Set<FileWrapper>> getChildren(String path, NetworkAccess network) {
+    public CompletableFuture<Set<FileWrapper>> getChildren(String path, Hasher hasher, NetworkAccess network) {
         String trimmedPath = TrieNode.canonicalise(path);
         if (trimmedPath.length() == 0) {
             if (!value.isPresent()) { // find a child entry and traverse parent links
                 Set<CompletableFuture<Optional<FileWrapper>>> kids = children.values().stream()
-                        .map(t -> t.getByPath("", network)).collect(Collectors.toSet());
+                        .map(t -> t.getByPath("", hasher, network)).collect(Collectors.toSet());
                 return Futures.combineAll(kids)
                         .thenApply(set -> set.stream()
                                 .filter(opt -> opt.isPresent())
@@ -63,14 +64,14 @@ public class TrieNodeImpl implements TrieNode {
                                 .collect(Collectors.toSet()));
             }
             return network.retrieveEntryPoint(value.get())
-                    .thenCompose(dir -> dir.get().getChildren(network));
+                    .thenCompose(dir -> dir.get().getChildren(hasher, network));
         }
         String[] elements = trimmedPath.split("/");
         if (!children.containsKey(elements[0]))
             return network.retrieveEntryPoint(value.get())
-                    .thenCompose(dir -> dir.get().getDescendentByPath(trimmedPath, network)
-                            .thenCompose(parent -> parent.get().getChildren(network)));
-        return children.get(elements[0]).getChildren(trimmedPath.substring(elements[0].length()), network);
+                    .thenCompose(dir -> dir.get().getDescendentByPath(trimmedPath, hasher, network)
+                            .thenCompose(parent -> parent.get().getChildren(hasher, network)));
+        return children.get(elements[0]).getChildren(trimmedPath.substring(elements[0].length()), hasher, network);
     }
 
     @Override

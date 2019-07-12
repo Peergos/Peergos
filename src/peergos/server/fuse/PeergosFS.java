@@ -391,7 +391,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
                     */
 
             try {
-                boolean isUpdated = stat.treeNode.setProperties(updated, context.network, Optional.of(parentOpt.get().treeNode)).get();
+                boolean isUpdated = stat.treeNode.setProperties(updated, context.crypto.hasher, context.network, Optional.of(parentOpt.get().treeNode)).get();
                 return isUpdated ? 0 : -ErrorCodes.ENOENT();
             } catch (Exception ex) {
                 LOG.log(Level.WARNING, ex.getMessage(), ex);
@@ -498,7 +498,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
 
     private int readdir(PeergosStat stat, FuseFillDir fuseFillDir, Pointer pointer) {
         try {
-            Set<FileWrapper> children = stat.treeNode.getChildren(context.network).get();
+            Set<FileWrapper> children = stat.treeNode.getChildren(context.crypto.hasher, context.network).get();
             children.stream()
                     .map(e -> e.getFileProperties().name)
                     .forEach(e -> fuseFillDir.apply(pointer, e, null, 0));
@@ -522,7 +522,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
         if (data.length == 0)
             return Optional.of(data);
 
-        try (AsyncReader asyncReader = stat.treeNode.getInputStream(context.network, context.crypto.random, actualSize, (l) -> {}).get()){
+        try (AsyncReader asyncReader = stat.treeNode.getInputStream(context.network, context.crypto, actualSize, (l) -> {}).get()){
             AsyncReader seeked = asyncReader.seekJS((int) (offset >> 32), (int) offset).get();
 
             // N.B. Fuse seems to assume that a file must be an integral number of disk sectors,
@@ -572,7 +572,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
                 throw new IllegalStateException("Trying to truncate/extend to > 4GiB! "+ size);
 
             byte[] original = new byte[(int)file.properties.size];
-            Serialize.readFullArray(file.treeNode.getInputStream(context.network, context.crypto.random, l -> {}).get(), original);
+            Serialize.readFullArray(file.treeNode.getInputStream(context.network, context.crypto, l -> {}).get(), original);
             // TODO do this smarter by only writing the chunk containing the new endpoint, and deleting all following chunks
             // or extending with 0s
             byte[] truncated = Arrays.copyOfRange(original, 0, (int)size);

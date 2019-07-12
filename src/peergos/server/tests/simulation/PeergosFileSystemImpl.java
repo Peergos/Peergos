@@ -35,7 +35,7 @@ public class PeergosFileSystemImpl implements FileSystem {
     public byte[] read(Path path) {
         FileWrapper wrapper = getPath(path);
         long size = wrapper.getFileProperties().size;
-        AsyncReader in = wrapper.getInputStream(userContext.network, userContext.crypto.random, size, (l) -> {
+        AsyncReader in = wrapper.getInputStream(userContext.network, userContext.crypto, size, (l) -> {
         }).join();
         return Serialize.readFully(in, size).join();
     }
@@ -58,7 +58,7 @@ public class PeergosFileSystemImpl implements FileSystem {
 
     @Override
     public List<Path> ls(Path path) {
-        return getPath(path).getChildren(userContext.network)
+        return getPath(path).getChildren(userContext.crypto.hasher, userContext.network)
                 .join()
                 .stream()
                 .map(e -> path.resolve(e.getName()))

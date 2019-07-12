@@ -85,7 +85,7 @@ public class SmallFileBenchmark {
             long t1 = System.currentTimeMillis();
             FileWrapper file = context.getByPath(Paths.get(username, names.get(random.nextInt(names.size()))))
                     .join().get();
-            AsyncReader reader = file.getInputStream(network, crypto.random, x -> {}).join();
+            AsyncReader reader = file.getInputStream(network, crypto, x -> {}).join();
             byte[] readData = Serialize.readFully(reader, data.length).join();
             long duration = System.currentTimeMillis() - t1;
             Assert.assertTrue(Arrays.equals(readData, data));

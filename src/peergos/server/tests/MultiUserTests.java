@@ -206,7 +206,7 @@ public class MultiUserTests {
             Assert.assertTrue("shared file present", sharedFile.isPresent());
 
             AsyncReader inputStream = sharedFile.get().getInputStream(userContext.network,
-                    userContext.crypto.random, l -> {}).get();
+                    userContext.crypto, l -> {}).get();
 
             byte[] fileContents = Serialize.readFully(inputStream, sharedFile.get().getFileProperties().size).get();
             Assert.assertTrue("shared file contents correct", Arrays.equals(data1, fileContents));
@@ -219,7 +219,7 @@ public class MultiUserTests {
             Assert.assertTrue("shared file present", sharedFile.isPresent());
 
             AsyncReader inputStream = sharedFile.get().getInputStream(userContext.network,
-                    userContext.crypto.random, l -> {}).get();
+                    userContext.crypto, l -> {}).get();
 
             byte[] fileContents = Serialize.readFully(inputStream, sharedFile.get().getFileProperties().size).get();
             Assert.assertTrue("shared file contents correct", Arrays.equals(data2, fileContents));
@@ -273,7 +273,7 @@ public class MultiUserTests {
             Assert.assertTrue("shared file present", sharedFile.isPresent());
 
             AsyncReader inputStream = sharedFile.get().getInputStream(userContext.network,
-                    userContext.crypto.random, l -> {}).get();
+                    userContext.crypto, l -> {}).get();
 
             byte[] fileContents = Serialize.readFully(inputStream, sharedFile.get().getFileProperties().size).get();
             Assert.assertTrue("shared file contents correct", Arrays.equals(data1, fileContents));
@@ -829,7 +829,7 @@ public class MultiUserTests {
             Assert.assertTrue("shared file present", sharedFile.isPresent());
 
             AsyncReader inputStream = sharedFile.get().getInputStream(friend.network,
-                    friend.crypto.random, l -> {}).get();
+                    friend.crypto, l -> {}).get();
 
             byte[] fileContents = Serialize.readFully(inputStream, sharedFile.get().getFileProperties().size).get();
             Assert.assertTrue("shared file contents correct", Arrays.equals(originalFileContents, fileContents));
@@ -908,7 +908,7 @@ public class MultiUserTests {
                 originalFileContents.length + suffix.length, Optional.empty(), true,
                 u1New.network, crypto, l -> {}, null).get();
         AsyncReader extendedContents = u1New.getByPath(u1.username + "/" + newname).get().get()
-                .getInputStream(u1New.network, crypto.random, l -> {}).get();
+                .getInputStream(u1New.network, crypto, l -> {}).get();
         byte[] newFileContents = Serialize.readFully(extendedContents, originalFileContents.length + suffix.length).get();
 
         Assert.assertTrue(Arrays.equals(newFileContents, ArrayOps.concat(originalFileContents, suffix)));
@@ -942,7 +942,7 @@ public class MultiUserTests {
         Optional<FileWrapper> u2ToU1 = u1.getByPath("/" + u2.username).get();
         assertTrue("Friend root present after accepted follow request", u2ToU1.isPresent());
 
-        Set<FileWrapper> children = u2ToU1.get().getChildren(u2.network).get();
+        Set<FileWrapper> children = u2ToU1.get().getChildren(crypto.hasher, u2.network).get();
 
         assertTrue("Browse to friend root", children.isEmpty());
 
@@ -1018,14 +1018,14 @@ public class MultiUserTests {
         }
 
         Optional<FileWrapper> newUserToPeergos = peergos.getByPath("/" + newUser.username + "/feedback").get();
-        Set<FileWrapper> feedbackDirectoryContents = newUserToPeergos.get().getChildren(newUser.network).get();
+        Set<FileWrapper> feedbackDirectoryContents = newUserToPeergos.get().getChildren(crypto.hasher, newUser.network).get();
         assertTrue("Feedback directory is non-empty", !feedbackDirectoryContents.isEmpty());
 
         for (FileWrapper feedbackFile : feedbackDirectoryContents) {
             assertTrue("Feedback file is readable", feedbackFile.isReadable());
 
             AsyncReader inputStream = feedbackFile
-                        .getInputStream(peergos.network, peergos.crypto.random, l -> {})
+                        .getInputStream(peergos.network, peergos.crypto, l -> {})
                         .get();
 
             byte[] fileContents = Serialize.readFully(inputStream, feedbackFile.getFileProperties().size).get();

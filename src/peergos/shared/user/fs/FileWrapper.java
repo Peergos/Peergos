@@ -131,7 +131,7 @@ public class FileWrapper {
         });
     }
 
-    public CompletableFuture<Optional<FileWrapper>> getDescendentByPath(String path, NetworkAccess network) {
+    public CompletableFuture<Optional<FileWrapper>> getDescendentByPath(String path, Hasher hasher, NetworkAccess network) {
         ensureUnmodified();
         if (path.length() == 0)
             return CompletableFuture.completedFuture(Optional.of(this));
@@ -147,10 +147,10 @@ public class FileWrapper {
         int slash = path.indexOf("/");
         String prefix = slash > 0 ? path.substring(0, slash) : path;
         String suffix = slash > 0 ? path.substring(slash + 1) : "";
-        return getChildren(version, network).thenCompose(children -> {
+        return getChildren(version, hasher, network).thenCompose(children -> {
             for (FileWrapper child : children)
                 if (child.getFileProperties().name.equals(prefix)) {
-                    return child.getDescendentByPath(suffix, network);
+                    return child.getDescendentByPath(suffix, hasher, network);
                 }
             return CompletableFuture.completedFuture(Optional.empty());
         });
@@ -238,7 +238,7 @@ public class FileWrapper {
 
             CryptreeNode existing = pointer.fileAccess;
 
-            byte[] nextChunkMapKey = existing.getNextChunkLocation(cap.rBaseKey);
+            byte[] nextChunkMapKey = existing.getNextChunkLocation(cap.rBaseKey, Optional.empty(), cap.getMapKey(), hasher);
             WritableAbsoluteCapability nextChunkCap = cap.withMapKey(nextChunkMapKey);
             WritableAbsoluteCapability updatedNextChunkCap = ourNewPointer.withMapKey(nextChunkMapKey);
             RelativeCapability toNextChunk = ourNewPointer.relativise(updatedNextChunkCap);
@@ -258,7 +258,7 @@ public class FileWrapper {
                                 FileWrapper theNewUs = usOpt.get();
 
                                 // clean all subtree keys except file dataKeys (lazily re-key and re-encrypt them)
-                                return getDirectChildren(network, updatedVersion).thenCompose(childFiles -> {
+                                return getDirectChildren(network, hasher, updatedVersion).thenCompose(childFiles -> {
                                     List<Pair<FileWrapper, SymmetricKey>> childrenWithNewKeys = childFiles.stream()
                                             .map(c -> new Pair<>(c, SymmetricKey.random()))
                                             .collect(Collectors.toList());
@@ -300,10 +300,11 @@ public class FileWrapper {
         } else {
             // create a new rBaseKey == parentKey
             SymmetricKey baseReadKey = newBaseKey.orElseGet(SymmetricKey::random);
-            return pointer.fileAccess.rotateBaseReadKey(writableFilePointer(), entryWriter,
-                    cap.relativise(parent.getMinimalReadPointer()), baseReadKey, network, version, committer)
+            return pointer.fileAccess.rotateBaseReadKey(writableFilePointer(), props.streamSecret, entryWriter,
+                    cap.relativise(parent.getMinimalReadPointer()), baseReadKey, hasher, network, version, committer)
                     .thenCompose(updatedVersion -> {
-                        byte[] nextChunkMapKey = pointer.fileAccess.getNextChunkLocation(cap.rBaseKey);
+                        byte[] nextChunkMapKey = pointer.fileAccess.getNextChunkLocation(cap.rBaseKey,
+                                props.streamSecret, cap.getMapKey(), hasher);
                         WritableAbsoluteCapability nextChunkCap = cap.withMapKey(nextChunkMapKey);
                         return network.getMetadata(updatedVersion.get(nextChunkCap.writer).props, nextChunkCap)
                                 .thenCompose(mOpt -> {
@@ -370,7 +371,7 @@ public class FileWrapper {
             CryptreeNode.DirAndChildren updatedDirAccess = existing.withWriterLink(cap.rBaseKey, updatedWriter)
                     .withChildren(cap.rBaseKey, CryptreeNode.ChildrenLinks.empty(), crypto.hasher);
 
-            byte[] nextChunkMapKey = existing.getNextChunkLocation(cap.rBaseKey);
+            byte[] nextChunkMapKey = existing.getNextChunkLocation(cap.rBaseKey, Optional.empty(), null, null);
             WritableAbsoluteCapability nextChunkCap = cap.withMapKey(nextChunkMapKey);
 
             RetrievedCapability ourNewRetrievedPointer = new RetrievedCapability(ourNewPointer, updatedDirAccess.dir);
@@ -379,7 +380,7 @@ public class FileWrapper {
             // clean all subtree write keys
             return IpfsTransaction.call(owner(),
                     tid -> updatedDirAccess.commitChildrenLinks(ourNewPointer, entryWriter, network, tid), network.dhtClient)
-                    .thenCompose(hashes -> getDirectChildren(network, version))
+                    .thenCompose(hashes -> getDirectChildren(network, crypto.hasher, version))
                     .thenCompose(childFiles -> {
                         Set<Pair<FileWrapper, SymmetricKey>> withNewBaseWriteKeys = childFiles.stream()
                                 .map(c -> new Pair<>(c, SymmetricKey.random()))
@@ -425,9 +426,9 @@ public class FileWrapper {
         }
     }
 
-    public CompletableFuture<Boolean> hasChildWithName(Snapshot version, String name, NetworkAccess network) {
+    public CompletableFuture<Boolean> hasChildWithName(Snapshot version, String name, Hasher hasher, NetworkAccess network) {
         ensureUnmodified();
-        return getChildren(version, network)
+        return getChildren(version, hasher, network)
                 .thenApply(children -> children.stream().anyMatch(c -> c.props.name.equals(name)));
     }
 
@@ -464,7 +465,7 @@ public class FileWrapper {
         if (!this.isDirectory() || !this.isWritable()) {
             return Futures.errored(new IllegalArgumentException("Can only add link to a writable directory!"));
         }
-        return hasChildWithName(version, name, network).thenCompose(hasChild -> {
+        return hasChildWithName(version, name, crypto.hasher, network).thenCompose(hasChild -> {
             if (hasChild) {
                 return Futures.errored(new IllegalStateException("Child already exists with name: " + name));
             }
@@ -504,16 +505,11 @@ public class FileWrapper {
         return new Location(pointer.capability.owner, pointer.capability.writer, pointer.capability.getMapKey());
     }
 
-    public Location getNextChunkLocation() {
-        return new Location(pointer.capability.owner, pointer.capability.writer,
-                pointer.fileAccess.getNextChunkLocation(pointer.capability.rBaseKey));
-    }
-
-    public CompletableFuture<Set<AbsoluteCapability>> getChildrenCapabilities(NetworkAccess network) {
+    public CompletableFuture<Set<AbsoluteCapability>> getChildrenCapabilities(Hasher hasher, NetworkAccess network) {
         ensureUnmodified();
         if (!this.isDirectory())
             return CompletableFuture.completedFuture(Collections.emptySet());
-        return pointer.fileAccess.getAllChildrenCapabilities(version, pointer.capability, network);
+        return pointer.fileAccess.getAllChildrenCapabilities(version, pointer.capability, hasher, network);
     }
 
     public CompletableFuture<Optional<FileWrapper>> retrieveParent(NetworkAccess network) {
@@ -554,27 +550,27 @@ public class FileWrapper {
     }
 
     @JsMethod
-    public CompletableFuture<Set<FileWrapper>> getChildren(NetworkAccess network) {
-        return getChildren(version, network);
+    public CompletableFuture<Set<FileWrapper>> getChildren(Hasher hasher, NetworkAccess network) {
+        return getChildren(version, hasher, network);
     }
 
-    private CompletableFuture<Set<FileWrapper>> getChildren(Snapshot version, NetworkAccess network) {
+    private CompletableFuture<Set<FileWrapper>> getChildren(Snapshot version, Hasher hasher, NetworkAccess network) {
         if (globalRoot.isPresent())
-            return globalRoot.get().getChildren("/", network);
+            return globalRoot.get().getChildren("/", hasher, network);
         if (isReadable()) {
             Optional<SigningPrivateKeyAndPublicHash> childsEntryWriter = pointer.capability.wBaseKey
                     .map(wBase -> pointer.fileAccess.getSigner(pointer.capability.rBaseKey, wBase, entryWriter));
-            return pointer.fileAccess.getAllChildrenCapabilities(version, pointer.capability, network)
+            return pointer.fileAccess.getAllChildrenCapabilities(version, pointer.capability, hasher, network)
                     .thenCompose(childCaps ->
                             getFiles(owner(), childCaps, childsEntryWriter, ownername, network, version));
         }
         throw new IllegalStateException("Unreadable FileWrapper!");
     }
 
-    private CompletableFuture<Set<FileWrapper>> getDirectChildren(NetworkAccess network, Snapshot version) {
+    private CompletableFuture<Set<FileWrapper>> getDirectChildren(NetworkAccess network, Hasher hasher, Snapshot version) {
         ensureUnmodified();
         if (globalRoot.isPresent())
-            return globalRoot.get().getChildren("/", network);
+            return globalRoot.get().getChildren("/", hasher, network);
         if (isReadable()) {
             Optional<SigningPrivateKeyAndPublicHash> childsEntryWriter = pointer.capability.wBaseKey
                     .map(wBase -> pointer.fileAccess.getSigner(pointer.capability.rBaseKey, wBase, entryWriter));
@@ -601,12 +597,12 @@ public class FileWrapper {
                                 .collect(Collectors.toSet())));
     }
 
-    public CompletableFuture<Optional<FileWrapper>> getChild(String name, NetworkAccess network) {
-        return getChild(version, name, network);
+    public CompletableFuture<Optional<FileWrapper>> getChild(String name, Hasher hasher, NetworkAccess network) {
+        return getChild(version, name, hasher, network);
     }
 
-    private CompletableFuture<Optional<FileWrapper>> getChild(Snapshot version, String name, NetworkAccess network) {
-        return getChildren(version, network)
+    private CompletableFuture<Optional<FileWrapper>> getChild(Snapshot version, String name, Hasher hasher, NetworkAccess network) {
+        return getChildren(version, hasher, network)
                 .thenApply(children -> children.stream().filter(f -> f.getName().equals(name)).findAny());
     }
 
@@ -650,8 +646,8 @@ public class FileWrapper {
         if (isDirectory()) {
             throw new IllegalStateException("Directories are never dirty (they are cleaned immediately)!");
         } else {
-            return pointer.fileAccess.cleanAndCommit(current, committer, writableFilePointer(), signingPair(),
-                    SymmetricKey.random(), parent.getLocation(), parent.getParentKey(), network, crypto)
+            return pointer.fileAccess.cleanAndCommit(current, committer, writableFilePointer(), props.streamSecret,
+                    signingPair(), SymmetricKey.random(), parent.getLocation(), parent.getParentKey(), network, crypto)
                     .thenApply(cwd -> {
                         setModified();
                         return new Pair<>(parent, cwd);
@@ -780,7 +776,7 @@ public class FileWrapper {
         }
         return intialVersion.withWriter(owner(), writer(), network)
                 .thenCompose(current -> getUpdated(current, network)
-                        .thenCompose(latest -> latest.getChild(current, filename, network)
+                        .thenCompose(latest -> latest.getChild(current, filename, crypto.hasher, network)
                                         .thenCompose(childOpt -> {
                                             if (childOpt.isPresent()) {
                                                 if (! overwriteExisting)
@@ -873,7 +869,7 @@ public class FileWrapper {
                                                         NetworkAccess network,
                                                         Crypto crypto,
                                                         ProgressConsumer<Long> monitor) {
-        return getChild(filename, network)
+        return getChild(filename, crypto.hasher, network)
                 .thenCompose(child -> uploadFileSection(filename, AsyncReader.build(fileData), isHidden,
                         child.map(f -> f.getSize()).orElse(0L),
                         fileData.length + child.map(f -> f.getSize()).orElse(0L),
@@ -921,7 +917,7 @@ public class FileWrapper {
         return current.withWriter(existingChild.owner(), existingChild.writer(), network)
                 .thenCompose(state -> (existingChild.isDirty() ?
                                 existingChild.clean(state, committer, network, crypto, parent)
-                                        .thenCompose(pair -> pair.left.getChild(pair.right, filename, network)
+                                        .thenCompose(pair -> pair.left.getChild(pair.right, filename, crypto.hasher, network)
                                                 .thenApply(cleanedChild -> new Triple<>(pair.left, cleanedChild.get(), pair.right))) :
                         CompletableFuture.completedFuture(new Triple<>(this, existingChild, state)))
                 ).thenCompose(updatedTriple -> {
@@ -930,7 +926,7 @@ public class FileWrapper {
                     Snapshot base = updatedTriple.right;
                     FileProperties childProps = child.getFileProperties();
                     final AtomicLong filesSize = new AtomicLong(childProps.size);
-                    FileRetriever retriever = child.getRetriever();
+                    FileRetriever retriever = child.getRetriever(crypto.hasher);
                     SymmetricKey baseKey = child.pointer.capability.rBaseKey;
                     CryptreeNode fileAccess = child.pointer.fileAccess;
                     SymmetricKey dataKey = fileAccess.getDataKey(baseKey);
@@ -942,10 +938,12 @@ public class FileWrapper {
 
                     BiFunction<Snapshot, Long, CompletableFuture<Snapshot>> composer = (version, startIndex) -> {
                         MaybeMultihash currentHash = child.pointer.fileAccess.committedHash();
-                        return retriever.getChunk(version.get(child.writer()).props, network, crypto.random, startIndex, filesSize.get(), childCap, currentHash, monitor)
+                        return retriever.getChunk(version.get(child.writer()).props, network, crypto, startIndex,
+                                filesSize.get(), childCap, childProps.streamSecret, currentHash, monitor)
                                 .thenCompose(currentLocation -> {
                                     CompletableFuture<Optional<Location>> locationAt = retriever
-                                            .getMapLabelAt(version.get(child.writer()).props, childCap, startIndex + Chunk.MAX_SIZE, network)
+                                            .getMapLabelAt(version.get(child.writer()).props, childCap,
+                                                    childProps.streamSecret, startIndex + Chunk.MAX_SIZE, crypto.hasher, network)
                                             .thenApply(x -> x.map(m -> getLocation().withMapKey(m)));
                                     return locationAt.thenCompose(location ->
                                             CompletableFuture.completedFuture(new Pair<>(currentLocation, location)));
@@ -1066,7 +1064,7 @@ public class FileWrapper {
             return result;
         }
         return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
-                (state, committer) -> hasChildWithName(state, newFolderName, network).thenCompose(hasChild -> {
+                (state, committer) -> hasChildWithName(state, newFolderName, crypto.hasher, network).thenCompose(hasChild -> {
                     if (hasChild) {
                         CompletableFuture<Snapshot> error = new CompletableFuture<>();
                         error.completeExceptionally(new IllegalStateException("Child already exists with name: " + newFolderName));
@@ -1103,7 +1101,7 @@ public class FileWrapper {
             return CompletableFuture.completedFuture(parent);
         CompletableFuture<Optional<FileWrapper>> childExists = parent == null ?
                 CompletableFuture.completedFuture(Optional.empty()) :
-                parent.getDescendentByPath(newFilename, userContext.network);
+                parent.getDescendentByPath(newFilename, userContext.crypto.hasher, userContext.network);
         return childExists
                 .thenCompose(existing -> {
                     if (existing.isPresent() && !overwrite)
@@ -1136,6 +1134,7 @@ public class FileWrapper {
     }
 
     public CompletableFuture<Boolean> setProperties(FileProperties updatedProperties,
+                                                    Hasher hasher,
                                                     NetworkAccess network,
                                                     Optional<FileWrapper> parent) {
         setModified();
@@ -1147,10 +1146,10 @@ public class FileWrapper {
                 (s, comitter) -> (! parent.isPresent() ?
                         CompletableFuture.completedFuture(s) :
                         s.withWriter(owner(), parent.get().writer(), network)
-                ).thenCompose(withParent -> parent.get().hasChildWithName(withParent, newName, network))
+                ).thenCompose(withParent -> parent.get().hasChildWithName(withParent, newName, hasher, network))
                         .thenCompose(hasChild -> ! hasChild ?
                                 CompletableFuture.completedFuture(true) :
-                                parent.get().getChildrenCapabilities(network)
+                                parent.get().getChildrenCapabilities(hasher, network)
                                         .thenApply(childCaps -> {
                                             if (! childCaps.stream()
                                                     .map(l -> new ByteArrayWrapper(l.getMapKey()))
@@ -1207,7 +1206,7 @@ public class FileWrapper {
         }
 
         return context.network.synchronizer.applyComplexUpdate(target.owner(), target.signingPair(), (version, committer) -> {
-            return target.hasChildWithName(version, getFileProperties().name, network).thenCompose(childExists -> {
+            return target.hasChildWithName(version, getFileProperties().name, crypto.hasher, network).thenCompose(childExists -> {
                 if (childExists) {
                     CompletableFuture<Snapshot> error = new CompletableFuture<>();
                     error.completeExceptionally(new IllegalStateException("CopyTo target " + target + " already has child with name " + getFileProperties().name));
@@ -1228,7 +1227,7 @@ public class FileWrapper {
                             });
                 } else {
                     return version.withWriter(owner(), writer(), network).thenCompose(snapshot ->
-                            getInputStream(snapshot.get(writer()).props, network, random, x -> {})
+                            getInputStream(snapshot.get(writer()).props, network, crypto, x -> {})
                                     .thenCompose(stream -> target.uploadFileSection(snapshot, committer,
                                             getName(), stream, false, 0, getSize(),
                                             Optional.empty(), false, network, crypto, x -> {},
@@ -1240,11 +1239,11 @@ public class FileWrapper {
 
 
     @JsMethod
-    public CompletableFuture<Boolean> hasChild(String fileName, NetworkAccess network) {
+    public CompletableFuture<Boolean> hasChild(String fileName, Hasher hasher, NetworkAccess network) {
         if (!isLegalName(fileName)) {
             return Futures.errored(new IllegalArgumentException("Illegal file/directory name: " + fileName));
         }
-        return this.hasChildWithName(version, fileName, network).thenApply(childExists -> childExists);
+        return this.hasChildWithName(version, fileName, hasher, network).thenApply(childExists -> childExists);
     }
 
     /**
@@ -1277,14 +1276,14 @@ public class FileWrapper {
         network.synchronizer.putEmpty(owner, signer.publicKeyHash);
         return network.synchronizer.applyComplexUpdate(owner, signer, (version, committer) -> IpfsTransaction.call(owner,
                 tid -> network.uploadChunk(version, committer, newFileAccess, owner, getPointer().capability.getMapKey(), signer, tid)
-                        .thenCompose(newVersion -> copyAllChunks(false, cap, signer, network, newVersion, committer))
+                        .thenCompose(newVersion -> copyAllChunks(false, cap, signer, hasher, network, newVersion, committer))
                         .thenCompose(copiedVersion -> copiedVersion.withWriter(owner, parent.writer(), network))
                         .thenCompose(withParent -> parent.getPointer().fileAccess
                                 .updateChildLink(withParent, committer, parent.writableFilePointer(),
                                         parent.entryWriter,
                                         getPointer(),
                                         newRetrievedCapability, network, hasher))
-                        .thenCompose(updatedParentVersion -> deleteAllChunks(cap, signingPair(), tid, network,
+                        .thenCompose(updatedParentVersion -> deleteAllChunks(cap, signingPair(), tid, hasher, network,
                                 updatedParentVersion, committer)),
                 network.dhtClient)
         ).thenCompose(finalVersion -> parent.getUpdated(finalVersion, network)
@@ -1303,6 +1302,7 @@ public class FileWrapper {
     private static CompletableFuture<Snapshot> copyAllChunks(boolean includeFirst,
                                                              AbsoluteCapability currentCap,
                                                              SigningPrivateKeyAndPublicHash targetSigner,
+                                                             Hasher hasher,
                                                              NetworkAccess network,
                                                              Snapshot initialVersion,
                                                              Committer committer) {
@@ -1320,9 +1320,12 @@ public class FileWrapper {
                                     CompletableFuture.completedFuture(version))
                                     .thenCompose(updated -> {
                                         CryptreeNode chunk = mOpt.get();
-                                        byte[] nextChunkMapKey = chunk.getNextChunkLocation(currentCap.rBaseKey);
+                                        Optional<byte[]> streamSecret = chunk.getProperties(chunk
+                                                .getParentKey(currentCap.rBaseKey)).streamSecret;
+                                        byte[] nextChunkMapKey = chunk.getNextChunkLocation(currentCap.rBaseKey,
+                                                streamSecret, currentCap.getMapKey(), hasher);
                                         return copyAllChunks(true, currentCap.withMapKey(nextChunkMapKey),
-                                                targetSigner, network, updated, committer);
+                                                targetSigner, hasher, network, updated, committer);
                                     })
                                     .thenCompose(updatedVersion -> {
                                         if (! mOpt.get().isDirectory())
@@ -1332,7 +1335,7 @@ public class FileWrapper {
                                                         Futures.reduceAll(childCaps,
                                                                 updatedVersion,
                                                                 (v, cap) -> copyAllChunks(true, cap,
-                                                                        targetSigner, network, v, committer),
+                                                                        targetSigner, hasher, network, v, committer),
                                                                 (x, y) -> y));
                                     });
                         }));
@@ -1341,6 +1344,7 @@ public class FileWrapper {
     public static CompletableFuture<Snapshot> deleteAllChunks(WritableAbsoluteCapability currentCap,
                                                               SigningPrivateKeyAndPublicHash signer,
                                                               TransactionId tid,
+                                                              Hasher hasher,
                                                               NetworkAccess network,
                                                               Snapshot version,
                                                               Committer committer) {
@@ -1355,9 +1359,12 @@ public class FileWrapper {
                             currentCap.getMapKey(), ourSigner, tid)
                             .thenCompose(deletedVersion -> {
                                 CryptreeNode chunk = mOpt.get();
-                                byte[] nextChunkMapKey = chunk.getNextChunkLocation(currentCap.rBaseKey);
-                                return deleteAllChunks(currentCap.withMapKey(nextChunkMapKey), signer, tid, network,
-                                        deletedVersion, committer);
+                                Optional<byte[]> streamSecret = chunk.getProperties(chunk
+                                                .getParentKey(currentCap.rBaseKey)).streamSecret;
+                                byte[] nextChunkMapKey = chunk.getNextChunkLocation(currentCap.rBaseKey, streamSecret,
+                                        currentCap.getMapKey(), hasher);
+                                return deleteAllChunks(currentCap.withMapKey(nextChunkMapKey), signer, tid, hasher,
+                                        network, deletedVersion, committer);
                             })
                             .thenCompose(updatedVersion -> {
                                 if (! mOpt.get().isDirectory())
@@ -1366,7 +1373,7 @@ public class FileWrapper {
                                         Futures.reduceAll(childCaps,
                                                 updatedVersion,
                                                 (v, cap) -> deleteAllChunks((WritableAbsoluteCapability) cap, signer,
-                                                        tid, network, v, committer),
+                                                        tid, hasher, network, v, committer),
                                                 (x, y) -> y));
                             })
                             .thenCompose(s -> removeSigningKey(currentCap.writer, signer, currentCap.owner, network, s, committer));
@@ -1392,7 +1399,7 @@ public class FileWrapper {
                         (version, committer) -> IpfsTransaction.call(owner(),
                         tid -> FileWrapper.deleteAllChunks(writableFilePointer(), writableParent ?
                                 parent.signingPair() :
-                                signingPair(), tid, network, version, committer), network.dhtClient))
+                                signingPair(), tid, hasher, network, version, committer), network.dhtClient))
                         .thenApply(b -> {
                             userContext.sharedWithCache.clearSharedWith(pointer.capability);
                             return updatedParent;
@@ -1413,55 +1420,56 @@ public class FileWrapper {
     }
 
     public CompletableFuture<? extends AsyncReader> getInputStream(NetworkAccess network,
-                                                                   SafeRandom random,
+                                                                   Crypto crypto,
                                                                    ProgressConsumer<Long> monitor) {
         return network.synchronizer.getValue(owner(), writer())
-                .thenCompose(state -> getInputStream(state.get(writer()).props, network, random, getFileProperties().size, monitor));
+                .thenCompose(state -> getInputStream(state.get(writer()).props, network, crypto, getFileProperties().size, monitor));
     }
 
     public CompletableFuture<? extends AsyncReader> getInputStream(WriterData version,
                                                                    NetworkAccess network,
-                                                                   SafeRandom random,
+                                                                   Crypto crypto,
                                                                    ProgressConsumer<Long> monitor) {
-        return getInputStream(version, network, random, getFileProperties().size, monitor);
+        return getInputStream(version, network, crypto, getFileProperties().size, monitor);
     }
 
     @JsMethod
     public CompletableFuture<? extends AsyncReader> getInputStream(NetworkAccess network,
-                                                                   SafeRandom random,
+                                                                   Crypto crypto,
                                                                    int fileSizeHi,
                                                                    int fileSizeLow,
                                                                    ProgressConsumer<Long> monitor) {
         long fileSize = (fileSizeLow & 0xFFFFFFFFL) + ((fileSizeHi & 0xFFFFFFFFL) << 32);
         return network.synchronizer.getValue(owner(), writer())
-                .thenCompose(state -> getInputStream(state.get(writer()).props, network, random, fileSize, monitor));
+                .thenCompose(state -> getInputStream(state.get(writer()).props, network, crypto, fileSize, monitor));
     }
 
     public CompletableFuture<? extends AsyncReader> getInputStream(NetworkAccess network,
-                                                                   SafeRandom random,
+                                                                   Crypto crypto,
                                                                    long fileSize,
                                                                    ProgressConsumer<Long> monitor) {
         return network.synchronizer.getValue(owner(), writer())
-                .thenCompose(state -> getInputStream(state.get(writer()).props, network, random, fileSize, monitor));
+                .thenCompose(state -> getInputStream(state.get(writer()).props, network, crypto, fileSize, monitor));
     }
 
     public CompletableFuture<? extends AsyncReader> getInputStream(WriterData version,
                                                                    NetworkAccess network,
-                                                                   SafeRandom random,
+                                                                   Crypto crypto,
                                                                    long fileSize,
                                                                    ProgressConsumer<Long> monitor) {
         ensureUnmodified();
         if (pointer.fileAccess.isDirectory())
             throw new IllegalStateException("Cannot get input stream for a directory!");
         CryptreeNode fileAccess = pointer.fileAccess;
-        return fileAccess.retriever(pointer.capability.rBaseKey)
-                        .getFile(version, network, random, pointer.capability, fileSize, fileAccess.committedHash(), monitor);
+        return fileAccess.retriever(pointer.capability.rBaseKey, props.streamSecret, getLocation().getMapKey(), crypto.hasher)
+                        .getFile(version, network, crypto, pointer.capability, props.streamSecret,
+                                fileSize, fileAccess.committedHash(), monitor);
     }
 
-    private FileRetriever getRetriever() {
+    private FileRetriever getRetriever(Hasher hasher) {
         if (pointer.fileAccess.isDirectory())
             throw new IllegalStateException("Cannot get input stream for a directory!");
-        return pointer.fileAccess.retriever(pointer.capability.rBaseKey);
+        return pointer.fileAccess.retriever(pointer.capability.rBaseKey, props.streamSecret, getLocation().getMapKey(), hasher);
     }
 
     @JsMethod
