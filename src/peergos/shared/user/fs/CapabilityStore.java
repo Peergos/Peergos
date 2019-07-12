@@ -61,7 +61,7 @@ public class CapabilityStore {
                     long startIndex = capStore.map(f -> f.getSize()).orElse(0L);
                     return sharedDir.uploadFileSection(capStoreFilename, newCapability, false,
                             startIndex, startIndex + serializedCapability.length, Optional.empty(), true,
-                            network, crypto, x -> {}, sharedDir.generateChildLocations(1, crypto.random));
+                            network, crypto, x -> {}, crypto.random.randomBytes(32));
                 });
     }
 
@@ -351,7 +351,7 @@ public class CapabilityStore {
         return getCapabilityCacheDir(homeDirSupplier, network, crypto)
                 .thenCompose(cacheDir -> cacheDir.uploadOrOverwriteFile(friendName + capabilityType, dataReader,
                         (long) data.length, network, crypto, x-> {},
-                        cacheDir.generateChildLocationsFromSize(data.length, crypto.random))
+                        crypto.random.randomBytes(32))
                         .thenApply(x -> capabilitiesFromUser));
     }
 

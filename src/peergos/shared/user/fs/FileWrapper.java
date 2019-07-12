@@ -62,7 +62,7 @@ public class FileWrapper {
         this.ownername = ownername;
         this.version = version;
         if (pointer == null)
-            props = new FileProperties("/", true, "", 0, LocalDateTime.MIN, false, Optional.empty());
+            props = new FileProperties("/", true, "", 0, LocalDateTime.MIN, false, Optional.empty(), Optional.empty());
         else {
             SymmetricKey parentKey = this.getParentKey();
             props = pointer.fileAccess.getProperties(parentKey);
@@ -691,7 +691,7 @@ public class FileWrapper {
             return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
                     (s, committer) -> uploadFileSection(s, committer, filename, fileData,
                             false, 0, fileSize, Optional.empty(), overwriteExisting,
-                            network, crypto, monitor, generateChildLocationsFromSize(fileSize, crypto.random))
+                            network, crypto, monitor, crypto.random.randomBytes(32))
             ).thenCompose(finished -> getUpdated(finished, network));
         return getPath(network).thenCompose(path ->
                 Transaction.buildFileUploadTransaction(Paths.get(path).resolve(filename).toString(), fileSize, fileData, signingPair(),
@@ -700,7 +700,7 @@ public class FileWrapper {
                         (s, committer) -> transactions.open(s, committer, txn).thenCompose(v -> fileData.reset()
                                 .thenCompose(reset -> uploadFileSection(v, committer, filename, reset,
                                         false, 0, fileSize, Optional.empty(), overwriteExisting,
-                                        network, crypto, monitor, txn.getLocations()))
+                                        network, crypto, monitor, txn.getLocations().get(0).getMapKey()))
                                 .thenCompose(uploaded -> transactions.close(uploaded, committer, txn))
                         ))
                         .exceptionally(t -> {
@@ -718,9 +718,9 @@ public class FileWrapper {
                                                                 NetworkAccess network,
                                                                 Crypto crypto,
                                                                 ProgressConsumer<Long> monitor,
-                                                                List<Location> locations) {
+                                                                byte[] firstChunkMapKey) {
         return uploadFileSection(filename, fileData, false, 0, length, Optional.empty(),
-                true, network, crypto, monitor, locations);
+                true, network, crypto, monitor, firstChunkMapKey);
     }
 
     /**
@@ -735,7 +735,7 @@ public class FileWrapper {
      * @param network
      * @param crypto
      * @param monitor A way to report back progress in number of bytes of file written
-     * @param locations The planned locations for the chunks
+     * @param firstChunkMapKey The planned location for the first chunk
      * @return The updated version of this directory after the upload
      */
     public CompletableFuture<FileWrapper> uploadFileSection(String filename,
@@ -748,10 +748,10 @@ public class FileWrapper {
                                                             NetworkAccess network,
                                                             Crypto crypto,
                                                             ProgressConsumer<Long> monitor,
-                                                            List<Location> locations) {
+                                                            byte[] firstChunkMapKey) {
         return network.synchronizer.applyComplexUpdate(owner(), signingPair(), (current, committer) ->
                 uploadFileSection(current, committer, filename, fileData, isHidden, startIndex, endIndex,
-                        baseKey, overwriteExisting, network, crypto, monitor, locations))
+                        baseKey, overwriteExisting, network, crypto, monitor, firstChunkMapKey))
                 .thenCompose(finalBase -> getUpdated(finalBase, network));
     }
 
@@ -767,7 +767,7 @@ public class FileWrapper {
                                                          NetworkAccess network,
                                                          Crypto crypto,
                                                          ProgressConsumer<Long> monitor,
-                                                         List<Location> locations) {
+                                                         byte[] firstChunkMapKey) {
         if (!isLegalName(filename)) {
             CompletableFuture<Snapshot> res = new CompletableFuture<>();
             res.completeExceptionally(new IllegalStateException("Illegal filename: " + filename));
@@ -803,18 +803,19 @@ public class FileWrapper {
 
                                             return calculateMimeType(fileData, endIndex, filename).thenCompose(mimeType -> fileData.reset()
                                                     .thenCompose(resetReader -> {
+                                                        Optional<byte[]> streamSecret = Optional.of(crypto.random.randomBytes(32));
                                                         FileProperties fileProps = new FileProperties(filename, false, mimeType, endIndex,
-                                                                LocalDateTime.now(), isHidden, Optional.empty());
+                                                                LocalDateTime.now(), isHidden, Optional.empty(), streamSecret);
 
                                                         FileUploader chunks = new FileUploader(filename, mimeType, resetReader,
-                                                                startIndex, endIndex, fileKey, dataKey, parentLocation, dirParentKey, monitor, fileProps,
-                                                                locations);
+                                                                startIndex, endIndex, fileKey, dataKey, parentLocation,
+                                                                dirParentKey, monitor, fileProps, firstChunkMapKey);
 
                                                         SigningPrivateKeyAndPublicHash signer = signingPair();
                                                         WritableAbsoluteCapability fileWriteCap = new
                                                                 WritableAbsoluteCapability(owner(),
                                                                 signer.publicKeyHash,
-                                                                locations.get(0).getMapKey(), fileKey,
+                                                                firstChunkMapKey, fileKey,
                                                                 fileWriteKey);
 
                                                         return chunks.upload(current, committer, network, parentLocation.owner, signer, crypto.hasher)
@@ -822,7 +823,7 @@ public class FileWrapper {
                                                                 .thenCompose(cwd -> fileData.reset().thenCompose(resetAgain ->
                                                                         generateThumbnailAndUpdate(cwd, committer, fileWriteCap, filename, resetAgain,
                                                                                 network, thumbnailSrcImageSize, isHidden, mimeType,
-                                                                                endIndex, LocalDateTime.now())));
+                                                                                endIndex, LocalDateTime.now(), streamSecret)));
                                                     }));
                                         })
                         )
@@ -839,11 +840,12 @@ public class FileWrapper {
                                                                    Boolean isHidden,
                                                                    String mimeType,
                                                                    long endIndex,
-                                                                   LocalDateTime updatedDateTime) {
+                                                                   LocalDateTime updatedDateTime,
+                                                                   Optional<byte[]> streamSecret) {
         return generateThumbnail(network, fileData, thumbNailSize, fileName)
                 .thenCompose(thumbData -> {
                     FileProperties fileProps = new FileProperties(fileName, false, mimeType, endIndex,
-                            updatedDateTime, isHidden, thumbData);
+                            updatedDateTime, isHidden, thumbData, streamSecret);
 
                     return network.getFile(base, cap, getChildsEntryWriter(), ownername)
                             .thenCompose(child -> child.get()
@@ -876,7 +878,12 @@ public class FileWrapper {
                         child.map(f -> f.getSize()).orElse(0L),
                         fileData.length + child.map(f -> f.getSize()).orElse(0L),
                         child.map(f -> f.getPointer().capability.rBaseKey), true, network, crypto,
-                        monitor, generateChildLocationsFromSize(fileData.length, crypto.random)));
+                        monitor, child
+                                .flatMap(c -> c.getFileProperties().streamSecret)
+                                .map(secret -> FileProperties.calculateMapKey(secret,
+                                        child.get().getLocation().getMapKey(),
+                                        child.get().getFileProperties().size, crypto.hasher))
+                                .orElseGet(() -> crypto.random.randomBytes(32))));
     }
 
     /**
@@ -976,7 +983,8 @@ public class FileWrapper {
                                         long currentSize = filesSize.get();
                                         FileProperties newProps = new FileProperties(childProps.name, false, childProps.mimeType,
                                                 endIndex > currentSize ? endIndex : currentSize,
-                                                LocalDateTime.now(), childProps.isHidden, childProps.thumbnail);
+                                                LocalDateTime.now(), childProps.isHidden,
+                                                childProps.thumbnail, childProps.streamSecret);
 
                                         CompletableFuture<Snapshot> chunkUploaded = FileUploader.uploadChunk(version, committer, child.signingPair(),
                                                 newProps, getLocation(), us.getParentKey(), baseKey, located,
@@ -1116,7 +1124,8 @@ public class FileWrapper {
                         FileProperties currentProps = fileAccess.getProperties(key);
 
                         FileProperties newProps = new FileProperties(newFilename, isDir, currentProps.mimeType, currentProps.size,
-                                currentProps.modified, currentProps.isHidden, currentProps.thumbnail);
+                                currentProps.modified, currentProps.isHidden,
+                                currentProps.thumbnail, currentProps.streamSecret);
                         SigningPrivateKeyAndPublicHash signer = signingPair();
                         return userContext.network.synchronizer.applyComplexUpdate(owner(), signer,
                                 (s, committer) -> fileAccess.updateProperties(s, committer, writableFilePointer(),
@@ -1223,7 +1232,7 @@ public class FileWrapper {
                                     .thenCompose(stream -> target.uploadFileSection(snapshot, committer,
                                             getName(), stream, false, 0, getSize(),
                                             Optional.empty(), false, network, crypto, x -> {},
-                                            target.generateChildLocations(props.getNumberOfChunks(), random))));
+                                            random.randomBytes(32))));
                 }
             });
         }).thenApply(newAccess -> true);

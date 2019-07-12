@@ -719,7 +719,7 @@ public class UserContext {
                         CryptreeNode.DirAndChildren root =
                                 CryptreeNode.createDir(MaybeMultihash.empty(), rootRKey, rootWKey, Optional.of(writerPair),
                                 new FileProperties(directoryName, true, "", 0, LocalDateTime.now(),
-                                        false, Optional.empty()), Optional.empty(), SymmetricKey.random(), nextChunk, crypto.hasher);
+                                        false, Optional.empty(), Optional.empty()), Optional.empty(), SymmetricKey.random(), nextChunk, crypto.hasher);
 
                         LOG.info("Uploading entry point directory");
                         return WriterData.createEmpty(owner.publicKeyHash, writerPair, network.dhtClient)
@@ -900,7 +900,7 @@ public class UserContext {
                                     network,
                                     crypto,
                                     x -> {},
-                                    home.generateChildLocationsFromSize(serialized.size(), crypto.random)))
+                                    crypto.random.randomBytes(32)))
                     .thenApply(x -> true);
         });
     }
@@ -1284,7 +1284,7 @@ public class UserContext {
                     return getUserRoot().thenCompose(home ->
                             home.uploadFileSection(filename, reader, true, offset,
                                     offset + data.length, base, true, network, crypto, x -> {},
-                                    home.generateChildLocations(1, crypto.random)));
+                                    crypto.random.randomBytes(32)));
                 });
     }
 
@@ -1589,7 +1589,7 @@ public class UserContext {
                 LOG.info("Posting the feedback!");
                 byte[] feedbackBytes = feedback.getBytes();
                 return feedbackWrapper.uploadOrOverwriteFile(filename, AsyncReader.build(feedbackBytes), feedbackBytes.length,
-                        network, crypto, x -> {}, feedbackWrapper.generateChildLocationsFromSize(feedbackBytes.length, crypto.random));
+                        network, crypto, x -> {}, crypto.random.randomBytes(32));
             }
             )
             .thenCompose(x -> shareReadAccessWith(path.resolve(filename), Collections.singleton(PEERGOS_USERNAME)));

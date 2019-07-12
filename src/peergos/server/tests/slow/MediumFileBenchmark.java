@@ -72,8 +72,7 @@ public class MediumFileBenchmark {
             String filename = names.get(i);
             long t1 = System.currentTimeMillis();
             userRoot = userRoot.uploadOrOverwriteFile(filename, AsyncReader.build(data), data.length, context.network,
-                    crypto, x-> {},
-                    userRoot.generateChildLocationsFromSize(data.length, crypto.random)).join();
+                    crypto, x-> {}, context.crypto.random.randomBytes(32)).join();
             long duration = System.currentTimeMillis() - t1;
             worst = Math.max(worst, duration);
             best = Math.min(best, duration);

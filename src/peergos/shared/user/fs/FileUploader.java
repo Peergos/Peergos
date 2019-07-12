@@ -29,7 +29,7 @@ public class FileUploader implements AutoCloseable {
     private final SymmetricKey parentparentKey;
     private final ProgressConsumer<Long> monitor;
     private final AsyncReader reader; // resettable input stream
-    private final List<Location> locations;
+    private final byte[] firstLocation;
 
     @JsConstructor
     public FileUploader(String name, String mimeType, AsyncReader fileData,
@@ -40,10 +40,11 @@ public class FileUploader implements AutoCloseable {
                         SymmetricKey parentparentKey,
                         ProgressConsumer<Long> monitor,
                         FileProperties fileProperties,
-                        List<Location> locations) {
+                        byte[] firstLocation) {
         long length = (lengthLow & 0xFFFFFFFFL) + ((lengthHi & 0xFFFFFFFFL) << 32);
         if (fileProperties == null)
-            this.props = new FileProperties(name, false, mimeType, length, LocalDateTime.now(), false, Optional.empty());
+            this.props = new FileProperties(name, false, mimeType, length, LocalDateTime.now(),
+                    false, Optional.empty(), Optional.empty());
         else
             this.props = fileProperties;
         if (baseKey == null) baseKey = SymmetricKey.random();
@@ -61,14 +62,14 @@ public class FileUploader implements AutoCloseable {
         this.parentLocation = parentLocation;
         this.parentparentKey = parentparentKey;
         this.monitor = monitor;
-        this.locations = locations;
+        this.firstLocation = firstLocation;
     }
 
     public FileUploader(String name, String mimeType, AsyncReader fileData, long offset, long length,
                         SymmetricKey baseKey, SymmetricKey dataKey, Location parentLocation, SymmetricKey parentparentKey,
-                        ProgressConsumer<Long> monitor, FileProperties fileProperties, List<Location> locations) {
+                        ProgressConsumer<Long> monitor, FileProperties fileProperties, byte[] firstLocation) {
         this(name, mimeType, fileData, (int)(offset >> 32), (int) offset, (int) (length >> 32), (int) length,
-                baseKey, dataKey, parentLocation, parentparentKey, monitor, fileProperties, locations);
+                baseKey, dataKey, parentLocation, parentparentKey, monitor, fileProperties, firstLocation);
     }
 
     public CompletableFuture<Snapshot> uploadChunk(Snapshot current,
@@ -89,10 +90,12 @@ public class FileUploader implements AutoCloseable {
         byte[] data = new byte[length];
         return reader.readIntoArray(data, 0, data.length).thenCompose(b -> {
             byte[] nonce = baseKey.createNonce();
-            byte[] mapKey = locations.get((int) chunkIndex).getMapKey();
+            byte[] mapKey = FileProperties.calculateMapKey(props.streamSecret.get(), firstLocation,
+                    chunkIndex * Chunk.MAX_SIZE, hasher);
             Chunk chunk = new Chunk(data, dataKey, mapKey, nonce);
             LocatedChunk locatedChunk = new LocatedChunk(new Location(owner, writer.publicKeyHash, chunk.mapKey()), ourExistingHash, chunk);
-            Location nextLocation = new Location(owner, writer.publicKeyHash, locations.get((int) chunkIndex + 1).getMapKey());
+            byte[] nextMapKey = FileProperties.calculateNextMapKey(props.streamSecret.get(), mapKey, hasher);
+            Location nextLocation = new Location(owner, writer.publicKeyHash, nextMapKey);
             return uploadChunk(current, committer, writer, props, parentLocation, parentparentKey, baseKey, locatedChunk,
                     nextLocation, Optional.empty(), hasher, network, monitor);
         });

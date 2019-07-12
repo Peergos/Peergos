@@ -46,8 +46,7 @@ public class PeergosFileSystemImpl implements FileSystem {
         AsyncReader resetableFileInputStream = new AsyncReader.ArrayBacked(data);
         String fileName = path.getFileName().toString();
         FileWrapper fileWrapper = directory.uploadOrOverwriteFile(fileName, resetableFileInputStream, data.length,
-                userContext.network, userContext.crypto, x -> {},
-                userContext.getUserRoot().join().generateChildLocationsFromSize(data.length, userContext.crypto.random)).join();
+                userContext.network, userContext.crypto, x -> {}, userContext.crypto.random.randomBytes(32)).join();
 
     }
 

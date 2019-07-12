@@ -51,7 +51,7 @@ public class RamUserTests extends UserTests {
         byte[] data = new byte[0];
         user1.getByPath(Paths.get(username1, folder1, folder11)).join().get()
                 .uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length, user1.network,
-                crypto, l -> {}, user1Root.generateChildLocationsFromSize(0, crypto.random)).get();
+                crypto, l -> {}, crypto.random.randomBytes(32)).get();
 
         // create 2nd user and friend user1
         String username2 = generateUsername();

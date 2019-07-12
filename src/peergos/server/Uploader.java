@@ -112,7 +112,7 @@ public class Uploader {
                 FileWrapper parent = context.getByPath(targetParent.toString()).join().get();
                 parent.uploadOrOverwriteFile(file.getName(), fileData, file.length(),
                         context.network, context.crypto, l -> {},
-                        parent.generateChildLocationsFromSize(file.length(), context.crypto.random)).get();
+                        context.crypto.random.randomBytes(32)).get();
             } catch (Exception e) {
                 System.err.println("Error uploading " + source);
                 e.printStackTrace();

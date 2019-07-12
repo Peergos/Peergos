@@ -579,7 +579,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
             FileWrapper newParent = file.treeNode.remove(parent.treeNode, context).get();
             FileWrapper b = newParent.uploadOrOverwriteFile(file.properties.name, new AsyncReader.ArrayBacked(truncated),
                     truncated.length, context.network, context.crypto, l -> {},
-                    newParent.generateChildLocationsFromSize(truncated.length, context.crypto.random)).get();
+                    context.crypto.random.randomBytes(32)).get();
             return (int) size;
         } catch (Throwable t) {
             LOG.log(Level.WARNING, t.getMessage(), t);
@@ -598,7 +598,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
             FileWrapper b = parent.treeNode.uploadFileSection(name, new AsyncReader.ArrayBacked(toWrite), false, offset,
                     offset + size, Optional.empty(), true, context.network,
                     context.crypto, l -> {},
-                    parent.treeNode.generateChildLocationsFromSize(size, context.crypto.random)).get();
+                    context.crypto.random.randomBytes(32)).get();
             return (int) size;
         } catch (Throwable t) {
             LOG.log(Level.WARNING, t.getMessage(), t);
