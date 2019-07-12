@@ -113,7 +113,7 @@ public class PublicFileHandler implements HttpHandler {
             } else {
                 long fileSize = file.getSize();
                 httpExchange.sendResponseHeaders(200, fileSize);
-                AsyncReader reader = file.getInputStream(network, null, x -> {}).get();
+                AsyncReader reader = file.getInputStream(network, crypto, x -> {}).get();
                 byte[] buf = new byte[(int) Math.min(fileSize, 5 * 1024 * 1024)];
                 long read = 0;
                 OutputStream out = httpExchange.getResponseBody();
