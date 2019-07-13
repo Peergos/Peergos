@@ -43,7 +43,7 @@ public class EncryptedChunkRetriever implements FileRetriever {
                 .thenApply(chunk -> {
                     Location nextChunkPointer = ourCap.withMapKey(nextChunkLabel).getLocation();
                     return new LazyInputStreamCombiner(version, 0,
-                            chunk.get().chunk.data(), ourCap.getMapKey(), nextChunkPointer,
+                            chunk.get().chunk.data(), nextChunkPointer,
                             chunk.get().chunk.data(), ourCap.getMapKey(), streamSecret, nextChunkPointer,
                             network, crypto, ourCap.rBaseKey, fileSize, monitor);
                 });

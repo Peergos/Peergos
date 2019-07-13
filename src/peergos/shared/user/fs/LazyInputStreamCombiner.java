@@ -26,7 +26,6 @@ public class LazyInputStreamCombiner implements AsyncReader {
     private final AbsoluteCapability originalNextPointer;
 
     private byte[] currentChunk;
-    private byte[] currentChunkLocation;
     private AbsoluteCapability nextChunkPointer;
 
     private long globalIndex; // index of beginning of current chunk in file
@@ -35,7 +34,6 @@ public class LazyInputStreamCombiner implements AsyncReader {
     public LazyInputStreamCombiner(WriterData version,
                                    long globalIndex,
                                    byte[] chunk,
-                                   byte[] chunkLocation,
                                    Location nextChunkPointer,
                                    byte[] originalChunk,
                                    byte[] originalChunkLocation,
@@ -59,7 +57,6 @@ public class LazyInputStreamCombiner implements AsyncReader {
         this.streamSecret = streamSecret;
         this.originalNextPointer = AbsoluteCapability.build(originalNextChunkPointer, baseKey);
         this.currentChunk = chunk;
-        this.currentChunkLocation = chunkLocation;
         this.nextChunkPointer = AbsoluteCapability.build(nextChunkPointer, baseKey);
         this.globalIndex = globalIndex;
         this.index = 0;
@@ -68,13 +65,13 @@ public class LazyInputStreamCombiner implements AsyncReader {
     public CompletableFuture<Boolean> getNextStream(int len) {
         return getSubsequentMetadata(this.nextChunkPointer, 0)
                 .thenCompose(access -> getChunk(access, nextChunkPointer.getMapKey(), len))
-                .thenApply(t -> {
-                    updateState(0,globalIndex + Chunk.MAX_SIZE, t.left, t.middle, t.right);
+                .thenApply(p -> {
+                    updateState(0,globalIndex + Chunk.MAX_SIZE, p.left, p.right);
                     return true;
                 });
     }
 
-    private CompletableFuture<Triple<byte[], byte[], AbsoluteCapability>> getChunk(CryptreeNode access, byte[] chunkLocation, int truncateTo) {
+    private CompletableFuture<Pair<byte[], AbsoluteCapability>> getChunk(CryptreeNode access, byte[] chunkLocation, int truncateTo) {
         if (access.isDirectory())
                 throw new IllegalStateException("File linked to a directory for its next chunk!");
         FileRetriever nextRet = access.retriever(baseKey, streamSecret, chunkLocation, crypto.hasher);
@@ -84,7 +81,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
                 nextChunkPointer.withMapKey(chunkLocation), streamSecret, access.committedHash(), monitor)
                 .thenApply(x -> {
                     byte[] nextData = x.get().chunk.data();
-                    return new Triple<>(nextData, chunkLocation, newNextChunkPointer);
+                    return new Pair<>(nextData, newNextChunkPointer);
                 });
     }
 
@@ -136,15 +133,14 @@ public class LazyInputStreamCombiner implements AsyncReader {
                 AbsoluteCapability targetPointer = nextChunkPointer.withMapKey(targetChunkLocation);
                 return getSubsequentMetadata(targetPointer, 0)
                     .thenCompose(access -> getChunk(access, targetPointer.getMapKey(), truncateTo))
-                    .thenApply(p -> new LazyInputStreamCombiner(version, finalOffset, p.left, targetChunkLocation, p.right.getLocation(),
+                    .thenApply(p -> new LazyInputStreamCombiner(version, finalOffset, p.left, p.right.getLocation(),
                             originalChunk, originalChunkLocation, streamSecret, originalNextPointer.getLocation(),
                             network, crypto, baseKey, totalLength, x -> {}))
                     .thenCompose(reader -> reader.skip(finalInternalIndex));
             }
             return getSubsequentMetadata(nextChunkPointer, chunksToSkip)
                     .thenCompose(access -> getChunk(access, nextChunkPointer.getMapKey(), truncateTo))
-                    .thenApply(p -> new LazyInputStreamCombiner(version, finalOffset, p.left,
-                            nextChunkPointer.getMapKey(), p.right.getLocation(),
+                    .thenApply(p -> new LazyInputStreamCombiner(version, finalOffset, p.left, p.right.getLocation(),
                             originalChunk, originalChunkLocation, streamSecret, originalNextPointer.getLocation(),
                             network, crypto, baseKey, totalLength, x -> {}))
                     .thenCompose(reader -> reader.skip(finalInternalIndex));
@@ -208,12 +204,10 @@ public class LazyInputStreamCombiner implements AsyncReader {
     private void updateState(int index,
                              long globalIndex,
                              byte[] chunk,
-                             byte[] currentChunkMapKey,
                              AbsoluteCapability nextChunkPointer) {
         this.index = index;
         this.globalIndex = globalIndex;
         this.currentChunk = chunk;
-        this.currentChunkLocation = currentChunkMapKey;
         this.nextChunkPointer = nextChunkPointer;
     }
 
