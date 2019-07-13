@@ -59,6 +59,10 @@ public class EncryptedChunkRetriever implements FileRetriever {
             return CompletableFuture.completedFuture(Optional.of(startCap.getMapKey()));
         if (offset < 2*Chunk.MAX_SIZE)
             return CompletableFuture.completedFuture(Optional.of(nextChunkLabel)); // chunk at this location hasn't been written yet, only referenced by previous chunk
+        if (streamSecret.isPresent()) {
+            byte[] mapKey = FileProperties.calculateMapKey(streamSecret.get(), startCap.getMapKey(), offset, hasher);
+            return CompletableFuture.completedFuture(Optional.of(mapKey));
+        }
         return network.getMetadata(version, startCap.withMapKey(nextChunkLabel))
                 .thenCompose(meta -> meta.isPresent() ?
                         meta.get().retriever(startCap.rBaseKey, streamSecret, nextChunkLabel, hasher)

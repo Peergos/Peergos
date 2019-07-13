@@ -646,8 +646,10 @@ public class FileWrapper {
         if (isDirectory()) {
             throw new IllegalStateException("Directories are never dirty (they are cleaned immediately)!");
         } else {
-            return pointer.fileAccess.cleanAndCommit(current, committer, writableFilePointer(), props.streamSecret,
-                    signingPair(), SymmetricKey.random(), parent.getLocation(), parent.getParentKey(), network, crypto)
+            WritableAbsoluteCapability currentCap = writableFilePointer();
+            return pointer.fileAccess.cleanAndCommit(current, committer, currentCap, currentCap, props.streamSecret,
+                    Optional.empty(), signingPair(), SymmetricKey.random(),
+                    parent.getLocation(), parent.getParentKey(), network, crypto)
                     .thenApply(cwd -> {
                         setModified();
                         return new Pair<>(parent, cwd);
@@ -958,7 +960,12 @@ public class FileWrapper {
 
                                     LocatedChunk currentOriginal = pair.left.get();
                                     Optional<Location> nextChunkLocationOpt = pair.right;
-                                    Location nextChunkLocation = nextChunkLocationOpt.orElseGet(locationSupplier);
+                                    Location nextChunkLocation = nextChunkLocationOpt
+                                            .orElseGet(() -> childProps.streamSecret
+                                                    .map(streamSecret -> child.getLocation()
+                                                            .withMapKey(FileProperties.calculateNextMapKey(streamSecret,
+                                                                    currentOriginal.location.getMapKey(), crypto.hasher)))
+                                                    .orElseGet(locationSupplier));
                                     LOG.info("********** Writing to chunk at mapkey: " + ArrayOps.bytesToHex(currentOriginal.location.getMapKey()) + " next: " + nextChunkLocation);
 
                                     // modify chunk, re-encrypt and upload
@@ -1019,7 +1026,7 @@ public class FileWrapper {
                                 if (existingProps.size >= endIndex)
                                     return CompletableFuture.completedFuture(updatedBase);
                                 WritableAbsoluteCapability cap = child.writableFilePointer();
-                                FileProperties newProps = existingProps.withSize(endIndex);
+                                FileProperties newProps = childProps.withSize(endIndex);
                                 return network.getFile(updatedBase, cap, getChildsEntryWriter(), ownername)
                                         .thenCompose(updatedChild -> updatedChild.get()
                                                 .getPointer().fileAccess.updateProperties(updatedBase, committer, cap,

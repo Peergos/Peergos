@@ -465,7 +465,9 @@ public class CryptreeNode implements Cborable {
     public CompletableFuture<Snapshot> cleanAndCommit(Snapshot current,
                                                       Committer committer,
                                                       WritableAbsoluteCapability cap,
+                                                      WritableAbsoluteCapability newCap,
                                                       Optional<byte[]> streamSecret,
+                                                      Optional<byte[]> newStreamSecret,
                                                       SigningPrivateKeyAndPublicHash writer,
                                                       SymmetricKey newDataKey,
                                                       Location parentLocation,
@@ -473,7 +475,16 @@ public class CryptreeNode implements Cborable {
                                                       NetworkAccess network,
                                                       Crypto crypto) {
         FileProperties props = getProperties(cap.rBaseKey);
-        AbsoluteCapability nextCap = cap.withMapKey(getNextChunkLocation(cap.rBaseKey, streamSecret, cap.getMapKey(), crypto.hasher));
+        Optional<byte[]> finalNewSecret = streamSecret.map(x -> newStreamSecret
+                .orElseGet(() -> crypto.random.randomBytes(32)));
+        FileProperties updatedFileProperties = finalNewSecret
+                .map(ns -> props.withNewStreamSecret(ns))
+                .orElse(props);
+        WritableAbsoluteCapability nextCap = cap.withMapKey(
+                getNextChunkLocation(cap.rBaseKey, streamSecret, cap.getMapKey(), crypto.hasher));
+        WritableAbsoluteCapability newNextCap = cap.withMapKey(
+                getNextChunkLocation(cap.rBaseKey, finalNewSecret, newCap.getMapKey(), crypto.hasher));
+
         return retriever(cap.rBaseKey, streamSecret, cap.getMapKey(), crypto.hasher)
                 .getFile(current.get(writer).props, network, crypto, cap, streamSecret, props.size, committedHash(), x -> {})
                 .thenCompose(data -> {
@@ -482,21 +493,23 @@ public class CryptreeNode implements Cborable {
                     return data.readIntoArray(chunkData, 0, chunkSize)
                             .thenCompose(read -> {
                                 byte[] nonce = cap.rBaseKey.createNonce();
-                                byte[] mapKey = cap.getMapKey();
+                                byte[] mapKey = newCap.getMapKey();
 
                                 Chunk chunk = new Chunk(chunkData, newDataKey, mapKey, nonce);
-                                LocatedChunk locatedChunk = new LocatedChunk(cap.getLocation(), lastCommittedHash, chunk);
-                                return FileUploader.uploadChunk(current, committer, writer, props.withNewStreamSecret(crypto.random.randomBytes(32)), parentLocation,
+                                LocatedChunk locatedChunk = new LocatedChunk(newCap.getLocation(), lastCommittedHash, chunk);
+
+                                return FileUploader.uploadChunk(current, committer, writer, updatedFileProperties, parentLocation,
                                         parentParentKey, cap.rBaseKey, locatedChunk,
-                                        nextCap.getLocation(), getWriterLink(cap.rBaseKey), crypto.hasher, network, x -> {
+                                        newNextCap.getLocation(), getWriterLink(cap.rBaseKey), crypto.hasher, network, x -> {
                                         });
                             });
                 }).thenCompose(updated -> network.getMetadata(updated.get(nextCap.writer).props, nextCap)
                         .thenCompose(mOpt -> {
                             if (! mOpt.isPresent())
                                 return CompletableFuture.completedFuture(updated);
-                            return mOpt.get().cleanAndCommit(updated, committer, cap.withMapKey(nextCap.getMapKey()),
-                                    streamSecret, writer, newDataKey, parentLocation, parentParentKey, network, crypto);
+                            return mOpt.get().cleanAndCommit(updated, committer, nextCap, newNextCap,
+                                    streamSecret, updatedFileProperties.streamSecret, writer, newDataKey,
+                                    parentLocation, parentParentKey, network, crypto);
                         }));
     }
 

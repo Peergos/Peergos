@@ -181,8 +181,8 @@ public class PeergosNetworkUtils {
         parent.uploadFileSection(filename, suffixStream, false, originalFileContents.length, originalFileContents.length + suffix.length,
                 Optional.empty(), true, updatedSharerUser.network, crypto, l -> {},
                 null).get();
-        AsyncReader extendedContents = updatedSharerUser.getByPath(sharerUser.username + "/" + filename).get().get().getInputStream(updatedSharerUser.network,
-                crypto, l -> {}).get();
+        AsyncReader extendedContents = updatedSharerUser.getByPath(sharerUser.username + "/" + filename).get().get()
+                .getInputStream(updatedSharerUser.network, crypto, l -> {}).get();
         byte[] newFileContents = Serialize.readFully(extendedContents, originalFileContents.length + suffix.length).get();
 
         Assert.assertTrue(Arrays.equals(newFileContents, ArrayOps.concat(originalFileContents, suffix)));
