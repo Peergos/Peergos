@@ -509,7 +509,10 @@ public class CryptreeNode implements Cborable {
                                 return CompletableFuture.completedFuture(updated);
                             return mOpt.get().cleanAndCommit(updated, committer, nextCap, newNextCap,
                                     streamSecret, updatedFileProperties.streamSecret, writer, newDataKey,
-                                    parentLocation, parentParentKey, network, crypto);
+                                    parentLocation, parentParentKey, network, crypto)
+                                    .thenCompose(snapshot ->
+                                            IpfsTransaction.call(cap.owner, tid -> network.deleteChunk(snapshot, committer, mOpt.get(),
+                                            cap.owner, nextCap.getMapKey(), writer, tid), network.dhtClient));
                         }));
     }
 
