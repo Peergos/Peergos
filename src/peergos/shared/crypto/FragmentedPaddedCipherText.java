@@ -92,6 +92,12 @@ public class FragmentedPaddedCipherText implements Cborable {
                 .thenApply(fargs -> new CipherText(nonce, recombine(fargs)).decrypt(from, fromCbor));
     }
 
+    private static byte[][] generateCache() {
+        return new byte[40][Fragment.MAX_LENGTH];
+    }
+
+    private static ThreadLocal<byte[][]> arrayCache = ThreadLocal.withInitial(FragmentedPaddedCipherText::generateCache);
+
     public static byte[][] split(byte[] input, int maxFragmentSize) {
         //calculate padding length to align to 256 bytes
         int padding = 0;
@@ -107,11 +113,15 @@ public class FragmentedPaddedCipherText implements Cborable {
             nFragments++;
 
         byte[][] split = new  byte[nFragments][];
+
+        byte[][] cache = arrayCache.get();
+        int cacheIndex = 0;
         for(int i= 0; i< nFragments; ++i) {
             int start = maxFragmentSize * i;
             int end = Math.min(input.length, start + maxFragmentSize);
             int length = end - start;
-            byte[] b = new byte[length];
+            boolean useCache = length == Fragment.MAX_LENGTH;
+            byte[] b = useCache ? cache[cacheIndex++] : new byte[length];
             System.arraycopy(input, start, b, 0, length);
             split[i] = b;
         }
