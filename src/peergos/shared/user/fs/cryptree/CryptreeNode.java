@@ -374,7 +374,7 @@ public class CryptreeNode implements Cborable {
     }
 
     private static Pair<FragmentedPaddedCipherText, List<FragmentWithHash>> buildChildren(ChildrenLinks children, SymmetricKey rBaseKey, Hasher hasher) {
-        return FragmentedPaddedCipherText.build(rBaseKey, children, MIN_FRAGMENT_SIZE, Fragment.MAX_LENGTH, hasher);
+        return FragmentedPaddedCipherText.build(rBaseKey, children, MIN_FRAGMENT_SIZE, Fragment.MAX_LENGTH, hasher, false);
     }
 
     public <T> CompletableFuture<T> getLinkedData(SymmetricKey baseOrDataKey,
@@ -799,10 +799,11 @@ public class CryptreeNode implements Cborable {
                                                                         Location parentLocation,
                                                                         SymmetricKey parentparentKey,
                                                                         RelativeCapability nextChunk,
-                                                                        Hasher hasher) {
+                                                                        Hasher hasher,
+                                                                        boolean allowArrayCache) {
         Pair<FragmentedPaddedCipherText, List<FragmentWithHash>> linksAndData =
                 FragmentedPaddedCipherText.build(dataKey, new CborObject.CborByteArray(chunkData),
-                        MIN_FRAGMENT_SIZE, Fragment.MAX_LENGTH, hasher);
+                        MIN_FRAGMENT_SIZE, Fragment.MAX_LENGTH, hasher, allowArrayCache);
         RelativeCapability toParent = new RelativeCapability(Optional.empty(), parentLocation.getMapKey(),
                 parentparentKey, Optional.empty());
         CryptreeNode cryptree = createFile(existingHash, Optional.empty(), parentKey, dataKey, props,
@@ -860,7 +861,7 @@ public class CryptreeNode implements Cborable {
         PaddedCipherText encryptedBaseBlock = PaddedCipherText.build(rBaseKey, fromBase, BASE_BLOCK_PADDING_BLOCKSIZE);
         PaddedCipherText encryptedParentBlock = PaddedCipherText.build(parentKey, fromParent, META_DATA_PADDING_BLOCKSIZE);
         Pair<FragmentedPaddedCipherText, List<FragmentWithHash>> linksAndData =
-                FragmentedPaddedCipherText.build(rBaseKey, children, MIN_FRAGMENT_SIZE, Fragment.MAX_LENGTH, hasher);
+                FragmentedPaddedCipherText.build(rBaseKey, children, MIN_FRAGMENT_SIZE, Fragment.MAX_LENGTH, hasher, false);
         CryptreeNode metadata = new CryptreeNode(lastCommittedHash, true, encryptedBaseBlock, linksAndData.left, encryptedParentBlock);
         return new DirAndChildren(metadata, linksAndData.right);
     }

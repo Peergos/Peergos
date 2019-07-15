@@ -61,7 +61,8 @@ public class FragmentedPaddedCipherText implements Cborable {
                                                                                                       T secret,
                                                                                                       int paddingBlockSize,
                                                                                                       int maxFragmentSize,
-                                                                                                      Hasher hasher) {
+                                                                                                      Hasher hasher,
+                                                                                                      boolean allowArrayCache) {
         if (paddingBlockSize < 1)
             throw new IllegalStateException("Invalid padding block size: " + paddingBlockSize);
         byte[] nonce = from.createNonce();
@@ -73,7 +74,7 @@ public class FragmentedPaddedCipherText implements Cborable {
             return new Pair<>(new FragmentedPaddedCipherText(nonce, Collections.singletonList(frag.hash)), Collections.singletonList(frag));
         }
 
-        byte[][] split = split(cipherText, maxFragmentSize);
+        byte[][] split = split(cipherText, maxFragmentSize, allowArrayCache);
 
         List<FragmentWithHash> frags = Arrays.stream(split)
                 .map(d -> new FragmentWithHash(new Fragment(d), hasher.hash(d, true)))
@@ -92,39 +93,13 @@ public class FragmentedPaddedCipherText implements Cborable {
                 .thenApply(fargs -> new CipherText(nonce, recombine(fargs)).decrypt(from, fromCbor));
     }
 
-    public static final class ArrayCache {
-        private static final int FRAGMENTS_TO_CACHE = 40 * 2;
-        private static final boolean[] available;
-        private static final byte[][] arrays;
-
-        static {
-            arrays = new byte[FRAGMENTS_TO_CACHE][];
-            available = new boolean[arrays.length];
-            for (int i=0; i < arrays.length; i++) {
-                arrays[i] = new byte[Fragment.MAX_LENGTH];
-                available[i] = true;
-            }
-        }
-
-        public static synchronized Optional<byte[]> getArray(int length) {
-            for (int i=0; i < arrays.length; i++)
-                if (available[i] && arrays[i].length == length) {
-                    available[i] = false;
-                    return Optional.of(arrays[i]);
-                }
-            return Optional.empty();
-        }
-
-        public static synchronized void releaseArray(byte[] cached) {
-            for (int i=0; i < arrays.length; i++)
-                if (arrays[i] == cached) {
-                    available[i] = true;
-                    return;
-                }
-        }
+    private static byte[][] generateCache() {
+        return new byte[40][Fragment.MAX_LENGTH];
     }
 
-    public static byte[][] split(byte[] input, int maxFragmentSize) {
+    private static ThreadLocal<byte[][]> arrayCache = ThreadLocal.withInitial(FragmentedPaddedCipherText::generateCache);
+
+    public static byte[][] split(byte[] input, int maxFragmentSize, boolean allowCache) {
         //calculate padding length to align to 256 bytes
         int padding = 0;
         int mod = input.length % 256;
@@ -140,11 +115,14 @@ public class FragmentedPaddedCipherText implements Cborable {
 
         byte[][] split = new  byte[nFragments][];
 
+        byte[][] cache = arrayCache.get();
+        int cacheIndex = 0;
         for(int i= 0; i< nFragments; ++i) {
             int start = maxFragmentSize * i;
             int end = Math.min(input.length, start + maxFragmentSize);
             int length = end - start;
-            byte[] b = ArrayCache.getArray(length).orElseGet(() -> new byte[length]);
+            boolean useCache = allowCache && length == Fragment.MAX_LENGTH;
+            byte[] b = useCache ? cache[cacheIndex++] : new byte[length];
             System.arraycopy(input, start, b, 0, length);
             split[i] = b;
         }

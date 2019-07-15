@@ -136,7 +136,8 @@ public class FileUploader implements AutoCloseable {
             throw new IllegalStateException("Trying to write a chunk to the wrong signing key space!");
         RelativeCapability nextChunk = RelativeCapability.buildSubsequentChunk(nextChunkLocation.getMapKey(), baseKey);
         Pair<CryptreeNode, List<FragmentWithHash>> file = CryptreeNode.createFile(chunk.existingHash, baseKey,
-                chunk.chunk.key(), props, chunk.chunk.data(), parentLocation, parentparentKey, nextChunk, hasher);
+                chunk.chunk.key(), props, chunk.chunk.data(), parentLocation, parentparentKey, nextChunk,
+                hasher, network.isJavascript());
 
         CryptreeNode metadata = file.left.withWriterLink(baseKey, writerLink);
 

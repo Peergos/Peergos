@@ -47,8 +47,11 @@ public class CachingStorage implements ContentAddressedStorage {
                                                   TransactionId tid) {
         return target.put(owner, writer, signatures, blocks, tid)
                 .thenApply(res -> {
-                    for (int i=0; i < blocks.size(); i++)
-                        cache.put(res.get(i), Arrays.copyOf(blocks.get(i), blocks.get(i).length));
+                    for (int i=0; i < blocks.size(); i++) {
+                        byte[] block = blocks.get(i);
+                        if (block.length < maxValueSize)
+                            cache.put(res.get(i), block);
+                    }
                     return res;
                 });
     }
@@ -91,8 +94,11 @@ public class CachingStorage implements ContentAddressedStorage {
                                                      TransactionId tid) {
         return target.putRaw(owner, writer, signatures, blocks, tid)
                 .thenApply(res -> {
-                    for (int i=0; i < blocks.size(); i++)
-                        cache.put(res.get(i), Arrays.copyOf(blocks.get(i), blocks.get(i).length));
+                    for (int i=0; i < blocks.size(); i++) {
+                        byte[] block = blocks.get(i);
+                        if (block.length < maxValueSize)
+                            cache.put(res.get(i), block);
+                    }
                     return res;
                 });
     }
