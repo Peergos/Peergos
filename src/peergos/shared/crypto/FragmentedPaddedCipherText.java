@@ -92,11 +92,37 @@ public class FragmentedPaddedCipherText implements Cborable {
                 .thenApply(fargs -> new CipherText(nonce, recombine(fargs)).decrypt(from, fromCbor));
     }
 
-    private static byte[][] generateCache() {
-        return new byte[40][Fragment.MAX_LENGTH];
-    }
+    public static final class ArrayCache {
+        private static final int FRAGMENTS_TO_CACHE = 40 * 2;
+        private static final boolean[] available;
+        private static final byte[][] arrays;
 
-    private static ThreadLocal<byte[][]> arrayCache = ThreadLocal.withInitial(FragmentedPaddedCipherText::generateCache);
+        static {
+            arrays = new byte[FRAGMENTS_TO_CACHE][];
+            available = new boolean[arrays.length];
+            for (int i=0; i < arrays.length; i++) {
+                arrays[i] = new byte[Fragment.MAX_LENGTH];
+                available[i] = true;
+            }
+        }
+
+        public static synchronized Optional<byte[]> getArray(int length) {
+            for (int i=0; i < arrays.length; i++)
+                if (available[i] && arrays[i].length == length) {
+                    available[i] = false;
+                    return Optional.of(arrays[i]);
+                }
+            return Optional.empty();
+        }
+
+        public static synchronized void releaseArray(byte[] cached) {
+            for (int i=0; i < arrays.length; i++)
+                if (arrays[i] == cached) {
+                    available[i] = true;
+                    return;
+                }
+        }
+    }
 
     public static byte[][] split(byte[] input, int maxFragmentSize) {
         //calculate padding length to align to 256 bytes
@@ -114,14 +140,11 @@ public class FragmentedPaddedCipherText implements Cborable {
 
         byte[][] split = new  byte[nFragments][];
 
-        byte[][] cache = arrayCache.get();
-        int cacheIndex = 0;
         for(int i= 0; i< nFragments; ++i) {
             int start = maxFragmentSize * i;
             int end = Math.min(input.length, start + maxFragmentSize);
             int length = end - start;
-            boolean useCache = length == Fragment.MAX_LENGTH;
-            byte[] b = useCache ? cache[cacheIndex++] : new byte[length];
+            byte[] b = ArrayCache.getArray(length).orElseGet(() -> new byte[length]);
             System.arraycopy(input, start, b, 0, length);
             split[i] = b;
         }

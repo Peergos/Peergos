@@ -423,7 +423,13 @@ public class NetworkAccess {
         return Futures.combineAllInOrder(futures)
                 .thenApply(groups -> groups.stream()
                         .flatMap(g -> g.stream())
-                        .collect(Collectors.toList()));
+                        .collect(Collectors.toList()))
+                .thenApply(res -> {
+                    for (Fragment fragment : fragments) {
+                        FragmentedPaddedCipherText.ArrayCache.releaseArray(fragment.data);
+                    }
+                    return res;
+                });
     }
 
     public CompletableFuture<Multihash> uploadChunk(CryptreeNode metadata,
