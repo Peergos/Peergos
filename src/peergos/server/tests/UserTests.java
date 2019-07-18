@@ -162,6 +162,11 @@ public abstract class UserTests {
         Assert.assertTrue("signer uses identity multihash", userRoot.getPointer().capability.writer.isIdentity());
         Assert.assertTrue("user root does not have a retrievable parent",
                 ! userRoot.retrieveParent(network).join().isPresent());
+
+        String someUrlFragment = "Somedata";
+        UserContext.EncryptedURL encryptedURL = context.encryptURL(someUrlFragment);
+        String decryptedUrl = context.decryptURL(encryptedURL.base64Ciphertext, encryptedURL.base64Nonce);
+        Assert.assertTrue(decryptedUrl.equalsIgnoreCase(someUrlFragment));
     }
 
     @Test
