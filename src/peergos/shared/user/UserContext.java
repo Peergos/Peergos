@@ -286,6 +286,35 @@ public class UserContext {
                 .thenApply(x -> globalRoot);
     }
 
+    @JsType
+    public static class EncryptedURL {
+        public final String base64Nonce, base64Ciphertext;
+
+        public EncryptedURL(String base64Nonce, String base64Ciphertext) {
+            this.base64Nonce = base64Nonce;
+            this.base64Ciphertext = base64Ciphertext;
+        }
+    }
+
+    @JsMethod
+    public EncryptedURL encryptURL(String url) {
+        // pad url to avoid leaking length
+        while (url.length() % 50 != 0)
+            url = url + " ";
+        byte[] nonce = rootKey.createNonce();
+        byte[] cipherText = rootKey.encrypt(url.getBytes(), nonce);
+        Base64.Encoder encoder = Base64.getEncoder();
+        return new EncryptedURL(encoder.encodeToString(nonce), encoder.encodeToString(cipherText));
+    }
+
+    @JsMethod
+    public String decryptURL(String cipherTextBase64, String nonceBase64) {
+        Base64.Decoder decoder = Base64.getDecoder();
+        byte[] nonce = decoder.decode(nonceBase64);
+        byte[] ciphertext = decoder.decode(cipherTextBase64);
+        return new String(rootKey.decrypt(ciphertext, nonce)).trim();
+    }
+
     /**
      *
      * @param friendName
