@@ -288,6 +288,7 @@ public class UserContext {
 
     @JsType
     public static class EncryptedURL {
+        public static final int PAD_TO_SIZE = 50;
         public final String base64Nonce, base64Ciphertext;
 
         public EncryptedURL(String base64Nonce, String base64Ciphertext) {
@@ -299,7 +300,7 @@ public class UserContext {
     @JsMethod
     public EncryptedURL encryptURL(String url) {
         // pad url to avoid leaking length
-        while (url.length() % 50 != 0)
+        while (url.length() % EncryptedURL.PAD_TO_SIZE != 0)
             url = url + " ";
         byte[] nonce = rootKey.createNonce();
         byte[] cipherText = rootKey.encrypt(url.getBytes(), nonce);
