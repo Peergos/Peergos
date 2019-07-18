@@ -2,6 +2,7 @@ package peergos.shared.user;
 
 import jsinterop.annotations.JsType;
 import peergos.shared.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.user.fs.*;
 
 import java.util.*;
@@ -10,9 +11,9 @@ import java.util.concurrent.*;
 @JsType
 public interface TrieNode {
 
-    CompletableFuture<Optional<FileWrapper>> getByPath(String path, NetworkAccess network);
+    CompletableFuture<Optional<FileWrapper>> getByPath(String path, Hasher hasher, NetworkAccess network);
 
-    CompletableFuture<Set<FileWrapper>> getChildren(String path, NetworkAccess network);
+    CompletableFuture<Set<FileWrapper>> getChildren(String path, Hasher hasher, NetworkAccess network);
 
     Set<String> getChildNames();
 

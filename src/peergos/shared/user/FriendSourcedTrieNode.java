@@ -1,6 +1,7 @@
 package peergos.shared.user;
 
 import peergos.shared.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.user.fs.*;
 
 import java.util.*;
@@ -86,14 +87,14 @@ public class FriendSourcedTrieNode implements TrieNode {
                 });
     }
 
-    private synchronized CompletableFuture<Boolean> ensureUptodate(NetworkAccess network) {
+    private synchronized CompletableFuture<Boolean> ensureUptodate(Crypto crypto, NetworkAccess network) {
         // check there are no new capabilities in the friend's shared directory
         return NetworkAccess.getLatestEntryPoint(sharedDir, network)
                 .thenCompose(sharedDir -> {
-                    return CapabilityStore.getReadOnlyCapabilityFileSize(sharedDir.file, network)
+                    return CapabilityStore.getReadOnlyCapabilityFileSize(sharedDir.file, crypto, network)
                             .thenCompose(bytes -> {
                                 if (bytes == byteOffsetReadOnly) {
-                                    return addEditableCapabilities(Optional.of(sharedDir.file), network);
+                                    return addEditableCapabilities(Optional.of(sharedDir.file), crypto, network);
                                 } else {
                                     return CapabilityStore.loadReadAccessSharingLinksFromIndex(homeDirSupplier, sharedDir.file,
                                             ownerName, network, crypto, byteOffsetReadOnly, true)
@@ -103,15 +104,17 @@ public class FriendSourcedTrieNode implements TrieNode {
                                                         .reduce(root,
                                                                 (root, cap) -> root.put(trimOwner(cap.path), new EntryPoint(cap.cap, ownerName)),
                                                                 (a, b) -> a);
-                                                return addEditableCapabilities(Optional.of(sharedDir.file), network);
+                                                return addEditableCapabilities(Optional.of(sharedDir.file), crypto, network);
                                             });
                                 }
                             });
                 });
     }
 
-    private synchronized CompletableFuture<Boolean> addEditableCapabilities(Optional<FileWrapper> sharedDirOpt, NetworkAccess network) {
-        return CapabilityStore.getEditableCapabilityFileSize(sharedDirOpt.get(), network)
+    private synchronized CompletableFuture<Boolean> addEditableCapabilities(Optional<FileWrapper> sharedDirOpt,
+                                                                            Crypto crypto,
+                                                                            NetworkAccess network) {
+        return CapabilityStore.getEditableCapabilityFileSize(sharedDirOpt.get(), crypto, network)
                 .thenCompose(editFilesize -> {
                     if (editFilesize == byteOffsetWrite)
                         return CompletableFuture.completedFuture(true);
@@ -151,16 +154,17 @@ public class FriendSourcedTrieNode implements TrieNode {
     }
 
     @Override
-    public synchronized CompletableFuture<Optional<FileWrapper>> getByPath(String path, NetworkAccess network) {
+    public synchronized CompletableFuture<Optional<FileWrapper>> getByPath(String path, Hasher hasher, NetworkAccess network) {
         if (path.isEmpty() || path.equals("/"))
             return getFriendRoot(network)
                     .thenApply(opt -> opt.map(f -> f.withTrieNode(this)));
-        return ensureUptodate(network).thenCompose(x -> root.getByPath(path, network));
+        return ensureUptodate(crypto, network).thenCompose(x -> root.getByPath(path, hasher, network));
     }
 
     @Override
-    public synchronized CompletableFuture<Set<FileWrapper>> getChildren(String path, NetworkAccess network) {
-        return ensureUptodate(network).thenCompose(x -> root.getChildren(path, network));
+    public synchronized CompletableFuture<Set<FileWrapper>> getChildren(String path, Hasher hasher, NetworkAccess network) {
+        return ensureUptodate(crypto, network)
+                .thenCompose(x -> root.getChildren(path, hasher, network));
     }
 
     @Override

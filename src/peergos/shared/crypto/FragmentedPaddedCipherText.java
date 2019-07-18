@@ -61,7 +61,8 @@ public class FragmentedPaddedCipherText implements Cborable {
                                                                                                       T secret,
                                                                                                       int paddingBlockSize,
                                                                                                       int maxFragmentSize,
-                                                                                                      Hasher hasher) {
+                                                                                                      Hasher hasher,
+                                                                                                      boolean allowArrayCache) {
         if (paddingBlockSize < 1)
             throw new IllegalStateException("Invalid padding block size: " + paddingBlockSize);
         byte[] nonce = from.createNonce();
@@ -73,7 +74,7 @@ public class FragmentedPaddedCipherText implements Cborable {
             return new Pair<>(new FragmentedPaddedCipherText(nonce, Collections.singletonList(frag.hash)), Collections.singletonList(frag));
         }
 
-        byte[][] split = split(cipherText, maxFragmentSize);
+        byte[][] split = split(cipherText, maxFragmentSize, allowArrayCache);
 
         List<FragmentWithHash> frags = Arrays.stream(split)
                 .map(d -> new FragmentWithHash(new Fragment(d), hasher.hash(d, true)))
@@ -92,7 +93,13 @@ public class FragmentedPaddedCipherText implements Cborable {
                 .thenApply(fargs -> new CipherText(nonce, recombine(fargs)).decrypt(from, fromCbor));
     }
 
-    public static byte[][] split(byte[] input, int maxFragmentSize) {
+    private static byte[][] generateCache() {
+        return new byte[Chunk.MAX_SIZE/Fragment.MAX_LENGTH][Fragment.MAX_LENGTH];
+    }
+
+    private static ThreadLocal<byte[][]> arrayCache = ThreadLocal.withInitial(FragmentedPaddedCipherText::generateCache);
+
+    public static byte[][] split(byte[] input, int maxFragmentSize, boolean allowCache) {
         //calculate padding length to align to 256 bytes
         int padding = 0;
         int mod = input.length % 256;
@@ -107,11 +114,15 @@ public class FragmentedPaddedCipherText implements Cborable {
             nFragments++;
 
         byte[][] split = new  byte[nFragments][];
+
+        byte[][] cache = arrayCache.get();
+        int cacheIndex = 0;
         for(int i= 0; i< nFragments; ++i) {
             int start = maxFragmentSize * i;
             int end = Math.min(input.length, start + maxFragmentSize);
             int length = end - start;
-            byte[] b = new byte[length];
+            boolean useCache = allowCache && length == Fragment.MAX_LENGTH;
+            byte[] b = useCache ? cache[cacheIndex++] : new byte[length];
             System.arraycopy(input, start, b, 0, length);
             split[i] = b;
         }

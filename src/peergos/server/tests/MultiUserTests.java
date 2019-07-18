@@ -111,8 +111,7 @@ public class MultiUserTests {
         byte[] data = UserTests.randomData(10*1024*1024);
 
         FileWrapper uploaded = u1Root.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length,
-                u1.network, crypto, l -> {},
-                u1Root.generateChildLocationsFromSize(data.length, u1.crypto.random)).get();
+                u1.network, crypto, l -> {}, crypto.random.randomBytes(32)).get();
 
         // share the file from "a" to each of the others
         FileWrapper u1File = u1.getByPath(u1.username + "/" + filename).get().get();
@@ -184,8 +183,7 @@ public class MultiUserTests {
         byte[] data1 = "Hello Peergos friend!".getBytes();
         AsyncReader file1Reader = new AsyncReader.ArrayBacked(data1);
         FileWrapper uploaded = u1Root.uploadOrOverwriteFile(filename, file1Reader, data1.length,
-                u1.network, u1.crypto, l -> {},
-                u1Root.generateChildLocationsFromSize(data1.length, u1.crypto.random)).get();
+                u1.network, u1.crypto, l -> {}, crypto.random.randomBytes(32)).get();
 
         // upload a different file with the same name in a sub folder
         uploaded.mkdir("subdir", u1.network, false, crypto).get();
@@ -193,8 +191,7 @@ public class MultiUserTests {
         byte[] data2 = "Goodbye Peergos friend!".getBytes();
         AsyncReader file2Reader = new AsyncReader.ArrayBacked(data2);
         subdir.uploadOrOverwriteFile(filename, file2Reader, data2.length,
-                u1.network, u1.crypto, l -> {},
-                u1Root.generateChildLocationsFromSize(data2.length, u1.crypto.random)).get();
+                u1.network, u1.crypto, l -> {}, crypto.random.randomBytes(32)).get();
 
         // share the file from "a" to each of the others
         //        sharingFunction.apply(u1, u2, filenameu1.shareReadAccessWith(Paths.get(u1.username, filename), userContexts.stream().map(u -> u.username).collect(Collectors.toSet())).get();
@@ -209,7 +206,7 @@ public class MultiUserTests {
             Assert.assertTrue("shared file present", sharedFile.isPresent());
 
             AsyncReader inputStream = sharedFile.get().getInputStream(userContext.network,
-                    userContext.crypto.random, l -> {}).get();
+                    userContext.crypto, l -> {}).get();
 
             byte[] fileContents = Serialize.readFully(inputStream, sharedFile.get().getFileProperties().size).get();
             Assert.assertTrue("shared file contents correct", Arrays.equals(data1, fileContents));
@@ -222,7 +219,7 @@ public class MultiUserTests {
             Assert.assertTrue("shared file present", sharedFile.isPresent());
 
             AsyncReader inputStream = sharedFile.get().getInputStream(userContext.network,
-                    userContext.crypto.random, l -> {}).get();
+                    userContext.crypto, l -> {}).get();
 
             byte[] fileContents = Serialize.readFully(inputStream, sharedFile.get().getFileProperties().size).get();
             Assert.assertTrue("shared file contents correct", Arrays.equals(data2, fileContents));
@@ -265,8 +262,7 @@ public class MultiUserTests {
         Path subdirPath = Paths.get(u1.username, subdirName);
         FileWrapper subdir = u1.getByPath(subdirPath).get().get();
         FileWrapper uploaded = subdir.uploadOrOverwriteFile(filename, file1Reader, data1.length,
-                u1.network, u1.crypto, l -> {},
-                subdir.generateChildLocationsFromSize(data1.length, u1.crypto.random)).get();
+                u1.network, u1.crypto, l -> {}, crypto.random.randomBytes(32)).get();
 
         Path filePath = Paths.get(u1.username, subdirName, filename);
         u1.shareWriteAccessWith(filePath, userContexts.stream().map(u -> u.username).collect(Collectors.toSet()));
@@ -277,7 +273,7 @@ public class MultiUserTests {
             Assert.assertTrue("shared file present", sharedFile.isPresent());
 
             AsyncReader inputStream = sharedFile.get().getInputStream(userContext.network,
-                    userContext.crypto.random, l -> {}).get();
+                    userContext.crypto, l -> {}).get();
 
             byte[] fileContents = Serialize.readFully(inputStream, sharedFile.get().getFileProperties().size).get();
             Assert.assertTrue("shared file contents correct", Arrays.equals(data1, fileContents));
@@ -368,8 +364,7 @@ public class MultiUserTests {
         Path subdirPath = Paths.get(u1.username, subdirName);
         FileWrapper subdir = u1.getByPath(subdirPath).get().get();
         FileWrapper uploaded = subdir.uploadOrOverwriteFile(filename, file1Reader, data1.length,
-                u1.network, u1.crypto, l -> {},
-                subdir.generateChildLocationsFromSize(data1.length, u1.crypto.random)).get();
+                u1.network, u1.crypto, l -> {}, crypto.random.randomBytes(32)).get();
 
         Path filePath = Paths.get(u1.username, subdirName, filename);
 
@@ -520,8 +515,7 @@ public class MultiUserTests {
         Path subdirPath = Paths.get(u1.username, subdirName);
         FileWrapper subdir = u1.getByPath(subdirPath).get().get();
         FileWrapper uploaded = subdir.uploadOrOverwriteFile(filename, file1Reader, data1.length,
-                u1.network, u1.crypto, l -> {},
-                subdir.generateChildLocationsFromSize(data1.length, u1.crypto.random)).get();
+                u1.network, u1.crypto, l -> {}, crypto.random.randomBytes(32)).get();
 
         Path filePath = Paths.get(u1.username, subdirName, filename);
 
@@ -678,8 +672,7 @@ public class MultiUserTests {
         Path subdirPath = Paths.get(u1.username, subdirName);
         FileWrapper subdir = u1.getByPath(subdirPath).get().get();
         FileWrapper uploaded = subdir.uploadOrOverwriteFile(filename, file1Reader, data1.length,
-                u1.network, u1.crypto, l -> {},
-                subdir.generateChildLocationsFromSize(data1.length, u1.crypto.random)).get();
+                u1.network, u1.crypto, l -> {}, crypto.random.randomBytes(32)).get();
 
         Path filePath = Paths.get(u1.username, subdirName, filename);
         shareFunction.apply(u1, userContexts, filePath);
@@ -823,8 +816,7 @@ public class MultiUserTests {
         Files.write(f.toPath(), originalFileContents);
         ResetableFileInputStream resetableFileInputStream = new ResetableFileInputStream(f);
         FileWrapper uploaded = u1Root.uploadOrOverwriteFile(filename, resetableFileInputStream, f.length(),
-                u1.network, u1.crypto, l -> {},
-                u1Root.generateChildLocationsFromSize(originalFileContents.length, u1.crypto.random)).get();
+                u1.network, u1.crypto, l -> {}, crypto.random.randomBytes(32)).get();
 
         // share the file from "a" to each of the others
         String originalPath = u1.username + "/" + filename;
@@ -837,7 +829,7 @@ public class MultiUserTests {
             Assert.assertTrue("shared file present", sharedFile.isPresent());
 
             AsyncReader inputStream = sharedFile.get().getInputStream(friend.network,
-                    friend.crypto.random, l -> {}).get();
+                    friend.crypto, l -> {}).get();
 
             byte[] fileContents = Serialize.readFully(inputStream, sharedFile.get().getFileProperties().size).get();
             Assert.assertTrue("shared file contents correct", Arrays.equals(originalFileContents, fileContents));
@@ -916,7 +908,7 @@ public class MultiUserTests {
                 originalFileContents.length + suffix.length, Optional.empty(), true,
                 u1New.network, crypto, l -> {}, null).get();
         AsyncReader extendedContents = u1New.getByPath(u1.username + "/" + newname).get().get()
-                .getInputStream(u1New.network, crypto.random, l -> {}).get();
+                .getInputStream(u1New.network, crypto, l -> {}).get();
         byte[] newFileContents = Serialize.readFully(extendedContents, originalFileContents.length + suffix.length).get();
 
         Assert.assertTrue(Arrays.equals(newFileContents, ArrayOps.concat(originalFileContents, suffix)));
@@ -950,7 +942,7 @@ public class MultiUserTests {
         Optional<FileWrapper> u2ToU1 = u1.getByPath("/" + u2.username).get();
         assertTrue("Friend root present after accepted follow request", u2ToU1.isPresent());
 
-        Set<FileWrapper> children = u2ToU1.get().getChildren(u2.network).get();
+        Set<FileWrapper> children = u2ToU1.get().getChildren(crypto.hasher, u2.network).get();
 
         assertTrue("Browse to friend root", children.isEmpty());
 
@@ -1026,14 +1018,14 @@ public class MultiUserTests {
         }
 
         Optional<FileWrapper> newUserToPeergos = peergos.getByPath("/" + newUser.username + "/feedback").get();
-        Set<FileWrapper> feedbackDirectoryContents = newUserToPeergos.get().getChildren(newUser.network).get();
+        Set<FileWrapper> feedbackDirectoryContents = newUserToPeergos.get().getChildren(crypto.hasher, newUser.network).get();
         assertTrue("Feedback directory is non-empty", !feedbackDirectoryContents.isEmpty());
 
         for (FileWrapper feedbackFile : feedbackDirectoryContents) {
             assertTrue("Feedback file is readable", feedbackFile.isReadable());
 
             AsyncReader inputStream = feedbackFile
-                        .getInputStream(peergos.network, peergos.crypto.random, l -> {})
+                        .getInputStream(peergos.network, peergos.crypto, l -> {})
                         .get();
 
             byte[] fileContents = Serialize.readFully(inputStream, feedbackFile.getFileProperties().size).get();

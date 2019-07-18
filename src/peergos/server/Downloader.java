@@ -44,18 +44,18 @@ public class Downloader {
         if (! targetDir.toFile().exists() && ! targetDir.toFile().mkdirs())
             throw new IllegalStateException("Couldn't create " + targetDir);
         Optional<FileWrapper> file = source.getByPath(origin).get();
-        pool.submit(() -> file.ifPresent(f -> downloadTo(f, targetDir, source.network, source.crypto.random, saveFile))).get();
+        pool.submit(() -> file.ifPresent(f -> downloadTo(f, targetDir, source.network, source.crypto, saveFile))).get();
     }
 
-    public static void downloadTo(FileWrapper source, Path target, NetworkAccess network, SafeRandom random,
+    public static void downloadTo(FileWrapper source, Path target, NetworkAccess network, Crypto crypto,
                                   Predicate<FileProperties> saveFile) {
         Path us = target.resolve(source.getName());
         if (source.isDirectory()) {
             try {
-                Set<FileWrapper> children = source.getChildren(network).get();
+                Set<FileWrapper> children = source.getChildren(crypto.hasher, network).get();
                 if (! us.toFile().exists() && !us.toFile().mkdir())
                     throw new IllegalStateException("Couldn't create directory: " + us);
-                children.stream().parallel().forEach(child -> downloadTo(child, us, network, random, saveFile));
+                children.stream().parallel().forEach(child -> downloadTo(child, us, network, crypto, saveFile));
             } catch (Exception e) {
                 System.err.println("Error downloading children of " + source.getName());
                 e.printStackTrace();
@@ -66,7 +66,7 @@ public class Downloader {
                 if (size > Integer.MAX_VALUE)
                     throw new IllegalStateException("Need to implement streaming for files bigger than 2GiB");
                 byte[] buf = new byte[(int)size];
-                AsyncReader reader = source.getInputStream(network, random, c -> {}).get();
+                AsyncReader reader = source.getInputStream(network, crypto, c -> {}).get();
                 reader.readIntoArray(buf, 0, buf.length)
                         .get();
                 fout.write(buf);

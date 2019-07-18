@@ -2,6 +2,7 @@ package peergos.shared.user.fs;
 
 import peergos.shared.*;
 import peergos.shared.cbor.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.user.*;
@@ -14,23 +15,27 @@ public interface FileRetriever {
 
     CompletableFuture<AsyncReader> getFile(WriterData version,
                                            NetworkAccess network,
-                                           SafeRandom random,
+                                           Crypto crypto,
                                            AbsoluteCapability ourCap,
+                                           Optional<byte[]> streamSecret,
                                            long fileSize,
                                            MaybeMultihash ourExistingHash,
                                            ProgressConsumer<Long> monitor);
 
     CompletableFuture<Optional<byte[]>> getMapLabelAt(WriterData version,
                                                       AbsoluteCapability startCap,
+                                                      Optional<byte[]> streamSecret,
                                                       long offset,
+                                                      Hasher hasher,
                                                       NetworkAccess network);
 
     CompletableFuture<Optional<LocatedChunk>> getChunk(WriterData version,
                                                        NetworkAccess network,
-                                                       SafeRandom random,
+                                                       Crypto crypto,
                                                        long startIndex,
                                                        long truncateTo,
                                                        AbsoluteCapability ourCap,
+                                                       Optional<byte[]> streamSecret,
                                                        MaybeMultihash ourExistingHash,
                                                        ProgressConsumer<Long> monitor);
 }

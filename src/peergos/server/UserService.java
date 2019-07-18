@@ -9,6 +9,7 @@ import java.util.logging.Level;
 
 import com.sun.net.httpserver.*;
 import peergos.server.corenode.*;
+import peergos.shared.*;
 import peergos.shared.corenode.*;
 import peergos.shared.mutable.*;
 import peergos.shared.social.*;
@@ -68,6 +69,7 @@ public class UserService {
     }
 
     private final ContentAddressedStorage storage;
+    private final Crypto crypto;
     private final CoreNode coreNode;
     private final SocialNetwork social;
     private final MutablePointers mutable;
@@ -75,12 +77,14 @@ public class UserService {
     private final SpaceUsage usage;
 
     public UserService(ContentAddressedStorage storage,
+                       Crypto crypto,
                        CoreNode coreNode,
                        SocialNetwork social,
                        MutablePointers mutable,
                        InstanceAdmin controller,
                        SpaceUsage usage) {
         this.storage = storage;
+        this.crypto = crypto;
         this.coreNode = coreNode;
         this.social = social;
         this.mutable = mutable;
@@ -205,7 +209,7 @@ public class UserService {
                 new AdminHandler(this.controller));
         addHandler.accept("/" + Constants.SPACE_USAGE_URL,
                 new StorageHandler(this.usage));
-        addHandler.accept("/" + Constants.PUBLIC_FILES_URL, new PublicFileHandler(coreNode, mutable, storage));
+        addHandler.accept("/" + Constants.PUBLIC_FILES_URL, new PublicFileHandler(coreNode, mutable, storage, crypto));
         addHandler.accept(UI_URL, handler);
 
         localhostServer.setExecutor(Executors.newFixedThreadPool(HANDLER_THREADS));

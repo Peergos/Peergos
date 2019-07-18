@@ -104,7 +104,7 @@ public class NetworkAccess {
     }
 
     public static ContentAddressedStorage buildLocalDht(HttpPoster apiPoster, boolean isPeergosServer) {
-        return new CachingStorage(new ContentAddressedStorage.HTTP(apiPoster, isPeergosServer), 10_000, 50 * 1024);
+        return new CachingStorage(new ContentAddressedStorage.HTTP(apiPoster, isPeergosServer), 1_000, 50 * 1024);
     }
 
     @JsMethod
@@ -422,8 +422,7 @@ public class NetworkAccess {
                 })).collect(Collectors.toList());
         return Futures.combineAllInOrder(futures)
                 .thenApply(groups -> groups.stream()
-                        .flatMap(g -> g.stream())
-                        .collect(Collectors.toList()));
+                        .flatMap(g -> g.stream()).collect(Collectors.toList()));
     }
 
     public CompletableFuture<Multihash> uploadChunk(CryptreeNode metadata,

@@ -96,13 +96,12 @@ public class IpfsStressTest {
         int size = rnd.nextInt(15*1024*1024);
         FileWrapper parent = context.getByPath(parentPath.toString()).get().get();
         parent.uploadOrOverwriteFile(name, new AsyncReader.ArrayBacked(randomData(rnd, size)), size,
-                        context.network, context.crypto, x -> {},
-                parent.generateChildLocationsFromSize(size, context.crypto.random)).get();
+                        context.network, context.crypto, x -> {}, context.crypto.random.randomBytes(32)).get();
     }
 
     public static void checkFileContents(byte[] expected, FileWrapper f, UserContext context) throws Exception {
         long size = f.getFileProperties().size;
-        byte[] retrievedData = Serialize.readFully(f.getInputStream(context.network, context.crypto.random,
+        byte[] retrievedData = Serialize.readFully(f.getInputStream(context.network, context.crypto,
             size, l-> {}).get(), f.getSize()).get();
         assertEquals(expected.length, size);
         assertTrue("Correct contents", Arrays.equals(retrievedData, expected));
@@ -110,7 +109,7 @@ public class IpfsStressTest {
 
     private static void checkFileContentsChunked(byte[] expected, FileWrapper f, UserContext context, int  nReads) throws Exception {
 
-        AsyncReader in = f.getInputStream(context.network, context.crypto.random,
+        AsyncReader in = f.getInputStream(context.network, context.crypto,
                 f.getFileProperties().size, l -> {}).get();
         assertTrue(nReads > 1);
 

@@ -310,7 +310,7 @@ public class Main {
 
     public static void startPeergos(Args a) {
         try {
-            Crypto.initJava();
+            Crypto crypto = Crypto.initJava();
             int webPort = a.getInt("port");
             a.setIfAbsent("proxy-target", getLocalMultiAddress(webPort).toString());
 
@@ -399,7 +399,7 @@ public class Main {
                     .stream()
                     .collect(Collectors.toSet());
             Admin storageAdmin = new Admin(adminUsernames, spaceRequests, userQuotas, core, localDht);
-            UserService peergos = new UserService(p2pDht, corePropagator, p2pSocial, p2mMutable, storageAdmin, spaceChecker);
+            UserService peergos = new UserService(p2pDht, crypto, corePropagator, p2pSocial, p2mMutable, storageAdmin, spaceChecker);
             InetSocketAddress localAddress = new InetSocketAddress("localhost", userAPIAddress.getPort());
             Optional<Path> webroot = a.hasArg("webroot") ?
                     Optional.of(Paths.get(a.getArg("webroot"))) :

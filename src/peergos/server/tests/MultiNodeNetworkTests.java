@@ -151,8 +151,7 @@ public class MultiNodeNetworkTests {
         String filename = "hey.txt";
         FileWrapper root = u1.getUserRoot().get();
         FileWrapper upload = root.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length,
-                getNode(iNode1), crypto, x -> {},
-                root.generateChildLocationsFromSize(data.length, crypto.random)).get();
+                getNode(iNode1), crypto, x -> {}, crypto.random.randomBytes(32)).get();
         Optional<FileWrapper> file = u1.getByPath("/" + username1 + "/" + filename).get();
         Assert.assertTrue(file.isPresent());
     }

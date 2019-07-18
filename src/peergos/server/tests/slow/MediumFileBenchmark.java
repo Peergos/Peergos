@@ -72,8 +72,7 @@ public class MediumFileBenchmark {
             String filename = names.get(i);
             long t1 = System.currentTimeMillis();
             userRoot = userRoot.uploadOrOverwriteFile(filename, AsyncReader.build(data), data.length, context.network,
-                    crypto, x-> {},
-                    userRoot.generateChildLocationsFromSize(data.length, crypto.random)).join();
+                    crypto, x-> {}, context.crypto.random.randomBytes(32)).join();
             long duration = System.currentTimeMillis() - t1;
             worst = Math.max(worst, duration);
             best = Math.min(best, duration);
@@ -86,7 +85,7 @@ public class MediumFileBenchmark {
             long t1 = System.currentTimeMillis();
             FileWrapper file = context.getByPath(Paths.get(username, names.get(random.nextInt(names.size()))))
                     .join().get();
-            AsyncReader reader = file.getInputStream(network, crypto.random, x -> {}).join();
+            AsyncReader reader = file.getInputStream(network, crypto, x -> {}).join();
             byte[] readData = Serialize.readFully(reader, data.length).join();
             long duration = System.currentTimeMillis() - t1;
             Assert.assertTrue(Arrays.equals(readData, data));
