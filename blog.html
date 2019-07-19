@@ -101,13 +101,32 @@
     <div class="row">
     <div class="col m3 col s4">
     <div id="full-toc" class="bs-docs-sidebar hidden-print affix-top hidden-xs hidden-sm" role="complementary">
-  <ul class='nav bs-docs-sidenav'><li class='active'><a href='#security_audit_june_2019_' data-scroll data-url>Security Audit, June 2019</a></li><li><a href='#alpha_release_june_2019_' data-scroll data-url>Alpha Release, June 2019</a></li><li><a href='#development_update_feb_2019_' data-scroll data-url>Development update, Feb 2019</a><ul class='nav'><li><a href='#decentralization_' data-scroll data-url>Decentralization</a></li><li><a href='#granting_write_access_' data-scroll data-url>Granting write access</a></li><li><a href='#future_work_' data-scroll data-url>Future work</a></li></ul>
+  <ul class='nav bs-docs-sidenav'><li class='active'><a href='#ipfs_camp_new_features_july_2019_' data-scroll data-url>IPFS Camp, new features, July 2019</a></li><li><a href='#security_audit_june_2019_' data-scroll data-url>Security Audit, June 2019</a></li><li><a href='#alpha_release_june_2019_' data-scroll data-url>Alpha Release, June 2019</a></li><li><a href='#development_update_feb_2019_' data-scroll data-url>Development update, Feb 2019</a><ul class='nav'><li><a href='#decentralization_' data-scroll data-url>Decentralization</a></li><li><a href='#granting_write_access_' data-scroll data-url>Granting write access</a></li><li><a href='#future_work_' data-scroll data-url>Future work</a></li></ul>
     </div>
     </div>
     <div class="col m9 col s8" role="main" style="overflow-x:auto; padding-bottom: 10px;">
     <h1 class="page-header main-title">Blog</h1>
     <div class="bs-docs-section">
-    <h2 id="security_audit_june_2019_">Security Audit, June 2019</h2>
+    <h2 id="ipfs_camp_new_features_july_2019_">IPFS Camp, new features, July 2019</h2>
+<p><a href="https://protocol.ai">Protocol labs</a> ran the inaugural <a href="https://camp.ipfs.io">IPFS camp</a> from 27th-30th June. Set in magnificent surroundings in the Barcelonian hills, the situation was primed for productivity. 160 pioneers of the decentralised web attended to meet, discuss, learn and solve. The schedule was packed, with core courses, electives, lightning talks, deep dives, unconf sessions and a sci-fi fair. It was a great experience and hugely useful for Peergos.</p>
+<p><center>
+<img alt="The deepdive trophy" class="class" height="20%" id="id" src="/theme/img/deepdive.jpeg" width="200px">
+<br>
+Best deep dive trophy
+</center></p>
+<p>Our team member Jonathan and his group won the best deep dive, for a product analysis of Peergos. This was a group of people sitting down and doing proper user testing of Peergos and giving feedback and suggestions. One of the suggestions was to implement friend verification in person or over the phone via a qr code or safety number. In fact, one member of the group said they would pay right now for Peergos if it had this feature! So now, a few weeks later, we present friend verification! It works directly from the browser using the webcam, including on mobile. Just scan your friends qr code in person for an added layer of confidence!</p>
+<p><center>
+<img alt="Verification" class="class" height="50%" id="id" src="/theme/img/verification.png" width="200px">
+<br>
+QR code based verification of friends
+</center></p>
+<p>We already have many defenses against a man-in-the-middle attack including mirrored append-only certificate transparency for all user identities, but this adds another layer for the hyper paranoid users. </p>
+<p>Another suggestion from our deep dive was that uploading a folder should work. We've attempted this in the past but hit problems with the browser APIs. However, now we have solved the problems and you can drag and drop a folder into Peergos and it will recusively upload all its contents!</p>
+<p>These features are already live on the <a href="https://alpha.peergos.net">alpha server</a>, and in the <a href="https://alpha.peergos.net/public/peergos/releases/v0.0.11/">latest release</a> so go check it out!</p>
+<p>We also had a great deep dive session with <a href="https://twitter.com/berty">Berty</a> on a secure decentralised group chat protocol. Specifically, we were investigating if <a href="https://messaginglayersecurity.rocks">Messaging Leyer Security</a> can be adapted to work in a more decentralised setting. Another cool thing that Berty <a href="https://github.com/ipfs/camp/raw/master/LIGHTNING_TALKS/ipfscamp2019-lightningtalk-bluetoothle.pdf">presented</a> was their implementation of a <a href="https://libp2p.io">libp2p</a> transport over bluetooth low energy. Very cool!</p>
+<p>Until next time, happy Peergossing!</p>
+<p>-The Peergos team</p>
+<h2 id="security_audit_june_2019_">Security Audit, June 2019</h2>
 <p>Thanks to some very generous support from <a href="https://protocol.ai/">Protocol Labs</a> we have had our first security audit! We contracted the firm <a href="https://cure53.de/">Cure53</a> to give us a large scale security asessment of our cryptography, protocols, architecture and code. We're extremely pleased to be able to announce that no fundamental architectural or cryptographic problems were found, and all the issues that were found have been fixed.</p>
 <p>This means that you can rest assured that your data is safe with Peergos. </p>
 <p>Read the <a href="https://cure53.de/pentest-report_peergos.pdf">full report here</a>.</p>
