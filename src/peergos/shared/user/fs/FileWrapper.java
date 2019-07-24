@@ -665,6 +665,7 @@ public class FileWrapper {
                 .thenApply(Optional::get);
     }
 
+    @JsMethod
     public CompletableFuture<FileWrapper> truncate(long newSize, FileWrapper parent, NetworkAccess network, Crypto crypto) {
         FileProperties props = getFileProperties();
         if (props.size < newSize)
@@ -677,6 +678,8 @@ public class FileWrapper {
                             return originalReader.seek(startOfLastChunk).thenCompose(seekedOriginal -> {
                                 byte[] lastChunk = new byte[(int)(newSize % Chunk.MAX_SIZE)];
                                 return seekedOriginal.readIntoArray(lastChunk, 0, lastChunk.length).thenCompose(read -> {
+                                    if (newSize <= Chunk.MAX_SIZE)
+                                        return CompletableFuture.completedFuture(current);
                                     return IpfsTransaction.call(owner(), tid ->
                                                     deleteAllChunks(writableFilePointer().withMapKey(endMapKey),
                                                             signingPair(), tid, crypto.hasher, network, current, committer),

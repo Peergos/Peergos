@@ -737,7 +737,7 @@ public abstract class UserTests {
         FileWrapper userRoot2 = userRoot.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length,
                 context.network, context.crypto, l -> {}, context.crypto.random.randomBytes(32)).join();
 
-        FileWrapper original = userRoot2.getChild(filename, crypto.hasher, network).join().get();
+        FileWrapper original = context.getByPath(Paths.get(username, filename)).join().get();
         byte[] thirdChunkLabel = original.getMapKey(12 * 1024 * 1024, network, crypto).join();
 
         int truncateLength = 7 * 1024 * 1024;
@@ -748,6 +748,12 @@ public abstract class UserTests {
                 .withMapKey(thirdChunkLabel)).join();
         Assert.assertTrue("File is truncated", ! thirdChunk.isPresent());
         Assert.assertTrue("File has correct size", truncated.getFileProperties().size == truncateLength);
+
+        // truncate to first chunk
+        int truncateLength2 = 1 * 1024 * 1024;
+        FileWrapper truncated2 = truncated.truncate(truncateLength2, context.getUserRoot().join(), network, crypto).join();
+        checkFileContents(Arrays.copyOfRange(data, 0, truncateLength2), truncated2, context);
+        Assert.assertTrue("File has correct size", truncated2.getFileProperties().size == truncateLength2);
     }
 
     @Test
