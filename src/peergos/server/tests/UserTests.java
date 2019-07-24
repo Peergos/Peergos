@@ -754,6 +754,12 @@ public abstract class UserTests {
         FileWrapper truncated2 = truncated.truncate(truncateLength2, context.getUserRoot().join(), network, crypto).join();
         checkFileContents(Arrays.copyOfRange(data, 0, truncateLength2), truncated2, context);
         Assert.assertTrue("File has correct size", truncated2.getFileProperties().size == truncateLength2);
+
+        // truncate within first chunk
+        int truncateLength3 = 1024 * 1024 / 2;
+        FileWrapper truncated3 = truncated2.truncate(truncateLength3, context.getUserRoot().join(), network, crypto).join();
+        checkFileContents(Arrays.copyOfRange(data, 0, truncateLength2), truncated2, context);
+        Assert.assertTrue("File has correct size", truncated3.getFileProperties().size == truncateLength3);
     }
 
     @Test

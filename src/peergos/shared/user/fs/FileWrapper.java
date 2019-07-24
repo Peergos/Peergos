@@ -597,6 +597,7 @@ public class FileWrapper {
                                 .collect(Collectors.toSet())));
     }
 
+    @JsMethod
     public CompletableFuture<Optional<FileWrapper>> getChild(String name, Hasher hasher, NetworkAccess network) {
         return getChild(version, name, hasher, network);
     }
