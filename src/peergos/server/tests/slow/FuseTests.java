@@ -27,7 +27,7 @@ public class FuseTests {
     private static final Logger LOG = Logging.LOG();
     public static int WEB_PORT = 8888;
     public static String username = "test02";
-    public static String password = username;
+    public static String password = randomUUID().toString();
     public static Path mountPoint, home;
     public static FuseProcess fuseProcess;
     public static Random RANDOM = new Random(666);
