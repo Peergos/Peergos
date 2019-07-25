@@ -597,6 +597,7 @@ public class FileWrapper {
                                 .collect(Collectors.toSet())));
     }
 
+    @JsMethod
     public CompletableFuture<Optional<FileWrapper>> getChild(String name, Hasher hasher, NetworkAccess network) {
         return getChild(version, name, hasher, network);
     }
@@ -655,6 +656,43 @@ public class FileWrapper {
                         return new Pair<>(parent, cwd);
                     });
         }
+    }
+
+    public CompletableFuture<byte[]> getMapKey(long offset, NetworkAccess network, Crypto crypto) {
+        CryptreeNode fileAccess = pointer.fileAccess;
+        return fileAccess.retriever(pointer.capability.rBaseKey, props.streamSecret, getLocation().getMapKey(), crypto.hasher)
+                        .getMapLabelAt(version.get(writer()).props, writableFilePointer(),
+                                getFileProperties().streamSecret, offset, crypto.hasher, network)
+                .thenApply(Optional::get);
+    }
+
+    @JsMethod
+    public CompletableFuture<FileWrapper> truncate(long newSize, FileWrapper parent, NetworkAccess network, Crypto crypto) {
+        FileProperties props = getFileProperties();
+        if (props.size < newSize)
+            return CompletableFuture.completedFuture(this);
+
+        return network.synchronizer.applyComplexUpdate(owner(), signingPair(), (current, committer) ->
+                getMapKey(newSize, network, crypto).thenCompose(endMapKey ->
+                        getInputStream(version.get(writer()).props, network, crypto, props.size, x -> {}).thenCompose(originalReader -> {
+                            long startOfLastChunk = newSize - (newSize % Chunk.MAX_SIZE);
+                            return originalReader.seek(startOfLastChunk).thenCompose(seekedOriginal -> {
+                                byte[] lastChunk = new byte[(int)(newSize % Chunk.MAX_SIZE)];
+                                return seekedOriginal.readIntoArray(lastChunk, 0, lastChunk.length).thenCompose(read -> {
+                                    if (newSize <= Chunk.MAX_SIZE)
+                                        return CompletableFuture.completedFuture(current);
+                                    return IpfsTransaction.call(owner(), tid ->
+                                                    deleteAllChunks(writableFilePointer().withMapKey(endMapKey),
+                                                            signingPair(), tid, crypto.hasher, network, current, committer),
+                                            network.dhtClient);
+                                }).thenCompose(deleted -> pointer.fileAccess.updateProperties(deleted, committer, writableFilePointer(),
+                                        entryWriter, props.withSize(startOfLastChunk), network).thenCompose(resized -> parent
+                                        .uploadFileSection(resized, committer, getName(), AsyncReader.build(lastChunk),
+                                                props.isHidden, startOfLastChunk, newSize, Optional.empty(),
+                                                true, network, crypto, x -> {}, pointer.capability.getMapKey())));
+                            });
+                        }))
+        ).thenCompose(finished -> getUpdated(finished, network));
     }
 
     public static int getNumberOfChunks(long size) {

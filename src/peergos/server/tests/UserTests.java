@@ -725,6 +725,44 @@ public abstract class UserTests {
     }
 
     @Test
+    public void truncate() {
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        FileWrapper userRoot = context.getUserRoot().join();
+
+        String filename = "mediumfile.bin";
+        byte[] data = new byte[15*1024*1024];
+        random.nextBytes(data);
+        FileWrapper userRoot2 = userRoot.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length,
+                context.network, context.crypto, l -> {}, context.crypto.random.randomBytes(32)).join();
+
+        FileWrapper original = context.getByPath(Paths.get(username, filename)).join().get();
+        byte[] thirdChunkLabel = original.getMapKey(12 * 1024 * 1024, network, crypto).join();
+
+        int truncateLength = 7 * 1024 * 1024;
+        FileWrapper truncated = original.truncate(truncateLength, userRoot2, network, crypto).join();
+        checkFileContents(Arrays.copyOfRange(data, 0, truncateLength), truncated, context);
+        // check we can't get the third chunk any more
+        Optional<CryptreeNode> thirdChunk = network.getMetadata(original.writableFilePointer()
+                .withMapKey(thirdChunkLabel)).join();
+        Assert.assertTrue("File is truncated", ! thirdChunk.isPresent());
+        Assert.assertTrue("File has correct size", truncated.getFileProperties().size == truncateLength);
+
+        // truncate to first chunk
+        int truncateLength2 = 1 * 1024 * 1024;
+        FileWrapper truncated2 = truncated.truncate(truncateLength2, context.getUserRoot().join(), network, crypto).join();
+        checkFileContents(Arrays.copyOfRange(data, 0, truncateLength2), truncated2, context);
+        Assert.assertTrue("File has correct size", truncated2.getFileProperties().size == truncateLength2);
+
+        // truncate within first chunk
+        int truncateLength3 = 1024 * 1024 / 2;
+        FileWrapper truncated3 = truncated2.truncate(truncateLength3, context.getUserRoot().join(), network, crypto).join();
+        checkFileContents(Arrays.copyOfRange(data, 0, truncateLength2), truncated2, context);
+        Assert.assertTrue("File has correct size", truncated3.getFileProperties().size == truncateLength3);
+    }
+
+    @Test
     public void fileSeek() throws Exception {
         String username = generateUsername();
         String password = "test01";

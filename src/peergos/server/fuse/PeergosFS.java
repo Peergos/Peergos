@@ -568,18 +568,22 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
         debug("TRUNCATE file %s, size %d", file.properties.name, size);
 
         try {
-            if (size > Integer.MAX_VALUE)
-                throw new IllegalStateException("Trying to truncate/extend to > 4GiB! "+ size);
-
-            byte[] original = new byte[(int)file.properties.size];
-            Serialize.readFullArray(file.treeNode.getInputStream(context.network, context.crypto, l -> {}).get(), original);
-            // TODO do this smarter by only writing the chunk containing the new endpoint, and deleting all following chunks
-            // or extending with 0s
-            byte[] truncated = Arrays.copyOfRange(original, 0, (int)size);
-            FileWrapper newParent = file.treeNode.remove(parent.treeNode, context).get();
-            FileWrapper b = newParent.uploadOrOverwriteFile(file.properties.name, new AsyncReader.ArrayBacked(truncated),
-                    truncated.length, context.network, context.crypto, l -> {},
-                    context.crypto.random.randomBytes(32)).get();
+            if (size > file.properties.size) {
+                long currentPos = file.properties.size;
+                byte[] fullChunk = new byte[Chunk.MAX_SIZE];
+                FileWrapper parentNode = parent.treeNode;
+                while (currentPos < size) {
+                    long nextBoundary = Math.min(size, currentPos + Chunk.MAX_SIZE - (currentPos % Chunk.MAX_SIZE));
+                    int sizeInChunk = (int) (nextBoundary - currentPos);
+                    byte[] data = sizeInChunk == Chunk.MAX_SIZE ? fullChunk : new byte[sizeInChunk];
+                    parentNode = parentNode.uploadFileSection(file.properties.name, AsyncReader.build(data),
+                            file.properties.isHidden, currentPos, currentPos + sizeInChunk, Optional.empty(),
+                            true, context.network, context.crypto, x -> {},
+                            file.treeNode.getLocation().getMapKey()).get();
+                    currentPos += sizeInChunk;
+                }
+            } else
+                file.treeNode.truncate(size, parent.treeNode, context.network, context.crypto).get();
             return (int) size;
         } catch (Throwable t) {
             LOG.log(Level.WARNING, t.getMessage(), t);
