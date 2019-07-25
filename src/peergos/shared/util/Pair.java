@@ -40,4 +40,8 @@ public class Pair<L,R> {
     public String toString() {
         return "(" + left.toString() + ", " + right.toString() + ")";
     }
+
+    public static <E, F> Pair<E, F> of(E left, F right) {
+        return new Pair<>(left, right);
+    }
 }
