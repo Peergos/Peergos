@@ -568,18 +568,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
         debug("TRUNCATE file %s, size %d", file.properties.name, size);
 
         try {
-            if (size > Integer.MAX_VALUE)
-                throw new IllegalStateException("Trying to truncate/extend to > 4GiB! "+ size);
-
-            byte[] original = new byte[(int)file.properties.size];
-            Serialize.readFullArray(file.treeNode.getInputStream(context.network, context.crypto, l -> {}).get(), original);
-            // TODO do this smarter by only writing the chunk containing the new endpoint, and deleting all following chunks
-            // or extending with 0s
-            byte[] truncated = Arrays.copyOfRange(original, 0, (int)size);
-            FileWrapper newParent = file.treeNode.remove(parent.treeNode, context).get();
-            FileWrapper b = newParent.uploadOrOverwriteFile(file.properties.name, new AsyncReader.ArrayBacked(truncated),
-                    truncated.length, context.network, context.crypto, l -> {},
-                    context.crypto.random.randomBytes(32)).get();
+           file.treeNode.truncate(size, parent.treeNode, context.network, context.crypto).get();
             return (int) size;
         } catch (Throwable t) {
             LOG.log(Level.WARNING, t.getMessage(), t);
