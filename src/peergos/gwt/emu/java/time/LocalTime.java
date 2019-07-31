@@ -112,6 +112,21 @@ public class LocalTime implements Comparable<LocalTime>{
 
     @Override
     public String toString() {
-        return hour +":"+minute+":"+second;
+    	StringBuilder sb = new StringBuilder();
+    	if (hour < 10) {
+    		sb.append('0');
+    	}
+    	sb.append(hour);
+    	sb.append(":");
+    	if (minute < 10) {
+    		sb.append('0');
+    	}
+    	sb.append(minute);
+    	sb.append(":");
+    	if (second < 10) {
+    		sb.append('0');
+    	}
+    	sb.append(second);
+        return sb.toString();
     }
 }
