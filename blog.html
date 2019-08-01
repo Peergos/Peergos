@@ -101,24 +101,55 @@
     <div class="row">
     <div class="col m3 col s4">
     <div id="full-toc" class="bs-docs-sidebar hidden-print affix-top hidden-xs hidden-sm" role="complementary">
-  <ul class='nav bs-docs-sidenav'><li class='active'><a href='#ipfs_camp_new_features_july_2019_' data-scroll data-url>IPFS Camp, new features, July 2019</a></li><li><a href='#security_audit_june_2019_' data-scroll data-url>Security Audit, June 2019</a></li><li><a href='#alpha_release_june_2019_' data-scroll data-url>Alpha Release, June 2019</a></li><li><a href='#development_update_feb_2019_' data-scroll data-url>Development update, Feb 2019</a><ul class='nav'><li><a href='#decentralization_' data-scroll data-url>Decentralization</a></li><li><a href='#granting_write_access_' data-scroll data-url>Granting write access</a></li><li><a href='#future_work_' data-scroll data-url>Future work</a></li></ul>
+  
     </div>
     </div>
     <div class="col m9 col s8" role="main" style="overflow-x:auto; padding-bottom: 10px;">
     <h1 class="page-header main-title">Blog</h1>
     <div class="bs-docs-section">
-    <h2 id="ipfs_camp_new_features_july_2019_">IPFS Camp, new features, July 2019</h2>
+    <h2 id="fast-seeking-and-encypted-history">Fast seeking and encypted history</h2>
+<p>Another week, another set of cool new Peergos features. We've been hard at work and wanted to tell you about our latest new features: super fast seeking within a file, encrypted history (fix the back button), and storage usage and quota display. </p>
+<p>Imagine you were watching a long movie in Peergos using our built in streaming video player, and wanted to skip ahead to where you left off last time, around two hours in. Previously this involved downloading the encrypted metadata for every 5MiB chunk of the file (a few network requests), decrypting the location of the next chunk, and repeating this until you reach the desired offset. The links between the chunks are encrypted so that the outside world (or the server) can't deduce the size of your files. This was SLOOOOOW. To seek a gigabyte or so in took about 5 minutes, or more depending on your internet connection latency! No one wants to wait around that long. so we came up with a new scheme for deterministic, but still private subsequent chunk locations. Before this change each chunk location was 32 random bytes. In the new scheme we calculate the location of a subsequent chunk as the following, where the secret is 32 random bytes that are stored in the encrypted metadata of the first chunk of the file:</p>
+<p><center>
+<b>next location = sha256 hash(current location + secret)</b></p>
+<p>How we now calculate the locations of later parts of a file
+</center></p>
+<p>This means that to seek ahead we don't need to do <em>any</em> IO at all. We just do a bunch of hashing locally. This is ridiculously fast and doesn't leak to the world the connections between your chunks. We can now seek many gigabytes into a file in about 5s, which is mostly the time to retrive the eventual chunk of the file.</p>
+<p><center>
+<video src="theme/video/mind-blown.mp4" width="400px" controls></video>
+</center></p>
+<p><center>
+http://localhost:8000/#{%22nonce%22:%22hl6U6X/ytjRGT+pi5wmJFq...,%22ciphertext%22:%22oK9JAGotzDOELvIon...}</p>
+<p>A URL with the encrypted path in the fragment.
+</center></p>
+<p>The second feature this week is encrypted history. Until now, if you press the browser back button you get logged out of Peergos. Super annoying! Now, every time you change directory we store the path, padded and encrypted, in the url fragment. If we didn't encrypt it then there'd be a log of every directory you visited in your browser history. The other requirement is that we catch changes to the url (e.g. caused by pressing the back button) and try to decrypt and interpet the resulting path. This makes navigation much more intuitive.</p>
+<p>We also add to the history if you open a file in Peergos, and if you log in through one of these links then we will restore you to the correct directory, and open any file you had open. This allows you to store "deep bookmarks" to things in Peergos which don't reveal anything to someone who get's access you your bookmarks!</p>
+<p><center>
+<img alt="Space usage display" class="class" height="20%" id="id" src="/theme/img/peergos-usage.png" width="400px" />
+<br/>
+Space usage display
+</center></p>
+<p>The third feature is a display of your current space usage and allowance. This lets you see at a glance how close to your limit you are, and you can request more from the admin for your storage node. That could be a friend who's running a Peergos server for you and gives you more storage for free. Or later down the line we will add the ability for a hosting provider to charge money for storage. After you've requested more storage an admin can approve it next time they log in.</p>
+<p><center>
+<img alt="Request more space" class="class" height="20%" id="id" src="/theme/img/peergos-request-storage.png" width="400px" />
+<br/>
+Request more space
+</center></p>
+<p>These features are already live on the <a href="https://alpha.peergos.net">alpha server</a>, and in the <a href="https://alpha.peergos.net/public/peergos/releases/v0.1.0/">latest release</a> so go check it out!</p>
+<p>Happy Peergossing!</p>
+<p>-The Peergos team</p>
+<h2 id="ipfs-camp-new-features-july-2019">IPFS Camp, new features, July 2019</h2>
 <p>At Peergos we care deeply about your privacy and security online. We are super-excited to be building the future of the web where individuals have total control over their data, and who can see it. This is why we prioritised getting a full <a href="https://peergos.org/blog#security_audit_june_2019_">security audit</a> and why we continue to build a privacy-first platform where you grant applications and people access only to the data you want them to have. </p>
 <p>Recently we attended the inaugural <a href="https://camp.ipfs.io">IPFS camp</a> organised by <a href="https://protocol.ai">Protocol labs</a> from 27th-30th June. Set in magnificent surroundings in the Barcelonian hills, the situation was primed for productivity with 160 pioneers of the decentralised web gathered to meet, discuss, learn and solve. The schedule was packed, with core courses, electives, lightning talks, deep dives, unconf sessions and a sci-fi fair. It was a great experience and hugely useful for Peergos and our mission.</p>
 <p><center>
-<img alt="The deepdive trophy" class="class" height="20%" id="id" src="/theme/img/deepdive.jpeg" width="200px">
-<br>
+<img alt="The deepdive trophy" class="class" height="20%" id="id" src="/theme/img/deepdive.jpeg" width="200px" />
+<br/>
 Best deep dive trophy
 </center></p>
 <p>Our team member Jonathan and his group won the best deep dive, for a product analysis of Peergos. This deep dive was a guided user testing of Peergos which resulted in a ton of feedback and suggestions. One of the suggestions was to implement friend verification in person or over the phone via a qr code or safety number. In fact, one member of the group said they would pay right now for Peergos if it had this feature! So now, a few weeks later, we present friend verification! It works directly from the browser using the webcam, including on mobile. Just scan your friends qr code in person for an added layer of confidence!</p>
 <p><center>
-<img alt="Verification" class="class" height="50%" id="id" src="/theme/img/verification.png" width="300px">
-<br>
+<img alt="Verification" class="class" height="50%" id="id" src="/theme/img/verification.png" width="300px" />
+<br/>
 QR code based verification of friends
 </center></p>
 <p>We already have many defenses against a man-in-the-middle attack including mirrored append-only certificate transparency for all user identities, but this adds another layer for the hyper paranoid users. </p>
@@ -127,51 +158,51 @@ QR code based verification of friends
 <p>We also had a great deep dive session with <a href="https://twitter.com/berty">Berty</a> on a secure decentralised group chat protocol. We were investigating if <a href="https://messaginglayersecurity.rocks">Messaging Layer Security</a> can be adapted to work in a more decentralised setting. Berty also <a href="https://github.com/ipfs/camp/raw/master/LIGHTNING_TALKS/ipfscamp2019-lightningtalk-bluetoothle.pdf">presented</a> their implementation of a <a href="https://libp2p.io">libp2p</a> transport over bluetooth low energy. Very cool!</p>
 <p>Until next time, happy Peergossing!</p>
 <p>-The Peergos team</p>
-<h2 id="security_audit_june_2019_">Security Audit, June 2019</h2>
+<h2 id="security-audit-june-2019">Security Audit, June 2019</h2>
 <p>Thanks to some very generous support from <a href="https://protocol.ai/">Protocol Labs</a> we have had our first security audit! We contracted the firm <a href="https://cure53.de/">Cure53</a> to give us a large scale security asessment of our cryptography, protocols, architecture and code. We're extremely pleased to be able to announce that no fundamental architectural or cryptographic problems were found, and all the issues that were found have been fixed.</p>
 <p>This means that you can rest assured that your data is safe with Peergos. </p>
 <p>Read the <a href="https://cure53.de/pentest-report_peergos.pdf">full report here</a>.</p>
 <p><center>
-<img alt="Peergos" class="class" height="20%" id="id" src="/theme/img/logo.png" width="20%">
+<img alt="Peergos" class="class" height="20%" id="id" src="/theme/img/logo.png" width="20%" />
 </center></p>
-<h2 id="alpha_release_june_2019_">Alpha Release, June 2019</h2>
+<h2 id="alpha-release-june-2019">Alpha Release, June 2019</h2>
 <p>The time you've all been waiting for has arrived... The <em>Peergos alpha</em> is now officially open! You can now have your own private shareable space online. </p>
 <p>We have a strictly limited number of accounts on our alpha available for free with an initial 200MB of storage, so get in fast. All we ask in return is that you use it and tell us what we can improve. You can do this in Peergos itself using the feedback button, on <a href="https://reddit.com/r/peergos">Reddit</a>, or via <a href="mailto:feedback@peergos.org">email</a> or <a href="https://twitter.com/peergos">Twitter</a>. If you run out of space in Peergos then just message us and we'll increase your storage quota, subject to availability. </p>
-<p>Some things to bear in mind:<br>
+<p>Some things to bear in mind:<br/>
 <ol><li> We haven't had an external security audit (coming soon), so we advise you not to store anything sensitive in Peergos yet.</li><li> For now, we recommend Chrome for files larger than 50MB. We'd love to be able to recommend Firefox, but they haven't implemented a <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1474543">critical feature</a> we need to safely stream from encrypted data.</li><li> There are still a lot of rough edges and things that can be optimised, but we wanted to get it out there and start getting feedback on what people actually want, now that the foundations are in place. </li></ol></p>
 <p>You can <a href="https://alpha.peergos.net?signup=true">sign up to the alpha here</a>. </p>
 <p>Happy sharing!</p>
-<p>The Peergos Team<br><br>
-Twitter: <a href="https://twitter.com/peergos">@peergos</a><br>
+<p>The Peergos Team<br/><br/>
+Twitter: <a href="https://twitter.com/peergos">@peergos</a><br/>
 Reddit: <a href="https://reddit.com/r/peergos">https://reddit.com/r/peergos</a></p>
 <p><center>
-<img alt="Peergos" class="class" height="20%" id="id" src="/theme/img/logo.png" width="20%">
+<img alt="Peergos" class="class" height="20%" id="id" src="/theme/img/logo.png" width="20%" />
 </center></p>
-<h2 id="development_update_feb_2019_">Development update, Feb 2019</h2>
+<h2 id="development-update-feb-2019">Development update, Feb 2019</h2>
 <p><em>This is our first development update since we started, in July 2013. For most of that period we've been working on Peergos for free in our spare time. Everything we do is <a href="https://github.com/peergos/peergos">open source</a> and pro bono - If you would like to support our development then please make a <a href="https://liberapay.com/peergos">recurring donation of less than 100 euros per week</a> or a <a href="https://donorbox.org/peergos">larger one off donation</a>.</em> </p>
 <p>The browser's capabilities have come a long way since we started. Things that we can do now were not possible 5 years ago. The Inter-Planetary File system (<a href="https://ipfs.io">IPFS</a>) has come a long way in solving many of the peer-to-peer networking problems and laying a solid structural foundation to build on. That's why very early on after IPFS started we switched from our own networking and distributed hash table to IPFS, allowing us to focus on our core principles of privacy and security. </p>
 <p>Thanks to some very generous support from <a href="https://protocol.ai/">Protocol Labs</a> (the initial creators of IPFS) we have been able to accelerate development recently. We've released a bunch of cool new features and are much closer to our public alpha. Let's go through a few of the big ones. You can see the rest in more detail in our <a href="https://book.peergos.org">book</a>. </p>
-<h3 id="decentralization_">Decentralization</h3>
+<h3 id="decentralization">Decentralization</h3>
 <p>The first new feature is proper decentralization. Now you can self host your own Peergos instance and transparently interact with users on other servers, whilst being independent of the domain name system (DNS) and the SSL certificate authorities (central points of failure outside our control). You can even log in to your Peergos account through someone else's Peergos server. The Peergos interface can actually be entirely self hosted from within IPFS itself (i.e. you can log in through a standard ipfs instance rather than a Peergos instance)! This was all achieved with IPFS p2p streams. p2p streams are a new feature in IPFS which let you create a tcp socket between any two IPFS instances. This stream is end-to-end encrypted with secio. Secio is basically <a href="https://en.wikipedia.org/wiki/Transport_Layer_Security">TLS</a> with a different handshake because the end points are not location addressed - instead the addresses are the hash of each node's public key. Like all other IPFS connections, this stream will tunnel through NATs and firewalls transparently. </p>
 <p>We implemented a new http endpoint on the IPFS gateway which allows you to proxy a http request to any target IPFS instance (who is listening) using these p2p streams.</p>
 <p>This new endpoint is accessed through the gateway (after enabling it - it's an experimental feature for now) at:</p>
 <p>http://locahost:8080<b>/p2p/$ipfs-node-id/http/$path</b></p>
 <p>For each such request, IPFS will open a p2p stream to $ipfs-node-id and proxy the request to it with a path of $path. Note that the $ipfs-node-id is the hash of the IPFS node's public key. How this works is illustrated below. The beauty of this http endpoint is you don't need to manually open p2p streams for every different endpointdestination, IPFS handles that for you automatically. </p>
 <p><center>
-<img alt="Proxying requests" class="class" height="90%" id="id" src="/theme/img/blog/proxy.svg" width="90%">
+<img alt="Proxying requests" class="class" height="90%" id="id" src="/theme/img/blog/proxy.svg" width="90%" />
 </center></p>
 <p>Using this key ingredient, we can separate out each user's data into their own server. Most of the data is already in IPFS, but a user's storage server is responsible for pinning it, and for storing the mutable pointers (our equivalent of IPNS), and pending follow requests. This means the only centralized component is the pki, which stores mappings from username to public identity key, and public storage server key. The job of the pki server is to ensure unique usernames and thus it is logically centralized, but we take various efforts to mitigate the effect of this. For example the pki is mirrored on every Peergos server. This has threefold benefits: first it allows users to do private lookups for friends' public keys without announcing to the network who they are looking up; second, it makes the whole system much more scalable - you only need to contact the real pki when you are signing up, or changing your identity or storage server; and third it improves resiliency, if the pki server were to permanently be taken down the network could move to a new one without any loss of data. The pki data itself is stored in IPFS as an append only data structure in a compressed hash array mapped trie (champ). </p>
-<h3 id="granting_write_access_">Granting write access</h3>
+<h3 id="granting-write-access">Granting write access</h3>
 <p>We've had the ability to grant read access for years, but only this year have we finally implemented granting write access to other users. Every write is signed by a signing keypair. Initially you only have one signing keypair for your entire filestystem, which means that to only grant write access to a subtree, it needs to be moved to a new signing keypair. To explain how this works we're going to take a few steps back. Every directory or 5 MiB section (chunk) of a file requires a unique <a href="https://en.wikipedia.org/wiki/Capability-based_security">capability</a> to access it consisting of:</p>
 <p><b>(owner, signer, label, read base key, write base key)</b></p>
 <p>Here the owner and signer are (hashes of) public signing keys, label is a random 32 byte label, and the read and write base keys are symmetric keys. If someone has the first 4, which amount to a location and a key, then they can read the file or folder that it points to. If they also have the write base key, then they can also make modifications.</p>
 <p>From a network visible point of view, every signing key pair points to a champ root (by signing the root). This champ is just a look up from the label to the value, which is a cryptree node. You can read more about cryptree in our <a href="https://book.peergos.org/security/cryptree.html">book</a>, or the <a href="https://raw.githubusercontent.com/ianopolous/Peergos/master/papers/wuala-cryptree.pdf">original paper</a> describing it. If the thing pointed to is a file, then the cryptree node itself will have merkle links to the encrypted fragments of the chunk. Remember that merkle links are just a hash that points to another ipfs object. This is illustrated below. </p>
 <p><center>
-<img alt="Champ" class="class" height="90%" id="id" src="/theme/img/blog/champ.svg" width="90%">
+<img alt="Champ" class="class" height="90%" id="id" src="/theme/img/blog/champ.svg" width="90%" />
 </center></p>
 <p>When you grant write access to a file or folder then you are just revealing the write base key to them. This enables them to extract the private signing key and thus make modifications. Initially your entire filesystem is under the same signing key pair. This means were we to naively grant write access by sharing this key then the recipient could delete (though not read) all your files. To avoid this we first move the file or directory to which we want to grant write access to a new signing key pair. This allows us to only grant the friend write access to the particular part of our filesystem we want to share. Voila!</p>
 <p>If you grant write access to a folder, then that means that the recipient can upload new files or make new directories inside that folder, or delete all the contents. Granting write access to an individual file means the recipient can only modify that file.</p>
-<h3 id="future_work_">Future work</h3>
+<h3 id="future-work">Future work</h3>
 <p>We have lots of work in the pipeline, so stay tuned! These include an in Peergos text editor, for a google docs like experience with collaborative editing, a secure messaging system inside Peergos and a sandbox and API for third-party applications inside Peergos. </p>
     </div>
     <span class="pull-right">
