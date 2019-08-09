@@ -1174,6 +1174,32 @@ public abstract class UserTests {
     }
 
     @Test
+    public void internalCopyDirToDir() {
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network.clear(), crypto);
+        FileWrapper userRoot = context.getUserRoot().join();
+        Path home = Paths.get(username);
+
+        String filename = "initialfile.bin";
+        byte[] data = randomData(10*1024*1024); // 2 chunks to test block chaining
+
+        String foldername = "afolder";
+        userRoot = userRoot.mkdir(foldername, context.network, false, crypto).join();
+        String foldername2 = "bfolder";
+        userRoot = userRoot.mkdir(foldername2, context.network, false, crypto).join();
+        FileWrapper folder2 = context.getByPath(home.resolve(foldername2)).join().get();
+
+
+        FileWrapper subfolder = context.getByPath(home.resolve(foldername)).join().get();
+        subfolder = userRoot.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data),
+                data.length, context.network, crypto, x -> {}, context.crypto.random.randomBytes(32)).join();
+
+
+        Boolean res = subfolder.copyTo(folder2, context).join();
+    }
+
+    @Test
     public void usage() {
         String username = generateUsername();
         String password = "password";
