@@ -91,9 +91,10 @@ public class PublicFileHandler implements HttpHandler {
             if (file.isDirectory()) {
                 String fullPath = httpExchange.getRequestURI().getPath();
                 String canonicalFullPath = HtmlUtil.escapeHtml4(fullPath + (! fullPath.endsWith("/") ? "/" : ""));
+                AlphanumComparator humanOrder = new AlphanumComparator();
                 List<FileWrapper> children = file.getChildren(crypto.hasher, network).get()
                         .stream()
-                        .sorted(Comparator.comparing(f -> f.getName()))
+                        .sorted((a, b) -> humanOrder.compare(a.getName(), b.getName()))
                         .collect(Collectors.toList());
                 StringBuilder resp = new StringBuilder();
                 resp.append("<!DOCTYPE html><html lang=\"en\">");
