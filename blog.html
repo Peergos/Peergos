@@ -108,20 +108,60 @@
     <h1 class="page-header main-title">Blog</h1>
     <div class="bs-docs-section">
     <h2 id="applications_on_peergos_august_2019_">Applications on Peergos, August 2019</h2>
-<p>From the beginning, one of our goals has been to enable 3rd party applications inside Peergos. These would be apps which you can choose to install, and grant permissions leveraging the strong authentication, encryption and access control in Peergos, but which run in a strict sandbox. We've recently discovered a technique that should allow us to achieve this. The key component is a sandboxed iframe. Browsers now let you lock down code in an iframe so that it can't communicate to the outside world (can't make AJAX requests) and is totally isolated from the parent web page. This is absolutely critical to us because when you are logged in, your keys are stored in memory, and we must protect these from any potentially malicious code. We can run untrusted code in a sandboxed iframe which only lets you render html, css, run javascript and send and receive specific messages to the parent. It is this messaging api between an iframe and it's parent that lets us keep privileged code with privileged keys on the outside which can provide data in messages to the application running inside the iframe. </p>
-<p>The first and simplest such application is a read only viewer for PDFs. We simply imported <a href="https://github.com/mozilla/pdf.js/">pdf.js</a> from Mozilla and implemented a one way message from the external context which sends the content of the pdf to render. This is super simple and adds very useful functionality to Peergos.</p>
+<p>They're here - the first apps for Peergos!</p>
+<p>The first application we've made available is a read-only viewer for PDF files.
+This is a super-simple app which adds very useful functionality to Peergos. Now
+you can securely and privately read PDF files within Peergos. </p>
 <p><center>
 <img alt="PDF Viewer" class="class" id="id" src="/theme/img/pdf-viewer.png" width="80%">
 <br>
 PDF Viewer
 </center></p>
-<p>The second app was an editor for text or code. We used a great library for this called <a href="https://github.com/codemirror/codemirror">Codemirror</a>. We support plain text, mark down, and major programming languages likes Java, Go, Rust, Javascript, html, etc. This application required a slightly more complicated protocol than the one way message system of the pdf viewer. We just needed a message to send the modfied content back to the external context, and the privileged code could then save the modified file contents. This is huge! Now use cases like a basic password manager, todo lists and more are opened up with very little work from us.</p>
+<p>The second app we've enabled is an editor for text or code. We support plain
+text, markdown, and major programming languages like Java, Go, Rust,
+Javascript, HTML, etc. This is huge! You can use the text editor as a secure
+password manager, a to do list and more! </p>
 <p><center>
 <img alt="Editor" class="class" id="id" src="/theme/img/editor.png" width="80%">
 <br>
 Text/Markdown/Code editor
 </center></p>
-<p>Eventually we want to allow users to just edit some html and js files directly in a folder in Peergos and declare it as an application. This would give people a live editing environment, easy publishing, and <em>auditable proofs</em> of the authorship of apps. You could even host your website directly in Peergos and edit it in place! However, before we open up the sandbox to truly untrusted apps, there is one prerequisite. You may have been following the CPU vulnerabilities Spectre, Meltdown et al over recent years.. Currently, browsers don't put sandboxed iframes into a different operating system process, which is necessary to be fully protected from Spectre. However, both Firefox and Chrome are in the process of moving iframes to separate processes. So once that lands, we can enable 100% safe sandboxes for Peergos applications! In the mean time we can use it to curate semi trusted apps like the pdf viewer and text editor. We'd love to hear what things you use the text editor for!</p>
+<p>These great new features are made possible by a technique we've recently
+discovered. The key component is a sandboxed iframe. Browsers now let you lock
+down code in an iframe so that it can't communicate to the outside world (i.e. can't
+make AJAX requests) and is totally isolated from the parent web page. The
+isolation provided by the sandboxed iframe is absolutely critical to us because
+when you are logged in, your keys are stored in memory and must be protected
+from any potentially malicious code. We can run untrusted code in a sandboxed
+iframe which only lets you render HTML, CSS, run Javascript, and send and
+receive specific messages to and from the parent. This messaging API keeps
+privileged code and keys separate from the application running inside the
+iframe. </p>
+<p>For the PDF viewer, we simply imported
+<a href="https://github.com/mozilla/pdf.js/">pdf.js</a> from Mozilla and implemented
+a one-way message from the external context which sends the content of the PDF
+to render. For the text editor, we used a great library called
+<a href="https://github.com/codemirror/codemirror">Codemirror</a>. This app
+required a slightly more complicated protocol than the one-way message
+system of the PDF viewer. We just needed a message to send the modified content
+back to the external context, and the privileged code could then save the
+modified file contents.</p>
+<p>One of our goals has been to enable third party applications inside Peergos.
+These would be apps which you can choose to install and grant permissions to
+using the strong authentication, encryption and access control in Peergos, but
+which run in a strict sandbox. Eventually we want to allow users to edit HTML
+and Javascript files directly in a folder in Peergos and declare it as an
+application. This would give users a live editing environment, easy publishing,
+and <em>auditable proofs</em> of the authorship of apps. You could even host your
+website directly in Peergos and edit it in place!</p>
+<p>Before we open up the sandbox to truly untrusted apps, there is one
+ prerequisite. Currently, browsers don't put sandboxed iframes into a different
+ operating system process, which is necessary to be fully protected from CPU
+ vulnerabilities such as Spectre or Meltdown. Both Firefox and Chrome are in
+ the process of moving iframes to separate processes and once that lands, we
+ can enable 100% safe sandboxes for Peergos applications! </p>
+<p>In the meantime we can use it to curate semi-trusted apps like the PDF viewer
+ and text editor. We'd love to hear what you use the text editor for!</p>
 <p>Happy Peergossing!</p>
 <p>-The Peergos team</p>
 <h2 id="fast_seeking_and_encrypted_history_">Fast seeking and encrypted history</h2>
