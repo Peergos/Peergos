@@ -1105,15 +1105,15 @@ public class FileWrapper {
                 .thenCompose(version -> getUpdated(version, network));
     }
 
-    public CompletableFuture<Snapshot> mkdir(String newFolderName,
-                                             Optional<SymmetricKey> requestedBaseReadKey,
-                                             Optional<SymmetricKey> requestedBaseWriteKey,
-                                             Optional<byte[]> desiredMapKey,
-                                             boolean isSystemFolder,
-                                             NetworkAccess network,
-                                             Crypto crypto,
-                                             Snapshot version,
-                                             Committer committer) {
+    private CompletableFuture<Snapshot> mkdir(String newFolderName,
+                                              Optional<SymmetricKey> requestedBaseReadKey,
+                                              Optional<SymmetricKey> requestedBaseWriteKey,
+                                              Optional<byte[]> desiredMapKey,
+                                              boolean isSystemFolder,
+                                              NetworkAccess network,
+                                              Crypto crypto,
+                                              Snapshot version,
+                                              Committer committer) {
 
         if (!this.isDirectory()) {
             return Futures.errored(new IllegalStateException("Cannot mkdir in a file!"));
@@ -1123,9 +1123,7 @@ public class FileWrapper {
         }
         return hasChildWithName(version, newFolderName, crypto.hasher, network).thenCompose(hasChild -> {
             if (hasChild) {
-                CompletableFuture<Snapshot> error = new CompletableFuture<>();
-                error.completeExceptionally(new IllegalStateException("Child already exists with name: " + newFolderName));
-                return error;
+                return Futures.errored(new IllegalStateException("Child already exists with name: " + newFolderName));
             }
             return pointer.fileAccess.mkdir(version, committer, newFolderName, network, writableFilePointer(), getChildsEntryWriter(),
                     requestedBaseReadKey, requestedBaseWriteKey, desiredMapKey, isSystemFolder, crypto).thenApply(x -> {
@@ -1278,9 +1276,7 @@ public class FileWrapper {
 
         return target.hasChildWithName(version, getFileProperties().name, crypto.hasher, network).thenCompose(childExists -> {
             if (childExists) {
-                CompletableFuture<Snapshot> error = new CompletableFuture<>();
-                error.completeExceptionally(new IllegalStateException("CopyTo target " + target + " already has child with name " + getFileProperties().name));
-                return error;
+                return Futures.errored(new IllegalStateException("CopyTo target " + target + " already has child with name " + getFileProperties().name));
             }
             if (isDirectory()) {
                 byte[] newMapKey = crypto.random.randomBytes(32);
@@ -1290,18 +1286,19 @@ public class FileWrapper {
                         .withMapKey(newMapKey)
                         .withBaseKey(newBaseR)
                         .withBaseWriteKey(newBaseW);
-                return getChildren(version, crypto.hasher, network).thenCompose(children -> {
-                    return target.mkdir(getName(), Optional.of(newBaseR), Optional.of(newBaseW), Optional.of(newMapKey),
-                            getFileProperties().isHidden, network, crypto, version, committer)
-                            .thenCompose(versionWithDir -> network.getFile(versionWithDir, newCap, target.getChildsEntryWriter(), target.ownername)
-                                    .thenCompose(subTargetOpt -> {
-                                        FileWrapper newTarget = subTargetOpt.get();
-                                        return Futures.reduceAll(children, versionWithDir,
-                                                (s, child) -> newTarget.getUpdated(s, network)
-                                                        .thenCompose(updated -> child.copyTo(updated, network, crypto, s, committer)),
-                                                (a, b) -> a.merge(b));
-                                    }));
-                });
+                return getChildren(version, crypto.hasher, network).thenCompose(children ->
+                        target.mkdir(getName(), Optional.of(newBaseR), Optional.of(newBaseW), Optional.of(newMapKey),
+                                getFileProperties().isHidden, network, crypto, version, committer)
+                                .thenCompose(versionWithDir ->
+                                        network.getFile(versionWithDir, newCap, target.getChildsEntryWriter(), target.ownername)
+                                                .thenCompose(subTargetOpt -> {
+                                                    FileWrapper newTarget = subTargetOpt.get();
+                                                    return Futures.reduceAll(children, versionWithDir,
+                                                            (s, child) -> newTarget.getUpdated(s, network)
+                                                                    .thenCompose(updated ->
+                                                                            child.copyTo(updated, network, crypto, s, committer)),
+                                                            (a, b) -> a.merge(b));
+                                                })));
             } else {
                 return version.withWriter(owner(), writer(), network).thenCompose(snapshot ->
                         getInputStream(snapshot.get(writer()).props, network, crypto, x -> {})
