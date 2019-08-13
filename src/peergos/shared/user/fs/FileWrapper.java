@@ -1099,28 +1099,40 @@ public class FileWrapper {
                                                 boolean isSystemFolder,
                                                 Crypto crypto) {
 
-        CompletableFuture<FileWrapper> result = new CompletableFuture<>();
+        return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
+                (state, committer) -> mkdir(newFolderName, Optional.ofNullable(requestedBaseSymmetricKey),
+                        Optional.empty(), Optional.empty(), isSystemFolder, network, crypto, state, committer))
+                .thenCompose(version -> getUpdated(version, network));
+    }
+
+    public CompletableFuture<Snapshot> mkdir(String newFolderName,
+                                             Optional<SymmetricKey> requestedBaseReadKey,
+                                             Optional<SymmetricKey> requestedBaseWriteKey,
+                                             Optional<byte[]> desiredMapKey,
+                                             boolean isSystemFolder,
+                                             NetworkAccess network,
+                                             Crypto crypto,
+                                             Snapshot version,
+                                             Committer committer) {
+
         if (!this.isDirectory()) {
-            result.completeExceptionally(new IllegalStateException("Cannot mkdir in a file!"));
-            return result;
+            return Futures.errored(new IllegalStateException("Cannot mkdir in a file!"));
         }
         if (!isLegalName(newFolderName)) {
-            result.completeExceptionally(new IllegalStateException("Illegal directory name: " + newFolderName));
-            return result;
+            return Futures.errored(new IllegalStateException("Illegal directory name: " + newFolderName));
         }
-        return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
-                (state, committer) -> hasChildWithName(state, newFolderName, crypto.hasher, network).thenCompose(hasChild -> {
-                    if (hasChild) {
-                        CompletableFuture<Snapshot> error = new CompletableFuture<>();
-                        error.completeExceptionally(new IllegalStateException("Child already exists with name: " + newFolderName));
-                        return error;
-                    }
-                    return pointer.fileAccess.mkdir(state, committer, newFolderName, network, writableFilePointer(), getChildsEntryWriter(),
-                            requestedBaseSymmetricKey, isSystemFolder, crypto).thenApply(x -> {
-                        setModified();
-                        return x;
-                    });
-                })).thenCompose(version -> getUpdated(version, network));
+        return hasChildWithName(version, newFolderName, crypto.hasher, network).thenCompose(hasChild -> {
+            if (hasChild) {
+                CompletableFuture<Snapshot> error = new CompletableFuture<>();
+                error.completeExceptionally(new IllegalStateException("Child already exists with name: " + newFolderName));
+                return error;
+            }
+            return pointer.fileAccess.mkdir(version, committer, newFolderName, network, writableFilePointer(), getChildsEntryWriter(),
+                    requestedBaseReadKey, requestedBaseWriteKey, desiredMapKey, isSystemFolder, crypto).thenApply(x -> {
+                setModified();
+                return x;
+            });
+        });
     }
 
     @JsMethod
@@ -1245,43 +1257,60 @@ public class FileWrapper {
         ensureUnmodified();
         NetworkAccess network = context.network;
         Crypto crypto = context.crypto;
-        SafeRandom random = crypto.random;
         if (! target.isDirectory()) {
             return Futures.errored(new IllegalStateException("CopyTo target " + target + " must be a directory"));
         }
 
-        return context.network.synchronizer.applyComplexUpdate(target.owner(), target.signingPair(), (version, committer) -> {
-            return target.hasChildWithName(version, getFileProperties().name, crypto.hasher, network).thenCompose(childExists -> {
-                if (childExists) {
-                    CompletableFuture<Snapshot> error = new CompletableFuture<>();
-                    error.completeExceptionally(new IllegalStateException("CopyTo target " + target + " already has child with name " + getFileProperties().name));
-                    return error;
-                }
-                if (isDirectory()) {
-                    byte[] newMapKey = random.randomBytes(32);
-                    SymmetricKey newBaseKey = SymmetricKey.random();
-                    SymmetricKey newWriterBaseKey = SymmetricKey.random();
-                    WritableAbsoluteCapability newCap = new WritableAbsoluteCapability(target.owner(), target.writer(),
-                            newMapKey, newBaseKey, newWriterBaseKey);
-                    SymmetricKey newParentParentKey = target.getParentKey();
-                    return pointer.fileAccess.copyTo(version, committer, pointer.capability, newBaseKey,
-                                    target.writableFilePointer(), target.entryWriter, newParentParentKey,
-                                    newMapKey, network, crypto)
-                            .thenCompose(updatedBase -> {
-                                return target.addLinkTo(updatedBase, committer, getName(), newCap, network, crypto);
-                            });
-                } else {
-                    return version.withWriter(owner(), writer(), network).thenCompose(snapshot ->
-                            getInputStream(snapshot.get(writer()).props, network, crypto, x -> {})
-                                    .thenCompose(stream -> target.uploadFileSection(snapshot, committer,
-                                            getName(), stream, false, 0, getSize(),
-                                            Optional.empty(), false, network, crypto, x -> {},
-                                            random.randomBytes(32))));
-                }
-            });
-        }).thenApply(newAccess -> true);
+        return context.network.synchronizer.applyComplexUpdate(target.owner(), target.signingPair(),
+                (version, committer) -> copyTo(target, network, crypto, version, committer))
+                .thenApply(newAccess -> true);
     }
 
+    public CompletableFuture<Snapshot> copyTo(FileWrapper target,
+                                              NetworkAccess network,
+                                              Crypto crypto,
+                                              Snapshot version,
+                                              Committer committer) {
+        if (! target.isDirectory()) {
+            return Futures.errored(new IllegalStateException("CopyTo target " + target + " must be a directory"));
+        }
+
+        return target.hasChildWithName(version, getFileProperties().name, crypto.hasher, network).thenCompose(childExists -> {
+            if (childExists) {
+                CompletableFuture<Snapshot> error = new CompletableFuture<>();
+                error.completeExceptionally(new IllegalStateException("CopyTo target " + target + " already has child with name " + getFileProperties().name));
+                return error;
+            }
+            if (isDirectory()) {
+                byte[] newMapKey = crypto.random.randomBytes(32);
+                SymmetricKey newBaseR = SymmetricKey.random();
+                SymmetricKey newBaseW = SymmetricKey.random();
+                WritableAbsoluteCapability newCap = ((WritableAbsoluteCapability)target.getPointer().capability)
+                        .withMapKey(newMapKey)
+                        .withBaseKey(newBaseR)
+                        .withBaseWriteKey(newBaseW);
+                return getChildren(version, crypto.hasher, network).thenCompose(children -> {
+                    return target.mkdir(getName(), Optional.of(newBaseR), Optional.of(newBaseW), Optional.of(newMapKey),
+                            getFileProperties().isHidden, network, crypto, version, committer)
+                            .thenCompose(versionWithDir -> network.getFile(versionWithDir, newCap, target.getChildsEntryWriter(), target.ownername)
+                                    .thenCompose(subTargetOpt -> {
+                                        FileWrapper newTarget = subTargetOpt.get();
+                                        return Futures.reduceAll(children, versionWithDir,
+                                                (s, child) -> newTarget.getUpdated(s, network)
+                                                        .thenCompose(updated -> child.copyTo(updated, network, crypto, s, committer)),
+                                                (a, b) -> a.merge(b));
+                                    }));
+                });
+            } else {
+                return version.withWriter(owner(), writer(), network).thenCompose(snapshot ->
+                        getInputStream(snapshot.get(writer()).props, network, crypto, x -> {})
+                                .thenCompose(stream -> target.uploadFileSection(snapshot, committer,
+                                        getName(), stream, false, 0, getSize(),
+                                        Optional.empty(), false, network, crypto, x -> {},
+                                        crypto.random.randomBytes(32))));
+            }
+        });
+    }
 
     @JsMethod
     public CompletableFuture<Boolean> hasChild(String fileName, Hasher hasher, NetworkAccess network) {

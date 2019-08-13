@@ -594,19 +594,20 @@ public class CryptreeNode implements Cborable {
         });
     }
 
-    // returns pointer to new child directory
     public CompletableFuture<Snapshot> mkdir(Snapshot base,
                                              Committer committer,
                                              String name,
                                              NetworkAccess network,
                                              WritableAbsoluteCapability us,
                                              Optional<SigningPrivateKeyAndPublicHash> entryWriter,
-                                             SymmetricKey optionalBaseKey,
+                                             Optional<SymmetricKey> optionalBaseKey,
+                                             Optional<SymmetricKey> optionalBaseWriteKey,
+                                             Optional<byte[]> desiredMapKey,
                                              boolean isSystemFolder,
                                              Crypto crypto) {
-        SymmetricKey dirReadKey = optionalBaseKey != null ? optionalBaseKey : SymmetricKey.random();
-        SymmetricKey dirWriteKey = SymmetricKey.random();
-        byte[] dirMapKey = crypto.random.randomBytes(32); // root will be stored under this in the tree
+        SymmetricKey dirReadKey = optionalBaseKey.orElseGet(SymmetricKey::random);
+        SymmetricKey dirWriteKey = optionalBaseWriteKey.orElseGet(SymmetricKey::random);
+        byte[] dirMapKey = desiredMapKey.orElseGet(() -> crypto.random.randomBytes(32)); // root will be stored under this in the tree
         SymmetricKey ourParentKey = this.getParentKey(us.rBaseKey);
         RelativeCapability ourCap = new RelativeCapability(us.getMapKey(), ourParentKey, null);
         RelativeCapability nextChunk = new RelativeCapability(Optional.empty(), crypto.random.randomBytes(32), dirReadKey, Optional.empty());

@@ -1187,16 +1187,17 @@ public abstract class UserTests {
         String foldername = "afolder";
         userRoot = userRoot.mkdir(foldername, context.network, false, crypto).join();
         String foldername2 = "bfolder";
-        userRoot = userRoot.mkdir(foldername2, context.network, false, crypto).join();
+        userRoot.mkdir(foldername2, context.network, false, crypto).join();
         FileWrapper folder2 = context.getByPath(home.resolve(foldername2)).join().get();
 
 
         FileWrapper subfolder = context.getByPath(home.resolve(foldername)).join().get();
-        subfolder = userRoot.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data),
+        subfolder = subfolder.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data),
                 data.length, context.network, crypto, x -> {}, context.crypto.random.randomBytes(32)).join();
 
-
-        Boolean res = subfolder.copyTo(folder2, context).join();
+        subfolder.copyTo(folder2, context).join();
+        Optional<FileWrapper> file = context.getByPath(Paths.get(username, foldername2, foldername, filename)).join();
+        Assert.assertTrue("File copied in dir", file.isPresent());
     }
 
     @Test
