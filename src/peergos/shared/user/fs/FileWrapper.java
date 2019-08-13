@@ -1262,7 +1262,8 @@ public class FileWrapper {
         }
 
         return context.network.synchronizer.applyComplexUpdate(target.owner(), target.signingPair(),
-                (version, committer) -> copyTo(target, network, crypto, version, committer))
+                (version, committer) -> version.withWriter(owner(), writer(), network)
+                        .thenCompose(both -> copyTo(target, network, crypto, both, committer)))
                 .thenApply(newAccess -> true);
     }
 
