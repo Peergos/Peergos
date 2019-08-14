@@ -594,19 +594,20 @@ public class CryptreeNode implements Cborable {
         });
     }
 
-    // returns pointer to new child directory
     public CompletableFuture<Snapshot> mkdir(Snapshot base,
                                              Committer committer,
                                              String name,
                                              NetworkAccess network,
                                              WritableAbsoluteCapability us,
                                              Optional<SigningPrivateKeyAndPublicHash> entryWriter,
-                                             SymmetricKey optionalBaseKey,
+                                             Optional<SymmetricKey> optionalBaseKey,
+                                             Optional<SymmetricKey> optionalBaseWriteKey,
+                                             Optional<byte[]> desiredMapKey,
                                              boolean isSystemFolder,
                                              Crypto crypto) {
-        SymmetricKey dirReadKey = optionalBaseKey != null ? optionalBaseKey : SymmetricKey.random();
-        SymmetricKey dirWriteKey = SymmetricKey.random();
-        byte[] dirMapKey = crypto.random.randomBytes(32); // root will be stored under this in the tree
+        SymmetricKey dirReadKey = optionalBaseKey.orElseGet(SymmetricKey::random);
+        SymmetricKey dirWriteKey = optionalBaseWriteKey.orElseGet(SymmetricKey::random);
+        byte[] dirMapKey = desiredMapKey.orElseGet(() -> crypto.random.randomBytes(32)); // root will be stored under this in the tree
         SymmetricKey ourParentKey = this.getParentKey(us.rBaseKey);
         RelativeCapability ourCap = new RelativeCapability(us.getMapKey(), ourParentKey, null);
         RelativeCapability nextChunk = new RelativeCapability(Optional.empty(), crypto.random.randomBytes(32), dirReadKey, Optional.empty());
@@ -623,62 +624,6 @@ public class CryptreeNode implements Cborable {
                     RelativeCapability subdirPointer = new RelativeCapability(dirMapKey, dirReadKey, toChildWriteKey);
                     return addChildAndCommit(updatedBase, committer, subdirPointer, us, entryWriter, network, crypto);
                 });
-    }
-
-    public CompletableFuture<Snapshot> copyTo(Snapshot base,
-                                              Committer committer,
-                                              AbsoluteCapability us,
-                                              SymmetricKey newReadBaseKey,
-                                              WritableAbsoluteCapability newParentCap,
-                                              Optional<SigningPrivateKeyAndPublicHash> newEntryWriter,
-                                              SymmetricKey parentparentKey,
-                                              byte[] newMapKey,
-                                              NetworkAccess network,
-                                              Crypto crypto) {
-        if (! isDirectory) {
-            throw new IllegalStateException("Copy to only valid for directories!");
-        }
-        SymmetricKey newWriteBaseKey = SymmetricKey.random();
-        SymmetricKey parentKey = getParentKey(us.rBaseKey);
-        FileProperties props = getProperties(parentKey);
-        Optional<SigningPrivateKeyAndPublicHash> newSigner = Optional.empty();
-        RelativeCapability nextChunk = new RelativeCapability(Optional.empty(), crypto.random.randomBytes(32), newReadBaseKey, Optional.empty());
-        RelativeCapability parentLink = new RelativeCapability(Optional.empty(), newParentCap.getMapKey(), parentparentKey, Optional.empty());
-        DirAndChildren dirWithLinked = CryptreeNode.createDir(MaybeMultihash.empty(), newReadBaseKey, newWriteBaseKey, newSigner, props,
-                Optional.of(parentLink), parentKey, nextChunk, crypto.hasher);
-        CryptreeNode da = dirWithLinked.dir;
-        SymmetricKey ourNewParentKey = da.getParentKey(newReadBaseKey);
-        WritableAbsoluteCapability ourNewCap = new WritableAbsoluteCapability(newParentCap.owner, newParentCap.writer,
-                newMapKey, newReadBaseKey, newWriteBaseKey);
-
-        return base.withWriter(us.owner, us.writer, network)
-                .thenCompose(snapshot -> this.getChildren(snapshot, crypto.hasher, network, us).thenCompose(RFPs -> {
-                    // upload new metadata blob for each child and re-add child
-                    CompletableFuture<Pair<CryptreeNode, Snapshot>> reduce = RFPs.stream()
-                            .reduce(CompletableFuture.completedFuture(new Pair<>(da, snapshot)),
-                                    (dirFuture, rfp) -> {
-                                        return dirFuture.thenCompose(pair -> {
-                                            SymmetricKey newChildReadKey = rfp.fileAccess.isDirectory() ?
-                                                    SymmetricKey.random() :
-                                                    rfp.capability.rBaseKey;
-                                            SymmetricKey newChildWriteKey = SymmetricKey.random();
-                                            byte[] newChildMapKey = crypto.random.randomBytes(32);
-                                            WritableAbsoluteCapability newChildCap = new WritableAbsoluteCapability(ourNewCap.owner,
-                                                    ourNewCap.writer, newChildMapKey, newChildReadKey, newChildWriteKey);
-                                            return rfp.fileAccess.copyTo(pair.right, committer, rfp.capability, newChildReadKey,
-                                                    ourNewCap, newEntryWriter, ourNewParentKey, newChildMapKey, network, crypto)
-                                                    .thenCompose(updatedBase -> pair.left.addChildAndCommit(updatedBase, committer,
-                                                            ourNewCap.relativise(newChildCap), ourNewCap, newEntryWriter,
-                                                            network, crypto)
-                                                            .thenCompose(state -> network.getMetadata(state.get(ourNewCap.writer).props, ourNewCap)
-                                                                    .thenApply(updatedDir -> new Pair<>(updatedDir.get(), state)))
-                                                    );
-                                        });
-                                    }, (a, b) -> a.thenCompose(x -> b));
-                    return reduce;
-                })).thenCompose(finalPair -> IpfsTransaction.call(newParentCap.owner,
-                        tid -> finalPair.left.commit(finalPair.right, committer, ourNewCap, newEntryWriter, network, tid),
-                        network.dhtClient));
     }
 
     public CompletableFuture<Snapshot> updateChildLink(Snapshot base,
