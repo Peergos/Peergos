@@ -2,6 +2,7 @@ package peergos.server.storage;
 
 import static peergos.server.util.Logging.LOG;
 
+import peergos.server.util.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
@@ -14,11 +15,13 @@ import java.util.*;
 import java.util.stream.*;
 
 /**
- * A Utility for installing IPFS.
+ * A Utility for installing IPFS and associated plugins.
  */
 public class IpfsInstaller {
 
     public enum DownloadTarget {
+        S3_LINUX_AMD64("https://github.com/peergos/ipfs-releases/blob/master/v0.4.22/linux-amd64/plugins/go-ds-s3.so?raw=true",
+                Cid.decode("QmWAXFcFRZq4tyqVhFfH6yn6gBUGfmhRX19eUwYVE6PwSb")),
         DARWIN_386("https://github.com/peergos/ipfs-releases/blob/master/v0.4.22/darwin-386/ipfs?raw=true",
                 Cid.decode("QmPNQqAExYqBAS1ruNakdirw36won2ELQJNbijZ4vXhd81")),
         DARWIN_AMD64("https://github.com/peergos/ipfs-releases/blob/master/v0.4.22/darwin-amd64/ipfs?raw=true",
@@ -32,7 +35,7 @@ public class IpfsInstaller {
         LINUX_386("https://github.com/peergos/ipfs-releases/blob/master/v0.4.22/linux-386/ipfs?raw=true",
                 Cid.decode("QmRviMmsVPVG3mLyefYXDQwyNh4AN1Yn6yG9YJ4wUv8jMA")),
         LINUX_AMD64("https://github.com/peergos/ipfs-releases/blob/master/v0.4.22/linux-amd64/ipfs?raw=true",
-                Cid.decode("QmNc6hEaB3PZoiDvZp5hdt4FAkFomJEJHi3zi96VH51ybf")),
+                Cid.decode("QmNc6hEaB3PZoiDvZp5hdt4FAkFomJEJHi3zi96VH51ybf"), Arrays.asList(S3_LINUX_AMD64)),
         LINUX_ARM("https://github.com/peergos/ipfs-releases/blob/master/v0.4.22/linux-arm/ipfs?raw=true",
                 Cid.decode("QmeJ5L16uzPAaLX2K9BeU3yB9eVoeqzCMk11eiBoBHvtN1")),
         LINUX_ARM64("https://github.com/peergos/ipfs-releases/blob/master/v0.4.22/linux-arm64/ipfs?raw=true",
@@ -44,10 +47,90 @@ public class IpfsInstaller {
 
         public final String url;
         public final Multihash multihash;
+        public final List<DownloadTarget> plugins;
+
+        DownloadTarget(String url, Multihash multihash, List<DownloadTarget> plugins) {
+            this.url = url;
+            this.multihash = multihash;
+            this.plugins = Collections.unmodifiableList(plugins);
+        }
 
         DownloadTarget(String url, Multihash multihash) {
             this.url = url;
             this.multihash = multihash;
+            this.plugins = Collections.emptyList();
+        }
+    }
+
+    public interface Plugin {
+
+        void ensureInstalled(Path ipfsDir);
+
+        void configure(IpfsWrapper ipfs);
+
+        final class S3 implements Plugin {
+            public static final String TYPE = "S3";
+            public final String path, bucket, region, accessKey, secretKey, regionEndpoint;
+            public final DownloadTarget version;
+
+            public S3(String path, String bucket, String region, String accessKey, String secretKey,
+                      String regionEndpoint, DownloadTarget version) {
+                this.path = path;
+                this.bucket = bucket;
+                this.region = region;
+                this.accessKey = accessKey;
+                this.secretKey = secretKey;
+                this.regionEndpoint = regionEndpoint;
+                this.version = version;
+            }
+
+            public String getFileName() {
+                return "go-ds-s3.so";
+            }
+
+            public static S3 build(Args a) {
+                String path = a.getArg("s3.path", "blocks");
+                String bucket = a.getArg("s3.bucket");
+                String region = a.getArg("s3.region");
+                String accessKey = a.getArg("s3.accessKey", "");
+                String secretKey = a.getArg("s3.secretKey", "");
+                String regionEndpoint = a.getArg("s3.region.endpoint", bucket + ".amazonaws.com");
+                String osArch = getOsArch();
+                DownloadTarget pluginVersion = DownloadTarget.valueOf(TYPE + "_" + osArch.toUpperCase());
+                return new S3(path, bucket, region, accessKey, secretKey, regionEndpoint, pluginVersion);
+            }
+
+            @Override
+            public void configure(IpfsWrapper ipfs) {
+                // Do the configuration dance..
+                throw new IllegalStateException("Unimplemented!");
+            }
+
+            @Override
+            public void ensureInstalled(Path ipfsDir) {
+                install(ipfsDir.resolve("plugins").resolve(getFileName()), version, Optional.empty());
+            }
+        }
+
+        static List<Plugin> parseAll(Args args) {
+            List<String> plugins = Arrays.asList(args.getArg("ipfs-plugins", "").split(","))
+                    .stream()
+                    .filter(s -> !s.isEmpty())
+                    .collect(Collectors.toList());
+
+            return plugins.stream()
+                    .map(name -> parse(name, args))
+                    .collect(Collectors.toList());
+        }
+
+        static Plugin parse(String pluginName, Args a) {
+            switch (pluginName) {
+                case "go-ds-s3": {
+                    return S3.build(a);
+                }
+                default:
+                    throw new IllegalStateException("Unknown plugin: " + pluginName);
+            }
         }
     }
 
@@ -65,11 +148,15 @@ public class IpfsInstaller {
     }
 
     private static DownloadTarget getForPlatform() {
+        String type = getOsArch();
+        return DownloadTarget.valueOf(type.toUpperCase());
+    }
+
+    private static String getOsArch() {
         String os = canonicaliseOS(System.getProperty("os.name").toLowerCase());
         String arch = canonicaliseArchitecture(System.getProperty("os.arch"));
 
-        String type = os + "_" + arch;
-        return DownloadTarget.valueOf(type.toUpperCase());
+        return os + "_" + arch;
     }
 
     private static String canonicaliseArchitecture(String arch) {
@@ -126,8 +213,9 @@ public class IpfsInstaller {
     private static void install(Path targetFile, DownloadTarget downloadTarget, Optional<Version> previousIpfsVersion) {
         try {
             Path cacheFile = getLocalCacheDir().resolve(downloadTarget.multihash.toString());
+            Path fileName = targetFile.getFileName();
             if (cacheFile.toFile().exists()) {
-                LOG().info("Using  cached IPFS "+  cacheFile);
+                LOG().info("Using cached " + fileName + " " + cacheFile);
                 byte[] raw = Files.readAllBytes(cacheFile);
                 Multihash computed = new Multihash(Multihash.Type.sha2_256, Hash.sha256(raw));
                 if (computed.equals(downloadTarget.multihash)) {
@@ -143,24 +231,24 @@ public class IpfsInstaller {
             }
 
             URI uri = new URI(downloadTarget.url);
-            LOG().info("Downloading IPFS binary "+ downloadTarget.url +"...");
+            LOG().info("Downloading " + fileName + " binary "+ downloadTarget.url +"...");
             byte[] raw = Serialize.readFully(uri.toURL().openStream());
             Multihash computed = new Multihash(Multihash.Type.sha2_256, Hash.sha256(raw));
 
             if (! computed.equals(downloadTarget.multihash))
-                throw new IllegalStateException("Incorrect hash for ipfs binary, aborting install!");
+                throw new IllegalStateException("Incorrect hash for binary, aborting install!");
 
             // save to local cache
             cacheFile.getParent().toFile().mkdirs();
             atomicallySaveToFile(cacheFile, raw);
 
-            LOG().info("Writing ipfs-binary to "+ targetFile);
+            LOG().info("Writing " + fileName + " binary to "+ targetFile);
             try {
                 atomicallySaveToFile(targetFile, raw);
             } catch (FileAlreadyExistsException e) {
                 boolean delete = targetFile.toFile().delete();
                 if (! delete)
-                    throw new IllegalStateException("Couldn't delete old version of ipfs!");
+                    throw new IllegalStateException("Couldn't delete old version of " + fileName + "!");
                 atomicallySaveToFile(targetFile, raw);
             }
 
@@ -187,13 +275,21 @@ public class IpfsInstaller {
     }
 
     public static void main(String[] args) throws Exception {
-        codegen(Paths.get("/home/ian/ipfs-releases/v0.4.22"));
+        String version = "v0.4.22";
+        byte[] bytes = Files.readAllBytes(Paths.get("/home", "ian", "ipfs-releases", version,
+                "linux-amd64", "plugins", "go-ds-s3.so"));
+        Multihash hash = new Multihash(Multihash.Type.sha2_256, Hash.sha256(bytes));
+        System.out.println("S3_LINUX_AMD64(\"https://github.com/peergos/ipfs-releases/blob/master/" + version +
+                "/linux-amd64/plugins/go-ds-s3.so?raw=true\", Cid.decode(\"" + hash + "\")),");
+        codegen(Paths.get("/home/ian/ipfs-releases/" + version));
     }
 
     private static void codegen(Path root) throws Exception {
         String urlBase = "https://github.com/peergos/ipfs-releases/blob/master/" + root.getFileName() + "/";
         for (File arch: Arrays.asList(root.toFile().listFiles()).stream().sorted().collect(Collectors.toList())) {
             for (File binary: arch.listFiles()) {
+                if (binary.isDirectory())
+                    continue;
                 byte[] bytes = Files.readAllBytes(binary.toPath());
                 Multihash hash = new Multihash(Multihash.Type.sha2_256, Hash.sha256(bytes));
                 System.out.println(arch.getName().toUpperCase().replaceAll("-", "_")

@@ -34,12 +34,18 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
          */
         public final Optional<List<MultiAddress>> bootstrapNode;
         public final int apiPort, gatewayPort, swarmPort;
+        public final List<IpfsInstaller.Plugin> plugins;
 
-        public Config(Optional<List<MultiAddress>> bootstrapNode, int apiPort, int gatewayPort, int swarmPort) {
+        public Config(Optional<List<MultiAddress>> bootstrapNode,
+                      int apiPort,
+                      int gatewayPort,
+                      int swarmPort,
+                      List<IpfsInstaller.Plugin> plugins) {
             this.bootstrapNode = bootstrapNode;
             this.apiPort = apiPort;
             this.gatewayPort = gatewayPort;
             this.swarmPort = swarmPort;
+            this.plugins = plugins;
         }
 
         private List<String[]> configCmds(boolean quoteEscape) {
@@ -62,9 +68,8 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
                 .map(MultiAddress::new)
                 .collect(Collectors.toList());
     }
+
     public static Config buildConfig(Args args) {
-
-
         Optional<List<MultiAddress>> bootstrapNodes = args.hasArg(IPFS_BOOTSTRAP_NODES) ?
                 Optional.of(parseMultiAddresses(args.getArg(IPFS_BOOTSTRAP_NODES))) :
                 Optional.empty();
@@ -73,7 +78,8 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
         int gatewayPort = args.getInt("ipfs-config-gateway-port", 8080);
         int swarmPort = args.getInt("ipfs-config-swarm-port", 4001);
 
-        return new Config(bootstrapNodes, apiPort, gatewayPort, swarmPort);
+        List<IpfsInstaller.Plugin> plugins = IpfsInstaller.Plugin.parseAll(args);
+        return new Config(bootstrapNodes, apiPort, gatewayPort, swarmPort, plugins);
     }
 
     public static int getApiPort(Args args) {
@@ -133,6 +139,10 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
         for (String[] configCmd : config.configCmds(extraQuoteEscape)) {
             //ipfs config x y z
             runIpfsCmd(configCmd);
+        }
+
+        for (IpfsInstaller.Plugin plugin : config.plugins) {
+            plugin.configure(this);
         }
     }
 
@@ -327,37 +337,15 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
         }
     }
 
-    public static void main(String[] args) throws Exception {
-        Path ipfsPath = Paths.get(
-                System.getenv().getOrDefault("GOPATH", "/home/chris/go"),
-                "src/github.com/ipfs/go-ipfs/cmd/ipfs/ipfs");
-        Path ipfsDir = Files.createTempDirectory(null);
-
-        Logging.init(Paths.get("log.log"), 1_000_000, 1, false, true, false);
-
-        Config config = new Config(Optional.empty(), 5001, 8080, 4001);
-        Args a = Args.parse(args);
-        MultiAddress proxytarget = new MultiAddress(a.getArg("proxy-target"));
-        IpfsWrapper ipfsWrapper = new IpfsWrapper(ipfsPath, ipfsDir, config, proxytarget);
-
-        ipfsWrapper.configure();
-
-        new Thread(ipfsWrapper, "IPFS wrapper").start();
-        ipfsWrapper.waitForDaemon(30);
-
-        try {
-            Thread.sleep(10_000);
-        } catch (InterruptedException ie) {
-        }
-
-        ipfsWrapper.stop();
+    public static Path getIpfsDir(Args args) {
+        //$IPFS_DIR, defaults to $PEERGOS_PATH/.ipfs
+        return args.hasArg(IPFS_DIR) ?
+                Paths.get(args.getArg(IPFS_DIR)) :
+                args.fromPeergosDir(IPFS_DIR, DEFAULT_DIR_NAME);
     }
 
     public static IpfsWrapper build(Args args) {
-        //$IPFS_DIR, defaults to $PEERGOS_PATH/.ipfs
-        Path ipfsDir = args.hasArg(IPFS_DIR) ?
-                Paths.get(args.getArg(IPFS_DIR)) :
-                args.fromPeergosDir(IPFS_DIR, DEFAULT_DIR_NAME);
+        Path ipfsDir = getIpfsDir(args);
 
         //ipfs exe defaults to $PEERGOS_PATH/ipfs
         Path ipfsExe = getIpfsExePath(args);
