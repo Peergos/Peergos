@@ -156,7 +156,7 @@ public class IpfsInstaller {
 
             @Override
             public void ensureInstalled(Path ipfsDir) {
-                install(ipfsDir.resolve("plugins").resolve(getFileName()), version, Optional.empty());
+                IpfsInstaller.ensurePluginInstalled(ipfsDir.resolve("plugins").resolve(getFileName()), version);
             }
         }
 
@@ -229,6 +229,29 @@ public class IpfsInstaller {
         return os;
     }
 
+    private static void ensurePluginInstalled(Path targetFile, DownloadTarget downloadTarget) {
+        if (Files.exists(targetFile)) {
+            //check contents are correct
+            try {
+                byte[] raw = Files.readAllBytes(targetFile);
+                Multihash computed = new Multihash(Multihash.Type.sha2_256, Hash.sha256(raw));
+                if (computed.equals(downloadTarget.multihash)) {
+                    //all present and correct
+                    return;
+                }
+                targetFile.toFile().delete();
+                install(targetFile, downloadTarget, Optional.empty());
+                return;
+            } catch (IOException ioe) {
+                throw new IllegalStateException(ioe.getMessage(), ioe);
+            }
+        }
+        else {
+            LOG().info("Binary "+ targetFile + " not available");
+        }
+        install(targetFile, downloadTarget, Optional.empty());
+    }
+
     private static void ensureInstalled(Path targetFile, DownloadTarget downloadTarget) {
         if (Files.exists(targetFile)) {
             //check contents are correct
@@ -262,6 +285,10 @@ public class IpfsInstaller {
         try {
             Path cacheFile = getLocalCacheDir().resolve(downloadTarget.multihash.toString());
             Path fileName = targetFile.getFileName();
+            File targetParent = targetFile.getParent().toFile();
+            if (! targetParent.exists())
+                if (! targetParent.mkdirs())
+                    throw new IllegalStateException("Couldn't create parent directory: " + targetFile.getParent());
             if (cacheFile.toFile().exists()) {
                 LOG().info("Using cached " + fileName + " " + cacheFile);
                 byte[] raw = Files.readAllBytes(cacheFile);

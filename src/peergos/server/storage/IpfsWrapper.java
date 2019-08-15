@@ -150,11 +150,11 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
     }
 
     public synchronized Multihash nodeId() {
-        return Cid.decode(runIpfsCmdAndGetOutput("config Identity.PeerID"));
+        return Cid.decode(runIpfsCmdAndGetOutput("config", "Identity.PeerID"));
     }
 
     public synchronized void setConfig(String key, String val) {
-        runIpfsCmd("config " + key + " " + val);
+        runIpfsCmd("config", key, val);
     }
 
     private synchronized void start() {
