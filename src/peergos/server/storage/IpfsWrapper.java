@@ -1,9 +1,12 @@
 package peergos.server.storage;
 
 import peergos.server.util.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multiaddr.MultiAddress;
+import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
+import peergos.shared.util.*;
 
 import java.io.File;
 import java.io.IOException;
@@ -146,6 +149,14 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
         }
     }
 
+    public synchronized Multihash nodeId() {
+        return Cid.decode(runIpfsCmdAndGetOutput("config Identity.PeerID"));
+    }
+
+    public synchronized void setConfig(String key, String val) {
+        runIpfsCmd("config " + key + " " + val);
+    }
+
     private synchronized void start() {
         if (process != null && process.isAlive())
             throw new IllegalStateException("ipfs daemon is already running");
@@ -281,6 +292,21 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
     private void runIpfsCmd(String... subCmd) {
         boolean showLog = false;
         runIpfsCmd(showLog, subCmd);
+    }
+
+    private String runIpfsCmdAndGetOutput(String... subCmd) {
+        Process process = startIpfsCmd(subCmd);
+        try {
+            int rc = process.waitFor();
+
+            if (rc == 0) {
+                return new String(Serialize.readFully(process.getInputStream(), 1024*1024));
+            } else {
+                throw new IllegalStateException("ipfs " + Arrays.asList(subCmd) + " returned exit-code " + rc);
+            }
+        } catch (Exception ioe) {
+            throw new IllegalStateException(ioe.getMessage(), ioe);
+        }
     }
 
     private void runIpfsCmd(boolean showLog, String... subCmd) {

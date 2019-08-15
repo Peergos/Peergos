@@ -4,6 +4,7 @@ import static peergos.server.util.Logging.LOG;
 
 import peergos.server.util.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.api.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.util.*;
@@ -88,6 +89,25 @@ public class IpfsInstaller {
                 return "go-ds-s3.so";
             }
 
+            public Object toJson(Multihash nodeId) {
+                Map<String, Object> res = new TreeMap<>();
+                Map<String, Object> child = new TreeMap<>();
+                // Make sure that multiple IPFS instances can use the same S3 bucket by prefixing the path with their nodeID
+                String s3PathPrefix = nodeId.toString() + "/" + path;
+                child.put("path", s3PathPrefix);
+                child.put("bucket", bucket);
+                child.put("accesKey", accessKey);
+                child.put("secretKey", secretKey);
+                child.put("region", region);
+                child.put("regionEndpoint", regionEndpoint);
+                child.put("type", "s3ds");
+                res.put("child", child);
+                res.put("mountpoint", "/blocks");
+                res.put("prefix", "s3.datastore");
+                res.put("type", "measure");
+                return res;
+            }
+
             public static S3 build(Args a) {
                 String path = a.getArg("s3.path", "blocks");
                 String bucket = a.getArg("s3.bucket");
@@ -103,7 +123,35 @@ public class IpfsInstaller {
             @Override
             public void configure(IpfsWrapper ipfs) {
                 // Do the configuration dance..
-                throw new IllegalStateException("Unimplemented!");
+                System.out.println("Configuring S3 datastore IPFS plugin");
+                Multihash nodeId = ipfs.nodeId();
+                // update the config file
+                List<Object> mount = Arrays.asList(
+                        toJson(nodeId),
+                        JSONParser.parse("{\n" +
+                                "          \"child\": {\n" +
+                                "            \"compression\": \"none\",\n" +
+                                "            \"path\": \"datastore\",\n" +
+                                "            \"type\": \"levelds\"\n" +
+                                "          },\n" +
+                                "          \"mountpoint\": \"/\",\n" +
+                                "          \"prefix\": \"leveldb.datastore\",\n" +
+                                "          \"type\": \"measure\"\n" +
+                                "        }")
+                );
+                String mounts = JSONParser.toString(mount);
+                ipfs.setConfig("Datastore.Spec.Mounts", mounts);
+
+                // replace the datastore spec file
+                String newDataStoreSpec = "{\"mounts\":[{\"bucket\":\"" + bucket +
+                        "\",\"mountpoint\":\"/blocks\",\"region\":\"" + region +
+                        "\",\"rootDirectory\":\"\"},{\"mountpoint\":\"/\",\"path\":\"datastore\",\"type\":\"levelds\"}],\"type\":\"mount\"}";
+                Path specPath = ipfs.ipfsDir.resolve("datastore_spec");
+                try {
+                    Files.write(specPath, newDataStoreSpec.getBytes());
+                } catch (IOException e) {
+                    throw new RuntimeException("Couldn't overwrite ipfs datastore spec file", e);
+                }
             }
 
             @Override
