@@ -96,7 +96,7 @@ public class IpfsInstaller {
                 String s3PathPrefix = nodeId.toString() + "/" + path;
                 child.put("path", s3PathPrefix);
                 child.put("bucket", bucket);
-                child.put("accesKey", accessKey);
+                child.put("accessKey", accessKey);
                 child.put("secretKey", secretKey);
                 child.put("region", region);
                 child.put("regionEndpoint", regionEndpoint);
@@ -125,6 +125,7 @@ public class IpfsInstaller {
                 // Do the configuration dance..
                 System.out.println("Configuring S3 datastore IPFS plugin");
                 Multihash nodeId = ipfs.nodeId();
+
                 // update the config file
                 List<Object> mount = Arrays.asList(
                         toJson(nodeId),
@@ -140,7 +141,7 @@ public class IpfsInstaller {
                                 "        }")
                 );
                 String mounts = JSONParser.toString(mount);
-                ipfs.setConfig("Datastore.Spec.Mounts", mounts);
+                ipfs.setConfig("Datastore.Spec.mounts", mounts);
 
                 // replace the datastore spec file
                 String newDataStoreSpec = "{\"mounts\":[{\"bucket\":\"" + bucket +

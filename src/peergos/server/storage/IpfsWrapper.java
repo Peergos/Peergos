@@ -8,8 +8,7 @@ import peergos.shared.storage.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
-import java.io.File;
-import java.io.IOException;
+import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -154,7 +153,7 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
     }
 
     public synchronized void setConfig(String key, String val) {
-        runIpfsCmd("config", key, val);
+        runIpfsCmd("config", "--json", key, val);
     }
 
     private synchronized void start() {
@@ -254,7 +253,7 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
         long sleepMs = 100;
         Process process  = null;
         for (int i = 0; i < retryCount; i++) {
-            process = startIpfsCmdOnce(subCmd);
+            process = startIpfsCmdOnce(true, subCmd);
             try {
                 Thread.sleep(sleepMs);
             } catch (InterruptedException  ie){}
@@ -270,7 +269,7 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
         return process;
     }
 
-    private Process startIpfsCmdOnce(String... subCmd) {
+    private Process startIpfsCmdOnce(boolean log, String... subCmd) {
         LinkedList<String> list = new LinkedList<>(Arrays.asList(subCmd));
         list.addFirst(ipfsPath.toString());
         ProcessBuilder pb = new ProcessBuilder(list);
@@ -279,10 +278,12 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
             String command = Arrays.stream(subCmd).collect(Collectors.joining(" "));
             System.out.println(command);
             Process started = pb.start();
-            new Thread(() -> Logging.log(started.getInputStream(),
-                    "$(ipfs " + command + ") out: "), "IPFS output stream").start();
-            new Thread(() -> Logging.log(started.getErrorStream(),
-                    "$(ipfs " + command + ") err: "), "IPFS error stream").start();
+            if (log) {
+                new Thread(() -> Logging.log(started.getInputStream(),
+                        "$(ipfs " + command + ") out: "), "IPFS output stream").start();
+                new Thread(() -> Logging.log(started.getErrorStream(),
+                        "$(ipfs " + command + ") err: "), "IPFS error stream").start();
+            }
             return started;
         } catch (IOException ioe) {
             throw new IllegalStateException(ioe.getMessage(), ioe);
@@ -295,14 +296,45 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
     }
 
     private String runIpfsCmdAndGetOutput(String... subCmd) {
-        Process process = startIpfsCmd(subCmd);
+        Process process = startIpfsCmdOnce(false, subCmd);
         try {
-            int rc = process.waitFor();
+            File stderrFile = File.createTempFile("tmpErr", "out");
+            File stdoutFile = File.createTempFile("tmpStd", "out");
+            try {
+                Thread logThread = new Thread(() -> {
+                    BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+                    String line;
+                    try {
+                        BufferedWriter writer = new BufferedWriter(new FileWriter(stdoutFile));
+                        while ((line = reader.readLine()) != null) {
+                            writer.write(line);
+                            writer.flush();
+                        }
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                });
+                logThread.start();
+                int exitCode = -1;
+                boolean done = false;
+                while (! done) {
+                    try {
+                        exitCode = process.waitFor();
+                        done = true;
+                    } catch (InterruptedException ie) {
+                        System.out.println("Interrupted waiting for process to exit.");
+                    }
+                }
+                logThread.join();
 
-            if (rc == 0) {
-                return new String(Serialize.readFully(process.getInputStream(), 1024*1024));
-            } else {
-                throw new IllegalStateException("ipfs " + Arrays.asList(subCmd) + " returned exit-code " + rc);
+                if (exitCode == 0) {
+                    return new String(Serialize.readFully(new FileInputStream(stdoutFile), 1024 * 1024));
+                } else {
+                    throw new IllegalStateException("ipfs " + Arrays.asList(subCmd) + " returned exit-code " + exitCode);
+                }
+            } finally {
+                stderrFile.delete();
+                stdoutFile.delete();
             }
         } catch (Exception ioe) {
             throw new IllegalStateException(ioe.getMessage(), ioe);
