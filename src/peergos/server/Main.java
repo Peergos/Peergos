@@ -49,9 +49,26 @@ public class Main {
                     throw new IllegalStateException("Specified install directory "+ dir +" doesn't exist and can't be created");
 
                 IpfsInstaller.ensureInstalled(ipfsExePath);
+
+                List<IpfsInstaller.Plugin> plugins = IpfsInstaller.Plugin.parseAll(args);
+                Path ipfsDir = IpfsWrapper.getIpfsDir(args);
+                if (! plugins.isEmpty())
+                    if (! ipfsDir.toFile().exists() && ! ipfsDir.toFile().mkdirs())
+                        throw new IllegalStateException("Couldn't create ipfs dir: " + ipfsDir);
+
+                for (IpfsInstaller.Plugin plugin : plugins) {
+                    plugin.ensureInstalled(ipfsDir);
+                }
             },
             Arrays.asList(
-                    new Command.Arg("ipfs-exe-path", "Desired path to IPFS executable. Defaults to $PEERGOS_PATH/ipfs", false)
+                    new Command.Arg("ipfs-exe-path", "Desired path to IPFS executable. Defaults to $PEERGOS_PATH/ipfs", false),
+                    new Command.Arg("ipfs-plugins", "comma separated list of ipfs plugins to install, currently only go-ds-s3 is supported", false),
+                    new Command.Arg("s3.path", "Path of data store in S3", false, "blocks"),
+                    new Command.Arg("s3.bucket", "S3 bucket name", false),
+                    new Command.Arg("s3.region", "S3 region", false, "us-east-1"),
+                    new Command.Arg("s3.accessKey", "S3 access key", false, ""),
+                    new Command.Arg("s3.secretKey", "S3 secret key", false, ""),
+                    new Command.Arg("s3.region.endpoint", "Base url for S3 service", false)
             )
     );
     public static Command IPFS = new Command("ipfs",
