@@ -98,7 +98,9 @@ public class Main {
                     new Command.Arg("social-sql-file", "The filename for the follow requests datastore", true, "social.sql"),
                     new Command.Arg("space-requests-sql-file", "The filename for the space requests datastore", true, "space-requests.sql"),
                     new Command.Arg("webroot", "the path to the directory to serve as the web root", false),
-                    new Command.Arg("default-quota", "default maximum storage per user", false, Long.toString(1024L * 1024 * 1024))
+                    new Command.Arg("default-quota", "default maximum storage per user", false, Long.toString(1024L * 1024 * 1024)),
+                    new Command.Arg("mirror.node.id", "Mirror a server's data locally", false),
+                    new Command.Arg("mirror.username", "Mirror a user's data locally", false)
             ).collect(Collectors.toList())
     );
 
@@ -329,7 +331,8 @@ public class Main {
         try {
             Crypto crypto = Crypto.initJava();
             int webPort = a.getInt("port");
-            a.setIfAbsent("proxy-target", getLocalMultiAddress(webPort).toString());
+            MultiAddress localPeergosApi = getLocalMultiAddress(webPort);
+            a.setIfAbsent("proxy-target", localPeergosApi.toString());
 
             boolean useIPFS = a.getBoolean("useIPFS");
             if (useIPFS) {
@@ -359,7 +362,8 @@ public class Main {
             String path = mutablePointersSqlFile.equals(":memory:") ?
                     mutablePointersSqlFile :
                     a.fromPeergosDir("mutable-pointers-file").toString();
-            MutablePointers sqlMutable = UserRepository.buildSqlLite(path, localDht);
+            JdbcIpnsAndSocial mutableSql = new JdbcIpnsAndSocial(JdbcIpnsAndSocial.buildSqlLite(path));
+            MutablePointers sqlMutable = UserRepository.buildSqlLite(localDht, mutableSql);
             MutablePointersProxy proxingMutable = new HttpMutablePointers(ipfsGateway, pkiServerNodeId);
 
             PublicKeyHash peergosId = PublicKeyHash.fromString(a.getArg("peergos.identity.hash"));
@@ -429,6 +433,44 @@ public class Main {
             if (! isPkiNode)
                 ((MirrorCoreNode) core).start();
             spaceChecker.calculateUsage();
+
+            if (a.hasArg("mirror.node.id")) {
+                Multihash nodeToMirrorId = Cid.decode(a.getArg("mirror.node.id"));
+                NetworkAccess localApi = NetworkAccess.buildJava(webPort).join();
+                new Thread(() -> {
+                    while (true) {
+                        try {
+                            Mirror.mirrorNode(nodeToMirrorId, localApi, mutableSql, localDht);
+                            try {
+                                Thread.sleep(60_000);
+                            } catch (InterruptedException f) {}
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                            try {
+                                Thread.sleep(5_000);
+                            } catch (InterruptedException f) {}
+                        }
+                    }
+                }).start();
+            }
+            if (a.hasArg("mirror.username")) {
+                NetworkAccess localApi = NetworkAccess.buildJava(webPort).join();
+                new Thread(() -> {
+                    while (true) {
+                        try {
+                            Mirror.mirrorUser(a.getArg("mirror.username"), localApi, mutableSql, localDht);
+                            try {
+                                Thread.sleep(60_000);
+                            } catch (InterruptedException f) {}
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                            try {
+                                Thread.sleep(5_000);
+                            } catch (InterruptedException f) {}
+                        }
+                    }
+                }).start();
+            }
         } catch (Exception e) {
             e.printStackTrace();
             System.exit(1);
