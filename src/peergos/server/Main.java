@@ -362,15 +362,15 @@ public class Main {
             String path = mutablePointersSqlFile.equals(":memory:") ?
                     mutablePointersSqlFile :
                     a.fromPeergosDir("mutable-pointers-file").toString();
-            JdbcIpnsAndSocial mutableSql = new JdbcIpnsAndSocial(JdbcIpnsAndSocial.buildSqlLite(path));
-            MutablePointers sqlMutable = UserRepository.buildSqlLite(localDht, mutableSql);
+            JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(JdbcIpnsAndSocial.buildSqlLite(path));
+            MutablePointers localPointers = UserRepository.buildSqlLite(localDht, rawPointers);
             MutablePointersProxy proxingMutable = new HttpMutablePointers(ipfsGateway, pkiServerNodeId);
 
             PublicKeyHash peergosId = PublicKeyHash.fromString(a.getArg("peergos.identity.hash"));
             // build a mirroring proxying corenode, unless we are the pki node
             boolean isPkiNode = nodeId.equals(pkiServerNodeId);
             CoreNode core = isPkiNode ?
-                    buildPkiCorenode(sqlMutable, localDht, a) :
+                    buildPkiCorenode(localPointers, localDht, a) :
                     new MirrorCoreNode(new HTTPCoreNode(ipfsGateway, pkiServerNodeId), proxingMutable, localDht,
                             peergosId, a.fromPeergosDir("pki-mirror-state-path","pki-state.cbor"));
 
@@ -387,11 +387,11 @@ public class Main {
             JdbcSpaceRequests spaceRequests = JdbcSpaceRequests.buildSqlLite(spaceRequestsSqlPath);
             UserQuotas userQuotas = new UserQuotas(quotaFilePath, defaultQuota, maxUsers);
             CoreNode signupFilter = new SignUpFilter(core, userQuotas, nodeId);
-            SpaceCheckingKeyFilter spaceChecker = new SpaceCheckingKeyFilter(core, sqlMutable, localDht, userQuotas,
+            SpaceCheckingKeyFilter spaceChecker = new SpaceCheckingKeyFilter(core, localPointers, localDht, userQuotas,
                     spaceRequests, statePath);
             CorenodeEventPropagator corePropagator = new CorenodeEventPropagator(signupFilter);
             corePropagator.addListener(spaceChecker::accept);
-            MutableEventPropagator localMutable = new MutableEventPropagator(sqlMutable);
+            MutableEventPropagator localMutable = new MutableEventPropagator(localPointers);
             localMutable.addListener(spaceChecker::accept);
 
             ContentAddressedStorage filteringDht = new WriteFilter(localDht, spaceChecker::allowWrite);
@@ -440,7 +440,7 @@ public class Main {
                 new Thread(() -> {
                     while (true) {
                         try {
-                            Mirror.mirrorNode(nodeToMirrorId, localApi, mutableSql, localDht);
+                            Mirror.mirrorNode(nodeToMirrorId, localApi, rawPointers, localDht);
                             try {
                                 Thread.sleep(60_000);
                             } catch (InterruptedException f) {}
@@ -458,7 +458,7 @@ public class Main {
                 new Thread(() -> {
                     while (true) {
                         try {
-                            Mirror.mirrorUser(a.getArg("mirror.username"), localApi, mutableSql, localDht);
+                            Mirror.mirrorUser(a.getArg("mirror.username"), localApi, rawPointers, localDht);
                             try {
                                 Thread.sleep(60_000);
                             } catch (InterruptedException f) {}
