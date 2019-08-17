@@ -19,6 +19,7 @@ public class Mirror {
                                   NetworkAccess mirror,
                                   JdbcIpnsAndSocial targetPointers,
                                   ContentAddressedStorage targetStorage) {
+        Logging.LOG().log(Level.INFO, "Mirroring data for node " + nodeId);
         List<String> allUsers = mirror.coreNode.getUsernames("").join();
         for (String username : allUsers) {
             List<UserPublicKeyLink> chain = mirror.coreNode.getChain(username).join();
@@ -31,6 +32,7 @@ public class Mirror {
                                   NetworkAccess source,
                                   JdbcIpnsAndSocial targetPointers,
                                   ContentAddressedStorage targetStorage) {
+        Logging.LOG().log(Level.INFO, "Mirroring data for " + username);
         Optional<PublicKeyHash> identity = source.coreNode.getPublicKeyHash(username).join();
         if (! identity.isPresent())
             return;
@@ -38,6 +40,7 @@ public class Mirror {
         for (PublicKeyHash ownedKey : ownedKeys) {
             mirrorMutableSubspace(identity.get(), ownedKey, source, targetPointers, targetStorage);
         }
+        Logging.LOG().log(Level.INFO, "Finished mirroring data for " + username);
     }
 
     public static void mirrorMutableSubspace(PublicKeyHash owner,
