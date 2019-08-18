@@ -71,9 +71,12 @@ public class UserRepository implements SocialNetwork, MutablePointers {
 
     }
 
-    public static UserRepository buildSqlLite(String dbPath, ContentAddressedStorage ipfs) throws SQLException
-    {
-        JdbcIpnsAndSocial coreNode = new JdbcIpnsAndSocial(JdbcIpnsAndSocial.buildSqlLite(dbPath));
-        return new UserRepository(ipfs, coreNode);
+    public static UserRepository buildSqlLite(String dbPath, ContentAddressedStorage ipfs) throws SQLException {
+        JdbcIpnsAndSocial sqlNode = new JdbcIpnsAndSocial(JdbcIpnsAndSocial.buildSqlLite(dbPath));
+        return buildSqlLite(ipfs, sqlNode);
+    }
+
+    public static UserRepository buildSqlLite(ContentAddressedStorage ipfs, JdbcIpnsAndSocial sqlNode) {
+        return new UserRepository(ipfs, sqlNode);
     }
 }

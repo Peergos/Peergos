@@ -36,13 +36,19 @@ public interface MutablePointers {
      */
     default CompletableFuture<MaybeMultihash> getPointerTarget(PublicKeyHash owner, PublicKeyHash writerKeyHash, ContentAddressedStorage ipfs) {
         return getPointer(owner, writerKeyHash)
-                .thenCompose(current -> ipfs.getSigningKey(writerKeyHash)
-                        .thenApply(writerOpt -> writerOpt.map(writerKey -> current
-                                .map(signed -> HashCasPair.fromCbor(CborObject.fromByteArray(writerKey.unsignMessage(signed))).updated)
-                                .orElse(MaybeMultihash.empty()))
-                                .orElse(MaybeMultihash.empty())
-                        )
-                );
+                .thenCompose(current -> current.isPresent() ?
+                        parsePointerTarget(current.get(), writerKeyHash, ipfs) :
+                        CompletableFuture.completedFuture(MaybeMultihash.empty()));
+    }
+
+    static CompletableFuture<MaybeMultihash> parsePointerTarget(byte[] pointerCas,
+                                                                PublicKeyHash writerKeyHash,
+                                                                ContentAddressedStorage ipfs) {
+        return ipfs.getSigningKey(writerKeyHash)
+                .thenApply(writerOpt -> writerOpt.map(writerKey -> Optional.of(pointerCas)
+                        .map(signed -> HashCasPair.fromCbor(CborObject.fromByteArray(writerKey.unsignMessage(signed))).updated)
+                        .orElse(MaybeMultihash.empty()))
+                        .orElse(MaybeMultihash.empty()));
     }
 
     static boolean isValidUpdate(PublicSigningKey writerKey, Optional<byte[]> current, byte[] writerSignedBtreeRootHash) {
