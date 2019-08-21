@@ -134,6 +134,12 @@ public interface ContentAddressedStorage {
      */
     CompletableFuture<List<Multihash>> recursiveUnpin(PublicKeyHash owner, Multihash hash);
 
+    /** Run a garbage collection on the ipfs block store. This is only callable internally to a Peergos server.
+     *
+     * @return true
+     */
+    CompletableFuture<Boolean> gc();
+
     /**
      * Get all the merkle-links referenced directly from this object
      * @param root The hash of the object whose links we want
@@ -256,6 +262,7 @@ public interface ContentAddressedStorage {
         public static final String ID = "id";
         public static final String TRANSACTION_START = "transaction/start";
         public static final String TRANSACTION_CLOSE = "transaction/close";
+        public static final String GC = "repo/gc";
         public static final String BLOCK_PUT = "block/put";
         public static final String BLOCK_GET = "block/get";
         public static final String BLOCK_STAT = "block/stat";
@@ -308,6 +315,12 @@ public interface ContentAddressedStorage {
                 return CompletableFuture.completedFuture(true);
             return poster.get(apiPrefix + TRANSACTION_CLOSE + "?arg=" + tid.toString() + "&owner=" + encode(owner.toString()))
                     .thenApply(raw -> new String(raw).equals("1"));
+        }
+
+        @Override
+        public CompletableFuture<Boolean> gc() {
+            return poster.get(apiPrefix + GC)
+                    .thenApply(raw -> true);
         }
 
         @Override
@@ -437,6 +450,11 @@ public interface ContentAddressedStorage {
             return redirectCall(owner,
                     () -> local.closeTransaction(owner, tid),
                     target -> p2p.closeTransaction(target, owner, tid));
+        }
+
+        @Override
+        public CompletableFuture<Boolean> gc() {
+            return CompletableFuture.completedFuture(true);
         }
 
         @Override

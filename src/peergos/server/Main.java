@@ -351,9 +351,18 @@ public class Main {
             JavaPoster ipfsApi = new JavaPoster(ipfsApiAddress);
             JavaPoster ipfsGateway = new JavaPoster(ipfsGatewayAddress);
 
-            ContentAddressedStorage localDht = useIPFS ?
-                    new CachingStorage(new ContentAddressedStorage.HTTP(ipfsApi, false), dhtCacheEntries, maxValueSizeToCache) :
-                    new FileContentAddressedStorage(blockstorePath(a));
+            ContentAddressedStorage localDht;
+            if (useIPFS) {
+                boolean enableGC = a.getBoolean("enable-gc", false);
+                ContentAddressedStorage.HTTP ipfs = new ContentAddressedStorage.HTTP(ipfsApi, false);
+                if (enableGC) {
+                    GarbageCollector gced = new GarbageCollector(ipfs, a.getInt("gc.period.millis", 60 * 60 * 1000));
+                    gced.start();
+                    localDht = new CachingStorage(gced, dhtCacheEntries, maxValueSizeToCache);
+                } else
+                    localDht = new CachingStorage(ipfs, dhtCacheEntries, maxValueSizeToCache);
+            } else
+                localDht = new FileContentAddressedStorage(blockstorePath(a));
 
             String hostname = a.getArg("domain");
             Multihash nodeId = localDht.id().get();

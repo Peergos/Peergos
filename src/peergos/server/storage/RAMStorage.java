@@ -36,6 +36,11 @@ public class RAMStorage implements ContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<Boolean> gc() {
+        return CompletableFuture.completedFuture(true);
+    }
+
+    @Override
     public CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
                                                   PublicKeyHash writer,
                                                   List<byte[]> signatures,
