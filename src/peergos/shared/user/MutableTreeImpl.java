@@ -34,17 +34,6 @@ public class MutableTreeImpl implements MutableTree {
     }
 
     @Override
-    public CompletableFuture<CommittedWriterData> put(PublicKeyHash owner,
-                                                      SigningPrivateKeyAndPublicHash writer,
-                                                      byte[] mapKey,
-                                                      MaybeMultihash existing,
-                                                      Multihash value) {
-        return synchronizer.applyUpdate(owner, writer,
-                (wd, tid) -> put(wd, owner, writer, mapKey, existing, value, tid))
-                .thenApply(version -> version.get(writer));
-    }
-
-    @Override
     public CompletableFuture<WriterData> put(WriterData base,
                                              PublicKeyHash owner,
                                              SigningPrivateKeyAndPublicHash writer,

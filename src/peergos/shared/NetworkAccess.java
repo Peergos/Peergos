@@ -425,25 +425,6 @@ public class NetworkAccess {
                         .flatMap(g -> g.stream()).collect(Collectors.toList()));
     }
 
-    public CompletableFuture<Multihash> uploadChunk(CryptreeNode metadata,
-                                                    PublicKeyHash owner,
-                                                    byte[] mapKey,
-                                                    SigningPrivateKeyAndPublicHash writer,
-                                                    TransactionId tid) {
-        try {
-            System.out.println("Uploading chunk: " + (metadata.isDirectory() ? "dir" : "file")
-                    + " at " + ArrayOps.bytesToHex(mapKey)
-                    + " with " + metadata.toCbor().links().size() + " fragments");
-            byte[] metaBlob = metadata.serialize();
-            return dhtClient.put(owner, writer.publicKeyHash, writer.secret.signatureOnly(metaBlob), metaBlob, tid)
-                    .thenCompose(blobHash -> tree.put(owner, writer, mapKey, metadata.committedHash(), blobHash)
-                            .thenApply(res -> blobHash));
-        } catch (Exception e) {
-            LOG.severe(e.getMessage());
-            throw new RuntimeException(e);
-        }
-    }
-
     public CompletableFuture<Snapshot> uploadChunk(Snapshot current,
                                                    Committer committer,
                                                    CryptreeNode metadata,
