@@ -27,11 +27,11 @@ public class OwnedKeyChamp {
 
     public static CompletableFuture<Multihash> createEmpty(PublicKeyHash owner,
                                                            SigningPrivateKeyAndPublicHash writer,
-                                                           ContentAddressedStorage ipfs) {
+                                                           ContentAddressedStorage ipfs,
+                                                           TransactionId tid) {
         Champ newRoot = Champ.empty();
         byte[] raw = newRoot.serialize();
-        return IpfsTransaction.call(owner,
-                tid -> ipfs.put(owner, writer.publicKeyHash, writer.secret.signatureOnly(raw), raw, tid), ipfs);
+        return ipfs.put(owner, writer.publicKeyHash, writer.secret.signatureOnly(raw), raw, tid);
     }
 
     public static CompletableFuture<OwnedKeyChamp> build(Multihash root, ContentAddressedStorage ipfs) {

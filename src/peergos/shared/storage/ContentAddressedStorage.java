@@ -22,6 +22,7 @@ import java.util.stream.*;
 
 public interface ContentAddressedStorage {
 
+    boolean DEBUG_GC = false;
     int MAX_BLOCK_SIZE  = 2*1024*1024;
 
     default CompletableFuture<Multihash> put(PublicKeyHash owner,
@@ -133,6 +134,12 @@ public interface ContentAddressedStorage {
      * @return
      */
     CompletableFuture<List<Multihash>> recursiveUnpin(PublicKeyHash owner, Multihash hash);
+
+    /** Run a garbage collection on the ipfs block store. This is only callable internally to a Peergos server.
+     *
+     * @return true
+     */
+    CompletableFuture<Boolean> gc();
 
     /**
      * Get all the merkle-links referenced directly from this object
@@ -256,6 +263,7 @@ public interface ContentAddressedStorage {
         public static final String ID = "id";
         public static final String TRANSACTION_START = "transaction/start";
         public static final String TRANSACTION_CLOSE = "transaction/close";
+        public static final String GC = "repo/gc";
         public static final String BLOCK_PUT = "block/put";
         public static final String BLOCK_GET = "block/get";
         public static final String BLOCK_STAT = "block/stat";
@@ -275,8 +283,15 @@ public interface ContentAddressedStorage {
         private static Multihash getObjectHash(Object rawJson) {
             Map json = (Map)rawJson;
             String hash = (String)json.get("Hash");
-            if (hash == null)
-                hash = (String)json.get("Key");
+            if (hash == null) {
+                Object val = json.get("Key");
+                if (val instanceof  String)
+                    hash = (String) val;
+                else if (val instanceof Map)
+                    hash = (String) ((Map)val).get("/");
+                else
+                    throw new IllegalStateException("Couldn't parse hash from response!");
+            }
             return Cid.decode(hash);
         }
 
@@ -311,6 +326,21 @@ public interface ContentAddressedStorage {
         }
 
         @Override
+        public CompletableFuture<Boolean> gc() {
+            return poster.get(apiPrefix + GC)
+                    .thenApply(raw -> {
+                        if (DEBUG_GC) {
+                            List<Multihash> removed = JSONParser.parseStream(new String(raw))
+                                    .stream()
+                                    .map(json -> getObjectHash(json))
+                                    .collect(Collectors.toList());
+                            System.out.println("GCed:\n" + removed);
+                        }
+                        return true;
+                    });
+        }
+
+        @Override
         public CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
                                                       PublicKeyHash writer,
                                                       List<byte[]> signatures,
@@ -325,7 +355,12 @@ public interface ContentAddressedStorage {
                                                          List<byte[]> signatures,
                                                          List<byte[]> blocks,
                                                          TransactionId tid) {
-            return put(owner, writer, signatures, blocks, "raw", tid);
+            return put(owner, writer, signatures, blocks, "raw", tid)
+                    .thenApply(hashes -> {
+                        if (DEBUG_GC)
+                            System.out.println("Added blocks: " + hashes);
+                        return hashes;
+                    });
         }
 
         private CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
@@ -346,7 +381,12 @@ public interface ContentAddressedStorage {
                     .thenApply(bytes -> JSONParser.parseStream(new String(bytes))
                             .stream()
                             .map(json -> getObjectHash(json))
-                            .collect(Collectors.toList()));
+                            .collect(Collectors.toList()))
+                    .thenApply(hashes -> {
+                        if (DEBUG_GC)
+                            System.out.println("Added blocks: " + hashes);
+                        return hashes;
+                    });
         }
 
         @Override
@@ -437,6 +477,11 @@ public interface ContentAddressedStorage {
             return redirectCall(owner,
                     () -> local.closeTransaction(owner, tid),
                     target -> p2p.closeTransaction(target, owner, tid));
+        }
+
+        @Override
+        public CompletableFuture<Boolean> gc() {
+            return CompletableFuture.completedFuture(true);
         }
 
         @Override

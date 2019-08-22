@@ -56,6 +56,11 @@ public class HashVerifyingStorage implements ContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<Boolean> gc() {
+        return source.gc();
+    }
+
+    @Override
     public CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
                                                   PublicKeyHash writer,
                                                   List<byte[]> signatures,

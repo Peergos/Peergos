@@ -227,21 +227,19 @@ public class UserContext {
 
                     LOG.info("Registering username " + username);
                     progressCallback.accept("Registering username");
-                    return UserContext.register(username, signer, network).thenCompose(registered -> {
+                    return UserContext.register(username, signer, network).thenApply(registered -> {
                         if (!registered) {
                             LOG.info("Couldn't register username");
                             throw new IllegalStateException("Couldn't register username: " + username);
                         }
-                        return IpfsTransaction.call(signerHash, tid -> network.dhtClient.putSigningKey(
-                                secretSigningKey.signatureOnly(publicSigningKey.serialize()),
-                                signerHash,
-                                publicSigningKey, tid).thenCompose(returnedSignerHash -> {
-                                    PublicBoxingKey publicBoxingKey = userWithRoot.getBoxingPair().publicBoxingKey;
-                                    return network.dhtClient.putBoxingKey(signerHash,
-                                            secretSigningKey.signatureOnly(publicBoxingKey.serialize()), publicBoxingKey, tid);
-                                }),
-                                network.dhtClient
-                        );
+                        return true;
+                    }).thenCompose(x -> IpfsTransaction.call(signerHash, tid -> network.dhtClient.putSigningKey(
+                            secretSigningKey.signatureOnly(publicSigningKey.serialize()),
+                            signerHash,
+                            publicSigningKey, tid).thenCompose(returnedSignerHash -> {
+                        PublicBoxingKey publicBoxingKey = userWithRoot.getBoxingPair().publicBoxingKey;
+                        return network.dhtClient.putBoxingKey(signerHash,
+                                secretSigningKey.signatureOnly(publicBoxingKey.serialize()), publicBoxingKey, tid);
                     }).thenCompose(boxerHash -> {
                         progressCallback.accept("Creating filesystem");
                         return WriterData.createEmptyWithStaticData(signerHash,
@@ -249,25 +247,26 @@ public class UserContext {
                                 Optional.of(new PublicKeyHash(boxerHash)),
                                 userWithRoot.getRoot(),
                                 algorithm,
-                                network.dhtClient).thenCompose(newUserData -> {
+                                network.dhtClient, tid).thenCompose(newUserData -> {
 
                             CommittedWriterData notCommitted = new CommittedWriterData(MaybeMultihash.empty(), newUserData);
                             network.synchronizer.put(signer.publicKeyHash, signer.publicKeyHash, notCommitted);
-                            return network.synchronizer.applyUpdate(signerHash, signer,
-                                    (wd, tid) -> CompletableFuture.completedFuture(wd));
+                            return network.synchronizer.applyComplexUpdate(signerHash, signer,
+                                    (s, committer) -> newUserData.commit(signerHash, signer, MaybeMultihash.empty(), network, tid));
                         });
-                    }).thenCompose(snapshot -> {
-                        LOG.info("Creating user's root directory");
-                        long t1 = System.currentTimeMillis();
-                        return createEntryDirectory(signer, username, userWithRoot.getRoot(), network, crypto)
-                                .thenCompose(globalRoot -> {
-                                    LOG.info("Creating root directory took " + (System.currentTimeMillis() - t1) + " mS");
-                                    return createSpecialDirectory(globalRoot, username, SHARED_DIR_NAME, network, crypto);
-                                })
-                                .thenCompose(globalRoot -> createSpecialDirectory(globalRoot, username,
-                                        TRANSACTIONS_DIR_NAME, network, crypto))
-                                .thenCompose(x -> signIn(username, userWithRoot, network, crypto, progressCallback));
-                    });
+                    }), network.dhtClient)
+                            .thenCompose(snapshot -> {
+                                LOG.info("Creating user's root directory");
+                                long t1 = System.currentTimeMillis();
+                                return createEntryDirectory(signer, username, userWithRoot.getRoot(), network, crypto)
+                                        .thenCompose(globalRoot -> {
+                                            LOG.info("Creating root directory took " + (System.currentTimeMillis() - t1) + " mS");
+                                            return createSpecialDirectory(globalRoot, username, SHARED_DIR_NAME, network, crypto);
+                                        })
+                                        .thenCompose(globalRoot -> createSpecialDirectory(globalRoot, username,
+                                                TRANSACTIONS_DIR_NAME, network, crypto))
+                                        .thenCompose(y -> signIn(username, userWithRoot, network, crypto, progressCallback));
+                            }));
                 }).thenCompose(context -> network.coreNode.getUsernames(PEERGOS_USERNAME)
                         .thenCompose(usernames -> usernames.contains(PEERGOS_USERNAME) && ! username.equals(PEERGOS_USERNAME) ?
                                 context.sendInitialFollowRequest(PEERGOS_USERNAME) :
@@ -722,47 +721,57 @@ public class UserContext {
         long t1 = System.currentTimeMillis();
         SigningKeyPair writer = SigningKeyPair.random(crypto.random, crypto.signer);
         LOG.info("Random User generation took " + (System.currentTimeMillis() - t1) + " mS");
+        // Steps (All in 1 transaction):
+        // 1. Add signing key authorised by owner
+        // 2. Commit authorisation for writer to owner WriterData
+        // 3. Add empty WriterData for writer
+        // 4. Add root directory writer's WriterData
+        // 5. Add entry point to root dir to owner WriterData
+
+        byte[] rootMapKey = crypto.random.randomBytes(32); // root will be stored under this label
+        SymmetricKey rootRKey = SymmetricKey.random();
+        SymmetricKey rootWKey = SymmetricKey.random();
+        LOG.info("Random keys generation took " + (System.currentTimeMillis() - t1) + " mS");
+
+        PublicKeyHash preHash = ContentAddressedStorage.hashKey(writer.publicSigningKey);
+        SigningPrivateKeyAndPublicHash writerPair =
+                new SigningPrivateKeyAndPublicHash(preHash, writer.secretSigningKey);
+        WritableAbsoluteCapability rootPointer =
+                new WritableAbsoluteCapability(owner.publicKeyHash, preHash, rootMapKey, rootRKey, rootWKey);
+        EntryPoint entry = new EntryPoint(rootPointer, directoryName);
         return IpfsTransaction.call(owner.publicKeyHash, tid -> network.dhtClient.putSigningKey(
                 owner.secret.signatureOnly(writer.publicSigningKey.serialize()),
                 owner.publicKeyHash,
                 writer.publicSigningKey,
                 tid).thenCompose(writerHash -> {
-            byte[] rootMapKey = crypto.random.randomBytes(32); // root will be stored under this in the core node
-            SymmetricKey rootRKey = SymmetricKey.random();
-            SymmetricKey rootWKey = SymmetricKey.random();
-            LOG.info("Random keys generation took " + (System.currentTimeMillis() - t1) + " mS");
 
             // and authorise the writer key
-            SigningPrivateKeyAndPublicHash writerPair =
-                    new SigningPrivateKeyAndPublicHash(writerHash, writer.secretSigningKey);
-            WritableAbsoluteCapability rootPointer =
-                    new WritableAbsoluteCapability(owner.publicKeyHash, writerHash, rootMapKey, rootRKey, rootWKey);
-            EntryPoint entry = new EntryPoint(rootPointer, directoryName);
-            return network.synchronizer.applyUpdate(owner.publicKeyHash, owner,
-                    (wd, tid2) -> wd.addOwnedKey(owner.publicKeyHash, owner,
-                            OwnerProof.build(writerPair, owner.publicKeyHash), network.dhtClient))
-                    .thenApply(v -> v.get(owner))
-                    .thenCompose(x -> {
-                        long t2 = System.currentTimeMillis();
-                        RelativeCapability nextChunk =
-                                RelativeCapability.buildSubsequentChunk(crypto.random.randomBytes(32), rootRKey);
-                        CryptreeNode.DirAndChildren root =
-                                CryptreeNode.createDir(MaybeMultihash.empty(), rootRKey, rootWKey, Optional.of(writerPair),
-                                new FileProperties(directoryName, true, "", 0, LocalDateTime.now(),
-                                        false, Optional.empty(), Optional.empty()), Optional.empty(), SymmetricKey.random(), nextChunk, crypto.hasher);
+            return network.synchronizer.applyComplexUpdate(owner.publicKeyHash, owner,
+                    (s, committer) -> s.get(owner.publicKeyHash).props.addOwnedKeyAndCommit(owner.publicKeyHash, owner,
+                            OwnerProof.build(writerPair, owner.publicKeyHash), s.get(owner.publicKeyHash).hash, network, tid)
+                            .thenCompose(s2 -> {
+                                long t2 = System.currentTimeMillis();
+                                RelativeCapability nextChunk =
+                                        RelativeCapability.buildSubsequentChunk(crypto.random.randomBytes(32), rootRKey);
+                                CryptreeNode.DirAndChildren root =
+                                        CryptreeNode.createDir(MaybeMultihash.empty(), rootRKey, rootWKey, Optional.of(writerPair),
+                                                new FileProperties(directoryName, true, "", 0, LocalDateTime.now(),
+                                                        false, Optional.empty(), Optional.empty()),
+                                                Optional.empty(), SymmetricKey.random(), nextChunk, crypto.hasher);
 
-                        LOG.info("Uploading entry point directory");
-                        return WriterData.createEmpty(owner.publicKeyHash, writerPair, network.dhtClient)
-                                .thenCompose(empty -> empty.commit(owner.publicKeyHash, writerPair, MaybeMultihash.empty(), network, tid))
-                                .thenCompose(empty -> root.commit(rootPointer, Optional.of(writerPair), network, tid)
-                                        .thenApply(rootWithHash -> {
-                                            long t3 = System.currentTimeMillis();
-                                            LOG.info("Uploading root dir metadata took " + (t3 - t2) + " mS");
-                                            return new RetrievedCapability(rootPointer, rootWithHash);
-                                        }));
-                    }).thenCompose(x -> addRootEntryPointAndCommit(TrieNodeImpl.empty(), entry, directoryName, owner,
-                            userRootKey, network, crypto));
-        }), network.dhtClient);
+                                LOG.info("Uploading entry point directory");
+                                return WriterData.createEmpty(owner.publicKeyHash, writerPair, network.dhtClient, tid)
+                                        .thenCompose(empty -> empty.commit(owner.publicKeyHash, writerPair, MaybeMultihash.empty(), network, tid))
+                                        .thenCompose(s3 -> root.commit(s3, committer, rootPointer, Optional.of(writerPair), network, tid)
+                                                .thenApply(finalSnapshot -> {
+                                                    long t3 = System.currentTimeMillis();
+                                                    LOG.info("Uploading root dir metadata took " + (t3 - t2) + " mS");
+                                                    return finalSnapshot;
+                                                }))
+                                        .thenCompose(x -> addRootEntryPointAndCommit(x.merge(s2), entry, owner, userRootKey, network, tid));
+                            }));
+        }), network.dhtClient).thenCompose(s -> addRetrievedEntryPointToTrie(directoryName, TrieNodeImpl.empty(),
+                entry, "/" + directoryName, false, network, crypto));
     }
 
     public CompletableFuture<PublicSigningKey> getSigningKey(PublicKeyHash keyhash) {
@@ -1281,21 +1290,20 @@ public class UserContext {
                 });
     }
 
-    private static CompletableFuture<TrieNode> addRootEntryPointAndCommit(TrieNode root,
+    private static CompletableFuture<Snapshot> addRootEntryPointAndCommit(Snapshot version,
                                                                           EntryPoint entry,
-                                                                          String username,
                                                                           SigningPrivateKeyAndPublicHash owner,
                                                                           SymmetricKey rootKey,
                                                                           NetworkAccess network,
-                                                                          Crypto crypto) {
-        return network.synchronizer.applyUpdate(owner.publicKeyHash, owner, (wd, tid) -> {
-            Optional<UserStaticData> updated = wd.staticData.map(sd -> {
-                List<EntryPoint> entryPoints = sd.getEntryPoints(rootKey);
-                entryPoints.add(entry);
-                return new UserStaticData(entryPoints, rootKey);
-            });
-            return CompletableFuture.completedFuture(wd.withStaticData(updated));
-        }).thenCompose(res -> addRetrievedEntryPointToTrie(username, root, entry, "/" + username, false, network, crypto));
+                                                                          TransactionId tid) {
+        CommittedWriterData cwd = version.get(owner.publicKeyHash);
+        WriterData wd = cwd.props;
+        Optional<UserStaticData> updated = wd.staticData.map(sd -> {
+            List<EntryPoint> entryPoints = sd.getEntryPoints(rootKey);
+            entryPoints.add(entry);
+            return new UserStaticData(entryPoints, rootKey);
+        });
+        return wd.withStaticData(updated).commit(owner.publicKeyHash, owner, cwd.hash, network, tid);
     }
 
     private synchronized CompletableFuture<FileWrapper> addExternalEntryPoint(EntryPoint entry) {

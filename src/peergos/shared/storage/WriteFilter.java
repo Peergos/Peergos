@@ -35,6 +35,11 @@ public class WriteFilter implements ContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<Boolean> gc() {
+        return dht.gc();
+    }
+
+    @Override
     public CompletableFuture<Optional<CborObject>> get(Multihash object) {
         return dht.get(object);
     }

@@ -744,8 +744,9 @@ public abstract class UserTests {
         FileWrapper truncated = original.truncate(truncateLength, userRoot2, network, crypto).join();
         checkFileContents(Arrays.copyOfRange(data, 0, truncateLength), truncated, context);
         // check we can't get the third chunk any more
-        Optional<CryptreeNode> thirdChunk = network.getMetadata(original.writableFilePointer()
-                .withMapKey(thirdChunkLabel)).join();
+        WritableAbsoluteCapability pointer = original.writableFilePointer();
+        CommittedWriterData cwd = network.synchronizer.getValue(pointer.owner, pointer.writer).join().get(pointer.writer);
+        Optional<CryptreeNode> thirdChunk = network.getMetadata(cwd.props, pointer.withMapKey(thirdChunkLabel)).join();
         Assert.assertTrue("File is truncated", ! thirdChunk.isPresent());
         Assert.assertTrue("File has correct size", truncated.getFileProperties().size == truncateLength);
 
@@ -960,7 +961,9 @@ public abstract class UserTests {
 
         folder.remove(context.getUserRoot().join(), context).join();
 
-        Optional<CryptreeNode> subdir = network.getMetadata(subfolder.getPointer().capability).join();
+        AbsoluteCapability pointer = subfolder.getPointer().capability;
+        CommittedWriterData cwd = network.synchronizer.getValue(pointer.owner, pointer.writer).join().get(pointer.writer);
+        Optional<CryptreeNode> subdir = network.getMetadata(cwd.props, pointer).join();
         Assert.assertTrue("Child deleted", ! subdir.isPresent());
     }
 

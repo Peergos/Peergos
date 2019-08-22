@@ -40,6 +40,11 @@ public class CachingStorage implements ContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<Boolean> gc() {
+        return target.gc();
+    }
+
+    @Override
     public CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
                                                   PublicKeyHash writer,
                                                   List<byte[]> signatures,

@@ -146,14 +146,6 @@ public class CryptreeNode implements Cborable {
             this.childData = childData;
         }
 
-        public CompletableFuture<CryptreeNode> commit(WritableAbsoluteCapability us,
-                                                      Optional<SigningPrivateKeyAndPublicHash> entryWriter,
-                                                      NetworkAccess network,
-                                                      TransactionId tid) {
-            return commitChildrenLinks(us, entryWriter, network, tid)
-                    .thenCompose(hashes -> dir.commit(us, entryWriter, network, tid));
-        }
-
         public CompletableFuture<Snapshot> commit(Snapshot current,
                                                   Committer committer,
                                                   WritableAbsoluteCapability us,
@@ -689,14 +681,6 @@ public class CryptreeNode implements Cborable {
                             .commit(current, committer, ourPointer, entryWriter, network, tid),
                     network.dhtClient);
         });
-    }
-
-    public CompletableFuture<CryptreeNode> commit(WritableAbsoluteCapability us,
-                                                  Optional<SigningPrivateKeyAndPublicHash> entryWriter,
-                                                  NetworkAccess network,
-                                                  TransactionId tid) {
-        return network.uploadChunk(this, us.owner, us.getMapKey(), getSigner(us.rBaseKey, us.wBaseKey.get(), entryWriter), tid)
-                .thenApply(this::withHash);
     }
 
     public CompletableFuture<Snapshot> commit(Snapshot current,

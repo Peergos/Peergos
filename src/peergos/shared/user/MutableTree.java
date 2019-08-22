@@ -13,21 +13,6 @@ public interface MutableTree {
 
     /**
      *
-     * @param owner
-     * @param sharingKey
-     * @param mapKey
-     * @param value
-     * @return The committed result of setting the value in this tree
-     * @throws IOException
-     */
-    CompletableFuture<CommittedWriterData> put(PublicKeyHash owner,
-                                               SigningPrivateKeyAndPublicHash sharingKey,
-                                               byte[] mapKey,
-                                               MaybeMultihash existing,
-                                               Multihash value);
-
-    /**
-     *
      * @param base
      * @param owner
      * @param sharingKey
@@ -43,16 +28,6 @@ public interface MutableTree {
                                       MaybeMultihash existing,
                                       Multihash value,
                                       TransactionId tid);
-
-    /**
-     *
-     * @param owner
-     * @param writer
-     * @param mapKey
-     * @return  the value stored under mapKey for sharingKey
-     * @throws IOException
-     */
-    CompletableFuture<MaybeMultihash> get(PublicKeyHash owner, PublicKeyHash writer, byte[] mapKey);
 
     /**
      *
