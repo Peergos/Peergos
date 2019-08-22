@@ -38,6 +38,7 @@ public class CLI implements Runnable {
         rm,
         exit,
         quit,
+        help,
         space,
         get_follow_requests,
         follow,
@@ -139,6 +140,19 @@ public class CLI implements Runnable {
         CMD_TO_HELP.put(Command.rm.toString(),"rm remote-path. Remove a remote-file.");
         CMD_TO_HELP.put(Command.exit.toString(),"exit. Disconnect.");
         CMD_TO_HELP.put(Command.quit.toString(),"quit. Disconnect.");
+        CMD_TO_HELP.put(Command.help.toString(),"help. Show this help.");
+    }
+
+    static String formatHelp() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Available commands:").append("\n");
+        for (Map.Entry<String, String> entry : CMD_TO_HELP.entrySet()) {
+            String cmd = entry.getKey();
+            String help = entry.getValue();
+            sb.append(cmd).append("\t\t").append(help).append("\n");
+        }
+
+        return sb.toString();
     }
 
     private String handle(ParsedCommand parsedCommand) {
@@ -157,6 +171,8 @@ public class CLI implements Runnable {
                 case exit:
                 case quit:
                     return exit(parsedCommand);
+                case help:
+                    return help(parsedCommand);
 //                case space:
 //                case get_follow_requests:
 //                case follow:
@@ -262,8 +278,12 @@ public class CLI implements Runnable {
     public String exit(ParsedCommand cmd) {
         if (cmd.hasArguments())
             throw new IllegalStateException();
-        System.out.println("Exiting.");
         this.isFinished = true;
+        return "Exiting";
+    }
+
+    public String help(ParsedCommand cmd) {
+        return formatHelp();
     }
     
     public CLI(CLIContext cliContext) {
