@@ -31,16 +31,6 @@ public interface MutableTree {
 
     /**
      *
-     * @param owner
-     * @param writer
-     * @param mapKey
-     * @return  the value stored under mapKey for sharingKey
-     * @throws IOException
-     */
-    CompletableFuture<MaybeMultihash> get(PublicKeyHash owner, PublicKeyHash writer, byte[] mapKey);
-
-    /**
-     *
      * @param base The WriterData at the current mutable pointer for the writer
      * @param owner
      * @param writer

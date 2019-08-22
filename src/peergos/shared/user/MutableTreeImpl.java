@@ -51,12 +51,6 @@ public class MutableTreeImpl implements MutableTree {
     }
 
     @Override
-    public CompletableFuture<MaybeMultihash> get(PublicKeyHash owner, PublicKeyHash writer, byte[] mapKey) {
-        return synchronizer.getValue(owner, writer)
-                .thenCompose(version -> get(version.get(writer).props, owner, writer, mapKey));
-    }
-
-    @Override
     public CompletableFuture<MaybeMultihash> get(WriterData base, PublicKeyHash owner, PublicKeyHash writer, byte[] mapKey) {
         if (! base.tree.isPresent())
             throw new IllegalStateException("Tree root not present for " + writer);

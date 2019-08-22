@@ -254,32 +254,6 @@ public class NetworkAccess {
                 .thenApply(res -> res.isEmpty() ? Optional.empty() : Optional.of(res.get(0)));
     }
 
-    public CompletableFuture<List<RetrievedCapability>> retrieveAllMetadata(List<AbsoluteCapability> links) {
-        List<CompletableFuture<Optional<RetrievedCapability>>> all = links.stream()
-                .map(link -> {
-                    PublicKeyHash owner = link.owner;
-                    PublicKeyHash writer = link.writer;
-                    byte[] mapKey = link.getMapKey();
-                    return tree.get(owner, writer, mapKey)
-                            .thenCompose(key -> {
-                                if (key.isPresent())
-                                    return dhtClient.get(key.get())
-                                            .thenApply(dataOpt ->  dataOpt
-                                                    .map(cbor -> new RetrievedCapability(
-                                                            link,
-                                                            CryptreeNode.fromCbor(cbor, link.rBaseKey, key.get()))));
-                                LOG.severe("Couldn't download link at: " + new Location(owner, writer, mapKey));
-                                Optional<RetrievedCapability> result = Optional.empty();
-                                return CompletableFuture.completedFuture(result);
-                            });
-                }).collect(Collectors.toList());
-
-        return Futures.combineAll(all).thenApply(optSet -> optSet.stream()
-                .filter(Optional::isPresent)
-                .map(Optional::get)
-                .collect(Collectors.toList()));
-    }
-
     public CompletableFuture<List<RetrievedCapability>> retrieveAllMetadata(List<AbsoluteCapability> links, Snapshot current) {
         List<CompletableFuture<Optional<RetrievedCapability>>> all = links.stream()
                 .map(link -> {
@@ -488,15 +462,6 @@ public class NetworkAccess {
                                         tid -> tree.remove(version.props, owner, writer, mapKey, valueHash, tid)
                                                 .thenCompose(wd -> committer.commit(owner, writer, wd, version, tid)),
                                         dhtClient));
-    }
-
-    public CompletableFuture<Optional<CryptreeNode>> getMetadata(AbsoluteCapability cap) {
-        return tree.get(cap.owner, cap.writer, cap.getMapKey()).thenCompose(blobHash -> {
-            if (!blobHash.isPresent())
-                return CompletableFuture.completedFuture(Optional.empty());
-            return dhtClient.get(blobHash.get())
-                    .thenApply(rawOpt -> rawOpt.map(cbor -> CryptreeNode.fromCbor(cbor, cap.rBaseKey, blobHash.get())));
-        });
     }
 
     public CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Multihash> hashes,
