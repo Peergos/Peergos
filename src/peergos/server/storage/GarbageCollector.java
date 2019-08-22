@@ -17,6 +17,7 @@ public class GarbageCollector implements ContentAddressedStorage {
 
     private final ContentAddressedStorage target;
     private final long gcPeriodMillis;
+    // This lock is used to make new transactions block until a pending GC completes
     private final Object gcLock = new Object();
     private final ConcurrentHashMap<PublicKeyHash, AtomicInteger> openTransactions = new ConcurrentHashMap<>();
 
@@ -43,9 +44,10 @@ public class GarbageCollector implements ContentAddressedStorage {
                 synchronized (gcLock) {
                     long start = System.nanoTime();
                     while (openTransactions() > 0) {
-                        if ((System.nanoTime() - start) / 1000 > MAX_WAIT_FOR_TRANSACTION_MILLIS)
-                            openTransactions.clear();
-                        Thread.sleep(MAX_WAIT_FOR_TRANSACTION_MILLIS / 20);
+//                        if ((System.nanoTime() - start) / 1000 > MAX_WAIT_FOR_TRANSACTION_MILLIS)
+//                            openTransactions.clear();
+                        System.out.println("GC sleeping, " + openTransactions() + " open transactions");
+                        Thread.sleep(100);
                     }
                     long ready = System.nanoTime();
                     target.gc().join();

@@ -562,7 +562,7 @@ public class Main {
             SigningPrivateKeyAndPublicHash pkiSigner = new SigningPrivateKeyAndPublicHash(pkiPublicHash, pkiSecretKey);
             if (! currentPkiRoot.isPresent())
                 currentPkiRoot = IpfsTransaction.call(peergosIdentity,
-                        tid -> WriterData.createEmpty(peergosIdentity, pkiSigner, dht).join()
+                        tid -> WriterData.createEmpty(peergosIdentity, pkiSigner, dht, tid).join()
                                 .commit(peergosIdentity, pkiSigner, MaybeMultihash.empty(), mutable, dht, tid)
                                 .thenApply(version -> version.get(pkiSigner).hash), dht).join();
 

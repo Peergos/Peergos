@@ -88,6 +88,19 @@ public class WriterData implements Cborable {
                         Optional.of(newRoot), namedOwnedKeys, staticData, tree)));
     }
 
+    public CompletableFuture<Snapshot> addOwnedKeyAndCommit(PublicKeyHash owner,
+                                                              SigningPrivateKeyAndPublicHash signer,
+                                                              OwnerProof newOwned,
+                                                              MaybeMultihash currentHash,
+                                                              NetworkAccess network,
+                                                              TransactionId tid) {
+        return getOwnedKeyChamp(network.dhtClient)
+                .thenCompose(champ -> champ.add(owner, signer, newOwned, tid)
+                        .thenApply(newRoot -> new WriterData(controller, generationAlgorithm, publicData,
+                                followRequestReceiver, Optional.of(newRoot), namedOwnedKeys, staticData, tree)))
+                .thenCompose(wd -> wd.commit(owner, signer, currentHash, network, tid));
+    }
+
     public CompletableFuture<WriterData> removeOwnedKey(PublicKeyHash owner,
                                                         SigningPrivateKeyAndPublicHash signer,
                                                         PublicKeyHash ownedKey,
@@ -131,8 +144,9 @@ public class WriterData implements Cborable {
 
     public static CompletableFuture<WriterData> createEmpty(PublicKeyHash owner,
                                                             SigningPrivateKeyAndPublicHash writer,
-                                                            ContentAddressedStorage ipfs) {
-        return OwnedKeyChamp.createEmpty(owner, writer, ipfs)
+                                                            ContentAddressedStorage ipfs,
+                                                            TransactionId tid) {
+        return OwnedKeyChamp.createEmpty(owner, writer, ipfs, tid)
                 .thenApply(ownedRoot -> new WriterData(writer.publicKeyHash,
                         Optional.empty(),
                         Optional.empty(),
@@ -148,8 +162,9 @@ public class WriterData implements Cborable {
                                                                           Optional<PublicKeyHash> followRequestReceiver,
                                                                           SymmetricKey rootKey,
                                                                           SecretGenerationAlgorithm algorithm,
-                                                                          ContentAddressedStorage ipfs) {
-        return OwnedKeyChamp.createEmpty(owner, writer, ipfs)
+                                                                          ContentAddressedStorage ipfs,
+                                                                          TransactionId tid) {
+        return OwnedKeyChamp.createEmpty(owner, writer, ipfs, tid)
                 .thenApply(ownedRoot -> new WriterData(writer.publicKeyHash,
                         Optional.of(algorithm),
                         Optional.empty(),
