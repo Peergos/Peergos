@@ -144,6 +144,7 @@ public class CLI implements Runnable {
         CMD_TO_HELP.put(Command.bye.toString(),"quit. Disconnect.");
         CMD_TO_HELP.put(Command.help.toString(),"help. Show this help.");
         CMD_TO_HELP.put(Command.space.toString(),"space. Show used remote space.");
+        CMD_TO_HELP.put(Command.passwd.toString(),"passwd. Update password.");
     }
 
     static String formatHelp() {
@@ -159,7 +160,7 @@ public class CLI implements Runnable {
         return sb.toString();
     }
 
-    private String handle(ParsedCommand parsedCommand) {
+    private String handle(ParsedCommand parsedCommand, Terminal terminal, LineReader reader) {
 
 
         try {
@@ -183,7 +184,8 @@ public class CLI implements Runnable {
 //                case get_follow_requests:
 //                case follow:
 //                case share:
-//                case passwd:
+                case passwd:
+                    return passwd(parsedCommand, terminal, reader);
                 default:
                     return "Unexpected cmd '" + parsedCommand.cmd + "'";
             }
@@ -289,6 +291,20 @@ public class CLI implements Runnable {
 
     }
 
+    public String passwd(ParsedCommand cmd, Terminal terminal, LineReader reader) {
+        terminal.writer().println("Enter current password:");
+        String currentPassword = reader.readLine(PROMPT, PASSWORD_MASK);
+        terminal.writer().println("Enter new  password:");
+        String newPassword = reader.readLine(PROMPT, PASSWORD_MASK);
+        try {
+            cliContext.userContext.changePassword(currentPassword, newPassword).join();
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            return "Failed to update password";
+        }
+        return "Password updated";
+    }
+
     public String space(ParsedCommand cmd) {
         UserContext uc = cliContext.userContext;
         long spaceUsed = uc.getSpaceUsage().join();
@@ -378,7 +394,7 @@ public class CLI implements Runnable {
         String username = reader.readLine(PROMPT).trim();
 
         terminal.writer().println("Enter password for '" + username + "'");
-        String password = reader.readLine(PROMPT, PASSWORD_MASK).trim();
+        String password = reader.readLine(PROMPT, PASSWORD_MASK);
 
         NetworkAccess networkAccess = NetworkAccess.buildJava(serverURL).join();
 
@@ -434,7 +450,7 @@ public class CLI implements Runnable {
 
 
                 ParsedCommand parsedCommand = fromLine(line);
-                String response = handle(parsedCommand);
+                String response = handle(parsedCommand, terminal, reader);
 //                if (color) {
 //                    terminal.writer().println(
 //                            AttributedString.fromAnsi("\u001B[0m\"" + response + "\"")
