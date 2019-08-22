@@ -14,6 +14,7 @@ import peergos.server.tests.simulation.Stat;
 import peergos.server.util.Logging;
 import peergos.shared.Crypto;
 import peergos.shared.NetworkAccess;
+import peergos.shared.social.FollowRequestWithCipherText;
 import peergos.shared.user.UserContext;
 import peergos.shared.util.Pair;
 
@@ -53,7 +54,7 @@ public class CLI implements Runnable {
             try {
                 return Command.valueOf(cmd);
             } catch (IllegalStateException | NullPointerException ex) {
-                throw new IllegalStateException("Specified command "+  cmd +" is not a valid command : " + ALLOWED);
+                throw new IllegalStateException("Specified command " + cmd + " is not a valid command : " + ALLOWED);
             }
         }
     }
@@ -70,7 +71,7 @@ public class CLI implements Runnable {
         }
 
         public boolean hasArguments() {
-            return !  arguments.isEmpty();
+            return !arguments.isEmpty();
         }
 
         public boolean hasSecondArgument() {
@@ -79,13 +80,13 @@ public class CLI implements Runnable {
 
         public String firstArgument() {
             if (arguments.size() < 1)
-                throw new IllegalStateException("Specifed command "+ line +" requires an argument");
+                throw new IllegalStateException("Specifed command " + line + " requires an argument");
             return arguments.get(0);
         }
 
         public String secondArgument() {
             if (arguments.size() < 2)
-                throw new IllegalStateException("Specifed command "+ line +" requires a second argument");
+                throw new IllegalStateException("Specifed command " + line + " requires a second argument");
             return arguments.get(1);
         }
 
@@ -101,6 +102,7 @@ public class CLI implements Runnable {
 
     /**
      * resolve against remote pwd if path is relative
+     *
      * @param path
      * @return
      */
@@ -120,10 +122,10 @@ public class CLI implements Runnable {
     }
 
     public static ParsedCommand fromLine(String line) {
-            String[] split = line.trim().split("\\s+");
-            if (split == null || split.length == 0)
-                throw new IllegalStateException();
-            ArrayList<String> tokens = new ArrayList<>(Arrays.asList(split));
+        String[] split = line.trim().split("\\s+");
+        if (split == null || split.length == 0)
+            throw new IllegalStateException();
+        ArrayList<String> tokens = new ArrayList<>(Arrays.asList(split));
 
         Command cmd = Command.parse(tokens.remove(0));
 
@@ -134,17 +136,20 @@ public class CLI implements Runnable {
     private static final String PROMPT = " > ";
 
     private static final Map<String, String> CMD_TO_HELP = new HashMap<>();
+
     static {
-        CMD_TO_HELP.put(Command.ls.toString(),"ls <path>. List contents of a remote directory.");
-        CMD_TO_HELP.put(Command.get.toString(),"get remote-path <local path>. Download a file.");
-        CMD_TO_HELP.put(Command.put.toString(),"put local-path remote-path. Upload a file.");
-        CMD_TO_HELP.put(Command.rm.toString(),"rm remote-path. Remove a remote-file.");
-        CMD_TO_HELP.put(Command.exit.toString(),"exit. Disconnect.");
-        CMD_TO_HELP.put(Command.quit.toString(),"quit. Disconnect.");
-        CMD_TO_HELP.put(Command.bye.toString(),"quit. Disconnect.");
-        CMD_TO_HELP.put(Command.help.toString(),"help. Show this help.");
-        CMD_TO_HELP.put(Command.space.toString(),"space. Show used remote space.");
-        CMD_TO_HELP.put(Command.passwd.toString(),"passwd. Update password.");
+        CMD_TO_HELP.put(Command.ls.toString(), "ls <path>. List contents of a remote directory.");
+        CMD_TO_HELP.put(Command.get.toString(), "get remote-path <local path>. Download a file.");
+        CMD_TO_HELP.put(Command.put.toString(), "put local-path remote-path. Upload a file.");
+        CMD_TO_HELP.put(Command.rm.toString(), "rm remote-path. Remove a remote-file.");
+        CMD_TO_HELP.put(Command.exit.toString(), "exit. Disconnect.");
+        CMD_TO_HELP.put(Command.quit.toString(), "quit. Disconnect.");
+        CMD_TO_HELP.put(Command.bye.toString(), "quit. Disconnect.");
+        CMD_TO_HELP.put(Command.help.toString(), "help. Show this help.");
+        CMD_TO_HELP.put(Command.space.toString(), "space. Show used remote space.");
+        CMD_TO_HELP.put(Command.passwd.toString(), "passwd. Update password.");
+        CMD_TO_HELP.put(Command.follow.toString(), "follow username-to-follow. Send a follow-request to another user.");
+        CMD_TO_HELP.put(Command.get_follow_requests.toString(), "get_follow_requests. Show the users that have sent you a follow request.");
     }
 
     static String formatHelp() {
@@ -181,8 +186,10 @@ public class CLI implements Runnable {
                     return help(parsedCommand);
                 case space:
                     return space(parsedCommand);
-//                case get_follow_requests:
-//                case follow:
+                case get_follow_requests:
+                    return getFollowRequests(parsedCommand);
+                case follow:
+                    return follow(parsedCommand);
 //                case share:
                 case passwd:
                     return passwd(parsedCommand, terminal, reader);
@@ -191,7 +198,7 @@ public class CLI implements Runnable {
             }
         } catch (Exception ex) {
             ex.printStackTrace();
-            return "Failed to execute "+ parsedCommand;
+            return "Failed to execute " + parsedCommand;
 
         }
 
@@ -212,7 +219,7 @@ public class CLI implements Runnable {
     }
 
     public String get(ParsedCommand cmd) throws IOException {
-        if (! cmd.hasArguments())
+        if (!cmd.hasArguments())
             throw new IllegalStateException();
 
         Path remotePath = resolvedRemotePath(cmd.firstArgument());
@@ -220,8 +227,8 @@ public class CLI implements Runnable {
         Stat stat = null;
         try {
             stat = peergosFileSystem.stat(remotePath);
-        }  catch (Exception ex) {
-            throw new IllegalStateException("Could not find remote specified remote path '"+ remotePath + "'",  ex);
+        } catch (Exception ex) {
+            throw new IllegalStateException("Could not find remote specified remote path '" + remotePath + "'", ex);
         }
 
         // TODO
@@ -234,12 +241,12 @@ public class CLI implements Runnable {
 
         if (localPath.toFile().isDirectory())
             localPath = localPath.resolve(stat.fileProperties().name);
-        else if (! localPath.toFile().getParentFile().isDirectory())
-            throw new IllegalStateException("Specified local path '"+ localPath.getParent() + "' is not a directory or does not exist.");
+        else if (!localPath.toFile().getParentFile().isDirectory())
+            throw new IllegalStateException("Specified local path '" + localPath.getParent() + "' is not a directory or does not exist.");
 
         byte[] data = peergosFileSystem.read(remotePath);
         Files.write(localPath, data);
-        return "Downloaded "+ remotePath +" to " + localPath;
+        return "Downloaded " + remotePath + " to " + localPath;
     }
 
     public String put(ParsedCommand cmd) throws IOException {
@@ -250,8 +257,8 @@ public class CLI implements Runnable {
         if (localPath.toFile().isDirectory())
             throw new IllegalStateException("Cannot upload directory: this is not supported");
 
-        if (! localPath.toFile().isFile())
-            throw new IllegalStateException("Could not find specified local file '" + localPath +"'");
+        if (!localPath.toFile().isFile())
+            throw new IllegalStateException("Could not find specified local file '" + localPath + "'");
 
 
         String remotePathS = cmd.hasSecondArgument() ? cmd.secondArgument() : cliContext.pwd.resolve(localPath.getFileName()).toString();
@@ -259,11 +266,11 @@ public class CLI implements Runnable {
 
         byte[] data = Files.readAllBytes(localPath);
         peergosFileSystem.write(remotePath, data);
-        return "Successfully uploaded " + localPath +" to remote "+ remotePath;
+        return "Successfully uploaded " + localPath + " to remote " + remotePath;
     }
 
     public String rm(ParsedCommand cmd) {
-        if (! cmd.hasArguments())
+        if (!cmd.hasArguments())
             throw new IllegalStateException();
 
         Path remotePath = resolvedRemotePath(cmd.firstArgument());
@@ -271,16 +278,16 @@ public class CLI implements Runnable {
         Stat stat = null;
         try {
             stat = peergosFileSystem.stat(remotePath);
-        }  catch (Exception ex) {
-            throw new IllegalStateException("Could not find remote specified remote path '"+ remotePath + "'",  ex);
+        } catch (Exception ex) {
+            throw new IllegalStateException("Could not find remote specified remote path '" + remotePath + "'", ex);
         }
 
         // TODO
         if (stat.fileProperties().isDirectory)
-            throw new IllegalStateException("Cannot remove directory '"+  remotePath +"': directory removal not yet supported");
+            throw new IllegalStateException("Cannot remove directory '" + remotePath + "': directory removal not yet supported");
 
         peergosFileSystem.delete(remotePath);
-        return "Deleted "+ remotePath;
+        return "Deleted " + remotePath;
     }
 
     public String exit(ParsedCommand cmd) {
@@ -308,14 +315,44 @@ public class CLI implements Runnable {
     public String space(ParsedCommand cmd) {
         UserContext uc = cliContext.userContext;
         long spaceUsed = uc.getSpaceUsage().join();
-        long spaceMB = spaceUsed/1024/1024;
-        return "Total space used: "+ spaceMB + " MiB." ;
+        long spaceMB = spaceUsed / 1024 / 1024;
+        return "Total space used: " + spaceMB + " MiB.";
+    }
+
+    public String getFollowRequests(ParsedCommand cmd) {
+
+        List<FollowRequestWithCipherText> followRequests = cliContext.userContext.processFollowRequests().join();
+        List<String> followRequestUsers = followRequests.stream()
+                .map(e -> e.getEntry().ownerName)
+                .collect(Collectors.toList());
+
+        if (followRequests.isEmpty())
+            return "No pending follow requests.";
+
+        return followRequestUsers.stream()
+                .collect(Collectors.joining("\n\t", "You have pending follow requests from the following users:\n", ""));
+
+    }
+
+    public String follow(ParsedCommand cmd) {
+        if (!cmd.hasArguments())
+            throw new IllegalStateException();
+
+        String userToFollow = cmd.firstArgument();
+
+        try {
+            cliContext.userContext.sendInitialFollowRequest(userToFollow).join();
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            return "Failed to send follow request";
+        }
+        return "Sent follow request to '" + userToFollow + "'";
     }
 
     public String help(ParsedCommand cmd) {
         return formatHelp();
     }
-    
+
     public CLI(CLIContext cliContext) {
         this.cliContext = cliContext;
         this.peergosFileSystem = new PeergosFileSystemImpl(cliContext.userContext);
@@ -330,7 +367,7 @@ public class CLI implements Runnable {
             this.userContext = userContext;
             this.serverURL = serverURL;
             this.username = username;
-            this.pwd = Paths.get("/"+username);
+            this.pwd = Paths.get("/" + username);
         }
     }
 
@@ -348,6 +385,7 @@ public class CLI implements Runnable {
 
     /**
      * Build the command completer.
+     *
      * @return
      */
     public Completer buildCompleter() {
@@ -361,6 +399,7 @@ public class CLI implements Runnable {
 
     /**
      * Build a CLIContext from the CLI - from user interaction.
+     *
      * @return
      */
 
@@ -434,8 +473,8 @@ public class CLI implements Runnable {
                 .build();
         boolean color = true;
 
-        while (! isFinished) {
-            while (! isFinished) {
+        while (!isFinished) {
+            while (!isFinished) {
                 String line = null;
                 try {
                     line = reader.readLine(buildPrompt(), null, (MaskingCallback) null, null);
@@ -460,7 +499,8 @@ public class CLI implements Runnable {
                 terminal.writer().println(response);
 //                }
                 terminal.flush();
-            }}
+            }
+        }
     }
 
     private static Crypto CRYPTO;
