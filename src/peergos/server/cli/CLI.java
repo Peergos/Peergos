@@ -36,6 +36,8 @@ public class CLI implements Runnable {
         put,
         ls,
         rm,
+        exit,
+        quit,
         space,
         get_follow_requests,
         follow,
@@ -134,6 +136,9 @@ public class CLI implements Runnable {
         CMD_TO_HELP.put(Command.ls.toString(),"ls <path>. List contents of a remote directory.");
         CMD_TO_HELP.put(Command.get.toString(),"get remote-path <local path>. Download a file.");
         CMD_TO_HELP.put(Command.put.toString(),"put local-path remote-path. Upload a file.");
+        CMD_TO_HELP.put(Command.rm.toString(),"rm remote-path. Remove a remote-file.");
+        CMD_TO_HELP.put(Command.exit.toString(),"exit. Disconnect.");
+        CMD_TO_HELP.put(Command.quit.toString(),"quit. Disconnect.");
     }
 
     private String handle(ParsedCommand parsedCommand) {
@@ -147,7 +152,11 @@ public class CLI implements Runnable {
                     return get(parsedCommand);
                 case put:  //upload
                     return put(parsedCommand);
-//                case rm:
+                case rm:
+                    return rm(parsedCommand);
+                case exit:
+                case quit:
+                    return exit(parsedCommand);
 //                case space:
 //                case get_follow_requests:
 //                case follow:
@@ -166,6 +175,7 @@ public class CLI implements Runnable {
 
     private final CLIContext cliContext;
     private final FileSystem peergosFileSystem;
+    private boolean isFinished;
 
     public String ls(ParsedCommand cmd) {
 
@@ -228,7 +238,34 @@ public class CLI implements Runnable {
         return "Successfully uploaded " + localPath +" to remote "+ remotePath;
     }
 
+    public String rm(ParsedCommand cmd) {
+        if (! cmd.hasArguments())
+            throw new IllegalStateException();
 
+        Path remotePath = resolvedRemotePath(cmd.firstArgument());
+
+        Stat stat = null;
+        try {
+            stat = peergosFileSystem.stat(remotePath);
+        }  catch (Exception ex) {
+            throw new IllegalStateException("Could not find remote specified remote path '"+ remotePath + "'",  ex);
+        }
+
+        // TODO
+        if (stat.fileProperties().isDirectory)
+            throw new IllegalStateException("Cannot remove directory '"+  remotePath +"': directory removal not yet supported");
+
+        peergosFileSystem.delete(remotePath);
+        return "Deleted "+ remotePath;
+    }
+
+    public String exit(ParsedCommand cmd) {
+        if (cmd.hasArguments())
+            throw new IllegalStateException();
+        System.out.println("Exiting.");
+        this.isFinished = true;
+    }
+    
     public CLI(CLIContext cliContext) {
         this.cliContext = cliContext;
         this.peergosFileSystem = new PeergosFileSystemImpl(cliContext.userContext);
@@ -346,8 +383,8 @@ public class CLI implements Runnable {
                 .build();
         boolean color = true;
 
-        while (true) {
-            while (true) {
+        while (! isFinished) {
+            while (! isFinished) {
                 String line = null;
                 try {
                     line = reader.readLine(buildPrompt(), null, (MaskingCallback) null, null);
