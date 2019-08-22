@@ -291,9 +291,9 @@ public class CLI implements Runnable {
 
     public String space(ParsedCommand cmd) {
         UserContext uc = cliContext.userContext;
-        long spaceUsed = uc.getTotalSpaceUsed(uc.signer.publicKeyHash, uc.signer.publicKeyHash).join();
+        long spaceUsed = uc.getSpaceUsage().join();
         long spaceMB = spaceUsed/1024/1024;
-        return "Total space used: "+ spaceMB + "MiB." ;
+        return "Total space used: "+ spaceMB + " MiB." ;
     }
 
     public String help(ParsedCommand cmd) {
