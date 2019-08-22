@@ -17,6 +17,7 @@ import java.util.stream.*;
 public class PinChecker {
 
     public static void main(String[] args) throws Exception {
+        boolean fix = args.length > 0 && args[0].equals("-fix");
         Crypto.initJava();
 
         IPFS ipfs = new IPFS("localhost", 5001);
@@ -51,6 +52,12 @@ public class PinChecker {
                 missing.removeAll(allPins);
                 if (!missing.isEmpty())
                     System.out.println("Missing " + missing.size() + " pins for " + username + " - " + missing);
+                if (fix) {
+                    System.out.println("Adding missing pins...");
+                    for (Multihash h : missing) {
+                        ipfs.pin.add(h);
+                    }
+                }
             } catch (Throwable t) {
                 System.err.println("Error handling user: " + username);
                 t.printStackTrace();
