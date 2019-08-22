@@ -143,6 +143,7 @@ public class CLI implements Runnable {
         CMD_TO_HELP.put(Command.quit.toString(),"quit. Disconnect.");
         CMD_TO_HELP.put(Command.bye.toString(),"quit. Disconnect.");
         CMD_TO_HELP.put(Command.help.toString(),"help. Show this help.");
+        CMD_TO_HELP.put(Command.space.toString(),"space. Show used remote space.");
     }
 
     static String formatHelp() {
@@ -177,7 +178,8 @@ public class CLI implements Runnable {
                     return exit(parsedCommand);
                 case help:
                     return help(parsedCommand);
-//                case space:
+                case space:
+                    return space(parsedCommand);
 //                case get_follow_requests:
 //                case follow:
 //                case share:
@@ -287,6 +289,12 @@ public class CLI implements Runnable {
 
     }
 
+    public String space(ParsedCommand cmd) {
+        UserContext uc = cliContext.userContext;
+        Long spaceUsed = uc.getTotalSpaceUsed(uc.signer.publicKeyHash, uc.signer.publicKeyHash).join();
+        return "Total space used "+ spaceUsed;
+    }
+
     public String help(ParsedCommand cmd) {
         return formatHelp();
     }
@@ -361,6 +369,7 @@ public class CLI implements Runnable {
             serverURL = new URL(address);
         } catch (MalformedURLException ex) {
             terminal.writer().println("Specified server " + address + " is not valid!");
+            terminal.writer().flush();
             return buildContextFromCLI();
         }
 
