@@ -22,6 +22,7 @@ import java.util.stream.*;
 
 public interface ContentAddressedStorage {
 
+    boolean DEBUG_GC = false;
     int MAX_BLOCK_SIZE  = 2*1024*1024;
 
     default CompletableFuture<Multihash> put(PublicKeyHash owner,
@@ -282,8 +283,15 @@ public interface ContentAddressedStorage {
         private static Multihash getObjectHash(Object rawJson) {
             Map json = (Map)rawJson;
             String hash = (String)json.get("Hash");
-            if (hash == null)
-                hash = (String)json.get("Key");
+            if (hash == null) {
+                Object val = json.get("Key");
+                if (val instanceof  String)
+                    hash = (String) val;
+                else if (val instanceof Map)
+                    hash = (String) ((Map)val).get("/");
+                else
+                    throw new IllegalStateException("Couldn't parse hash from response!");
+            }
             return Cid.decode(hash);
         }
 
@@ -320,7 +328,16 @@ public interface ContentAddressedStorage {
         @Override
         public CompletableFuture<Boolean> gc() {
             return poster.get(apiPrefix + GC)
-                    .thenApply(raw -> true);
+                    .thenApply(raw -> {
+                        if (DEBUG_GC) {
+                            List<Multihash> removed = JSONParser.parseStream(new String(raw))
+                                    .stream()
+                                    .map(json -> getObjectHash(json))
+                                    .collect(Collectors.toList());
+                            System.out.println("GCed:\n" + removed);
+                        }
+                        return true;
+                    });
         }
 
         @Override
@@ -338,7 +355,12 @@ public interface ContentAddressedStorage {
                                                          List<byte[]> signatures,
                                                          List<byte[]> blocks,
                                                          TransactionId tid) {
-            return put(owner, writer, signatures, blocks, "raw", tid);
+            return put(owner, writer, signatures, blocks, "raw", tid)
+                    .thenApply(hashes -> {
+                        if (DEBUG_GC)
+                            System.out.println("Added blocks: " + hashes);
+                        return hashes;
+                    });
         }
 
         private CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
@@ -359,7 +381,12 @@ public interface ContentAddressedStorage {
                     .thenApply(bytes -> JSONParser.parseStream(new String(bytes))
                             .stream()
                             .map(json -> getObjectHash(json))
-                            .collect(Collectors.toList()));
+                            .collect(Collectors.toList()))
+                    .thenApply(hashes -> {
+                        if (DEBUG_GC)
+                            System.out.println("Added blocks: " + hashes);
+                        return hashes;
+                    });
         }
 
         @Override

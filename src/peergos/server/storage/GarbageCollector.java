@@ -44,8 +44,8 @@ public class GarbageCollector implements ContentAddressedStorage {
                 synchronized (gcLock) {
                     long start = System.nanoTime();
                     while (openTransactions() > 0) {
-//                        if ((System.nanoTime() - start) / 1000 > MAX_WAIT_FOR_TRANSACTION_MILLIS)
-//                            openTransactions.clear();
+                        if ((System.nanoTime() - start) / 1_000_000 > MAX_WAIT_FOR_TRANSACTION_MILLIS)
+                            openTransactions.clear();
                         System.out.println("GC sleeping, " + openTransactions() + " open transactions");
                         Thread.sleep(100);
                     }
