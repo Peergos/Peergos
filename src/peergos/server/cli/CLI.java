@@ -33,28 +33,46 @@ import static org.jline.builtins.Completers.TreeCompleter.node;
 
 public class CLI implements Runnable {
     public enum Command {
-        get,
-        put,
-        ls,
-        rm,
-        exit,
-        quit,
-        bye,
-        help,
-        space,
-        get_follow_requests,
-        follow,
-        share,
-        passwd;
+        get("Download a file", "get remote-path <local path>"),
+        put("Upload a file", "put local-path <remote-path>"),
+        ls("List contents of a remote directory", "ls <path>"),
+        rm("Remove a remote-file", "rm remote-path"),
+        exit("Disconnect"),
+        quit("Disconnect"),
+        bye("Disconnect"),
+        help("Show this help"),
+        space("Show used remote space"),
+        get_follow_requests("Show the users that have sent you a follow request"),
+        follow("Send a follow-request to another user.", "follow username-to-follow"),
+        passwd("Update your password"),
+        share("","");
 
-        public static Set<Command> ALLOWED = Stream.of(Command.values())
-                .collect(Collectors.toSet());
+        public final String description, example;
 
+        Command(String description) {
+            this(description, null);
+        }
+
+        public static int maxLength() {
+            return Stream.of(values())
+                    .mapToInt(e -> e.example().length())
+                    .max()
+                    .getAsInt();
+        }
+
+        public String example() {
+            return example == null ? name() : example;
+        }
+
+        Command(String description, String example) {
+            this.description = description;
+            this.example = example;
+        }
         public static Command parse(String cmd) {
             try {
                 return Command.valueOf(cmd);
             } catch (IllegalStateException | NullPointerException ex) {
-                throw new IllegalStateException("Specified command " + cmd + " is not a valid command : " + ALLOWED);
+                throw new IllegalStateException("Specified command " + cmd + " is not a valid command : " + new ArrayList<>(Arrays.asList(values())));
             }
         }
     }
@@ -135,31 +153,17 @@ public class CLI implements Runnable {
     private static final char PASSWORD_MASK = '*';
     private static final String PROMPT = " > ";
 
-    private static final Map<String, String> CMD_TO_HELP = new HashMap<>();
-
-    static {
-        CMD_TO_HELP.put(Command.ls.toString(), "ls <path>. List contents of a remote directory.");
-        CMD_TO_HELP.put(Command.get.toString(), "get remote-path <local path>. Download a file.");
-        CMD_TO_HELP.put(Command.put.toString(), "put local-path remote-path. Upload a file.");
-        CMD_TO_HELP.put(Command.rm.toString(), "rm remote-path. Remove a remote-file.");
-        CMD_TO_HELP.put(Command.exit.toString(), "exit. Disconnect.");
-        CMD_TO_HELP.put(Command.quit.toString(), "quit. Disconnect.");
-        CMD_TO_HELP.put(Command.bye.toString(), "quit. Disconnect.");
-        CMD_TO_HELP.put(Command.help.toString(), "help. Show this help.");
-        CMD_TO_HELP.put(Command.space.toString(), "space. Show used remote space.");
-        CMD_TO_HELP.put(Command.passwd.toString(), "passwd. Update password.");
-        CMD_TO_HELP.put(Command.follow.toString(), "follow username-to-follow. Send a follow-request to another user.");
-        CMD_TO_HELP.put(Command.get_follow_requests.toString(), "get_follow_requests. Show the users that have sent you a follow request.");
-    }
-
     static String formatHelp() {
         StringBuilder sb = new StringBuilder();
         sb.append("Available commands:");
-        for (Map.Entry<String, String> entry : CMD_TO_HELP.entrySet()) {
-            sb.append("\n");
-            String cmd = entry.getKey();
-            String help = entry.getValue();
-            sb.append(cmd).append("\t\t").append(help);
+        int maxLength = Command.maxLength();
+
+        for (Command cmd : Arrays.asList(Command.values())) {
+            sb.append("\n").append(cmd.example());
+            for (int i = 0; i < maxLength - cmd.example().length(); i++) {
+                sb.append(" ");
+            }
+            sb.append("\t").append(cmd.description);
         }
 
         return sb.toString();
@@ -190,9 +194,9 @@ public class CLI implements Runnable {
                     return getFollowRequests(parsedCommand);
                 case follow:
                     return follow(parsedCommand);
-//                case share:
                 case passwd:
                     return passwd(parsedCommand, terminal, reader);
+//                case share:
                 default:
                     return "Unexpected cmd '" + parsedCommand.cmd + "'";
             }
@@ -390,8 +394,8 @@ public class CLI implements Runnable {
      */
     public Completer buildCompleter() {
 
-        List<Completers.TreeCompleter.Node> nodes = CMD_TO_HELP.keySet().stream()
-                .map(cmd -> node(cmd))
+        List<Completers.TreeCompleter.Node> nodes = Stream.of(Command.values())
+                .map(cmd -> node(cmd.name()))
                 .collect(Collectors.toList());
 
         return new Completers.TreeCompleter(nodes);
