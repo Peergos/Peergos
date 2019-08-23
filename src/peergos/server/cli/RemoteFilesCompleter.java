@@ -20,11 +20,9 @@ public class RemoteFilesCompleter  implements Completer {
      * @param parsedLine
      * @param list
      */
-    private final Supplier<Path> pwdSupplier;
-    private final Function<Path, List<String>> lsSupplier; //lsSupplier(path) -> children of path
+    private final Function<String, List<String>> lsSupplier; //lsSupplier(path) -> children of path
 
-    public RemoteFilesCompleter(Supplier<Path> pwdSupplier, Function<Path, List<String>> lsSupplier) {
-        this.pwdSupplier = pwdSupplier;
+    public RemoteFilesCompleter(Function<String, List<String>> lsSupplier) {
         this.lsSupplier = lsSupplier;
     }
 
@@ -33,8 +31,9 @@ public class RemoteFilesCompleter  implements Completer {
         if (parsedLine.words().size() > 1)
             throw new IllegalStateException();
 
-        Path remotePwd = pwdSupplier.get();
-        List<String> remotePathChildren = lsSupplier.apply(remotePwd);
+
+        String remotePathPartialArg = parsedLine.word();
+        List<String> remotePathChildren = lsSupplier.apply(remotePathPartialArg);
         remotePathChildren.stream()
                 .map(Candidate::new)
                 .forEach(list::add);

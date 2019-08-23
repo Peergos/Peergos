@@ -34,13 +34,13 @@ public class CLI implements Runnable {
 
     private final CLIContext cliContext;
     private final FileSystem peergosFileSystem;
+    private final RemoteFilesCompleter remoteFilesCompleter;
     private volatile boolean isFinished;
-    private RemoteFilesCompleter remoteFilesCompleter;
 
     public CLI(CLIContext cliContext) {
         this.cliContext = cliContext;
         this.peergosFileSystem = new PeergosFileSystemImpl(cliContext.userContext);
-        this.remoteFilesCompleter = new RemoteFilesCompleter(this::pwdForRemoteFilesCompleter, this::lsForRemoteFilesCompleter);
+        this.remoteFilesCompleter = new RemoteFilesCompleter(this::lsForRemoteFilesCompleter);
     }
 
 
@@ -58,7 +58,7 @@ public class CLI implements Runnable {
         Path p = Paths.get(arg);
         if (p.isAbsolute())
             return p;
-        return pathToResolveTo.resolve(p);
+        return pathToResolveTo.resolve(p).normalize();
     }
 
     public Path resolveToPath(String arg) {
@@ -145,12 +145,16 @@ public class CLI implements Runnable {
 
     public String ls(ParsedCommand cmd) {
 
-        Path path = cmd.hasArguments() ? Paths.get(cmd.firstArgument()) : cliContext.pwd;
-        List<Path> children = peergosFileSystem.ls(path);
+        String pathArg = cmd.hasArguments() ? cmd.firstArgument() : "";
+        Path path = resolvedRemotePath(pathArg);
 
-        return children.stream()
+        Stat stat = checkPath(path);
+        if (stat.fileProperties().isDirectory)
+            return peergosFileSystem.ls(path).stream()
                 .map(Path::toString)
                 .collect(Collectors.joining("\n"));
+
+        return path.toString();
     }
 
     private Stat checkPath(Path remotePath) {
@@ -167,7 +171,7 @@ public class CLI implements Runnable {
         if (!cmd.hasArguments())
             throw new IllegalStateException();
 
-        Path remotePath = resolvedRemotePath(cmd.firstArgument());
+        Path remotePath = resolvedRemotePath(cmd.firstArgument()).toAbsolutePath().normalize();
 
         Stat stat = checkPath(remotePath);
         // TODO
@@ -190,7 +194,7 @@ public class CLI implements Runnable {
 
     public String put(ParsedCommand cmd) throws IOException {
         String localPathArg = cmd.firstArgument();
-        Path localPath = resolveToPath(localPathArg);
+        Path localPath = resolveToPath(localPathArg).toAbsolutePath().normalize();
 
         // TODO
         if (localPath.toFile().isDirectory())
@@ -212,7 +216,7 @@ public class CLI implements Runnable {
         if (!cmd.hasArguments())
             throw new IllegalStateException();
 
-        Path remotePath = resolvedRemotePath(cmd.firstArgument());
+        Path remotePath = resolvedRemotePath(cmd.firstArgument()).toAbsolutePath().normalize();
 
         Stat stat = null;
         try {
@@ -351,16 +355,35 @@ public class CLI implements Runnable {
                 .append(" > ").toAnsi();
     }
 
-    private Path pwdForRemoteFilesCompleter() {
-        return cliContext.pwd;
-    }
+    private List<String> lsForRemoteFilesCompleter(String pathArgument) {
+        Path path = resolvedRemotePath(pathArgument).toAbsolutePath();
+        Stat stat = null;
+        try {
+            stat = peergosFileSystem.stat(path);
+            if (! stat.fileProperties().isDirectory)
+                throw new Exception();
+        } catch (Exception ex) {
+            //try parent
+            path = path.getParent();
+            try {
+                peergosFileSystem.stat(path);
+            } catch (Exception ex2) {
+                System.out.print( ",returning empty on "+ path);
+                return Collections.emptyList();
+            }
 
-    private List<String> lsForRemoteFilesCompleter(Path path) {
-        return peergosFileSystem.ls(path)
+        }
+        final Path parentPath = path;
+        List<String> completeOptions = peergosFileSystem.ls(parentPath)
                 .stream()
-                .map(Path::getFileName)
+                .map(p -> {
+                    if  (! p.isAbsolute())
+                        return cliContext.pwd.relativize(p);
+                    return p;
+                })
                 .map(Path::toString)
                 .collect(Collectors.toList());
+        return completeOptions;
     }
     /**
      * Build the command completer.

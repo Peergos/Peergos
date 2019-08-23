@@ -54,7 +54,7 @@ public enum Command {
         }
     }
 
-    private static List<Command> COMMANDS_WITH_REMOTE_FILE_FIRST_ARG = new ArrayList<>(Arrays.asList(get, ls, rm));
+    private static List<Command> COMMANDS_WITH_REMOTE_FILE_FIRST_ARG = new ArrayList<>(Arrays.asList(get, ls, rm, cd));
     private static List<Command> COMMANDS_WITH_REMOTE_FILE_SECOND_ARG = new ArrayList<>(Arrays.asList(put));
 
     public boolean hasRemoteFileFirstArg()  {
