@@ -32,96 +32,6 @@ import static org.jline.builtins.Completers.TreeCompleter.node;
 
 public class CLI implements Runnable {
 
-    public enum Command {
-        help("Show this help"),
-        exit("Disconnect"),
-        get("Download a file", "get remote-path <local path>"),
-        put("Upload a file", "put local-path <remote-path>"),
-        ls("List contents of a remote directory", "ls <path>"),
-        rm("Remove a remote-file", "rm remote-path"),
-        space("Show used remote space"),
-        get_follow_requests("Show the users that have sent you a follow request"),
-        follow("Send a follow-request to another user.", "follow username-to-follow"),
-        share_read("Grant read access for a file to another user.", "share_read path <user>"),
-        passwd("Update your password"),
-        cd("change (remote) directory", "cd <path>"),
-        pwd("Print (remote) working directory"),
-        lpwd("Print (local) working directory"),
-        quit("Disconnect"),
-        bye("Disconnect");
-
-        public final String description, example;
-
-        Command(String description) {
-            this(description, null);
-        }
-
-        public static int maxLength() {
-            return Stream.of(values())
-                    .mapToInt(e -> e.example().length())
-                    .max()
-                    .getAsInt();
-        }
-
-        public String example() {
-            return example == null ? name() : example;
-        }
-
-        Command(String description, String example) {
-            this.description = description;
-            this.example = example;
-        }
-
-        public static Command parse(String cmd) {
-            try {
-                return Command.valueOf(cmd);
-            } catch (IllegalStateException | NullPointerException ex) {
-                throw new IllegalStateException("Specified command " + cmd + " is not a valid command : " + new ArrayList<>(Arrays.asList(values())));
-            }
-        }
-    }
-
-    private static class ParsedCommand {
-        public final Command cmd;
-        public final String line;
-        public final List<String> arguments;
-
-        private ParsedCommand(Command cmd, String line, List<String> arguments) {
-            this.cmd = cmd;
-            this.line = line;
-            this.arguments = new ArrayList<>(arguments); // words without the cmd
-        }
-
-        public boolean hasArguments() {
-            return !arguments.isEmpty();
-        }
-
-        public boolean hasSecondArgument() {
-            return arguments.size() > 1;
-        }
-
-        public String firstArgument() {
-            if (arguments.size() < 1)
-                throw new IllegalStateException("Specifed command " + line + " requires an argument");
-            return arguments.get(0);
-        }
-
-        public String secondArgument() {
-            if (arguments.size() < 2)
-                throw new IllegalStateException("Specifed command " + line + " requires a second argument");
-            return arguments.get(1);
-        }
-
-        @Override
-        public String toString() {
-            return "ParsedCommand{" +
-                    "cmd=" + cmd +
-                    ", line='" + line + '\'' +
-                    ", arguments=" + arguments +
-                    '}';
-        }
-    }
-
     /**
      * resolve against remote pwd if path is relative
      *
@@ -422,19 +332,6 @@ public class CLI implements Runnable {
     public CLI(CLIContext cliContext) {
         this.cliContext = cliContext;
         this.peergosFileSystem = new PeergosFileSystemImpl(cliContext.userContext);
-    }
-
-    public static class CLIContext {
-        private final UserContext userContext;
-        private final String serverURL, username;
-        private Path pwd;
-
-        public CLIContext(UserContext userContext, String serverURL, String username) {
-            this.userContext = userContext;
-            this.serverURL = serverURL;
-            this.username = username;
-            this.pwd = Paths.get("/" + username);
-        }
     }
 
     public String buildPrompt() {
