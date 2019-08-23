@@ -16,7 +16,6 @@ import peergos.shared.Crypto;
 import peergos.shared.NetworkAccess;
 import peergos.shared.social.FollowRequestWithCipherText;
 import peergos.shared.user.UserContext;
-import peergos.shared.util.Pair;
 
 import java.io.IOException;
 import java.net.MalformedURLException;
@@ -32,22 +31,24 @@ import java.util.stream.Stream;
 import static org.jline.builtins.Completers.TreeCompleter.node;
 
 public class CLI implements Runnable {
+
     public enum Command {
+        help("Show this help"),
+        exit("Disconnect"),
         get("Download a file", "get remote-path <local path>"),
         put("Upload a file", "put local-path <remote-path>"),
         ls("List contents of a remote directory", "ls <path>"),
         rm("Remove a remote-file", "rm remote-path"),
-        exit("Disconnect"),
-        quit("Disconnect"),
-        bye("Disconnect"),
-        help("Show this help"),
         space("Show used remote space"),
         get_follow_requests("Show the users that have sent you a follow request"),
         follow("Send a follow-request to another user.", "follow username-to-follow"),
+        share_read("Grant read access for a file to another user.", "share_read path <user>"),
         passwd("Update your password"),
-        share_read("share_read path <user>","Grant read access for a file to another user."),
         cd("change (remote) directory", "cd <path>"),
-        pwd("Print (remote) working directory");
+        pwd("Print (remote) working directory"),
+        lpwd("Print (local) working directory"),
+        quit("Disconnect"),
+        bye("Disconnect");
 
         public final String description, example;
 
@@ -70,6 +71,7 @@ public class CLI implements Runnable {
             this.description = description;
             this.example = example;
         }
+
         public static Command parse(String cmd) {
             try {
                 return Command.valueOf(cmd);
@@ -205,6 +207,8 @@ public class CLI implements Runnable {
                     return cd(parsedCommand);
                 case pwd:
                     return pwd(parsedCommand);
+                case lpwd:
+                    return lpwd(parsedCommand);
                 default:
                     return "Unexpected cmd '" + parsedCommand.cmd + "'";
             }
@@ -352,7 +356,7 @@ public class CLI implements Runnable {
 
     public String shareReadAccess(ParsedCommand cmd) {
 
-        if (! cmd.hasSecondArgument())
+        if (!cmd.hasSecondArgument())
             throw new IllegalStateException();
 
         String pathToShare = cmd.firstArgument();
@@ -365,7 +369,7 @@ public class CLI implements Runnable {
 
         String userToGrantReadAccess = cmd.secondArgument();
         Set<String> followerUsernames = cliContext.userContext.getFollowerNames().join();
-        if (! followerUsernames.contains(userToGrantReadAccess))
+        if (!followerUsernames.contains(userToGrantReadAccess))
             return "File not shared: specified-user " + userToGrantReadAccess + " is not following you";
         try {
             cliContext.userContext.shareReadAccessWith(remotePath, new HashSet<>(Arrays.asList(userToGrantReadAccess))).join();
@@ -373,7 +377,7 @@ public class CLI implements Runnable {
             ex.printStackTrace();
             return "Failed not share file";
         }
-        return "Shared read-access to '"+ remotePath +"' with " + userToGrantReadAccess;
+        return "Shared read-access to '" + remotePath + "' with " + userToGrantReadAccess;
     }
 
     public String follow(ParsedCommand cmd) {
@@ -392,18 +396,22 @@ public class CLI implements Runnable {
     }
 
     public String cd(ParsedCommand cmd) {
-        String remotePathArg = cmd.hasArguments() ? cmd.firstArgument(): "";
+        String remotePathArg = cmd.hasArguments() ? cmd.firstArgument() : "";
         Path remotePathToCdTo = resolvedRemotePath(remotePathArg).toAbsolutePath().normalize(); // normalize handles ".." etc.
 
         Stat stat = checkPath(remotePathToCdTo);
-        if (! stat.fileProperties().isDirectory)
-            return "Specified path '"+ remotePathToCdTo +"' is not a directory";
+        if (!stat.fileProperties().isDirectory)
+            return "Specified path '" + remotePathToCdTo + "' is not a directory";
         cliContext.pwd = remotePathToCdTo;
-        return "Current directory : "+ remotePathToCdTo;
+        return "Current directory : " + remotePathToCdTo;
     }
 
     public String pwd(ParsedCommand cmd) {
-        return cliContext.pwd.toString();
+        return "Remote working directory: " + cliContext.pwd.toString();
+    }
+
+    public String lpwd(ParsedCommand cmd) {
+        return "Local working directory: " + System.getProperty("user.dir");
     }
 
 
@@ -499,13 +507,6 @@ public class CLI implements Runnable {
         return new CLIContext(userContext, serverURL.toString(), username);
     }
 
-    public CLIContext buildCliContext() {
-        // create terminal
-        //
-        return buildContextFromCLI();
-//        MOCK
-//        return new CLIContext(null, "server", "user");
-    }
 
     public static Terminal buildTerminal() {
         try {
