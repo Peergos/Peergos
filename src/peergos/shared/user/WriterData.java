@@ -307,8 +307,13 @@ public class WriterData implements Cborable {
         return getDirectOwnedKeys(owner, writer, mutable, ipfs)
                 .thenCompose(directOwned -> {
                     Set<PublicKeyHash> identity = Collections.singleton(writer);
+                    BiFunction<Set<PublicKeyHash>, PublicKeyHash, CompletableFuture<Set<PublicKeyHash>>> composer =
+                            (a, w) -> getOwnedKeysRecursive(owner, w, mutable, ipfs)
+                                    .thenApply(ws ->
+                                            Stream.concat(ws.stream(), a.stream())
+                                                    .collect(Collectors.toSet()));
                     return Futures.reduceAll(directOwned, identity,
-                            (a, w) -> getOwnedKeysRecursive(owner, w, mutable, ipfs),
+                            composer,
                             (a, b) -> Stream.concat(a.stream(), b.stream())
                                     .collect(Collectors.toSet()));
                 });
