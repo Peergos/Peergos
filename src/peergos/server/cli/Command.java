@@ -2,6 +2,8 @@ package peergos.server.cli;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
+import java.util.Set;
 import java.util.stream.Stream;
 
 public enum Command {
@@ -50,5 +52,16 @@ public enum Command {
         } catch (IllegalStateException | NullPointerException ex) {
             throw new IllegalStateException("Specified command " + cmd + " is not a valid command : " + new ArrayList<>(Arrays.asList(values())));
         }
+    }
+
+    private static List<Command> COMMANDS_WITH_REMOTE_FILE_FIRST_ARG = new ArrayList<>(Arrays.asList(get, ls, rm));
+    private static List<Command> COMMANDS_WITH_REMOTE_FILE_SECOND_ARG = new ArrayList<>(Arrays.asList(put));
+
+    public boolean hasRemoteFileFirstArg()  {
+        return COMMANDS_WITH_REMOTE_FILE_FIRST_ARG.contains(this);
+    }
+
+    public boolean hasRemoteFileSecondArg() {
+        return COMMANDS_WITH_REMOTE_FILE_SECOND_ARG.contains(this);
     }
 }
