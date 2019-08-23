@@ -379,7 +379,7 @@ public class Main {
             // build a mirroring proxying corenode, unless we are the pki node
             boolean isPkiNode = nodeId.equals(pkiServerNodeId);
             CoreNode core = isPkiNode ?
-                    buildPkiCorenode(localPointers, localDht, a) :
+                    buildPkiCorenode(new PinningMutablePointers(localPointers, localDht), localDht, a) :
                     new MirrorCoreNode(new HTTPCoreNode(ipfsGateway, pkiServerNodeId), proxingMutable, localDht,
                             peergosId, a.fromPeergosDir("pki-mirror-state-path","pki-state.cbor"));
 
