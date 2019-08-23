@@ -45,7 +45,7 @@ public class CLI implements Runnable {
         get_follow_requests("Show the users that have sent you a follow request"),
         follow("Send a follow-request to another user.", "follow username-to-follow"),
         passwd("Update your password"),
-        share("","");
+        share_read("share_read path <user>","Grant read access for a file to another user.");
 
         public final String description, example;
 
@@ -197,6 +197,8 @@ public class CLI implements Runnable {
                 case passwd:
                     return passwd(parsedCommand, terminal, reader);
 //                case share:
+                case share_read:
+                    return shareReadAccess(parsedCommand);
                 default:
                     return "Unexpected cmd '" + parsedCommand.cmd + "'";
             }
@@ -222,19 +224,22 @@ public class CLI implements Runnable {
                 .collect(Collectors.joining("\n"));
     }
 
+    private Stat checkPath(Path remotePath) {
+        Stat stat = null;
+        try {
+            return peergosFileSystem.stat(remotePath);
+        } catch (Exception ex) {
+            throw new IllegalStateException("Could not find remote specified remote path '" + remotePath + "'", ex);
+        }
+
+    }
     public String get(ParsedCommand cmd) throws IOException {
         if (!cmd.hasArguments())
             throw new IllegalStateException();
 
         Path remotePath = resolvedRemotePath(cmd.firstArgument());
 
-        Stat stat = null;
-        try {
-            stat = peergosFileSystem.stat(remotePath);
-        } catch (Exception ex) {
-            throw new IllegalStateException("Could not find remote specified remote path '" + remotePath + "'", ex);
-        }
-
+        Stat stat = checkPath(remotePath);
         // TODO
         if (stat.fileProperties().isDirectory)
             throw new IllegalStateException("Directory is not supported");
@@ -336,6 +341,32 @@ public class CLI implements Runnable {
         return followRequestUsers.stream()
                 .collect(Collectors.joining("\n\t", "You have pending follow requests from the following users:\n", ""));
 
+    }
+
+    public String shareReadAccess(ParsedCommand cmd) {
+
+        if (! cmd.hasSecondArgument())
+            throw new IllegalStateException();
+
+        String pathToShare = cmd.firstArgument();
+        Path remotePath = resolvedRemotePath(pathToShare);
+
+        Stat stat = checkPath(remotePath);
+        // TODO
+        if (stat.fileProperties().isDirectory)
+            throw new IllegalStateException("Directory is not supported");
+
+        String userToGrantReadAccess = cmd.secondArgument();
+        Set<String> followerUsernames = cliContext.userContext.getFollowerNames().join();
+        if (! followerUsernames.contains(userToGrantReadAccess))
+            return "File not shared: specified-user " + userToGrantReadAccess + " is not following you";
+        try {
+            cliContext.userContext.shareReadAccessWith(remotePath, new HashSet<>(Arrays.asList(userToGrantReadAccess))).join();
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            return "Failed not share file";
+        }
+        return "Shared read-access to '"+ remotePath +"' with " + userToGrantReadAccess;
     }
 
     public String follow(ParsedCommand cmd) {
