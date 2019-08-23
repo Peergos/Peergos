@@ -52,7 +52,7 @@ public class PinChecker {
                 missing.removeAll(allPins);
                 if (!missing.isEmpty())
                     System.out.println("Missing " + missing.size() + " pins for " + username + " - " + missing);
-                if (fix) {
+                if (fix && !missing.isEmpty()) {
                     System.out.println("Adding missing pins...");
                     for (Multihash h : missing) {
                         ipfs.pin.add(h);
