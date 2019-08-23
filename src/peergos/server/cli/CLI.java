@@ -45,7 +45,9 @@ public class CLI implements Runnable {
         get_follow_requests("Show the users that have sent you a follow request"),
         follow("Send a follow-request to another user.", "follow username-to-follow"),
         passwd("Update your password"),
-        share_read("share_read path <user>","Grant read access for a file to another user.");
+        share_read("share_read path <user>","Grant read access for a file to another user."),
+        cd("change (remote) directory", "cd <path>"),
+        pwd("Print (remote) working directory");
 
         public final String description, example;
 
@@ -199,6 +201,10 @@ public class CLI implements Runnable {
 //                case share:
                 case share_read:
                     return shareReadAccess(parsedCommand);
+                case cd:
+                    return cd(parsedCommand);
+                case pwd:
+                    return pwd(parsedCommand);
                 default:
                     return "Unexpected cmd '" + parsedCommand.cmd + "'";
             }
@@ -233,6 +239,7 @@ public class CLI implements Runnable {
         }
 
     }
+
     public String get(ParsedCommand cmd) throws IOException {
         if (!cmd.hasArguments())
             throw new IllegalStateException();
@@ -383,6 +390,22 @@ public class CLI implements Runnable {
         }
         return "Sent follow request to '" + userToFollow + "'";
     }
+
+    public String cd(ParsedCommand cmd) {
+        String remotePathArg = cmd.hasArguments() ? cmd.firstArgument(): "";
+        Path remotePathToCdTo = resolvedRemotePath(remotePathArg).toAbsolutePath().normalize(); // normalize handles ".." etc.
+
+        Stat stat = checkPath(remotePathToCdTo);
+        if (! stat.fileProperties().isDirectory)
+            return "Specified path '"+ remotePathToCdTo +"' is not a directory";
+        cliContext.pwd = remotePathToCdTo;
+        return "Current directory : "+ remotePathToCdTo;
+    }
+
+    public String pwd(ParsedCommand cmd) {
+        return cliContext.pwd.toString();
+    }
+
 
     public String help(ParsedCommand cmd) {
         return formatHelp();
