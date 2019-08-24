@@ -1,32 +1,25 @@
 package peergos.server.cli;
 
-import org.jline.builtins.Completers;
+import org.jline.builtins.*;
 import org.jline.reader.*;
-import org.jline.reader.impl.DefaultParser;
+import org.jline.reader.impl.*;
 import org.jline.reader.impl.completer.StringsCompleter;
-import org.jline.terminal.Terminal;
-import org.jline.terminal.TerminalBuilder;
-import org.jline.utils.AttributedStringBuilder;
-import org.jline.utils.AttributedStyle;
+import org.jline.terminal.*;
+import org.jline.utils.*;
+
+import peergos.server.simulation.*;
 import peergos.server.simulation.FileSystem;
-import peergos.server.simulation.PeergosFileSystemImpl;
-import peergos.server.simulation.Stat;
 import peergos.server.util.Logging;
-import peergos.shared.Crypto;
-import peergos.shared.NetworkAccess;
+import peergos.shared.*;
 import peergos.shared.social.FollowRequestWithCipherText;
 import peergos.shared.user.UserContext;
 
 import java.io.IOException;
-import java.net.MalformedURLException;
-import java.net.URL;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.net.*;
+import java.nio.file.*;
 import java.util.*;
 import java.util.logging.Level;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
+import java.util.stream.*;
 
 import static org.jline.builtins.Completers.TreeCompleter.node;
 
