@@ -1,4 +1,4 @@
-package peergos.server.tests.simulation;
+package peergos.server.simulation;
 
 import peergos.shared.user.fs.FileProperties;
 
@@ -14,7 +14,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 public class NativeFileSystemImpl implements FileSystem {
 

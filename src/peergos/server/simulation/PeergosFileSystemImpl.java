@@ -1,4 +1,4 @@
-package peergos.server.tests.simulation;
+package peergos.server.simulation;
 
 import peergos.shared.user.UserContext;
 import peergos.shared.user.fs.*;

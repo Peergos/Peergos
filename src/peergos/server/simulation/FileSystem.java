@@ -1,11 +1,10 @@
-package peergos.server.tests.simulation;
+package peergos.server.simulation;
 
 
 import peergos.shared.user.fs.FileProperties;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Iterator;
 import java.util.List;
 import java.util.function.Consumer;
 
