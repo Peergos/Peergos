@@ -100,7 +100,7 @@ public class CLI implements Runnable {
                 case get:  // download
                     return get(parsedCommand, terminal.writer());
                 case put:  //upload
-                    return put(parsedCommand);
+                    return put(parsedCommand, terminal.writer());
                 case rm:
                     return rm(parsedCommand);
                 case exit:
@@ -185,12 +185,15 @@ public class CLI implements Runnable {
         BiConsumer<Long, Long> progressConsumer = (bytes, size) -> pb.update(writerForProgress, bytes, size);
 
         byte[] data = peergosFileSystem.read(remotePath, progressConsumer);
+        writerForProgress.println();
         writerForProgress.flush();
+
         Files.write(localPath, data);
+
         return "Downloaded " + remotePath + " to " + localPath;
     }
 
-    public String put(ParsedCommand cmd) throws IOException {
+    public String put(ParsedCommand cmd, PrintWriter writerForProgress) throws IOException {
         String localPathArg = cmd.firstArgument();
         Path localPath = resolveToPath(localPathArg).toAbsolutePath().normalize();
 
@@ -206,7 +209,11 @@ public class CLI implements Runnable {
         Path remotePath = resolvedRemotePath(remotePathS);
 
         byte[] data = Files.readAllBytes(localPath);
-        peergosFileSystem.write(remotePath, data);
+        ProgressBar pb = new ProgressBar();
+        Consumer<Long> progressConsumer = bytesSoFar -> pb.update(writerForProgress, bytesSoFar, data.length);
+        peergosFileSystem.write(remotePath, data, progressConsumer);
+        writerForProgress.println();
+        writerForProgress.flush();
         return "Successfully uploaded " + localPath + " to remote " + remotePath;
     }
 

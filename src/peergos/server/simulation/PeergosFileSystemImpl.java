@@ -44,12 +44,13 @@ public class PeergosFileSystemImpl implements FileSystem {
     }
 
     @Override
-    public void write(Path path, byte[] data) {
+    public void write(Path path, byte[] data, Consumer<Long> progressConsumer) {
         FileWrapper directory = getDirectory(path);
         AsyncReader resetableFileInputStream = new AsyncReader.ArrayBacked(data);
         String fileName = path.getFileName().toString();
+        ProgressConsumer<Long> pc  = l -> progressConsumer.accept(l);
         FileWrapper fileWrapper = directory.uploadOrOverwriteFile(fileName, resetableFileInputStream, data.length,
-                userContext.network, userContext.crypto, x -> {}, userContext.crypto.random.randomBytes(32)).join();
+                userContext.network, userContext.crypto, pc, userContext.crypto.random.randomBytes(32)).join();
 
     }
 

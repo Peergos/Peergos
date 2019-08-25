@@ -30,7 +30,11 @@ public interface FileSystem {
         return read(path, (a,b) -> {});
     }
 
-    void write(Path path, byte[] data);
+    void write(Path path, byte[] data, Consumer<Long> progressConsumer);
+
+    default void write(Path path, byte[] data) {
+        write(path, data, l -> {});
+    }
 
     void delete(Path path);
 

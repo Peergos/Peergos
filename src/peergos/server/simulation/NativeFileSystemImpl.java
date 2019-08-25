@@ -14,6 +14,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 public class NativeFileSystemImpl implements FileSystem {
@@ -76,7 +77,7 @@ public class NativeFileSystemImpl implements FileSystem {
     }
 
     @Override
-    public void write(Path path, byte[] data) {
+    public void write(Path path, byte[] data, Consumer<Long> progressConsumer) {
 
         Path nativePath = virtualToNative(path);
         ensureCan(path.getParent(), Permission.READ);

@@ -409,7 +409,7 @@ public class NetworkAccess {
         if (! current.versions.containsKey(writer.publicKeyHash))
             throw new IllegalStateException("Trying to commit to incorrect writer!");
         try {
-            System.out.println("Uploading chunk: " + (metadata.isDirectory() ? "dir" : "file")
+            LOG.info("Uploading chunk: " + (metadata.isDirectory() ? "dir" : "file")
                     + " at " + ArrayOps.bytesToHex(mapKey)
                     + " with " + metadata.toCbor().links().size() + " fragments");
             byte[] metaBlob = metadata.serialize();
