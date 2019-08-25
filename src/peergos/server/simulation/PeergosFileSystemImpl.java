@@ -2,11 +2,14 @@ package peergos.server.simulation;
 
 import peergos.shared.user.UserContext;
 import peergos.shared.user.fs.*;
+import peergos.shared.util.ProgressConsumer;
 import peergos.shared.util.Serialize;
 
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -32,11 +35,11 @@ public class PeergosFileSystemImpl implements FileSystem {
     }
 
     @Override
-    public byte[] read(Path path) {
+    public byte[] read(Path path, BiConsumer<Long, Long> progressConsumer) {
         FileWrapper wrapper = getPath(path);
         long size = wrapper.getFileProperties().size;
-        AsyncReader in = wrapper.getInputStream(userContext.network, userContext.crypto, size, (l) -> {
-        }).join();
+        ProgressConsumer<Long> monitor = (readBytes) -> progressConsumer.accept(readBytes, size);
+        AsyncReader in = wrapper.getInputStream(userContext.network, userContext.crypto, size, monitor).join();
         return Serialize.readFully(in, size).join();
     }
 

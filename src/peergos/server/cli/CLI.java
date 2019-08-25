@@ -19,6 +19,7 @@ import java.io.PrintWriter;
 import java.net.*;
 import java.nio.file.*;
 import java.util.*;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.stream.*;
@@ -97,7 +98,7 @@ public class CLI implements Runnable {
                 case ls:
                     return ls(parsedCommand);
                 case get:  // download
-                    return get(parsedCommand);
+                    return get(parsedCommand, terminal.writer());
                 case put:  //upload
                     return put(parsedCommand);
                 case rm:
@@ -161,7 +162,7 @@ public class CLI implements Runnable {
 
     }
 
-    public String get(ParsedCommand cmd) throws IOException {
+    public String get(ParsedCommand cmd, PrintWriter writerForProgress) throws IOException {
         if (!cmd.hasArguments())
             throw new IllegalStateException();
 
@@ -175,13 +176,16 @@ public class CLI implements Runnable {
         String localPathArg = cmd.hasSecondArgument() ? cmd.secondArgument() : "";
         Path localPath = resolveToPath(localPathArg).toAbsolutePath();
 
-
         if (localPath.toFile().isDirectory())
             localPath = localPath.resolve(stat.fileProperties().name);
         else if (!localPath.toFile().getParentFile().isDirectory())
             throw new IllegalStateException("Specified local path '" + localPath.getParent() + "' is not a directory or does not exist.");
 
-        byte[] data = peergosFileSystem.read(remotePath);
+        ProgressBar pb = new ProgressBar();
+        BiConsumer<Long, Long> progressConsumer = (bytes, size) -> pb.update(writerForProgress, bytes, size);
+
+        byte[] data = peergosFileSystem.read(remotePath, progressConsumer);
+        writerForProgress.flush();
         Files.write(localPath, data);
         return "Downloaded " + remotePath + " to " + localPath;
     }

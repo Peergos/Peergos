@@ -6,6 +6,7 @@ import peergos.shared.user.fs.FileProperties;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 public interface FileSystem {
@@ -23,7 +24,11 @@ public interface FileSystem {
      */
     String user();
 
-    byte[] read(Path path);
+    byte[] read(Path path, BiConsumer<Long, Long> progressConsumer);
+
+    default byte[] read(Path path) {
+        return read(path, (a,b) -> {});
+    }
 
     void write(Path path, byte[] data);
 

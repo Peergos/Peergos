@@ -13,6 +13,7 @@ import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 
 public class NativeFileSystemImpl implements FileSystem {
@@ -63,7 +64,7 @@ public class NativeFileSystemImpl implements FileSystem {
     }
 
     @Override
-    public byte[] read(Path path) {
+    public byte[] read(Path path, BiConsumer<Long, Long> pc) {
         Path nativePath = virtualToNative(path);
         ensureCan(path, Permission.READ);
 
