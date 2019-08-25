@@ -15,9 +15,11 @@ import peergos.shared.social.FollowRequestWithCipherText;
 import peergos.shared.user.UserContext;
 
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.net.*;
 import java.nio.file.*;
 import java.util.*;
+import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.stream.*;
 
@@ -426,23 +428,28 @@ public class CLI implements Runnable {
         String address = reader.readLine("Enter Server address \n > ").trim();
         URL serverURL = null;
 
+        final PrintWriter writer = terminal.writer();
         try {
             serverURL = new URL(address);
         } catch (MalformedURLException ex) {
-            terminal.writer().println("Specified server " + address + " is not valid!");
-            terminal.writer().flush();
+            writer.println("Specified server " + address + " is not valid!");
+            writer.flush();
             return buildContextFromCLI();
         }
 
-        terminal.writer().println("Enter username");
+        writer.println("Enter username");
         String username = reader.readLine(PROMPT).trim();
 
-        terminal.writer().println("Enter password for '" + username + "'");
+        writer.println("Enter password for '" + username + "'");
         String password = reader.readLine(PROMPT, PASSWORD_MASK);
 
         NetworkAccess networkAccess = NetworkAccess.buildJava(serverURL).join();
-
-        UserContext userContext = UserContext.signIn(username, password, networkAccess, CRYPTO).join();
+        Consumer<String> progressConsumer =  msg -> {
+            writer.println(msg);
+            writer.flush();
+            return;
+        };
+        UserContext userContext = UserContext.signIn(username, password, networkAccess, CRYPTO, progressConsumer).join();
         return new CLIContext(userContext, serverURL.toString(), username);
     }
 
