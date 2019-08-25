@@ -227,7 +227,7 @@ public class WriterData implements Cborable {
                                               ContentAddressedStorage immutable,
                                               TransactionId tid) {
         byte[] raw = serialize();
-        
+
         return immutable.put(owner, signer.publicKeyHash, signer.secret.signatureOnly(raw), raw, tid)
                 .thenCompose(blobHash -> {
                     MaybeMultihash newHash = MaybeMultihash.of(blobHash);
@@ -304,15 +304,27 @@ public class WriterData implements Cborable {
                                                                               PublicKeyHash writer,
                                                                               MutablePointers mutable,
                                                                               ContentAddressedStorage ipfs) {
+        return getOwnedKeysRecursive(owner, writer, Collections.emptySet(), mutable, ipfs);
+    }
+
+    private static CompletableFuture<Set<PublicKeyHash>> getOwnedKeysRecursive(PublicKeyHash owner,
+                                                                              PublicKeyHash writer,
+                                                                              Set<PublicKeyHash> alreadyDone,
+                                                                              MutablePointers mutable,
+                                                                              ContentAddressedStorage ipfs) {
         return getDirectOwnedKeys(owner, writer, mutable, ipfs)
                 .thenCompose(directOwned -> {
-                    Set<PublicKeyHash> identity = Collections.singleton(writer);
+                    Set<PublicKeyHash> newKeys = directOwned.stream().
+                            filter(h -> ! alreadyDone.contains(h))
+                            .collect(Collectors.toSet());
+                    Set<PublicKeyHash> done = new HashSet<>(alreadyDone);
+                    done.add(writer);
                     BiFunction<Set<PublicKeyHash>, PublicKeyHash, CompletableFuture<Set<PublicKeyHash>>> composer =
-                            (a, w) -> getOwnedKeysRecursive(owner, w, mutable, ipfs)
+                            (a, w) -> getOwnedKeysRecursive(owner, w, a, mutable, ipfs)
                                     .thenApply(ws ->
                                             Stream.concat(ws.stream(), a.stream())
                                                     .collect(Collectors.toSet()));
-                    return Futures.reduceAll(directOwned, identity,
+                    return Futures.reduceAll(newKeys, done,
                             composer,
                             (a, b) -> Stream.concat(a.stream(), b.stream())
                                     .collect(Collectors.toSet()));
