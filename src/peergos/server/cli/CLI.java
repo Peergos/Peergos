@@ -485,8 +485,14 @@ public class CLI implements Runnable {
                     continue;
                 }
 
-
-                ParsedCommand parsedCommand = fromLine(line);
+                ParsedCommand parsedCommand = null;
+                try {
+                    parsedCommand = fromLine(line);
+                } catch (Exception ex) {
+                    System.out.println("Could not parse command.");
+                    continue;
+                }
+                
                 String response = handle(parsedCommand, terminal, reader);
 //                if (color) {
 //                    terminal.writer().println(
