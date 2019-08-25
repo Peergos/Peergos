@@ -49,7 +49,9 @@ public enum Command {
     public static Command parse(String cmd) {
         try {
             return Command.valueOf(cmd);
-        } catch (IllegalStateException | NullPointerException ex) {
+        } catch (IllegalArgumentException | NullPointerException ex) {
+            if ("?".equals(cmd))
+                return help;
             throw new IllegalStateException("Specified command " + cmd + " is not a valid command : " + new ArrayList<>(Arrays.asList(values())));
         }
     }
