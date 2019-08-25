@@ -36,7 +36,6 @@ public class CLI implements Runnable {
         this.remoteFilesCompleter = new RemoteFilesCompleter(this::lsForRemoteFilesCompleter);
     }
 
-
     /**
      * resolve against remote pwd if path is relative
      *
