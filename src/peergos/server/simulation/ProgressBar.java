@@ -6,7 +6,7 @@ public class ProgressBar {
 
     private static final String[] ANIM = new String[]{"|", "/", "-", "\\"};
     private static final int PROGRESS_BAR_LENGTH = 20;
-    private int animationPosition;
+    private int animationPosition, accumulatedBytes;
 
     public void update(PrintWriter writer, long bytesSoFar, long totalBytes) {
         String msg = format(bytesSoFar, totalBytes);
@@ -15,7 +15,8 @@ public class ProgressBar {
     }
 
     private String progressBar(long bytes, long  total) {
-        double frac =  (double) bytes / (double) total;
+        accumulatedBytes += bytes;
+        double frac =  (double) accumulatedBytes / (double) total;
         int barsProgressed = (int) (frac * PROGRESS_BAR_LENGTH);
 
         StringBuilder sb = new StringBuilder();
