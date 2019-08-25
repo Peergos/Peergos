@@ -37,7 +37,11 @@ public interface FileSystem {
 
     void mkdir(Path path);
 
-    List<Path> ls(Path path);
+    List<Path> ls(Path path, boolean showHidden);
+
+    default List<Path> ls(Path path) {
+        return ls(path, true);
+    }
 
 
     default void walk(Path path, Consumer<Path> func)  {

@@ -185,7 +185,10 @@ public class NativeFileSystemImpl implements FileSystem {
     }
 
     @Override
-    public List<Path> ls(Path path) {
+    public List<Path> ls(Path path, boolean showHidden) {
+        if (! showHidden)
+            throw new IllegalStateException();
+
         Path nativePath = virtualToNative(path);
         try {
             return Files.list(nativePath)

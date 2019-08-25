@@ -144,7 +144,7 @@ public class CLI implements Runnable {
 
         Stat stat = checkPath(path);
         if (stat.fileProperties().isDirectory)
-            return peergosFileSystem.ls(path).stream()
+            return peergosFileSystem.ls(path, false).stream()
                 .map(Path::toString)
                 .collect(Collectors.joining("\n"));
 
@@ -368,7 +368,7 @@ public class CLI implements Runnable {
 
         }
         final Path parentPath = path;
-        List<String> completeOptions = peergosFileSystem.ls(parentPath)
+        List<String> completeOptions = peergosFileSystem.ls(parentPath, false)
                 .stream()
                 .map(p -> {
                     if  (! p.isAbsolute())

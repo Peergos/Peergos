@@ -57,10 +57,11 @@ public class PeergosFileSystemImpl implements FileSystem {
     }
 
     @Override
-    public List<Path> ls(Path path) {
+    public List<Path> ls(Path path, boolean showHidden) {
         return getPath(path).getChildren(userContext.crypto.hasher, userContext.network)
                 .join()
                 .stream()
+                .filter(e -> showHidden || ! e.getFileProperties().isHidden)
                 .map(e -> path.resolve(e.getName()))
                 .collect(Collectors.toList());
     }
