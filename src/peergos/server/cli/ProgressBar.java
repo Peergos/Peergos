@@ -1,4 +1,4 @@
-package peergos.server.simulation;
+package peergos.server.cli;
 
 import java.io.PrintWriter;
 
@@ -6,7 +6,8 @@ public class ProgressBar {
 
     private static final String[] ANIM = new String[]{"|", "/", "-", "\\"};
     private static final int PROGRESS_BAR_LENGTH = 20;
-    private int animationPosition, accumulatedBytes;
+    private long accumulatedBytes;
+    private int animationPosition;
 
     public void update(PrintWriter writer, long bytesSoFar, long totalBytes) {
         String msg = format(bytesSoFar, totalBytes);
