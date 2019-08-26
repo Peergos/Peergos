@@ -1,5 +1,8 @@
-package peergos.server.simulation;
+package peergos.server.tests.simulation;
 
+import peergos.server.simulation.AccessControl;
+import peergos.server.simulation.FileSystem;
+import peergos.server.simulation.Stat;
 import peergos.shared.user.fs.FileProperties;
 
 import java.io.File;
