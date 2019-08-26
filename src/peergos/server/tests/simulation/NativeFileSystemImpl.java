@@ -68,7 +68,7 @@ public class NativeFileSystemImpl implements FileSystem {
     }
 
     @Override
-    public byte[] read(Path path, BiConsumer<Long, Long> pc) {
+    public byte[] read(Path path, Consumer<Long> pc) {
         Path nativePath = virtualToNative(path);
         ensureCan(path, Permission.READ);
 
