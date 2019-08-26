@@ -1,12 +1,12 @@
-package peergos.server.tests.simulation;
+package peergos.server.simulation;
 
 
 import peergos.shared.user.fs.FileProperties;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Iterator;
 import java.util.List;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 public interface FileSystem {
@@ -24,9 +24,17 @@ public interface FileSystem {
      */
     String user();
 
-    byte[] read(Path path);
+    byte[] read(Path path, BiConsumer<Long, Long> progressConsumer);
 
-    void write(Path path, byte[] data);
+    default byte[] read(Path path) {
+        return read(path, (a,b) -> {});
+    }
+
+    void write(Path path, byte[] data, Consumer<Long> progressConsumer);
+
+    default void write(Path path, byte[] data) {
+        write(path, data, l -> {});
+    }
 
     void delete(Path path);
 
@@ -38,7 +46,11 @@ public interface FileSystem {
 
     void mkdir(Path path);
 
-    List<Path> ls(Path path);
+    List<Path> ls(Path path, boolean showHidden);
+
+    default List<Path> ls(Path path) {
+        return ls(path, true);
+    }
 
 
     default void walk(Path path, Consumer<Path> func)  {

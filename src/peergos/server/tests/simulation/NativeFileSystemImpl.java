@@ -1,5 +1,8 @@
 package peergos.server.tests.simulation;
 
+import peergos.server.simulation.AccessControl;
+import peergos.server.simulation.FileSystem;
+import peergos.server.simulation.Stat;
 import peergos.shared.user.fs.FileProperties;
 
 import java.io.File;
@@ -13,8 +16,9 @@ import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 public class NativeFileSystemImpl implements FileSystem {
 
@@ -64,7 +68,7 @@ public class NativeFileSystemImpl implements FileSystem {
     }
 
     @Override
-    public byte[] read(Path path) {
+    public byte[] read(Path path, BiConsumer<Long, Long> pc) {
         Path nativePath = virtualToNative(path);
         ensureCan(path, Permission.READ);
 
@@ -76,7 +80,7 @@ public class NativeFileSystemImpl implements FileSystem {
     }
 
     @Override
-    public void write(Path path, byte[] data) {
+    public void write(Path path, byte[] data, Consumer<Long> progressConsumer) {
 
         Path nativePath = virtualToNative(path);
         ensureCan(path.getParent(), Permission.READ);
@@ -186,7 +190,10 @@ public class NativeFileSystemImpl implements FileSystem {
     }
 
     @Override
-    public List<Path> ls(Path path) {
+    public List<Path> ls(Path path, boolean showHidden) {
+        if (! showHidden)
+            throw new IllegalStateException();
+
         Path nativePath = virtualToNative(path);
         try {
             return Files.list(nativePath)

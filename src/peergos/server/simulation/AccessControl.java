@@ -1,4 +1,4 @@
-package peergos.server.tests.simulation;
+package peergos.server.simulation;
 
 import java.nio.file.Path;
 import java.util.*;

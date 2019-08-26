@@ -1,8 +1,9 @@
 package peergos.server.tests.simulation;
 
 import peergos.server.Main;
+import peergos.server.simulation.FileSystem;
+import peergos.server.simulation.PeergosFileSystemImpl;
 import peergos.server.storage.IpfsWrapper;
-import peergos.server.tests.UserTests;
 import peergos.server.util.Args;
 import peergos.server.util.Logging;
 import peergos.server.util.PeergosNetworkUtils;
