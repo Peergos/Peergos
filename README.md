@@ -11,7 +11,11 @@ The name Peergos comes from the Greek word Πύργος (Pyrgos), which means st
 
 Demo
 ----
-There is a single machine demo running at [https://demo.peergos.net](https://demo.peergos.net). 
+There is a single machine demo running at [https://demo.peergos.net](https://demo.peergos.net) if you just want to try out Peergos now. 
+
+Alpha
+----
+Our alpha is live at https://alpha.peergos.net/. There are a limited number of accounts available. 
 
 More info
 ---------
@@ -31,12 +35,12 @@ or a
 
 Audit
 -----
-Cure53 conducted an audit of Peergos in June 2019. The finaly report is [here](https://cure53.de/pentest-report_peergos.pdf).
+Cure53 conducted an audit of Peergos in June 2019. The final report is [here](https://cure53.de/pentest-report_peergos.pdf).
 
 Peergos aims
 ------------
  - To allow individuals to securely and privately store files in a peer to peer network which has no central node and is generally difficult to disrupt or surveil
- - To allow secure sharing of such files with other users of the network without visible meta-data (who shares with who)
+ - To allow secure sharing of files with other users of the network without visible meta-data (who shares with who)
  - To have a beautiful user interface that any computer or mobile user can understand
  - To enable a new secure form of email
  - To be independent of the central SSL CA trust architecture
@@ -73,7 +77,7 @@ Architecture
  - New versions of the software will be delivered through Peergos itself. (Able to be turned off by the user if desired)
  - A user who trusts a public Peergos server (and the SSL Certificate authority chain) can use the web interface over TLS
  - A less trusting user can run a Peergos server on their own machine and use the web interface over localhost
- - A more paranoid user can run a Peergos server on their own machine and use the native GUI, or the fuse binding and optionally a U2F device
+ - A more paranoid user can run a Peergos server on their own machine and use the native GUI, or the CLI or the fuse binding
 
 4.0 Logging in
  - A user's username is salted with the hash of their password and then run through scrypt (with parameters 17, 8, 1, 96, though users can choose harder parameters if desired) to generate a symmetric key, an encrypting keypair and a signing keypair. This means that a user can log in from any machine without transfering any keys, and also that their keys are protected from a brute force attack (see slides above for cost estimate).
