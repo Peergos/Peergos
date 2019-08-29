@@ -429,7 +429,9 @@ public class Main {
                     .stream()
                     .collect(Collectors.toSet());
             Admin storageAdmin = new Admin(adminUsernames, spaceRequests, userQuotas, core, localDht);
-            UserService peergos = new UserService(p2pDht, crypto, corePropagator, p2pSocial, p2mMutable, storageAdmin, spaceChecker);
+            HttpSpaceUsage httpSpaceUsage = new HttpSpaceUsage(ipfsGateway, ipfsGateway);
+            ProxyingSpaceUsage p2pSpaceUsage = new ProxyingSpaceUsage(nodeId, corePropagator, spaceChecker, httpSpaceUsage);
+            UserService peergos = new UserService(p2pDht, crypto, corePropagator, p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage);
             InetSocketAddress localAddress = new InetSocketAddress("localhost", userAPIAddress.getPort());
             Optional<Path> webroot = a.hasArg("webroot") ?
                     Optional.of(Paths.get(a.getArg("webroot"))) :
