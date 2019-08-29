@@ -1,6 +1,5 @@
 package peergos.shared.storage;
 
-import jsinterop.annotations.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;

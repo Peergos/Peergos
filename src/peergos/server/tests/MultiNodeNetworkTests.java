@@ -13,6 +13,7 @@ import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.social.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
+import peergos.shared.util.*;
 
 import java.net.*;
 import java.util.*;
@@ -108,6 +109,13 @@ public class MultiNodeNetworkTests {
     @Test
     public void signUp() {
         UserContext context = ensureSignedUp(generateUsername(random), randomString(), getNode(iNode1), crypto);
+
+        for (NetworkAccess node: nodes) {
+            long usage = node.spaceUsage.getUsage(context.signer.publicKeyHash).join();
+            byte[] signedTime = TimeLimitedClient.signNow(context.signer.secret);
+            long quota = node.spaceUsage.getQuota(context.signer.publicKeyHash, signedTime).join();
+            Assert.assertTrue(usage >0 && quota > 0);
+        }
     }
 
     @Test
