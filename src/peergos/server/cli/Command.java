@@ -2,33 +2,45 @@ package peergos.server.cli;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
-import java.util.Set;
 import java.util.stream.Stream;
 
 public enum Command {
     help("Show this help"),
     exit("Disconnect"),
-    get("Download a file", "get remote-path <local path>"),
-    put("Upload a file", "put local-path <remote-path>"),
-    ls("List contents of a remote directory", "ls <path>"),
-    rm("Remove a remote-file", "rm remote-path"),
+    get("Download a file", "get remote-path <local path>", Arg.REMOTE, Arg.LOCAL),
+    put("Upload a file", "put local-path <remote-path>", Arg.LOCAL, Arg.REMOTE),
+    ls("List contents of a remote directory", "ls <path>", Arg.REMOTE),
+    rm("Remove a remote-file", "rm remote-path", Arg.REMOTE),
     space("Show used remote space"),
     get_follow_requests("Show the users that have sent you a follow request"),
     follow("Send a follow-request to another user.", "follow username-to-follow"),
     share_read("Grant read access for a file to another user.", "share_read path <user>"),
     passwd("Update your password"),
-    cd("change (remote) directory", "cd <path>"),
+    cd("change (remote) directory", "cd <path>", Arg.REMOTE),
     pwd("Print (remote) working directory"),
     lpwd("Print (local) working directory"),
     quit("Disconnect"),
     bye("Disconnect");
 
     public final String description, example;
+    public final Arg firstArg, secondArg;
 
-    Command(String description, String example) {
+    Command(String description, String example, Arg firstArg, Arg secondArg) {
+        if (firstArg == null && secondArg != null)
+            throw new IllegalArgumentException();
+
         this.description = description;
         this.example = example;
+        this.firstArg = firstArg;
+        this.secondArg = secondArg;
+    }
+
+    Command(String description, String example, Arg firstArg) {
+        this(description, example, firstArg,null);
+    }
+
+    Command(String description, String example) {
+        this(description, example, null,null);
     }
 
     Command(String description) {
@@ -56,14 +68,7 @@ public enum Command {
         }
     }
 
-    private static List<Command> COMMANDS_WITH_REMOTE_FILE_FIRST_ARG = new ArrayList<>(Arrays.asList(get, ls, rm, cd));
-    private static List<Command> COMMANDS_WITH_REMOTE_FILE_SECOND_ARG = new ArrayList<>(Arrays.asList(put));
-
-    public boolean hasRemoteFileFirstArg()  {
-        return COMMANDS_WITH_REMOTE_FILE_FIRST_ARG.contains(this);
-    }
-
-    public boolean hasRemoteFileSecondArg() {
-        return COMMANDS_WITH_REMOTE_FILE_SECOND_ARG.contains(this);
+    public enum Arg {
+        REMOTE, LOCAL;
     }
 }

@@ -3,6 +3,7 @@ package peergos.server.cli;
 import org.jline.builtins.*;
 import org.jline.reader.*;
 import org.jline.reader.impl.*;
+import org.jline.reader.impl.completer.ArgumentCompleter;
 import org.jline.reader.impl.completer.StringsCompleter;
 import org.jline.terminal.*;
 import org.jline.utils.*;
@@ -30,13 +31,14 @@ public class CLI implements Runnable {
 
     private final CLIContext cliContext;
     private final FileSystem peergosFileSystem;
-    private final RemoteFilesCompleter remoteFilesCompleter;
+    private final ListFilesCompleter remoteFilesCompleter, localFilesCompleter;
     private volatile boolean isFinished;
 
     public CLI(CLIContext cliContext) {
         this.cliContext = cliContext;
         this.peergosFileSystem = new PeergosFileSystemImpl(cliContext.userContext);
-        this.remoteFilesCompleter = new RemoteFilesCompleter(this::lsForRemoteFilesCompleter);
+        this.remoteFilesCompleter = new ListFilesCompleter(this::remoteFilesLsFiles);
+        this.localFilesCompleter = new ListFilesCompleter(this::localFilesLsFiles);
     }
 
     /**
@@ -360,7 +362,27 @@ public class CLI implements Runnable {
                 .append(" > ").toAnsi();
     }
 
-    private List<String> lsForRemoteFilesCompleter(String pathArgument) {
+    private List<String> localFilesLsFiles(String pathArgument) {
+        try {
+            Path path = resolveToPath(pathArgument).toAbsolutePath();
+            if (path.toFile().isFile())
+                return Arrays.asList(path.toString());
+            if (path.toFile().isDirectory())
+                return Files.list(path)
+                        .map(Path::toString)
+                        .collect(Collectors.toList());
+
+            if (!path.getParent().toFile().isDirectory())
+                return Files.list(path.getParent())
+                .map(Path::toString)
+                .collect(Collectors.toList());
+
+        } catch (IOException ioe) {
+            ioe.printStackTrace();
+        }
+        return Collections.emptyList();
+    }
+    private List<String> remoteFilesLsFiles(String pathArgument) {
         Path path = resolvedRemotePath(pathArgument).toAbsolutePath();
         Stat stat = null;
         try {
@@ -373,7 +395,6 @@ public class CLI implements Runnable {
             try {
                 peergosFileSystem.stat(path);
             } catch (Exception ex2) {
-                System.out.print( ",returning empty on "+ path);
                 return Collections.emptyList();
             }
 
@@ -395,15 +416,31 @@ public class CLI implements Runnable {
      *
      * @return
      */
+    private Completer getCompleter(Command.Arg arg) {
+        switch (arg) {
+            case REMOTE:
+                return remoteFilesCompleter;
+            case LOCAL:
+                return localFilesCompleter;
+            default:
+                throw new IllegalStateException();
+        }
+    }
+
     private Completers.TreeCompleter.Node buildCompletionNode(Command cmd) {
-        List<Object> nodesForCmd = new ArrayList<>();
+        if (cmd.secondArg  != null) {
+            return node(cmd.name(),
+                        node(getCompleter(cmd.firstArg),
+                                node(getCompleter(cmd.secondArg))));
 
-        nodesForCmd.add(cmd.name());
+        }
+        else if (cmd.firstArg !=  null) {
+            return node(cmd.name(),
+                    node(getCompleter(cmd.firstArg)));
+        }
+        else
+            return node(cmd.name());
 
-        if (cmd.hasRemoteFileFirstArg())
-            nodesForCmd.add(node(remoteFilesCompleter));
-
-        return node(nodesForCmd.toArray(new Object[0]));
     }
 
     public Completer buildCompleter() {
