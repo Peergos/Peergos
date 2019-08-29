@@ -13,7 +13,7 @@ public enum Command {
     rm("Remove a remote-file", "rm remote-path", Arg.REMOTE),
     space("Show used remote space"),
     get_follow_requests("Show the users that have sent you a follow request"),
-    follow("Send a follow-request to another user.", "follow username-to-follow"),
+    follow("Send a follow-request to another user.", "follow username-to-follow", Arg.USERNAME),
     share_read("Grant read access for a file to another user.", "share_read path <user>"),
     passwd("Update your password"),
     cd("change (remote) directory", "cd <path>", Arg.REMOTE),
@@ -69,6 +69,6 @@ public enum Command {
     }
 
     public enum Arg {
-        REMOTE, LOCAL;
+        REMOTE, LOCAL, USERNAME, FOLLOWER, PENDING_FOLLOW_REQUEST;
     }
 }

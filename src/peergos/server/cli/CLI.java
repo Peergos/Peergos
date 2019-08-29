@@ -3,7 +3,6 @@ package peergos.server.cli;
 import org.jline.builtins.*;
 import org.jline.reader.*;
 import org.jline.reader.impl.*;
-import org.jline.reader.impl.completer.ArgumentCompleter;
 import org.jline.reader.impl.completer.StringsCompleter;
 import org.jline.terminal.*;
 import org.jline.utils.*;
@@ -13,6 +12,7 @@ import peergos.server.simulation.FileSystem;
 import peergos.server.util.Logging;
 import peergos.shared.*;
 import peergos.shared.social.FollowRequestWithCipherText;
+import peergos.shared.user.SocialState;
 import peergos.shared.user.UserContext;
 
 import java.io.IOException;
@@ -32,6 +32,7 @@ public class CLI implements Runnable {
     private final CLIContext cliContext;
     private final FileSystem peergosFileSystem;
     private final ListFilesCompleter remoteFilesCompleter, localFilesCompleter;
+    private final Completer allUsernamesCompleter;
     private volatile boolean isFinished;
 
     public CLI(CLIContext cliContext) {
@@ -39,6 +40,7 @@ public class CLI implements Runnable {
         this.peergosFileSystem = new PeergosFileSystemImpl(cliContext.userContext);
         this.remoteFilesCompleter = new ListFilesCompleter(this::remoteFilesLsFiles);
         this.localFilesCompleter = new ListFilesCompleter(this::localFilesLsFiles);
+        this.allUsernamesCompleter = new SupplierCompleter(this::listAllUsernames);
     }
 
     /**
@@ -382,6 +384,17 @@ public class CLI implements Runnable {
         }
         return Collections.emptyList();
     }
+
+    private List<String> listFriends() {
+        SocialState socialState = cliContext.userContext.getSocialState().join();
+        Set<String> friends = socialState.friendAnnotations.keySet();
+        return new ArrayList<>(friends);
+    }
+
+    private List<String> listAllUsernames() {
+        return cliContext.userContext.network.coreNode.getUsernames("").join();
+    }
+
     private List<String> remoteFilesLsFiles(String pathArgument) {
         Path path = resolvedRemotePath(pathArgument).toAbsolutePath();
         Stat stat = null;
@@ -422,6 +435,8 @@ public class CLI implements Runnable {
                 return remoteFilesCompleter;
             case LOCAL:
                 return localFilesCompleter;
+            case USERNAME:
+                return allUsernamesCompleter;
             default:
                 throw new IllegalStateException();
         }
