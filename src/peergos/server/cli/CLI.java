@@ -32,7 +32,7 @@ public class CLI implements Runnable {
     private final CLIContext cliContext;
     private final FileSystem peergosFileSystem;
     private final ListFilesCompleter remoteFilesCompleter, localFilesCompleter;
-    private final Completer allUsernamesCompleter;
+    private final Completer allUsernamesCompleter, followersCompleter;
     private volatile boolean isFinished;
 
     public CLI(CLIContext cliContext) {
@@ -41,6 +41,7 @@ public class CLI implements Runnable {
         this.remoteFilesCompleter = new ListFilesCompleter(this::remoteFilesLsFiles);
         this.localFilesCompleter = new ListFilesCompleter(this::localFilesLsFiles);
         this.allUsernamesCompleter = new SupplierCompleter(this::listAllUsernames);
+        this.followersCompleter = new SupplierCompleter(this::listFollowers);
     }
 
     /**
@@ -385,10 +386,9 @@ public class CLI implements Runnable {
         return Collections.emptyList();
     }
 
-    private List<String> listFriends() {
+    private List<String> listFollowers() {
         SocialState socialState = cliContext.userContext.getSocialState().join();
-        Set<String> friends = socialState.friendAnnotations.keySet();
-        return new ArrayList<>(friends);
+        return new ArrayList<>(socialState.followerRoots.keySet());
     }
 
     private List<String> listAllUsernames() {
@@ -437,6 +437,8 @@ public class CLI implements Runnable {
                 return localFilesCompleter;
             case USERNAME:
                 return allUsernamesCompleter;
+            case FOLLOWER:
+                return followersCompleter;
             default:
                 throw new IllegalStateException();
         }

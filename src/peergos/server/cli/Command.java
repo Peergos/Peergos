@@ -14,7 +14,7 @@ public enum Command {
     space("Show used remote space"),
     get_follow_requests("Show the users that have sent you a follow request"),
     follow("Send a follow-request to another user.", "follow username-to-follow", Arg.USERNAME),
-    share_read("Grant read access for a file to another user.", "share_read path <user>"),
+    share_read("Grant read access for a file to another user.", "share_read path <user>", Arg.REMOTE, Arg.FOLLOWER),
     passwd("Update your password"),
     cd("change (remote) directory", "cd <path>", Arg.REMOTE),
     pwd("Print (remote) working directory"),
