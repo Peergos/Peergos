@@ -13,8 +13,9 @@ public enum Command {
     rm("Remove a remote-file", "rm remote-path", Arg.REMOTE),
     space("Show used remote space"),
     get_follow_requests("Show the users that have sent you a follow request"),
-    follow("Send a follow-request to another user.", "follow username-to-follow", Arg.USERNAME),
-    share_read("Grant read access for a file to another user.", "share_read path <user>", Arg.REMOTE, Arg.FOLLOWER),
+    process_follow_request("Accept or reject a pending follow-request. Optionally send them a reciprocal follow request.", "accept_follow_request pending-follower accept|accept-and-reciprocate|decline", Arg.PENDING_FOLLOW_REQUEST, Arg.PROCESS_FOLLOW_REQUEST),
+    follow("Send a follow-request to another user.", "follow user", Arg.USERNAME),
+    share_read("Grant read access for a file to another user.", "share_read path user", Arg.REMOTE, Arg.FOLLOWER),
     passwd("Update your password"),
     cd("change (remote) directory", "cd <path>", Arg.REMOTE),
     pwd("Print (remote) working directory"),
@@ -68,7 +69,10 @@ public enum Command {
         }
     }
 
-    public enum Arg {
-        REMOTE, LOCAL, USERNAME, FOLLOWER, PENDING_FOLLOW_REQUEST;
+    public static enum Arg {
+        REMOTE, LOCAL, USERNAME, FOLLOWER, PENDING_FOLLOW_REQUEST, PROCESS_FOLLOW_REQUEST;
+    }
+    public static enum ProcessFollowRequestAction  {
+        accept, accept_and_reciprocate, reject;
     }
 }

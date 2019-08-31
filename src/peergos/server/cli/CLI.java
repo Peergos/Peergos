@@ -32,7 +32,7 @@ public class CLI implements Runnable {
     private final CLIContext cliContext;
     private final FileSystem peergosFileSystem;
     private final ListFilesCompleter remoteFilesCompleter, localFilesCompleter;
-    private final Completer allUsernamesCompleter, followersCompleter;
+    private final Completer allUsernamesCompleter, followersCompleter, pendingFollowersCompleter, processFollowRequestCompleter;
     private volatile boolean isFinished;
 
     public CLI(CLIContext cliContext) {
@@ -42,6 +42,11 @@ public class CLI implements Runnable {
         this.localFilesCompleter = new ListFilesCompleter(this::localFilesLsFiles);
         this.allUsernamesCompleter = new SupplierCompleter(this::listAllUsernames);
         this.followersCompleter = new SupplierCompleter(this::listFollowers);
+        this.pendingFollowersCompleter = new SupplierCompleter(this::listPendingFollowers);
+        this.processFollowRequestCompleter = new StringsCompleter(
+                Stream.of(Command.ProcessFollowRequestAction.values())
+                        .map(Command.ProcessFollowRequestAction::name)
+                        .collect(Collectors.toList()));
     }
 
     /**
@@ -118,6 +123,8 @@ public class CLI implements Runnable {
                     return space(parsedCommand);
                 case get_follow_requests:
                     return getFollowRequests(parsedCommand);
+                case process_follow_request:
+                    return processFollowRequest(parsedCommand);
                 case follow:
                     return follow(parsedCommand);
                 case passwd:
@@ -284,8 +291,53 @@ public class CLI implements Runnable {
 
         return followRequestUsers.stream()
                 .collect(Collectors.joining("\n\t", "You have pending follow requests from the following users:\n", ""));
-
     }
+
+    public String processFollowRequest(ParsedCommand cmd) {
+        if (! cmd.hasArguments())
+            return "Specify a user";
+        if (! cmd.hasSecondArgument())
+            return "Cannot process follow request - please specify one of "+ new ArrayList<>(Arrays.asList(Command.ProcessFollowRequestAction.values()));
+
+        String userThatSentFollowRequest = cmd.firstArgument();
+        Command.ProcessFollowRequestAction processFollowRequestAction = null;
+        try {
+            processFollowRequestAction = Command.ProcessFollowRequestAction.valueOf(cmd.secondArgument());
+        } catch (IllegalArgumentException | NullPointerException ex) {
+            return "Could not parse process-action '"+ cmd.secondArgument() +"' - please specify one of "+ new ArrayList<>(Arrays.asList(Command.ProcessFollowRequestAction.values()));
+        }
+
+        List<FollowRequestWithCipherText> followRequests = cliContext.userContext.processFollowRequests().join();
+        Optional<FollowRequestWithCipherText> first = followRequests.stream()
+                .filter(e -> userThatSentFollowRequest.equals(e.getEntry().ownerName))
+                .findFirst();
+
+        if (! first.isPresent())
+            return "Could not process request from ' "+ userThatSentFollowRequest +"' - they haven't sent you a follow-request.";
+
+        FollowRequestWithCipherText followRequestWithCipherText = first.get();
+        boolean accept =  false;
+        boolean reciprocate = false;
+
+        switch (processFollowRequestAction) {
+            case accept:
+                accept = true;
+                break;
+            case accept_and_reciprocate:
+                accept = true;
+                reciprocate = true;
+                break;
+            case reject:
+                accept = false;
+                reciprocate = false;
+                break;
+            default:
+                throw new IllegalStateException();
+        }
+        cliContext.userContext.sendReplyFollowRequest(followRequestWithCipherText, accept, reciprocate).join();
+        return "Processed follow request from '"+ userThatSentFollowRequest +"' with "+ processFollowRequestAction +" action.";
+    }
+
 
     public String shareReadAccess(ParsedCommand cmd) {
 
@@ -391,6 +443,14 @@ public class CLI implements Runnable {
         return new ArrayList<>(socialState.followerRoots.keySet());
     }
 
+    private List<String> listPendingFollowers() {
+        SocialState socialState = cliContext.userContext.getSocialState().join();
+        List<FollowRequestWithCipherText> pendingIncoming = socialState.pendingIncoming;
+        return pendingIncoming.stream()
+                .map(e -> e.req.entry.get().ownerName)
+                .collect(Collectors.toList());
+    }
+
     private List<String> listAllUsernames() {
         return cliContext.userContext.network.coreNode.getUsernames("").join();
     }
@@ -439,6 +499,10 @@ public class CLI implements Runnable {
                 return allUsernamesCompleter;
             case FOLLOWER:
                 return followersCompleter;
+            case PENDING_FOLLOW_REQUEST:
+                return pendingFollowersCompleter;
+            case PROCESS_FOLLOW_REQUEST:
+                return processFollowRequestCompleter;
             default:
                 throw new IllegalStateException();
         }
