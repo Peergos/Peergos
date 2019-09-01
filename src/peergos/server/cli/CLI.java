@@ -12,6 +12,7 @@ import peergos.server.simulation.FileSystem;
 import peergos.server.util.Logging;
 import peergos.shared.*;
 import peergos.shared.social.FollowRequestWithCipherText;
+import peergos.shared.user.SocialState;
 import peergos.shared.user.UserContext;
 
 import java.io.IOException;
@@ -30,13 +31,23 @@ public class CLI implements Runnable {
 
     private final CLIContext cliContext;
     private final FileSystem peergosFileSystem;
-    private final RemoteFilesCompleter remoteFilesCompleter;
+    private final ListFilesCompleter remoteFilesCompleter, localFilesCompleter, remoteDirsCompleter;
+    private final Completer allUsernamesCompleter, followersCompleter, pendingFollowersCompleter, processFollowRequestCompleter;
     private volatile boolean isFinished;
 
     public CLI(CLIContext cliContext) {
         this.cliContext = cliContext;
         this.peergosFileSystem = new PeergosFileSystemImpl(cliContext.userContext);
-        this.remoteFilesCompleter = new RemoteFilesCompleter(this::lsForRemoteFilesCompleter);
+        this.remoteFilesCompleter = new ListFilesCompleter(path -> this.remoteFilesLsFiles(path, false));
+        this.remoteDirsCompleter = new ListFilesCompleter(path -> this.remoteFilesLsFiles(path, true));
+        this.localFilesCompleter = new ListFilesCompleter(this::localFilesLsFiles);
+        this.allUsernamesCompleter = new SupplierCompleter(this::listAllUsernames);
+        this.followersCompleter = new SupplierCompleter(this::listFollowers);
+        this.pendingFollowersCompleter = new SupplierCompleter(this::listPendingFollowers);
+        this.processFollowRequestCompleter = new StringsCompleter(
+                Stream.of(Command.ProcessFollowRequestAction.values())
+                        .map(Command.ProcessFollowRequestAction::altOrName)
+                        .collect(Collectors.toList()));
     }
 
     /**
@@ -86,7 +97,7 @@ public class CLI implements Runnable {
             }
             sb.append("\t").append(cmd.description);
         }
-
+        sb.append("\n\nNote: <TAB> based autocomplete is available on most commands.");
         return sb.toString();
     }
 
@@ -113,6 +124,8 @@ public class CLI implements Runnable {
                     return space(parsedCommand);
                 case get_follow_requests:
                     return getFollowRequests(parsedCommand);
+                case process_follow_request:
+                    return processFollowRequest(parsedCommand);
                 case follow:
                     return follow(parsedCommand);
                 case passwd:
@@ -279,8 +292,53 @@ public class CLI implements Runnable {
 
         return followRequestUsers.stream()
                 .collect(Collectors.joining("\n\t", "You have pending follow requests from the following users:\n", ""));
-
     }
+
+    public String processFollowRequest(ParsedCommand cmd) {
+        if (! cmd.hasArguments())
+            return "Specify a user";
+        if (! cmd.hasSecondArgument())
+            return "Cannot process follow request - please specify one of "+ new ArrayList<>(Arrays.asList(Command.ProcessFollowRequestAction.values()));
+
+        String userThatSentFollowRequest = cmd.firstArgument();
+        Command.ProcessFollowRequestAction processFollowRequestAction = null;
+        try {
+            processFollowRequestAction = Command.ProcessFollowRequestAction.parse(cmd.secondArgument());
+        } catch (IllegalArgumentException | NullPointerException ex) {
+            return "Could not parse process-action '"+ cmd.secondArgument() +"' - please specify one of "+ new ArrayList<>(Arrays.asList(Command.ProcessFollowRequestAction.values()));
+        }
+
+        List<FollowRequestWithCipherText> followRequests = cliContext.userContext.processFollowRequests().join();
+        Optional<FollowRequestWithCipherText> first = followRequests.stream()
+                .filter(e -> userThatSentFollowRequest.equals(e.getEntry().ownerName))
+                .findFirst();
+
+        if (! first.isPresent())
+            return "Could not process request from ' "+ userThatSentFollowRequest +"' - they haven't sent you a follow-request.";
+
+        FollowRequestWithCipherText followRequestWithCipherText = first.get();
+        boolean accept =  false;
+        boolean reciprocate = false;
+
+        switch (processFollowRequestAction) {
+            case accept:
+                accept = true;
+                break;
+            case accept_and_reciprocate:
+                accept = true;
+                reciprocate = true;
+                break;
+            case reject:
+                accept = false;
+                reciprocate = false;
+                break;
+            default:
+                throw new IllegalStateException();
+        }
+        cliContext.userContext.sendReplyFollowRequest(followRequestWithCipherText, accept, reciprocate).join();
+        return "Processed follow request from '"+ userThatSentFollowRequest +"' with "+ processFollowRequestAction +" action.";
+    }
+
 
     public String shareReadAccess(ParsedCommand cmd) {
 
@@ -360,7 +418,51 @@ public class CLI implements Runnable {
                 .append(" > ").toAnsi();
     }
 
-    private List<String> lsForRemoteFilesCompleter(String pathArgument) {
+    private List<String> localFilesLsFiles(String pathArgument) {
+        try {
+            Path path = resolveToPath(pathArgument).toAbsolutePath();
+            if (path.toFile().isFile())
+                return Arrays.asList(path.toString());
+            if (path.toFile().isDirectory())
+                return Files.list(path)
+                        .map(Path::toString)
+                        .collect(Collectors.toList());
+
+            if (!path.getParent().toFile().isDirectory())
+                return Files.list(path.getParent())
+                .map(Path::toString)
+                .collect(Collectors.toList());
+
+        } catch (IOException ioe) {
+            ioe.printStackTrace();
+        }
+        return Collections.emptyList();
+    }
+
+    private List<String> listFollowers() {
+        SocialState socialState = cliContext.userContext.getSocialState().join();
+        return new ArrayList<>(socialState.followerRoots.keySet());
+    }
+
+    private List<String> listPendingFollowers() {
+        SocialState socialState = cliContext.userContext.getSocialState().join();
+        List<FollowRequestWithCipherText> pendingIncoming = socialState.pendingIncoming;
+        return pendingIncoming.stream()
+                .map(e -> e.req.entry.get().ownerName)
+                .collect(Collectors.toList());
+    }
+
+    private List<String> listAllUsernames() {
+        return cliContext.userContext.network.coreNode.getUsernames("").join();
+    }
+
+    /**
+     *
+     * @param pathArgument
+     * @param filterDirs only return paths that are directories when true
+     * @return
+     */
+    private List<String> remoteFilesLsFiles(String pathArgument, boolean filterDirs) {
         Path path = resolvedRemotePath(pathArgument).toAbsolutePath();
         Stat stat = null;
         try {
@@ -373,7 +475,6 @@ public class CLI implements Runnable {
             try {
                 peergosFileSystem.stat(path);
             } catch (Exception ex2) {
-                System.out.print( ",returning empty on "+ path);
                 return Collections.emptyList();
             }
 
@@ -381,11 +482,8 @@ public class CLI implements Runnable {
         final Path parentPath = path;
         List<String> completeOptions = peergosFileSystem.ls(parentPath, false)
                 .stream()
-                .map(p -> {
-                    if  (! p.isAbsolute())
-                        return cliContext.pwd.relativize(p);
-                    return p;
-                })
+                .filter(p -> (! filterDirs) || checkPath(p).fileProperties().isDirectory)
+                .map(p -> p.isAbsolute() ? cliContext.pwd.relativize(p): p)
                 .map(Path::toString)
                 .collect(Collectors.toList());
         return completeOptions;
@@ -395,15 +493,41 @@ public class CLI implements Runnable {
      *
      * @return
      */
+    private Completer getCompleter(Command.Argument arg) {
+        switch (arg) {
+            case REMOTE_FILE:
+                return remoteFilesCompleter;
+            case REMOTE_DIR:
+                return remoteDirsCompleter;
+            case LOCAL_FILE:
+                return localFilesCompleter;
+            case USERNAME:
+                return allUsernamesCompleter;
+            case FOLLOWER:
+                return followersCompleter;
+            case PENDING_FOLLOW_REQUEST:
+                return pendingFollowersCompleter;
+            case PROCESS_FOLLOW_REQUEST:
+                return processFollowRequestCompleter;
+            default:
+                throw new IllegalStateException();
+        }
+    }
+
     private Completers.TreeCompleter.Node buildCompletionNode(Command cmd) {
-        List<Object> nodesForCmd = new ArrayList<>();
+        if (cmd.secondArg  != null) {
+            return node(cmd.name(),
+                        node(getCompleter(cmd.firstArg),
+                                node(getCompleter(cmd.secondArg))));
 
-        nodesForCmd.add(cmd.name());
+        }
+        else if (cmd.firstArg !=  null) {
+            return node(cmd.name(),
+                    node(getCompleter(cmd.firstArg)));
+        }
+        else
+            return node(cmd.name());
 
-        if (cmd.hasRemoteFileFirstArg())
-            nodesForCmd.add(node(remoteFilesCompleter));
-
-        return node(nodesForCmd.toArray(new Object[0]));
     }
 
     public Completer buildCompleter() {
