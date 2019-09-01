@@ -31,21 +31,22 @@ public class CLI implements Runnable {
 
     private final CLIContext cliContext;
     private final FileSystem peergosFileSystem;
-    private final ListFilesCompleter remoteFilesCompleter, localFilesCompleter;
+    private final ListFilesCompleter remoteFilesCompleter, localFilesCompleter, remoteDirsCompleter;
     private final Completer allUsernamesCompleter, followersCompleter, pendingFollowersCompleter, processFollowRequestCompleter;
     private volatile boolean isFinished;
 
     public CLI(CLIContext cliContext) {
         this.cliContext = cliContext;
         this.peergosFileSystem = new PeergosFileSystemImpl(cliContext.userContext);
-        this.remoteFilesCompleter = new ListFilesCompleter(this::remoteFilesLsFiles);
+        this.remoteFilesCompleter = new ListFilesCompleter(path -> this.remoteFilesLsFiles(path, false));
+        this.remoteDirsCompleter = new ListFilesCompleter(path -> this.remoteFilesLsFiles(path, true));
         this.localFilesCompleter = new ListFilesCompleter(this::localFilesLsFiles);
         this.allUsernamesCompleter = new SupplierCompleter(this::listAllUsernames);
         this.followersCompleter = new SupplierCompleter(this::listFollowers);
         this.pendingFollowersCompleter = new SupplierCompleter(this::listPendingFollowers);
         this.processFollowRequestCompleter = new StringsCompleter(
                 Stream.of(Command.ProcessFollowRequestAction.values())
-                        .map(Command.ProcessFollowRequestAction::name)
+                        .map(Command.ProcessFollowRequestAction::altOrName)
                         .collect(Collectors.toList()));
     }
 
@@ -96,7 +97,7 @@ public class CLI implements Runnable {
             }
             sb.append("\t").append(cmd.description);
         }
-
+        sb.append("\n\nNote: <TAB> based autocomplete is available on most commands.");
         return sb.toString();
     }
 
@@ -302,7 +303,7 @@ public class CLI implements Runnable {
         String userThatSentFollowRequest = cmd.firstArgument();
         Command.ProcessFollowRequestAction processFollowRequestAction = null;
         try {
-            processFollowRequestAction = Command.ProcessFollowRequestAction.valueOf(cmd.secondArgument());
+            processFollowRequestAction = Command.ProcessFollowRequestAction.parse(cmd.secondArgument());
         } catch (IllegalArgumentException | NullPointerException ex) {
             return "Could not parse process-action '"+ cmd.secondArgument() +"' - please specify one of "+ new ArrayList<>(Arrays.asList(Command.ProcessFollowRequestAction.values()));
         }
@@ -455,7 +456,13 @@ public class CLI implements Runnable {
         return cliContext.userContext.network.coreNode.getUsernames("").join();
     }
 
-    private List<String> remoteFilesLsFiles(String pathArgument) {
+    /**
+     *
+     * @param pathArgument
+     * @param filterDirs only return paths that are directories when true
+     * @return
+     */
+    private List<String> remoteFilesLsFiles(String pathArgument, boolean filterDirs) {
         Path path = resolvedRemotePath(pathArgument).toAbsolutePath();
         Stat stat = null;
         try {
@@ -475,11 +482,8 @@ public class CLI implements Runnable {
         final Path parentPath = path;
         List<String> completeOptions = peergosFileSystem.ls(parentPath, false)
                 .stream()
-                .map(p -> {
-                    if  (! p.isAbsolute())
-                        return cliContext.pwd.relativize(p);
-                    return p;
-                })
+                .filter(p -> (! filterDirs) || checkPath(p).fileProperties().isDirectory)
+                .map(p -> p.isAbsolute() ? cliContext.pwd.relativize(p): p)
                 .map(Path::toString)
                 .collect(Collectors.toList());
         return completeOptions;
@@ -489,11 +493,13 @@ public class CLI implements Runnable {
      *
      * @return
      */
-    private Completer getCompleter(Command.Arg arg) {
+    private Completer getCompleter(Command.Argument arg) {
         switch (arg) {
-            case REMOTE:
+            case REMOTE_FILE:
                 return remoteFilesCompleter;
-            case LOCAL:
+            case REMOTE_DIR:
+                return remoteDirsCompleter;
+            case LOCAL_FILE:
                 return localFilesCompleter;
             case USERNAME:
                 return allUsernamesCompleter;
