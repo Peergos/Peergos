@@ -104,7 +104,7 @@ public class NetworkAccess {
     }
 
     public static ContentAddressedStorage buildLocalDht(HttpPoster apiPoster, boolean isPeergosServer) {
-        return new CachingStorage(new ContentAddressedStorage.HTTP(apiPoster, isPeergosServer), 1_000, 50 * 1024);
+        return new ContentAddressedStorage.HTTP(apiPoster, isPeergosServer);
     }
 
     @JsMethod
@@ -180,9 +180,11 @@ public class NetworkAccess {
                 .exceptionally(t -> new Multihash(Multihash.Type.sha2_256, new byte[32]))
                 .thenApply(nodeId -> {
                     ContentAddressedStorageProxy proxingDht = new ContentAddressedStorageProxy.HTTP(p2pPoster);
-                    ContentAddressedStorage p2pDht = isPeergosServer ?
+                    ContentAddressedStorage storage = isPeergosServer ?
                             localDht :
                             new ContentAddressedStorage.Proxying(localDht, proxingDht, nodeId, core);
+                    HashVerifyingStorage verifyingStorage = new HashVerifyingStorage(storage, isJavascript ? new ScryptJS() : new ScryptJava());
+                    ContentAddressedStorage p2pDht = new CachingStorage(verifyingStorage, 1_000, 50 * 1024);
                     MutablePointersProxy httpMutable = new HttpMutablePointers(apiPoster, p2pPoster);
                     MutablePointers p2pMutable =
                             isPeergosServer ?
@@ -211,8 +213,7 @@ public class NetworkAccess {
                                        boolean isJavascript) {
         WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, dht);
         MutableTree btree = new MutableTreeImpl(mutable, dht, synchronizer);
-        HashVerifyingStorage dhtClient = new HashVerifyingStorage(dht, isJavascript ? new ScryptJS() : new ScryptJava());
-        return new NetworkAccess(coreNode, social, dhtClient, mutable, btree, synchronizer, instanceAdmin, usage, usernames, isJavascript);
+        return new NetworkAccess(coreNode, social, dht, mutable, btree, synchronizer, instanceAdmin, usage, usernames, isJavascript);
     }
 
     public static CompletableFuture<NetworkAccess> buildJava(URL target) {
