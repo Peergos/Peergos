@@ -56,7 +56,7 @@ public class NetworkAccess {
                             boolean isJavascript) {
         this.coreNode = coreNode;
         this.social = social;
-        this.dhtClient = new HashVerifyingStorage(dhtClient, isJavascript ? new ScryptJS() : new ScryptJava());
+        this.dhtClient = dhtClient;
         this.mutable = mutable;
         this.tree = tree;
         this.synchronizer = synchronizer;
@@ -211,7 +211,8 @@ public class NetworkAccess {
                                        boolean isJavascript) {
         WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, dht);
         MutableTree btree = new MutableTreeImpl(mutable, dht, synchronizer);
-        return new NetworkAccess(coreNode, social, dht, mutable, btree, synchronizer, instanceAdmin, usage, usernames, isJavascript);
+        HashVerifyingStorage dhtClient = new HashVerifyingStorage(dht, isJavascript ? new ScryptJS() : new ScryptJava());
+        return new NetworkAccess(coreNode, social, dhtClient, mutable, btree, synchronizer, instanceAdmin, usage, usernames, isJavascript);
     }
 
     public static CompletableFuture<NetworkAccess> buildJava(URL target) {
