@@ -379,9 +379,12 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
             List<String> usernames = quotaSupplier.getLocalUsernames();
             for (String username : usernames) {
                 Logging.LOG().info("Calculating space usage of "+username);
-                Optional<PublicKeyHash> publicKeyHash = core.getPublicKeyHash(username).get();
-                publicKeyHash.ifPresent(keyHash -> processCorenodeEvent(username, keyHash));
-                LOG.info("Updated space usage of user: " + username + " to " + state.usage.get(username).totalBytes);
+                Optional<PublicKeyHash> identity = core.getPublicKeyHash(username).get();
+                if (identity.isPresent()) {
+                    processCorenodeEvent(username, identity.get());
+                    LOG.info("Updated space usage of user: " + username + " to " + state.usage.get(username).totalBytes);
+                } else
+                    LOG.info("Identity key absent in pki for user: " + username);
             }
         } catch (Exception e) {
             LOG.log(Level.WARNING, e.getMessage(), e);
