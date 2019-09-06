@@ -3,6 +3,10 @@ log/*
 dist/*
 out/*
 log/*
+.idea/*
+gwt-unitCache/*
+war/*
+*.iml
 *.hprof
 *hs_err_pid*
 *~

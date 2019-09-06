@@ -668,31 +668,35 @@ public class FileWrapper {
 
     @JsMethod
     public CompletableFuture<FileWrapper> truncate(long newSize, FileWrapper parent, NetworkAccess network, Crypto crypto) {
+        return network.synchronizer.applyComplexUpdate(owner(), signingPair(), (current, committer) ->
+                truncate(current, committer, newSize, parent, network, crypto)
+        ).thenCompose(finished -> getUpdated(finished, network));
+    }
+
+    public CompletableFuture<Snapshot> truncate(Snapshot snapshot, Committer committer, long newSize, FileWrapper parent, NetworkAccess network, Crypto crypto) {
         FileProperties props = getFileProperties();
         if (props.size < newSize)
-            return CompletableFuture.completedFuture(this);
+            return CompletableFuture.completedFuture(snapshot);
 
-        return network.synchronizer.applyComplexUpdate(owner(), signingPair(), (current, committer) ->
-                getMapKey(newSize, network, crypto).thenCompose(endMapKey ->
-                        getInputStream(version.get(writer()).props, network, crypto, props.size, x -> {}).thenCompose(originalReader -> {
-                            long startOfLastChunk = newSize - (newSize % Chunk.MAX_SIZE);
-                            return originalReader.seek(startOfLastChunk).thenCompose(seekedOriginal -> {
-                                byte[] lastChunk = new byte[(int)(newSize % Chunk.MAX_SIZE)];
-                                return seekedOriginal.readIntoArray(lastChunk, 0, lastChunk.length).thenCompose(read -> {
-                                    if (newSize <= Chunk.MAX_SIZE)
-                                        return CompletableFuture.completedFuture(current);
-                                    return IpfsTransaction.call(owner(), tid ->
-                                                    deleteAllChunks(writableFilePointer().withMapKey(endMapKey),
-                                                            signingPair(), tid, crypto.hasher, network, current, committer),
-                                            network.dhtClient);
-                                }).thenCompose(deleted -> pointer.fileAccess.updateProperties(deleted, committer, writableFilePointer(),
-                                        entryWriter, props.withSize(startOfLastChunk), network).thenCompose(resized -> parent
-                                        .uploadFileSection(resized, committer, getName(), AsyncReader.build(lastChunk),
-                                                props.isHidden, startOfLastChunk, newSize, Optional.empty(),
-                                                true, network, crypto, x -> {}, pointer.capability.getMapKey())));
-                            });
-                        }))
-        ).thenCompose(finished -> getUpdated(finished, network));
+        return getMapKey(newSize, network, crypto).thenCompose(endMapKey ->
+                getInputStream(version.get(writer()).props, network, crypto, props.size, x -> {}).thenCompose(originalReader -> {
+                    long startOfLastChunk = newSize - (newSize % Chunk.MAX_SIZE);
+                    return originalReader.seek(startOfLastChunk).thenCompose(seekedOriginal -> {
+                        byte[] lastChunk = new byte[(int)(newSize % Chunk.MAX_SIZE)];
+                        return seekedOriginal.readIntoArray(lastChunk, 0, lastChunk.length).thenCompose(read -> {
+                            if (newSize <= Chunk.MAX_SIZE)
+                                return CompletableFuture.completedFuture(snapshot);
+                            return IpfsTransaction.call(owner(), tid ->
+                                            deleteAllChunks(writableFilePointer().withMapKey(endMapKey),
+                                                    signingPair(), tid, crypto.hasher, network, snapshot, committer),
+                                    network.dhtClient);
+                        }).thenCompose(deleted -> pointer.fileAccess.updateProperties(deleted, committer, writableFilePointer(),
+                                entryWriter, props.withSize(startOfLastChunk), network).thenCompose(resized -> parent
+                                .uploadFileSection(resized, committer, getName(), AsyncReader.build(lastChunk),
+                                        props.isHidden, startOfLastChunk, newSize, Optional.empty(),
+                                        true, false, network, crypto, x -> {}, pointer.capability.getMapKey())));
+                    });
+                }));
     }
 
     public static int getNumberOfChunks(long size) {
@@ -791,6 +795,24 @@ public class FileWrapper {
                 .thenCompose(finalBase -> getUpdated(finalBase, network));
     }
 
+    private CompletableFuture<Snapshot> uploadFileSection(Snapshot intialVersion,
+                                                         Committer committer,
+                                                         String filename,
+                                                         AsyncReader fileData,
+                                                         boolean isHidden,
+                                                         long startIndex,
+                                                         long endIndex,
+                                                         Optional<SymmetricKey> baseKey,
+                                                         boolean overwriteExisting,
+                                                         NetworkAccess network,
+                                                         Crypto crypto,
+                                                         ProgressConsumer<Long> monitor,
+                                                         byte[] firstChunkMapKey) {
+        boolean truncateExisting = false;
+        return uploadFileSection(intialVersion, committer, filename, fileData, isHidden, startIndex, endIndex, baseKey,
+                overwriteExisting, truncateExisting, network, crypto, monitor, firstChunkMapKey);
+    }
+
     public CompletableFuture<Snapshot> uploadFileSection(Snapshot intialVersion,
                                                          Committer committer,
                                                          String filename,
@@ -800,6 +822,7 @@ public class FileWrapper {
                                                          long endIndex,
                                                          Optional<SymmetricKey> baseKey,
                                                          boolean overwriteExisting,
+                                                         boolean truncateExisting,
                                                          NetworkAccess network,
                                                          Crypto crypto,
                                                          ProgressConsumer<Long> monitor,
@@ -821,8 +844,19 @@ public class FileWrapper {
                                             if (childOpt.isPresent()) {
                                                 if (! overwriteExisting)
                                                     throw new IllegalStateException("File already exists with name " + filename);
-                                                return updateExistingChild(current, committer, latest, childOpt.get(), fileData,
-                                                        startIndex, endIndex, network, crypto, monitor);
+
+                                                FileProperties childProps = childOpt.get().getFileProperties();
+                                                if (truncateExisting && endIndex < childProps.size) {
+                                                    return childOpt.get().truncate(current, committer, endIndex, latest, network, crypto).thenCompose( updatedSnapshot ->
+                                                        getUpdated(updatedSnapshot, network).thenCompose( updatedParent ->
+                                                                childOpt.get().getUpdated(updatedSnapshot, network).thenCompose( updatedChild ->
+                                                                    updateExistingChild(updatedSnapshot, committer, updatedParent, updatedChild, fileData,
+                                                                        startIndex, endIndex, network, crypto, monitor)
+                                                    )));
+                                                } else {
+                                                    return updateExistingChild(current, committer, latest, childOpt.get(), fileData,
+                                                            startIndex, endIndex, network, crypto, monitor);
+                                                }
                                             }
                                             if (startIndex > 0) {
                                                 // TODO if startIndex > 0 prepend with a zero section
@@ -1038,7 +1072,7 @@ public class FileWrapper {
                                             long updatedLength = startIndex + internalEnd - internalStart;
                                             if (updatedLength > filesSize.get()) {
                                                 filesSize.set(updatedLength);
-
+                                                
                                                 if (updatedLength > Chunk.MAX_SIZE) {
                                                     // update file size in FileProperties of first chunk
                                                     return network.getFile(updatedBase, childCap, getChildsEntryWriter(), ownername)

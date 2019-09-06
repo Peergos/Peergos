@@ -129,6 +129,10 @@ public class FileProperties implements Cborable {
         return new FileProperties(name, isDirectory, mimeType, newSize, modified, isHidden, thumbnail, streamSecret);
     }
 
+    public FileProperties withThumbnail(byte[] newThumbnail) {
+        return new FileProperties(name, isDirectory, mimeType, size, modified, isHidden, Optional.of(newThumbnail), streamSecret);
+    }
+
     public FileProperties withModified(LocalDateTime modified) {
         return new FileProperties(name, isDirectory, mimeType, size, modified, isHidden, thumbnail, streamSecret);
     }
