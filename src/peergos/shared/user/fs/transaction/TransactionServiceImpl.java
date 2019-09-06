@@ -42,7 +42,7 @@ public class TransactionServiceImpl implements TransactionService {
         AsyncReader asyncReader = AsyncReader.build(data);
         return transactionDirUpdater.updated(version).thenCompose(dir ->
                 dir.uploadFileSection(version, committer, transaction.name(), asyncReader, false,
-                        0, data.length, Optional.empty(), false, networkAccess,
+                        0, data.length, Optional.empty(), false, false, networkAccess,
                         crypto, VOID_PROGRESS, crypto.random.randomBytes(32)));
     }
 
