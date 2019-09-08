@@ -14,7 +14,7 @@ tar -zxvf graalvm-ce-linux-amd64-19.2.0.tar.gz
 if [ -f  "graalvm-ce-19.2.0/bin/native-image" ];
 then
     echo "native-image installed @ "$(readlink -f graalvm-ce-19.2.0/bin/native-image)
-    export native-image=$(readlink -f graalvm-ce-19.2.0/bin/native-image)
+    export NATIVE_IMAGE_BIN=$(readlink -f graalvm-ce-19.2.0/bin/native-image)
 else
     echo "native-image not installed..."
 fi
