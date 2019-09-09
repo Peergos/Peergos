@@ -23,7 +23,7 @@ fi
 
 # run peergos first to log required reflected class names
 mkdir -p META-INF/native-image
-$NATIVE_IMAGE_JAVA -agentlib:native-image-agent=config-output-dir=META-INF/native-image -jar PeergosServer.jar -peergos -default-quota 209715200 -mutable-pointers-file mutable.sql -social-sql-file social.sql -ipfs-config-api-port 5001 -ipfs-config-gateway-port 8080 -useIPFS true -peergos.identity.hash z59vuwzfFDp3ZA8ZpnnmHEuMtyA1q34m3Th49DYXQVJntWpxdGrRqXi -pki-node-id QmVdFZgHnEgcedCS2G2ZNiEN59LuVrnRm7z3yXtEBv2XiF -max-users 2 -logToConsole true
+$NATIVE_IMAGE_JAVA -agentlib:native-image-agent=config-output-dir=META-INF/native-image -jar PeergosServer.jar -peergos -default-quota 209715200 -useIPFS true -peergos.identity.hash z59vuwzfFDp3ZA8ZpnnmHEuMtyA1q34m3Th49DYXQVJntWpxdGrRqXi -pki-node-id QmVdFZgHnEgcedCS2G2ZNiEN59LuVrnRm7z3yXtEBv2XiF -max-users 2
 # no-fallback is required
 $NATIVE_IMAGE_BIN -H:EnableURLProtocols=http -cp "lib/*" -jar "$PEERGOS_JAR_PATH" --no-fallback
 
