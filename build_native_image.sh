@@ -21,7 +21,7 @@ then
 fi
 
 # no-fallback is required
-$NATIVE_IMAGE_BIN -cp "lib/*" -jar "$PEERGOS_JAR_PATH" --no-fallback
+$NATIVE_IMAGE_BIN -H:EnableURLProtocols=http -cp "lib/*" -jar "$PEERGOS_JAR_PATH" --no-fallback
 
     
 
