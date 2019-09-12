@@ -372,7 +372,7 @@ public class Main {
             String path = mutablePointersSqlFile.equals(":memory:") ?
                     mutablePointersSqlFile :
                     a.fromPeergosDir("mutable-pointers-file").toString();
-            JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(JdbcIpnsAndSocial.buildSqlLite(path));
+            JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(Sqlite.build(path));
             MutablePointers localPointers = UserRepository.buildSqlLite(localDht, rawPointers);
             MutablePointersProxy proxingMutable = new HttpMutablePointers(ipfsGateway, pkiServerNodeId);
 

@@ -1,6 +1,6 @@
 package peergos.server.space;
 
-import peergos.server.util.Logging;
+import peergos.server.util.*;
 import peergos.shared.storage.*;
 
 import java.sql.*;
@@ -158,16 +158,6 @@ public class JdbcSpaceRequests {
     }
 
     public static JdbcSpaceRequests buildSqlLite(String dbPath) throws SQLException {
-        try
-        {
-            Class.forName("org.sqlite.JDBC");
-        } catch (ClassNotFoundException cnfe) {
-            throw new SQLException(cnfe);
-        }
-
-        String url = "jdbc:sqlite:"+dbPath;
-        Connection conn = DriverManager.getConnection(url);
-        conn.setAutoCommit(true);
-        return new JdbcSpaceRequests(conn);
+        return new JdbcSpaceRequests(Sqlite.build(dbPath));
     }
 }

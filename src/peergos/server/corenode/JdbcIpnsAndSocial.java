@@ -1,6 +1,7 @@
 package peergos.server.corenode;
 import java.util.logging.*;
 
+import org.sqlite.*;
 import peergos.server.util.Logging;
 
 import peergos.shared.cbor.*;
@@ -226,19 +227,5 @@ public class JdbcIpnsAndSocial {
         } catch (Exception e) {
             LOG.log(Level.WARNING, e.getMessage(), e);
         }
-    }
-
-    public static Connection buildSqlLite(String dbPath) throws SQLException {
-        try
-        {
-            Class.forName("org.sqlite.JDBC");
-        } catch (ClassNotFoundException cnfe) {
-            throw new SQLException(cnfe);
-        }
-
-        String url = "jdbc:sqlite:"+dbPath;
-        Connection conn = DriverManager.getConnection(url);
-        conn.setAutoCommit(true);
-        return conn;
     }
 }
