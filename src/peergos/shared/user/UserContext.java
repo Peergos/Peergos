@@ -275,6 +275,22 @@ public class UserContext {
                 .exceptionally(Futures::logAndThrow);
     }
 
+    @JsMethod
+    public CompletableFuture<Boolean> ensureFollowingPeergos() {
+        return getSocialState()
+                .thenCompose(state -> {
+                    Set<FileWrapper> followerRoots = state.followingRoots;
+                    Set<String> following = followerRoots.stream()
+                            .map(FileWrapper::getOwnerName)
+                            .collect(Collectors.toSet());
+                    Set<String> pendingRoots = state.pendingOutgoingFollowRequests.keySet();
+                    if (!following.contains(PEERGOS_USERNAME) & !pendingRoots.contains(PEERGOS_USERNAME))
+                        return sendInitialFollowRequest(PEERGOS_USERNAME);
+                    else
+                        return CompletableFuture.completedFuture(true);
+                });
+    }
+
     private static CompletableFuture<TrieNode> createSpecialDirectory(TrieNode globalRoot,
                                                                       String username,
                                                                       String dirName,
