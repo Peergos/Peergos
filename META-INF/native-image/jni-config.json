@@ -1,0 +1,15 @@
+[
+{
+  "name":"org.sqlite.NativeDB",
+  "fields":[{"name":"pointer"}]
+},
+{
+  "name":"org.sqlite.Function"
+},
+{
+  "name":"org.sqlite.Function$Aggregate"
+},
+{
+  "name":"org.sqlite.DB$ProgressObserver"
+}
+]

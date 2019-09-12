@@ -1,0 +1,24 @@
+[
+{
+  "name":"org.sqlite.JDBC"
+},
+{
+  "name":"org.sqlite.NativeDB",
+  "methods":[
+    {"name":"<init>","parameterTypes":[] }, 
+    {"name":"load","parameterTypes":[] }
+  ]
+},
+{
+  "name":"org.sqlite.Function"
+},
+{
+  "name":"org.sqlite.Function$Aggregate"
+},
+{
+  "name":"org.sqlite.DB"
+},
+{
+  "name":"org.sqlite.DB$ProgressObserver"
+}
+]
