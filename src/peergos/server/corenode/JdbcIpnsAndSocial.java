@@ -228,14 +228,4 @@ public class JdbcIpnsAndSocial {
             LOG.log(Level.WARNING, e.getMessage(), e);
         }
     }
-
-    public static Connection buildSqlLite(String dbPath) throws SQLException {
-        String url = "jdbc:sqlite:"+dbPath;
-        SQLiteDataSource dc = new SQLiteDataSource();
-        dc.setUrl(url);
-
-        Connection conn = dc.getConnection();
-        conn.setAutoCommit(true);
-        return conn;
-    }
 }
