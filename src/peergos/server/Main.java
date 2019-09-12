@@ -90,7 +90,8 @@ public class Main {
             Main::startPeergos,
             Stream.of(
                     new Command.Arg("port", "service port", false, "8000"),
-                    new Command.Arg("pki-node-id", "Ipfs node id of the pki node", true),
+                    new Command.Arg("peergos.identity.hash", "The hash of peergos user's public key, this is used to bootstrap the pki", true, "z59vuwzfFDp3ZA8ZpnnmHEuMtyA1q34m3Th49DYXQVJntWpxdGrRqXi"),
+                    new Command.Arg("pki-node-id", "Ipfs node id of the pki node", true, "QmVdFZgHnEgcedCS2G2ZNiEN59LuVrnRm7z3yXtEBv2XiF"),
                     new Command.Arg("domain", "Domain name to bind to,", false, "localhost"),
                     new Command.Arg("max-users", "The maximum number of local users", false, "1"),
                     new Command.Arg("useIPFS", "Use IPFS for storage or a local disk store", false, "true"),
