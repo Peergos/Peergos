@@ -1,6 +1,7 @@
 {
   "resources":[
     {"pattern":"META-INF/maven/org.xerial/sqlite-jdbc/pom.properties"}, 
+    {"pattern":"webroot/.*"}, 
     {"pattern":"native/Linux/amd64/libsqlitejdbc.so"}
   ]
 }
