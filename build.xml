@@ -84,17 +84,17 @@
     <touch millis="${timestamp.millis}">
       <fileset dir="${build}"/>
     </touch>
-    <jar jarfile="${dist}/PeergosServer.jar" basedir="${build}" includes="peergos/server/**,peergos/shared/**,peergos/client/**"></jar>
+    <jar jarfile="${dist}/Peergos.jar" basedir="${build}" includes="peergos/server/**,peergos/shared/**,peergos/client/**"></jar>
     <mkdir dir="META-INF"/>
     <echo file="META-INF/MANIFEST.MF">Main-Class: peergos.server.Main
 Class-Path: ${manifest_cp}</echo>
     <touch millis="0">
       <fileset dir="META-INF"/>
     </touch>
-    <zip destfile="${dist}/PeergosServer.jar" basedir="." includes="META-INF/MANIFEST.MF" update="true"></zip>
+    <zip destfile="${dist}/Peergos.jar" basedir="." includes="META-INF/MANIFEST.MF" update="true"></zip>
     <delete dir="META-INF"/>
     <copy todir=".">
-      <fileset file="${dist}/PeergosServer.jar"/>
+      <fileset file="${dist}/Peergos.jar"/>
     </copy>
   </target>
 
@@ -115,7 +115,7 @@ Class-Path: ${manifest_cp}</echo>
 	<pathelement location="lib/sqlite-jdbc-3.7.2.jar" />
 	<pathelement location="lib-build/junit-4.11.jar" />
 	<pathelement location="lib-build/hamcrest-core-1.3.jar" />
-	<pathelement location="PeergosServer.jar" />
+	<pathelement location="Peergos.jar" />
       </classpath>
       <formatter type="xml" />
       <batchtest todir="${test.reports}" skipNonTests="true">
