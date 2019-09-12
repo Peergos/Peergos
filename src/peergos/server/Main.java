@@ -85,7 +85,7 @@ public class Main {
             )
     );
 
-    public static final Command PEERGOS = new Command("peergos",
+    public static final Command PEERGOS = new Command("daemon",
             "The user facing Peergos server",
             Main::startPeergos,
             Stream.of(
