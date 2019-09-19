@@ -297,15 +297,15 @@ public abstract class UserTests {
         String password = "password";
         UserContext userContext = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         Boolean isFollowingPeergos = userContext.getFollowing().join().contains("peergos");
-        assertTrue("Following Peergos after sign-up", isFollowingPeergos.equals(true));
+        assertTrue("Following Peergos after sign-up", isFollowingPeergos));
         userContext.unfollow("peergos");
         isFollowingPeergos = userContext.getFollowing().join().contains("peergos");
-        assertTrue("Unfollowed Peergos", isFollowingPeergos.equals(false));
+        assertTrue("Unfollowed Peergos", isFollowingPeergos);
         userContext.logout();
         UserContext renewedUserContext = UserContext.signIn(username, password, network, crypto).join();
         renewedUserContext.ensureFollowingPeergos();
         isFollowingPeergos = renewedUserContext.getFollowing().join().contains("peergos");
-        assertTrue("Peergos user is being followed again", isFollowingPeergos.equals(true));
+        assertTrue("Peergos user is being followed again", isFollowingPeergos);
     }
 
     @Test
