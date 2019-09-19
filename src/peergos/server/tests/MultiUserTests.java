@@ -135,6 +135,49 @@ public class MultiUserTests {
         Assert.assertTrue("Different data key", ! UserTests.getDataKey(copy).equals(UserTests.getDataKey(u1File)));
     }
 
+    @Test
+    public void revokeReadAccessToWritableFile() {
+
+        UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
+        UserContext u2 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
+        UserContext u3 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
+        UserContext u4 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
+
+        List<UserContext> all = Arrays.asList(u1, u2, u3, u4);
+
+        // send follow requests from u1 to others
+        for (int i=1; i < all.size(); i++) {
+            UserContext target = all.get(i);
+            u1.sendFollowRequest(target.username, SymmetricKey.random()).join();
+
+            // make others reciprocate the follow request
+            List<FollowRequestWithCipherText> u1Requests = target.processFollowRequests().join();
+            for (FollowRequestWithCipherText u1Request : u1Requests) {
+                boolean accept = true;
+                boolean reciprocate = true;
+                target.sendReplyFollowRequest(u1Request, accept, reciprocate).join();
+            }
+        }
+
+        // complete the friendship connection
+        u1.processFollowRequests().join();
+
+        u1.getUserRoot().join().mkdir("subdir", u1.network, false, crypto).join();
+        byte[] fileData = "file data".getBytes();
+        AsyncReader reader = AsyncReader.build(fileData);
+        u1.getByPath(Paths.get(u1.username, "subdir")).join().get().uploadOrOverwriteFile("file.txt",
+                reader, fileData.length, u1.network, crypto, x -> {}, u1.crypto.random.randomBytes(32)).join();
+        Path filePath = Paths.get(u1.username, "subdir", "file.txt");
+        FileWrapper file = u1.getByPath(filePath).join().get();
+        u1.shareWriteAccessWith(filePath, Stream.of(u2.username).collect(Collectors.toSet())).join();
+        u1.shareWriteAccessWith(filePath, Stream.of(u3.username).collect(Collectors.toSet())).join();
+        u1.shareReadAccessWith(filePath, Stream.of(u4.username).collect(Collectors.toSet())).join();
+        u1.unShareReadAccess(filePath, Stream.of(u4.username).collect(Collectors.toSet())).join();
+
+        // check u1 can log in
+        UserContext freshContext = PeergosNetworkUtils.ensureSignedUp(u1.username, "a", network.clear(), crypto);
+        freshContext.getUserRoot().join().mkdir("Adir", network, false, crypto).join();
+    }
 
     @Test
     public void shareTwoFilesWithSameNameReadAccess() throws Exception {
