@@ -318,10 +318,11 @@ public class FileWrapper {
                     }).thenCompose(newVersion -> {
                         // only update link from parent folder to file if we are the first chunk
                         return (updateParent ?
-                                network.retrieveMetadata(this.writableFilePointer().withBaseKey(baseReadKey), newVersion)
-                                        .thenCompose(meta -> parent.pointer.fileAccess
-                                                .updateChildLink(newVersion, committer, parent.writableFilePointer(),
-                                                        parent.entryWriter, pointer, meta.get(), network, hasher)) :
+                                newVersion.withWriter(owner(), parent.writer(), network)
+                                        .thenCompose(withParent -> network.retrieveMetadata(this.writableFilePointer().withBaseKey(baseReadKey), withParent)
+                                                .thenCompose(meta -> parent.pointer.fileAccess
+                                                        .updateChildLink(withParent, committer, parent.writableFilePointer(),
+                                                                parent.entryWriter, pointer, meta.get(), network, hasher))) :
                                 CompletableFuture.completedFuture(newVersion)
                         );
                     }).thenApply(x -> {
