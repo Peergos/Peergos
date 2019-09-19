@@ -302,9 +302,9 @@ public abstract class UserTests {
         isFollowingPeergos = userContext.getFollowing().join().contains("peergos");
         assertTrue("Unfollowed Peergos", isFollowingPeergos.equals(false));
         userContext.logout();
-        UserContext renewedUserContext = UserContext.login(username, password, network, crypto).join();
+        UserContext renewedUserContext = UserContext.signIn(username, password, network, crypto).join();
         renewedUserContext.ensureFollowingPeergos();
-        isFollowingPeergos = renewedUserContext.getFollowing().get().contains("peergos");
+        isFollowingPeergos = renewedUserContext.getFollowing().join().contains("peergos");
         assertTrue("Peergos user is being followed again", isFollowingPeergos.equals(true));
     }
 
