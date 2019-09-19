@@ -136,7 +136,7 @@ public class MultiUserTests {
     }
 
     @Test
-    public void writeAccessVariation() {
+    public void revokeReadAccessToWritableFile() {
 
         UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
         UserContext u2 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
