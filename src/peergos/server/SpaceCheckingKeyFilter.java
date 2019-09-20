@@ -405,7 +405,11 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
     public void processCorenodeEvent(String username, PublicKeyHash writer) {
         try {
             state.usage.putIfAbsent(username, new Usage(0));
-            Set<PublicKeyHash> childrenKeys = WriterData.getDirectOwnedKeys(writer, writer, mutable, dht).join();
+            Set<PublicKeyHash> childrenKeys = WriterData.getDirectOwnedKeys(writer, writer, mutable, dht)
+                    .join()
+                    .stream()
+                    .filter(k -> ! k.equals(writer))
+                    .collect(Collectors.toSet());
             state.currentView.computeIfAbsent(writer, k -> new Stat(username, MaybeMultihash.empty(), 0, childrenKeys));
             Stat current = state.currentView.get(writer);
             MaybeMultihash updatedRoot = mutable.getPointerTarget(writer, writer, dht).get();
