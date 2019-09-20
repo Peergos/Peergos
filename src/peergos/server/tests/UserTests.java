@@ -292,7 +292,7 @@ public abstract class UserTests {
         Assert.assertTrue("Malicious pointer update failed", updated.equals(current));
     }
 
-    public void ensurePeergosUserIsFollowed() throws Exception {
+    public void ensureUserIsTryingToFollowPeergos() throws Exception {
         String username = generateUsername();
         String password = "password";
         UserContext userContext = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
