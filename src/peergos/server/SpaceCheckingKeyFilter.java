@@ -354,7 +354,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
     private static State load(Path statePath) throws IOException {
         Logging.LOG().info("Reading state from "+ statePath +" which exists ? "+ Files.exists(statePath) +" from cwd "+ System.getProperty("cwd"));
         byte[] data = Files.readAllBytes(statePath);
-        CborObject object = CborObject.deserialize(new CborDecoder(new ByteArrayInputStream(data)), 1000);
+        CborObject object = CborObject.deserialize(new CborDecoder(new ByteArrayInputStream(data)), data.length);
         return State.fromCbor(object);
     }
 
