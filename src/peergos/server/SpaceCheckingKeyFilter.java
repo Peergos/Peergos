@@ -377,8 +377,9 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
     public void calculateUsage() {
         try {
             List<String> usernames = quotaSupplier.getLocalUsernames();
+            Logging.LOG().info("Calculating space usage for " + usernames.size() + " local users...");
             for (String username : usernames) {
-                Logging.LOG().info("Calculating space usage of "+username);
+                Logging.LOG().info("Calculating space usage of " + username);
                 try {
                     Optional<PublicKeyHash> identity = core.getPublicKeyHash(username).get();
                     if (identity.isPresent()) {
@@ -390,6 +391,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                     LOG.log(Level.WARNING, "ERROR calculating usage for user: " + username + "\n" + e.getMessage(), e);
                 }
             }
+            Logging.LOG().info("Finished calculating space usage for " + usernames.size() + " local users...");
         } catch (Exception e) {
             LOG.log(Level.WARNING, e.getMessage(), e);
         }
