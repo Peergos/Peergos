@@ -40,7 +40,7 @@ public class Main {
         PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, new Ed25519.Java());
     }
 
-    public static Command ENSURE_IPFS_INSTALLED = new Command("install-ipfs",
+    public static Command<Boolean> ENSURE_IPFS_INSTALLED = new Command<>("install-ipfs",
             "Download/update IPFS binary. Does nothing if current IPFS binary is up-to-date.",
             args -> {
                 Path ipfsExePath = IpfsWrapper.getIpfsExePath(args);
@@ -59,6 +59,7 @@ public class Main {
                 for (IpfsInstaller.Plugin plugin : plugins) {
                     plugin.ensureInstalled(ipfsDir);
                 }
+                return true;
             },
             Arrays.asList(
                     new Command.Arg("ipfs-exe-path", "Desired path to IPFS executable. Defaults to $PEERGOS_PATH/ipfs", false),
@@ -71,7 +72,7 @@ public class Main {
                     new Command.Arg("s3.region.endpoint", "Base url for S3 service", false)
             )
     );
-    public static Command IPFS = new Command("ipfs",
+    public static Command<IpfsWrapper> IPFS = new Command<>("ipfs",
             "Start IPFS daemon and ensure configuration, optionally manage runtime.",
             Main::startIpfs,
             Arrays.asList(
@@ -85,7 +86,7 @@ public class Main {
             )
     );
 
-    public static final Command PEERGOS = new Command("daemon",
+    public static final Command<UserService> PEERGOS = new Command<>("daemon",
             "The user facing Peergos server",
             Main::startPeergos,
             Stream.of(
@@ -105,124 +106,105 @@ public class Main {
             ).collect(Collectors.toList())
     );
 
-    public static final Command BOOTSTRAP = new Command("bootstrap",
-            "Bootstrap a new peergos network\n" +
-                    "This means creating a pki keypair and publishing the public key",
-            args -> {
-                try {
-                    Crypto crypto = Crypto.initJava();
-                    // setup peergos user and pki keys
-                    String testpassword = args.getArg("peergos.password");
-                    String pkiUsername = "peergos";
-                    UserWithRoot peergos = UserUtil.generateUser(pkiUsername, testpassword, crypto.hasher, crypto.symmetricProvider,
-                            crypto.random, crypto.signer, crypto.boxer, SecretGenerationAlgorithm.getDefaultWithoutExtraSalt()).get();
+    private static final void bootstrap(Args args) {
+        try {
+            // This means creating a pki keypair and publishing the public key
+            Crypto crypto = Crypto.initJava();
+            // setup peergos user and pki keys
+            String testpassword = args.getArg("peergos.password");
+            String pkiUsername = "peergos";
+            UserWithRoot peergos = UserUtil.generateUser(pkiUsername, testpassword, crypto.hasher, crypto.symmetricProvider,
+                    crypto.random, crypto.signer, crypto.boxer, SecretGenerationAlgorithm.getDefaultWithoutExtraSalt()).get();
 
-                    boolean useIPFS = args.getBoolean("useIPFS");
-                    String ipfsApiAddress = args.getArg("ipfs-api-address", "/ip4/127.0.0.1/tcp/5001");
-                    ContentAddressedStorage dht = useIPFS ?
-                            new IpfsDHT(new MultiAddress(ipfsApiAddress)) :
-                            new FileContentAddressedStorage(blockstorePath(args));
+            boolean useIPFS = args.getBoolean("useIPFS");
+            String ipfsApiAddress = args.getArg("ipfs-api-address", "/ip4/127.0.0.1/tcp/5001");
+            ContentAddressedStorage dht = useIPFS ?
+                    new IpfsDHT(new MultiAddress(ipfsApiAddress)) :
+                    new FileContentAddressedStorage(blockstorePath(args));
 
-                    SigningKeyPair peergosIdentityKeys = peergos.getUser();
-                    PublicKeyHash peergosPublicHash = ContentAddressedStorage.hashKey(peergosIdentityKeys.publicSigningKey);
+            SigningKeyPair peergosIdentityKeys = peergos.getUser();
+            PublicKeyHash peergosPublicHash = ContentAddressedStorage.hashKey(peergosIdentityKeys.publicSigningKey);
 
-                    String pkiPassword = args.getArg("pki.keygen.password");
-                    SigningKeyPair pkiKeys = UserUtil.generateUser(pkiUsername, pkiPassword, crypto.hasher, crypto.symmetricProvider,
-                            crypto.random, crypto.signer, crypto.boxer, SecretGenerationAlgorithm.getDefaultWithoutExtraSalt()).get().getUser();
-                    IpfsTransaction.call(peergosPublicHash,
-                            tid -> dht.putSigningKey(peergosIdentityKeys.secretSigningKey.signatureOnly(
-                                    pkiKeys.publicSigningKey.serialize()),
-                                    peergosPublicHash,
-                                    pkiKeys.publicSigningKey, tid), dht).get();
+            String pkiPassword = args.getArg("pki.keygen.password");
+            SigningKeyPair pkiKeys = UserUtil.generateUser(pkiUsername, pkiPassword, crypto.hasher, crypto.symmetricProvider,
+                    crypto.random, crypto.signer, crypto.boxer, SecretGenerationAlgorithm.getDefaultWithoutExtraSalt()).get().getUser();
+            IpfsTransaction.call(peergosPublicHash,
+                    tid -> dht.putSigningKey(peergosIdentityKeys.secretSigningKey.signatureOnly(
+                            pkiKeys.publicSigningKey.serialize()),
+                            peergosPublicHash,
+                            pkiKeys.publicSigningKey, tid), dht).get();
 
-                    String pkiKeyfilePassword = args.getArg("pki.keyfile.password");
-                    Cborable cipherTextCbor = PasswordProtected.encryptWithPassword(pkiKeys.secretSigningKey.toCbor().toByteArray(),
-                            pkiKeyfilePassword,
-                            crypto.hasher,
-                            crypto.symmetricProvider,
-                            crypto.random);
-                    Files.write(args.fromPeergosDir("pki.secret.key.path"), cipherTextCbor.serialize());
-                    Files.write(args.fromPeergosDir("pki.public.key.path"), pkiKeys.publicSigningKey.toCbor().toByteArray());
-                    args.setIfAbsent("peergos.identity.hash", peergosPublicHash.toString());
-                    System.out.println("Peergos user identity hash: " + peergosPublicHash);
+            String pkiKeyfilePassword = args.getArg("pki.keyfile.password");
+            Cborable cipherTextCbor = PasswordProtected.encryptWithPassword(pkiKeys.secretSigningKey.toCbor().toByteArray(),
+                    pkiKeyfilePassword,
+                    crypto.hasher,
+                    crypto.symmetricProvider,
+                    crypto.random);
+            Files.write(args.fromPeergosDir("pki.secret.key.path"), cipherTextCbor.serialize());
+            Files.write(args.fromPeergosDir("pki.public.key.path"), pkiKeys.publicSigningKey.toCbor().toByteArray());
+            args.setIfAbsent("peergos.identity.hash", peergosPublicHash.toString());
+            System.out.println("Peergos user identity hash: " + peergosPublicHash);
 
-                } catch (Exception e) {
-                    e.printStackTrace();
-                    System.exit(1);
-                }
-            },
-            Arrays.asList(
-                    new Command.Arg("useIPFS", "Use IPFS for storage or ephemeral RAM store", false, "true"),
-                    new Command.Arg("peergos.password",
-                            "The password for the peergos user required to bootstrap the network", true),
-                    new Command.Arg("pki.keygen.password", "The password used to generate the pki key pair", true),
-                    new Command.Arg("pki.keyfile.password", "The password used to protect the pki private key on disk", true),
-                    new Command.Arg("pki.public.key.path", "The path to the pki public key file", true),
-                    new Command.Arg("pki.secret.key.path", "The path to the pki secret key file", true)
-            )
-    );
+        } catch (Exception e) {
+            e.printStackTrace();
+            System.exit(1);
+        }
+    }
 
-    public static final Command POSTSTRAP = new Command("poststrap",
-            "The final step of bootstrapping a new peergos network, which must be run once after network bootstrap\n" +
-                    "This means signing up the peergos user, and adding the pki public key to the peergos user",
-            args -> {
-                try {
-                    Crypto crypto = Crypto.initJava();
-                    // recreate peergos user and pki keys
-                    String password = args.getArg("peergos.password");
-                    String pkiUsername = "peergos";
-                    UserWithRoot peergos = UserUtil.generateUser(pkiUsername, password, crypto.hasher, crypto.symmetricProvider,
-                            crypto.random, crypto.signer, crypto.boxer, SecretGenerationAlgorithm.getDefaultWithoutExtraSalt()).get();
+    public static final void poststrap(Args args) {
+        try {
+            // The final step of bootstrapping a new peergos network, which must be run once after network bootstrap
+            // This means signing up the peergos user, and adding the pki public key to the peergos user
+            Crypto crypto = Crypto.initJava();
+            // recreate peergos user and pki keys
+            String password = args.getArg("peergos.password");
+            String pkiUsername = "peergos";
+            UserWithRoot peergos = UserUtil.generateUser(pkiUsername, password, crypto.hasher, crypto.symmetricProvider,
+                    crypto.random, crypto.signer, crypto.boxer, SecretGenerationAlgorithm.getDefaultWithoutExtraSalt()).get();
 
-                    SigningKeyPair peergosIdentityKeys = peergos.getUser();
-                    PublicKeyHash peergosPublicHash = ContentAddressedStorage.hashKey(peergosIdentityKeys.publicSigningKey);
-                    PublicSigningKey pkiPublic =
-                            PublicSigningKey.fromByteArray(
-                                    Files.readAllBytes(args.fromPeergosDir("pki.public.key.path")));
-                    PublicKeyHash pkiPublicHash = ContentAddressedStorage.hashKey(pkiPublic);
-                    int webPort = args.getInt("port");
-                    NetworkAccess network = NetworkAccess.buildJava(new URL("http://localhost:" + webPort)).get();
-                    String pkiFilePassword = args.getArg("pki.keyfile.password");
-                    SecretSigningKey pkiSecret =
-                            SecretSigningKey.fromCbor(CborObject.fromByteArray(PasswordProtected.decryptWithPassword(
-                                    CborObject.fromByteArray(Files.readAllBytes(args.fromPeergosDir("pki.secret.key.path"))),
-                                    pkiFilePassword, crypto.hasher, crypto.symmetricProvider, crypto.random)));
+            SigningKeyPair peergosIdentityKeys = peergos.getUser();
+            PublicKeyHash peergosPublicHash = ContentAddressedStorage.hashKey(peergosIdentityKeys.publicSigningKey);
+            PublicSigningKey pkiPublic =
+                    PublicSigningKey.fromByteArray(
+                            Files.readAllBytes(args.fromPeergosDir("pki.public.key.path")));
+            PublicKeyHash pkiPublicHash = ContentAddressedStorage.hashKey(pkiPublic);
+            int webPort = args.getInt("port");
+            NetworkAccess network = NetworkAccess.buildJava(new URL("http://localhost:" + webPort)).get();
+            String pkiFilePassword = args.getArg("pki.keyfile.password");
+            SecretSigningKey pkiSecret =
+                    SecretSigningKey.fromCbor(CborObject.fromByteArray(PasswordProtected.decryptWithPassword(
+                            CborObject.fromByteArray(Files.readAllBytes(args.fromPeergosDir("pki.secret.key.path"))),
+                            pkiFilePassword, crypto.hasher, crypto.symmetricProvider, crypto.random)));
 
-                    // sign up peergos user
-                    SecretGenerationAlgorithm algorithm = SecretGenerationAlgorithm.getDefaultWithoutExtraSalt();
-                    UserContext context = UserContext.signUpGeneral(pkiUsername, password, network, crypto, algorithm, x -> {}).get();
-                    Optional<PublicKeyHash> existingPkiKey = context.getNamedKey("pki").get();
-                    if (!existingPkiKey.isPresent() || existingPkiKey.get().equals(pkiPublicHash)) {
-                        SigningPrivateKeyAndPublicHash pkiKeyPair = new SigningPrivateKeyAndPublicHash(pkiPublicHash, pkiSecret);
+            // sign up peergos user
+            SecretGenerationAlgorithm algorithm = SecretGenerationAlgorithm.getDefaultWithoutExtraSalt();
+            UserContext context = UserContext.signUpGeneral(pkiUsername, password, network, crypto, algorithm, x -> {}).get();
+            Optional<PublicKeyHash> existingPkiKey = context.getNamedKey("pki").get();
+            if (!existingPkiKey.isPresent() || existingPkiKey.get().equals(pkiPublicHash)) {
+                SigningPrivateKeyAndPublicHash pkiKeyPair = new SigningPrivateKeyAndPublicHash(pkiPublicHash, pkiSecret);
 
-                        // write pki public key to ipfs
-                        IpfsTransaction.call(peergosPublicHash,
-                                tid -> network.dhtClient.putSigningKey(peergosIdentityKeys.secretSigningKey
+                // write pki public key to ipfs
+                IpfsTransaction.call(peergosPublicHash,
+                        tid -> network.dhtClient.putSigningKey(peergosIdentityKeys.secretSigningKey
                                 .signatureOnly(pkiPublic.serialize()), peergosPublicHash, pkiPublic, tid),
-                                network.dhtClient).get();
-                        context.addNamedOwnedKeyAndCommit("pki", pkiKeyPair).join();
-                    }
-                    // Create /peergos/releases and make it public
-                    Optional<FileWrapper> releaseDir = context.getByPath(Paths.get(pkiUsername, "releases")).join();
-                    if (! releaseDir.isPresent()) {
-                        context.getUserRoot().join().mkdir("releases", network, false,
-                                crypto).join();
-                        FileWrapper releases = context.getByPath(Paths.get(pkiUsername, "releases")).join().get();
-                        context.makePublic(releases).join();
-                    }
-                } catch (Exception e) {
-                    e.printStackTrace();
-                    System.exit(1);
-                }
-            },
-            Arrays.asList(
-                    new Command.Arg("peergos.password",
-                            "The password for the peergos user required to bootstrap the network", true),
-                    new Command.Arg("pki.public.key.path", "The path to the pki public key file", true)
-            )
-    );
+                        network.dhtClient).get();
+                context.addNamedOwnedKeyAndCommit("pki", pkiKeyPair).join();
+            }
+            // Create /peergos/releases and make it public
+            Optional<FileWrapper> releaseDir = context.getByPath(Paths.get(pkiUsername, "releases")).join();
+            if (! releaseDir.isPresent()) {
+                context.getUserRoot().join().mkdir("releases", network, false,
+                        crypto).join();
+                FileWrapper releases = context.getByPath(Paths.get(pkiUsername, "releases")).join().get();
+                context.makePublic(releases).join();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            System.exit(1);
+        }
+    }
 
-    public static final Command PKI_INIT = new Command("pki-init",
+    public static final Command<UserService> PKI_INIT = new Command<>("pki-init",
             "Bootstrap and start the Peergos PKI Server",
             args -> {
                 try {
@@ -238,7 +220,7 @@ public class Main {
                     }
 
                     args.setArg("ipfs-api-address", getLocalMultiAddress(ipfsApiPort).toString());
-                    BOOTSTRAP.main(args);
+                    bootstrap(args);
 
                     Multihash pkiIpfsNodeId = useIPFS ?
                             new IpfsDHT(getLocalMultiAddress(ipfsApiPort)).id().get() :
@@ -247,8 +229,9 @@ public class Main {
                     if (ipfs != null)
                         ipfs.stop();
                     args.setIfAbsent("pki-node-id", pkiIpfsNodeId.toBase58());
-                    PEERGOS.main(args);
-                    POSTSTRAP.main(args);
+                    UserService daemon = PEERGOS.main(args);
+                    poststrap(args);
+                    return daemon;
                 } catch (Exception e) {
                     throw new RuntimeException(e.getMessage(), e);
                 }
@@ -271,7 +254,7 @@ public class Main {
             )
     );
 
-    public static final Command PKI = new Command("pki",
+    public static final Command<UserService> PKI = new Command<>("pki",
             "Start the Peergos PKI Server that has already been bootstrapped",
             args -> {
                 try {
@@ -295,7 +278,7 @@ public class Main {
                     if (ipfs != null)
                         ipfs.stop();
                     args.setIfAbsent("pki-node-id", pkiIpfsNodeId.toBase58());
-                    PEERGOS.main(args);
+                    return PEERGOS.main(args);
                 } catch (Exception e) {
                     throw new RuntimeException(e.getMessage(), e);
                 }
@@ -317,7 +300,7 @@ public class Main {
             )
     );
 
-    public static final Command FUSE = new Command("fuse",
+    public static final Command<FuseProcess> FUSE = new Command<>("fuse",
             "Mount a Peergos user's filesystem natively",
             Main::startFuse,
             Stream.of(
@@ -328,7 +311,7 @@ public class Main {
             ).collect(Collectors.toList())
     );
 
-    public static void startPeergos(Args a) {
+    public static UserService startPeergos(Args a) {
         try {
             Crypto crypto = Crypto.initJava();
             int webPort = a.getInt("port");
@@ -483,13 +466,13 @@ public class Main {
                     }
                 }).start();
             }
+            return peergos;
         } catch (Exception e) {
-            e.printStackTrace();
-            System.exit(1);
+            throw new RuntimeException(e);
         }
     }
 
-    public static void startFuse(Args a) {
+    public static FuseProcess startFuse(Args a) {
         String username = a.getArg("username");
         String password = a.getArg("password");
 
@@ -515,6 +498,7 @@ public class Main {
             Runtime.getRuntime().addShutdownHook(new Thread(() -> fuseProcess.close(), "Fuse shutdown"));
 
             fuseProcess.start();
+            return fuseProcess;
         } catch (Exception ex) {
             throw new IllegalStateException(ex);
         }
@@ -575,10 +559,11 @@ public class Main {
         }
     }
 
-    public static final Command MAIN = new Command("Main",
+    public static final Command<Void> MAIN = new Command<>("Main",
             "Run a Peergos command",
             args -> {
                 System.out.println("Run with -help to show options");
+                return null;
             },
             Collections.emptyList(),
             Arrays.asList(

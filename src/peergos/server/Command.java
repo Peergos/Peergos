@@ -4,10 +4,10 @@ import peergos.server.util.Args;
 import peergos.server.util.Logging;
 
 import java.util.*;
-import java.util.function.Consumer;
+import java.util.function.*;
 import java.util.stream.Collectors;
 
-public class Command {
+public class Command<V> {
     public static class Arg {
         public final String name, description;
         public final boolean isRequired;
@@ -29,19 +29,18 @@ public class Command {
     }
 
     public final String name, description;
-    public final Consumer<Args> entryPoint;
+    public final Function<Args, V> entryPoint;
     public final List<Arg> params;// with description
     public final Map<String, Command> subCommands;
 
-
     public Command(String name, String description,
-                   Consumer<Args> entryPoint,
+                   Function<Args, V> entryPoint,
                    List<Arg> params) {
         this(name,description, entryPoint, params, Collections.emptyList());
     }
 
     public Command(String name, String description,
-                   Consumer<Args> entryPoint,
+                   Function<Args, V> entryPoint,
                    List<Arg> params,
                    List<Command> subCommands) {
         this.name = name;
@@ -51,7 +50,7 @@ public class Command {
         this.subCommands = subCommands.stream().collect(Collectors.toMap(c -> c.name, c -> c));
     }
 
-    public void main(Args args) {
+    public V main(Args args) {
         for (Arg param : params) {
             param.defaultValue.ifPresent(def -> args.setIfAbsent(param.name, def));
         }
@@ -61,18 +60,17 @@ public class Command {
             String head = headOpt.get();
             if (head.equals("help")) {
                 System.out.println(helpMessage());
-                return;
+                return null;
             }
             if (subCommands.containsKey(head)) {
                 subCommands.get(head).main(args.tail());
-                return;
+                return null;
             }
         }
 
         ensureArgs(args);
         Logging.init(args);
-        Runnable runnable = () -> entryPoint.accept(args);
-        runnable.run();
+        return entryPoint.apply(args);
     }
 
     private void ensureArgs(Args args) {
