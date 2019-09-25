@@ -51,13 +51,24 @@ public class MultiUserTests {
         PublicKeyHash identity = network.coreNode.getPublicKeyHash(username).join().get();
         WriterData props = WriterData.getWriterData(identity, identity, network.mutable, network.dhtClient).join().props;
         OwnedKeyChamp ownedChamp = props.getOwnedKeyChamp(network.dhtClient).join();
-        Set<PublicKeyHash> empty = Collections.emptySet();
-        Set<PublicKeyHash> keys = ownedChamp.applyToAllMappings(empty,
-                (a, b) -> CompletableFuture.completedFuture(Stream.concat(a.stream(), Stream.of(b.left)).collect(Collectors.toSet())),
+        Set<OwnerProof> empty = Collections.emptySet();
+        Set<OwnerProof> claims = ownedChamp.applyToAllMappings(empty,
+                (a, b) -> CompletableFuture.completedFuture(Stream.concat(a.stream(), Stream.of(b.right)).collect(Collectors.toSet())),
                 network.dhtClient).join();
-        if (keys.size() != 1)
+        Set<PublicKeyHash> ownedKeys = claims.stream()
+                .map(p -> p.ownedKey)
+                .collect(Collectors.toSet());
+        Set<Pair<PublicKeyHash, PublicKeyHash>> pairs = claims.stream()
+                .map(p -> new Pair<>(p.getOwner(network.dhtClient).join(), p.ownedKey))
+                .collect(Collectors.toSet());
+        Set<PublicKeyHash> ownerKeys = pairs.stream()
+                .map(p -> p.left)
+                .collect(Collectors.toSet());
+        if (claims.size() != 1)
             throw new IllegalStateException("More than 1 owned key on identity key pair for " + username);
-        if (keys.contains(identity))
+        if (ownerKeys.size() != 1)
+            throw new IllegalStateException("More than 1 owner key on identity key pair for " + username);
+        if (ownedKeys.contains(identity))
             throw new IllegalStateException("Identity key pair owns itself!");
     }
 
