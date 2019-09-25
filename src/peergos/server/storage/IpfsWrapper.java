@@ -9,6 +9,7 @@ import peergos.shared.user.*;
 import peergos.shared.util.*;
 
 import java.io.*;
+import java.net.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -230,6 +231,21 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
         for (int i=0; i < 6; i++) {
             try {
                 runIpfsCmd(true, "p2p", "listen", "--allow-custom-protocol", "/http", target.toString());
+                return;
+            } catch (IllegalStateException error) {
+                try {Thread.sleep(sleep);} catch (InterruptedException e) {}
+                sleep *= 2;
+            }
+        }
+    }
+
+    public void connectToNode(InetSocketAddress addr, Multihash nodeId) {
+        long sleep = 1000;
+        String target = (addr.getAddress() instanceof Inet4Address ? "/ip4/" : "/ip6/") + addr.getAddress().toString()
+        + "/tcp/" + addr.getPort() + " /ipfs/" + nodeId.toString();
+        for (int i=0; i < 6; i++) {
+            try {
+                runIpfsCmd(true, "swarm", "connect", target);
                 return;
             } catch (IllegalStateException error) {
                 try {Thread.sleep(sleep);} catch (InterruptedException e) {}

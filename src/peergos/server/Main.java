@@ -93,6 +93,7 @@ public class Main {
                     new Command.Arg("port", "service port", false, "8000"),
                     new Command.Arg("peergos.identity.hash", "The hash of peergos user's public key, this is used to bootstrap the pki", true, "z59vuwzfFDp3ZA8ZpnnmHEuMtyA1q34m3Th49DYXQVJntWpxdGrRqXi"),
                     new Command.Arg("pki-node-id", "Ipfs node id of the pki node", true, "QmVdFZgHnEgcedCS2G2ZNiEN59LuVrnRm7z3yXtEBv2XiF"),
+                    new Command.Arg("pki.node.ipaddress", "IP address of the pki node", true, "172.104.157.121"),
                     new Command.Arg("domain", "Domain name to bind to,", false, "localhost"),
                     new Command.Arg("max-users", "The maximum number of local users", false, "1"),
                     new Command.Arg("useIPFS", "Use IPFS for storage or a local disk store", false, "true"),
@@ -319,9 +320,10 @@ public class Main {
             a.setIfAbsent("proxy-target", localPeergosApi.toString());
 
             boolean useIPFS = a.getBoolean("useIPFS");
+            IpfsWrapper ipfsWrapper = null;
             if (useIPFS) {
                 ENSURE_IPFS_INSTALLED.main(a);
-                IPFS.main(a);
+                ipfsWrapper = IPFS.main(a);
             }
 
             Multihash pkiServerNodeId = Cid.decode(a.getArg("pki-node-id"));
@@ -425,8 +427,12 @@ public class Main {
             Optional<UserService.TlsProperties> tlsProps =
                     tlsHostname.map(host -> new UserService.TlsProperties(host, a.getArg("tls.keyfile.password")));
             peergos.initAndStart(localAddress, tlsProps, webroot, useWebAssetCache);
-            if (! isPkiNode)
+            if (! isPkiNode) {
+                int pkiNodeSwarmPort = a.getInt("pki.node.swarm.port", 5001);
+                InetAddress pkiNodeIpAddress = InetAddress.getByName(a.getArg("pki.node.ipaddress"));
+                ipfsWrapper.connectToNode(new InetSocketAddress(pkiNodeIpAddress, pkiNodeSwarmPort), pkiServerNodeId);
                 ((MirrorCoreNode) core).start();
+            }
             spaceChecker.calculateUsage();
 
             if (a.hasArg("mirror.node.id")) {
