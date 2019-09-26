@@ -185,6 +185,7 @@ public class WriterData implements Cborable {
                                                     SymmetricKey currentKey,
                                                     SymmetricKey newKey,
                                                     SecretGenerationAlgorithm newAlgorithm,
+                                                    Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> ownedKeys,
                                                     NetworkAccess network) {
 
         network.synchronizer.putEmpty(oldSigner.publicKeyHash, signer.publicKeyHash);
@@ -195,14 +196,25 @@ public class WriterData implements Cborable {
                     return network.dhtClient.putBoxingKey(oldSigner.publicKeyHash,
                             oldSigner.secret.signatureOnly(followRequestReceiver.serialize()),
                             followRequestReceiver, tid
-                    ).thenApply(boxerHash -> new WriterData(signer.publicKeyHash,
-                            Optional.of(newAlgorithm),
-                            publicData,
-                            Optional.of(new PublicKeyHash(boxerHash)),
-                            ownedKeys,
-                            namedOwnedKeys,
-                            newEntryPoints,
-                            tree));
+                    ).thenCompose(boxerHash -> OwnedKeyChamp.createEmpty(oldSigner.publicKeyHash, oldSigner, network.dhtClient, tid)
+                            .thenCompose(ownedRoot -> {
+                                // need to add all our owned keys back with the new owner, except for the new signer itself
+                                WriterData base = new WriterData(signer.publicKeyHash,
+                                        Optional.of(newAlgorithm),
+                                        publicData,
+                                        Optional.of(new PublicKeyHash(boxerHash)),
+                                        Optional.of(ownedRoot),
+                                        namedOwnedKeys,
+                                        newEntryPoints,
+                                        tree);
+                                return getOwnedKeyChamp(network.dhtClient)
+                                        .thenCompose(okChamp -> okChamp.applyToAllMappings(base, (nwd, p) ->
+                                                p.left.equals(signer.publicKeyHash) ? Futures.of(nwd) :
+                                                nwd.addOwnedKey(oldSigner.publicKeyHash, signer,
+                                                        OwnerProof.build(ownedKeys.get(p.left), signer.publicKeyHash),
+                                                        network.dhtClient), network.dhtClient)
+                                        );
+                            }));
                 })
                 .thenApply(version -> version.get(signer).props)
                 .exceptionally(t -> {

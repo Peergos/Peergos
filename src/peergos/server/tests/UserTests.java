@@ -229,11 +229,14 @@ public abstract class UserTests {
         UserContext userContext = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         String newPassword = "newPassword";
         userContext.changePassword(password, newPassword).get();
+        MultiUserTests.checkUserValidity(network, username);
+
         UserContext changedPassword = PeergosNetworkUtils.ensureSignedUp(username, newPassword, network, crypto);
 
         // change it again
         String password3 = "pass3";
         changedPassword.changePassword(newPassword, password3).get();
+        MultiUserTests.checkUserValidity(network, username);
         PeergosNetworkUtils.ensureSignedUp(username, password3, network, crypto);
     }
 

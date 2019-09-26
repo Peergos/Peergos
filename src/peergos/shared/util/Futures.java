@@ -9,6 +9,10 @@ import java.util.stream.*;
 
 public class Futures {
 
+    public static final <T> CompletableFuture<T> of(T val) {
+        return CompletableFuture.completedFuture(val);
+    }
+
     /**
      *
      * @param futures collection of independent futures whose results we want to combine
