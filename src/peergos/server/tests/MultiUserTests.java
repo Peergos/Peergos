@@ -58,6 +58,8 @@ public class MultiUserTests {
                                          Set<PublicKeyHash> ancestors,
                                          NetworkAccess network) {
         WriterData props = WriterData.getWriterData(owner, writer, network.mutable, network.dhtClient).join().props;
+        if (! props.ownedKeys.isPresent())
+            return;
         OwnedKeyChamp ownedChamp = props.getOwnedKeyChamp(network.dhtClient).join();
         Set<OwnerProof> empty = Collections.emptySet();
         Set<OwnerProof> claims = ownedChamp.applyToAllMappings(empty,
