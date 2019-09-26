@@ -2,6 +2,7 @@ package peergos.server.util;
 
 import org.junit.Assert;
 import peergos.server.storage.ResetableFileInputStream;
+import peergos.server.tests.*;
 import peergos.shared.Crypto;
 import peergos.shared.NetworkAccess;
 import peergos.shared.crypto.symmetric.SymmetricKey;
@@ -252,6 +253,7 @@ public class PeergosNetworkUtils {
                     .findAny();
             assertTrue("Shared file present via root.getChildren()", sharedFile.isPresent());
         }
+        MultiUserTests.checkUserValidity(sharerNode, sharerUsername);
 
         UserContext userToUnshareWith = shareeUsers.stream().findFirst().get();
 
@@ -302,6 +304,7 @@ public class PeergosNetworkUtils {
         byte[] newFileContents = Serialize.readFully(extendedContents, originalFileContents.length + suffix.length).get();
 
         Assert.assertTrue(Arrays.equals(newFileContents, ArrayOps.concat(originalFileContents, suffix)));
+        MultiUserTests.checkUserValidity(sharerNode, sharerUsername);
     }
 
     public static void grantAndRevokeDirReadAccess(NetworkAccess sharerNode, NetworkAccess shareeNode, int shareeCount, Random random) throws Exception {
@@ -516,6 +519,8 @@ public class PeergosNetworkUtils {
             Assert.assertTrue("Correct children", sharedChildNames.equals(childNames));
         }
 
+        MultiUserTests.checkUserValidity(sharerNode, sharerUsername);
+
         UserContext updatedSharer = PeergosNetworkUtils.ensureSignedUp(sharerUsername, sharerPassword, sharerNode.clear(), crypto);
 
         List<UserContext> updatedSharees = shareeUsers.stream()
@@ -570,6 +575,7 @@ public class PeergosNetworkUtils {
                 Assert.assertTrue("Correct children", sharedChildNames.equals(childNames));
             }
         }
+        MultiUserTests.checkUserValidity(sharerNode, sharerUsername);
     }
 
     public static void shareFolderForWriteAccess(NetworkAccess sharerNode, NetworkAccess shareeNode, int shareeCount, Random random) throws Exception {

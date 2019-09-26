@@ -47,6 +47,31 @@ public class MultiUserTests {
         Main.PKI_INIT.main(args);
     }
 
+    public static void checkUserValidity(NetworkAccess network, String username) {
+        PublicKeyHash identity = network.coreNode.getPublicKeyHash(username).join().get();
+        WriterData props = WriterData.getWriterData(identity, identity, network.mutable, network.dhtClient).join().props;
+        OwnedKeyChamp ownedChamp = props.getOwnedKeyChamp(network.dhtClient).join();
+        Set<OwnerProof> empty = Collections.emptySet();
+        Set<OwnerProof> claims = ownedChamp.applyToAllMappings(empty,
+                (a, b) -> CompletableFuture.completedFuture(Stream.concat(a.stream(), Stream.of(b.right)).collect(Collectors.toSet())),
+                network.dhtClient).join();
+        Set<PublicKeyHash> ownedKeys = claims.stream()
+                .map(p -> p.ownedKey)
+                .collect(Collectors.toSet());
+        Set<Pair<PublicKeyHash, PublicKeyHash>> pairs = claims.stream()
+                .map(p -> new Pair<>(p.getOwner(network.dhtClient).join(), p.ownedKey))
+                .collect(Collectors.toSet());
+        Set<PublicKeyHash> ownerKeys = pairs.stream()
+                .map(p -> p.left)
+                .collect(Collectors.toSet());
+        if (claims.size() != 1)
+            throw new IllegalStateException("More than 1 owned key on identity key pair for " + username);
+        if (ownerKeys.size() != 1)
+            throw new IllegalStateException("More than 1 owner key on identity key pair for " + username);
+        if (ownedKeys.contains(identity))
+            throw new IllegalStateException("Identity key pair owns itself!");
+    }
+
     private List<UserContext> getUserContexts(int size, List<String> passwords) {
         return getUserContextsForNode(network, random, size, passwords);
     }
@@ -177,6 +202,7 @@ public class MultiUserTests {
         // check u1 can log in
         UserContext freshContext = PeergosNetworkUtils.ensureSignedUp(u1.username, "a", network.clear(), crypto);
         freshContext.getUserRoot().join().mkdir("Adir", network, false, crypto).join();
+        checkUserValidity(network, u1.username);
     }
 
     @Test

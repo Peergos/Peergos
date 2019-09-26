@@ -42,6 +42,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
     private final JdbcSpaceRequests spaceRequests;
     private final Path statePath;
     private final State state;
+    private boolean initializedFully = false;
     private final AtomicBoolean isRunning = new AtomicBoolean(true);
     private final BlockingQueue<MutableEvent> mutableQueue = new ArrayBlockingQueue<>(1000);
 
@@ -329,7 +330,6 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         }
         long t2 = System.currentTimeMillis();
         Logging.LOG().info(LocalDateTime.now() + " Finished updating space usage for all usernames in " + (t2 - t1)/1000 + " s");
-
         return state;
     }
 
@@ -339,8 +339,10 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
     private synchronized void close() {
         try {
             isRunning.set(false);
-            store();
-            Logging.LOG().info("Successfully stored usage-state to " + this.statePath);
+            if (initializedFully) {
+                store();
+                Logging.LOG().info("Successfully stored usage-state to " + this.statePath);
+            }
         } catch (Throwable t) {
             Logging.LOG().info("Failed to  store "+ this);
             t.printStackTrace();
@@ -388,9 +390,11 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                     } else
                         LOG.info("Identity key absent in pki for user: " + username);
                 } catch (Exception e) {
+                    e.printStackTrace();
                     LOG.log(Level.WARNING, "ERROR calculating usage for user: " + username + "\n" + e.getMessage(), e);
                 }
             }
+            initializedFully = true;
             Logging.LOG().info("Finished calculating space usage for " + usernames.size() + " local users...");
         } catch (Exception e) {
             LOG.log(Level.WARNING, e.getMessage(), e);

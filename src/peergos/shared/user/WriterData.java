@@ -121,7 +121,7 @@ public class WriterData implements Cborable {
                 .thenApply(Optional::isPresent);
     }
 
-    private CompletableFuture<OwnedKeyChamp> getOwnedKeyChamp(ContentAddressedStorage ipfs) {
+    public CompletableFuture<OwnedKeyChamp> getOwnedKeyChamp(ContentAddressedStorage ipfs) {
         return ownedKeys.map(root -> OwnedKeyChamp.build(root, ipfs))
                 .orElseThrow(() -> new IllegalStateException("Owned key champ absent!"));
     }
