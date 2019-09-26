@@ -75,7 +75,7 @@ public class MultiUserTests {
                 .map(p -> p.left)
                 .collect(Collectors.toSet());
         if (claims.size() > maxClaims)
-            throw new IllegalStateException("More than 1 owned key on identity key pair for " + writer);
+            throw new IllegalStateException("Too many owned keys on identity key pair for " + writer);
         if (! ownerKeys.isEmpty() && ownerKeys.size() != 1)
             throw new IllegalStateException("More than 1 owner key on writer data for " + writer);
         if (! ownerKeys.isEmpty() && ! ownerKeys.contains(writer))
