@@ -198,13 +198,18 @@ public class WriterData implements Cborable {
                             followRequestReceiver, tid
                     ).thenCompose(boxerHash -> OwnedKeyChamp.createEmpty(oldSigner.publicKeyHash, oldSigner, network.dhtClient, tid)
                             .thenCompose(ownedRoot -> {
+                                Map<String, OwnerProof> newNamedOwnedKeys = namedOwnedKeys.entrySet()
+                                        .stream()
+                                        .collect(Collectors.toMap(e -> e.getKey(),
+                                                e -> OwnerProof.build(ownedKeys.get(e.getValue().ownedKey), signer.publicKeyHash)));
+
                                 // need to add all our owned keys back with the new owner, except for the new signer itself
                                 WriterData base = new WriterData(signer.publicKeyHash,
                                         Optional.of(newAlgorithm),
                                         publicData,
                                         Optional.of(new PublicKeyHash(boxerHash)),
                                         Optional.of(ownedRoot),
-                                        namedOwnedKeys,
+                                        newNamedOwnedKeys,
                                         newEntryPoints,
                                         tree);
                                 return getOwnedKeyChamp(network.dhtClient)

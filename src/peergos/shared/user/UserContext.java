@@ -703,6 +703,8 @@ public class UserContext {
                                     return getUserRoot().thenCompose(homeDir -> {
                                         // If we ever implement plausibly deniable dual (N) login this will need to include all the other keys
                                         ownedKeys.put(homeDir.writer(), homeDir.signingPair());
+                                        // Add any named owned key to lookup as well
+                                        // TODO need to get the pki keypair here is were are the 'peergos' user
 
                                         // auth new key by adding to existing writer data first
                                         OwnerProof proof = OwnerProof.build(newSigner, signer.publicKeyHash);
