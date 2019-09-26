@@ -699,31 +699,40 @@ public class UserContext {
                                 ).thenCompose(newSignerHash -> {
                                     SigningPrivateKeyAndPublicHash newSigner =
                                             new SigningPrivateKeyAndPublicHash(newSignerHash, updatedUser.getUser().secretSigningKey);
-                                    // auth new key by adding to existing writer data first
-                                    OwnerProof proof = OwnerProof.build(newSigner, signer.publicKeyHash);
-                                    return writeSynchronizer.applyUpdate(signer.publicKeyHash, signer, (wd, tid) ->
-                                            wd.addOwnedKey(signer.publicKeyHash, signer, proof, network.dhtClient))
-                                            .thenCompose(version -> version.get(signer).props.changeKeys(signer,
-                                                    newSigner,
-                                                    updatedUser.getBoxingPair().publicBoxingKey,
-                                                    existingUser.getRoot(),
-                                                    updatedUser.getRoot(),
-                                                    newAlgorithm,
-                                                    network)).thenCompose(writerData -> {
-                                                SigningPrivateKeyAndPublicHash newUser =
-                                                        new SigningPrivateKeyAndPublicHash(newSignerHash, updatedUser.getUser().secretSigningKey);
-                                                return network.coreNode.getChain(username).thenCompose(existing -> {
-                                                    List<Multihash> storage = existing.get(existing.size() - 1).claim.storageProviders;
-                                                    List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createChain(signer, newUser, username, expiry, storage);
-                                                    return network.coreNode.updateChain(username, claimChain)
-                                                            .thenCompose(updatedChain -> {
-                                                                if (!updatedChain)
-                                                                    throw new IllegalStateException("Couldn't register new public keys during password change!");
+                                    Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> ownedKeys = new HashMap<>();
+                                    return getUserRoot().thenCompose(homeDir -> {
+                                        // If we ever implement plausibly deniable dual (N) login this will need to include all the other keys
+                                        ownedKeys.put(homeDir.writer(), homeDir.signingPair());
+                                        // Add any named owned key to lookup as well
+                                        // TODO need to get the pki keypair here is were are the 'peergos' user
 
-                                                                return UserContext.ensureSignedUp(username, newPassword, network, crypto);
-                                                            });
+                                        // auth new key by adding to existing writer data first
+                                        OwnerProof proof = OwnerProof.build(newSigner, signer.publicKeyHash);
+                                        return writeSynchronizer.applyUpdate(signer.publicKeyHash, signer, (wd, tid) ->
+                                                wd.addOwnedKey(signer.publicKeyHash, signer, proof, network.dhtClient))
+                                                .thenCompose(version -> version.get(signer).props.changeKeys(signer,
+                                                        newSigner,
+                                                        updatedUser.getBoxingPair().publicBoxingKey,
+                                                        existingUser.getRoot(),
+                                                        updatedUser.getRoot(),
+                                                        newAlgorithm,
+                                                        ownedKeys,
+                                                        network)).thenCompose(writerData -> {
+                                                    SigningPrivateKeyAndPublicHash newUser =
+                                                            new SigningPrivateKeyAndPublicHash(newSignerHash, updatedUser.getUser().secretSigningKey);
+                                                    return network.coreNode.getChain(username).thenCompose(existing -> {
+                                                        List<Multihash> storage = existing.get(existing.size() - 1).claim.storageProviders;
+                                                        List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createChain(signer, newUser, username, expiry, storage);
+                                                        return network.coreNode.updateChain(username, claimChain)
+                                                                .thenCompose(updatedChain -> {
+                                                                    if (!updatedChain)
+                                                                        throw new IllegalStateException("Couldn't register new public keys during password change!");
+
+                                                                    return UserContext.ensureSignedUp(username, newPassword, network, crypto);
+                                                                });
+                                                    });
                                                 });
-                                            });
+                                    });
                                 });
                             });
                 });

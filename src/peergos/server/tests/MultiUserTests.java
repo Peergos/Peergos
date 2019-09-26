@@ -49,7 +49,17 @@ public class MultiUserTests {
 
     public static void checkUserValidity(NetworkAccess network, String username) {
         PublicKeyHash identity = network.coreNode.getPublicKeyHash(username).join().get();
-        WriterData props = WriterData.getWriterData(identity, identity, network.mutable, network.dhtClient).join().props;
+        checkUserValidity(1, identity, identity, Collections.emptySet(), network);
+    }
+
+    public static void checkUserValidity(int maxClaims,
+                                         PublicKeyHash owner,
+                                         PublicKeyHash writer,
+                                         Set<PublicKeyHash> ancestors,
+                                         NetworkAccess network) {
+        WriterData props = WriterData.getWriterData(owner, writer, network.mutable, network.dhtClient).join().props;
+        if (! props.ownedKeys.isPresent())
+            return;
         OwnedKeyChamp ownedChamp = props.getOwnedKeyChamp(network.dhtClient).join();
         Set<OwnerProof> empty = Collections.emptySet();
         Set<OwnerProof> claims = ownedChamp.applyToAllMappings(empty,
@@ -64,12 +74,21 @@ public class MultiUserTests {
         Set<PublicKeyHash> ownerKeys = pairs.stream()
                 .map(p -> p.left)
                 .collect(Collectors.toSet());
-        if (claims.size() != 1)
-            throw new IllegalStateException("More than 1 owned key on identity key pair for " + username);
-        if (ownerKeys.size() != 1)
-            throw new IllegalStateException("More than 1 owner key on identity key pair for " + username);
-        if (ownedKeys.contains(identity))
+        if (claims.size() > maxClaims)
+            throw new IllegalStateException("Too many owned keys on identity key pair for " + writer);
+        if (! ownerKeys.isEmpty() && ownerKeys.size() != 1)
+            throw new IllegalStateException("More than 1 owner key on writer data for " + writer);
+        if (! ownerKeys.isEmpty() && ! ownerKeys.contains(writer))
+            throw new IllegalStateException("WriterData contains claims with wrong owner for " + writer);
+        if (ownedKeys.contains(writer))
             throw new IllegalStateException("Identity key pair owns itself!");
+        HashSet<PublicKeyHash> withCurrent = new HashSet<>(ancestors);
+        withCurrent.add(writer);
+        for (PublicKeyHash ownedKey : ownedKeys) {
+            if (! withCurrent.contains(ownedKey))
+                checkUserValidity(Integer.MAX_VALUE, owner, ownedKey, withCurrent, network);
+
+        }
     }
 
     private List<UserContext> getUserContexts(int size, List<String> passwords) {
