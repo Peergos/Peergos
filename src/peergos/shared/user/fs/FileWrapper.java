@@ -1391,7 +1391,10 @@ public class FileWrapper {
                                         getPointer(),
                                         newRetrievedCapability, network, hasher))
                         .thenCompose(updatedParentVersion -> deleteAllChunks(cap, signingPair(), tid, hasher, network,
-                                updatedParentVersion, committer)),
+                                updatedParentVersion, committer))
+                        .thenCompose(s -> OwnedKeyChamp.createEmpty(owner, signer, network.dhtClient, tid)
+                                .thenCompose(ownedRoot -> committer.commit(owner, signer,
+                                        s.get(signer.publicKeyHash).props.withOwnedRoot(ownedRoot), s.get(signer.publicKeyHash), tid))),
                 network.dhtClient)
         ).thenCompose(finalVersion -> parent.getUpdated(finalVersion, network)
                 .thenCompose(updatedParent -> network.getFile(finalVersion, ourNewCap, Optional.of(signer), ownername)

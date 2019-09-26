@@ -77,6 +77,10 @@ public class WriterData implements Cborable {
         return new WriterData(controller, generationAlgorithm, Optional.of(publicChampRoot), followRequestReceiver, ownedKeys, namedOwnedKeys, staticData, tree);
     }
 
+    public WriterData withOwnedRoot(Multihash ownedRoot) {
+        return new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver, Optional.of(ownedRoot), namedOwnedKeys, staticData, tree);
+    }
+
     public CompletableFuture<WriterData> addOwnedKey(PublicKeyHash owner,
                                                      SigningPrivateKeyAndPublicHash signer,
                                                      OwnerProof newOwned,
