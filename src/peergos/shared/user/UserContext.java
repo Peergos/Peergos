@@ -1076,13 +1076,10 @@ public class UserContext {
     public CompletableFuture<Boolean> sendFollowRequest(String targetUsername, SymmetricKey requestedKey) {
         return getSharingFolder().thenCompose(sharing -> {
             return sharing.getChildren(crypto.hasher, network).thenCompose(children -> {
-                boolean alreadySentRequest = children.stream()
+                boolean theyAreFollowingUs = children.stream()
                         .filter(f -> f.getFileProperties().name.equals(targetUsername))
                         .findAny()
                         .isPresent();
-                if (alreadySentRequest) {
-                    return Futures.errored(new Exception("Follow Request already sent!"));
-                }
                 // check for them not reciprocating
                 return getFollowing().thenCompose(following -> {
                     boolean alreadyFollowing = following.stream()
@@ -1097,6 +1094,11 @@ public class UserContext {
                             return Futures.errored(new Exception("User does not exist!"));
                         }
                         PublicBoxingKey targetUser = targetUserOpt.get().right;
+                        if (theyAreFollowingUs) {
+                            FollowRequest followReq = new FollowRequest(Optional.empty(), Optional.ofNullable(requestedKey));
+                            PublicKeyHash targetSigner = targetUserOpt.get().left;
+                            return blindAndSendFollowRequest(targetSigner, targetUser, followReq);
+                        }
                         return sharing.mkdir(targetUsername, network, null, true, crypto)
                                 .thenCompose(updatedSharing -> updatedSharing.getChild(targetUsername, crypto.hasher, network))
                                 .thenCompose(friendRootOpt -> {

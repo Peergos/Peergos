@@ -17,6 +17,7 @@ import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.server.*;
 import peergos.shared.mutable.*;
+import peergos.shared.social.FollowRequestWithCipherText;
 import peergos.shared.storage.*;
 import peergos.shared.storage.controller.*;
 import peergos.shared.user.*;
@@ -298,16 +299,24 @@ public abstract class UserTests {
         UserContext userContext = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         Boolean requestToFollowPeergos = userContext.getSocialState().join().pendingOutgoingFollowRequests.containsKey("peergos");
         assertTrue("Pending follow request Peergos exists after sign-up", requestToFollowPeergos);
-        userContext.unfollow("peergos");
-        requestToFollowPeergos = userContext.getFollowing().join().contains("peergos");
         UserContext peergosUser = UserContext.signIn("peergos", "testpassword", network, crypto).join();
-        peergosUser.processFollowRequests();
-        assertTrue("Unfollowed Peergos", !requestToFollowPeergos);
+        List<FollowRequestWithCipherText> followRequests = peergosUser.processFollowRequests().join();
+
+        for (FollowRequestWithCipherText request : followRequests) {
+            boolean accept = true;
+            boolean reciprocate = true;
+            peergosUser.sendReplyFollowRequest(request, accept, reciprocate).join();
+        }
+
+        userContext.processFollowRequests().join();
+        userContext.unfollow("peergos");
+        Boolean followingPeergos = userContext.getFollowing().join().contains("peergos");
+        assertTrue("Unfollowed Peergos", !followingPeergos);
         userContext.logout();
         UserContext renewedUserContext = UserContext.signIn(username, password, network, crypto).join();
         renewedUserContext.ensureFollowingPeergos();
         requestToFollowPeergos = renewedUserContext.getSocialState().join().pendingOutgoingFollowRequests.containsKey("peergos");
-        assertTrue("Peergos user is being followed again", requestToFollowPeergos);
+        assertTrue("Pending request to follow Peergos is back", requestToFollowPeergos);
     }
 
     @Test
