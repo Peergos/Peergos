@@ -300,6 +300,8 @@ public abstract class UserTests {
         assertTrue("Pending follow request Peergos exists after sign-up", requestToFollowPeergos);
         userContext.unfollow("peergos");
         requestToFollowPeergos = userContext.getFollowing().join().contains("peergos");
+        UserContext peergosUser = UserContext.signIn("peergos", "testpassword", network, crypto).join();
+        peergosUser.processFollowRequests();
         assertTrue("Unfollowed Peergos", !requestToFollowPeergos);
         userContext.logout();
         UserContext renewedUserContext = UserContext.signIn(username, password, network, crypto).join();
