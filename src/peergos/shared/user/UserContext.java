@@ -1241,9 +1241,9 @@ public class UserContext {
      * @return The hashed new signing pair
      */
     public CompletableFuture<SigningPrivateKeyAndPublicHash> addOwnedKeyToParent(PublicKeyHash owner,
-                                                                                        SigningPrivateKeyAndPublicHash parentSigner,
-                                                                                        SigningKeyPair newSignerPair,
-                                                                                        NetworkAccess network) {
+                                                                                 SigningPrivateKeyAndPublicHash parentSigner,
+                                                                                 SigningKeyPair newSignerPair,
+                                                                                 NetworkAccess network) {
         byte[] signature = parentSigner.secret.signatureOnly(newSignerPair.publicSigningKey.serialize());
         return writeSynchronizer.applyUpdate(owner, parentSigner,
                 (wd, tid) -> network.dhtClient.putSigningKey(signature, owner, parentSigner.publicKeyHash,

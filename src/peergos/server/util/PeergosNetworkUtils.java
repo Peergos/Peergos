@@ -253,6 +253,7 @@ public class PeergosNetworkUtils {
                     .findAny();
             assertTrue("Shared file present via root.getChildren()", sharedFile.isPresent());
         }
+        MultiUserTests.checkUserValidity(sharerNode, sharerUsername);
 
         UserContext userToUnshareWith = shareeUsers.stream().findFirst().get();
 
@@ -517,6 +518,8 @@ public class PeergosNetworkUtils {
                     .collect(Collectors.toSet());
             Assert.assertTrue("Correct children", sharedChildNames.equals(childNames));
         }
+
+        MultiUserTests.checkUserValidity(sharerNode, sharerUsername);
 
         UserContext updatedSharer = PeergosNetworkUtils.ensureSignedUp(sharerUsername, sharerPassword, sharerNode.clear(), crypto);
 
