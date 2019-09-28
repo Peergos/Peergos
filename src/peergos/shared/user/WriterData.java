@@ -85,11 +85,14 @@ public class WriterData implements Cborable {
                                                      SigningPrivateKeyAndPublicHash signer,
                                                      OwnerProof newOwned,
                                                      ContentAddressedStorage ipfs) {
-        return getOwnedKeyChamp(ipfs)
-                .thenCompose(champ -> IpfsTransaction.call(owner,
-                        tid -> champ.add(owner, signer, newOwned, tid), ipfs)
-                .thenApply(newRoot -> new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver,
-                        Optional.of(newRoot), namedOwnedKeys, staticData, tree)));
+        return IpfsTransaction.call(owner,
+                tid -> (! ownedKeys.isPresent() ?
+                        OwnedKeyChamp.createEmpty(owner, signer, ipfs, tid)
+                                .thenCompose(root -> OwnedKeyChamp.build(root, ipfs)) :
+                        getOwnedKeyChamp(ipfs))
+                        .thenCompose(champ -> champ.add(owner, signer, newOwned, tid))
+                        .thenApply(newRoot -> new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver,
+                                Optional.of(newRoot), namedOwnedKeys, staticData, tree)), ipfs);
     }
 
     public CompletableFuture<Snapshot> addOwnedKeyAndCommit(PublicKeyHash owner,
