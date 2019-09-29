@@ -15,8 +15,7 @@ import peergos.shared.util.ArrayOps;
 import peergos.shared.util.Serialize;
 
 import java.io.File;
-import java.nio.file.Files;
-import java.nio.file.Paths;
+import java.nio.file.*;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -46,10 +45,10 @@ public class PeergosNetworkUtils {
         return data;
     }
 
-    public static void checkFileContents(byte[] expected, FileWrapper f, UserContext context) throws Exception {
+    public static void checkFileContents(byte[] expected, FileWrapper f, UserContext context) {
         long size = f.getFileProperties().size;
         byte[] retrievedData = Serialize.readFully(f.getInputStream(context.network, context.crypto,
-                size, l -> {}).get(), f.getSize()).get();
+                size, l -> {}).join(), f.getSize()).join();
         assertEquals(expected.length, size);
         assertTrue("Correct contents", Arrays.equals(retrievedData, expected));
     }
@@ -576,6 +575,145 @@ public class PeergosNetworkUtils {
             }
         }
         MultiUserTests.checkUserValidity(sharerNode, sharerUsername);
+    }
+
+    public static void grantAndRevokeNestedDirWriteAccess(NetworkAccess network,
+                                                          Random random) {
+        CryptreeNode.setMaxChildLinkPerBlob(10);
+
+        String password = "notagoodone";
+
+        UserContext sharer = PeergosNetworkUtils.ensureSignedUp(generateUsername(random), password, network, crypto);
+
+        List<UserContext> shareeUsers = getUserContextsForNode(network, random, 2, Arrays.asList(password, password));
+        UserContext a = shareeUsers.get(0);
+        UserContext b = shareeUsers.get(1);
+
+        for (UserContext sharee : shareeUsers)
+            sharee.sendFollowRequest(sharer.username, SymmetricKey.random()).join();
+
+        List<FollowRequestWithCipherText> sharerRequests = sharer.processFollowRequests().join();
+        for (FollowRequestWithCipherText u1Request : sharerRequests) {
+            boolean accept = true;
+            boolean reciprocate = true;
+            sharer.sendReplyFollowRequest(u1Request, accept, reciprocate).join();
+        }
+
+        for (UserContext user : shareeUsers) {
+            user.processFollowRequests().join();
+        }
+
+        // friends are now connected
+        // share a directory from u1 to u2
+        FileWrapper u1Root = sharer.getUserRoot().join();
+        String folderName = "folder";
+        u1Root.mkdir(folderName, sharer.network, SymmetricKey.random(), false, crypto).join();
+        Path dirPath = Paths.get(sharer.username, folderName);
+
+        FileWrapper folder = sharer.getByPath(dirPath).join().get();
+        String filename = "somefile.txt";
+        byte[] data = "Hello Peergos friend!".getBytes();
+        AsyncReader resetableFileInputStream = new AsyncReader.ArrayBacked(data);
+        folder.uploadOrOverwriteFile(filename, resetableFileInputStream,
+                data.length, sharer.network, crypto, l -> {}, crypto.random.randomBytes(32)).join();
+        String originalFilePath = sharer.username + "/" + folderName + "/" + filename;
+
+        for (int i=0; i< 20; i++) {
+            sharer.getByPath(dirPath).join().get()
+                    .mkdir("subdir"+i, sharer.network, false, crypto).join();
+        }
+
+        // share /u1/folder with 'a'
+        sharer.shareWriteAccessWithAll(sharer.getByPath(dirPath).join().get(),
+                sharer.getUserRoot().join(), Collections.singleton(a.username)).join();
+
+        // create a directory
+        FileWrapper sharedFolderv1 = sharer.getByPath(dirPath).join().get();
+        String subdirName = "subdir";
+        sharedFolderv1.mkdir(subdirName, sharer.network, false, crypto).join();
+
+        // share /u1/folder with 'b'
+        Path subdirPath = Paths.get(sharer.username, folderName, subdirName);
+        sharer.shareWriteAccessWithAll(sharer.getByPath(subdirPath).join().get(),
+                sharer.getByPath(dirPath).join().get(), Collections.singleton(b.username)).join();
+
+        // check 'b' can upload a file
+        UserContext shareeUploader = shareeUsers.get(0);
+        FileWrapper sharedDir = shareeUploader.getByPath(subdirPath).join().get();
+        sharedDir.uploadFileJS("a-new-file.png", AsyncReader.build(data), 0, data.length,
+                false, shareeUploader.network, crypto, x -> {}, shareeUploader.getTransactionService()).join();
+
+        Set<String> childNames = sharer.getByPath(dirPath).join().get().getChildren(crypto.hasher, sharer.network).join()
+                .stream()
+                .map(f -> f.getName())
+                .collect(Collectors.toSet());
+
+        // check 'a' can see the shared directory
+        FileWrapper sharedFolder = a.getByPath(sharer.username + "/" + folderName).join()
+                .orElseThrow(() -> new AssertionError("shared folder is present after sharing"));
+        Assert.assertEquals(sharedFolder.getFileProperties().name, folderName);
+
+        FileWrapper sharedFile = a.getByPath(sharer.username + "/" + folderName + "/" + filename).join().get();
+        checkFileContents(data, sharedFile, a);
+        Set<String> sharedChildNames = sharedFolder.getChildren(crypto.hasher, a.network).join()
+                .stream()
+                .map(f -> f.getName())
+                .collect(Collectors.toSet());
+        Assert.assertTrue("Correct children", sharedChildNames.equals(childNames));
+
+        MultiUserTests.checkUserValidity(network, sharer.username);
+
+        UserContext updatedSharer = PeergosNetworkUtils.ensureSignedUp(sharer.username, password, network.clear(), crypto);
+
+        List<UserContext> updatedSharees = shareeUsers.stream()
+                .map(e -> {
+                    try {
+                        return ensureSignedUp(e.username, password, e.network, crypto);
+                    } catch (Exception ex) {
+                        throw new IllegalStateException(ex.getMessage(), ex);
+                    }
+                }).collect(Collectors.toList());
+
+        // unshare subdir from 'b'
+        UserContext user = updatedSharees.get(1);
+        updatedSharer.unShareWriteAccess(subdirPath, b.username).join();
+
+        Optional<FileWrapper> updatedSharedFolder = user.getByPath(updatedSharer.username + "/" + folderName).join();
+
+        // test that u1 can still access the original file, and user cannot
+        Optional<FileWrapper> fileWithNewBaseKey = updatedSharer.getByPath(updatedSharer.username + "/" + folderName + "/" + filename).join();
+        Assert.assertTrue(!updatedSharedFolder.isPresent());
+        Assert.assertTrue(fileWithNewBaseKey.isPresent());
+
+        // Now modify the file
+        byte[] suffix = "Some new data at the end".getBytes();
+        AsyncReader suffixStream = new AsyncReader.ArrayBacked(suffix);
+        FileWrapper parent = updatedSharer.getByPath(updatedSharer.username + "/" + folderName).join().get();
+        parent.uploadFileSection(filename, suffixStream, false, data.length,
+                data.length + suffix.length, Optional.empty(), true,
+                updatedSharer.network, crypto, l -> {},
+                null).join();
+        FileWrapper extendedFile = updatedSharer.getByPath(originalFilePath).join().get();
+        AsyncReader extendedContents = extendedFile.getInputStream(updatedSharer.network, updatedSharer.crypto, l -> {}).join();
+        byte[] newFileContents = Serialize.readFully(extendedContents, extendedFile.getSize()).join();
+
+        Assert.assertTrue(Arrays.equals(newFileContents, ArrayOps.concat(data, suffix)));
+
+        // test 'a' can still see shared file and folder
+        UserContext otherUser = updatedSharees.get(0);
+
+        Optional<FileWrapper> folderAgain = otherUser.getByPath(updatedSharer.username + "/" + folderName).join();
+        Assert.assertTrue("Shared folder present via direct path", folderAgain.isPresent() && folderAgain.get().getName().equals(folderName));
+
+        FileWrapper sharedFileAgain = otherUser.getByPath(updatedSharer.username + "/" + folderName + "/" + filename).join().get();
+        checkFileContents(newFileContents, sharedFileAgain, otherUser);
+        Set<String> childNamesAgain = folderAgain.get().getChildren(crypto.hasher, otherUser.network).join()
+                .stream()
+                .map(f -> f.getName())
+                .collect(Collectors.toSet());
+        Assert.assertTrue("Correct children", childNamesAgain.equals(childNames));
+
+        MultiUserTests.checkUserValidity(network, sharer.username);
     }
 
     public static void shareFolderForWriteAccess(NetworkAccess sharerNode, NetworkAccess shareeNode, int shareeCount, Random random) throws Exception {
