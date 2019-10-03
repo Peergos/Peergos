@@ -241,8 +241,8 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
 
     public void connectToNode(InetSocketAddress addr, Multihash nodeId) {
         long sleep = 1000;
-        String target = (addr.getAddress() instanceof Inet4Address ? "/ip4/" : "/ip6/") + addr.getAddress().toString()
-        + "/tcp/" + addr.getPort() + " /ipfs/" + nodeId.toString();
+        String target = (addr.getAddress() instanceof Inet4Address ? "/ip4" : "/ip6") + addr.getAddress().toString()
+        + "/tcp/" + addr.getPort() + "/ipfs/" + nodeId.toString();
         for (int i=0; i < 6; i++) {
             try {
                 runIpfsCmd(true, "swarm", "connect", target);
