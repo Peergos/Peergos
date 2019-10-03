@@ -1219,6 +1219,17 @@ public class UserContext {
         });
     }
 
+    public CompletableFuture<Boolean> shareWriteAccessWithAll(Path fileToShare,
+                                                              Set<String> writersToAdd) {
+        return getByPath(fileToShare.getParent())
+                .thenCompose(parentOpt -> ! parentOpt.isPresent() ?
+                                Futures.errored(new IllegalStateException("Unable to read " + fileToShare.getParent())) :
+                parentOpt.get().getChild(fileToShare.getFileName().toString(), crypto.hasher, network)
+                        .thenCompose(fileOpt -> ! fileOpt.isPresent() ?
+                                Futures.errored(new IllegalStateException("Unable to read " + fileToShare)) :
+                                shareWriteAccessWithAll(fileOpt.get(), parentOpt.get(), writersToAdd)));
+    }
+
     public CompletableFuture<Boolean> shareWriteAccessWithAll(FileWrapper file,
                                                               FileWrapper parent,
                                                               Set<String> writersToAdd) {
