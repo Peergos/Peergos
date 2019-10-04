@@ -145,40 +145,6 @@ public class DHTHandler implements HttpHandler {
                             .exceptionally(Futures::logAndThrow).get();
                     break;
                 }
-                case PIN_ADD: {
-                    PublicKeyHash ownerHash = PublicKeyHash.fromString(last.apply("owner"));
-                    Multihash hash = Cid.decode(args.get(0));
-                    dht.recursivePin(ownerHash, hash).thenAccept(pinned -> {
-                        Map<String, Object> json = new TreeMap<>();
-                        json.put("Pins", pinned.stream().map(h -> h.toString()).collect(Collectors.toList()));
-                        replyJson(httpExchange, JSONParser.toString(json), Optional.empty());
-                    }).exceptionally(Futures::logAndThrow).get();
-                    break;
-                }
-                case PIN_UPDATE: {
-                    PublicKeyHash ownerHash = PublicKeyHash.fromString(last.apply("owner"));
-                    Multihash existing = Cid.decode(args.get(0));
-                    Multihash updated = Cid.decode(args.get(1));
-                    dht.pinUpdate(ownerHash, existing, updated).thenAccept(pinned -> {
-                        Map<String, Object> json = new TreeMap<>();
-                        json.put("Pins", pinned.stream().map(h -> h.toString()).collect(Collectors.toList()));
-                        replyJson(httpExchange, JSONParser.toString(json), Optional.empty());
-                    }).exceptionally(Futures::logAndThrow).get();
-                    break;
-                }
-                case PIN_RM: {
-                    PublicKeyHash ownerHash = PublicKeyHash.fromString(last.apply("owner"));
-                    boolean recursive = params.containsKey("r") && Boolean.parseBoolean(last.apply("r"));
-                    if (!recursive)
-                        throw new IllegalStateException("Unimplemented: non recursive unpin!");
-                    Multihash hash = Cid.decode(args.get(0));
-                    dht.recursiveUnpin(ownerHash, hash).thenAccept(unpinned -> {
-                        Map<String, Object> json = new TreeMap<>();
-                        json.put("Pins", unpinned.stream().map(h -> h.toString()).collect(Collectors.toList()));
-                        replyJson(httpExchange, JSONParser.toString(json), Optional.empty());
-                    }).exceptionally(Futures::logAndThrow).get();
-                    break;
-                }
                 case BLOCK_STAT: {
                     Multihash block = Cid.decode(args.get(0));
                     dht.getSize(block).thenAccept(sizeOpt -> {
