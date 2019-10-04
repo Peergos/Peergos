@@ -210,6 +210,12 @@ public class MirrorCoreNode implements CoreNode {
             updated.load(current);
             IpfsCoreNode.updateAllMappings(pkiKey, current.pkiKeyTarget, currentPkiRoot, ipfs, updated.chains,
                     updated.reverseLookup, updated.usernames);
+            // pin the new pki version
+            // note that these calls won't be redirected to the pki node because we are talking directly to ipfs
+            if (current.pkiKeyTarget.isPresent())
+                ipfs.pinUpdate(peergosKey, current.pkiKeyTarget.get(), currentPkiRoot.get()).join();
+            else
+                ipfs.recursivePin(peergosKey, currentPkiRoot.get()).join();
             state = updated;
             Logging.LOG().info("... finished updating pki mirror state.");
             return true;
