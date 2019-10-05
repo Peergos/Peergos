@@ -26,7 +26,7 @@ import static org.junit.Assert.assertTrue;
 public class PeergosNetworkUtils {
 
     public static String generateUsername(Random random) {
-        return "username_" + Math.abs(random.nextInt() % 1_000_000);
+        return "username_" + Math.abs(random.nextInt() % 1_000_000_000);
     }
 
     public static String generatePassword() {
