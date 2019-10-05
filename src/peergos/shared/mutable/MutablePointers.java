@@ -53,14 +53,18 @@ public interface MutablePointers {
 
     static boolean isValidUpdate(PublicSigningKey writerKey, Optional<byte[]> current, byte[] writerSignedBtreeRootHash) {
         byte[] bothHashes = writerKey.unsignMessage(writerSignedBtreeRootHash);
-        // check CAS [current hash, new hash]
         HashCasPair cas = HashCasPair.fromCbor(CborObject.fromByteArray(bothHashes));
         MaybeMultihash claimedCurrentHash = cas.original;
         Multihash newHash = cas.updated.get();
 
+        return isValidUpdate(writerKey, current, claimedCurrentHash);
+    }
+
+    static boolean isValidUpdate(PublicSigningKey writerKey, Optional<byte[]> current, MaybeMultihash claimedCurrentHash) {
         MaybeMultihash existing = current
                 .map(signed -> HashCasPair.fromCbor(CborObject.fromByteArray(writerKey.unsignMessage(signed))).updated)
                 .orElse(MaybeMultihash.empty());
+        // check CAS [current hash, new hash]
         return existing.equals(claimedCurrentHash);
     }
 }
