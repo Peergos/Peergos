@@ -16,6 +16,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.server.*;
+import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.storage.controller.*;
 import peergos.shared.user.*;
@@ -265,6 +266,30 @@ public abstract class UserTests {
         ScryptGenerator newAlgo = new ScryptGenerator(19, 8, 1, 96, algo.getExtraSalt());
         userContext.changePassword(password, password, algo, newAlgo).get();
         PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+    }
+
+    @Test
+    public void maliciousPointerClone() throws Throwable {
+        String a = generateUsername();
+        String b = generateUsername();
+        String password = "password";
+        UserContext aContext = PeergosNetworkUtils.ensureSignedUp(a, password, network, crypto);
+        UserContext bContext = PeergosNetworkUtils.ensureSignedUp(b, password, network, crypto);
+
+        FileWrapper aRoot = aContext.getUserRoot().join();
+        FileWrapper bRoot = bContext.getUserRoot().join();
+        MaybeMultihash target = network.mutable.getPointerTarget(aContext.signer.publicKeyHash, aRoot.writer(), network.dhtClient).join();
+        MaybeMultihash current = network.mutable.getPointerTarget(bContext.signer.publicKeyHash, bRoot.writer(), network.dhtClient).join();
+        HashCasPair cas = new HashCasPair(current, target);
+        try {
+            network.mutable.setPointer(bContext.signer.publicKeyHash, bRoot.writer(),
+                    bRoot.signingPair().secret.signMessage(cas.serialize())).join();
+            throw new Throwable("Should not get here!");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        MaybeMultihash updated = network.mutable.getPointerTarget(bContext.signer.publicKeyHash, bRoot.writer(), network.dhtClient).join();
+        Assert.assertTrue("Malicious pointer update failed", updated.equals(current));
     }
 
     @Test
