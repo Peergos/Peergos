@@ -9,6 +9,7 @@ import org.jline.utils.*;
 
 import peergos.server.simulation.*;
 import peergos.server.simulation.FileSystem;
+import peergos.server.util.Args;
 import peergos.server.util.Logging;
 import peergos.shared.*;
 import peergos.shared.social.FollowRequestWithCipherText;
@@ -651,12 +652,9 @@ public class CLI implements Runnable {
 
     private static Crypto CRYPTO;
 
-
-    public static void main(String[] args) throws Exception {
+    public static void main(String[] args) {
         CRYPTO = Crypto.initJava();
-
         Logging.LOG().setLevel(Level.WARNING);
-
         CLIContext cliContext = buildContextFromCLI();
         new CLI(cliContext).run();
     }
