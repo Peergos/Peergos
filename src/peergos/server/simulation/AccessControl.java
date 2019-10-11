@@ -15,7 +15,7 @@ public interface AccessControl {
 
     void remove(Path path, String reader, FileSystem.Permission permission);
 
-
+    Path getRandomSharedPath(Random random, FileSystem.Permission permission);
     /**
      * Model owners, reader and writers
      */
@@ -43,6 +43,17 @@ public interface AccessControl {
     class MemoryImpl implements AccessControl {
         public AccessControlUnit readers = new AccessControlUnit();
         public AccessControlUnit writers = new AccessControlUnit();
+
+        private AccessControlUnit getAcu(FileSystem.Permission permission) {
+            switch (permission) {
+                case READ:
+                    return readers;
+                case WRITE:
+                    return writers;
+                default:
+                    throw new IllegalStateException("Unimplemented");
+            }
+        }
 
         @Override
         public String getOwner(Path path) {
@@ -72,30 +83,27 @@ public interface AccessControl {
 
         @Override
         public void add(Path path, String reader, FileSystem.Permission permission) {
-            switch (permission) {
-                case READ:
-                    readers.addAllowed(path, reader);
-                    return;
-                case WRITE:
-                    writers.addAllowed(path, reader);
-                    return;
-                default:
-                    throw new IllegalStateException("Unimplemented");
-            }
+            getAcu(permission).addAllowed(path, reader);
         }
 
         @Override
         public void remove(Path path, String reader, FileSystem.Permission permission) {
-            switch (permission) {
-                case READ:
-                    readers.removeAllowed(path, reader);
-                    return;
-                case WRITE:
-                    writers.removeAllowed(path, reader);
-                    return;
-                default:
-                    throw new IllegalStateException("Unimplemented");
-            }
+            getAcu(permission).removeAllowed(path, reader);
+        }
+
+        @Override
+        public Path getRandomSharedPath(Random random, FileSystem.Permission permission) {
+
+            AccessControlUnit acu = getAcu(permission);
+            List<Path> paths = new ArrayList<>(acu.allowed.keySet());
+            if (paths.isEmpty())
+                throw new IllegalStateException();
+            Path path = paths.get(random.nextInt(paths.size()));
+
+            if (acu.getAllowed(path).isEmpty())
+                throw new IllegalStateException();
+            return path;
+
         }
     }
 }
