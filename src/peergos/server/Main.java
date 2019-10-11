@@ -1,5 +1,6 @@
 package peergos.server;
 
+import peergos.server.cli.CLI;
 import peergos.server.space.*;
 import peergos.server.storage.admin.*;
 import peergos.shared.*;
@@ -312,6 +313,12 @@ public class Main {
                     new Command.Arg("mountPoint", "The directory to mount the Peergos filesystem in", true, "peergos")
             ).collect(Collectors.toList())
     );
+    public static final Command<Boolean> SHELL = new Command<>("shell",
+            "An interactive command-line-interface to a Peergos server.",
+            Main::startShell,
+            Collections.emptyList()
+    );
+
 
     public static UserService startPeergos(Args a) {
         try {
@@ -531,6 +538,11 @@ public class Main {
         return ipfs;
     }
 
+    public static Boolean startShell(Args args) {
+        CLI.main(new String[]{});
+        return true;
+    }
+
     private static CoreNode buildPkiCorenode(MutablePointers mutable, ContentAddressedStorage dht, Args a) {
         try {
             Crypto crypto = Crypto.initJava();
@@ -577,7 +589,8 @@ public class Main {
                     PKI_INIT,
                     PKI,
                     PEERGOS,
-                    FUSE
+                    FUSE,
+                    SHELL
             )
     );
 
