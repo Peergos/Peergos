@@ -453,24 +453,6 @@ public class CryptreeNode implements Cborable {
                 network.dhtClient);
     }
 
-    public CompletableFuture<Snapshot> rotateBaseWriteKey(WritableAbsoluteCapability us,
-                                                          Optional<SigningPrivateKeyAndPublicHash> entryWriter,
-                                                          SymmetricKey newBaseWriteKey,
-                                                          NetworkAccess network,
-                                                          Snapshot version,
-                                                          Committer committer) {
-        FromBase baseBlock = getBaseBlock(us.rBaseKey);
-        if (! baseBlock.signer.isPresent())
-            return CompletableFuture.completedFuture(version);
-
-        SigningPrivateKeyAndPublicHash signer = baseBlock.signer.get().target(us.wBaseKey.get());
-        CryptreeNode fa = this.withWriterLink(us.rBaseKey, SymmetricLinkToSigner.fromPair(newBaseWriteKey, signer));
-        SigningPrivateKeyAndPublicHash ourSigner = getSigner(us.rBaseKey, us.wBaseKey.get(), entryWriter);
-        return IpfsTransaction.call(us.owner,
-                tid -> network.uploadChunk(version, committer, fa, us.owner, us.getMapKey(), ourSigner, tid),
-                network.dhtClient);
-    }
-
     public CompletableFuture<Snapshot> rotateBaseFileWriteKey(AbsoluteCapability us,
                                                               SigningPrivateKeyAndPublicHash signer,
                                                               SymmetricKey newBaseWriteKey,
@@ -618,27 +600,6 @@ public class CryptreeNode implements Cborable {
                         }));
     }
 
-    public CompletableFuture<Snapshot> addChildAndCommit(Snapshot current,
-                                                         Committer committer,
-                                                         RelativeCapability targetCAP,
-                                                         WritableAbsoluteCapability us,
-                                                         Optional<SigningPrivateKeyAndPublicHash> entryWriter,
-                                                         NetworkAccess network,
-                                                         Crypto crypto) {
-        return addChildrenAndCommit(current, committer, Arrays.asList(targetCAP), us, entryWriter, network, crypto);
-    }
-
-    public CompletableFuture<Snapshot> addChildrenAndCommit(Snapshot current,
-                                                            Committer committer,
-                                                            List<RelativeCapability> targetCAPs,
-                                                            WritableAbsoluteCapability us,
-                                                            Optional<SigningPrivateKeyAndPublicHash> entryWriter,
-                                                            NetworkAccess network,
-                                                            Crypto crypto) {
-        SigningPrivateKeyAndPublicHash signer = getSigner(us.rBaseKey, us.wBaseKey.get(), entryWriter);
-        return addChildrenAndCommit(current, committer, targetCAPs, us, signer, network, crypto);
-    }
-
     public CompletableFuture<Snapshot> addChildrenAndCommit(Snapshot current,
                                                             Committer committer,
                                                             List<RelativeCapability> targetCAPs,
@@ -650,13 +611,12 @@ public class CryptreeNode implements Cborable {
         return getDirectChildren(us.rBaseKey, network).thenCompose(children -> {
             if (children.size() + targetCAPs.size() > getMaxChildLinksPerBlob()) {
                 return getNextChunk(current, us, network, Optional.empty(), crypto.hasher).thenCompose(nextMetablob -> {
-                    Optional<SigningPrivateKeyAndPublicHash> subsequentEntrySigner = Optional.of(signer);
 
                     if (nextMetablob.isPresent()) {
                         AbsoluteCapability nextPointer = nextMetablob.get().capability;
                         CryptreeNode nextBlob = nextMetablob.get().fileAccess;
                         return nextBlob.addChildrenAndCommit(current, committer, targetCAPs,
-                                nextPointer.toWritable(us.wBaseKey.get()), subsequentEntrySigner, network, crypto);
+                                nextPointer.toWritable(us.wBaseKey.get()), signer, network, crypto);
                     } else {
                         // first fill this directory, then overflow into a new one
                         int freeSlots = getMaxChildLinksPerBlob() - children.size();
@@ -745,7 +705,8 @@ public class CryptreeNode implements Cborable {
                 tid -> child.commit(base, committer, childCap, entryWriter, network, tid), network.dhtClient)
                 .thenCompose(updatedBase -> {
                     RelativeCapability subdirPointer = new RelativeCapability(dirMapKey, dirReadKey, toChildWriteKey);
-                    return addChildAndCommit(updatedBase, committer, subdirPointer, us, entryWriter, network, crypto);
+                    SigningPrivateKeyAndPublicHash signer = getSigner(us.rBaseKey, us.wBaseKey.get(), entryWriter);
+                    return addChildrenAndCommit(updatedBase, committer, Arrays.asList(subdirPointer), us, signer, network, crypto);
                 });
     }
 

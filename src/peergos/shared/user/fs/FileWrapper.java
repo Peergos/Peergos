@@ -184,27 +184,6 @@ public class FileWrapper {
     }
 
     /**
-     *
-     * @param version
-     * @param committer
-     * @param childrenCaps
-     * @param network
-     * @param crypto
-     * @return An updated version of this directory
-     */
-    public CompletableFuture<Snapshot> addChildLinks(Snapshot version,
-                                                     Committer committer,
-                                                     Collection<WritableAbsoluteCapability> childrenCaps,
-                                                     NetworkAccess network,
-                                                     Crypto crypto) {
-        return pointer.fileAccess
-                .addChildrenAndCommit(version, committer, childrenCaps.stream()
-                                .map(childCap -> ((WritableAbsoluteCapability)pointer.capability).relativise(childCap))
-                                .collect(Collectors.toList()), (WritableAbsoluteCapability) pointer.capability, entryWriter,
-                        network, crypto);
-    }
-
-    /**
      * Marks a file/directory and all its descendants as dirty. Directories are immediately cleaned,
      * but files have all their keys except the actual data key cleaned. That is cleaned lazily, the next time it is modified
      *
@@ -401,26 +380,6 @@ public class FileWrapper {
                                                    Hasher hasher) {
         return pointer.fileAccess.removeChildren(version, committer,
                 Arrays.asList(child.getPointer().capability), writableFilePointer(), entryWriter, network, hasher);
-    }
-
-    public CompletableFuture<Snapshot> addLinkTo(Snapshot version,
-                                                 Committer committer,
-                                                 String name,
-                                                 WritableAbsoluteCapability fileCap,
-                                                 NetworkAccess network,
-                                                 Crypto crypto) {
-        ensureUnmodified();
-        if (!this.isDirectory() || !this.isWritable()) {
-            return Futures.errored(new IllegalArgumentException("Can only add link to a writable directory!"));
-        }
-        return hasChildWithName(version, name, crypto.hasher, network).thenCompose(hasChild -> {
-            if (hasChild) {
-                return Futures.errored(new IllegalStateException("Child already exists with name: " + name));
-            }
-            CryptreeNode toUpdate = pointer.fileAccess;
-            return toUpdate.addChildAndCommit(version, committer, writableFilePointer().relativise(fileCap),
-                    writableFilePointer(), entryWriter, network, crypto);
-        });
     }
 
     @JsMethod
@@ -877,8 +836,9 @@ public class FileWrapper {
                                                         WritableAbsoluteCapability childPointer,
                                                         NetworkAccess network,
                                                         Crypto crypto) {
-        return pointer.fileAccess.addChildAndCommit(current, committer, writableFilePointer().relativise(childPointer),
-                writableFilePointer(), entryWriter, network, crypto)
+        List<RelativeCapability> childCaps = Collections.singletonList(writableFilePointer().relativise(childPointer));
+        return pointer.fileAccess.addChildrenAndCommit(current, committer,
+                childCaps, writableFilePointer(), signingPair(), network, crypto)
                 .thenApply(newBase -> {
                     setModified();
                     return newBase;
