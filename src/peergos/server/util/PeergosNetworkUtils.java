@@ -7,7 +7,7 @@ import peergos.shared.Crypto;
 import peergos.shared.NetworkAccess;
 import peergos.shared.crypto.symmetric.SymmetricKey;
 import peergos.shared.social.*;
-import peergos.shared.user.UserContext;
+import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.user.fs.FileWrapper;
 import peergos.shared.user.fs.cryptree.*;
@@ -17,8 +17,7 @@ import peergos.shared.util.Serialize;
 import java.io.File;
 import java.nio.file.*;
 import java.util.*;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
+import java.util.stream.*;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -714,6 +713,172 @@ public class PeergosNetworkUtils {
         Assert.assertTrue("Correct children", childNamesAgain.equals(childNames));
 
         MultiUserTests.checkUserValidity(network, sharer.username);
+    }
+
+    public static void grantAndRevokeDirWriteAccessWithNestedWriteAccess(NetworkAccess network,
+                                                                         Random random) {
+        CryptreeNode.setMaxChildLinkPerBlob(10);
+
+        String password = "notagoodone";
+
+        UserContext sharer = PeergosNetworkUtils.ensureSignedUp(generateUsername(random), password, network, crypto);
+
+        List<UserContext> shareeUsers = getUserContextsForNode(network, random, 2, Arrays.asList(password, password));
+        UserContext a = shareeUsers.get(0);
+        UserContext b = shareeUsers.get(1);
+
+        for (UserContext sharee : shareeUsers)
+            sharee.sendFollowRequest(sharer.username, SymmetricKey.random()).join();
+
+        List<FollowRequestWithCipherText> sharerRequests = sharer.processFollowRequests().join();
+        for (FollowRequestWithCipherText u1Request : sharerRequests) {
+            boolean accept = true;
+            boolean reciprocate = true;
+            sharer.sendReplyFollowRequest(u1Request, accept, reciprocate).join();
+        }
+
+        for (UserContext user : shareeUsers) {
+            user.processFollowRequests().join();
+        }
+
+        // friends are now connected
+        FileWrapper u1Root = sharer.getUserRoot().join();
+        String folderName = "folder";
+        u1Root.mkdir(folderName, sharer.network, SymmetricKey.random(), false, crypto).join();
+        Path dirPath = Paths.get(sharer.username, folderName);
+
+        // put a file and some sub-dirs into the dir
+        FileWrapper folder = sharer.getByPath(dirPath).join().get();
+        String filename = "somefile.txt";
+        byte[] data = "Hello Peergos friend!".getBytes();
+        AsyncReader resetableFileInputStream = new AsyncReader.ArrayBacked(data);
+        folder.uploadOrOverwriteFile(filename, resetableFileInputStream,
+                data.length, sharer.network, crypto, l -> {}, crypto.random.randomBytes(32)).join();
+
+        for (int i=0; i< 20; i++) {
+            sharer.getByPath(dirPath).join().get()
+                    .mkdir("subdir"+i, sharer.network, false, crypto).join();
+        }
+
+        // grant write access to a directory to user 'a'
+        sharer.shareWriteAccessWithAll(sharer.getByPath(dirPath).join().get(),
+                sharer.getUserRoot().join(), Collections.singleton(a.username)).join();
+
+        // create another sub-directory
+        FileWrapper sharedFolderv1 = sharer.getByPath(dirPath).join().get();
+        String subdirName = "subdir";
+        sharedFolderv1.mkdir(subdirName, sharer.network, false, crypto).join();
+
+        // grant write access to a sub-directory to user 'b'
+        Path subdirPath = Paths.get(sharer.username, folderName, subdirName);
+        sharer.shareWriteAccessWithAll(sharer.getByPath(subdirPath).join().get(),
+                sharer.getByPath(dirPath).join().get(), Collections.singleton(b.username)).join();
+
+        List<Set<AbsoluteCapability>> childCapsByChunk0 = getAllChildCapsByChunk(sharer.getByPath(dirPath).join().get(), network);
+        Assert.assertTrue("Correct links per chunk, without duplicates",
+                childCapsByChunk0.stream().map(x -> x.size()).collect(Collectors.toList())
+                        .equals(Arrays.asList(10, 10, 2)));
+
+        // check 'b' can upload a file
+        UserContext shareeUploader = shareeUsers.get(0);
+        FileWrapper sharedDir = shareeUploader.getByPath(subdirPath).join().get();
+        sharedDir.uploadFileJS("a-new-file.png", AsyncReader.build(data), 0, data.length,
+                false, shareeUploader.network, crypto, x -> {}, shareeUploader.getTransactionService()).join();
+
+        // check 'a' can see the shared directory
+        FileWrapper sharedFolder = a.getByPath(sharer.username + "/" + folderName).join()
+                .orElseThrow(() -> new AssertionError("shared folder is present after sharing"));
+        Assert.assertEquals(sharedFolder.getFileProperties().name, folderName);
+
+        FileWrapper sharedFile = a.getByPath(sharer.username + "/" + folderName + "/" + filename).join().get();
+        checkFileContents(data, sharedFile, a);
+        Set<String> sharedChildNames = sharedFolder.getChildren(crypto.hasher, a.network).join()
+                .stream()
+                .map(f -> f.getName())
+                .collect(Collectors.toSet());
+        Set<String> childNames = sharer.getByPath(dirPath).join().get().getChildren(crypto.hasher, sharer.network).join()
+                .stream()
+                .map(f -> f.getName())
+                .collect(Collectors.toSet());
+        Assert.assertTrue("Correct children", sharedChildNames.equals(childNames));
+
+        MultiUserTests.checkUserValidity(network, sharer.username);
+
+        Set<AbsoluteCapability> childCaps = getAllChildCaps(sharer.getByPath(dirPath).join().get(), network);
+        Assert.assertTrue("Correct number of child caps on dir", childCaps.size() == 22);
+
+        UserContext updatedSharer = PeergosNetworkUtils.ensureSignedUp(sharer.username, password, network.clear(), crypto);
+
+        List<UserContext> updatedSharees = shareeUsers.stream()
+                .map(e -> {
+                    try {
+                        return ensureSignedUp(e.username, password, e.network, crypto);
+                    } catch (Exception ex) {
+                        throw new IllegalStateException(ex.getMessage(), ex);
+                    }
+                }).collect(Collectors.toList());
+
+        // revoke write access to top level dir from 'a'
+        UserContext user = updatedSharees.get(0);
+
+        List<Set<AbsoluteCapability>> childCapsByChunk1 = getAllChildCapsByChunk(updatedSharer.getByPath(dirPath).join().get(), network);
+        Assert.assertTrue("Correct links per chunk, without duplicates",
+                childCapsByChunk1.stream().map(x -> x.size()).collect(Collectors.toList())
+                        .equals(Arrays.asList(10, 10, 2)));
+
+        updatedSharer.unShareWriteAccess(dirPath, a.username).join();
+
+        List<Set<AbsoluteCapability>> childCapsByChunk2 = getAllChildCapsByChunk(sharer.getByPath(dirPath).join().get(), network);
+        Assert.assertTrue("Correct links per chunk, without duplicates",
+                childCapsByChunk2.stream().map(x -> x.size()).collect(Collectors.toList())
+                        .equals(Arrays.asList(10, 10, 2)));
+
+        Optional<FileWrapper> updatedSharedFolder = user.getByPath(dirPath).join();
+
+        // test that sharer can still access the sub-dir, and 'a' cannot access the top level dir
+        Optional<FileWrapper> updatedSubdir = updatedSharer.getByPath(subdirPath).join();
+        Assert.assertTrue(! updatedSharedFolder.isPresent());
+        Assert.assertTrue(updatedSubdir.isPresent());
+
+        // test 'b' can still see shared sub-dir
+        UserContext otherUser = updatedSharees.get(1);
+
+        Optional<FileWrapper> subdirAgain = otherUser.getByPath(updatedSharer.username + "/" + folderName + "/" + subdirName).join();
+        Assert.assertTrue("Shared folder present via direct path", subdirAgain.isPresent());
+
+        MultiUserTests.checkUserValidity(network, sharer.username);
+    }
+
+    public static List<Set<AbsoluteCapability>> getAllChildCapsByChunk(FileWrapper dir, NetworkAccess network) {
+        return getAllChildCapsByChunk(dir.getPointer().capability, dir.getPointer().fileAccess, network);
+    }
+
+    public static List<Set<AbsoluteCapability>> getAllChildCapsByChunk(AbsoluteCapability cap, CryptreeNode dir, NetworkAccess network) {
+        Set<AbsoluteCapability> direct = dir.getDirectChildrenCapabilities(cap, network).join();
+
+        AbsoluteCapability nextChunkCap = cap.withMapKey(dir.getNextChunkLocation(cap.rBaseKey, Optional.empty(), cap.getMapKey(), null));
+
+        Snapshot version = new Snapshot(cap.writer,
+                WriterData.getWriterData(network.mutable.getPointerTarget(cap.owner, cap.writer,
+                        network.dhtClient).join().get(), network.dhtClient).join());
+
+        Optional<CryptreeNode> next = network.getMetadata(version.get(nextChunkCap.writer).props, nextChunkCap).join();
+        if (! next.isPresent())
+            return Arrays.asList(direct);
+        return Stream.concat(Stream.of(direct), getAllChildCapsByChunk(nextChunkCap, next.get(), network).stream())
+                .collect(Collectors.toList());
+    }
+
+    public static Set<AbsoluteCapability> getAllChildCaps(FileWrapper dir, NetworkAccess network) {
+        RetrievedCapability p = dir.getPointer();
+        AbsoluteCapability cap = p.capability;
+        return getAllChildCaps(cap, p.fileAccess, network);
+    }
+
+    public static Set<AbsoluteCapability> getAllChildCaps(AbsoluteCapability cap, CryptreeNode dir, NetworkAccess network) {
+            return dir.getAllChildrenCapabilities(new Snapshot(cap.writer,
+                    WriterData.getWriterData(network.mutable.getPointerTarget(cap.owner, cap.writer,
+                            network.dhtClient).join().get(), network.dhtClient).join()), cap, crypto.hasher, network).join();
     }
 
     public static void shareFolderForWriteAccess(NetworkAccess sharerNode, NetworkAccess shareeNode, int shareeCount, Random random) throws Exception {

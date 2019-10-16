@@ -35,6 +35,14 @@ public class Snapshot {
         return new Snapshot(merge);
     }
 
+    public Snapshot mergeAndOverwriteWith(Snapshot other) {
+        HashMap<PublicKeyHash, CommittedWriterData> merge = new HashMap<>(versions);
+        for (Map.Entry<PublicKeyHash, CommittedWriterData> entry : other.versions.entrySet()) {
+            merge.put(entry.getKey(), entry.getValue());
+        }
+        return new Snapshot(merge);
+    }
+
     public CommittedWriterData get(PublicKeyHash writer) {
         if (! versions.containsKey(writer))
             throw new IllegalStateException("writer not present in snapshot!");

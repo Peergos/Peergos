@@ -4,6 +4,7 @@ import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.multibase.*;
+import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.stream.*;
@@ -54,5 +55,10 @@ public class WritableAbsoluteCapability extends AbsoluteCapability {
         String encodedWBaseKey = Base58.encode(wBaseKey.get().serialize());
         return Stream.of(encodedOwnerKey, encodedWriterKey, encodedMapKey, encodedBaseKey, encodedWBaseKey)
                 .collect(Collectors.joining("/", "#", ""));
+    }
+
+    @Override
+    public String toString() {
+        return writer + "." + ArrayOps.bytesToHex(getMapKey());
     }
 }

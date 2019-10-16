@@ -121,6 +121,11 @@ public class MultiUserTests {
     }
 
     @Test
+    public void grantAndRevokeDirWriteAccessWithNestedWriteAccess() {
+        PeergosNetworkUtils.grantAndRevokeDirWriteAccessWithNestedWriteAccess(network, random);
+    }
+
+    @Test
     public void safeCopyOfFriendsReadAccess() throws Exception {
         TriFunction<UserContext, UserContext, String, CompletableFuture<Boolean>> readAccessSharingFunction =
                 (u1, u2, filename) ->

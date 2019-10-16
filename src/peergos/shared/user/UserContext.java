@@ -1127,7 +1127,7 @@ public class UserContext {
     public CompletableFuture<Boolean> unShareWriteAccess(Path path, Set<String> writersToRemove) {
         // 1. Add new writer pair as an owned key to parent's writer
         // 2. Rotate symmetric writing keys of subtree
-        // 3. Change the signing key pair of the subtree
+        // 3. Change the signing key pair of the subtree, and any sub signing key pairs
         // 4. Rotate the symmetric read keys
         // 5. Remove old writer from parent owned keys
         String pathString = path.toString();
