@@ -293,6 +293,7 @@ public abstract class UserTests {
         Assert.assertTrue("Malicious pointer update failed", updated.equals(current));
     }
 
+    @Test
     public void ensureUserIsTryingToFollowPeergos() {
         String username = generateUsername();
         String password = "password";
