@@ -309,13 +309,16 @@ public abstract class UserTests {
             peergosUser.sendReplyFollowRequest(request, accept, reciprocate).join();
         }
 
+        userContext = UserContext.signIn(username, password, network, crypto).join();
         userContext.processFollowRequests().join();
         userContext.unfollow("peergos");
+
         Boolean followingPeergos = userContext.getFollowing().join().contains("peergos");
         assertTrue("Unfollowed Peergos", !followingPeergos);
         userContext.logout();
+
         UserContext renewedUserContext = UserContext.signIn(username, password, network, crypto).join();
-        renewedUserContext.ensureFollowingPeergos();
+        renewedUserContext.ensureFollowingPeergos().join();
         requestToFollowPeergos = renewedUserContext.getSocialState().join().pendingOutgoingFollowRequests.containsKey("peergos");
         assertTrue("Pending request to follow Peergos is back", requestToFollowPeergos);
     }
