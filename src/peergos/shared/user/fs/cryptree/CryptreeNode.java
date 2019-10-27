@@ -733,8 +733,9 @@ public class CryptreeNode implements Cborable {
                                             committer, newUs.cap, newUs.signer, network, tid), network.dhtClient);
                                 });
                     } else {
-                        RelativeCapability toParent = new RelativeCapability(Optional.empty(), newParent.cap.getMapKey(),
-                                newParentParentKey, Optional.empty());
+                        RelativeCapability toParent = newParentCap
+                                .orElseGet(() -> new RelativeCapability(Optional.empty(), newParent.cap.getMapKey(),
+                                        newParentParentKey, Optional.empty()));
                         Optional<SymmetricLinkToSigner> signerLink = !isFirstChunk |
                                 newUs.cap.writer.equals(newParent.cap.writer) ?
                                 Optional.empty() :

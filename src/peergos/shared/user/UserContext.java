@@ -1141,7 +1141,7 @@ public class UserContext {
                         PublicKeyHash owner = parent.owner();
                         SigningPrivateKeyAndPublicHash parentSigner = parent.signingPair();
                         AbsoluteCapability parentCap = parent.getPointer().capability;
-                        CompletableFuture<WritableAbsoluteCapability> newFileCap = new CompletableFuture<>();
+                        AbsoluteCapability originalCap = toUnshare.getPointer().capability;
                         return network.synchronizer.applyComplexUpdate(owner, parentSigner, (initial, c) -> CryptreeNode.initAndAuthoriseSigner(
                                 owner,
                                 parentSigner,
@@ -1149,7 +1149,7 @@ public class UserContext {
                                 .thenCompose(p -> toUnshare.getPointer().fileAccess.rotateAllKeys(
                                         true,
                                         new CryptreeNode.CapAndSigner((WritableAbsoluteCapability)
-                                                toUnshare.getPointer().capability, toUnshare.signingPair()),
+                                                originalCap, toUnshare.signingPair()),
                                         new CryptreeNode.CapAndSigner(new WritableAbsoluteCapability(
                                                 owner,
                                                 p.right.publicKeyHash,
@@ -1166,22 +1166,20 @@ public class UserContext {
                                         c)
                                         .thenCompose(rotated -> parent.getPointer().fileAccess.updateChildLink(
                                                 rotated.left, c, (WritableAbsoluteCapability) parentCap,
-                                                parentSigner, toUnshare.getPointer().capability, rotated.right,
+                                                parentSigner, originalCap, rotated.right,
                                                 network, crypto.hasher)
-                                                .thenCompose(s -> {
-                                                    newFileCap.complete(rotated.right);
-                                                    return IpfsTransaction.call(owner, tid -> FileWrapper.deleteAllChunks(
-                                                            toUnshare.writableFilePointer(),
-                                                            toUnshare.signingPair(),
-                                                            tid, crypto.hasher, network, s, c), network.dhtClient);
-                                                })
+                                                .thenCompose(s -> IpfsTransaction.call(owner,
+                                                        tid -> FileWrapper.deleteAllChunks(
+                                                                toUnshare.writableFilePointer(),
+                                                                toUnshare.signingPair(),
+                                                                tid, crypto.hasher, network, s, c), network.dhtClient))
                                                 .thenCompose(s -> CryptreeNode.deAuthoriseSigner(owner,
                                                         parentSigner, toUnshare.writer(), network, s, c)))))
                                 .thenCompose(x -> {
                                     sharedWithCache.removeSharedWith(SharedWithCache.Access.WRITE,
-                                            toUnshare.getPointer().capability, writersToRemove);
-                                    return newFileCap.thenCompose(newCap -> shareWriteAccessWith(path,
-                                            sharedWithCache.getSharedWith(SharedWithCache.Access.WRITE, newCap)));
+                                            originalCap, writersToRemove);
+                                    return shareWriteAccessWith(path,
+                                            sharedWithCache.getSharedWith(SharedWithCache.Access.WRITE, originalCap));
                                 });
                     });
         });

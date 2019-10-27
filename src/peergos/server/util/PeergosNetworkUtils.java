@@ -273,6 +273,10 @@ public class PeergosNetworkUtils {
 
         UserContext updatedSharerUser = ensureSignedUp(sharerUsername, sharerPassword, sharerNode.clear(), crypto);
 
+        FileWrapper theFile = updatedSharerUser.getByPath(filePath).join().get();
+        String retrievedPath = theFile.getPath(sharerNode).join();
+        Assert.assertTrue("File has correct path", retrievedPath.equals("/" + filePath));
+
         // check remaining users can still read it
         for (UserContext userContext : remainingUsers) {
             String path = filePath;
