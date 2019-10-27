@@ -735,7 +735,10 @@ public class CryptreeNode implements Cborable {
                     } else {
                         RelativeCapability toParent = new RelativeCapability(Optional.empty(), newParent.cap.getMapKey(),
                                 newParentParentKey, Optional.empty());
-                        Optional<SymmetricLinkToSigner> signerLink = Optional.empty();
+                        Optional<SymmetricLinkToSigner> signerLink = !isFirstChunk |
+                                newUs.cap.writer.equals(newParent.cap.writer) ?
+                                Optional.empty() :
+                                Optional.of(SymmetricLinkToSigner.fromPair(newUs.cap.wBaseKey.get(), newUs.signer));
                         SymmetricKey dataKey = getDataKey(us.cap.rBaseKey).makeDirty();
                         CryptreeNode newFileChunk = createFile(MaybeMultihash.empty(), signerLink, newUs.cap.rBaseKey, dataKey, props,
                                 this.childrenOrData, toParent, RelativeCapability.buildSubsequentChunk(

@@ -256,17 +256,11 @@ public class PeergosNetworkUtils {
         UserContext userToUnshareWith = shareeUsers.stream().findFirst().get();
 
         // unshare with a single user
-        sharerUser.unShareWriteAccess(Paths.get(sharerUser.username, filename), userToUnshareWith.username).get();
+        sharerUser.unShareWriteAccess(Paths.get(sharerUser.username, filename), userToUnshareWith.username).join();
 
         List<UserContext> updatedShareeUsers = shareeUsers.stream()
-                .map(e -> {
-                    try {
-                        return ensureSignedUp(e.username, shareePasswords.get(shareeUsers.indexOf(e)), shareeNode, crypto);
-                    } catch (Exception ex) {
-                        throw new IllegalStateException(ex.getMessage(), ex);
-
-                    }
-                }).collect(Collectors.toList());
+                .map(e -> ensureSignedUp(e.username, shareePasswords.get(shareeUsers.indexOf(e)), shareeNode, crypto))
+                .collect(Collectors.toList());
 
         //test that the other user cannot access it from scratch
         Optional<FileWrapper> otherUserView = updatedShareeUsers.get(0).getByPath(sharerUser.username + "/" + filename).get();
