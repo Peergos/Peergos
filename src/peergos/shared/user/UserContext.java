@@ -1256,22 +1256,28 @@ public class UserContext {
                                                               FileWrapper parent,
                                                               Set<String> writersToAdd) {
         ensureAllowedToShare(file, username, true);
-        SigningKeyPair newSignerPair = SigningKeyPair.random(crypto.random, crypto.signer);
+        SigningPrivateKeyAndPublicHash currentSigner = file.signingPair();
+        boolean changeSigner = currentSigner.publicKeyHash.equals(parent.signingPair().publicKeyHash);
+        Supplier<CompletableFuture<FileWrapper>> rotatedFile = () -> {
+            if (! changeSigner)
+                return Futures.of(file);
+            SigningKeyPair newSignerPair = SigningKeyPair.random(crypto.random, crypto.signer);
 
-        return addOwnedKeyToParent(parent.owner(), parent.signingPair(), newSignerPair, network)
-                .thenCompose(newSigner -> file.changeSigningKey(newSigner, parent, network, crypto.hasher)
-                        .thenCompose(updatedFile -> {
-                            BiFunction<FileWrapper, FileWrapper, CompletableFuture<Boolean>> sharingFunction =
-                                    (sharedDir, fileToShare) -> CapabilityStore.addEditSharingLinkTo(sharedDir,
-                                            updatedFile.left.writableFilePointer(), network, crypto)
-                                            .thenCompose(ee -> CompletableFuture.completedFuture(true));
-                            return Futures.reduceAll(writersToAdd,
-                                    true,
-                                    (x, username) -> shareAccessWith(file, username, sharingFunction),
-                                    (a, b) -> a && b)
-                                    .thenCompose(result -> updatedSharedWithCache(file, writersToAdd, SharedWithCache.Access.WRITE));
-                        })
-                );
+            return addOwnedKeyToParent(parent.owner(), parent.signingPair(), newSignerPair, network)
+                    .thenCompose(newSigner -> file.changeSigningKey(newSigner, parent, network, crypto.hasher))
+                    .thenApply(p -> p.left);
+        };
+        return rotatedFile.get().thenCompose(updatedFile -> {
+            BiFunction<FileWrapper, FileWrapper, CompletableFuture<Boolean>> sharingFunction =
+                    (sharedDir, fileToShare) -> CapabilityStore.addEditSharingLinkTo(sharedDir,
+                            updatedFile.writableFilePointer(), network, crypto)
+                            .thenCompose(ee -> CompletableFuture.completedFuture(true));
+            return Futures.reduceAll(writersToAdd,
+                    true,
+                    (x, username) -> shareAccessWith(file, username, sharingFunction),
+                    (a, b) -> a && b)
+                    .thenCompose(result -> updatedSharedWithCache(file, writersToAdd, SharedWithCache.Access.WRITE));
+        });
     }
 
     /**
