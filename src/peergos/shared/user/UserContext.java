@@ -1125,33 +1125,55 @@ public class UserContext {
     }
 
     public CompletableFuture<Boolean> unShareWriteAccess(Path path, Set<String> writersToRemove) {
-        // 1. Add new writer pair as an owned key to parent's writer
-        // 2. Rotate symmetric writing keys of subtree
-        // 3. Change the signing key pair of the subtree, and any sub signing key pairs
-        // 4. Rotate the symmetric read keys
-        // 5. Remove old writer from parent owned keys
+        // 1. Authorise new writer pair as an owned key to parent's writer
+        // 2. Rotate all keys (except data keys which are marked as dirty)
+        // 3. Remove old writer from parent owned keys
         String pathString = path.toString();
         String absolutePathString = pathString.startsWith("/") ? pathString : "/" + pathString;
         return getByPath(path).thenCompose(opt -> {
             FileWrapper toUnshare = opt.orElseThrow(() -> new IllegalStateException("Specified un-shareWith path "
                     + absolutePathString + " does not exist"));
             return getByPath(path.getParent().toString())
-                    .thenCompose(parent -> addOwnedKeyToParent(parent.get().owner(), parent.get().signingPair(),
-                            SigningKeyPair.random(crypto.random, crypto.signer), network)
-                            .thenCompose(newSigner -> toUnshare.rotateWriteKeys(parent.get(), network, crypto)
-                                    .thenCompose(pair -> pair.left.changeSigningKey(newSigner, pair.right, network, crypto.hasher))
-                                    .thenCompose(pair -> pair.left.rotateReadKeys(network, crypto.random, crypto.hasher, pair.right))
-                                    .thenCompose(x -> removeOwnedKeyFromParent(parent.get().owner(),
-                                            parent.get().signingPair(), toUnshare.writer(), network))
-                                    .thenCompose(x -> {
-                                        sharedWithCache.removeSharedWith(SharedWithCache.Access.WRITE,
-                                                toUnshare.getPointer().capability, writersToRemove);
-                                        return shareWriteAccessWith(path,
-                                                sharedWithCache.getSharedWith(SharedWithCache.Access.WRITE,
-                                                        toUnshare.getPointer().capability));
-                                    })
-                            )
-                    );
+                    .thenCompose(parentOpt -> {
+                        FileWrapper parent = parentOpt.get();
+                        PublicKeyHash owner = parent.owner();
+                        SigningPrivateKeyAndPublicHash parentSigner = parent.signingPair();
+                        AbsoluteCapability parentCap = parent.getPointer().capability;
+                        return network.synchronizer.applyComplexUpdate(owner, parentSigner, (initial, c) -> CryptreeNode.initAndAuthoriseSigner(
+                                owner,
+                                parentSigner,
+                                SigningKeyPair.random(crypto.random, crypto.signer), network, initial, c)
+                                .thenCompose(p -> toUnshare.getPointer().fileAccess.rotateAllKeys(
+                                        true,
+                                        new CryptreeNode.CapAndSigner((WritableAbsoluteCapability)
+                                                toUnshare.getPointer().capability, toUnshare.signingPair()),
+                                        new CryptreeNode.CapAndSigner(new WritableAbsoluteCapability(
+                                                owner,
+                                                p.right.publicKeyHash,
+                                                crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH),
+                                                SymmetricKey.random(),
+                                                SymmetricKey.random()),
+                                                p.right),
+                                        new CryptreeNode.CapAndSigner((WritableAbsoluteCapability) parentCap, parent.signingPair()),
+                                        new CryptreeNode.CapAndSigner((WritableAbsoluteCapability) parentCap, parent.signingPair()),
+                                        parent.getParentKey(),
+                                        network,
+                                        crypto,
+                                        p.left,
+                                        c)
+                                        .thenCompose(rotated -> parent.getPointer().fileAccess.updateChildLink(
+                                                rotated.left, c, (WritableAbsoluteCapability) parentCap,
+                                                parentSigner, toUnshare.getPointer().capability, rotated.right,
+                                                network, crypto.hasher).thenCompose(s -> CryptreeNode.deAuthoriseSigner(owner,
+                                                parentSigner, toUnshare.writer(), network, s, c)))))
+                                .thenCompose(x -> {
+                                    sharedWithCache.removeSharedWith(SharedWithCache.Access.WRITE,
+                                            toUnshare.getPointer().capability, writersToRemove);
+                                    return shareWriteAccessWith(path,
+                                            sharedWithCache.getSharedWith(SharedWithCache.Access.WRITE,
+                                                    toUnshare.getPointer().capability));
+                                });
+                    });
         });
     }
 
@@ -1253,7 +1275,7 @@ public class UserContext {
     }
 
     /**
-     * Add an new owned siging key pair to the writer data of a parent signing pair
+     * Add an new owned signing key pair to the writer data of a parent signing pair
      * @param owner
      * @param parentSigner
      * @param newSignerPair
