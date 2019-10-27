@@ -357,7 +357,10 @@ public class PeergosNetworkUtils {
                 .collect(Collectors.toSet());
 
         // file is uploaded, do the actual sharing
-        boolean finished = sharer.shareReadAccessWithAll(updatedFolder, shareeUsers.stream().map(c -> c.username).collect(Collectors.toSet())).get();
+        boolean finished = sharer.shareReadAccessWithAll(updatedFolder, Paths.get(path),
+                shareeUsers.stream()
+                        .map(c -> c.username)
+                        .collect(Collectors.toSet())).get();
 
         // check each user can see the shared folder and directory
         for (UserContext sharee : shareeUsers) {
@@ -475,7 +478,7 @@ public class PeergosNetworkUtils {
         }
 
         // file is uploaded, do the actual sharing
-        boolean finished = sharer.shareWriteAccessWithAll(sharer.getByPath(path).join().get(), sharer.getUserRoot().join(), shareeUsers.stream()
+        boolean finished = sharer.shareWriteAccessWithAll(sharer.getByPath(path).join().get(), Paths.get(path), sharer.getUserRoot().join(), shareeUsers.stream()
                 .map(c -> c.username)
                 .collect(Collectors.toSet())).get();
 
@@ -622,7 +625,7 @@ public class PeergosNetworkUtils {
         }
 
         // share /u1/folder with 'a'
-        sharer.shareWriteAccessWithAll(sharer.getByPath(dirPath).join().get(),
+        sharer.shareWriteAccessWithAll(sharer.getByPath(dirPath).join().get(), dirPath,
                 sharer.getUserRoot().join(), Collections.singleton(a.username)).join();
 
         // create a directory
@@ -632,7 +635,7 @@ public class PeergosNetworkUtils {
 
         // share /u1/folder with 'b'
         Path subdirPath = Paths.get(sharer.username, folderName, subdirName);
-        sharer.shareWriteAccessWithAll(sharer.getByPath(subdirPath).join().get(),
+        sharer.shareWriteAccessWithAll(sharer.getByPath(subdirPath).join().get(), subdirPath,
                 sharer.getByPath(dirPath).join().get(), Collections.singleton(b.username)).join();
 
         // check 'b' can upload a file
@@ -760,7 +763,7 @@ public class PeergosNetworkUtils {
         }
 
         // grant write access to a directory to user 'a'
-        sharer.shareWriteAccessWithAll(sharer.getByPath(dirPath).join().get(),
+        sharer.shareWriteAccessWithAll(sharer.getByPath(dirPath).join().get(), dirPath,
                 sharer.getUserRoot().join(), Collections.singleton(a.username)).join();
 
         // create another sub-directory
@@ -770,7 +773,7 @@ public class PeergosNetworkUtils {
 
         // grant write access to a sub-directory to user 'b'
         Path subdirPath = Paths.get(sharer.username, folderName, subdirName);
-        sharer.shareWriteAccessWithAll(sharer.getByPath(subdirPath).join().get(),
+        sharer.shareWriteAccessWithAll(sharer.getByPath(subdirPath).join().get(), subdirPath,
                 sharer.getByPath(dirPath).join().get(), Collections.singleton(b.username)).join();
 
         List<Set<AbsoluteCapability>> childCapsByChunk0 = getAllChildCapsByChunk(sharer.getByPath(dirPath).join().get(), network);
@@ -916,7 +919,7 @@ public class PeergosNetworkUtils {
         FileWrapper folder = sharer.getByPath(path).get().get();
 
         // file is uploaded, do the actual sharing
-        boolean finished = sharer.shareWriteAccessWithAll(folder, sharer.getUserRoot().join(),
+        boolean finished = sharer.shareWriteAccessWithAll(folder, Paths.get(path), sharer.getUserRoot().join(),
                 shareeUsers.stream()
                         .map(c -> c.username)
                         .collect(Collectors.toSet())).get();
