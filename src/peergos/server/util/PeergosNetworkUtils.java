@@ -230,12 +230,13 @@ public class PeergosNetworkUtils {
                 sharerUser.network, crypto, l -> {}, crypto.random.randomBytes(32)).get();
 
         // share the file from sharer to each of the sharees
-        FileWrapper u1File = sharerUser.getByPath(sharerUser.username + "/" + filename).get().get();
+        String filePath = sharerUser.username + "/" + filename;
+        FileWrapper u1File = sharerUser.getByPath(filePath).get().get();
         sharerUser.shareWriteAccessWith(Paths.get(sharerUser.username, filename), shareeUsers.stream().map(u -> u.username).collect(Collectors.toSet())).get();
 
         // check other users can read the file
         for (UserContext userContext : shareeUsers) {
-            Optional<FileWrapper> sharedFile = userContext.getByPath(sharerUser.username + "/" + filename).get();
+            Optional<FileWrapper> sharedFile = userContext.getByPath(filePath).get();
             Assert.assertTrue("shared file present", sharedFile.isPresent());
             Assert.assertTrue("File is writable", sharedFile.get().isWritable());
             checkFileContents(originalFileContents, sharedFile.get(), userContext);
@@ -263,7 +264,7 @@ public class PeergosNetworkUtils {
                 .collect(Collectors.toList());
 
         //test that the other user cannot access it from scratch
-        Optional<FileWrapper> otherUserView = updatedShareeUsers.get(0).getByPath(sharerUser.username + "/" + filename).get();
+        Optional<FileWrapper> otherUserView = updatedShareeUsers.get(0).getByPath(filePath).get();
         Assert.assertTrue(!otherUserView.isPresent());
 
         List<UserContext> remainingUsers = updatedShareeUsers.stream()
@@ -274,14 +275,14 @@ public class PeergosNetworkUtils {
 
         // check remaining users can still read it
         for (UserContext userContext : remainingUsers) {
-            String path = sharerUser.username + "/" + filename;
+            String path = filePath;
             Optional<FileWrapper> sharedFile = userContext.getByPath(path).get();
             Assert.assertTrue("path '" + path + "' is still available", sharedFile.isPresent());
             checkFileContents(originalFileContents, sharedFile.get(), userContext);
         }
 
         // test that u1 can still access the original file
-        Optional<FileWrapper> fileWithNewBaseKey = updatedSharerUser.getByPath(sharerUser.username + "/" + filename).get();
+        Optional<FileWrapper> fileWithNewBaseKey = updatedSharerUser.getByPath(filePath).get();
         Assert.assertTrue(fileWithNewBaseKey.isPresent());
 
         // Now modify the file
@@ -291,7 +292,7 @@ public class PeergosNetworkUtils {
         parent.uploadFileSection(filename, suffixStream, false, originalFileContents.length, originalFileContents.length + suffix.length,
                 Optional.empty(), true, updatedSharerUser.network, crypto, l -> {},
                 null).get();
-        AsyncReader extendedContents = updatedSharerUser.getByPath(sharerUser.username + "/" + filename).get().get().getInputStream(updatedSharerUser.network,
+        AsyncReader extendedContents = updatedSharerUser.getByPath(filePath).get().get().getInputStream(updatedSharerUser.network,
                 updatedSharerUser.crypto, l -> {}).get();
         byte[] newFileContents = Serialize.readFully(extendedContents, originalFileContents.length + suffix.length).get();
 

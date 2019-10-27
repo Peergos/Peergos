@@ -1127,7 +1127,9 @@ public class UserContext {
     public CompletableFuture<Boolean> unShareWriteAccess(Path path, Set<String> writersToRemove) {
         // 1. Authorise new writer pair as an owned key to parent's writer
         // 2. Rotate all keys (except data keys which are marked as dirty)
-        // 3. Remove old writer from parent owned keys
+        // 3. Update link from parent to point ot new rotated child
+        // 4. Delete old file and subtree
+        // 5. Remove old writer from parent owned keys
         String pathString = path.toString();
         String absolutePathString = pathString.startsWith("/") ? pathString : "/" + pathString;
         return getByPath(path).thenCompose(opt -> {
@@ -1139,6 +1141,7 @@ public class UserContext {
                         PublicKeyHash owner = parent.owner();
                         SigningPrivateKeyAndPublicHash parentSigner = parent.signingPair();
                         AbsoluteCapability parentCap = parent.getPointer().capability;
+                        CompletableFuture<WritableAbsoluteCapability> newFileCap = new CompletableFuture<>();
                         return network.synchronizer.applyComplexUpdate(owner, parentSigner, (initial, c) -> CryptreeNode.initAndAuthoriseSigner(
                                 owner,
                                 parentSigner,
@@ -1164,14 +1167,21 @@ public class UserContext {
                                         .thenCompose(rotated -> parent.getPointer().fileAccess.updateChildLink(
                                                 rotated.left, c, (WritableAbsoluteCapability) parentCap,
                                                 parentSigner, toUnshare.getPointer().capability, rotated.right,
-                                                network, crypto.hasher).thenCompose(s -> CryptreeNode.deAuthoriseSigner(owner,
-                                                parentSigner, toUnshare.writer(), network, s, c)))))
+                                                network, crypto.hasher)
+                                                .thenCompose(s -> {
+                                                    newFileCap.complete(rotated.right);
+                                                    return IpfsTransaction.call(owner, tid -> FileWrapper.deleteAllChunks(
+                                                            toUnshare.writableFilePointer(),
+                                                            toUnshare.signingPair(),
+                                                            tid, crypto.hasher, network, s, c), network.dhtClient);
+                                                })
+                                                .thenCompose(s -> CryptreeNode.deAuthoriseSigner(owner,
+                                                        parentSigner, toUnshare.writer(), network, s, c)))))
                                 .thenCompose(x -> {
                                     sharedWithCache.removeSharedWith(SharedWithCache.Access.WRITE,
                                             toUnshare.getPointer().capability, writersToRemove);
-                                    return shareWriteAccessWith(path,
-                                            sharedWithCache.getSharedWith(SharedWithCache.Access.WRITE,
-                                                    toUnshare.getPointer().capability));
+                                    return newFileCap.thenCompose(newCap -> shareWriteAccessWith(path,
+                                            sharedWithCache.getSharedWith(SharedWithCache.Access.WRITE, newCap)));
                                 });
                     });
         });
