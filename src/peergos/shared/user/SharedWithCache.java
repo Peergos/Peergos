@@ -14,29 +14,39 @@ public class SharedWithCache {
     //K,V
     // K = mapKey of absolute capability
     // V = list of usernames the file/dir is shared with
-    private Map<ByteArrayWrapper, Set<String>> sharedWithReadAccessCache = new ConcurrentHashMap<>();
-    private Map<ByteArrayWrapper, Set<String>> sharedWithWriteAccessCache = new ConcurrentHashMap<>();
+    private final Map<ByteArrayWrapper, Set<String>> sharedWithReadAccessCache = new ConcurrentHashMap<>();
+    private final Map<ByteArrayWrapper, Set<String>> sharedWithWriteAccessCache = new ConcurrentHashMap<>();
     // These would be more space efficient in a trie
-    private Map<Path, Set<String>> writeShares = new ConcurrentHashMap<>();
-    private Map<Path, Set<String>> readShares = new ConcurrentHashMap<>();
+    private final Map<Path, Set<String>> writeShares = new ConcurrentHashMap<>();
+    private final Map<Path, Set<String>> readShares = new ConcurrentHashMap<>();
 
-    public SharedWithCache() {
+    public SharedWithCache() {}
 
+    private static Path canonicalise(Path p) {
+        return p.isAbsolute() ? p : Paths.get("/").resolve(p);
     }
 
     public Map<Path, Set<String>> getAllReadShares(Path start) {
+        Path startPath = canonicalise(start);
         Map<Path, Set<String>> res = new HashMap<>();
         for (Path path: readShares.keySet())
-        if (path.startsWith(start))
-            res.put(path, readShares.get(path));
+        if (path.startsWith(startPath)) {
+            Set<String> names = readShares.get(path);
+            if (! names.isEmpty())
+                res.put(path, names);
+        }
         return res;
     }
 
     public Map<Path, Set<String>> getAllWriteShares(Path start) {
+        Path startPath = canonicalise(start);
         Map<Path, Set<String>> res = new HashMap<>();
         for (Path path: writeShares.keySet())
-        if (path.startsWith(start))
-            res.put(path, writeShares.get(path));
+            if (path.startsWith(startPath)) {
+                Set<String> names = writeShares.get(path);
+                if (! names.isEmpty())
+                    res.put(path, names);
+            }
         return res;
     }
 
@@ -60,20 +70,18 @@ public class SharedWithCache {
 
     public void addSharedWith(Access access, String path, AbsoluteCapability cap, String name) {
         Path p = Paths.get(path);
-        if (access == Access.READ) {
-            readShares.putIfAbsent(p, new HashSet<>());
-            readShares.get(p).add(name);
-        } else {
-            writeShares.putIfAbsent(p, new HashSet<>());
-            writeShares.get(p).add(name);
-        }
         addSharedWith(access, p, cap, Collections.singleton(name));
     }
 
-    public void addSharedWith(Access access, Path path, AbsoluteCapability cap, Set<String> names) {
+    public void addSharedWith(Access access, Path p, AbsoluteCapability cap, Set<String> names) {
+        Path filePath = canonicalise(p);
         if (access == Access.READ) {
+            readShares.putIfAbsent(filePath, new HashSet<>());
+            readShares.get(filePath).addAll(names);
             addCacheEntry(sharedWithReadAccessCache, cap, names);
-        } else if (access == Access.WRITE){
+        } else if (access == Access.WRITE) {
+            writeShares.putIfAbsent(filePath, new HashSet<>());
+            writeShares.get(filePath).addAll(names);
             addCacheEntry(sharedWithWriteAccessCache, cap, names);
         }
     }
@@ -88,10 +96,15 @@ public class SharedWithCache {
         sharedWithWriteAccessCache.computeIfPresent(key, (k, v) -> new HashSet<>());
     }
 
-    public void removeSharedWith(Access access, AbsoluteCapability cap, Set<String> names) {
-        if(access == Access.READ) {
+    public void removeSharedWith(Access access, Path p, AbsoluteCapability cap, Set<String> names) {
+        Path filePath = canonicalise(p);
+        if (access == Access.READ) {
+            if (readShares.containsKey(filePath))
+                readShares.get(filePath).removeAll(names);
             removeCacheEntry(sharedWithReadAccessCache, cap, names);
-        } else if(access == Access.WRITE){
+        } else if (access == Access.WRITE) {
+            if (writeShares.containsKey(filePath))
+                writeShares.get(filePath).removeAll(names);
             removeCacheEntry(sharedWithWriteAccessCache, cap, names);
         }
     }
@@ -99,5 +112,4 @@ public class SharedWithCache {
     private synchronized void removeCacheEntry(Map<ByteArrayWrapper, Set<String>> cache, AbsoluteCapability cap, Set<String> names) {
         cache.computeIfAbsent(generateKey(cap), k -> new HashSet<>()).removeAll(names);
     }
-
 }

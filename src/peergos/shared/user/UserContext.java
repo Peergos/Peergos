@@ -1177,7 +1177,7 @@ public class UserContext {
                                                         parentSigner, toUnshare.writer(), network, s, c)))))
                                 .thenCompose(x -> {
                                     sharedWithCache.removeSharedWith(SharedWithCache.Access.WRITE,
-                                            originalCap, writersToRemove);
+                                            path, originalCap, writersToRemove);
                                     return reShareAllWriteAccessRecursive(path)
                                             .thenCompose(b -> reShareAllReadAccessRecursive(path));
                                 });
@@ -1196,7 +1196,7 @@ public class UserContext {
                             toUnshare.rotateReadKeys(network, crypto.random, crypto.hasher, parent.get())
                                     .thenCompose(markedDirty -> {
                                         AbsoluteCapability cap = toUnshare.getPointer().capability;
-                                        sharedWithCache.removeSharedWith(SharedWithCache.Access.READ, cap, readersToRemove);
+                                        sharedWithCache.removeSharedWith(SharedWithCache.Access.READ, path, cap, readersToRemove);
                                         return shareReadAccessWith(path, sharedWithCache.getSharedWith(SharedWithCache.Access.READ, cap));
                                     }));
         });

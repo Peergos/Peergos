@@ -845,7 +845,7 @@ public class PeergosNetworkUtils {
         // test 'b' can still see shared sub-dir
         UserContext otherUser = updatedSharees.get(1);
 
-        Optional<FileWrapper> subdirAgain = otherUser.getByPath(updatedSharer.username + "/" + folderName + "/" + subdirName).join();
+        Optional<FileWrapper> subdirAgain = otherUser.getByPath(subdirPath).join();
         Assert.assertTrue("Shared folder present via direct path", subdirAgain.isPresent());
 
         MultiUserTests.checkUserValidity(network, sharer.username);
