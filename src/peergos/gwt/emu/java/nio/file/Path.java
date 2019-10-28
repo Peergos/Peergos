@@ -43,6 +43,18 @@ public class Path {
         return new Path(pathString + "/" + other);
     }
 
+    public Path resolve(Path other) {
+        return resolve(other.pathString);
+    }
+
+    public boolean isAbsolute() {
+        return pathString.startsWith("/");
+    }
+
+    public boolean startsWith(Path other) {
+        return pathString.startsWith(other.pathString);
+    }
+
     public File toFile() {
         throw new IllegalArgumentException("Not implemented!");
     }
