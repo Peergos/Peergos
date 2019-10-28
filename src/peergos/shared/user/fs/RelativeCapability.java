@@ -65,6 +65,10 @@ public class RelativeCapability implements Cborable {
         return new RelativeCapability(Optional.of(writingKey), mapKey, rBaseKey, wBaseKeyLink);
     }
 
+    public RelativeCapability withWritingKey(Optional<PublicKeyHash> writingKey) {
+        return new RelativeCapability(writingKey, mapKey, rBaseKey, wBaseKeyLink);
+    }
+
     public static RelativeCapability buildSubsequentChunk(byte[] mapkey, SymmetricKey baseKey) {
         return new RelativeCapability(Optional.empty(), mapkey, baseKey, Optional.empty());
     }

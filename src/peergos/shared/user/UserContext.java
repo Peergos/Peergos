@@ -1159,7 +1159,11 @@ public class UserContext {
                                                 p.right),
                                         new CryptreeNode.CapAndSigner((WritableAbsoluteCapability) parentCap, parent.signingPair()),
                                         new CryptreeNode.CapAndSigner((WritableAbsoluteCapability) parentCap, parent.signingPair()),
-                                        parent.getParentKey(),
+                                        Optional.of(new RelativeCapability(
+                                                Optional.empty(),
+                                                parent.getPointer().capability.getMapKey(),
+                                                parent.getParentKey(),
+                                                Optional.empty())),
                                         network,
                                         crypto,
                                         p.left,

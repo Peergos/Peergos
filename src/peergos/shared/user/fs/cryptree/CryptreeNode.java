@@ -644,7 +644,7 @@ public class CryptreeNode implements Cborable {
             CapAndSigner newUs,
             CapAndSigner parent,
             CapAndSigner newParent,
-            SymmetricKey newParentParentKey,
+            Optional<RelativeCapability> firstChunkOrParentCap,
             NetworkAccess network,
             Crypto crypto,
             Snapshot version,
@@ -660,13 +660,17 @@ public class CryptreeNode implements Cborable {
                 FileProperties.calculateNextMapKey(stream, newUs.cap.getMapKey(), crypto.hasher))
                 .orElseGet(() -> crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH));
         WritableAbsoluteCapability newNextChunkCap = newUs.cap.withMapKey(newNextChunkMapKey);
-        Optional<RelativeCapability> parentCap = getParentCapability(us.cap.rBaseKey);
-        SymmetricKey newParentKey = SymmetricKey.random();
-        Optional<RelativeCapability> newParentCap = isFirstChunk || parentCap.isPresent() ?
-                Optional.of(new RelativeCapability(newParent.cap.writer.equals(newUs.cap.writer) ?
-                        Optional.empty() : Optional.of(newParent.cap.writer),
-                        newParent.cap.getMapKey(), newParentParentKey, Optional.empty())):
+        SymmetricKey newParentKey = isFirstChunk ? SymmetricKey.random() : firstChunkOrParentCap.get().rBaseKey;
+        // only first chunks have a link to their parent
+        Optional<RelativeCapability> newParentCap = isFirstChunk ?
+                firstChunkOrParentCap.map(cap -> cap.withWritingKey(
+                        newParent.cap.writer.equals(newUs.cap.writer) ?
+                                Optional.empty() : Optional.of(newParent.cap.writer))) :
                 Optional.empty();
+
+        Optional<RelativeCapability> childCapToUs = isFirstChunk ?
+                Optional.of(new RelativeCapability(Optional.empty(), newUs.cap.getMapKey(), newParentKey, Optional.empty())) :
+                firstChunkOrParentCap;
 
         // do for subsequent chunks first
         return version.withWriter(us.cap.owner, us.cap.writer, network)
@@ -679,7 +683,7 @@ public class CryptreeNode implements Cborable {
                                     newUs.withCap(newNextChunkCap),
                                     parent,
                                     newParent,
-                                    newParentParentKey,
+                                    childCapToUs,
                                     network,
                                     crypto,
                                     s,
@@ -704,7 +708,7 @@ public class CryptreeNode implements Cborable {
                                                             newChild.right,
                                                             us,
                                                             newUs,
-                                                            newParentKey,
+                                                            childCapToUs,
                                                             network,
                                                             crypto,
                                                             newChild.left,
@@ -733,16 +737,13 @@ public class CryptreeNode implements Cborable {
                                             committer, newUs.cap, newUs.signer, network, tid), network.dhtClient);
                                 });
                     } else {
-                        RelativeCapability toParent = newParentCap
-                                .orElseGet(() -> new RelativeCapability(Optional.empty(), newParent.cap.getMapKey(),
-                                        newParentParentKey, Optional.empty()));
                         Optional<SymmetricLinkToSigner> signerLink = !isFirstChunk |
                                 newUs.cap.writer.equals(newParent.cap.writer) ?
                                 Optional.empty() :
                                 Optional.of(SymmetricLinkToSigner.fromPair(newUs.cap.wBaseKey.get(), newUs.signer));
                         SymmetricKey dataKey = getDataKey(us.cap.rBaseKey).makeDirty();
                         CryptreeNode newFileChunk = createFile(MaybeMultihash.empty(), signerLink, newUs.cap.rBaseKey, dataKey, props,
-                                this.childrenOrData, toParent, RelativeCapability.buildSubsequentChunk(
+                                this.childrenOrData, newParentCap, RelativeCapability.buildSubsequentChunk(
                                         nextChunk.right.getMapKey(), nextChunk.right.rBaseKey));
                         return IpfsTransaction.call(us.cap.owner, tid -> newFileChunk.commit(nextChunk.left,
                                 committer, newUs.cap, newUs.signer, network, tid), network.dhtClient);
@@ -1084,10 +1085,31 @@ public class CryptreeNode implements Cborable {
                                           FragmentedPaddedCipherText data,
                                           RelativeCapability toParentDir,
                                           RelativeCapability nextChunk) {
+        return createFile(existingHash, signerLink, parentKey, dataKey, props, data, Optional.of(toParentDir), nextChunk);
+    }
+
+    public static CryptreeNode createSubsequentFileChunk(MaybeMultihash existingHash,
+                                                         Optional<SymmetricLinkToSigner> signerLink,
+                                                         SymmetricKey parentKey,
+                                                         SymmetricKey dataKey,
+                                                         FileProperties props,
+                                                         FragmentedPaddedCipherText data,
+                                                         RelativeCapability nextChunk) {
+        return createFile(existingHash, signerLink, parentKey, dataKey, props, data, Optional.empty(), nextChunk);
+    }
+
+    private static CryptreeNode createFile(MaybeMultihash existingHash,
+                                          Optional<SymmetricLinkToSigner> signerLink,
+                                          SymmetricKey parentKey,
+                                          SymmetricKey dataKey,
+                                          FileProperties props,
+                                          FragmentedPaddedCipherText data,
+                                          Optional<RelativeCapability> toParentDir,
+                                          RelativeCapability nextChunk) {
         if (parentKey.equals(dataKey))
             throw new IllegalStateException("A file's base key and data key must be different!");
         FromBase fromBase = new FromBase(dataKey, signerLink, nextChunk);
-        FromParent fromParent = new FromParent(Optional.of(toParentDir), props);
+        FromParent fromParent = new FromParent(toParentDir, props);
 
         PaddedCipherText encryptedBaseBlock = PaddedCipherText.build(parentKey, fromBase, BASE_BLOCK_PADDING_BLOCKSIZE);
         PaddedCipherText encryptedParentBlock = PaddedCipherText.build(parentKey, fromParent, META_DATA_PADDING_BLOCKSIZE);
