@@ -717,6 +717,62 @@ public class PeergosNetworkUtils {
         MultiUserTests.checkUserValidity(network, sharer.username);
     }
 
+    public static void grantParentNestedWriteAccess(NetworkAccess network,
+                                                    Random random) {
+        CryptreeNode.setMaxChildLinkPerBlob(10);
+
+        String password = "notagoodone";
+
+        UserContext sharer = PeergosNetworkUtils.ensureSignedUp(generateUsername(random), password, network, crypto);
+
+        List<UserContext> shareeUsers = getUserContextsForNode(network, random, 2, Arrays.asList(password, password));
+        UserContext a = shareeUsers.get(0);
+        UserContext b = shareeUsers.get(1);
+
+        for (UserContext sharee : shareeUsers)
+            sharee.sendFollowRequest(sharer.username, SymmetricKey.random()).join();
+
+        List<FollowRequestWithCipherText> sharerRequests = sharer.processFollowRequests().join();
+        for (FollowRequestWithCipherText u1Request : sharerRequests) {
+            boolean accept = true;
+            boolean reciprocate = true;
+            sharer.sendReplyFollowRequest(u1Request, accept, reciprocate).join();
+        }
+
+        for (UserContext user : shareeUsers) {
+            user.processFollowRequests().join();
+        }
+
+        // friends are now connected
+        // share a directory from u1 to u2
+        FileWrapper u1Root = sharer.getUserRoot().join();
+        String folderName = "folder";
+        u1Root.mkdir(folderName, sharer.network, SymmetricKey.random(), false, crypto).join();
+        Path dirPath = Paths.get(sharer.username, folderName);
+
+        // create a directory
+        String subdirName = "subdir";
+        sharer.getByPath(dirPath).join().get()
+                .mkdir(subdirName, sharer.network, false, crypto).join();
+
+        // share /u1/folder/subdir with 'b'
+        Path subdirPath = Paths.get(sharer.username, folderName, subdirName);
+        sharer.shareWriteAccessWithAll(sharer.getByPath(subdirPath).join().get(), subdirPath,
+                sharer.getByPath(dirPath).join().get(), Collections.singleton(b.username)).join();
+
+        // share /u1/folder with 'a'
+        sharer.shareWriteAccessWithAll(sharer.getByPath(dirPath).join().get(), dirPath,
+                sharer.getUserRoot().join(), Collections.singleton(a.username)).join();
+
+        // check sharer can still see /u1/folder/subdir
+        Assert.assertTrue("subdir still present", sharer.getByPath(subdirPath).join().isPresent());
+
+        // check 'a' can see the shared directory
+        FileWrapper sharedFolder = a.getByPath(sharer.username + "/" + folderName).join()
+                .orElseThrow(() -> new AssertionError("shared folder is present after sharing"));
+        Assert.assertEquals(sharedFolder.getFileProperties().name, folderName);
+    }
+
     public static void grantAndRevokeDirWriteAccessWithNestedWriteAccess(NetworkAccess network,
                                                                          Random random) {
         CryptreeNode.setMaxChildLinkPerBlob(10);

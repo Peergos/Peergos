@@ -121,6 +121,11 @@ public class MultiUserTests {
     }
 
     @Test
+    public void grantAndRevokeNestedDirWriteAccess2() {
+        PeergosNetworkUtils.grantParentNestedWriteAccess(network, random);
+    }
+
+    @Test
     public void grantAndRevokeDirWriteAccessWithNestedWriteAccess() {
         PeergosNetworkUtils.grantAndRevokeDirWriteAccessWithNestedWriteAccess(network, random);
     }
