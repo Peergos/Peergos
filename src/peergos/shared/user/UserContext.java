@@ -1138,55 +1138,60 @@ public class UserContext {
             return getByPath(path.getParent().toString())
                     .thenCompose(parentOpt -> {
                         FileWrapper parent = parentOpt.get();
-                        PublicKeyHash owner = parent.owner();
-                        SigningPrivateKeyAndPublicHash parentSigner = parent.signingPair();
-                        AbsoluteCapability parentCap = parent.getPointer().capability;
                         AbsoluteCapability originalCap = toUnshare.getPointer().capability;
-                        return network.synchronizer.applyComplexUpdate(owner, parentSigner, (initial, c) -> CryptreeNode.initAndAuthoriseSigner(
-                                owner,
-                                parentSigner,
-                                SigningKeyPair.random(crypto.random, crypto.signer), network, initial, c)
-                                .thenCompose(p -> toUnshare.getPointer().fileAccess.rotateAllKeys(
-                                        true,
-                                        new CryptreeNode.CapAndSigner((WritableAbsoluteCapability)
-                                                originalCap, toUnshare.signingPair()),
-                                        new CryptreeNode.CapAndSigner(new WritableAbsoluteCapability(
-                                                owner,
-                                                p.right.publicKeyHash,
-                                                crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH),
-                                                SymmetricKey.random(),
-                                                SymmetricKey.random()),
-                                                p.right),
-                                        new CryptreeNode.CapAndSigner((WritableAbsoluteCapability) parentCap, parent.signingPair()),
-                                        new CryptreeNode.CapAndSigner((WritableAbsoluteCapability) parentCap, parent.signingPair()),
-                                        Optional.of(new RelativeCapability(
-                                                Optional.empty(),
-                                                parent.getPointer().capability.getMapKey(),
-                                                parent.getParentKey(),
-                                                Optional.empty())),
-                                        network,
-                                        crypto,
-                                        p.left,
-                                        c)
-                                        .thenCompose(rotated -> parent.getPointer().fileAccess.updateChildLink(
-                                                rotated.left, c, (WritableAbsoluteCapability) parentCap,
-                                                parentSigner, originalCap, rotated.right,
-                                                network, crypto.hasher)
-                                                .thenCompose(s -> IpfsTransaction.call(owner,
-                                                        tid -> FileWrapper.deleteAllChunks(
-                                                                toUnshare.writableFilePointer(),
-                                                                toUnshare.signingPair(),
-                                                                tid, crypto.hasher, network, s, c), network.dhtClient))
-                                                .thenCompose(s -> CryptreeNode.deAuthoriseSigner(owner,
-                                                        parentSigner, toUnshare.writer(), network, s, c)))))
+                        return rotateAllKeys(toUnshare, parent)
                                 .thenCompose(x -> {
                                     sharedWithCache.removeSharedWith(SharedWithCache.Access.WRITE,
                                             path, originalCap, writersToRemove);
-                                    return reShareAllWriteAccessRecursive(path)
-                                            .thenCompose(b -> reShareAllReadAccessRecursive(path));
+                                    return reSendAllWriteAccessRecursive(path)
+                                            .thenCompose(b -> reSendAllReadAccessRecursive(path));
                                 });
                     });
         });
+    }
+
+    private CompletableFuture<Snapshot> rotateAllKeys(FileWrapper file, FileWrapper parent) {
+        PublicKeyHash owner = parent.owner();
+        SigningPrivateKeyAndPublicHash parentSigner = parent.signingPair();
+        AbsoluteCapability parentCap = parent.getPointer().capability;
+        AbsoluteCapability originalCap = file.getPointer().capability;
+        return network.synchronizer.applyComplexUpdate(owner, parentSigner, (initial, c) -> CryptreeNode.initAndAuthoriseSigner(
+                owner,
+                parentSigner,
+                SigningKeyPair.random(crypto.random, crypto.signer), network, initial, c)
+                .thenCompose(p -> file.getPointer().fileAccess.rotateAllKeys(
+                        true,
+                        new CryptreeNode.CapAndSigner((WritableAbsoluteCapability)
+                                originalCap, file.signingPair()),
+                        new CryptreeNode.CapAndSigner(new WritableAbsoluteCapability(
+                                owner,
+                                p.right.publicKeyHash,
+                                crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH),
+                                SymmetricKey.random(),
+                                SymmetricKey.random()),
+                                p.right),
+                        new CryptreeNode.CapAndSigner((WritableAbsoluteCapability) parentCap, parent.signingPair()),
+                        new CryptreeNode.CapAndSigner((WritableAbsoluteCapability) parentCap, parent.signingPair()),
+                        Optional.of(new RelativeCapability(
+                                Optional.empty(),
+                                parent.getPointer().capability.getMapKey(),
+                                parent.getParentKey(),
+                                Optional.empty())),
+                        network,
+                        crypto,
+                        p.left,
+                        c)
+                        .thenCompose(rotated -> parent.getPointer().fileAccess.updateChildLink(
+                                rotated.left, c, (WritableAbsoluteCapability) parentCap,
+                                parentSigner, originalCap, rotated.right,
+                                network, crypto.hasher)
+                                .thenCompose(s -> IpfsTransaction.call(owner,
+                                        tid -> FileWrapper.deleteAllChunks(
+                                                file.writableFilePointer(),
+                                                file.signingPair(),
+                                                tid, crypto.hasher, network, s, c), network.dhtClient))
+                                .thenCompose(s -> CryptreeNode.deAuthoriseSigner(owner,
+                                        parentSigner, file.writer(), network, s, c)))));
     }
 
     public CompletableFuture<Boolean> unShareReadAccess(Path path, Set<String> readersToRemove) {
@@ -1234,15 +1239,15 @@ public class UserContext {
                 });
     }
 
-    public CompletableFuture<Boolean> reShareAllWriteAccessRecursive(Path start) {
+    public CompletableFuture<Boolean> reSendAllWriteAccessRecursive(Path start) {
         Map<Path, Set<String>> toReshare = sharedWithCache.getAllWriteShares(start);
         return Futures.reduceAll(toReshare.entrySet(),
                 true,
-                (b, e) -> shareWriteAccessWith(e.getKey(), e.getValue()),
+                (b, e) -> sendWriteCapToAll(e.getKey(), e.getValue()),
                 (a, b) -> a);
     }
 
-    public CompletableFuture<Boolean> reShareAllReadAccessRecursive(Path start) {
+    public CompletableFuture<Boolean> reSendAllReadAccessRecursive(Path start) {
         Map<Path, Set<String>> toReshare = sharedWithCache.getAllReadShares(start);
         return Futures.reduceAll(toReshare.entrySet(),
                 true,
@@ -1270,7 +1275,7 @@ public class UserContext {
     }
 
     public CompletableFuture<Boolean> shareWriteAccessWithAll(Path fileToShare,
-                                                              Set<String> writersToAdd) {
+                                                               Set<String> writersToAdd) {
         return getByPath(fileToShare.getParent())
                 .thenCompose(parentOpt -> ! parentOpt.isPresent() ?
                                 Futures.errored(new IllegalStateException("Unable to read " + fileToShare.getParent())) :
@@ -1284,70 +1289,51 @@ public class UserContext {
                                                               Path pathToFile,
                                                               FileWrapper parent,
                                                               Set<String> writersToAdd) {
+        // There are 2 situations:
+        // a) file already has a different signing key than parent,
+        //    in which case, just share a write cap
+        //
+        // b) file needs to be moved to a different signing key (along with its subtree)
+        // To do this atomically,
+        // 1) rotate all the keys as if we were revoking write access
+        // 2) update parent pointer
+        // 3) delete old subtree
+        // 4) then reshare all sub sharees
         ensureAllowedToShare(file, username, true);
         SigningPrivateKeyAndPublicHash currentSigner = file.signingPair();
         boolean changeSigner = currentSigner.publicKeyHash.equals(parent.signingPair().publicKeyHash);
-        Supplier<CompletableFuture<FileWrapper>> rotatedFile = () -> {
-            if (! changeSigner)
-                return Futures.of(file);
-            SigningKeyPair newSignerPair = SigningKeyPair.random(crypto.random, crypto.signer);
+        sharedWithCache.addSharedWith(SharedWithCache.Access.WRITE,
+                pathToFile, file.writableFilePointer(), writersToAdd);
+        if (! changeSigner)
+            return sendWriteCapToAll(pathToFile, writersToAdd);
 
-            return addOwnedKeyToParent(parent.owner(), parent.signingPair(), newSignerPair, network)
-                    .thenCompose(newSigner -> file.changeSigningKey(newSigner, parent, network, crypto.hasher))
-                    .thenApply(p -> p.left);
-        };
-        return rotatedFile.get().thenCompose(updatedFile -> {
-            BiFunction<FileWrapper, FileWrapper, CompletableFuture<Boolean>> sharingFunction =
-                    (sharedDir, fileToShare) -> CapabilityStore.addEditSharingLinkTo(sharedDir,
-                            updatedFile.writableFilePointer(), network, crypto)
-                            .thenCompose(ee -> CompletableFuture.completedFuture(true));
-            return Futures.reduceAll(writersToAdd,
-                    true,
-                    (x, username) -> shareAccessWith(file, username, sharingFunction),
-                    (a, b) -> a && b)
-                    .thenCompose(result -> updatedSharedWithCache(file, pathToFile, writersToAdd, SharedWithCache.Access.WRITE));
-        });
+        return rotateAllKeys(file, parent)
+                .thenCompose(s -> reSendAllWriteAccessRecursive(pathToFile)
+                        .thenCompose(b -> reSendAllReadAccessRecursive(pathToFile)));
     }
 
-    /**
-     * Add an new owned signing key pair to the writer data of a parent signing pair
-     * @param owner
-     * @param parentSigner
-     * @param newSignerPair
-     * @param network
-     * @return The hashed new signing pair
-     */
-    public CompletableFuture<SigningPrivateKeyAndPublicHash> addOwnedKeyToParent(PublicKeyHash owner,
-                                                                                 SigningPrivateKeyAndPublicHash parentSigner,
-                                                                                 SigningKeyPair newSignerPair,
-                                                                                 NetworkAccess network) {
-        byte[] signature = parentSigner.secret.signatureOnly(newSignerPair.publicSigningKey.serialize());
-        return writeSynchronizer.applyUpdate(owner, parentSigner,
-                (wd, tid) -> network.dhtClient.putSigningKey(signature, owner, parentSigner.publicKeyHash,
-                        newSignerPair.publicSigningKey, tid).thenCompose(newSignerHash -> {
-                    SigningPrivateKeyAndPublicHash newSigner =
-                            new SigningPrivateKeyAndPublicHash(newSignerHash, newSignerPair.secretSigningKey);
-                    return wd.addOwnedKey(owner, parentSigner,
-                            OwnerProof.build(newSigner, parentSigner.publicKeyHash), network.dhtClient);
-                }))
-                .thenApply(cwd -> new SigningPrivateKeyAndPublicHash(ContentAddressedStorage.hashKey(newSignerPair.publicSigningKey), newSignerPair.secretSigningKey));
+    public CompletableFuture<Boolean> sendWriteCapToAll(Path toFile, Set<String> writersToAdd) {
+        return getByPath(toFile.getParent())
+                .thenCompose(parent -> getByPath(toFile)
+                        .thenCompose(fileOpt -> fileOpt.map(file -> sendWriteCapToAll(file, parent.get(), writersToAdd))
+                                .orElseGet(() -> Futures.errored(
+                                        new IllegalStateException("Couldn't retrieve file at " + toFile)))));
     }
 
-    /**
-     * Remove an owned signing key pair from the writer data of a parent signing pair
-     * @param owner
-     * @param parentSigner
-     * @param toRemove
-     * @param network
-     * @return The hashed new signing pair
-     */
-    public CompletableFuture<CommittedWriterData> removeOwnedKeyFromParent(PublicKeyHash owner,
-                                                                           SigningPrivateKeyAndPublicHash parentSigner,
-                                                                           PublicKeyHash toRemove,
-                                                                           NetworkAccess network) {
-        return writeSynchronizer.applyUpdate(owner, parentSigner,
-                (wd, tid) -> wd.removeOwnedKey(owner, parentSigner, toRemove, network.dhtClient))
-                .thenApply(v -> v.get(parentSigner));
+    public CompletableFuture<Boolean> sendWriteCapToAll(FileWrapper file,
+                                                        FileWrapper parent,
+                                                        Set<String> writersToAdd) {
+        if (parent.writer().equals(file.writer()))
+            return Futures.errored(
+                    new IllegalStateException("A file must have different writer than it's parent to grant write access!"));
+        BiFunction<FileWrapper, FileWrapper, CompletableFuture<Boolean>> sharingFunction =
+                (sharedDir, fileToShare) -> CapabilityStore.addEditSharingLinkTo(sharedDir,
+                        file.writableFilePointer(), network, crypto)
+                        .thenCompose(ee -> CompletableFuture.completedFuture(true));
+        return Futures.reduceAll(writersToAdd,
+                true,
+                (x, username) -> shareAccessWith(file, username, sharingFunction),
+                (a, b) -> a && b);
     }
 
     private CompletableFuture<Boolean> updatedSharedWithCache(FileWrapper file,
