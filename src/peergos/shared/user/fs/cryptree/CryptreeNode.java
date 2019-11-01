@@ -624,9 +624,11 @@ public class CryptreeNode implements Cborable {
             NetworkAccess network,
             Snapshot version,
             Committer committer) {
+        PublicKeyHash parentWriter = parentSigner.publicKeyHash;
         CommittedWriterData cwd = version.get(parentSigner);
         return IpfsTransaction.call(owner, tid -> cwd.props.removeOwnedKey(owner, parentSigner, signer, network.dhtClient)
-                .thenCompose(wd -> committer.commit(owner, parentSigner, wd, cwd, tid)), network.dhtClient);
+                .thenCompose(wd -> committer.commit(owner, parentSigner, wd, cwd, tid)), network.dhtClient)
+                .thenApply(committed -> version.withVersion(parentWriter, committed.get(parentWriter)));
     }
 
     /** Rotate the base read key, base write key, map key and signing key of a file or directory recursively

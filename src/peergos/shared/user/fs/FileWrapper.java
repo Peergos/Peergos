@@ -1429,16 +1429,18 @@ public class FileWrapper {
                                                                NetworkAccess network,
                                                                Snapshot current,
                                                                Committer committer) {
-        if (parentSigner.publicKeyHash.equals(signerToRemove))
+        PublicKeyHash parentWriter = parentSigner.publicKeyHash;
+        if (parentWriter.equals(signerToRemove))
             return CompletableFuture.completedFuture(current);
 
-        return current.withWriter(owner, parentSigner.publicKeyHash, network)
+        return current.withWriter(owner, parentWriter, network)
                 .thenCompose(s -> s.get(parentSigner).props
                         .removeOwnedKey(owner, parentSigner, signerToRemove, network.dhtClient)
                         .thenCompose(removed -> IpfsTransaction.call(
                                 owner,
                                 tid -> committer.commit(owner, parentSigner, removed, s.get(parentSigner), tid),
-                                network.dhtClient)));
+                                network.dhtClient))
+                        .thenApply(committed -> s.withVersion(parentWriter, committed.get(parentWriter))));
     }
 
     public CompletableFuture<? extends AsyncReader> getInputStream(NetworkAccess network,
