@@ -1302,14 +1302,20 @@ public class UserContext {
         ensureAllowedToShare(file, username, true);
         SigningPrivateKeyAndPublicHash currentSigner = file.signingPair();
         boolean changeSigner = currentSigner.publicKeyHash.equals(parent.signingPair().publicKeyHash);
-        sharedWithCache.addSharedWith(SharedWithCache.Access.WRITE,
-                pathToFile, file.writableFilePointer(), writersToAdd);
-        if (! changeSigner)
+
+        if (! changeSigner) {
+            sharedWithCache.addSharedWith(SharedWithCache.Access.WRITE,
+                    pathToFile, file.writableFilePointer(), writersToAdd);
             return sendWriteCapToAll(pathToFile, writersToAdd);
+        }
 
         return rotateAllKeys(file, parent)
-                .thenCompose(s -> reSendAllWriteAccessRecursive(pathToFile)
-                        .thenCompose(b -> reSendAllReadAccessRecursive(pathToFile)));
+                .thenCompose(s -> getByPath(pathToFile).thenCompose(newFileOpt -> {
+                    sharedWithCache.addSharedWith(SharedWithCache.Access.WRITE,
+                            pathToFile, newFileOpt.get().writableFilePointer(), writersToAdd);
+                    return reSendAllWriteAccessRecursive(pathToFile)
+                            .thenCompose(b -> reSendAllReadAccessRecursive(pathToFile));
+                }));
     }
 
     public CompletableFuture<Boolean> sendWriteCapToAll(Path toFile, Set<String> writersToAdd) {
