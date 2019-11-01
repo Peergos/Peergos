@@ -1,6 +1,7 @@
 package java.nio.file;
 
 import java.io.File;
+import java.util.*;
 
 public class Path {
 
@@ -71,4 +72,17 @@ public class Path {
         throw new IllegalArgumentException("Not implemented!");
     }
 
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        Path path = (Path) o;
+        return Objects.equals(pathString, path.pathString);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(pathString);
+    }
 }
