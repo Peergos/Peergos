@@ -717,7 +717,7 @@ public class PeergosNetworkUtils {
         MultiUserTests.checkUserValidity(network, sharer.username);
     }
 
-    public static void grantParentNestedWriteAccess(NetworkAccess network,
+    public static void grantAndRevokeParentNestedWriteAccess(NetworkAccess network,
                                                     Random random) {
         CryptreeNode.setMaxChildLinkPerBlob(10);
 
@@ -771,6 +771,12 @@ public class PeergosNetworkUtils {
         FileWrapper sharedFolder = a.getByPath(sharer.username + "/" + folderName).join()
                 .orElseThrow(() -> new AssertionError("shared folder is present after sharing"));
         Assert.assertEquals(sharedFolder.getFileProperties().name, folderName);
+
+        // revoke access to /u1/folder from 'a'
+        sharer.unShareWriteAccess(dirPath, a.username).join();
+        // check 'a' can't see the shared directory
+        Optional<FileWrapper> unsharedFolder = a.getByPath(sharer.username + "/" + folderName).join();
+        Assert.assertTrue("a can't see unshared folder", ! unsharedFolder.isPresent());
     }
 
     public static void grantAndRevokeDirWriteAccessWithNestedWriteAccess(NetworkAccess network,
