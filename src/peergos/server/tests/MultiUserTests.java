@@ -107,7 +107,7 @@ public class MultiUserTests {
 
     @Test
     public void shareAFileWithDifferentSigner() {
-        PeergosNetworkUtils.shareFileWithDifferentSigner(network, network, 1, random);
+        PeergosNetworkUtils.shareFileWithDifferentSigner(network, network, random);
     }
 
     @Test
