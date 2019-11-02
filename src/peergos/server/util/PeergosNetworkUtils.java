@@ -80,25 +80,8 @@ public class PeergosNetworkUtils {
                 .collect(Collectors.toList());
         List<UserContext> shareeUsers = getUserContextsForNode(shareeNode, random, shareeCount, shareePasswords);
 
-        // send follow requests from sharees to sharer
-        for (UserContext userContext : shareeUsers) {
-            userContext.sendFollowRequest(sharerUser.username, SymmetricKey.random()).get();
-        }
-
-        // make sharer reciprocate all the follow requests
-        List<FollowRequestWithCipherText> sharerRequests = sharerUser.processFollowRequests().get();
-        for (FollowRequestWithCipherText u1Request : sharerRequests) {
-            AbsoluteCapability pointer = u1Request.req.entry.get().pointer;
-            Assert.assertTrue("Read only capabilities are shared", ! pointer.wBaseKey.isPresent());
-            boolean accept = true;
-            boolean reciprocate = true;
-            sharerUser.sendReplyFollowRequest(u1Request, accept, reciprocate).get();
-        }
-
-        // complete the friendship connection
-        for (UserContext userContext : shareeUsers) {
-            userContext.processFollowRequests().get();//needed for side effect
-        }
+        // friend sharer with others
+        friendBetweenGroups(Arrays.asList(sharerUser), shareeUsers);
 
         // upload a file to "a"'s space
         FileWrapper u1Root = sharerUser.getUserRoot().get();
@@ -201,25 +184,8 @@ public class PeergosNetworkUtils {
                 .collect(Collectors.toList());
         List<UserContext> shareeUsers = getUserContextsForNode(shareeNode, random, shareeCount, shareePasswords);
 
-        // send follow requests from sharees to sharer
-        for (UserContext userContext : shareeUsers) {
-            userContext.sendFollowRequest(sharerUser.username, SymmetricKey.random()).get();
-        }
-
-        // make sharer reciprocate all the follow requests
-        List<FollowRequestWithCipherText> sharerRequests = sharerUser.processFollowRequests().get();
-        for (FollowRequestWithCipherText u1Request : sharerRequests) {
-            AbsoluteCapability pointer = u1Request.req.entry.get().pointer;
-            Assert.assertTrue("Read only capabilities are shared", ! pointer.wBaseKey.isPresent());
-            boolean accept = true;
-            boolean reciprocate = true;
-            sharerUser.sendReplyFollowRequest(u1Request, accept, reciprocate).get();
-        }
-
-        // complete the friendship connection
-        for (UserContext userContext : shareeUsers) {
-            userContext.processFollowRequests().get();//needed for side effect
-        }
+        // friend sharer with others
+        friendBetweenGroups(Arrays.asList(sharerUser), shareeUsers);
 
         // upload a file to "a"'s space
         FileWrapper u1Root = sharerUser.getUserRoot().get();
@@ -306,46 +272,24 @@ public class PeergosNetworkUtils {
 
     public static void shareFileWithDifferentSigner(NetworkAccess sharerNode,
                                                     NetworkAccess shareeNode,
-                                                    int shareeCount,
                                                     Random random) {
-        Assert.assertTrue(0 < shareeCount);
-        //sign up a user on sharerNode
-
+        // sign up the sharer
         String sharerUsername = generateUsername(random);
         String sharerPassword = generatePassword();
         UserContext sharer = ensureSignedUp(sharerUsername, sharerPassword, sharerNode.clear(), crypto);
 
-        //sign up some users on shareeNode
-        List<String> shareePasswords = IntStream.range(0, shareeCount)
-                .mapToObj(i -> generatePassword())
-                .collect(Collectors.toList());
-        List<UserContext> shareeUsers = getUserContextsForNode(shareeNode, random, shareeCount, shareePasswords);
+        // sign up the sharee
+        String shareeUsername = generateUsername(random);
+        String shareePassword = generatePassword();
+        UserContext sharee = ensureSignedUp(shareeUsername, shareePassword, shareeNode.clear(), crypto);
 
-        // send follow requests from sharees to sharer
-        for (UserContext userContext : shareeUsers) {
-            userContext.sendFollowRequest(sharer.username, SymmetricKey.random()).join();
-        }
-
-        // make sharer reciprocate all the follow requests
-        List<FollowRequestWithCipherText> sharerRequests = sharer.processFollowRequests().join();
-        for (FollowRequestWithCipherText u1Request : sharerRequests) {
-            AbsoluteCapability pointer = u1Request.req.entry.get().pointer;
-            Assert.assertTrue("Read only capabilities are shared", ! pointer.wBaseKey.isPresent());
-            boolean accept = true;
-            boolean reciprocate = true;
-            sharer.sendReplyFollowRequest(u1Request, accept, reciprocate).join();
-        }
-
-        // complete the friendship connection
-        for (UserContext userContext : shareeUsers) {
-            userContext.processFollowRequests().join();
-        }
+        // friend users
+        friendBetweenGroups(Arrays.asList(sharer), Arrays.asList(sharee));
 
         // make directory /sharer/dir and grant write access to it to a friend
         String dirName = "dir";
         sharer.getUserRoot().join().mkdir(dirName, sharer.network, false, crypto).join();
         Path dirPath = Paths.get(sharerUsername, dirName);
-        UserContext sharee = shareeUsers.get(0);
         sharer.shareWriteAccessWith(dirPath, Collections.singleton(sharee.username)).join();
 
         // no revoke write access to dir
@@ -387,19 +331,8 @@ public class PeergosNetworkUtils {
                 .collect(Collectors.toList());
         List<UserContext> shareeUsers = getUserContextsForNode(shareeNode, random, shareeCount, shareePasswords);
 
-        for (UserContext sharee : shareeUsers)
-            sharee.sendFollowRequest(sharer.username, SymmetricKey.random()).get();
-
-        List<FollowRequestWithCipherText> sharerRequests = sharer.processFollowRequests().get();
-        for (FollowRequestWithCipherText u1Request : sharerRequests) {
-            boolean accept = true;
-            boolean reciprocate = true;
-            sharer.sendReplyFollowRequest(u1Request, accept, reciprocate).get();
-        }
-
-        for (UserContext user : shareeUsers) {
-            user.processFollowRequests().get();
-        }
+        // friend sharer with others
+        friendBetweenGroups(Arrays.asList(sharer), shareeUsers);
 
         // friends are now connected
         // share a file from u1 to the others
@@ -513,19 +446,8 @@ public class PeergosNetworkUtils {
                 .collect(Collectors.toList());
         List<UserContext> shareeUsers = getUserContextsForNode(shareeNode, random, shareeCount, shareePasswords);
 
-        for (UserContext sharee : shareeUsers)
-            sharee.sendFollowRequest(sharer.username, SymmetricKey.random()).get();
-
-        List<FollowRequestWithCipherText> sharerRequests = sharer.processFollowRequests().get();
-        for (FollowRequestWithCipherText u1Request : sharerRequests) {
-            boolean accept = true;
-            boolean reciprocate = true;
-            sharer.sendReplyFollowRequest(u1Request, accept, reciprocate).get();
-        }
-
-        for (UserContext user : shareeUsers) {
-            user.processFollowRequests().get();
-        }
+        // friend sharer with others
+        friendBetweenGroups(Arrays.asList(sharer), shareeUsers);
 
         // friends are now connected
         // share a file from u1 to the others
@@ -660,19 +582,8 @@ public class PeergosNetworkUtils {
         UserContext a = shareeUsers.get(0);
         UserContext b = shareeUsers.get(1);
 
-        for (UserContext sharee : shareeUsers)
-            sharee.sendFollowRequest(sharer.username, SymmetricKey.random()).join();
-
-        List<FollowRequestWithCipherText> sharerRequests = sharer.processFollowRequests().join();
-        for (FollowRequestWithCipherText u1Request : sharerRequests) {
-            boolean accept = true;
-            boolean reciprocate = true;
-            sharer.sendReplyFollowRequest(u1Request, accept, reciprocate).join();
-        }
-
-        for (UserContext user : shareeUsers) {
-            user.processFollowRequests().join();
-        }
+        // friend sharer with others
+        friendBetweenGroups(Arrays.asList(sharer), shareeUsers);
 
         // friends are now connected
         // share a directory from u1 to u2
@@ -799,19 +710,8 @@ public class PeergosNetworkUtils {
         UserContext a = shareeUsers.get(0);
         UserContext b = shareeUsers.get(1);
 
-        for (UserContext sharee : shareeUsers)
-            sharee.sendFollowRequest(sharer.username, SymmetricKey.random()).join();
-
-        List<FollowRequestWithCipherText> sharerRequests = sharer.processFollowRequests().join();
-        for (FollowRequestWithCipherText u1Request : sharerRequests) {
-            boolean accept = true;
-            boolean reciprocate = true;
-            sharer.sendReplyFollowRequest(u1Request, accept, reciprocate).join();
-        }
-
-        for (UserContext user : shareeUsers) {
-            user.processFollowRequests().join();
-        }
+        // friend sharer with others
+        friendBetweenGroups(Arrays.asList(sharer), shareeUsers);
 
         // friends are now connected
         // share a directory from u1 to u2
@@ -861,19 +761,8 @@ public class PeergosNetworkUtils {
         UserContext a = shareeUsers.get(0);
         UserContext b = shareeUsers.get(1);
 
-        for (UserContext sharee : shareeUsers)
-            sharee.sendFollowRequest(sharer.username, SymmetricKey.random()).join();
-
-        List<FollowRequestWithCipherText> sharerRequests = sharer.processFollowRequests().join();
-        for (FollowRequestWithCipherText u1Request : sharerRequests) {
-            boolean accept = true;
-            boolean reciprocate = true;
-            sharer.sendReplyFollowRequest(u1Request, accept, reciprocate).join();
-        }
-
-        for (UserContext user : shareeUsers) {
-            user.processFollowRequests().join();
-        }
+        // friend sharer with others
+        friendBetweenGroups(Arrays.asList(sharer), shareeUsers);
 
         // friends are now connected
         FileWrapper u1Root = sharer.getUserRoot().join();
@@ -1027,19 +916,8 @@ public class PeergosNetworkUtils {
                 .collect(Collectors.toList());
         List<UserContext> shareeUsers = getUserContextsForNode(shareeNode, random, shareeCount, shareePasswords);
 
-        for (UserContext sharee : shareeUsers)
-            sharee.sendFollowRequest(sharer.username, SymmetricKey.random()).get();
-
-        List<FollowRequestWithCipherText> sharerRequests = sharer.processFollowRequests().get();
-        for (FollowRequestWithCipherText u1Request : sharerRequests) {
-            boolean accept = true;
-            boolean reciprocate = true;
-            sharer.sendReplyFollowRequest(u1Request, accept, reciprocate).get();
-        }
-
-        for (UserContext user : shareeUsers) {
-            user.processFollowRequests().get();
-        }
+        // friend sharer with others
+        friendBetweenGroups(Arrays.asList(sharer), shareeUsers);
 
         // friends are now connected
         // share a directory from u1 to the others
@@ -1089,6 +967,28 @@ public class PeergosNetworkUtils {
         Assert.assertTrue("Correct entry path", entryPath.equals("/" + username));
         Optional<FileWrapper> fileThroughLink = linkContext.getByPath(path).get();
         Assert.assertTrue("File present through link", fileThroughLink.isPresent());
+    }
+
+    public static void friendBetweenGroups(List<UserContext> a, List<UserContext> b) {
+        for (UserContext userA : a) {
+            for (UserContext userB : b) {
+                // send intiail request
+                userA.sendFollowRequest(userB.username, SymmetricKey.random()).join();
+
+                // make sharer reciprocate all the follow requests
+                List<FollowRequestWithCipherText> sharerRequests = userB.processFollowRequests().join();
+                for (FollowRequestWithCipherText u1Request : sharerRequests) {
+                    AbsoluteCapability pointer = u1Request.req.entry.get().pointer;
+                    Assert.assertTrue("Read only capabilities are shared", ! pointer.wBaseKey.isPresent());
+                    boolean accept = true;
+                    boolean reciprocate = true;
+                    userB.sendReplyFollowRequest(u1Request, accept, reciprocate).join();
+                }
+
+                // complete the friendship connection
+                userA.processFollowRequests().join();
+            }
+        }
     }
 
     public static UserContext ensureSignedUp(String username, String password, NetworkAccess network, Crypto crypto) {
