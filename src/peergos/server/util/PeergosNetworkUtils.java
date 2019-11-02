@@ -312,10 +312,14 @@ public class PeergosNetworkUtils {
         FileWrapper u1File = sharer.getByPath(filePath).join().get();
         sharer.shareWriteAccessWith(filePath, Collections.singleton(sharee.username)).join();
 
-        // check other users can read the file
+        // check other user can read the file directly
         Optional<FileWrapper> sharedFile = sharee.getByPath(filePath).join();
         Assert.assertTrue("shared file present", sharedFile.isPresent());
         checkFileContents(originalFileContents, sharedFile.get(), sharee);
+        // check other user can read the file via its parent
+        Optional<FileWrapper> sharedDirViaFile = sharee.getByPath(dirPath.toString()).join();
+        Set<FileWrapper> children = sharedDirViaFile.get().getChildren(crypto.hasher, sharee.network).join();
+        Assert.assertTrue("shared file present via parent", children.size() == 1);
     }
 
     public static void grantAndRevokeDirReadAccess(NetworkAccess sharerNode, NetworkAccess shareeNode, int shareeCount, Random random) throws Exception {
