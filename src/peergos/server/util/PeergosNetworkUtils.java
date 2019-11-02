@@ -304,6 +304,76 @@ public class PeergosNetworkUtils {
         MultiUserTests.checkUserValidity(sharerNode, sharerUsername);
     }
 
+    public static void shareFileWithDifferentSigner(NetworkAccess sharerNode,
+                                                    NetworkAccess shareeNode,
+                                                    int shareeCount,
+                                                    Random random) {
+        Assert.assertTrue(0 < shareeCount);
+        //sign up a user on sharerNode
+
+        String sharerUsername = generateUsername(random);
+        String sharerPassword = generatePassword();
+        UserContext sharer = ensureSignedUp(sharerUsername, sharerPassword, sharerNode.clear(), crypto);
+
+        //sign up some users on shareeNode
+        List<String> shareePasswords = IntStream.range(0, shareeCount)
+                .mapToObj(i -> generatePassword())
+                .collect(Collectors.toList());
+        List<UserContext> shareeUsers = getUserContextsForNode(shareeNode, random, shareeCount, shareePasswords);
+
+        // send follow requests from sharees to sharer
+        for (UserContext userContext : shareeUsers) {
+            userContext.sendFollowRequest(sharer.username, SymmetricKey.random()).join();
+        }
+
+        // make sharer reciprocate all the follow requests
+        List<FollowRequestWithCipherText> sharerRequests = sharer.processFollowRequests().join();
+        for (FollowRequestWithCipherText u1Request : sharerRequests) {
+            AbsoluteCapability pointer = u1Request.req.entry.get().pointer;
+            Assert.assertTrue("Read only capabilities are shared", ! pointer.wBaseKey.isPresent());
+            boolean accept = true;
+            boolean reciprocate = true;
+            sharer.sendReplyFollowRequest(u1Request, accept, reciprocate).join();
+        }
+
+        // complete the friendship connection
+        for (UserContext userContext : shareeUsers) {
+            userContext.processFollowRequests().join();
+        }
+
+        // make directory /sharer/dir and grant write access to it to a friend
+        String dirName = "dir";
+        sharer.getUserRoot().join().mkdir(dirName, sharer.network, false, crypto).join();
+        Path dirPath = Paths.get(sharerUsername, dirName);
+        UserContext sharee = shareeUsers.get(0);
+        sharer.shareWriteAccessWith(dirPath, Collections.singleton(sharee.username)).join();
+
+        // no revoke write access to dir
+        sharer.unShareWriteAccess(dirPath, Collections.singleton(sharee.username)).join();
+
+        // check sharee can't read the dir
+        Optional<FileWrapper> sharedDir = sharee.getByPath(dirPath).join();
+        Assert.assertTrue("unshared dir not present", ! sharedDir.isPresent());
+
+        // upload a file to the dir
+        FileWrapper dir = sharer.getByPath(dirPath).join().get();
+        String filename = "somefile.txt";
+        byte[] originalFileContents = sharer.crypto.random.randomBytes(10*1024*1024);
+        AsyncReader resetableFileInputStream = AsyncReader.build(originalFileContents);
+        FileWrapper uploaded = dir.uploadOrOverwriteFile(filename, resetableFileInputStream, originalFileContents.length,
+                sharer.network, crypto, l -> {}, crypto.random.randomBytes(32)).join();
+
+        // share the file read only with the sharee
+        Path filePath = dirPath.resolve(filename);
+        FileWrapper u1File = sharer.getByPath(filePath).join().get();
+        sharer.shareWriteAccessWith(filePath, Collections.singleton(sharee.username)).join();
+
+        // check other users can read the file
+        Optional<FileWrapper> sharedFile = sharee.getByPath(filePath).join();
+        Assert.assertTrue("shared file present", sharedFile.isPresent());
+        checkFileContents(originalFileContents, sharedFile.get(), sharee);
+    }
+
     public static void grantAndRevokeDirReadAccess(NetworkAccess sharerNode, NetworkAccess shareeNode, int shareeCount, Random random) throws Exception {
         Assert.assertTrue(0 < shareeCount);
         CryptreeNode.setMaxChildLinkPerBlob(10);

@@ -106,6 +106,11 @@ public class MultiUserTests {
     }
 
     @Test
+    public void shareAFileWithDifferentSigner() {
+        PeergosNetworkUtils.shareFileWithDifferentSigner(network, network, 1, random);
+    }
+
+    @Test
     public void grantAndRevokeDirReadAccess() throws Exception {
         PeergosNetworkUtils.grantAndRevokeDirReadAccess(network, network, 2, random);
     }
