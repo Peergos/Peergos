@@ -15,6 +15,7 @@ import peergos.shared.util.ArrayOps;
 import peergos.shared.util.Serialize;
 
 import java.io.File;
+import java.io.IOException;
 import java.nio.file.*;
 import java.util.*;
 import java.util.stream.*;
@@ -751,6 +752,58 @@ public class PeergosNetworkUtils {
         // check 'a' can't see the shared directory
         Optional<FileWrapper> unsharedFolder = a.getByPath(sharer.username + "/" + folderName).join();
         Assert.assertTrue("a can't see unshared folder", ! unsharedFolder.isPresent());
+    }
+
+
+    public static void grantAndRevokeReadAccessToFileInFolder(NetworkAccess network, Random random) throws IOException {
+        CryptreeNode.setMaxChildLinkPerBlob(10);
+
+        String password = "notagoodone";
+
+        UserContext sharer = PeergosNetworkUtils.ensureSignedUp(generateUsername(random), password, network, crypto);
+
+        List<UserContext> shareeUsers = getUserContextsForNode(network, random, 1, Arrays.asList(password, password));
+        UserContext a = shareeUsers.get(0);
+
+        // friend sharer with others
+        friendBetweenGroups(Arrays.asList(sharer), shareeUsers);
+
+        // friends are now connected
+        // share a directory from u1 to u2
+        FileWrapper u1Root = sharer.getUserRoot().join();
+        String folderName = "folder";
+        u1Root.mkdir(folderName, sharer.network, SymmetricKey.random(), false, crypto).join();
+        Path dirPath = Paths.get(sharer.username, folderName);
+
+
+        String filename = "somefile.txt";
+        File f = File.createTempFile("peergos", "");
+        byte[] originalFileContents = sharer.crypto.random.randomBytes(1*1024*1024);
+        Files.write(f.toPath(), originalFileContents);
+        ResetableFileInputStream resetableFileInputStream = new ResetableFileInputStream(f);
+
+        FileWrapper dir = sharer.getByPath(dirPath).join().get();
+
+        FileWrapper uploaded = dir.uploadOrOverwriteFile(filename, resetableFileInputStream, f.length(),
+                sharer.network, crypto, l -> {}, crypto.random.randomBytes(32)).join();
+
+
+        Path fileToShare = Paths.get(sharer.username, folderName, filename);
+        sharer.shareReadAccessWithAll(sharer.getByPath(fileToShare).join().get(), fileToShare
+                , Collections.singleton(a.username)).join();
+
+        // check 'a' can see the shared file
+        FileWrapper sharedFolder = a.getByPath(sharer.username + "/" + folderName + "/" + filename).join()
+                .orElseThrow(() -> new AssertionError("shared folder is present after sharing"));
+        Assert.assertEquals(sharedFolder.getFileProperties().name, filename);
+
+
+        sharer.unShareReadAccess(fileToShare, a.username).join();
+        // check 'a' can't see the shared directory
+        FileWrapper unsharedLocation = a.getByPath(sharer.username).join().get();
+        unsharedLocation.getChildren(crypto.hasher, sharer.network).join();
+            System.currentTimeMillis();
+//        Assert.assertTrue("a can't see unshared folder", ! unsharedFolder.isPresent());
     }
 
     public static void grantAndRevokeDirWriteAccessWithNestedWriteAccess(NetworkAccess network,
