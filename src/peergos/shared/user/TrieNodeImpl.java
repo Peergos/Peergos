@@ -29,16 +29,14 @@ public class TrieNodeImpl implements TrieNode {
         LOG.info("GetByPath: " + path);
         String finalPath = TrieNode.canonicalise(path);
         if (finalPath.length() == 0) {
-            if (! value.isPresent()) { // find a child entry and traverse parent links
-                return children.values().stream()
-                        .findAny()
-                        .get()
-                        .getByPath("", hasher, network)
-                        .thenCompose(child -> child.map(c -> c
-                                .retrieveParent(network)
-                                .thenApply(opt -> opt.map(f -> f.withTrieNode(this))))
-                                .orElseGet(() -> Futures.of(Optional.empty())))
-                        .exceptionally(t -> Futures.logAndReturn(t, Optional.empty()));
+            if (! value.isPresent()) { // find a valid child entry and traverse parent links
+                return Futures.findFirst(children.values(),
+                        n -> n.getByPath("", hasher, network)
+                                .thenCompose(child -> child.map(c -> c
+                                        .retrieveParent(network)
+                                        .thenApply(opt -> opt.map(f -> f.withTrieNode(this))))
+                                        .orElseGet(() -> Futures.of(Optional.empty())))
+                                .exceptionally(t -> Futures.logAndReturn(t, Optional.empty())));
             }
             return network.retrieveEntryPoint(value.get());
         }

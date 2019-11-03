@@ -321,6 +321,10 @@ public class PeergosNetworkUtils {
         Optional<FileWrapper> sharedDirViaFile = sharee.getByPath(dirPath.toString()).join();
         Set<FileWrapper> children = sharedDirViaFile.get().getChildren(crypto.hasher, sharee.network).join();
         Assert.assertTrue("shared file present via parent", children.size() == 1);
+
+        FileWrapper friend = sharee.getByPath(Paths.get(sharer.username)).join().get();
+        Set<FileWrapper> friendChildren = friend.getChildren(crypto.hasher, sharee.network).join();
+        Assert.assertEquals(friendChildren.size(), 1);
     }
 
     public static void grantAndRevokeDirReadAccess(NetworkAccess sharerNode, NetworkAccess shareeNode, int shareeCount, Random random) throws Exception {
