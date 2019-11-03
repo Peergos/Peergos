@@ -34,9 +34,11 @@ public class TrieNodeImpl implements TrieNode {
                         .findAny()
                         .get()
                         .getByPath("", hasher, network)
-                        .thenCompose(child -> child.get()
+                        .thenCompose(child -> child.map(c -> c
                                 .retrieveParent(network)
-                                .thenApply(opt -> opt.map(f -> f.withTrieNode(this))));
+                                .thenApply(opt -> opt.map(f -> f.withTrieNode(this))))
+                                .orElseGet(() -> Futures.of(Optional.empty())))
+                        .exceptionally(t -> Futures.logAndReturn(t, Optional.empty()));
             }
             return network.retrieveEntryPoint(value.get());
         }

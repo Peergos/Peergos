@@ -81,6 +81,11 @@ public class Futures {
         return result;
     }
 
+    public static <T> T logAndReturn(Throwable t, T result) {
+        t.printStackTrace();
+        return result;
+    }
+
     public static <T> T logAndThrow(Throwable t) {
         return logAndThrow(t, Optional.empty());
     }

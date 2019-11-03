@@ -801,9 +801,8 @@ public class PeergosNetworkUtils {
         sharer.unShareReadAccess(fileToShare, a.username).join();
         // check 'a' can't see the shared directory
         FileWrapper unsharedLocation = a.getByPath(sharer.username).join().get();
-        unsharedLocation.getChildren(crypto.hasher, sharer.network).join();
-            System.currentTimeMillis();
-//        Assert.assertTrue("a can't see unshared folder", ! unsharedFolder.isPresent());
+        Set<FileWrapper> children = unsharedLocation.getChildren(crypto.hasher, sharer.network).join();
+        Assert.assertTrue("a can't see unshared folder", children.isEmpty());
     }
 
     public static void grantAndRevokeDirWriteAccessWithNestedWriteAccess(NetworkAccess network,
