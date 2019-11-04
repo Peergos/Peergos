@@ -141,6 +141,12 @@ public class MultiUserTests {
     }
 
     @Test
+    public void grantAndRevokeWriteAccessThanReadAccessToFolder() throws IOException{
+        PeergosNetworkUtils.grantAndRevokeWriteAccessThanReadAccessToFolder(network, random);
+    }
+
+
+    @Test
     public void safeCopyOfFriendsReadAccess() throws Exception {
         TriFunction<UserContext, UserContext, String, CompletableFuture<Boolean>> readAccessSharingFunction =
                 (u1, u2, filename) ->
