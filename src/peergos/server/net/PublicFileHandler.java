@@ -14,11 +14,10 @@ import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
-import java.io.*;
+import java.net.*;
 import java.util.*;
 import java.util.function.*;
 import java.util.logging.*;
-import java.util.stream.*;
 
 public class PublicFileHandler implements HttpHandler {
 	private static final Logger LOG = Logging.LOG();
@@ -80,51 +79,13 @@ public class PublicFileHandler implements HttpHandler {
             Optional<CborObject> capCbor = dht.get(capHash.get()).get();
             AbsoluteCapability cap = AbsoluteCapability.fromCbor(capCbor.get());
 
-            TrieNodeImpl trieRoot = TrieNodeImpl.empty().put(path, new EntryPoint(cap, ownerName));
-            Optional<FileWrapper> fileOpt = trieRoot.getByPath(originalPath, crypto.hasher, network).get();
+            String link = "/#{\"secretLink\":true%2c\"path\":\""
+                    + URLEncoder.encode(originalPath, "UTF-8")
+                    + "\"%2c\"link\":\"" + cap.toLink() + "\"}";
 
-            if (! fileOpt.isPresent())
-                throw new IllegalStateException("Couldn't retrieve file: " + path);
-
-            FileWrapper file = fileOpt.get();
-
-            if (file.isDirectory()) {
-                String fullPath = httpExchange.getRequestURI().getPath();
-                String canonicalFullPath = HtmlUtil.escapeHtml4(fullPath + (! fullPath.endsWith("/") ? "/" : ""));
-                AlphanumComparator humanOrder = new AlphanumComparator();
-                List<FileWrapper> children = file.getChildren(crypto.hasher, network).get()
-                        .stream()
-                        .sorted((a, b) -> humanOrder.compare(a.getName(), b.getName()))
-                        .collect(Collectors.toList());
-                StringBuilder resp = new StringBuilder();
-                resp.append("<!DOCTYPE html><html lang=\"en\">");
-                resp.append("<body>");
-                resp.append("<h1>Contents of directory " + HtmlUtil.escapeHtml4(originalPath) + "</h1>");
-                children.forEach(child -> resp.append("<a href=\""+canonicalFullPath +
-                        HtmlUtil.escapeHtml4(child.getName())+"\">" +
-                        HtmlUtil.escapeHtml4(child.getName()) + "</a><br/>"));
-                resp.append("</body>");
-                resp.append("</html>");
-
-                byte[] body = resp.toString().getBytes();
-                httpExchange.sendResponseHeaders(200, body.length);
-                OutputStream out = httpExchange.getResponseBody();
-                out.write(body);
-                out.close();
-            } else {
-                long fileSize = file.getSize();
-                httpExchange.sendResponseHeaders(200, fileSize);
-                AsyncReader reader = file.getInputStream(network, crypto, x -> {}).get();
-                byte[] buf = new byte[(int) Math.min(fileSize, 5 * 1024 * 1024)];
-                long read = 0;
-                OutputStream out = httpExchange.getResponseBody();
-                while (read < fileSize) {
-                    int r = reader.readIntoArray(buf, 0, (int) Math.min(buf.length, fileSize - read)).get();
-                    out.write(buf, 0, r);
-                    read += r;
-                }
-                out.close();
-            }
+            httpExchange.getResponseHeaders().add("Location", link);
+            httpExchange.sendResponseHeaders(302, 0); // temporary redirect
+            httpExchange.close();
         } catch (Exception e) {
             LOG.severe("Error handling " +httpExchange.getRequestURI());
             LOG.log(Level.WARNING, e.getMessage(), e);
