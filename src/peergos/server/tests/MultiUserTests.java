@@ -166,21 +166,10 @@ public class MultiUserTests {
         UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
         UserContext u2 = PeergosNetworkUtils.ensureSignedUp(random(), "b", network.clear(), crypto);
 
-        // send follow requests from each other user to "a"
-        u2.sendFollowRequest(u1.username, SymmetricKey.random()).get();
+        // make u1 friend all users
+        PeergosNetworkUtils.friendBetweenGroups(Arrays.asList(u1), Arrays.asList(u2));
 
-        // make "a" reciprocate all the follow requests
-        List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
-        for (FollowRequestWithCipherText u1Request : u1Requests) {
-            boolean accept = true;
-            boolean reciprocate = true;
-            u1.sendReplyFollowRequest(u1Request, accept, reciprocate).get();
-        }
-
-        // complete the friendship connection
-        u2.processFollowRequests().get();//needed for side effect
-
-        // upload a file to "a"'s space
+        // upload a file to u1's space
         FileWrapper u1Root = u1.getUserRoot().get();
         String filename = "somefile.txt";
         byte[] data = UserTests.randomData(10*1024*1024);
@@ -188,7 +177,7 @@ public class MultiUserTests {
         FileWrapper uploaded = u1Root.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length,
                 u1.network, crypto, l -> {}, crypto.random.randomBytes(32)).get();
 
-        // share the file from "a" to each of the others
+        // share the file from u1 to each of the others
         FileWrapper u1File = u1.getByPath(u1.username + "/" + filename).get().get();
         sharingFunction.apply(u1, u2, filename).get();
 
@@ -220,22 +209,8 @@ public class MultiUserTests {
 
         List<UserContext> all = Arrays.asList(u1, u2, u3, u4);
 
-        // send follow requests from u1 to others
-        for (int i=1; i < all.size(); i++) {
-            UserContext target = all.get(i);
-            u1.sendFollowRequest(target.username, SymmetricKey.random()).join();
-
-            // make others reciprocate the follow request
-            List<FollowRequestWithCipherText> u1Requests = target.processFollowRequests().join();
-            for (FollowRequestWithCipherText u1Request : u1Requests) {
-                boolean accept = true;
-                boolean reciprocate = true;
-                target.sendReplyFollowRequest(u1Request, accept, reciprocate).join();
-            }
-        }
-
-        // complete the friendship connection
-        u1.processFollowRequests().join();
+        // make u1 friend all users
+        PeergosNetworkUtils.friendBetweenGroups(Arrays.asList(u1), Arrays.asList(u2, u3, u4));
 
         u1.getUserRoot().join().mkdir("subdir", u1.network, false, crypto).join();
         byte[] fileData = "file data".getBytes();
@@ -274,29 +249,16 @@ public class MultiUserTests {
     private void shareTwoFilesWithSameName(TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> sharingFunction) throws Exception {
         UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
 
-        // send follow requests from each other user to "a"
+        // send follow requests from each other user to u1
         List<String> shareePasswords = IntStream.range(0, 1)
                 .mapToObj(i -> PeergosNetworkUtils.generatePassword())
                 .collect(Collectors.toList());
         List<UserContext> userContexts = getUserContexts(1, shareePasswords);
-        for (UserContext userContext : userContexts) {
-            userContext.sendFollowRequest(u1.username, SymmetricKey.random()).get();
-        }
 
-        // make "a" reciprocate all the follow requests
-        List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
-        for (FollowRequestWithCipherText u1Request : u1Requests) {
-            boolean accept = true;
-            boolean reciprocate = true;
-            u1.sendReplyFollowRequest(u1Request, accept, reciprocate).get();
-        }
+        // make u1 friend all users
+        PeergosNetworkUtils.friendBetweenGroups(Arrays.asList(u1), userContexts);
 
-        // complete the friendship connection
-        for (UserContext userContext : userContexts) {
-            userContext.processFollowRequests().get();//needed for side effect
-        }
-
-        // upload a file to "a"'s space
+        // upload a file to u1's space
         FileWrapper u1Root = u1.getUserRoot().get();
         String filename = "somefile.txt";
         byte[] data1 = "Hello Peergos friend!".getBytes();
@@ -349,29 +311,16 @@ public class MultiUserTests {
     public void deleteFileSharedWithWriteAccess() throws Exception {
         UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
 
-        // send follow requests from each other user to "a"
+        // send follow requests from each other user to u1
         List<String> shareePasswords = IntStream.range(0, 1)
                 .mapToObj(i -> PeergosNetworkUtils.generatePassword())
                 .collect(Collectors.toList());
         List<UserContext> userContexts = getUserContexts(1, shareePasswords);
-        for (UserContext userContext : userContexts) {
-            userContext.sendFollowRequest(u1.username, SymmetricKey.random()).get();
-        }
 
-        // make "a" reciprocate all the follow requests
-        List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
-        for (FollowRequestWithCipherText u1Request : u1Requests) {
-            boolean accept = true;
-            boolean reciprocate = true;
-            u1.sendReplyFollowRequest(u1Request, accept, reciprocate).get();
-        }
+        // make u1 friend all users
+        PeergosNetworkUtils.friendBetweenGroups(Arrays.asList(u1), userContexts);
 
-        // complete the friendship connection
-        for (UserContext userContext : userContexts) {
-            userContext.processFollowRequests().get();//needed for side effect
-        }
-
-        // upload a file to "a"'s space
+        // upload a file to u1's space
         FileWrapper u1Root = u1.getUserRoot().get();
         String filename = "somefile.txt";
         byte[] data1 = "Hello Peergos friend!".getBytes();
@@ -451,29 +400,16 @@ public class MultiUserTests {
             throws Exception {
         UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
 
-        // send follow requests from each other user to "a"
+        // send follow requests from each other user to u1
         List<String> shareePasswords = IntStream.range(0, 1)
                 .mapToObj(i -> PeergosNetworkUtils.generatePassword())
                 .collect(Collectors.toList());
         List<UserContext> userContexts = getUserContexts(1, shareePasswords);
-        for (UserContext userContext : userContexts) {
-            userContext.sendFollowRequest(u1.username, SymmetricKey.random()).get();
-        }
 
-        // make "a" reciprocate all the follow requests
-        List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
-        for (FollowRequestWithCipherText u1Request : u1Requests) {
-            boolean accept = true;
-            boolean reciprocate = true;
-            u1.sendReplyFollowRequest(u1Request, accept, reciprocate).get();
-        }
+        // make u1 friend all users
+        PeergosNetworkUtils.friendBetweenGroups(Arrays.asList(u1), userContexts);
 
-        // complete the friendship connection
-        for (UserContext userContext : userContexts) {
-            userContext.processFollowRequests().get();//needed for side effect
-        }
-
-        // upload a file to "a"'s space
+        // upload a file to u1's space
         FileWrapper u1Root = u1.getUserRoot().get();
         String filename = "somefile.txt";
         byte[] data1 = "Hello Peergos friend!".getBytes();
@@ -529,29 +465,16 @@ public class MultiUserTests {
             throws Exception {
         UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
 
-        // send follow requests from each other user to "a"
+        // send follow requests from each other user to u1
         List<String> shareePasswords = IntStream.range(0, 1)
                 .mapToObj(i -> PeergosNetworkUtils.generatePassword())
                 .collect(Collectors.toList());
         List<UserContext> userContexts = getUserContexts(1, shareePasswords);
-        for (UserContext userContext : userContexts) {
-            userContext.sendFollowRequest(u1.username, SymmetricKey.random()).get();
-        }
 
-        // make "a" reciprocate all the follow requests
-        List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
-        for (FollowRequestWithCipherText u1Request : u1Requests) {
-            boolean accept = true;
-            boolean reciprocate = true;
-            u1.sendReplyFollowRequest(u1Request, accept, reciprocate).get();
-        }
+        // make u1 friend all users
+        PeergosNetworkUtils.friendBetweenGroups(Arrays.asList(u1), userContexts);
 
-        // complete the friendship connection
-        for (UserContext userContext : userContexts) {
-            userContext.processFollowRequests().get();//needed for side effect
-        }
-
-        // upload a file to "a"'s space
+        // upload a file to u1's space
         FileWrapper u1Root = u1.getUserRoot().get();
         String subdirName = "subdir";
         u1Root.mkdir(subdirName, u1.network, false, crypto).get();
@@ -601,29 +524,16 @@ public class MultiUserTests {
             throws Exception {
         UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
 
-        // send follow requests from each other user to "a"
+        // send follow requests from each other user to u1
         List<String> shareePasswords = IntStream.range(0, 1)
                 .mapToObj(i -> PeergosNetworkUtils.generatePassword())
                 .collect(Collectors.toList());
         List<UserContext> userContexts = getUserContexts(1, shareePasswords);
-        for (UserContext userContext : userContexts) {
-            userContext.sendFollowRequest(u1.username, SymmetricKey.random()).get();
-        }
 
-        // make "a" reciprocate all the follow requests
-        List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
-        for (FollowRequestWithCipherText u1Request : u1Requests) {
-            boolean accept = true;
-            boolean reciprocate = true;
-            u1.sendReplyFollowRequest(u1Request, accept, reciprocate).get();
-        }
+        // make u1 friend all users
+        PeergosNetworkUtils.friendBetweenGroups(Arrays.asList(u1), userContexts);
 
-        // complete the friendship connection
-        for (UserContext userContext : userContexts) {
-            userContext.processFollowRequests().get();//needed for side effect
-        }
-
-        // upload a file to "a"'s space
+        // upload a file to u1's space
         String filename = "somefile.txt";
         byte[] data1 = "Hello Peergos friend!".getBytes();
         AsyncReader file1Reader = new AsyncReader.ArrayBacked(data1);
@@ -683,29 +593,15 @@ public class MultiUserTests {
             throws Exception {
         UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
 
-        // send follow requests from each other user to "a"
         List<String> shareePasswords = IntStream.range(0, 1)
                 .mapToObj(i -> PeergosNetworkUtils.generatePassword())
                 .collect(Collectors.toList());
         List<UserContext> userContexts = getUserContexts(1, shareePasswords);
-        for (UserContext userContext : userContexts) {
-            userContext.sendFollowRequest(u1.username, SymmetricKey.random()).get();
-        }
 
-        // make "a" reciprocate all the follow requests
-        List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
-        for (FollowRequestWithCipherText u1Request : u1Requests) {
-            boolean accept = true;
-            boolean reciprocate = true;
-            u1.sendReplyFollowRequest(u1Request, accept, reciprocate).get();
-        }
+        // make u1 friend all users
+        PeergosNetworkUtils.friendBetweenGroups(Arrays.asList(u1), userContexts);
 
-        // complete the friendship connection
-        for (UserContext userContext : userContexts) {
-            userContext.processFollowRequests().get();//needed for side effect
-        }
-
-        // upload a file to "a"'s space
+        // upload a file to u1's space
         String subdirName = "subdir";
         String destinationDirName = "destdir";
         u1.getUserRoot().get().mkdir(subdirName, u1.network, false, crypto).get();
@@ -758,29 +654,14 @@ public class MultiUserTests {
             throws Exception {
         UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
 
-        // send follow requests from each other user to "a"
         List<String> shareePasswords = IntStream.range(0, 1)
                 .mapToObj(i -> PeergosNetworkUtils.generatePassword())
                 .collect(Collectors.toList());
         List<UserContext> userContexts = getUserContexts(1, shareePasswords);
-        for (UserContext userContext : userContexts) {
-            userContext.sendFollowRequest(u1.username, SymmetricKey.random()).get();
-        }
+        // make u1 friend all users
+        PeergosNetworkUtils.friendBetweenGroups(Arrays.asList(u1), userContexts);
 
-        // make "a" reciprocate all the follow requests
-        List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
-        for (FollowRequestWithCipherText u1Request : u1Requests) {
-            boolean accept = true;
-            boolean reciprocate = true;
-            u1.sendReplyFollowRequest(u1Request, accept, reciprocate).get();
-        }
-
-        // complete the friendship connection
-        for (UserContext userContext : userContexts) {
-            userContext.processFollowRequests().get();//needed for side effect
-        }
-
-        // upload a file to "a"'s space
+        // upload a file to u1's space
         String filename = "somefile.txt";
         byte[] data1 = "Hello Peergos friend!".getBytes();
         AsyncReader file1Reader = new AsyncReader.ArrayBacked(data1);
@@ -848,22 +729,8 @@ public class MultiUserTests {
                 .mapToObj(i -> PeergosNetworkUtils.generatePassword())
                 .collect(Collectors.toList());
         List<UserContext> userContexts = getUserContexts(1, shareePasswords);
-        for (UserContext userContext : userContexts) {
-            userContext.sendFollowRequest(u1.username, SymmetricKey.random()).get();
-        }
 
-        // make "a" reciprocate all the follow requests
-        List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
-        for (FollowRequestWithCipherText u1Request : u1Requests) {
-            boolean accept = true;
-            boolean reciprocate = true;
-            u1.sendReplyFollowRequest(u1Request, accept, reciprocate).get();
-        }
-
-        // complete the friendship connection
-        for (UserContext userContext : userContexts) {
-            userContext.processFollowRequests().get();//needed for side effect
-        }
+        PeergosNetworkUtils.friendBetweenGroups(Arrays.asList(u1), userContexts);
 
         String subdirName = "subdir";
         String destinationSubdirName = "destdir";
@@ -905,29 +772,15 @@ public class MultiUserTests {
         String password = random();
         UserContext u1 = PeergosNetworkUtils.ensureSignedUp(username, password, network.clear(), crypto);
 
-        // send follow requests from each other user to "a"
         List<String> shareePasswords = IntStream.range(0, userCount)
                 .mapToObj(i -> PeergosNetworkUtils.generatePassword())
                 .collect(Collectors.toList());
+        // make u1 friend others
         List<UserContext> friends = getUserContexts(userCount, shareePasswords);
-        for (UserContext userContext : friends) {
-            userContext.sendFollowRequest(u1.username, SymmetricKey.random()).get();
-        }
 
-        // make "a" reciprocate all the follow requests
-        List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
-        for (FollowRequestWithCipherText u1Request : u1Requests) {
-            boolean accept = true;
-            boolean reciprocate = true;
-            u1.sendReplyFollowRequest(u1Request, accept, reciprocate).get();
-        }
+        PeergosNetworkUtils.friendBetweenGroups(Arrays.asList(u1), friends);
 
-        // complete the friendship connection
-        for (UserContext userContext : friends) {
-            userContext.processFollowRequests().get();//needed for side effect
-        }
-
-        // upload a file to "a"'s space
+        // upload a file to u1's space
         FileWrapper u1Root = u1.getUserRoot().get();
         String filename = "somefile.txt";
         File f = File.createTempFile("peergos", "");
@@ -968,13 +821,15 @@ public class MultiUserTests {
         String newname = "newname.txt";
         FileWrapper updatedParent = u1.getByPath(originalPath).get().get()
                 .rename(newname, u1.getUserRoot().get(), u1).get();
+        Path newPath = Paths.get(u1.username, newname);
+        AbsoluteCapability newCap = u1.getByPath(newPath).join().get().getPointer().capability;
 
         // check still logged in user can't read the new name
         Optional<FileWrapper> unsharedView = userToUnshareWith.getByPath(friendsPathToFile).get();
         String friendsNewPathToFile = u1.username + "/" + newname;
         Optional<FileWrapper> unsharedView2 = userToUnshareWith.getByPath(friendsNewPathToFile).get();
         CommittedWriterData cwd2 = network.synchronizer.getValue(priorPointer.owner, priorPointer.writer).join().get(priorPointer.writer);
-        CryptreeNode fileAccess = network.getMetadata(cwd2.props, priorPointer).get().get();
+        CryptreeNode fileAccess = network.getMetadata(cwd2.props, priorPointer.withMapKey(newCap.getMapKey())).get().get();
         // check we are trying to decrypt the correct thing
         PaddedCipherText priorPropsCipherText = (PaddedCipherText) ((CborObject.CborMap) priorFileAccess.toCbor()).get("p");
         CborObject.CborMap priorFromParent = priorPropsCipherText.decrypt(priorMetaKey, x -> (CborObject.CborMap)x);

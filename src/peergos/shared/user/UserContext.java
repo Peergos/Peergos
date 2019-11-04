@@ -1139,7 +1139,7 @@ public class UserContext {
                     .thenCompose(parentOpt -> {
                         FileWrapper parent = parentOpt.get();
                         AbsoluteCapability originalCap = toUnshare.getPointer().capability;
-                        return rotateAllKeys(toUnshare, parent)
+                        return rotateAllKeys(toUnshare, parent, true)
                                 .thenCompose(x -> {
                                     sharedWithCache.removeSharedWith(SharedWithCache.Access.WRITE,
                                             path, originalCap, writersToRemove);
@@ -1150,15 +1150,19 @@ public class UserContext {
         });
     }
 
-    private CompletableFuture<Snapshot> rotateAllKeys(FileWrapper file, FileWrapper parent) {
+    private CompletableFuture<Snapshot> rotateAllKeys(FileWrapper file,
+                                                      FileWrapper parent,
+                                                      boolean rotateSigners) {
         PublicKeyHash owner = parent.owner();
         SigningPrivateKeyAndPublicHash parentSigner = parent.signingPair();
         AbsoluteCapability parentCap = parent.getPointer().capability;
         AbsoluteCapability originalCap = file.getPointer().capability;
-        return network.synchronizer.applyComplexUpdate(owner, parentSigner, (initial, c) -> CryptreeNode.initAndAuthoriseSigner(
-                owner,
-                parentSigner,
-                SigningKeyPair.random(crypto.random, crypto.signer), network, initial, c)
+        return network.synchronizer.applyComplexUpdate(owner, parentSigner, (initial, c) -> (rotateSigners ?
+                CryptreeNode.initAndAuthoriseSigner(
+                        owner,
+                        parentSigner,
+                        SigningKeyPair.random(crypto.random, crypto.signer), network, initial, c) :
+                Futures.of(new Pair<>(initial, file.signingPair())))
                 .thenCompose(p -> file.getPointer().fileAccess.rotateAllKeys(
                         true,
                         new CryptreeNode.CapAndSigner((WritableAbsoluteCapability)
@@ -1178,6 +1182,7 @@ public class UserContext {
                                 parent.getParentKey(),
                                 Optional.empty())),
                         Optional.empty(),
+                        rotateSigners,
                         network,
                         crypto,
                         p.left,
@@ -1191,8 +1196,10 @@ public class UserContext {
                                                 file.writableFilePointer(),
                                                 file.signingPair(),
                                                 tid, crypto.hasher, network, s, c), network.dhtClient))
-                                .thenCompose(s -> CryptreeNode.deAuthoriseSigner(owner,
-                                        parentSigner, file.writer(), network, s, c)))));
+                                .thenCompose(s -> rotateSigners ?
+                                        CryptreeNode.deAuthoriseSigner(owner, parentSigner, file.writer(),
+                                                network, s, c) :
+                                        Futures.of(s)))));
     }
 
     public CompletableFuture<Boolean> unShareReadAccess(Path path, Set<String> readersToRemove) {
@@ -1202,13 +1209,13 @@ public class UserContext {
             FileWrapper toUnshare = opt.orElseThrow(() -> new IllegalStateException("Specified un-shareWith path " + absolutePathString + " does not exist"));
             // now change to new base keys, clean some keys and mark others as dirty
             return getByPath(path.getParent().toString())
-                    .thenCompose(parent ->
-                            toUnshare.rotateReadKeys(network, crypto.random, crypto.hasher, parent.get())
-                                    .thenCompose(markedDirty -> {
-                                        AbsoluteCapability cap = toUnshare.getPointer().capability;
-                                        sharedWithCache.removeSharedWith(SharedWithCache.Access.READ, path, cap, readersToRemove);
-                                        return shareReadAccessWith(path, sharedWithCache.getSharedWith(SharedWithCache.Access.READ, cap));
-                                    }));
+                    .thenCompose(parent -> rotateAllKeys(toUnshare, parent.get(), false)
+                            .thenCompose(markedDirty -> {
+                                AbsoluteCapability originalCap = toUnshare.getPointer().capability;
+                                sharedWithCache.removeSharedWith(SharedWithCache.Access.READ, path, originalCap, readersToRemove);
+                                return reSendAllWriteAccessRecursive(path)
+                                        .thenCompose(b -> reSendAllReadAccessRecursive(path));
+                            }));
         });
     }
 
@@ -1310,7 +1317,7 @@ public class UserContext {
             return sendWriteCapToAll(pathToFile, writersToAdd);
         }
 
-        return rotateAllKeys(file, parent)
+        return rotateAllKeys(file, parent, true)
                 .thenCompose(s -> getByPath(pathToFile).thenCompose(newFileOpt -> {
                     sharedWithCache.addSharedWith(SharedWithCache.Access.WRITE,
                             pathToFile, newFileOpt.get().writableFilePointer(), writersToAdd);
