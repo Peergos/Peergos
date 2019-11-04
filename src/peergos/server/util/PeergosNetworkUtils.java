@@ -199,6 +199,7 @@ public class PeergosNetworkUtils {
         // share the file from sharer to each of the sharees
         String filePath = sharerUser.username + "/" + filename;
         FileWrapper u1File = sharerUser.getByPath(filePath).get().get();
+        byte[] originalStreamSecret = u1File.getFileProperties().streamSecret.get();
         sharerUser.shareWriteAccessWith(Paths.get(sharerUser.username, filename), shareeUsers.stream().map(u -> u.username).collect(Collectors.toSet())).get();
 
         // check other users can read the file
@@ -241,6 +242,10 @@ public class PeergosNetworkUtils {
         UserContext updatedSharerUser = ensureSignedUp(sharerUsername, sharerPassword, sharerNode.clear(), crypto);
 
         FileWrapper theFile = updatedSharerUser.getByPath(filePath).join().get();
+        byte[] newStreamSecret = theFile.getFileProperties().streamSecret.get();
+        boolean sameStreams = Arrays.equals(originalStreamSecret, newStreamSecret);
+//        Assert.assertTrue("Stream secret should change on revocation", ! sameStreams); TODO
+
         String retrievedPath = theFile.getPath(sharerNode).join();
         Assert.assertTrue("File has correct path", retrievedPath.equals("/" + filePath));
 
@@ -808,7 +813,7 @@ public class PeergosNetworkUtils {
         Assert.assertTrue("a can't see unshared folder", children.isEmpty());
     }
 
-    public static void grantAndRevokeWriteAccessThanReadAccessToFolder(NetworkAccess network, Random random) throws IOException {
+    public static void grantAndRevokeWriteThenReadAccessToFolder(NetworkAccess network, Random random) throws IOException {
         CryptreeNode.setMaxChildLinkPerBlob(10);
 
         String password = "notagoodone";

@@ -141,8 +141,8 @@ public class MultiUserTests {
     }
 
     @Test
-    public void grantAndRevokeWriteAccessThanReadAccessToFolder() throws IOException{
-        PeergosNetworkUtils.grantAndRevokeWriteAccessThanReadAccessToFolder(network, random);
+    public void grantAndRevokeWriteThenReadAccessToFolder() throws IOException{
+        PeergosNetworkUtils.grantAndRevokeWriteThenReadAccessToFolder(network, random);
     }
 
 

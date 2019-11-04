@@ -257,11 +257,12 @@ public class FileWrapper {
                                                     network, random, hasher))
                                             .thenCompose(finished ->
                                                     // update pointer from parent to us
-                                                    (updateParent ? parent.pointer.fileAccess
-                                                            .updateChildLink(finished, committer,
-                                                                    (WritableAbsoluteCapability) parent.pointer.capability,
-                                                                    parent.signingPair(), this.pointer,
-                                                                    theNewUs.pointer, network, hasher) :
+                                                    (updateParent ? finished.withWriter(owner(), parent.writer(), network)
+                                                            .thenCompose(withParent -> parent.pointer.fileAccess
+                                                                    .updateChildLink(withParent, committer,
+                                                                            parent.writableFilePointer(),
+                                                                            parent.signingPair(), this.pointer,
+                                                                            theNewUs.pointer, network, hasher)) :
                                                             CompletableFuture.completedFuture(finished))
                                             );
                                 });
