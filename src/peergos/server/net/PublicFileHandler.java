@@ -80,7 +80,7 @@ public class PublicFileHandler implements HttpHandler {
             AbsoluteCapability cap = AbsoluteCapability.fromCbor(capCbor.get());
 
             String link = "/#{\"secretLink\":true%2c\"path\":\""
-                    + URLEncoder.encode(originalPath, "UTF-8")
+                    + URLEncoder.encode("/" + originalPath, "UTF-8")
                     + "\"%2c\"link\":\"" + cap.toLink() + "\"}";
 
             httpExchange.getResponseHeaders().add("Location", link);
