@@ -647,6 +647,7 @@ public class CryptreeNode implements Cborable {
             CapAndSigner parent,
             CapAndSigner newParent,
             Optional<RelativeCapability> firstChunkOrParentCap,
+            Optional<byte[]> fileStreamSecret,
             NetworkAccess network,
             Crypto crypto,
             Snapshot version,
@@ -658,7 +659,12 @@ public class CryptreeNode implements Cborable {
         FileProperties props = getProperties(getParentKey(us.cap.rBaseKey));
         WritableAbsoluteCapability nextChunkCap = us.cap.withMapKey(getNextChunkLocation(us.cap.rBaseKey, props.streamSecret,
                 us.cap.getMapKey(), crypto.hasher));
-        byte[] newNextChunkMapKey = props.streamSecret.map(stream ->
+        Optional<byte[]> streamSecret = ! isFirstChunk ?
+                fileStreamSecret :
+                isDirectory ?
+                        Optional.empty() :
+                        Optional.of(crypto.random.randomBytes(32));
+        byte[] newNextChunkMapKey = streamSecret.map(stream ->
                 FileProperties.calculateNextMapKey(stream, newUs.cap.getMapKey(), crypto.hasher))
                 .orElseGet(() -> crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH));
         WritableAbsoluteCapability newNextChunkCap = newUs.cap.withMapKey(newNextChunkMapKey);
@@ -686,6 +692,7 @@ public class CryptreeNode implements Cborable {
                                     parent,
                                     newParent,
                                     childCapToUs,
+                                    streamSecret,
                                     network,
                                     crypto,
                                     s,
@@ -711,6 +718,7 @@ public class CryptreeNode implements Cborable {
                                                             us,
                                                             newUs,
                                                             childCapToUs,
+                                                            Optional.empty(),
                                                             network,
                                                             crypto,
                                                             newChild.left,
@@ -744,7 +752,9 @@ public class CryptreeNode implements Cborable {
                                 Optional.empty() :
                                 Optional.of(SymmetricLinkToSigner.fromPair(newUs.cap.wBaseKey.get(), newUs.signer));
                         SymmetricKey dataKey = getDataKey(us.cap.rBaseKey).makeDirty();
-                        CryptreeNode newFileChunk = createFile(MaybeMultihash.empty(), signerLink, newUs.cap.rBaseKey, dataKey, props,
+                        CryptreeNode newFileChunk = createFile(MaybeMultihash.empty(), signerLink, newUs.cap.rBaseKey,
+                                dataKey,
+                                streamSecret.map(props::withNewStreamSecret).orElse(props),
                                 this.childrenOrData, newParentCap, RelativeCapability.buildSubsequentChunk(
                                         nextChunk.right.getMapKey(), nextChunk.right.rBaseKey));
                         return IpfsTransaction.call(us.cap.owner, tid -> newFileChunk.commit(nextChunk.left,

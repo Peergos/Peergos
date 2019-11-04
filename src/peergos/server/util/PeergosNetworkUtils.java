@@ -244,7 +244,7 @@ public class PeergosNetworkUtils {
         FileWrapper theFile = updatedSharerUser.getByPath(filePath).join().get();
         byte[] newStreamSecret = theFile.getFileProperties().streamSecret.get();
         boolean sameStreams = Arrays.equals(originalStreamSecret, newStreamSecret);
-//        Assert.assertTrue("Stream secret should change on revocation", ! sameStreams); TODO
+        Assert.assertTrue("Stream secret should change on revocation", ! sameStreams);
 
         String retrievedPath = theFile.getPath(sharerNode).join();
         Assert.assertTrue("File has correct path", retrievedPath.equals("/" + filePath));
