@@ -576,6 +576,7 @@ public class CryptreeNode implements Cborable {
             CapAndSigner currentChild,
             CapAndSigner currentParent,
             CapAndSigner newParent,
+            boolean rotateSigner,
             NetworkAccess network,
             Crypto crypto,
             Snapshot version,
@@ -583,7 +584,7 @@ public class CryptreeNode implements Cborable {
         SymmetricKey baseRead = SymmetricKey.random();
         SymmetricKey baseWrite = SymmetricKey.random();
         byte[] newMapKey = crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH);
-        if (currentChild.cap.writer.equals(currentParent.cap.writer)) {
+        if (currentChild.cap.writer.equals(currentParent.cap.writer) || ! rotateSigner) {
             WritableAbsoluteCapability newChildCap = new WritableAbsoluteCapability(currentChild.cap.owner,
                     newParent.cap.writer, newMapKey, baseRead, baseWrite);
             return Futures.of(new Pair<>(version, newParent.withCap(newChildCap)));
@@ -648,6 +649,7 @@ public class CryptreeNode implements Cborable {
             CapAndSigner newParent,
             Optional<RelativeCapability> firstChunkOrParentCap,
             Optional<byte[]> fileStreamSecret,
+            boolean rotateSigner,
             NetworkAccess network,
             Crypto crypto,
             Snapshot version,
@@ -693,6 +695,7 @@ public class CryptreeNode implements Cborable {
                                     newParent,
                                     childCapToUs,
                                     streamSecret,
+                                    rotateSigner,
                                     network,
                                     crypto,
                                     s,
@@ -710,7 +713,7 @@ public class CryptreeNode implements Cborable {
                                                     Optional.of(us.signer));
                                             CapAndSigner child = new CapAndSigner((WritableAbsoluteCapability) c.capability,
                                                     childSigner);
-                                            return generateNewChildCap(child, us, newUs, network, crypto, p.left, committer)
+                                            return generateNewChildCap(child, us, newUs, rotateSigner, network, crypto, p.left, committer)
                                                     .thenCompose(newChild -> c.fileAccess.rotateAllKeys(
                                                             true,
                                                             child,
@@ -719,6 +722,7 @@ public class CryptreeNode implements Cborable {
                                                             newUs,
                                                             childCapToUs,
                                                             Optional.empty(),
+                                                            rotateSigner,
                                                             network,
                                                             crypto,
                                                             newChild.left,
