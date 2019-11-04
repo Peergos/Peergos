@@ -1177,6 +1177,7 @@ public class UserContext {
                                 parent.getPointer().capability.getMapKey(),
                                 parent.getParentKey(),
                                 Optional.empty())),
+                        Optional.empty(),
                         network,
                         crypto,
                         p.left,
