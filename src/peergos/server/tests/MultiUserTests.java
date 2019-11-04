@@ -910,22 +910,8 @@ public class MultiUserTests {
                 .mapToObj(i -> PeergosNetworkUtils.generatePassword())
                 .collect(Collectors.toList());
         List<UserContext> friends = getUserContexts(userCount, shareePasswords);
-        for (UserContext userContext : friends) {
-            userContext.sendFollowRequest(u1.username, SymmetricKey.random()).get();
-        }
 
-        // make "a" reciprocate all the follow requests
-        List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
-        for (FollowRequestWithCipherText u1Request : u1Requests) {
-            boolean accept = true;
-            boolean reciprocate = true;
-            u1.sendReplyFollowRequest(u1Request, accept, reciprocate).get();
-        }
-
-        // complete the friendship connection
-        for (UserContext userContext : friends) {
-            userContext.processFollowRequests().get();//needed for side effect
-        }
+        PeergosNetworkUtils.friendBetweenGroups(Arrays.asList(u1), friends);
 
         // upload a file to "a"'s space
         FileWrapper u1Root = u1.getUserRoot().get();
@@ -968,13 +954,15 @@ public class MultiUserTests {
         String newname = "newname.txt";
         FileWrapper updatedParent = u1.getByPath(originalPath).get().get()
                 .rename(newname, u1.getUserRoot().get(), u1).get();
+        Path newPath = Paths.get(u1.username, newname);
+        AbsoluteCapability newCap = u1.getByPath(newPath).join().get().getPointer().capability;
 
         // check still logged in user can't read the new name
         Optional<FileWrapper> unsharedView = userToUnshareWith.getByPath(friendsPathToFile).get();
         String friendsNewPathToFile = u1.username + "/" + newname;
         Optional<FileWrapper> unsharedView2 = userToUnshareWith.getByPath(friendsNewPathToFile).get();
         CommittedWriterData cwd2 = network.synchronizer.getValue(priorPointer.owner, priorPointer.writer).join().get(priorPointer.writer);
-        CryptreeNode fileAccess = network.getMetadata(cwd2.props, priorPointer).get().get();
+        CryptreeNode fileAccess = network.getMetadata(cwd2.props, priorPointer.withMapKey(newCap.getMapKey())).get().get();
         // check we are trying to decrypt the correct thing
         PaddedCipherText priorPropsCipherText = (PaddedCipherText) ((CborObject.CborMap) priorFileAccess.toCbor()).get("p");
         CborObject.CborMap priorFromParent = priorPropsCipherText.decrypt(priorMetaKey, x -> (CborObject.CborMap)x);
