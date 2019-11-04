@@ -463,7 +463,8 @@ public class NetworkAccess {
                                 IpfsTransaction.call(owner,
                                         tid -> tree.remove(version.props, owner, writer, mapKey, valueHash, tid)
                                                 .thenCompose(wd -> committer.commit(owner, writer, wd, version, tid)),
-                                        dhtClient));
+                                        dhtClient))
+                .thenApply(committed -> current.withVersion(writer.publicKeyHash, committed.get(writer)));
     }
 
     public CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Multihash> hashes,

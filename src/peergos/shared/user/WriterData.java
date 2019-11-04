@@ -96,11 +96,11 @@ public class WriterData implements Cborable {
     }
 
     public CompletableFuture<Snapshot> addOwnedKeyAndCommit(PublicKeyHash owner,
-                                                              SigningPrivateKeyAndPublicHash signer,
-                                                              OwnerProof newOwned,
-                                                              MaybeMultihash currentHash,
-                                                              NetworkAccess network,
-                                                              TransactionId tid) {
+                                                            SigningPrivateKeyAndPublicHash signer,
+                                                            OwnerProof newOwned,
+                                                            MaybeMultihash currentHash,
+                                                            NetworkAccess network,
+                                                            TransactionId tid) {
         return getOwnedKeyChamp(network.dhtClient)
                 .thenCompose(champ -> champ.add(owner, signer, newOwned, tid)
                         .thenApply(newRoot -> new WriterData(controller, generationAlgorithm, publicData,

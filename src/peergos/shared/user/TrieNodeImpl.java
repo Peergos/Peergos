@@ -24,21 +24,30 @@ public class TrieNodeImpl implements TrieNode {
         this.value = value;
     }
 
+    private CompletableFuture<Optional<FileWrapper>> getAnyValidParentOfAChild(Hasher hasher, NetworkAccess network) {
+        return Futures.findFirst(children.values(),
+                        n -> n.getByPath("", hasher, network)
+                                .thenCompose(child -> child.map(c -> c
+                                        .retrieveParent(network)
+                                        .thenApply(opt -> opt.map(f -> f.withTrieNode(this))))
+                                        .orElseGet(() -> Futures.of(Optional.empty())))
+                                .exceptionally(t -> Futures.logAndReturn(t, Optional.empty())));
+    }
+
     @Override
     public CompletableFuture<Optional<FileWrapper>> getByPath(String path, Hasher hasher, NetworkAccess network) {
         LOG.info("GetByPath: " + path);
         String finalPath = TrieNode.canonicalise(path);
         if (finalPath.length() == 0) {
-            if (! value.isPresent()) { // find a child entry and traverse parent links
-                return children.values().stream()
-                        .findAny()
-                        .get()
-                        .getByPath("", hasher, network)
-                        .thenCompose(child -> child.get()
-                                .retrieveParent(network)
-                                .thenApply(opt -> opt.map(f -> f.withTrieNode(this))));
+            if (! value.isPresent()) { // find a valid child entry and traverse parent links
+                return getAnyValidParentOfAChild(hasher, network);
             }
-            return network.retrieveEntryPoint(value.get());
+            return network.retrieveEntryPoint(value.get())
+                    .thenCompose(opt -> {
+                        if (opt.isPresent())
+                            return Futures.of(opt);
+                        return getAnyValidParentOfAChild(hasher, network);
+                    });
         }
         String[] elements = finalPath.split("/");
         // There may be an entry point further down the tree, but it will have <= permission than this one
@@ -50,21 +59,29 @@ public class TrieNodeImpl implements TrieNode {
         return children.get(elements[0]).getByPath(finalPath.substring(elements[0].length()), hasher, network);
     }
 
+    private CompletableFuture<Set<FileWrapper>> indirectlyRetrieveChildren(Hasher hasher, NetworkAccess network) {
+        Set<CompletableFuture<Optional<FileWrapper>>> kids = children.values().stream()
+                .map(t -> t.getByPath("", hasher, network)).collect(Collectors.toSet());
+        return Futures.combineAll(kids)
+                .thenApply(set -> set.stream()
+                        .filter(opt -> opt.isPresent())
+                        .map(opt -> opt.get())
+                        .collect(Collectors.toSet()));
+    }
+
     @Override
     public CompletableFuture<Set<FileWrapper>> getChildren(String path, Hasher hasher, NetworkAccess network) {
         String trimmedPath = TrieNode.canonicalise(path);
         if (trimmedPath.length() == 0) {
-            if (!value.isPresent()) { // find a child entry and traverse parent links
-                Set<CompletableFuture<Optional<FileWrapper>>> kids = children.values().stream()
-                        .map(t -> t.getByPath("", hasher, network)).collect(Collectors.toSet());
-                return Futures.combineAll(kids)
-                        .thenApply(set -> set.stream()
-                                .filter(opt -> opt.isPresent())
-                                .map(opt -> opt.get())
-                                .collect(Collectors.toSet()));
+            if (! value.isPresent()) { // find a child entry and traverse parent links
+                return indirectlyRetrieveChildren(hasher, network);
             }
             return network.retrieveEntryPoint(value.get())
-                    .thenCompose(dir -> dir.get().getChildren(hasher, network));
+                    .thenCompose(dir -> {
+                        if (dir.isPresent())
+                            return dir.get().getChildren(hasher, network);
+                        return indirectlyRetrieveChildren(hasher, network);
+                    });
         }
         String[] elements = trimmedPath.split("/");
         if (!children.containsKey(elements[0]))

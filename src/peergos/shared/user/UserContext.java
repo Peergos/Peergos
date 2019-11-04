@@ -445,14 +445,14 @@ public class UserContext {
                                             .thenCompose(readCaps -> {
                                                 readCaps.getRetrievedCapabilities().stream().forEach(rc -> {
                                                     sharedWithCache.addSharedWith(SharedWithCache.Access.READ,
-                                                        rc.cap, friendDirectory.getName());
+                                                        rc.path, rc.cap, friendDirectory.getName());
                                                 });
                                                 return CapabilityStore.loadWriteableLinks(homeDirSupplier, friendDirectory,
                                                         this.username, network, crypto, false)
                                                         .thenApply(writeCaps -> {
                                                             writeCaps.getRetrievedCapabilities().stream().forEach(rc -> {
                                                                 sharedWithCache.addSharedWith(SharedWithCache.Access.WRITE,
-                                                                    rc.cap, friendDirectory.getName());
+                                                                    rc.path, rc.cap, friendDirectory.getName());
                                                             });
                                                             return true;
                                                         });
@@ -1125,10 +1125,10 @@ public class UserContext {
     }
 
     public CompletableFuture<Boolean> unShareWriteAccess(Path path, Set<String> writersToRemove) {
-        // 1. Add new writer pair as an owned key to parent's writer
-        // 2. Rotate symmetric writing keys of subtree
-        // 3. Change the signing key pair of the subtree
-        // 4. Rotate the symmetric read keys
+        // 1. Authorise new writer pair as an owned key to parent's writer
+        // 2. Rotate all keys (except data keys which are marked as dirty)
+        // 3. Update link from parent to point ot new rotated child
+        // 4. Delete old file and subtree
         // 5. Remove old writer from parent owned keys
         String pathString = path.toString();
         String absolutePathString = pathString.startsWith("/") ? pathString : "/" + pathString;
@@ -1136,23 +1136,62 @@ public class UserContext {
             FileWrapper toUnshare = opt.orElseThrow(() -> new IllegalStateException("Specified un-shareWith path "
                     + absolutePathString + " does not exist"));
             return getByPath(path.getParent().toString())
-                    .thenCompose(parent -> addOwnedKeyToParent(parent.get().owner(), parent.get().signingPair(),
-                            SigningKeyPair.random(crypto.random, crypto.signer), network)
-                            .thenCompose(newSigner -> toUnshare.rotateWriteKeys(parent.get(), network, crypto)
-                                    .thenCompose(pair -> pair.left.changeSigningKey(newSigner, pair.right, network, crypto.hasher))
-                                    .thenCompose(pair -> pair.left.rotateReadKeys(network, crypto.random, crypto.hasher, pair.right))
-                                    .thenCompose(x -> removeOwnedKeyFromParent(parent.get().owner(),
-                                            parent.get().signingPair(), toUnshare.writer(), network))
-                                    .thenCompose(x -> {
-                                        sharedWithCache.removeSharedWith(SharedWithCache.Access.WRITE,
-                                                toUnshare.getPointer().capability, writersToRemove);
-                                        return shareWriteAccessWith(path,
-                                                sharedWithCache.getSharedWith(SharedWithCache.Access.WRITE,
-                                                        toUnshare.getPointer().capability));
-                                    })
-                            )
-                    );
+                    .thenCompose(parentOpt -> {
+                        FileWrapper parent = parentOpt.get();
+                        AbsoluteCapability originalCap = toUnshare.getPointer().capability;
+                        return rotateAllKeys(toUnshare, parent)
+                                .thenCompose(x -> {
+                                    sharedWithCache.removeSharedWith(SharedWithCache.Access.WRITE,
+                                            path, originalCap, writersToRemove);
+                                    return reSendAllWriteAccessRecursive(path)
+                                            .thenCompose(b -> reSendAllReadAccessRecursive(path));
+                                });
+                    });
         });
+    }
+
+    private CompletableFuture<Snapshot> rotateAllKeys(FileWrapper file, FileWrapper parent) {
+        PublicKeyHash owner = parent.owner();
+        SigningPrivateKeyAndPublicHash parentSigner = parent.signingPair();
+        AbsoluteCapability parentCap = parent.getPointer().capability;
+        AbsoluteCapability originalCap = file.getPointer().capability;
+        return network.synchronizer.applyComplexUpdate(owner, parentSigner, (initial, c) -> CryptreeNode.initAndAuthoriseSigner(
+                owner,
+                parentSigner,
+                SigningKeyPair.random(crypto.random, crypto.signer), network, initial, c)
+                .thenCompose(p -> file.getPointer().fileAccess.rotateAllKeys(
+                        true,
+                        new CryptreeNode.CapAndSigner((WritableAbsoluteCapability)
+                                originalCap, file.signingPair()),
+                        new CryptreeNode.CapAndSigner(new WritableAbsoluteCapability(
+                                owner,
+                                p.right.publicKeyHash,
+                                crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH),
+                                SymmetricKey.random(),
+                                SymmetricKey.random()),
+                                p.right),
+                        new CryptreeNode.CapAndSigner((WritableAbsoluteCapability) parentCap, parent.signingPair()),
+                        new CryptreeNode.CapAndSigner((WritableAbsoluteCapability) parentCap, parent.signingPair()),
+                        Optional.of(new RelativeCapability(
+                                Optional.empty(),
+                                parent.getPointer().capability.getMapKey(),
+                                parent.getParentKey(),
+                                Optional.empty())),
+                        network,
+                        crypto,
+                        p.left,
+                        c)
+                        .thenCompose(rotated -> parent.getPointer().fileAccess.updateChildLink(
+                                rotated.left, c, (WritableAbsoluteCapability) parentCap,
+                                parentSigner, originalCap, rotated.right,
+                                network, crypto.hasher)
+                                .thenCompose(s -> IpfsTransaction.call(owner,
+                                        tid -> FileWrapper.deleteAllChunks(
+                                                file.writableFilePointer(),
+                                                file.signingPair(),
+                                                tid, crypto.hasher, network, s, c), network.dhtClient))
+                                .thenCompose(s -> CryptreeNode.deAuthoriseSigner(owner,
+                                        parentSigner, file.writer(), network, s, c)))));
     }
 
     public CompletableFuture<Boolean> unShareReadAccess(Path path, Set<String> readersToRemove) {
@@ -1166,7 +1205,7 @@ public class UserContext {
                             toUnshare.rotateReadKeys(network, crypto.random, crypto.hasher, parent.get())
                                     .thenCompose(markedDirty -> {
                                         AbsoluteCapability cap = toUnshare.getPointer().capability;
-                                        sharedWithCache.removeSharedWith(SharedWithCache.Access.READ, cap, readersToRemove);
+                                        sharedWithCache.removeSharedWith(SharedWithCache.Access.READ, path, cap, readersToRemove);
                                         return shareReadAccessWith(path, sharedWithCache.getSharedWith(SharedWithCache.Access.READ, cap));
                                     }));
         });
@@ -1183,24 +1222,40 @@ public class UserContext {
     public CompletableFuture<Boolean> shareReadAccessWith(Path path, Set<String> readersToAdd) {
         return getByPath(path.toString())
                 .thenCompose(file -> shareReadAccessWithAll(file.orElseThrow(() ->
-                        new IllegalStateException("Could not find path " + path.toString())), readersToAdd));
+                        new IllegalStateException("Could not find path " + path.toString())), path, readersToAdd));
     }
 
-    public CompletableFuture<Boolean> shareWriteAccessWith(Path path, Set<String> writersToAdd) {
-        return getByPath(path.getParent().toString())
+    public CompletableFuture<Boolean> shareWriteAccessWith(Path fileToShare, Set<String> writersToAdd) {
+        return getByPath(fileToShare.getParent().toString())
                 .thenCompose(parent -> {
                     if (! parent.isPresent())
-                        throw new IllegalStateException("Could not find path " + path.getParent().toString());
-                    return parent.get().getChild(path.getFileName().toString(), crypto.hasher, network)
+                        throw new IllegalStateException("Could not find path " + fileToShare.getParent().toString());
+                    return parent.get().getChild(fileToShare.getFileName().toString(), crypto.hasher, network)
                             .thenCompose(file -> {
                                 if (! file.isPresent())
-                                    throw new IllegalStateException("Could not find path " + path.toString());
-                                return shareWriteAccessWithAll(file.get(), parent.get(), writersToAdd);
+                                    throw new IllegalStateException("Could not find path " + fileToShare.toString());
+                                return shareWriteAccessWithAll(file.get(), fileToShare, parent.get(), writersToAdd);
                             });
                 });
     }
 
-    public CompletableFuture<Boolean> shareReadAccessWithAll(FileWrapper file, Set<String> readersToAdd) {
+    public CompletableFuture<Boolean> reSendAllWriteAccessRecursive(Path start) {
+        Map<Path, Set<String>> toReshare = sharedWithCache.getAllWriteShares(start);
+        return Futures.reduceAll(toReshare.entrySet(),
+                true,
+                (b, e) -> sendWriteCapToAll(e.getKey(), e.getValue()),
+                (a, b) -> a);
+    }
+
+    public CompletableFuture<Boolean> reSendAllReadAccessRecursive(Path start) {
+        Map<Path, Set<String>> toReshare = sharedWithCache.getAllReadShares(start);
+        return Futures.reduceAll(toReshare.entrySet(),
+                true,
+                (b, e) -> shareReadAccessWith(e.getKey(), e.getValue()),
+                (a, b) -> a);
+    }
+
+    public CompletableFuture<Boolean> shareReadAccessWithAll(FileWrapper file, Path p, Set<String> readersToAdd) {
         ensureAllowedToShare(file, username, false);
         BiFunction<FileWrapper, FileWrapper, CompletableFuture<Boolean>> sharingFunction = (sharedDir, fileWrapper) ->
                 CapabilityStore.addReadOnlySharingLinkTo(sharedDir, fileWrapper.getPointer().capability,
@@ -1215,104 +1270,100 @@ public class UserContext {
                 res.complete(false);
                 return res;
             }
-            return updatedSharedWithCache(file, readersToAdd, SharedWithCache.Access.READ);
+            return updatedSharedWithCache(file, p, readersToAdd, SharedWithCache.Access.READ);
         });
     }
 
     public CompletableFuture<Boolean> shareWriteAccessWithAll(Path fileToShare,
-                                                              Set<String> writersToAdd) {
+                                                               Set<String> writersToAdd) {
         return getByPath(fileToShare.getParent())
                 .thenCompose(parentOpt -> ! parentOpt.isPresent() ?
                                 Futures.errored(new IllegalStateException("Unable to read " + fileToShare.getParent())) :
                 parentOpt.get().getChild(fileToShare.getFileName().toString(), crypto.hasher, network)
                         .thenCompose(fileOpt -> ! fileOpt.isPresent() ?
                                 Futures.errored(new IllegalStateException("Unable to read " + fileToShare)) :
-                                shareWriteAccessWithAll(fileOpt.get(), parentOpt.get(), writersToAdd)));
+                                shareWriteAccessWithAll(fileOpt.get(), fileToShare, parentOpt.get(), writersToAdd)));
     }
 
     public CompletableFuture<Boolean> shareWriteAccessWithAll(FileWrapper file,
+                                                              Path pathToFile,
                                                               FileWrapper parent,
                                                               Set<String> writersToAdd) {
+        // There are 2 situations:
+        // a) file already has a different signing key than parent,
+        //    in which case, just share a write cap
+        //
+        // b) file needs to be moved to a different signing key (along with its subtree)
+        // To do this atomically,
+        // 1) rotate all the keys as if we were revoking write access
+        // 2) update parent pointer
+        // 3) delete old subtree
+        // 4) then reshare all sub sharees
         ensureAllowedToShare(file, username, true);
-        SigningKeyPair newSignerPair = SigningKeyPair.random(crypto.random, crypto.signer);
+        SigningPrivateKeyAndPublicHash currentSigner = file.signingPair();
+        boolean changeSigner = currentSigner.publicKeyHash.equals(parent.signingPair().publicKeyHash);
 
-        return addOwnedKeyToParent(parent.owner(), parent.signingPair(), newSignerPair, network)
-                .thenCompose(newSigner -> file.changeSigningKey(newSigner, parent, network, crypto.hasher)
-                        .thenCompose(updatedFile -> {
-                            BiFunction<FileWrapper, FileWrapper, CompletableFuture<Boolean>> sharingFunction =
-                                    (sharedDir, fileToShare) -> CapabilityStore.addEditSharingLinkTo(sharedDir,
-                                            updatedFile.left.writableFilePointer(), network, crypto)
-                                            .thenCompose(ee -> CompletableFuture.completedFuture(true));
-                            return Futures.reduceAll(writersToAdd,
-                                    true,
-                                    (x, username) -> shareAccessWith(file, username, sharingFunction),
-                                    (a, b) -> a && b)
-                                    .thenCompose(result -> updatedSharedWithCache(file, writersToAdd, SharedWithCache.Access.WRITE));
-                        })
-                );
+        if (! changeSigner) {
+            sharedWithCache.addSharedWith(SharedWithCache.Access.WRITE,
+                    pathToFile, file.writableFilePointer(), writersToAdd);
+            return sendWriteCapToAll(pathToFile, writersToAdd);
+        }
+
+        return rotateAllKeys(file, parent)
+                .thenCompose(s -> getByPath(pathToFile).thenCompose(newFileOpt -> {
+                    sharedWithCache.addSharedWith(SharedWithCache.Access.WRITE,
+                            pathToFile, newFileOpt.get().writableFilePointer(), writersToAdd);
+                    return reSendAllWriteAccessRecursive(pathToFile)
+                            .thenCompose(b -> reSendAllReadAccessRecursive(pathToFile));
+                }));
     }
 
-    /**
-     * Add an new owned siging key pair to the writer data of a parent signing pair
-     * @param owner
-     * @param parentSigner
-     * @param newSignerPair
-     * @param network
-     * @return The hashed new signing pair
-     */
-    public CompletableFuture<SigningPrivateKeyAndPublicHash> addOwnedKeyToParent(PublicKeyHash owner,
-                                                                                 SigningPrivateKeyAndPublicHash parentSigner,
-                                                                                 SigningKeyPair newSignerPair,
-                                                                                 NetworkAccess network) {
-        byte[] signature = parentSigner.secret.signatureOnly(newSignerPair.publicSigningKey.serialize());
-        return writeSynchronizer.applyUpdate(owner, parentSigner,
-                (wd, tid) -> network.dhtClient.putSigningKey(signature, owner, parentSigner.publicKeyHash,
-                        newSignerPair.publicSigningKey, tid).thenCompose(newSignerHash -> {
-                    SigningPrivateKeyAndPublicHash newSigner =
-                            new SigningPrivateKeyAndPublicHash(newSignerHash, newSignerPair.secretSigningKey);
-                    return wd.addOwnedKey(owner, parentSigner,
-                            OwnerProof.build(newSigner, parentSigner.publicKeyHash), network.dhtClient);
-                }))
-                .thenApply(cwd -> new SigningPrivateKeyAndPublicHash(ContentAddressedStorage.hashKey(newSignerPair.publicSigningKey), newSignerPair.secretSigningKey));
+    public CompletableFuture<Boolean> sendWriteCapToAll(Path toFile, Set<String> writersToAdd) {
+        System.out.println("Resharing WRITE cap to " + toFile + " with " + writersToAdd);
+        return getByPath(toFile.getParent())
+                .thenCompose(parent -> getByPath(toFile)
+                        .thenCompose(fileOpt -> fileOpt.map(file -> sendWriteCapToAll(file, parent.get(), writersToAdd))
+                                .orElseGet(() -> Futures.errored(
+                                        new IllegalStateException("Couldn't retrieve file at " + toFile)))));
     }
 
-    /**
-     * Remove an owned signing key pair from the writer data of a parent signing pair
-     * @param owner
-     * @param parentSigner
-     * @param toRemove
-     * @param network
-     * @return The hashed new signing pair
-     */
-    public CompletableFuture<CommittedWriterData> removeOwnedKeyFromParent(PublicKeyHash owner,
-                                                                           SigningPrivateKeyAndPublicHash parentSigner,
-                                                                           PublicKeyHash toRemove,
-                                                                           NetworkAccess network) {
-        return writeSynchronizer.applyUpdate(owner, parentSigner,
-                (wd, tid) -> wd.removeOwnedKey(owner, parentSigner, toRemove, network.dhtClient))
-                .thenApply(v -> v.get(parentSigner));
+    public CompletableFuture<Boolean> sendWriteCapToAll(FileWrapper file,
+                                                        FileWrapper parent,
+                                                        Set<String> writersToAdd) {
+        if (parent.writer().equals(file.writer()))
+            return Futures.errored(
+                    new IllegalStateException("A file must have different writer than it's parent to grant write access!"));
+        BiFunction<FileWrapper, FileWrapper, CompletableFuture<Boolean>> sharingFunction =
+                (sharedDir, fileToShare) -> CapabilityStore.addEditSharingLinkTo(sharedDir,
+                        file.writableFilePointer(), network, crypto)
+                        .thenCompose(ee -> CompletableFuture.completedFuture(true));
+        return Futures.reduceAll(writersToAdd,
+                true,
+                (x, username) -> shareAccessWith(file, username, sharingFunction),
+                (a, b) -> a && b);
     }
 
-    private CompletableFuture<Boolean> updatedSharedWithCache(FileWrapper file, Set<String> usersToAdd,
+    private CompletableFuture<Boolean> updatedSharedWithCache(FileWrapper file,
+                                                              Path p,
+                                                              Set<String> usersToAdd,
                                                               SharedWithCache.Access access) {
-        sharedWithCache.addSharedWith(access, file.getPointer().capability, usersToAdd);
-        CompletableFuture<Boolean> res = new CompletableFuture<>();
-        res.complete(true);
-        return res;
+        sharedWithCache.addSharedWith(access, p, file.getPointer().capability, usersToAdd);
+        return Futures.of(true);
     }
 
     @JsMethod
-    public CompletableFuture<Boolean> shareReadAccessWith(FileWrapper file, String usernameToGrantReadAccess) {
-        Set<String> readersToAdd = new HashSet<>();
-        readersToAdd.add(usernameToGrantReadAccess);
-        return shareReadAccessWithAll(file, readersToAdd);
+    public CompletableFuture<Boolean> shareReadAccessWith(FileWrapper file,
+                                                          String pathToFile,
+                                                          String usernameToGrantReadAccess) {
+        return shareReadAccessWithAll(file, Paths.get(pathToFile), Collections.singleton(usernameToGrantReadAccess));
     }
 
     @JsMethod
-    public CompletableFuture<Boolean> shareWriteAccessWith(FileWrapper file, FileWrapper parent, String usernameToGrantWriteAccess) {
-        Set<String> readersToAdd = new HashSet<>();
-        readersToAdd.add(usernameToGrantWriteAccess);
-        return shareWriteAccessWithAll(file, parent, readersToAdd);
+    public CompletableFuture<Boolean> shareWriteAccessWith(FileWrapper file,
+                                                           String pathToFile,
+                                                           FileWrapper parent,
+                                                           String usernameToGrantWriteAccess) {
+        return shareWriteAccessWithAll(file, Paths.get(pathToFile), parent, Collections.singleton(usernameToGrantWriteAccess));
     }
 
     public CompletableFuture<Boolean> shareAccessWith(FileWrapper file, String usernameToGrantAccess,

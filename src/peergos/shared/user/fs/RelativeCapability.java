@@ -15,6 +15,8 @@ import java.util.*;
  *  folder or entry point. This also includes the relative link between the symmetric write base keys if they are different.
  */
 public class RelativeCapability implements Cborable {
+    public static final int MAP_KEY_LENGTH = 32;
+
     // writer is only present when it is not implicit (an entry point, or a child link to a different writing key)
     public final Optional<PublicKeyHash> writer;
     private final byte[] mapKey;
@@ -32,10 +34,6 @@ public class RelativeCapability implements Cborable {
         this.mapKey = mapKey;
         this.rBaseKey = rBaseKey;
         this.wBaseKeyLink = wBaseKeyLink;
-    }
-
-    public RelativeCapability(byte[] mapKey, SymmetricKey rBaseKey, SymmetricLink wBaseKeyLink) {
-        this(Optional.empty(), mapKey, rBaseKey, Optional.ofNullable(wBaseKeyLink));
     }
 
     @JsMethod
@@ -65,6 +63,10 @@ public class RelativeCapability implements Cborable {
 
     public RelativeCapability withWritingKey(PublicKeyHash writingKey) {
         return new RelativeCapability(Optional.of(writingKey), mapKey, rBaseKey, wBaseKeyLink);
+    }
+
+    public RelativeCapability withWritingKey(Optional<PublicKeyHash> writingKey) {
+        return new RelativeCapability(writingKey, mapKey, rBaseKey, wBaseKeyLink);
     }
 
     public static RelativeCapability buildSubsequentChunk(byte[] mapkey, SymmetricKey baseKey) {

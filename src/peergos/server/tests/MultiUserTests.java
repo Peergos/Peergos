@@ -106,6 +106,11 @@ public class MultiUserTests {
     }
 
     @Test
+    public void shareAFileWithDifferentSigner() {
+        PeergosNetworkUtils.shareFileWithDifferentSigner(network, network, random);
+    }
+
+    @Test
     public void grantAndRevokeDirReadAccess() throws Exception {
         PeergosNetworkUtils.grantAndRevokeDirReadAccess(network, network, 2, random);
     }
@@ -119,6 +124,27 @@ public class MultiUserTests {
     public void grantAndRevokeNestedDirWriteAccess() {
         PeergosNetworkUtils.grantAndRevokeNestedDirWriteAccess(network, random);
     }
+
+    @Test
+    public void grantAndRevokeParentNestedWriteAccess() {
+        PeergosNetworkUtils.grantAndRevokeParentNestedWriteAccess(network, random);
+    }
+
+    @Test
+    public void grantAndRevokeDirWriteAccessWithNestedWriteAccess() {
+        PeergosNetworkUtils.grantAndRevokeDirWriteAccessWithNestedWriteAccess(network, random);
+    }
+
+    @Test
+    public void grantAndRevokeReadAccessToFileInFolder() throws IOException{
+        PeergosNetworkUtils.grantAndRevokeReadAccessToFileInFolder(network, random);
+    }
+
+    @Test
+    public void grantAndRevokeWriteThenReadAccessToFolder() throws IOException{
+        PeergosNetworkUtils.grantAndRevokeWriteThenReadAccessToFolder(network, random);
+    }
+
 
     @Test
     public void safeCopyOfFriendsReadAccess() throws Exception {

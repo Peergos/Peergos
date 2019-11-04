@@ -67,6 +67,29 @@ public class Futures {
         );
     }
 
+    /*** Asynchronously map a set of input values to output values until one matches a predicate
+     *
+     * @param input the values to reduce
+     * @param producer maps an input value to a completable future of the return type
+     * @param <X> input type
+     * @param <V> return type
+     * @return
+     */
+    public static <X, V> CompletableFuture<Optional<V>> findFirst(
+            Collection<X> input,
+            Function<X, CompletableFuture<Optional<V>>> producer) {
+        if (input.isEmpty())
+            return Futures.of(Optional.empty());
+        List<X> inList = new ArrayList<>(input);
+
+        return producer.apply(inList.get(0))
+                .thenCompose(optRes -> {
+                    if (optRes.isPresent())
+                        return Futures.of(optRes);
+                    return findFirst(inList.subList(1, inList.size()), producer);
+                });
+    }
+
     public static <T> CompletableFuture<T> asyncExceptionally(Supplier<CompletableFuture<T>> normal,
                                                               Function<Throwable, CompletableFuture<T>> exceptional) {
         CompletableFuture<T> result = new CompletableFuture<>();
@@ -78,6 +101,11 @@ public class Futures {
                             .exceptionally(result::completeExceptionally);
                     return true;
                 });
+        return result;
+    }
+
+    public static <T> T logAndReturn(Throwable t, T result) {
+        t.printStackTrace();
         return result;
     }
 

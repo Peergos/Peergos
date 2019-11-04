@@ -43,6 +43,7 @@ public class FileWrapper {
     private final String ownername;
     private final Optional<TrieNode> globalRoot;
     private final Snapshot version;
+    private final boolean isWritable;
     private AtomicBoolean modified = new AtomicBoolean(); // This only used as a guard against concurrent modifications
 
     /**
@@ -61,6 +62,9 @@ public class FileWrapper {
         this.entryWriter = entryWriter;
         this.ownername = ownername;
         this.version = version;
+        this.isWritable = pointer != null &&
+                pointer.capability instanceof WritableAbsoluteCapability ||
+                entryWriter.map(s -> s.publicKeyHash.equals(pointer.capability.writer)).orElse(false);
         if (pointer == null)
             props = new FileProperties("/", true, "", 0, LocalDateTime.MIN, false, Optional.empty(), Optional.empty());
         else {
@@ -175,29 +179,8 @@ public class FileWrapper {
             SafeRandom random,
             Hasher hasher) {
         return pointer.fileAccess
-                .updateChildLinks(version, committer, (WritableAbsoluteCapability) pointer.capability, entryWriter,
+                .updateChildLinks(version, committer, (WritableAbsoluteCapability) pointer.capability, signingPair(),
                         childCases, network, hasher);
-    }
-
-    /**
-     *
-     * @param version
-     * @param committer
-     * @param childrenCaps
-     * @param network
-     * @param crypto
-     * @return An updated version of this directory
-     */
-    public CompletableFuture<Snapshot> addChildLinks(Snapshot version,
-                                                     Committer committer,
-                                                     Collection<WritableAbsoluteCapability> childrenCaps,
-                                                     NetworkAccess network,
-                                                     Crypto crypto) {
-        return pointer.fileAccess
-                .addChildrenAndCommit(version, committer, childrenCaps.stream()
-                                .map(childCap -> ((WritableAbsoluteCapability)pointer.capability).relativise(childCap))
-                                .collect(Collectors.toList()), (WritableAbsoluteCapability) pointer.capability, entryWriter,
-                        network, crypto);
     }
 
     /**
@@ -274,11 +257,12 @@ public class FileWrapper {
                                                     network, random, hasher))
                                             .thenCompose(finished ->
                                                     // update pointer from parent to us
-                                                    (updateParent ? parent.pointer.fileAccess
-                                                            .updateChildLink(finished, committer,
-                                                                    (WritableAbsoluteCapability) parent.pointer.capability,
-                                                                    parent.entryWriter, this.pointer,
-                                                                    theNewUs.pointer, network, hasher) :
+                                                    (updateParent ? finished.withWriter(owner(), parent.writer(), network)
+                                                            .thenCompose(withParent -> parent.pointer.fileAccess
+                                                                    .updateChildLink(withParent, committer,
+                                                                            parent.writableFilePointer(),
+                                                                            parent.signingPair(), this.pointer,
+                                                                            theNewUs.pointer, network, hasher)) :
                                                             CompletableFuture.completedFuture(finished))
                                             );
                                 });
@@ -322,7 +306,7 @@ public class FileWrapper {
                                         .thenCompose(withParent -> network.retrieveMetadata(this.writableFilePointer().withBaseKey(baseReadKey), withParent)
                                                 .thenCompose(meta -> parent.pointer.fileAccess
                                                         .updateChildLink(withParent, committer, parent.writableFilePointer(),
-                                                                parent.entryWriter, pointer, meta.get(), network, hasher))) :
+                                                                parent.signingPair(), pointer, meta.get(), network, hasher))) :
                                 CompletableFuture.completedFuture(newVersion)
                         );
                     }).thenApply(x -> {
@@ -361,70 +345,13 @@ public class FileWrapper {
                                                         Committer committer) {
         if (!isWritable())
             throw new IllegalStateException("You cannot rotate write keys without write access!");
-        WritableAbsoluteCapability cap = writableFilePointer();
-        SymmetricKey newBaseWriteKey = suppliedBaseWriteKey.orElseGet(SymmetricKey::random);
-        WritableAbsoluteCapability ourNewPointer = cap.withBaseWriteKey(newBaseWriteKey);
-
-        if (isDirectory()) {
-            CryptreeNode existing = pointer.fileAccess;
-            Optional<SymmetricLinkToSigner> updatedWriter = existing.getWriterLink(cap.rBaseKey)
-                    .map(toSigner -> SymmetricLinkToSigner.fromPair(newBaseWriteKey, toSigner.target(cap.wBaseKey.get())));
-            CryptreeNode.DirAndChildren updatedDirAccess = existing.withWriterLink(cap.rBaseKey, updatedWriter)
-                    .withChildren(cap.rBaseKey, CryptreeNode.ChildrenLinks.empty(), crypto.hasher);
-
-            byte[] nextChunkMapKey = existing.getNextChunkLocation(cap.rBaseKey, Optional.empty(), null, null);
-            WritableAbsoluteCapability nextChunkCap = cap.withMapKey(nextChunkMapKey);
-
-            RetrievedCapability ourNewRetrievedPointer = new RetrievedCapability(ourNewPointer, updatedDirAccess.dir);
-            FileWrapper theNewUs = new FileWrapper(ourNewRetrievedPointer, entryWriter, ownername, version);
-
-            // clean all subtree write keys
-            return IpfsTransaction.call(owner(),
-                    tid -> updatedDirAccess.commitChildrenLinks(ourNewPointer, entryWriter, network, tid), network.dhtClient)
-                    .thenCompose(hashes -> getDirectChildren(network, crypto.hasher, version))
-                    .thenCompose(childFiles -> {
-                        Set<Pair<FileWrapper, SymmetricKey>> withNewBaseWriteKeys = childFiles.stream()
-                                .map(c -> new Pair<>(c, SymmetricKey.random()))
-                                .collect(Collectors.toSet());
-                        List<WritableAbsoluteCapability> childPointers = withNewBaseWriteKeys.stream()
-                                .map(p -> ((WritableAbsoluteCapability)p.left.pointer.capability)
-                                        .withBaseWriteKey(p.right))
-                                .collect(Collectors.toList());
-
-                        return Futures.reduceAll(withNewBaseWriteKeys, version,
-                                (s, pair) -> pair.left.rotateWriteKeys(false, theNewUs, Optional.of(pair.right),
-                                        network, crypto, s, committer), (a, b) -> b)
-                                .thenCompose(version2 -> theNewUs.addChildLinks(version2, committer, childPointers, network, crypto));
-                    }).thenCompose(updatedVersion ->
-                            // update pointer from parent to us
-                            (updateParent ?
-                                    updatedVersion.withWriter(owner(), parent.writer(), network)
-                                            .thenCompose(withParent -> network.retrieveMetadata(this.writableFilePointer(), withParent)
-                                                    .thenCompose(updatedUs -> parent.pointer.fileAccess
-                                                            .updateChildLink(withParent, committer,
-                                                                    parent.writableFilePointer(),
-                                                                    parent.entryWriter, this.pointer,
-                                                                    updatedUs.get(), network, crypto.hasher))) :
-                                    CompletableFuture.completedFuture(updatedVersion))
-                    ).thenCompose(updatedVersion -> {
-                        return network.getMetadata(version.get(nextChunkCap.writer).props, nextChunkCap)
-                                .thenCompose(mOpt -> {
-                                    if (! mOpt.isPresent())
-                                        return CompletableFuture.completedFuture(updatedVersion);
-                                    return new FileWrapper(new RetrievedCapability(nextChunkCap, mOpt.get()),
-                                            Optional.of(signingPair()), ownername, version)
-                                            .rotateWriteKeys(false, parent,
-                                                    Optional.of(newBaseWriteKey), network, crypto, updatedVersion, committer);
-                                });
-                    }).thenApply(x -> {
-                        setModified();
-                        return x;
-                    });
-        } else {
-            CryptreeNode existing = pointer.fileAccess;
-            // Only need to do the first chunk, because only those can have writer links
-            return existing.rotateBaseWriteKey(cap, entryWriter, newBaseWriteKey, network, version, committer);
-        }
+        return pointer.fileAccess.rotateWriteKeys(updateParent, parent.pointer.fileAccess, parent.writableFilePointer(),
+                parent.signingPair(), suppliedBaseWriteKey, writableFilePointer(), signingPair(), network, crypto,
+                version, committer)
+                .thenApply(x -> {
+                    setModified();
+                    return x;
+                });
     }
 
     public CompletableFuture<Boolean> hasChildWithName(Snapshot version, String name, Hasher hasher, NetworkAccess network) {
@@ -456,26 +383,6 @@ public class FileWrapper {
                 Arrays.asList(child.getPointer().capability), writableFilePointer(), entryWriter, network, hasher);
     }
 
-    public CompletableFuture<Snapshot> addLinkTo(Snapshot version,
-                                                 Committer committer,
-                                                 String name,
-                                                 WritableAbsoluteCapability fileCap,
-                                                 NetworkAccess network,
-                                                 Crypto crypto) {
-        ensureUnmodified();
-        if (!this.isDirectory() || !this.isWritable()) {
-            return Futures.errored(new IllegalArgumentException("Can only add link to a writable directory!"));
-        }
-        return hasChildWithName(version, name, crypto.hasher, network).thenCompose(hasChild -> {
-            if (hasChild) {
-                return Futures.errored(new IllegalStateException("Child already exists with name: " + name));
-            }
-            CryptreeNode toUpdate = pointer.fileAccess;
-            return toUpdate.addChildAndCommit(version, committer, writableFilePointer().relativise(fileCap),
-                    writableFilePointer(), entryWriter, network, crypto);
-        });
-    }
-
     @JsMethod
     public String toLink() {
         return pointer.capability.readOnly().toLink();
@@ -490,7 +397,7 @@ public class FileWrapper {
 
     @JsMethod
     public boolean isWritable() {
-        return pointer != null && pointer.capability instanceof WritableAbsoluteCapability;
+        return isWritable;
     }
 
     @JsMethod
@@ -930,8 +837,9 @@ public class FileWrapper {
                                                         WritableAbsoluteCapability childPointer,
                                                         NetworkAccess network,
                                                         Crypto crypto) {
-        return pointer.fileAccess.addChildAndCommit(current, committer, writableFilePointer().relativise(childPointer),
-                writableFilePointer(), entryWriter, network, crypto)
+        List<RelativeCapability> childCaps = Collections.singletonList(writableFilePointer().relativise(childPointer));
+        return pointer.fileAccess.addChildrenAndCommit(current, committer,
+                childCaps, writableFilePointer(), signingPair(), network, crypto)
                 .thenApply(newBase -> {
                     setModified();
                     return newBase;
@@ -1275,7 +1183,9 @@ public class FileWrapper {
     public SigningPrivateKeyAndPublicHash signingPair() {
         if (! isWritable())
             throw new IllegalStateException("File is not writable!");
-        return pointer.fileAccess.getSigner(pointer.capability.rBaseKey, pointer.capability.wBaseKey.get(), entryWriter);
+        return pointer.capability.wBaseKey
+                .map(w -> pointer.fileAccess.getSigner(pointer.capability.rBaseKey, w, entryWriter))
+                .orElseGet(entryWriter::get);
     }
 
     @JsMethod
@@ -1387,7 +1297,7 @@ public class FileWrapper {
                         .thenCompose(copiedVersion -> copiedVersion.withWriter(owner, parent.writer(), network))
                         .thenCompose(withParent -> parent.getPointer().fileAccess
                                 .updateChildLink(withParent, committer, parent.writableFilePointer(),
-                                        parent.entryWriter,
+                                        parent.signingPair(),
                                         getPointer(),
                                         newRetrievedCapability, network, hasher))
                         .thenCompose(updatedParentVersion -> deleteAllChunks(cap, signingPair(), tid, hasher, network,
@@ -1455,36 +1365,37 @@ public class FileWrapper {
                                                               NetworkAccess network,
                                                               Snapshot version,
                                                               Committer committer) {
-        return network.getMetadata(version.get(currentCap.writer).props, currentCap)
-                .thenCompose(mOpt -> {
-                    if (! mOpt.isPresent()) {
-                        return CompletableFuture.completedFuture(version);
-                    }
-                    SigningPrivateKeyAndPublicHash ourSigner = mOpt.get()
-                            .getSigner(currentCap.rBaseKey, currentCap.wBaseKey.get(), Optional.of(signer));
-                    return network.deleteChunk(version, committer, mOpt.get(), currentCap.owner,
-                            currentCap.getMapKey(), ourSigner, tid)
-                            .thenCompose(deletedVersion -> {
-                                CryptreeNode chunk = mOpt.get();
-                                Optional<byte[]> streamSecret = chunk.getProperties(chunk
+        return version.withWriter(currentCap.owner, currentCap.writer, network)
+                .thenCompose(current -> network.getMetadata(current.get(currentCap.writer).props, currentCap)
+                        .thenCompose(mOpt -> {
+                            if (! mOpt.isPresent()) {
+                                return CompletableFuture.completedFuture(current);
+                            }
+                            SigningPrivateKeyAndPublicHash ourSigner = mOpt.get()
+                                    .getSigner(currentCap.rBaseKey, currentCap.wBaseKey.get(), Optional.of(signer));
+                            return network.deleteChunk(current, committer, mOpt.get(), currentCap.owner,
+                                    currentCap.getMapKey(), ourSigner, tid)
+                                    .thenCompose(deletedVersion -> {
+                                        CryptreeNode chunk = mOpt.get();
+                                        Optional<byte[]> streamSecret = chunk.getProperties(chunk
                                                 .getParentKey(currentCap.rBaseKey)).streamSecret;
-                                byte[] nextChunkMapKey = chunk.getNextChunkLocation(currentCap.rBaseKey, streamSecret,
-                                        currentCap.getMapKey(), hasher);
-                                return deleteAllChunks(currentCap.withMapKey(nextChunkMapKey), signer, tid, hasher,
-                                        network, deletedVersion, committer);
-                            })
-                            .thenCompose(updatedVersion -> {
-                                if (! mOpt.get().isDirectory())
-                                    return CompletableFuture.completedFuture(updatedVersion);
-                                return mOpt.get().getDirectChildrenCapabilities(currentCap, network).thenCompose(childCaps ->
-                                        Futures.reduceAll(childCaps,
-                                                updatedVersion,
-                                                (v, cap) -> deleteAllChunks((WritableAbsoluteCapability) cap, signer,
-                                                        tid, hasher, network, v, committer),
-                                                (x, y) -> y));
-                            })
-                            .thenCompose(s -> removeSigningKey(currentCap.writer, signer, currentCap.owner, network, s, committer));
-                });
+                                        byte[] nextChunkMapKey = chunk.getNextChunkLocation(currentCap.rBaseKey, streamSecret,
+                                                currentCap.getMapKey(), hasher);
+                                        return deleteAllChunks(currentCap.withMapKey(nextChunkMapKey), signer, tid, hasher,
+                                                network, deletedVersion, committer);
+                                    })
+                                    .thenCompose(updatedVersion -> {
+                                        if (! mOpt.get().isDirectory())
+                                            return CompletableFuture.completedFuture(updatedVersion);
+                                        return mOpt.get().getDirectChildrenCapabilities(currentCap, network).thenCompose(childCaps ->
+                                                Futures.reduceAll(childCaps,
+                                                        updatedVersion,
+                                                        (v, cap) -> deleteAllChunks((WritableAbsoluteCapability) cap, signer,
+                                                                tid, hasher, network, v, committer),
+                                                        (x, y) -> y));
+                                    })
+                                    .thenCompose(s -> removeSigningKey(currentCap.writer, signer, currentCap.owner, network, s, committer));
+                        }));
     }
 
     /**
@@ -1519,11 +1430,18 @@ public class FileWrapper {
                                                                NetworkAccess network,
                                                                Snapshot current,
                                                                Committer committer) {
-        if (parentSigner.publicKeyHash.equals(signerToRemove))
+        PublicKeyHash parentWriter = parentSigner.publicKeyHash;
+        if (parentWriter.equals(signerToRemove))
             return CompletableFuture.completedFuture(current);
 
-        return network.synchronizer.applyUpdate(owner, parentSigner, (parentWriterData, tid) -> parentWriterData
-                .removeOwnedKey(owner, parentSigner, signerToRemove, network.dhtClient));
+        return current.withWriter(owner, parentWriter, network)
+                .thenCompose(s -> s.get(parentSigner).props
+                        .removeOwnedKey(owner, parentSigner, signerToRemove, network.dhtClient)
+                        .thenCompose(removed -> IpfsTransaction.call(
+                                owner,
+                                tid -> committer.commit(owner, parentSigner, removed, s.get(parentSigner), tid),
+                                network.dhtClient))
+                        .thenApply(committed -> s.withVersion(parentWriter, committed.get(parentWriter))));
     }
 
     public CompletableFuture<? extends AsyncReader> getInputStream(NetworkAccess network,
