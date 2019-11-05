@@ -209,7 +209,7 @@ public class UserService {
                 new AdminHandler(this.controller));
         addHandler.accept("/" + Constants.SPACE_USAGE_URL,
                 new StorageHandler(this.usage));
-        addHandler.accept("/" + Constants.PUBLIC_FILES_URL, new PublicFileHandler(coreNode, mutable, storage, crypto));
+        addHandler.accept("/" + Constants.PUBLIC_FILES_URL, new PublicFileHandler(coreNode, mutable, storage));
         addHandler.accept(UI_URL, handler);
 
         localhostServer.setExecutor(Executors.newFixedThreadPool(HANDLER_THREADS));

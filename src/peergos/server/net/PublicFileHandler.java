@@ -3,20 +3,14 @@ package peergos.server.net;
 import com.sun.net.httpserver.*;
 import peergos.server.util.*;
 import peergos.shared.*;
-import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
-import peergos.shared.crypto.hash.*;
-import peergos.shared.hamt.*;
-import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
-import peergos.shared.util.*;
 
 import java.net.*;
-import java.util.*;
-import java.util.function.*;
+import java.nio.file.*;
 import java.util.logging.*;
 
 public class PublicFileHandler implements HttpHandler {
@@ -24,19 +18,11 @@ public class PublicFileHandler implements HttpHandler {
 
     private static final boolean LOGGING = true;
 
-    private final CoreNode core;
-    private final MutablePointers mutable;
-    private final ContentAddressedStorage dht;
-    private final Crypto crypto;
     private final NetworkAccess network;
     private static final String PATH_PREFIX = "/public/";
 
-    public PublicFileHandler(CoreNode core, MutablePointers mutable, ContentAddressedStorage dht, Crypto crypto) {
-        this.core = core;
-        this.mutable = mutable;
-        this.dht = dht;
+    public PublicFileHandler(CoreNode core, MutablePointers mutable, ContentAddressedStorage dht) {
         this.network = NetworkAccess.buildPublicNetworkAccess(core, mutable, dht).join();
-        this.crypto = crypto;
     }
 
     @Override
@@ -49,35 +35,7 @@ public class PublicFileHandler implements HttpHandler {
             path = path.substring(PATH_PREFIX.length());
             String originalPath = path;
 
-            String ownerName = path.substring(0, path.indexOf("/"));
-
-            Optional<PublicKeyHash> ownerOpt = core.getPublicKeyHash(ownerName).get();
-            if (! ownerOpt.isPresent())
-                throw new IllegalStateException("Owner doesn't exist for path " + path);
-            PublicKeyHash owner = ownerOpt.get();
-            CommittedWriterData userData = WriterData.getWriterData(owner, owner, mutable, dht).get();
-            Optional<Multihash> publicData = userData.props.publicData;
-            if (! publicData.isPresent())
-                throw new IllegalStateException("User " + ownerName + " has not made any files public.");
-
-            Function<ByteArrayWrapper, byte[]> hasher = x -> Hash.sha256(x.data);
-            ChampWrapper champ = ChampWrapper.create(publicData.get(), hasher, dht).get();
-
-            MaybeMultihash capHash = champ.get(("/" + path).getBytes()).get();
-            // The user might have published an ancestor directory of the requested path, so drop path elements until we
-            // either find a capability, or have none left
-            String subPath = "";
-            while (! capHash.isPresent() && path.length() > 0) {
-                String lastElement = path.substring(path.lastIndexOf("/"));
-                subPath = lastElement + subPath;
-                path = path.substring(0, path.length() - lastElement.length());
-                capHash = champ.get(("/" + path).getBytes()).get();
-            }
-            if (! capHash.isPresent())
-                throw new IllegalStateException("User " + ownerName + " has not published a file at " + originalPath);
-
-            Optional<CborObject> capCbor = dht.get(capHash.get()).get();
-            AbsoluteCapability cap = AbsoluteCapability.fromCbor(capCbor.get());
+            AbsoluteCapability cap = UserContext.getPublicCapability(Paths.get(originalPath), network).join();
 
             String link = "/#{\"secretLink\":true%2c\"path\":\""
                     + URLEncoder.encode("/" + originalPath, "UTF-8")
