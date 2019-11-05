@@ -363,7 +363,6 @@ public class UserContext {
             invalidLink.completeExceptionally(e);
             return invalidLink;
         }
-        EntryPoint entry = new EntryPoint(cap, "");
         WriterData empty = new WriterData(cap.owner,
                         Optional.empty(),
                         Optional.empty(),
@@ -375,12 +374,61 @@ public class UserContext {
         CommittedWriterData userData = new CommittedWriterData(MaybeMultihash.empty(), empty);
         UserContext context = new UserContext(null, null, null, null, network,
                 crypto, userData, TrieNodeImpl.empty(), null);
-        return NetworkAccess.retrieveEntryPoint(entry, network)
-                .thenCompose(r -> addRetrievedEntryPointToTrie(null, context.entrie, entry, r.getPath(), true, network, crypto))
+        return buildTrieFromCap(cap, context.entrie, network, crypto)
                 .thenApply(trieNode -> {
                     context.entrie = trieNode;
                     return context;
                 });
+    }
+
+    private static CompletableFuture<TrieNode> buildTrieFromCap(AbsoluteCapability cap,
+                                                                TrieNode currentRoot,
+                                                                NetworkAccess network,
+                                                                Crypto crypto) {
+        EntryPoint entry = new EntryPoint(cap, "");
+        return NetworkAccess.retrieveEntryPoint(entry, network)
+                .thenCompose(r -> addRetrievedEntryPointToTrie(null, currentRoot, entry, r.getPath(), true, network, crypto));
+    }
+
+    public static CompletableFuture<AbsoluteCapability> getPublicCapability(Path originalPath, NetworkAccess network) {
+        String ownerName = originalPath.getName(0).toString();
+
+        return network.coreNode.getPublicKeyHash(ownerName).thenCompose(ownerOpt -> {
+            if (!ownerOpt.isPresent())
+                throw new IllegalStateException("Owner doesn't exist for path " + originalPath);
+            PublicKeyHash owner = ownerOpt.get();
+            return WriterData.getWriterData(owner, owner, network.mutable, network.dhtClient).thenCompose(userData -> {
+                Optional<Multihash> publicData = userData.props.publicData;
+                if (!publicData.isPresent())
+                    throw new IllegalStateException("User " + ownerName + " has not made any files public.");
+
+                Function<ByteArrayWrapper, byte[]> hasher = x -> Hash.sha256(x.data);
+                return ChampWrapper.create(publicData.get(), hasher, network.dhtClient).thenCompose(champ -> {
+                    // The user might have published an ancestor directory of the requested path,
+                    // so drop path elements until we either find a capability, or have none left
+                    int depth = originalPath.getNameCount();
+                    List<Integer> toDrop = IntStream.range(0, depth)
+                            .mapToObj(x -> x)
+                            .collect(Collectors.toList());
+                    return Futures.findFirst(toDrop,
+                            i -> champ.get(("/" + originalPath.subpath(0, depth - i)).getBytes())
+                                    .thenApply(m -> m.toOptional()))
+                            .thenCompose(capHash -> {
+                                if (!capHash.isPresent())
+                                    throw new IllegalStateException("User " + ownerName + " has not published a file at " + originalPath);
+
+                                return network.dhtClient.get(capHash.get())
+                                        .thenApply(cborOpt -> AbsoluteCapability.fromCbor(cborOpt.get()));
+                            });
+                });
+            });
+        });
+    }
+
+    public CompletableFuture<Optional<FileWrapper>> getPublicFile(Path file) {
+        return getPublicCapability(file, network)
+                .thenCompose(cap -> buildTrieFromCap(cap, TrieNodeImpl.empty(), network, crypto)
+                .thenCompose(t -> t.getByPath(file.toString(), crypto.hasher, network)));
     }
 
     @JsMethod

@@ -19,6 +19,10 @@ public class MaybeMultihash implements Cborable {
         return hash != null;
     }
 
+    public Optional<Multihash> toOptional() {
+        return isPresent() ? Optional.of(hash) : Optional.empty();
+    }
+
     public <T> Optional<T> map(Function<Multihash, T> func) {
         return isPresent() ? Optional.of(func.apply(hash)) : Optional.empty();
     }

@@ -867,8 +867,8 @@ public abstract class UserTests {
         FileWrapper file = context.getByPath(path).get().get();
         context.makePublic(file).get();
 
-        InputStream in = peergosUrl.toURI().resolve("/public" + path).toURL().openStream();
-        byte[] returnedData = Serialize.readFully(in);
+        FileWrapper publicFile = context.getPublicFile(Paths.get(username, filename)).join().get();
+        byte[] returnedData = Serialize.readFully(publicFile.getInputStream(context.network, crypto, x -> {}).join(), data.length).join();
         Assert.assertTrue("Correct data returned for publicly shared file", Arrays.equals(data, returnedData));
     }
 
@@ -890,9 +890,8 @@ public abstract class UserTests {
                 data.length, context.network, context.crypto, l -> {}).get();
         context.makePublic(updatedSubdir).get();
 
-        String path = "/" + username + "/" + dirName + "/" + filename;
-        InputStream in = peergosUrl.toURI().resolve("/public" + path).toURL().openStream();
-        byte[] returnedData = Serialize.readFully(in);
+        FileWrapper publicFile = context.getPublicFile(Paths.get(username, dirName, filename)).join().get();
+        byte[] returnedData = Serialize.readFully(publicFile.getInputStream(context.network, crypto, x -> {}).join(), data.length).join();
         Assert.assertTrue("Correct data returned for publicly shared file", Arrays.equals(data, returnedData));
     }
 
