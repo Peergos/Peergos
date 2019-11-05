@@ -59,6 +59,7 @@ public class RestartTests {
         args.setArg("pki-node-id", pkiNodeId.toBase58());
         args.setArg("peergos.identity.hash", peergosId.toString());
         server.destroy();
+        server.destroyForcibly();
         server.waitFor();
         try {Thread.sleep(2000);} catch (InterruptedException e) {}
         server = start("pki");
