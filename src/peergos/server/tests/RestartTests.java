@@ -61,7 +61,7 @@ public class RestartTests {
         server.destroy();
         server.destroyForcibly();
         server.waitFor();
-        try {Thread.sleep(2000);} catch (InterruptedException e) {}
+        try {Thread.sleep(30_000);} catch (InterruptedException e) {}
         server = start("pki");
         waitUntilReady();
     }
