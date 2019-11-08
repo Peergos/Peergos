@@ -27,7 +27,7 @@ public abstract class StaticHandler implements HttpHandler
         public Asset(byte[] data) {
             this.data = data;
             byte[] digest = Hash.sha256(data);
-            this.hash = ArrayOps.bytesToHex(Arrays.copyOfRange(digest, 0, 4));
+            this.hash = ArrayOps.bytesToHex(Arrays.copyOfRange(digest, 0, 8));
         }
     }
 
@@ -44,6 +44,7 @@ public abstract class StaticHandler implements HttpHandler
             if (path.length() == 0)
                 path = "index.html";
 
+            boolean isRoot = path.equals("index.html");
             Asset res = getAsset(path);
 
             if (isGzip)
@@ -58,7 +59,7 @@ public abstract class StaticHandler implements HttpHandler
                 httpExchange.getResponseHeaders().set("Content-Type", "application/json");
             else if (path.endsWith(".png"))
                 httpExchange.getResponseHeaders().set("Content-Type", "image/png");
-	    else if (path.endsWith(".woff"))
+            else if (path.endsWith(".woff"))
                 httpExchange.getResponseHeaders().set("Content-Type", "application/font-woff");
 	    
             if (httpExchange.getRequestMethod().equals("HEAD")) {
@@ -66,7 +67,7 @@ public abstract class StaticHandler implements HttpHandler
                 httpExchange.sendResponseHeaders(200, -1);
                 return;
             }
-            if (res.data.length > 100 * 1024) {
+            if (! isRoot) {
                 httpExchange.getResponseHeaders().set("Cache-Control", "public, max-age=3600");
                 httpExchange.getResponseHeaders().set("ETag", res.hash);
             }
@@ -81,6 +82,13 @@ public abstract class StaticHandler implements HttpHandler
             httpExchange.getResponseHeaders().set("x-content-type-options", "nosniff");
             // Don't send Peergos referrer to anyone
             httpExchange.getResponseHeaders().set("referrer-policy", "no-referrer");
+            if (! isRoot) {
+                String previousEtag = httpExchange.getRequestHeaders().getFirst("If-None-Match");
+                if (res.hash.equals(previousEtag)) {
+                    httpExchange.sendResponseHeaders(304, -1); // NOT MODIFIED
+                    return;
+                }
+            }
 
             httpExchange.sendResponseHeaders(200, res.data.length);
             httpExchange.getResponseBody().write(res.data);
