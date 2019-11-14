@@ -191,7 +191,7 @@ Class-Path: ${manifest_cp}</echo>
   </target>
 
   <target name="gwtc" depends="javac" description="GWT compile to JavaScript (production mode)">
-    <java failonerror="true" fork="true" classname="com.google.gwt.dev.Compiler" maxmemory="512m">
+    <java failonerror="true" fork="true" classname="com.google.gwt.dev.Compiler" maxmemory="768m">
       <classpath>
         <pathelement location="src"/>
         <path refid="project.class.path"/>
