@@ -20,7 +20,14 @@ public class JdbcIpnsAndSocial {
 
         String createFollowRequestsTableCommand();
 
-        String createMutablePointersTableCommand();
+        default String createMutablePointersTableCommand() {
+            return "CREATE TABLE metadatablobs (writingkey text primary key not null, hash text not null); " +
+                    "CREATE UNIQUE INDEX index_name ON metadatablobs (writingkey);";
+        }
+
+        default String createSpaceRequestsTableCommand() {
+            return "CREATE TABLE spacerequests (name text primary key not null, spacerequest text not null);";
+        }
     }
 
     public static class SqliteCommands implements SqlSupplier {
@@ -34,12 +41,6 @@ public class JdbcIpnsAndSocial {
         public String createFollowRequestsTableCommand() {
             return "CREATE TABLE followrequests (id integer primary key autoincrement, " +
                     "name text not null, followrequest text not null);";
-        }
-
-        @Override
-        public String createMutablePointersTableCommand() {
-            return "CREATE TABLE metadatablobs (writingkey text primary key not null, hash text not null); " +
-                    "CREATE UNIQUE INDEX index_name ON metadatablobs (writingkey);";
         }
     }
 
@@ -55,12 +56,6 @@ public class JdbcIpnsAndSocial {
         public String createFollowRequestsTableCommand() {
             return "CREATE TABLE followrequests (id serial primary key, " +
                     "name text not null, followrequest text not null);";
-        }
-
-        @Override
-        public String createMutablePointersTableCommand() {
-            return "CREATE TABLE metadatablobs (writingkey text primary key not null, hash text not null); " +
-                    "CREATE UNIQUE INDEX index_name ON metadatablobs (writingkey);";
         }
     }
 

@@ -15,4 +15,9 @@ public class Sqlite {
         conn.setAutoCommit(true);
         return conn;
     }
+
+    public static String getDbPath(Args a, String type) {
+        String sqlFile = a.getArg(type);
+        return sqlFile.equals(":memory:") ? sqlFile : a.fromPeergosDir(type).toString();
+    }
 }

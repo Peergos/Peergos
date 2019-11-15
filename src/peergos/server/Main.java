@@ -366,7 +366,9 @@ public class Main {
             Multihash nodeId = localDht.id().get();
 
             boolean usePostgres = a.getBoolean("use-postgres", false);
-            JdbcIpnsAndSocial.SqlSupplier sqlCommands;
+            JdbcIpnsAndSocial.SqlSupplier sqlCommands = usePostgres ?
+                    new JdbcIpnsAndSocial.PostgresCommands() :
+                    new JdbcIpnsAndSocial.SqliteCommands();
             Connection database;
             if (usePostgres) {
                 String postgresHost = a.getArg("postgres.host");
@@ -375,14 +377,8 @@ public class Main {
                 String postgresUsername = a.getArg("postgres.username");
                 String postgresPassword = a.getArg("postgres.password");
                 database = Postgres.build(postgresHost, postgresPort, databaseName, postgresUsername, postgresPassword);
-                sqlCommands = new JdbcIpnsAndSocial.PostgresCommands();
             } else {
-                String mutablePointersSqlFile = a.getArg("mutable-pointers-file");
-                String path = mutablePointersSqlFile.equals(":memory:") ?
-                        mutablePointersSqlFile :
-                        a.fromPeergosDir("mutable-pointers-file").toString();
-                database = Sqlite.build(path);
-                sqlCommands = new JdbcIpnsAndSocial.SqliteCommands();
+                database = Sqlite.build(Sqlite.getDbPath(a, "mutable-pointers-file"));
             }
 
             JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(database, sqlCommands);
@@ -403,11 +399,10 @@ public class Main {
             Path quotaFilePath = a.fromPeergosDir("quotas_file","quotas.txt");
             Path statePath = a.fromPeergosDir("state_path","usage-state.cbor");
 
-            String spaceRequestsSqlFile = a.getArg("space-requests-sql-file");
-            String spaceRequestsSqlPath = spaceRequestsSqlFile.equals(":memory:") ?
-                    spaceRequestsSqlFile :
-                    a.fromPeergosDir("space-requests-sql-file").toString();
-            JdbcSpaceRequests spaceRequests = JdbcSpaceRequests.buildSqlLite(spaceRequestsSqlPath);
+            Connection spaceDb = usePostgres ?
+                    database :
+                    Sqlite.build(Sqlite.getDbPath(a, "space-requests-sql-file"));
+            JdbcSpaceRequests spaceRequests = JdbcSpaceRequests.build(spaceDb, sqlCommands);
             UserQuotas userQuotas = new UserQuotas(quotaFilePath, defaultQuota, maxUsers);
             CoreNode signupFilter = new SignUpFilter(core, userQuotas, nodeId);
             SpaceCheckingKeyFilter spaceChecker = new SpaceCheckingKeyFilter(core, localPointers, localDht, userQuotas,
@@ -428,16 +423,9 @@ public class Main {
 
             SocialNetworkProxy httpSocial = new HttpSocialNetwork(ipfsGateway, ipfsGateway);
 
-            Connection socialDatabase;
-            if (usePostgres) {
-                socialDatabase = database;
-            } else {
-                String socialNodeFile = a.getArg("social-sql-file");
-                String socialPath = socialNodeFile.equals(":memory:") ?
-                        socialNodeFile :
-                        a.fromPeergosDir("social-sql-file").toString();
-                socialDatabase = Sqlite.build(socialPath);
-            }
+            Connection socialDatabase = usePostgres ?
+                    database :
+                    Sqlite.build(Sqlite.getDbPath(a, "social-sql-file"));
 
             JdbcIpnsAndSocial rawSocial = new JdbcIpnsAndSocial(socialDatabase, sqlCommands);
             SocialNetwork local = UserRepository.build(p2pDht, rawSocial);
