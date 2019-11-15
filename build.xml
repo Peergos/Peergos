@@ -108,7 +108,7 @@ Class-Path: ${manifest_cp}</echo>
       <map from="${test.sources}/" to="" />
     </pathconvert>
     <!-- run one particular test -->
-    <junit fork="true" showoutput="true" printsummary="true" haltonfailure="yes">
+    <junit fork="true" printsummary="true" haltonfailure="yes">
       <jvmarg value="-Xmx2g"/>
       <classpath>
 	<pathelement location="lib/jnr-fuse-0.5.3-all.jar" />
