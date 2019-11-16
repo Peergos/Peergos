@@ -3,9 +3,12 @@ package peergos.server;
 import peergos.shared.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.user.*;
 
+import java.io.*;
 import java.net.*;
+import java.nio.file.*;
 import java.time.*;
 import java.util.*;
 import java.util.stream.*;
@@ -14,13 +17,14 @@ public class UserStats {
 
     public static void main(String[] args) throws Exception {
         Crypto crypto = Crypto.initJava();
-        NetworkAccess network = NetworkAccess.buildJava(new URL("https://demo.peergos.net")).get();
+        NetworkAccess network = NetworkAccess.buildJava(new URL("https://alpha.peergos.net")).get();
         List<String> usernames = network.coreNode.getUsernames("").get();
         List<Summary> summaries = usernames.stream().parallel().flatMap(username -> {
             try {
                 List<UserPublicKeyLink> chain = network.coreNode.getChain(username).get();
                 UserPublicKeyLink last = chain.get(chain.size() - 1);
                 LocalDate expiry = last.claim.expiry;
+                List<Multihash> hosts = last.claim.storageProviders;
                 PublicKeyHash owner = last.owner;
                 Set<PublicKeyHash> ownedKeysRecursive =
                         WriterData.getOwnedKeysRecursive(username, network.coreNode, network.mutable, network.dhtClient).join();
@@ -32,7 +36,7 @@ public class UserStats {
                 }
                 String summary = "User: " + username + ", expiry: " + expiry + " usage: " + total + "\n";
                 System.out.println(summary);
-                return Stream.of(new Summary(username, expiry, total));
+                return Stream.of(new Summary(username, expiry, total, hosts));
             } catch (Exception e) {
                 System.err.println("Error for " + username);
                 e.printStackTrace();
@@ -40,23 +44,45 @@ public class UserStats {
             }
         }).collect(Collectors.toList());
 
-        summaries.sort((a, b) -> (int) (b.usage - a.usage));
-        summaries.forEach(System.out::println);
+        // Sort by usage
+        sortAndPrint(summaries, (a, b) -> (int) (b.usage - a.usage), "usage.txt");
+
+        // Sort by expiry
+        sortAndPrint(summaries, (a, b) -> a.expiry.compareTo(b.expiry), "expiry.txt");
+
+        // Sort by host
+        sortAndPrint(summaries, Comparator.comparing(s -> s.storageProviders.stream()
+                .findFirst()
+                .map(Object::toString)
+                .orElse("")), "host.txt");
+    }
+
+    private static void sortAndPrint(List<Summary> stats,
+                                     Comparator<Summary> order,
+                                     String filename) throws Exception {
+        stats.sort(order);
+        ByteArrayOutputStream bout = new ByteArrayOutputStream();
+        stats.stream()
+                .map(s -> (s.toString() + "\n").getBytes())
+                .forEach(bytes -> bout.write(bytes, 0, bytes.length));
+        Files.write(Paths.get(filename), bout.toByteArray());
     }
 
     private static class Summary {
         public final String username;
         public final LocalDate expiry;
         public final long usage;
+        public final List<Multihash> storageProviders;
 
-        public Summary(String username, LocalDate expiry, long usage) {
+        public Summary(String username, LocalDate expiry, long usage, List<Multihash> storageProviders) {
             this.username = username;
             this.expiry = expiry;
             this.usage = usage;
+            this.storageProviders = storageProviders;
         }
 
         public String toString() {
-            return "User: " + username + ", expiry: " + expiry + " usage: " + usage;
+            return "User: " + username + ", expiry: " + expiry + ", usage: " + usage + ", hosts: " + storageProviders;
         }
     }
 }
