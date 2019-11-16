@@ -174,8 +174,7 @@ public class UserService {
                     UnrecoverableKeyException | KeyManagementException ex)
             {
                 LOG.severe("Failed to load TLS settings");
-                ex.printStackTrace(System.err);
-                return false;
+                throw new RuntimeException(ex);
             }
         }
 
