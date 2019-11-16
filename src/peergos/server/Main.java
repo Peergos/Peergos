@@ -28,6 +28,7 @@ import peergos.shared.user.fs.*;
 import java.io.*;
 import java.net.*;
 import java.nio.file.*;
+import java.sql.*;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -114,9 +115,9 @@ public class Main {
             // This means creating a pki keypair and publishing the public key
             Crypto crypto = Crypto.initJava();
             // setup peergos user and pki keys
-            String testpassword = args.getArg("peergos.password");
+            String peergosPassword = args.getArg("peergos.password");
             String pkiUsername = "peergos";
-            UserWithRoot peergos = UserUtil.generateUser(pkiUsername, testpassword, crypto.hasher, crypto.symmetricProvider,
+            UserWithRoot peergos = UserUtil.generateUser(pkiUsername, peergosPassword, crypto.hasher, crypto.symmetricProvider,
                     crypto.random, crypto.signer, crypto.boxer, SecretGenerationAlgorithm.getDefaultWithoutExtraSalt()).get();
 
             boolean useIPFS = args.getBoolean("useIPFS");
@@ -129,6 +130,9 @@ public class Main {
             PublicKeyHash peergosPublicHash = ContentAddressedStorage.hashKey(peergosIdentityKeys.publicSigningKey);
 
             String pkiPassword = args.getArg("pki.keygen.password");
+
+            if (peergosPassword.equals(pkiPassword))
+                throw new IllegalStateException("Pki password and peergos password must be different!!");
             SigningKeyPair pkiKeys = UserUtil.generateUser(pkiUsername, pkiPassword, crypto.hasher, crypto.symmetricProvider,
                     crypto.random, crypto.signer, crypto.boxer, SecretGenerationAlgorithm.getDefaultWithoutExtraSalt()).get().getUser();
             IpfsTransaction.call(peergosPublicHash,
@@ -361,12 +365,24 @@ public class Main {
             String hostname = a.getArg("domain");
             Multihash nodeId = localDht.id().get();
 
-            String mutablePointersSqlFile = a.getArg("mutable-pointers-file");
-            String path = mutablePointersSqlFile.equals(":memory:") ?
-                    mutablePointersSqlFile :
-                    a.fromPeergosDir("mutable-pointers-file").toString();
-            JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(Sqlite.build(path));
-            MutablePointers localPointers = UserRepository.buildSqlLite(localDht, rawPointers);
+            boolean usePostgres = a.getBoolean("use-postgres", false);
+            JdbcIpnsAndSocial.SqlSupplier sqlCommands = usePostgres ?
+                    new JdbcIpnsAndSocial.PostgresCommands() :
+                    new JdbcIpnsAndSocial.SqliteCommands();
+            Connection database;
+            if (usePostgres) {
+                String postgresHost = a.getArg("postgres.host");
+                int postgresPort = a.getInt("postgres.port", 5432);
+                String databaseName = a.getArg("postgres.database", "peergos");
+                String postgresUsername = a.getArg("postgres.username");
+                String postgresPassword = a.getArg("postgres.password");
+                database = Postgres.build(postgresHost, postgresPort, databaseName, postgresUsername, postgresPassword);
+            } else {
+                database = Sqlite.build(Sqlite.getDbPath(a, "mutable-pointers-file"));
+            }
+
+            JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(database, sqlCommands);
+            MutablePointers localPointers = UserRepository.build(localDht, rawPointers);
             MutablePointersProxy proxingMutable = new HttpMutablePointers(ipfsGateway, pkiServerNodeId);
 
             PublicKeyHash peergosId = PublicKeyHash.fromString(a.getArg("peergos.identity.hash"));
@@ -383,11 +399,10 @@ public class Main {
             Path quotaFilePath = a.fromPeergosDir("quotas_file","quotas.txt");
             Path statePath = a.fromPeergosDir("state_path","usage-state.cbor");
 
-            String spaceRequestsSqlFile = a.getArg("space-requests-sql-file");
-            String spaceRequestsSqlPath = spaceRequestsSqlFile.equals(":memory:") ?
-                    spaceRequestsSqlFile :
-                    a.fromPeergosDir("space-requests-sql-file").toString();
-            JdbcSpaceRequests spaceRequests = JdbcSpaceRequests.buildSqlLite(spaceRequestsSqlPath);
+            Connection spaceDb = usePostgres ?
+                    database :
+                    Sqlite.build(Sqlite.getDbPath(a, "space-requests-sql-file"));
+            JdbcSpaceRequests spaceRequests = JdbcSpaceRequests.build(spaceDb, sqlCommands);
             UserQuotas userQuotas = new UserQuotas(quotaFilePath, defaultQuota, maxUsers);
             CoreNode signupFilter = new SignUpFilter(core, userQuotas, nodeId);
             SpaceCheckingKeyFilter spaceChecker = new SpaceCheckingKeyFilter(core, localPointers, localDht, userQuotas,
@@ -407,11 +422,13 @@ public class Main {
             MutablePointers p2mMutable = new ProxyingMutablePointers(nodeId, core, blockingMutablePointers, proxingMutable);
 
             SocialNetworkProxy httpSocial = new HttpSocialNetwork(ipfsGateway, ipfsGateway);
-            String socialNodeFile = a.getArg("social-sql-file");
-            String socialPath = socialNodeFile.equals(":memory:") ?
-                    socialNodeFile :
-                    a.fromPeergosDir("social-sql-file").toString();
-            SocialNetwork local = UserRepository.buildSqlLite(socialPath, p2pDht);
+
+            Connection socialDatabase = usePostgres ?
+                    database :
+                    Sqlite.build(Sqlite.getDbPath(a, "social-sql-file"));
+
+            JdbcIpnsAndSocial rawSocial = new JdbcIpnsAndSocial(socialDatabase, sqlCommands);
+            SocialNetwork local = UserRepository.build(p2pDht, rawSocial);
             SocialNetwork p2pSocial = new ProxyingSocialNetwork(nodeId, core, local, httpSocial);
 
             Path userPath = a.fromPeergosDir("whitelist_file", "user_whitelist.txt");

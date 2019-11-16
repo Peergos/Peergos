@@ -3,6 +3,7 @@ package peergos.server.tests;
 import org.junit.*;
 import peergos.server.corenode.*;
 import peergos.server.storage.*;
+import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
@@ -10,6 +11,7 @@ import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
 
+import java.sql.*;
 import java.util.*;
 
 public class WriterDataTests {
@@ -19,7 +21,8 @@ public class WriterDataTests {
         Crypto.initJava();
         TransactionId test = new TransactionId("dummy");
         ContentAddressedStorage dht = new RAMStorage();
-        MutablePointers mutable = UserRepository.buildSqlLite("::memory::", dht);
+        Connection db = Sqlite.build("::memory::");
+        MutablePointers mutable = UserRepository.build(dht, new JdbcIpnsAndSocial(db, new JdbcIpnsAndSocial.SqliteCommands()));
 
         SigningKeyPair pairA = SigningKeyPair.insecureRandom();
         PublicKeyHash pubA = ContentAddressedStorage.hashKey(pairA.publicSigningKey);

@@ -1,5 +1,6 @@
 package peergos.server.space;
 
+import peergos.server.corenode.*;
 import peergos.server.util.*;
 import peergos.shared.storage.*;
 
@@ -11,20 +12,11 @@ import java.util.stream.*;
 public class JdbcSpaceRequests {
 	private static final Logger LOG = Logging.LOG();
 
-    private static final String TABLE_NAMES_SELECT_STMT = "SELECT * FROM sqlite_master WHERE type='table';";
-
     private static final String SPACE_REQUEST_USER_NAME = "name";
     private static final String SPACE_REQUEST_DATA_NAME = "spacerequest";
-    private static final String CREATE_SPACE_REQUESTS_TABLE =
-            "CREATE TABLE spacerequests (name text primary key not null, spacerequest text not null);";
     private static final String INSERT_SPACE_REQUEST = "INSERT INTO spacerequests (name, spacerequest) VALUES(?, ?);";
     private static final String SELECT_SPACE_REQUESTS = "SELECT name, spacerequest FROM spacerequests;";
     private static final String DELETE_SPACE_REQUEST = "DELETE FROM spacerequests WHERE name = ? AND spacerequest = ?;";
-
-    private static final Map<String,String> TABLES = new HashMap<>();
-    static {
-        TABLES.put("spacerequests", CREATE_SPACE_REQUESTS_TABLE);
-    }
 
     private Connection conn;
 
@@ -91,35 +83,33 @@ public class JdbcSpaceRequests {
 
     private volatile boolean isClosed;
 
-    public JdbcSpaceRequests(Connection conn) throws SQLException {
+    public JdbcSpaceRequests(Connection conn, JdbcIpnsAndSocial.SqlSupplier commands) throws SQLException {
         this.conn = conn;
-        init();
+        init(commands);
     }
 
-    private synchronized void init() throws SQLException {
+    private synchronized void init(JdbcIpnsAndSocial.SqlSupplier commands) throws SQLException {
         if (isClosed)
             return;
 
         //do tables exists?
-        Statement stmt = conn.createStatement();
-        ResultSet rs = stmt.executeQuery(TABLE_NAMES_SELECT_STMT);
+        PreparedStatement list = conn.prepareStatement(commands.listTablesCommand());
+        ResultSet rs = list.executeQuery();
 
-        ArrayList<String> missingTables = new ArrayList<>(TABLES.keySet());
+        List<String> tables = new ArrayList<>();
         while (rs.next()) {
-            String tableName = rs.getString("name");
-            missingTables.remove(tableName);
+            String tableName = rs.getString(1);
+            tables.add(tableName);
         }
 
-        for (String missingTable: missingTables) {
-            try {
+        try {
+            if (! tables.contains("spacerequests")) {
                 Statement createStmt = conn.createStatement();
-                //LOG.info("Adding table "+ missingTable);
-                createStmt.executeUpdate(TABLES.get(missingTable));
+                createStmt.executeUpdate(commands.createSpaceRequestsTableCommand());
                 createStmt.close();
-
-            } catch ( Exception e ) {
-                LOG.severe( e.getClass().getName() + ": " + e.getMessage() );
             }
+        } catch ( Exception e ) {
+            LOG.severe( e.getClass().getName() + ": " + e.getMessage() );
         }
     }
 
@@ -157,7 +147,7 @@ public class JdbcSpaceRequests {
         }
     }
 
-    public static JdbcSpaceRequests buildSqlLite(String dbPath) throws SQLException {
-        return new JdbcSpaceRequests(Sqlite.build(dbPath));
+    public static JdbcSpaceRequests build(Connection conn, JdbcIpnsAndSocial.SqlSupplier commands) throws SQLException {
+        return new JdbcSpaceRequests(conn, commands);
     }
 }

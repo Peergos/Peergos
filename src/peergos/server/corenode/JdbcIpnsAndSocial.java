@@ -15,32 +15,62 @@ import java.util.concurrent.*;
 import java.util.stream.*;
 
 public class JdbcIpnsAndSocial {
-	private static final Logger LOG = Logging.LOG();
+    public interface SqlSupplier {
+        String listTablesCommand();
 
-    private static final String TABLE_NAMES_SELECT_STMT = "SELECT * FROM sqlite_master WHERE type='table';";
+        String createFollowRequestsTableCommand();
+
+        default String createMutablePointersTableCommand() {
+            return "CREATE TABLE metadatablobs (writingkey text primary key not null, hash text not null); " +
+                    "CREATE UNIQUE INDEX index_name ON metadatablobs (writingkey);";
+        }
+
+        default String createSpaceRequestsTableCommand() {
+            return "CREATE TABLE spacerequests (name text primary key not null, spacerequest text not null);";
+        }
+    }
+
+    public static class SqliteCommands implements SqlSupplier {
+
+        @Override
+        public String listTablesCommand() {
+            return "SELECT NAME FROM sqlite_master WHERE type='table';";
+        }
+
+        @Override
+        public String createFollowRequestsTableCommand() {
+            return "CREATE TABLE followrequests (id integer primary key autoincrement, " +
+                    "name text not null, followrequest text not null);";
+        }
+    }
+
+	public static class PostgresCommands implements SqlSupplier {
+
+        @Override
+        public String listTablesCommand() {
+            return "SELECT tablename FROM pg_catalog.pg_tables " +
+                    "WHERE schemaname != 'pg_catalog' AND schemaname != 'information_schema';";
+        }
+
+        @Override
+        public String createFollowRequestsTableCommand() {
+            return "CREATE TABLE followrequests (id serial primary key, " +
+                    "name text not null, followrequest text not null);";
+        }
+    }
+
+	private static final Logger LOG = Logging.LOG();
 
     private static final String FOLLOW_REQUEST_USER_NAME = "name";
     private static final String FOLLOW_REQUEST_DATA_NAME = "followrequest";
-    private static final String CREATE_FOLLOW_REQUESTS_TABLE =
-            "CREATE TABLE followrequests (id integer primary key autoincrement, " +
-                    "name text not null, followrequest text not null);";
     private static final String INSERT_FOLLOW_REQUEST = "INSERT INTO followrequests (name, followrequest) VALUES(?, ?);";
     private static final String SELECT_FOLLOW_REQUESTS = "SELECT name, followrequest FROM followrequests WHERE name = ?;";
     private static final String DELETE_FOLLOW_REQUEST = "DELETE FROM followrequests WHERE name = ? AND followrequest = ?;";
 
-    private static final String CREATE_IPNS_TABLE =
-            "CREATE TABLE metadatablobs (writingkey text primary key not null, hash text not null); " +
-            "CREATE UNIQUE INDEX index_name ON metadatablobs (writingkey);";
     private static final String IPNS_TARGET_NAME = "hash";
     private static final String IPNS_CREATE = "INSERT INTO metadatablobs (writingkey, hash) VALUES(?, ?)";
     private static final String IPNS_UPDATE = "UPDATE metadatablobs SET hash=? WHERE writingkey = ? AND hash = ?";
     private static final String IPNS_GET = "SELECT * FROM metadatablobs WHERE writingKey = ? LIMIT 1;";
-
-    private static final Map<String,String> TABLES = new HashMap<>();
-    static {
-        TABLES.put("followrequests", CREATE_FOLLOW_REQUESTS_TABLE);
-        TABLES.put("metadatablobs", CREATE_IPNS_TABLE);
-    }
 
     private Connection conn;
 
@@ -112,35 +142,38 @@ public class JdbcIpnsAndSocial {
 
     private volatile boolean isClosed;
 
-    public JdbcIpnsAndSocial(Connection conn) throws SQLException {
+    public JdbcIpnsAndSocial(Connection conn, SqlSupplier commands) throws SQLException {
         this.conn = conn;
-        init();
+        init(commands);
     }
 
-    private synchronized void init() throws SQLException {
+    private synchronized void init(SqlSupplier commands) throws SQLException {
         if (isClosed)
             return;
 
         //do tables exists?
-        Statement stmt = conn.createStatement();
-        ResultSet rs = stmt.executeQuery(TABLE_NAMES_SELECT_STMT);
+        PreparedStatement list = conn.prepareStatement(commands.listTablesCommand());
+        ResultSet rs = list.executeQuery();
 
-        ArrayList<String> missingTables = new ArrayList<>(TABLES.keySet());
+        List<String> tables = new ArrayList<>();
         while (rs.next()) {
-            String tableName = rs.getString("name");
-            missingTables.remove(tableName);
+            String tableName = rs.getString(1);
+            tables.add(tableName);
         }
 
-        for (String missingTable: missingTables) {
-            try {
+        try {
+            if (! tables.contains("followrequests")) {
                 Statement createStmt = conn.createStatement();
-                //LOG.info("Adding table "+ missingTable);
-                createStmt.executeUpdate(TABLES.get(missingTable));
+                createStmt.executeUpdate(commands.createFollowRequestsTableCommand());
                 createStmt.close();
-
-            } catch ( Exception e ) {
-                LOG.severe( e.getClass().getName() + ": " + e.getMessage() );
             }
+            if (! tables.contains("metadatablobs")) {
+                Statement createStmt = conn.createStatement();
+                createStmt.executeUpdate(commands.createMutablePointersTableCommand());
+                createStmt.close();
+            }
+        } catch ( Exception e ) {
+            LOG.severe( e.getClass().getName() + ": " + e.getMessage() );
         }
     }
 
