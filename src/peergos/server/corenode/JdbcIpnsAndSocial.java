@@ -16,17 +16,24 @@ import java.util.stream.*;
 
 public class JdbcIpnsAndSocial {
     public interface SqlSupplier {
+
         String listTablesCommand();
 
         String createFollowRequestsTableCommand();
 
         default String createMutablePointersTableCommand() {
-            return "CREATE TABLE metadatablobs (writingkey text primary key not null, hash text not null); " +
-                    "CREATE UNIQUE INDEX index_name ON metadatablobs (writingkey);";
+            return "CREATE TABLE IF NOT EXISTS metadatablobs (writingkey text primary key not null, hash text not null); " +
+                    "CREATE UNIQUE INDEX IF NOT EXISTS index_name ON metadatablobs (writingkey);";
         }
 
         default String createSpaceRequestsTableCommand() {
-            return "CREATE TABLE spacerequests (name text primary key not null, spacerequest text not null);";
+            return "CREATE TABLE IF NOT EXISTS spacerequests (name text primary key not null, spacerequest text not null);";
+        }
+
+        default void createTable(String sqlTableCreate, Connection conn) throws SQLException {
+            Statement createStmt = conn.createStatement();
+            createStmt.executeUpdate(sqlTableCreate);
+            createStmt.close();
         }
     }
 
@@ -39,7 +46,7 @@ public class JdbcIpnsAndSocial {
 
         @Override
         public String createFollowRequestsTableCommand() {
-            return "CREATE TABLE followrequests (id integer primary key autoincrement, " +
+            return "CREATE TABLE IF NOT EXISTS followrequests (id integer primary key autoincrement, " +
                     "name text not null, followrequest text not null);";
         }
     }
@@ -142,38 +149,20 @@ public class JdbcIpnsAndSocial {
 
     private volatile boolean isClosed;
 
-    public JdbcIpnsAndSocial(Connection conn, SqlSupplier commands) throws SQLException {
+    public JdbcIpnsAndSocial(Connection conn, SqlSupplier commands) {
         this.conn = conn;
         init(commands);
     }
 
-    private synchronized void init(SqlSupplier commands) throws SQLException {
+    private synchronized void init(SqlSupplier commands) {
         if (isClosed)
             return;
 
-        //do tables exists?
-        PreparedStatement list = conn.prepareStatement(commands.listTablesCommand());
-        ResultSet rs = list.executeQuery();
-
-        List<String> tables = new ArrayList<>();
-        while (rs.next()) {
-            String tableName = rs.getString(1);
-            tables.add(tableName);
-        }
-
         try {
-            if (! tables.contains("followrequests")) {
-                Statement createStmt = conn.createStatement();
-                createStmt.executeUpdate(commands.createFollowRequestsTableCommand());
-                createStmt.close();
-            }
-            if (! tables.contains("metadatablobs")) {
-                Statement createStmt = conn.createStatement();
-                createStmt.executeUpdate(commands.createMutablePointersTableCommand());
-                createStmt.close();
-            }
-        } catch ( Exception e ) {
-            LOG.severe( e.getClass().getName() + ": " + e.getMessage() );
+            commands.createTable(commands.createFollowRequestsTableCommand(), conn);
+            commands.createTable(commands.createMutablePointersTableCommand(), conn);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         }
     }
 
