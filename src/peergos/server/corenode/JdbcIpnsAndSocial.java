@@ -61,7 +61,7 @@ public class JdbcIpnsAndSocial {
 
         @Override
         public String createFollowRequestsTableCommand() {
-            return "CREATE TABLE followrequests (id serial primary key, " +
+            return "CREATE TABLE IF NOT EXISTS followrequests (id serial primary key, " +
                     "name text not null, followrequest text not null);";
         }
     }
