@@ -83,33 +83,19 @@ public class JdbcSpaceRequests {
 
     private volatile boolean isClosed;
 
-    public JdbcSpaceRequests(Connection conn, JdbcIpnsAndSocial.SqlSupplier commands) throws SQLException {
+    public JdbcSpaceRequests(Connection conn, JdbcIpnsAndSocial.SqlSupplier commands) {
         this.conn = conn;
         init(commands);
     }
 
-    private synchronized void init(JdbcIpnsAndSocial.SqlSupplier commands) throws SQLException {
+    private synchronized void init(JdbcIpnsAndSocial.SqlSupplier commands) {
         if (isClosed)
             return;
 
-        //do tables exists?
-        PreparedStatement list = conn.prepareStatement(commands.listTablesCommand());
-        ResultSet rs = list.executeQuery();
-
-        List<String> tables = new ArrayList<>();
-        while (rs.next()) {
-            String tableName = rs.getString(1);
-            tables.add(tableName);
-        }
-
         try {
-            if (! tables.contains("spacerequests")) {
-                Statement createStmt = conn.createStatement();
-                createStmt.executeUpdate(commands.createSpaceRequestsTableCommand());
-                createStmt.close();
-            }
-        } catch ( Exception e ) {
-            LOG.severe( e.getClass().getName() + ": " + e.getMessage() );
+            commands.createTable(commands.createSpaceRequestsTableCommand(), conn);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         }
     }
 
