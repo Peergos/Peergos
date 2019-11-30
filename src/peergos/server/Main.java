@@ -107,8 +107,8 @@ public class Main {
                     new Command.Arg("default-quota", "default maximum storage per user", false, Long.toString(1024L * 1024 * 1024)),
                     new Command.Arg("mirror.node.id", "Mirror a server's data locally", false),
                     new Command.Arg("mirror.username", "Mirror a user's data locally", false),
-                    new Command.Arg("metrics.do_export", "Export aggregated metrics.", false, "false"),
-                    new Command.Arg("metrics.exporter_port", "Port for serving aggregated metrics.", false, "8001")
+                    new Command.Arg("collect-metrics", "Export aggregated metrics", false, "false"),
+                    new Command.Arg("metrics.port", "Port for serving aggregated metrics", false, "8001")
             ).collect(Collectors.toList())
     );
 
