@@ -18,7 +18,7 @@ public class AggregatedMetrics {
     public static final Counter GET_FOLLOW_REQUEST_COUNTER = build("get_follow_request_counter", "Total get follow request calls.");
     public static final Counter REMOVE_FOLLOW_REQUEST_COUNTER = build("remove_follow_request_counter", "Total remove follow request calls.");
 
-    public static final Counter SECRET_LINK_COUNTER = build("secret_link_counter", "Total secret links.");
+    public static final Counter PUBLIC_FILE_COUNTER = build("secret_link_counter", "Total public files.");
 
     public static final Counter DHT_BLOCK_PUT  = build("dht_block_put", "Total DHT block puts.");
     public static final Counter DHT_BLOCK_GET  = build("dht_block_get", "Total DHT block gets.");

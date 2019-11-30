@@ -34,7 +34,7 @@ public class PublicFileHandler implements HttpHandler {
             if (! path.startsWith(PATH_PREFIX))
                 throw new IllegalStateException("Public file urls must start with /public/");
 
-            AggregatedMetrics.SECRET_LINK_COUNTER.inc();
+            AggregatedMetrics.PUBLIC_FILE_COUNTER.inc();
 
             path = path.substring(PATH_PREFIX.length());
             String originalPath = path;
