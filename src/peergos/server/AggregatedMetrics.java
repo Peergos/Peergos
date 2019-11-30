@@ -39,7 +39,7 @@ public class AggregatedMetrics {
 
 
     public static void startExporter(int port) throws IOException {
-        HTTPServer server = new HTTPServer(port);
+        HTTPServer server = new HTTPServer("localhost", port);
         //shutdown hook on signal
         Runtime.getRuntime().addShutdownHook(new Thread(() -> server.stop()));
     }
