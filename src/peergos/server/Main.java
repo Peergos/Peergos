@@ -339,9 +339,9 @@ public class Main {
                 ENSURE_IPFS_INSTALLED.main(a);
                 ipfsWrapper = IPFS.main(a);
             }
-            boolean doExportAggregatedMetrics = a.getBoolean("metrics.do_export");
+            boolean doExportAggregatedMetrics = a.getBoolean("collect-metrics");
             if (doExportAggregatedMetrics) {
-                int exporterPort = a.getInt("metrics.exporter_port");
+                int exporterPort = a.getInt("metrics.port");
                 AggregatedMetrics.startExporter(exporterPort);
             }
 
