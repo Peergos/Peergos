@@ -68,9 +68,11 @@ public class HttpCoreNodeServer {
                         getPublicKey(din, dout);
                         break;
                     case "getUsername":
+                        AggregatedMetrics.GET_USERNAME.inc();
                         getUsername(din, dout);
                         break;
                     case "getUsernamesGzip":
+                        AggregatedMetrics.GET_ALL_USERNAMES.inc();
                         exchange.getResponseHeaders().set("Content-Encoding", "gzip");
                         exchange.getResponseHeaders().set("Content-Type", "application/json");
                         getAllUsernamesGzip(subComponents.length > 1 ? subComponents[1] : "", din, dout);

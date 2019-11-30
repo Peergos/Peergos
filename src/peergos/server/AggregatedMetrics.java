@@ -31,6 +31,8 @@ public class AggregatedMetrics {
     public static final Counter MUTABLE_POINTERS_SET  = build("mutable_pointers_set", "Total mutable-pointers set calls.");
     public static final Counter MUTABLE_POINTERS_GET  = build("mutable_pointers_get", "Total mutable-pointers get calls.");
 
+    public static final Counter GET_ALL_USERNAMES  = build("core_node_get_all_usernames", "Total get-all-usernames calls.");
+    public static final Counter GET_USERNAME  = build("core_node_get_username", "Total get-username calls.");
     public static final Counter GET_PUBLIC_KEY  = build("core_node_get_public_key", "Total get-public-key calls.");
     public static final Counter GET_PUBLIC_KEY_CHAIN  = build("core_node_get_chain", "Total get-public-key-chain calls.");
     public static final Counter UPDATE_PUBLIC_KEY_CHAIN  = build("core_node_update_chain", "Total getupdate-public-key-chain calls.");
