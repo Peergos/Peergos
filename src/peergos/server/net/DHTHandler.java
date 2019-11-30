@@ -55,6 +55,7 @@ public class DHTHandler implements HttpHandler {
 
             switch (path) {
                 case TRANSACTION_START: {
+                    AggregatedMetrics.DHT_TRANSACTION_START.inc();
                     PublicKeyHash ownerHash = PublicKeyHash.fromString(last.apply("owner"));
                     dht.startTransaction(ownerHash).thenAccept(tid -> {
                         replyJson(httpExchange, tid.toString(), Optional.empty());
@@ -62,6 +63,7 @@ public class DHTHandler implements HttpHandler {
                     break;
                 }
                 case TRANSACTION_CLOSE: {
+                    AggregatedMetrics.DHT_TRANSACTION_CLOSE.inc();
                     PublicKeyHash ownerHash = PublicKeyHash.fromString(last.apply("owner"));
                     TransactionId tid = new TransactionId(args.get(0));
                     dht.closeTransaction(ownerHash, tid).thenAccept(b -> {
@@ -149,6 +151,7 @@ public class DHTHandler implements HttpHandler {
                     break;
                 }
                 case BLOCK_STAT: {
+                    AggregatedMetrics.DHT_BLOCK_STAT.inc();
                     Multihash block = Cid.decode(args.get(0));
                     dht.getSize(block).thenAccept(sizeOpt -> {
                         Map<String, Object> res = new HashMap<>();
@@ -159,6 +162,7 @@ public class DHTHandler implements HttpHandler {
                     break;
                 }
                 case REFS: {
+                    AggregatedMetrics.DHT_BLOCK_REFS.inc();
                     Multihash block = Cid.decode(args.get(0));
                     dht.getLinks(block).thenAccept(links -> {
                         List<Object> json = links.stream().map(h -> wrapHash("Ref", h)).collect(Collectors.toList());
@@ -169,6 +173,7 @@ public class DHTHandler implements HttpHandler {
                     break;
                 }
                 case ID: {
+                    AggregatedMetrics.DHT_ID.inc();
                     dht.id().thenAccept(id -> {
                         Object json = wrapHash("ID", id);
                         replyJson(httpExchange, JSONParser.toString(json), Optional.empty());
