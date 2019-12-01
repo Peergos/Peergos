@@ -106,7 +106,9 @@ public class Main {
                     new Command.Arg("webroot", "the path to the directory to serve as the web root", false),
                     new Command.Arg("default-quota", "default maximum storage per user", false, Long.toString(1024L * 1024 * 1024)),
                     new Command.Arg("mirror.node.id", "Mirror a server's data locally", false),
-                    new Command.Arg("mirror.username", "Mirror a user's data locally", false)
+                    new Command.Arg("mirror.username", "Mirror a user's data locally", false),
+                    new Command.Arg("metrics.do_export", "Export aggregated metrics.", false, "false"),
+                    new Command.Arg("metrics.exporter_port", "Port for serving aggregated metrics.", false, "8001")
             ).collect(Collectors.toList())
     );
 
@@ -336,6 +338,11 @@ public class Main {
             if (useIPFS) {
                 ENSURE_IPFS_INSTALLED.main(a);
                 ipfsWrapper = IPFS.main(a);
+            }
+            boolean doExportAggregatedMetrics = a.getBoolean("metrics.do_export");
+            if (doExportAggregatedMetrics) {
+                int exporterPort = a.getInt("metrics.exporter_port");
+                AggregatedMetrics.startExporter(exporterPort);
             }
 
             Multihash pkiServerNodeId = Cid.decode(a.getArg("pki-node-id"));

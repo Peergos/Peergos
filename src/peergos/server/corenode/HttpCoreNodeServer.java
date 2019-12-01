@@ -1,6 +1,7 @@
 package peergos.server.corenode;
 import java.util.logging.*;
 
+import peergos.server.AggregatedMetrics;
 import peergos.server.net.*;
 import peergos.server.util.*;
 
@@ -55,12 +56,15 @@ public class HttpCoreNodeServer {
                 switch (method)
                 {
                     case "getChain":
+                        AggregatedMetrics.GET_PUBLIC_KEY_CHAIN.inc();
                         getChain(din, dout);
                         break;
                     case "updateChain":
+                        AggregatedMetrics.UPDATE_PUBLIC_KEY_CHAIN.inc();
                         updateChain(din, dout);
                         break;
                     case "getPublicKey":
+                        AggregatedMetrics.GET_PUBLIC_KEY.inc();
                         getPublicKey(din, dout);
                         break;
                     case "getUsername":

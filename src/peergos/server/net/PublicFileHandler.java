@@ -1,6 +1,7 @@
 package peergos.server.net;
 
 import com.sun.net.httpserver.*;
+import peergos.server.AggregatedMetrics;
 import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.corenode.*;
@@ -32,6 +33,9 @@ public class PublicFileHandler implements HttpHandler {
         try {
             if (! path.startsWith(PATH_PREFIX))
                 throw new IllegalStateException("Public file urls must start with /public/");
+
+            AggregatedMetrics.SECRET_LINK_COUNTER.inc();
+
             path = path.substring(PATH_PREFIX.length());
             String originalPath = path;
 

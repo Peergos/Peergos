@@ -2,6 +2,7 @@ package peergos.server.net;
 import java.net.*;
 import java.util.logging.*;
 
+import peergos.server.AggregatedMetrics;
 import peergos.server.util.*;
 
 import peergos.shared.cbor.*;
@@ -69,6 +70,7 @@ public class DHTHandler implements HttpHandler {
                     break;
                 }
                 case BLOCK_PUT: {
+                    AggregatedMetrics.DHT_BLOCK_PUT.inc();
                     PublicKeyHash ownerHash = PublicKeyHash.fromString(last.apply("owner"));
                     TransactionId tid = new TransactionId(last.apply("transaction"));
                     PublicKeyHash writerHash = PublicKeyHash.fromString(last.apply("writer"));
@@ -136,6 +138,7 @@ public class DHTHandler implements HttpHandler {
                     break;
                 }
                 case BLOCK_GET:{
+                    AggregatedMetrics.DHT_BLOCK_GET.inc();
                     Multihash hash = Cid.decode(args.get(0));
                     (hash instanceof Cid && ((Cid) hash).codec == Cid.Codec.Raw ?
                             dht.getRaw(hash) :
