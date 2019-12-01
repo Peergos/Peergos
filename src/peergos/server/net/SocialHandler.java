@@ -49,16 +49,19 @@ public class SocialHandler implements HttpHandler {
         try {
             switch (method) {
                 case "followRequest":
+                    AggregatedMetrics.FOLLOW_REQUEST_COUNTER.inc();
                     byte[] encryptedCap = Serialize.readFully(din, 1024);
                     boolean followRequested = social.sendFollowRequest(owner, encryptedCap).get();
                     dout.writeBoolean(followRequested);
                     break;
                 case "getFollowRequests":
+                    AggregatedMetrics.GET_FOLLOW_REQUEST_COUNTER.inc();
                     byte[] signedTime = ArrayOps.hexToBytes(last.apply("auth"));
                     byte[] res = social.getFollowRequests(owner, signedTime).get();
                     Serialize.serialize(res, dout);
                     break;
                 case "removeFollowRequest":
+                    AggregatedMetrics.REMOVE_FOLLOW_REQUEST_COUNTER.inc();
                     byte[] signedFollowRequest = Serialize.readFully(din, 4096);
                     boolean isRemoved = social.removeFollowRequest(owner, signedFollowRequest).get();
                     dout.writeBoolean(isRemoved);

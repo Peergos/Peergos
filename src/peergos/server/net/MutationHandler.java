@@ -46,11 +46,13 @@ public class MutationHandler implements HttpHandler {
         try {
             switch (method) {
                 case "setPointer":
+                    AggregatedMetrics.MUTABLE_POINTERS_SET.inc();
                     byte[] signedPayload = Serialize.readFully(din, 1024);
                     boolean isAdded = mutable.setPointer(owner, writer, signedPayload).get();
                     dout.writeBoolean(isAdded);
                     break;
                 case "getPointer":
+                    AggregatedMetrics.MUTABLE_POINTERS_GET.inc();
                     byte[] metadataBlob = mutable.getPointer(owner, writer).get().orElse(new byte[0]);
                     dout.write(metadataBlob);
                     break;
