@@ -4,7 +4,6 @@ import peergos.server.Main;
 import peergos.server.simulation.AccessControl;
 import peergos.server.simulation.FileSystem;
 import peergos.server.simulation.PeergosFileSystemImpl;
-import peergos.server.simulation.Stat;
 import peergos.server.storage.IpfsWrapper;
 import peergos.server.util.Args;
 import peergos.server.util.Logging;
@@ -15,7 +14,6 @@ import peergos.shared.user.UserContext;
 import peergos.shared.user.fs.cryptree.CryptreeNode;
 import peergos.shared.util.Pair;
 
-import java.io.IOException;
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -161,16 +159,16 @@ public class Simulator implements Runnable {
 
 
     private static class FileSystems {
-        private final List<Pair<FileSystem, FileSystem>> userFileSystems;
+        private final List<Pair<FileSystem, FileSystem>> peergosAndNativeFileSystemPair;
         private final Random random;
 
-        public FileSystems(List<Pair<FileSystem, FileSystem>> userFileSystems, Random random) {
-            for (Pair<FileSystem, FileSystem> userFileSystem : userFileSystems) {
+        public FileSystems(List<Pair<FileSystem, FileSystem>> peergosAndNativeFileSystemPair, Random random) {
+            for (Pair<FileSystem, FileSystem> userFileSystem : peergosAndNativeFileSystemPair) {
                 boolean usersMatch = userFileSystem.left.user().equals(userFileSystem.right.user());
                 if (!usersMatch)
                     throw new IllegalStateException();
             }
-            this.userFileSystems = userFileSystems;
+            this.peergosAndNativeFileSystemPair = peergosAndNativeFileSystemPair;
             this.random = random;
         }
 
@@ -179,14 +177,14 @@ public class Simulator implements Runnable {
          */
 
         public String getNextUser() {
-            int pos = random.nextInt(userFileSystems.size());
-            return userFileSystems.get(pos).right.user();
+            int pos = random.nextInt(peergosAndNativeFileSystemPair.size());
+            return peergosAndNativeFileSystemPair.get(pos).right.user();
         }
 
         public String getNextUser(String notThisUser) {
             do {
-                int pos = random.nextInt(userFileSystems.size());
-                String user = userFileSystems.get(pos).right.user();
+                int pos = random.nextInt(peergosAndNativeFileSystemPair.size());
+                String user = peergosAndNativeFileSystemPair.get(pos).right.user();
                 if (user.equals(notThisUser))
                     continue;
                 return user;
@@ -194,7 +192,7 @@ public class Simulator implements Runnable {
         }
 
         public NativeFileSystemImpl getReferenceFileSystem(String user) {
-            return userFileSystems.stream()
+            return peergosAndNativeFileSystemPair.stream()
                     .filter(e -> e.right.user().equals(user))
                     .map(e -> (NativeFileSystemImpl) e.right)
                     .findFirst()
@@ -202,7 +200,7 @@ public class Simulator implements Runnable {
         }
 
         public PeergosFileSystemImpl getTestFileSystem(String user) {
-            return userFileSystems.stream()
+            return peergosAndNativeFileSystemPair.stream()
                     .filter(e -> e.right.user().equals(user))
                     .map(e -> (PeergosFileSystemImpl) e.left)
                     .findFirst()
@@ -210,7 +208,7 @@ public class Simulator implements Runnable {
         }
 
         public List<String> getUsers() {
-            return userFileSystems.stream()
+            return peergosAndNativeFileSystemPair.stream()
                     .map(e -> e.left.user())
                     .collect(Collectors.toList());
         }
@@ -360,6 +358,23 @@ public class Simulator implements Runnable {
                         shareesInPeergos + " and local-fs " + permission.name() + "ers " + shareesInLocal);
                 isVerified = false;
             }
+
+            //check they can actually read
+            for (String sharee : shareesInPeergos) {
+                switch (permission) {
+                    case READ:
+                        PeergosFileSystemImpl fs = fileSystems.getTestFileSystem(sharee);
+                        System.out.println();
+                        //TODO WIP
+                        break;
+                    case WRITE:
+                        break;
+                    default:
+                        throw new IllegalStateException();
+                }
+            }
+
+
         }
         return isVerified;
     }

@@ -37,16 +37,12 @@ public class NativeFileSystemImpl implements FileSystem {
 
     private void init() {
         Path userRoot = Paths.get("/" + user);
-//        Path sharedRoot = userRoot.resolve("shared");
-//        Path peergosShare = sharedRoot.resolve("peergos");
 
         for (Path path : Arrays.asList(
                 userRoot
 //                , sharedRoot,
 //                peergosShare
         )) {
-//            accessControl.add(path, user(), Permission.WRITE);
-//            accessControl.add(path, user(), Permission.READ);
             mkdir(path);
         }
 
