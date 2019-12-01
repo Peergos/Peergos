@@ -38,8 +38,8 @@ public class AggregatedMetrics {
     public static final Counter UPDATE_PUBLIC_KEY_CHAIN  = build("core_node_update_chain", "Total getupdate-public-key-chain calls.");
 
 
-    public static void startExporter(int port) throws IOException {
-        HTTPServer server = new HTTPServer("localhost", port);
+    public static void startExporter(String address, int port) throws IOException {
+        HTTPServer server = new HTTPServer(address, port);
         //shutdown hook on signal
         Runtime.getRuntime().addShutdownHook(new Thread(() -> server.stop()));
     }

@@ -108,6 +108,7 @@ public class Main {
                     new Command.Arg("mirror.node.id", "Mirror a server's data locally", false),
                     new Command.Arg("mirror.username", "Mirror a user's data locally", false),
                     new Command.Arg("collect-metrics", "Export aggregated metrics", false, "false"),
+                    new Command.Arg("metrics.address", "Listen address for serving aggregated metrics", false, "localhost"),
                     new Command.Arg("metrics.port", "Port for serving aggregated metrics", false, "8001")
             ).collect(Collectors.toList())
     );
@@ -342,7 +343,8 @@ public class Main {
             boolean doExportAggregatedMetrics = a.getBoolean("collect-metrics");
             if (doExportAggregatedMetrics) {
                 int exporterPort = a.getInt("metrics.port");
-                AggregatedMetrics.startExporter(exporterPort);
+                String exporterAddress = a.getArg("metrics.address");
+                AggregatedMetrics.startExporter(exporterAddress, exporterPort);
             }
 
             Multihash pkiServerNodeId = Cid.decode(a.getArg("pki-node-id"));
