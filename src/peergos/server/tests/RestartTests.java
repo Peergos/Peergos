@@ -105,6 +105,7 @@ public class RestartTests {
         return ArrayOps.bytesToHex(crypto.random.randomBytes(15));
     }
 
+    @Ignore
     @Test
     public void friendPasswordChange() throws Exception {
         String username1 = random();
