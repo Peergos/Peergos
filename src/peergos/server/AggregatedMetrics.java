@@ -2,6 +2,7 @@ package peergos.server;
 
 import io.prometheus.client.Counter;
 import io.prometheus.client.exporter.HTTPServer;
+import peergos.server.util.*;
 
 import java.io.IOException;
 
@@ -39,6 +40,7 @@ public class AggregatedMetrics {
 
 
     public static void startExporter(String address, int port) throws IOException {
+        Logging.LOG().info("Starting metrics server at " + address + ":" + port);
         HTTPServer server = new HTTPServer(address, port);
         //shutdown hook on signal
         Runtime.getRuntime().addShutdownHook(new Thread(() -> server.stop()));
