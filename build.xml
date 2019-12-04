@@ -34,7 +34,7 @@
 
   <!-- Configure path to GWT SDK -->
   <!--<property name="gwt.sdk" location="/home/ian/gwt-2.8.0-rc1" />-->
-  <property name="gwt.sdk" location="gwt/gwt-2.8.2" />
+  <property name="gwt.sdk" location="gwt/gwt-2.8.3" />
 
 
   <path id="project.class.path">
@@ -181,7 +181,7 @@ Class-Path: ${manifest_cp}</echo>
     <mkdir dir="war/WEB-INF/classes"/>
     <javac srcdir="src" encoding="utf-8"
         destdir="war/WEB-INF/classes"
-        source="1.8" target="1.8" nowarn="true"
+        source="11" target="11" nowarn="true"
         debug="true" debuglevel="lines,vars,source">
         <include name="peergos/client/**" />
         <include name="peergos/shared/**" />
@@ -198,6 +198,7 @@ Class-Path: ${manifest_cp}</echo>
         <pathelement location="src"/>
         <path refid="project.class.path"/>
       </classpath>
+      <arg value="-sourceLevel"/><arg value="11"/>
       <arg line="-war"/>
       <arg value="war"/>
       <!-- Additional arguments like -style PRETTY or -logLevel DEBUG -->
