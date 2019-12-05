@@ -1,5 +1,6 @@
 package peergos.server.storage;
 
+import peergos.server.AggregatedMetrics;
 import peergos.server.util.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
@@ -52,8 +53,13 @@ public class GarbageCollector implements ContentAddressedStorage {
                     long ready = System.nanoTime();
                     target.gc().join();
                     long done = System.nanoTime();
+                    long gcWaitingToStart = (ready - start) / 1_000_000;
+                    long gcDuration = (done - ready) / 1_000_0000;
                     Logging.LOG().info(String.format("GC took: %d ms waiting to start, %d ms in actual GC",
-                            (ready - start)/1_000_000, (done - ready)/1_000_000));
+                            gcWaitingToStart, gcDuration));
+
+                    AggregatedMetrics.IPFS_PRE_GC_DURATION.observe(gcWaitingToStart);
+                    AggregatedMetrics.IPFS_GC_DURATION.observe(gcDuration);
                 }
                 Thread.sleep(gcPeriodMillis);
             } catch (Throwable t) {

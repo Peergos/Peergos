@@ -1,6 +1,7 @@
 package peergos.server;
 
 import io.prometheus.client.Counter;
+import io.prometheus.client.Histogram;
 import io.prometheus.client.exporter.HTTPServer;
 import peergos.server.util.*;
 
@@ -37,6 +38,18 @@ public class AggregatedMetrics {
     public static final Counter GET_PUBLIC_KEY  = build("core_node_get_public_key", "Total get-public-key calls.");
     public static final Counter GET_PUBLIC_KEY_CHAIN  = build("core_node_get_chain", "Total get-public-key-chain calls.");
     public static final Counter UPDATE_PUBLIC_KEY_CHAIN  = build("core_node_update_chain", "Total getupdate-public-key-chain calls.");
+
+    public static final Histogram IPFS_PRE_GC_DURATION = Histogram.build()
+            .name("ipfs_pre_gc")
+            .exponentialBuckets(1, 2, 20)
+            .help("Time (ms) to wait to start IPFS GC")
+            .register();
+    public static final Histogram IPFS_GC_DURATION  = Histogram.build()
+            .name("ipfs_gc_duration")
+            .exponentialBuckets(1, 2, 20)
+            .help("IPFS GC Duration (ms).")
+            .register();
+
 
 
     public static void startExporter(String address, int port) throws IOException {
