@@ -144,10 +144,11 @@ public class PeergosFileSystemImpl implements FileSystem {
         this.userContext.sendInitialFollowRequest(other.user()).join();
         List<FollowRequestWithCipherText> join = otherContext.processFollowRequests().join();
         FollowRequestWithCipherText req = join.stream()
-                .filter(e -> e.getEntry().ownerName.equals(other.user()))
+                .filter(e -> e.getEntry().ownerName.equals(user()))
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException());
-        otherContext.sendReplyFollowRequest(req, true,  false).join();
+        otherContext.sendReplyFollowRequest(req, true,  true).join();
+        this.userContext.processFollowRequests().join();
     }
 
     @Override

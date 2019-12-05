@@ -291,6 +291,15 @@ public class Simulator implements Runnable {
             // seed the file-system
             run(Simulation.MKDIR, user);
             run(Simulation.WRITE, user);
+
+            // ALL PAIRWISE FRIENDS
+            for (String otherUser : users) {
+                if (user.compareTo(otherUser) >= 0)
+                    continue;
+                fileSystems.getTestFileSystem(user).follow(fileSystems.getTestFileSystem(otherUser));
+                fileSystems.getReferenceFileSystem(user).follow(fileSystems.getReferenceFileSystem(otherUser));
+            }
+
         }
     }
 
@@ -364,11 +373,15 @@ public class Simulator implements Runnable {
                 switch (permission) {
                     case READ:
                         PeergosFileSystemImpl fs = fileSystems.getTestFileSystem(sharee);
-                        System.out.println();
-                        //TODO WIP
+                        try {
+                            //can read?
+                            byte[] read = fs.read(path);
+                        } catch (Exception ex) {
+                            LOG.log(Level.WARNING, "User "+ sharee +" could not read shared-path "+ path +"!", ex);
+                            isVerified = false;
+                        }
                         break;
                     case WRITE:
-                        break;
                     default:
                         throw new IllegalStateException();
                 }
