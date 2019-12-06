@@ -44,15 +44,4 @@ public class ReproducibleJar {
             throw new RuntimeException(e);
         }
     }
-
-    private static void setTime(Path p, FileTime lastModified) {
-        System.out.println("Processing: " + p);
-        if (p.getFileName() == null)
-            return;
-        try {
-            Files.setLastModifiedTime(p, lastModified);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
 }
