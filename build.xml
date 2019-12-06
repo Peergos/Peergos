@@ -116,7 +116,7 @@ Class-Path: ${manifest_cp}</echo>
 	<fileset dir="lib">
 	  <include name="**/*.jar"/>
 	</fileset>
-	<pathelement location="Peergos.jar" />
+	<pathelement location="${build}" />
       </classpath>
       <formatter type="xml" />
       <batchtest todir="${test.reports}" skipNonTests="true">
