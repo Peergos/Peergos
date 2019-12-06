@@ -81,17 +81,17 @@
     <manifestclasspath property="manifest_cp" jarfile="myjar.jar">
       <classpath refid="dep.runtime" />
     </manifestclasspath>
-    <touch millis="${timestamp.millis}">
-      <fileset dir="${build}"/>
-    </touch>
     <jar jarfile="${dist}/Peergos.jar" basedir="${build}" includes="peergos/server/**,peergos/shared/**,peergos/client/**"></jar>
     <mkdir dir="META-INF"/>
     <echo file="META-INF/MANIFEST.MF">Main-Class: peergos.server.Main
 Class-Path: ${manifest_cp}</echo>
-    <touch millis="0">
-      <fileset dir="META-INF"/>
-    </touch>
     <zip destfile="${dist}/Peergos.jar" basedir="." includes="META-INF/MANIFEST.MF" update="true"></zip>
+    <exec executable="java">
+      <arg value="ReproducibleJar.java"/>
+      <arg value="${dist}/Peergos.jar"/>
+      <arg value="${timestamp.millis}"/>
+      <arg value="META-INF/MANIFEST.MF"/>
+    </exec>
     <delete dir="META-INF"/>
     <copy todir=".">
       <fileset file="${dist}/Peergos.jar"/>
