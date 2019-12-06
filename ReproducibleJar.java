@@ -10,13 +10,10 @@ public class ReproducibleJar {
     public static void main(String[] args) throws Exception {
         Path inputJar = Paths.get(args[0]);
         long timeStamp = Long.parseLong(args[1]);
-        Path manifestFile = Paths.get(args[2]);
 
         URI uri = URI.create("jar:" + inputJar.toUri());
         byte[] newJar;
         try (FileSystem fs = FileSystems.newFileSystem(uri, Collections.emptyMap())) {
-            Path nf = fs.getPath("META-INF/MANIFEST.MF");
-            Files.copy(manifestFile, nf, StandardCopyOption.REPLACE_EXISTING);
             Iterable<Path> roots = fs.getRootDirectories();
             Path root = roots.iterator().next();
             newJar = setAllTimes(root, FileTime.fromMillis(timeStamp));

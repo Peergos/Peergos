@@ -90,7 +90,6 @@ Class-Path: ${manifest_cp}</echo>
       <arg value="ReproducibleJar.java"/>
       <arg value="${dist}/Peergos.jar"/>
       <arg value="${timestamp.millis}"/>
-      <arg value="META-INF/MANIFEST.MF"/>
     </exec>
     <delete dir="META-INF"/>
     <copy todir=".">
