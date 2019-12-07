@@ -38,7 +38,7 @@ public class ReproducibleJar {
                 zout.write(files.get(p));
                 zout.closeEntry();
             }
-            zout.finish();
+            zout.close();
             return bout.toByteArray();
         } catch (IOException e) {
             throw new RuntimeException(e);
