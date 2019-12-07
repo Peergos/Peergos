@@ -19,3 +19,5 @@ jobs:
       run: ant -noinput -buildfile build.xml gwtc
     - name: Run tests
       run: ant -noinput -buildfile build.xml test
+    - name: Reproducible build
+      run: ./reproducible-test.sh
