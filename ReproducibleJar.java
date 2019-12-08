@@ -32,7 +32,7 @@ public class ReproducibleJar {
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
             ZipOutputStream zout = new ZipOutputStream(bout);
             for (Path p: files.keySet()) {
-                ZipEntry zipEntry = new ZipEntry(p.toString());
+                ZipEntry zipEntry = new ZipEntry(p.toString().substring(1));
                 zipEntry.setLastModifiedTime(lastModified);
                 zout.putNextEntry(zipEntry);
                 zout.write(files.get(p));
