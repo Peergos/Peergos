@@ -47,7 +47,7 @@ public class Command<V> {
         this.description = description;
         this.entryPoint = entryPoint;
         this.params = params;
-        this.subCommands = subCommands.stream().collect(Collectors.toMap(c -> c.name, c -> c));
+        this.subCommands = subCommands.stream().collect(Collectors.toMap(c -> c.name, c -> c, (a, b) -> b, LinkedHashMap::new));
     }
 
     public V main(Args args) {

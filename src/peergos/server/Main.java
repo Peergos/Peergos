@@ -612,11 +612,11 @@ public class Main {
             },
             Collections.emptyList(),
             Arrays.asList(
-                    PKI_INIT,
-                    PKI,
                     PEERGOS,
+                    SHELL,
                     FUSE,
-                    SHELL
+                    PKI_INIT,
+                    PKI
             )
     );
 
