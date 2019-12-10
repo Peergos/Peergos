@@ -295,10 +295,8 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
             System.out.println(command);
             Process started = pb.start();
             if (log) {
-                new Thread(() -> Logging.log(started.getInputStream(),
-                        "$(ipfs " + command + ") out: "), "IPFS output stream: " + command).start();
-                new Thread(() -> Logging.log(started.getErrorStream(),
-                        "$(ipfs " + command + ") err: "), "IPFS error stream: " + command).start();
+                pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);
+                pb.redirectError(ProcessBuilder.Redirect.INHERIT);
             }
             return started;
         } catch (IOException ioe) {
