@@ -293,11 +293,11 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
         try {
             String command = Arrays.stream(subCmd).collect(Collectors.joining(" "));
             System.out.println(command);
-            Process started = pb.start();
             if (log) {
                 pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);
                 pb.redirectError(ProcessBuilder.Redirect.INHERIT);
             }
+            Process started = pb.start();
             return started;
         } catch (IOException ioe) {
             throw new IllegalStateException(ioe.getMessage(), ioe);
