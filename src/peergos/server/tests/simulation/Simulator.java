@@ -84,7 +84,10 @@ public class Simulator implements Runnable {
     private static final int MIN_FILE_LENGTH = 256;
     private static final int MAX_FILE_LENGTH = Integer.MAX_VALUE;
 
-    enum Simulation {READ, WRITE, MKDIR, RM, RMDIR, GRANT, REVOKE}
+    enum Simulation {READ, WRITE, MKDIR, RM, RMDIR,
+        GRANT_READ_FILE, GRANT_READ_DIR, GRANT_WRITE_FILE, GRANT_WRITE_DIR,
+        REVOKE_READ_FILE,  REVOKE_READ_DIR, REVOKE_WRITE_FILE, REVOKE_WRITE_DIR
+    }
 
     private final int opCount;
     private final Random random;
@@ -311,6 +314,7 @@ public class Simulator implements Runnable {
     private void run(Simulation simulation, String user) {
         Supplier<String> otherUser = () -> fileSystems.getNextUser(user);
         Supplier<Path> randomFilePathForUser = () -> index.getRandomExistingFile(user);
+        Supplier<Path> randomFolderPathForUser = () -> index.getRandomExistingDirectory(user);
         switch (simulation) {
             case READ:
                 read(user, randomFilePathForUser.get());
@@ -327,10 +331,16 @@ public class Simulator implements Runnable {
             case RMDIR:
                 rmdir(user);
                 break;
-            case GRANT:
+            case GRANT_READ_FILE:
                 grantRead(user, otherUser.get(), randomFilePathForUser.get());
                 break;
-            case REVOKE:
+            case GRANT_READ_DIR:
+                grantRead(user, otherUser.get(), randomFolderPathForUser.get());
+            case REVOKE_READ_FILE:
+                revokeRead(user, otherUser.get(),
+                        fileSystems.getReferenceFileSystem(user).getRandomSharedPath(random, FileSystem.Permission.READ));
+                break;
+            case REVOKE_READ_DIR:
                 revokeRead(user, otherUser.get(), fileSystems.getReferenceFileSystem(user).getRandomSharedPath(random, FileSystem.Permission.READ));
                 break;
             default:
@@ -502,8 +512,8 @@ public class Simulator implements Runnable {
                 new Pair<>(Simulation.RM, 0.0),
                 new Pair<>(Simulation.MKDIR, 0.1),
                 new Pair<>(Simulation.RMDIR, 0.0),
-                new Pair<>(Simulation.GRANT, 0.49),
-                new Pair<>(Simulation.REVOKE, 0.01)
+                new Pair<>(Simulation.GRANT_READ_FILE, 0.49),
+                new Pair<>(Simulation.REVOKE_READ_FILE, 0.01)
         ).collect(
                 Collectors.toMap(e -> e.left, e -> e.right));
 
