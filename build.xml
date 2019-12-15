@@ -34,7 +34,7 @@
 
   <!-- Configure path to GWT SDK -->
   <!--<property name="gwt.sdk" location="/home/ian/gwt-2.8.0-rc1" />-->
-  <property name="gwt.sdk" location="gwt/gwt-2.8.2" />
+  <property name="gwt.sdk" location="gwt/gwt-2.8.3" />
 
 
   <path id="project.class.path">
@@ -81,18 +81,19 @@
     <manifestclasspath property="manifest_cp" jarfile="myjar.jar">
       <classpath refid="dep.runtime" />
     </manifestclasspath>
-    <touch millis="${timestamp.millis}">
-      <fileset dir="${build}"/>
-    </touch>
-    <jar jarfile="${dist}/Peergos.jar" basedir="${build}" includes="peergos/server/**,peergos/shared/**,peergos/client/**"></jar>
-    <mkdir dir="META-INF"/>
-    <echo file="META-INF/MANIFEST.MF">Main-Class: peergos.server.Main
-Class-Path: ${manifest_cp}</echo>
-    <touch millis="0">
-      <fileset dir="META-INF"/>
-    </touch>
-    <zip destfile="${dist}/Peergos.jar" basedir="." includes="META-INF/MANIFEST.MF" update="true"></zip>
-    <delete dir="META-INF"/>
+    <jar jarfile="${dist}/Peergos.jar" basedir="${build}" includes="peergos/server/**,peergos/shared/**,peergos/client/**">
+      <manifest>
+        <attribute name="Main-Class" value="peergos.server.Main"/>
+        <attribute name="Class-Path" value="${manifest_cp}"/>
+        <attribute name="Created-By" value="Java"/>
+        <attribute name="Ant-Version" value="Ant"/>
+      </manifest>
+    </jar>
+    <exec executable="java">
+      <arg value="ReproducibleJar.java"/>
+      <arg value="${dist}/Peergos.jar"/>
+      <arg value="${timestamp.millis}"/>
+    </exec>
     <copy todir=".">
       <fileset file="${dist}/Peergos.jar"/>
     </copy>
@@ -117,7 +118,7 @@ Class-Path: ${manifest_cp}</echo>
 	<fileset dir="lib">
 	  <include name="**/*.jar"/>
 	</fileset>
-	<pathelement location="Peergos.jar" />
+	<pathelement location="${build}" />
       </classpath>
       <formatter type="xml" />
       <batchtest todir="${test.reports}" skipNonTests="true">
@@ -181,7 +182,7 @@ Class-Path: ${manifest_cp}</echo>
     <mkdir dir="war/WEB-INF/classes"/>
     <javac srcdir="src" encoding="utf-8"
         destdir="war/WEB-INF/classes"
-        source="1.8" target="1.8" nowarn="true"
+        source="11" target="11" nowarn="true"
         debug="true" debuglevel="lines,vars,source">
         <include name="peergos/client/**" />
         <include name="peergos/shared/**" />
@@ -198,6 +199,7 @@ Class-Path: ${manifest_cp}</echo>
         <pathelement location="src"/>
         <path refid="project.class.path"/>
       </classpath>
+      <arg value="-sourceLevel"/><arg value="11"/>
       <arg line="-war"/>
       <arg value="war"/>
       <!-- Additional arguments like -style PRETTY or -logLevel DEBUG -->

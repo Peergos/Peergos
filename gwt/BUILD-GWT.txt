@@ -1,0 +1,23 @@
+Built using the instructions on: http://www.gwtproject.org/makinggwtbetter.html#compiling
+built from githash c5fd90c6d 6/nov/2019 with the commit 62e0d9a92 1/nov/2017 reversed
+
+build command:
+ant -Dgwt.version=2.8.3
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+.
