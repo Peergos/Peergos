@@ -50,6 +50,8 @@ public class UserService {
                 "TLS_ECDH_ECDSA_WITH_AES_128_CBC_SHA256, " +
                 "TLS_ECDH_ECDSA_WITH_AES_128_GCM_SHA256, " +
                 "TLS_ECDH_RSA_WITH_AES_128_GCM_SHA256, " +
+                "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256" +
+                "TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384" +
                 "TLS_RSA_WITH_AES_128_CBC_SHA256, " +
                 "TLS_RSA_WITH_AES_128_GCM_SHA256");
         Security.setProperty("jdk.certpath.disabledAlgorithms",
