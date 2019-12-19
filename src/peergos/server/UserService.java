@@ -44,16 +44,24 @@ public class UserService {
         // The ECDH and RSA key exchange algorithms are disabled because they don't provide forward secrecy
         Security.setProperty("jdk.tls.disabledAlgorithms",
                 "SSLv3, TLSv1.3, RC4, MD2, MD4, MD5, SHA1, DES, DSA, MD5withRSA, DH, RSA keySize < 2048, EC keySize < 224, 3DES_EDE_CBC, " +
+                "TLS_RSA_WITH_NULL_SHA256," +
+                "TLS_RSA_WITH_AES_128_GCM_SHA256," +
+                "TLS_RSA_WITH_AES_128_CBC_SHA256, " +
                 "TLS_RSA_WITH_AES_256_GCM_SHA384, " +
                 "TLS_RSA_WITH_AES_256_CBC_SHA256, " +
                 "TLS_ECDH_RSA_WITH_AES_128_CBC_SHA256, " +
                 "TLS_ECDH_ECDSA_WITH_AES_128_CBC_SHA256, " +
                 "TLS_ECDH_ECDSA_WITH_AES_128_GCM_SHA256, " +
+                "TLS_ECDH_ECDSA_WITH_AES_256_CBC_SHA384," +
+                "TLS_ECDH_ECDSA_WITH_AES_256_GCM_SHA384," +
                 "TLS_ECDH_RSA_WITH_AES_128_GCM_SHA256, " +
-                "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256" +
-                "TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384" +
-                "TLS_RSA_WITH_AES_128_CBC_SHA256, " +
-                "TLS_RSA_WITH_AES_128_GCM_SHA256");
+                "TLS_ECDH_RSA_WITH_AES_256_CBC_SHA384," +
+                "TLS_ECDH_RSA_WITH_AES_256_GCM_SHA384," +
+                "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256," +
+                "TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384," +
+                "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256," +
+                "TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA384,"
+        );
         Security.setProperty("jdk.certpath.disabledAlgorithms",
                 "RC4, MD2, MD4, MD5, SHA1, DSA, RSA keySize < 2048, EC keySize < 224");
         Security.setProperty("jdk.tls.rejectClientInitializedRenegotiation", "true");
