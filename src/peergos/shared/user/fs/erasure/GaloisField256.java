@@ -1,7 +1,5 @@
 package peergos.shared.user.fs.erasure;
 
-import peergos.shared.util.StringUtils;
-
 public class GaloisField256 extends GaloisField
 {
     // Theory obtained from BBC White paper WHP 031 - Reed-solomon error correction, C.K.P. Clarke
@@ -28,7 +26,7 @@ public class GaloisField256 extends GaloisField
 
         for (int i=0; i < 255; i++) {
             if (log[exp[i]] != i)
-                throw new IllegalStateException(StringUtils.format("log[exp[%d]] != %d, exp[%d] = %d, log[%d] = %d", i, i, i, exp[i], exp[i], log[exp[i]]));
+                throw new IllegalStateException("log[exp["+i+"]] != "+i+", exp["+i+"] = "+exp[i]+", log["+exp[i]+"] = " + log[exp[i]]);
             if (i > 0 && exp[log[i]] != i)
                 throw new IllegalStateException("exp[log["+i+"]] != "+ i);
         }

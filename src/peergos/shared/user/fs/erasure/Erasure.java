@@ -4,8 +4,6 @@ import java.util.logging.*;
 import java.io.ByteArrayOutputStream;
 import java.util.*;
 
-import peergos.shared.util.StringUtils;
-
 public class Erasure {
 	private static final Logger LOG = Logger.getGlobal();
 
@@ -28,7 +26,8 @@ public class Erasure {
         int nec = encodeSize-inputSize;
         int symbolSize = inputSize/originalBlobs;
         if (symbolSize * originalBlobs != inputSize)
-            throw new IllegalStateException(StringUtils.format("Bad alignment of bytes in chunking. %d != %d * %d", inputSize, symbolSize, originalBlobs));
+            throw new IllegalStateException("Bad alignment of bytes in chunking. " +
+                    inputSize + " != " + symbolSize + " * " + originalBlobs);
 
         for (int i=0; i < ints.length; i+=inputSize)
         {
