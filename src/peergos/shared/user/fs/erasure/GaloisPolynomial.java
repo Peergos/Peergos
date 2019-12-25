@@ -2,7 +2,7 @@ package peergos.shared.user.fs.erasure;
 
 import java.util.*;
 
-import peergos.shared.util.StringUtils;
+import peergos.shared.util.*;
 
 public class GaloisPolynomial
 {
@@ -163,7 +163,7 @@ public class GaloisPolynomial
             if (errPoly.eval(f.exp(f.size() - 1 - i)) == 0)
                     errorPos.add(nmess - 1 - i);
         if (errorPos.size() != errs)
-            throw new IllegalStateException(StringUtils.format("couldn't find error positions! ("+errorPos.size()+"!="+errs+") ( missing fragments)"));
+            throw new IllegalStateException("couldn't find error positions! ("+errorPos.size()+"!="+errs+") ( missing fragments)");
         return errorPos;
     }
 
@@ -385,7 +385,7 @@ public class GaloisPolynomial
     public static void print(int[] d)
     {
         for (int i: d)
-            System.out.println(StringUtils.format("%02x ", i));
+            System.out.println(ArrayOps.byteToHex(i));
         System.out.println();
     }
 }

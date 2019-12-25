@@ -3,7 +3,7 @@ package peergos.shared.crypto.asymmetric;
 import jsinterop.annotations.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
-import peergos.shared.util.StringUtils;
+import peergos.shared.util.*;
 
 import java.util.*;
 
@@ -24,7 +24,7 @@ public interface PublicSigningKey extends Cborable {
 
         public static Type byValue(int val) {
             if (!byValue.containsKey(val))
-                throw new IllegalStateException("Unknown public signing key type: " + StringUtils.format("%02x", val));
+                throw new IllegalStateException("Unknown public signing key type: " + ArrayOps.byteToHex(val));
             return byValue.get(val);
         }
     }

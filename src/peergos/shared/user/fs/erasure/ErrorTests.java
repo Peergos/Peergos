@@ -3,8 +3,6 @@ import java.util.logging.*;
 
 import org.junit.*;
 
-import peergos.shared.util.StringUtils;
-
 import java.math.*;
 import java.util.*;
 import java.util.function.*;
@@ -22,7 +20,7 @@ public class ErrorTests {
                     .forEach(k -> Stream.of(0.5, 0.7, 0.8, 0.9).forEach(p -> {
                         BigDecimal prFail = probabilityFailure(n, k, p);
                         if (acceptableFailure.test(prFail))
-                            LOG.info(StringUtils.format("%d, %d, %.2f -> %.15f\n", n, k, p, prFail));
+                            LOG.info(n + ", " + k + ", " + p + " -> " + prFail + "\n");
                     }
                     )
                     )
@@ -44,7 +42,7 @@ public class ErrorTests {
                 if (Math.abs(max_p - min_p) < 0.01)
                     break;
             }
-            LOG.info(StringUtils.format("%d, %d, %.2f -> %.15f\n", n, k, p, probabilityFailure(n, k, p)));
+            LOG.info(n + ", " + k + ", " + p + " -> " + probabilityFailure(n, k, p) + "\n");
         }
     }
 

@@ -4,7 +4,7 @@ import jsinterop.annotations.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
 import peergos.shared.crypto.random.*;
-import peergos.shared.util.StringUtils;
+import peergos.shared.util.*;
 
 import java.io.*;
 import java.util.HashMap;
@@ -24,7 +24,7 @@ public interface PublicBoxingKey extends Cborable {
 
         public static Type byValue(int val) {
             if (!byValue.containsKey(val))
-                throw new IllegalStateException("Unknown public boxing key type: " + StringUtils.format("%02x", val));
+                throw new IllegalStateException("Unknown public boxing key type: " + ArrayOps.byteToHex(val));
             return byValue.get(val);
         }
     }

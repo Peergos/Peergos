@@ -1067,8 +1067,8 @@ public abstract class UserTests {
 
         for (int i = 0; i < readBytes.length; i++)
             assertEquals("position  " + i + " out of " + readBytes.length + ", start of file " + start,
-                    StringUtils.format("%02x", readBytes[i] & 0xFF),
-                    StringUtils.format("%02x", expected[i] & 0xFF));
+                    ArrayOps.byteToHex(readBytes[i] & 0xFF),
+                    ArrayOps.byteToHex(expected[i] & 0xFF));
 
         assertTrue("Correct contents", Arrays.equals(readBytes, expected));
     }

@@ -23,7 +23,7 @@ public interface SecretGenerationAlgorithm extends Cborable {
 
         public static Type byValue(int val) {
             if (!byValue.containsKey(val))
-                throw new IllegalStateException("Unknown User Generation Algorithm type: " + StringUtils.format("%02x", val));
+                throw new IllegalStateException("Unknown User Generation Algorithm type: " + ArrayOps.byteToHex(val));
             return byValue.get(val);
         }
     }
