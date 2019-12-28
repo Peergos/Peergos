@@ -90,14 +90,18 @@ public class FileUploader implements AutoCloseable {
         byte[] data = new byte[length];
         return reader.readIntoArray(data, 0, data.length).thenCompose(b -> {
             byte[] nonce = baseKey.createNonce();
-            byte[] mapKey = FileProperties.calculateMapKey(props.streamSecret.get(), firstLocation,
-                    chunkIndex * Chunk.MAX_SIZE, hasher);
-            Chunk chunk = new Chunk(data, dataKey, mapKey, nonce);
-            LocatedChunk locatedChunk = new LocatedChunk(new Location(owner, writer.publicKeyHash, chunk.mapKey()), ourExistingHash, chunk);
-            byte[] nextMapKey = FileProperties.calculateNextMapKey(props.streamSecret.get(), mapKey, hasher);
-            Location nextLocation = new Location(owner, writer.publicKeyHash, nextMapKey);
-            return uploadChunk(current, committer, writer, props, parentLocation, parentparentKey, baseKey, locatedChunk,
-                    nextLocation, Optional.empty(), hasher, network, monitor);
+            return FileProperties.calculateMapKey(props.streamSecret.get(), firstLocation,
+                    chunkIndex * Chunk.MAX_SIZE, hasher)
+                    .thenCompose(mapKey -> {
+                        Chunk chunk = new Chunk(data, dataKey, mapKey, nonce);
+                        LocatedChunk locatedChunk = new LocatedChunk(new Location(owner, writer.publicKeyHash, chunk.mapKey()), ourExistingHash, chunk);
+                        return FileProperties.calculateNextMapKey(props.streamSecret.get(), mapKey, hasher)
+                                .thenCompose(nextMapKey -> {
+                                    Location nextLocation = new Location(owner, writer.publicKeyHash, nextMapKey);
+                                    return uploadChunk(current, committer, writer, props, parentLocation, parentparentKey, baseKey, locatedChunk,
+                                            nextLocation, Optional.empty(), hasher, network, monitor);
+                                });
+                    });
         });
     }
 
@@ -135,25 +139,26 @@ public class FileUploader implements AutoCloseable {
         if (! writer.publicKeyHash.equals(chunk.location.writer))
             throw new IllegalStateException("Trying to write a chunk to the wrong signing key space!");
         RelativeCapability nextChunk = RelativeCapability.buildSubsequentChunk(nextChunkLocation.getMapKey(), baseKey);
-        Pair<CryptreeNode, List<FragmentWithHash>> file = CryptreeNode.createFile(chunk.existingHash, baseKey,
+        return CryptreeNode.createFile(chunk.existingHash, baseKey,
                 chunk.chunk.key(), props, chunk.chunk.data(), parentLocation, parentparentKey, nextChunk,
-                hasher, network.isJavascript());
+                hasher, network.isJavascript())
+                .thenCompose(file -> {
+                    CryptreeNode metadata = file.left.withWriterLink(baseKey, writerLink);
 
-        CryptreeNode metadata = file.left.withWriterLink(baseKey, writerLink);
+                    List<Fragment> fragments = file.right.stream()
+                            .filter(f -> !f.hash.isIdentity())
+                            .map(f -> f.fragment)
+                            .collect(Collectors.toList());
 
-        List<Fragment> fragments = file.right.stream()
-                .filter(f -> ! f.hash.isIdentity())
-                .map(f -> f.fragment)
-                .collect(Collectors.toList());
-
-        if (fragments.size() < file.right.size())
-            progress.accept((long)chunk.chunk.length());
-        LOG.info("Uploading chunk with " + fragments.size() + " fragments\n");
-        return IpfsTransaction.call(chunk.location.owner,
-                tid -> network.uploadFragments(fragments, chunk.location.owner, writer, progress, tid)
-                        .thenCompose(hashes -> network.uploadChunk(current, committer, metadata, chunk.location.owner,
-                                chunk.chunk.mapKey(), writer, tid)),
-                network.dhtClient);
+                    if (fragments.size() < file.right.size())
+                        progress.accept((long) chunk.chunk.length());
+                    LOG.info("Uploading chunk with " + fragments.size() + " fragments\n");
+                    return IpfsTransaction.call(chunk.location.owner,
+                            tid -> network.uploadFragments(fragments, chunk.location.owner, writer, progress, tid)
+                                    .thenCompose(hashes -> network.uploadChunk(current, committer, metadata, chunk.location.owner,
+                                            chunk.chunk.mapKey(), writer, tid)),
+                            network.dhtClient);
+                });
     }
 
     public void close() {

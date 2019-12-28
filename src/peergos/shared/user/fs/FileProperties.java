@@ -11,6 +11,8 @@ import peergos.shared.util.*;
 import java.io.*;
 import java.time.*;
 import java.util.*;
+import java.util.concurrent.*;
+import java.util.stream.*;
 
 /** The FileProperties class represents metadata for a file or directory
  *
@@ -66,16 +68,16 @@ public class FileProperties implements Cborable {
         this(name, isDirectory, mimeType, (int)(size >> 32), (int) size, modified, isHidden, thumbnail, streamSecret);
     }
 
-    public static byte[] calculateMapKey(byte[] streamSecret, byte[] firstMapKey, long offset, Hasher h) {
+    public static CompletableFuture<byte[]> calculateMapKey(byte[] streamSecret, byte[] firstMapKey, long offset, Hasher h) {
         long iterations = offset / Chunk.MAX_SIZE;
-        byte[] current = firstMapKey;
-        for (long i=0; i < iterations; i++) {
-            current = calculateNextMapKey(streamSecret, current, h);
-        }
-        return current;
+        List<Long> counter = new ArrayList<>();
+        for (long i=0; i < iterations; i++)
+            counter.add(i);
+        return Futures.reduceAll(counter, firstMapKey,
+                (current, i) -> calculateNextMapKey(streamSecret, current, h), (a, b) -> b);
     }
 
-    public static byte[] calculateNextMapKey(byte[] streamSecret, byte[] currentMapKey, Hasher h) {
+    public static CompletableFuture<byte[]> calculateNextMapKey(byte[] streamSecret, byte[] currentMapKey, Hasher h) {
         return h.sha256(ArrayOps.concat(streamSecret, currentMapKey));
     }
 

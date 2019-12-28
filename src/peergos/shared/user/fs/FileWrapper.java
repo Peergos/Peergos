@@ -398,9 +398,10 @@ public class FileWrapper {
     public CompletableFuture<byte[]> getMapKey(long offset, NetworkAccess network, Crypto crypto) {
         CryptreeNode fileAccess = pointer.fileAccess;
         return fileAccess.retriever(pointer.capability.rBaseKey, props.streamSecret, getLocation().getMapKey(), crypto.hasher)
+                .thenCompose(retriever -> retriever
                         .getMapLabelAt(version.get(writer()).props, writableFilePointer(),
                                 getFileProperties().streamSecret, offset, crypto.hasher, network)
-                .thenApply(Optional::get);
+                        .thenApply(Optional::get));
     }
 
     @JsMethod
@@ -682,16 +683,17 @@ public class FileWrapper {
                                                         Crypto crypto,
                                                         ProgressConsumer<Long> monitor) {
         return getChild(filename, crypto.hasher, network)
-                .thenCompose(child -> uploadFileSection(filename, AsyncReader.build(fileData), isHidden,
-                        child.map(f -> f.getSize()).orElse(0L),
-                        fileData.length + child.map(f -> f.getSize()).orElse(0L),
-                        child.map(f -> f.getPointer().capability.rBaseKey), true, network, crypto,
-                        monitor, child
-                                .flatMap(c -> c.getFileProperties().streamSecret)
-                                .map(secret -> FileProperties.calculateMapKey(secret,
-                                        child.get().getLocation().getMapKey(),
-                                        child.get().getFileProperties().size, crypto.hasher))
-                                .orElseGet(() -> crypto.random.randomBytes(32))));
+                .thenCompose(child -> child
+                        .flatMap(c -> c.getFileProperties().streamSecret)
+                        .map(secret -> FileProperties.calculateMapKey(secret,
+                                child.get().getLocation().getMapKey(),
+                                child.get().getFileProperties().size, crypto.hasher))
+                        .orElseGet(() -> Futures.of(crypto.random.randomBytes(32)))
+                        .thenCompose(x -> uploadFileSection(filename, AsyncReader.build(fileData), isHidden,
+                                child.map(f -> f.getSize()).orElse(0L),
+                                fileData.length + child.map(f -> f.getSize()).orElse(0L),
+                                child.map(f -> f.getPointer().capability.rBaseKey), true, network, crypto,
+                                monitor, x)));
     }
 
     /**
@@ -738,110 +740,114 @@ public class FileWrapper {
                     Snapshot base = updatedTriple.right;
                     FileProperties childProps = child.getFileProperties();
                     final AtomicLong filesSize = new AtomicLong(childProps.size);
-                    FileRetriever retriever = child.getRetriever(crypto.hasher);
-                    SymmetricKey baseKey = child.pointer.capability.rBaseKey;
-                    CryptreeNode fileAccess = child.pointer.fileAccess;
-                    SymmetricKey dataKey = fileAccess.getDataKey(baseKey);
+                    return child.getRetriever(crypto.hasher).thenCompose(retriever -> {
+                        SymmetricKey baseKey = child.pointer.capability.rBaseKey;
+                        CryptreeNode fileAccess = child.pointer.fileAccess;
+                        SymmetricKey dataKey = fileAccess.getDataKey(baseKey);
 
-                    List<Long> startIndexes = new ArrayList<>();
+                        List<Long> startIndexes = new ArrayList<>();
 
-                    for (long startIndex = inputStartIndex; startIndex < endIndex; startIndex = startIndex + Chunk.MAX_SIZE - (startIndex % Chunk.MAX_SIZE))
-                        startIndexes.add(startIndex);
+                        for (long startIndex = inputStartIndex; startIndex < endIndex; startIndex = startIndex + Chunk.MAX_SIZE - (startIndex % Chunk.MAX_SIZE))
+                            startIndexes.add(startIndex);
 
-                    BiFunction<Snapshot, Long, CompletableFuture<Snapshot>> composer = (version, startIndex) -> {
-                        MaybeMultihash currentHash = child.pointer.fileAccess.committedHash();
-                        return retriever.getChunk(version.get(child.writer()).props, network, crypto, startIndex,
-                                filesSize.get(), childCap, childProps.streamSecret, currentHash, monitor)
-                                .thenCompose(currentLocation -> {
-                                    CompletableFuture<Optional<Location>> locationAt = retriever
-                                            .getMapLabelAt(version.get(child.writer()).props, childCap,
-                                                    childProps.streamSecret, startIndex + Chunk.MAX_SIZE, crypto.hasher, network)
-                                            .thenApply(x -> x.map(m -> getLocation().withMapKey(m)));
-                                    return locationAt.thenCompose(location ->
-                                            CompletableFuture.completedFuture(new Pair<>(currentLocation, location)));
-                                }
-                                ).thenCompose(pair -> {
-
-                                    if (!pair.left.isPresent()) {
-                                        CompletableFuture<Snapshot> result = new CompletableFuture<>();
-                                        result.completeExceptionally(new IllegalStateException("Current chunk not present"));
-                                        return result;
-                                    }
-
-                                    LocatedChunk currentOriginal = pair.left.get();
-                                    Optional<Location> nextChunkLocationOpt = pair.right;
-                                    Location nextChunkLocation = nextChunkLocationOpt
-                                            .orElseGet(() -> childProps.streamSecret
-                                                    .map(streamSecret -> child.getLocation()
-                                                            .withMapKey(FileProperties.calculateNextMapKey(streamSecret,
-                                                                    currentOriginal.location.getMapKey(), crypto.hasher)))
-                                                    .orElseGet(locationSupplier));
-                                    LOG.info("********** Writing to chunk at mapkey: " + ArrayOps.bytesToHex(currentOriginal.location.getMapKey()) + " next: " + nextChunkLocation);
-
-                                    // modify chunk, re-encrypt and upload
-                                    int internalStart = (int) (startIndex % Chunk.MAX_SIZE);
-                                    int internalEnd = endIndex - (startIndex - internalStart) > Chunk.MAX_SIZE ?
-                                            Chunk.MAX_SIZE : (int) (endIndex - (startIndex - internalStart));
-                                    byte[] rawData = currentOriginal.chunk.data();
-                                    // extend data array if necessary
-                                    if (rawData.length < internalEnd)
-                                        rawData = Arrays.copyOfRange(rawData, 0, internalEnd);
-                                    byte[] raw = rawData;
-                                    Optional<SymmetricLinkToSigner> writerLink = startIndex < Chunk.MAX_SIZE ?
-                                            child.pointer.fileAccess.getWriterLink(child.pointer.capability.rBaseKey) :
-                                            Optional.empty();
-
-                                    return fileData.readIntoArray(raw, internalStart, internalEnd - internalStart).thenCompose(read -> {
-
-                                        Chunk updated = new Chunk(raw, dataKey, currentOriginal.location.getMapKey(), dataKey.createNonce());
-                                        LocatedChunk located = new LocatedChunk(currentOriginal.location, currentOriginal.existingHash, updated);
-                                        long currentSize = filesSize.get();
-                                        FileProperties newProps = new FileProperties(childProps.name, false, childProps.mimeType,
-                                                endIndex > currentSize ? endIndex : currentSize,
-                                                LocalDateTime.now(), childProps.isHidden,
-                                                childProps.thumbnail, childProps.streamSecret);
-
-                                        CompletableFuture<Snapshot> chunkUploaded = FileUploader.uploadChunk(version, committer, child.signingPair(),
-                                                newProps, getLocation(), us.getParentKey(), baseKey, located,
-                                                nextChunkLocation, writerLink, crypto.hasher, network, monitor);
-
-                                        return chunkUploaded.thenCompose(updatedBase -> {
-                                            //update indices to be relative to next chunk
-                                            long updatedLength = startIndex + internalEnd - internalStart;
-                                            if (updatedLength > filesSize.get()) {
-                                                filesSize.set(updatedLength);
-                                                
-                                                if (updatedLength > Chunk.MAX_SIZE) {
-                                                    // update file size in FileProperties of first chunk
-                                                    return network.getFile(updatedBase, childCap, getChildsEntryWriter(), ownername)
-                                                            .thenCompose(updatedChild -> {
-                                                                FileProperties correctedSize = updatedChild.get()
-                                                                        .getPointer().fileAccess.getProperties(childCap.rBaseKey)
-                                                                        .withSize(endIndex);
-                                                                return updatedChild.get()
-                                                                        .getPointer().fileAccess.updateProperties(updatedBase,
-                                                                                committer, childCap, entryWriter, correctedSize, network);
-                                                            });
-                                                }
+                        BiFunction<Snapshot, Long, CompletableFuture<Snapshot>> composer = (version, startIndex) -> {
+                            MaybeMultihash currentHash = child.pointer.fileAccess.committedHash();
+                            return retriever.getChunk(version.get(child.writer()).props, network, crypto, startIndex,
+                                    filesSize.get(), childCap, childProps.streamSecret, currentHash, monitor)
+                                    .thenCompose(currentLocation -> {
+                                                CompletableFuture<Optional<Location>> locationAt = retriever
+                                                        .getMapLabelAt(version.get(child.writer()).props, childCap,
+                                                                childProps.streamSecret, startIndex + Chunk.MAX_SIZE, crypto.hasher, network)
+                                                        .thenApply(x -> x.map(m -> getLocation().withMapKey(m)));
+                                                return locationAt.thenCompose(location ->
+                                                        CompletableFuture.completedFuture(new Pair<>(currentLocation, location)));
                                             }
-                                            return CompletableFuture.completedFuture(updatedBase);
+                                    ).thenCompose(pair -> {
+
+                                        if (!pair.left.isPresent()) {
+                                            CompletableFuture<Snapshot> result = new CompletableFuture<>();
+                                            result.completeExceptionally(new IllegalStateException("Current chunk not present"));
+                                            return result;
+                                        }
+
+                                        LocatedChunk currentOriginal = pair.left.get();
+                                        Optional<Location> nextChunkLocationOpt = pair.right;
+                                        CompletableFuture<Location> nextChunkLocationFut = nextChunkLocationOpt
+                                                .map(Futures::of)
+                                                .orElseGet(() -> childProps.streamSecret
+                                                        .map(streamSecret -> FileProperties.calculateNextMapKey(streamSecret,
+                                                                currentOriginal.location.getMapKey(), crypto.hasher)
+                                                                .thenApply(nextMapKey -> child.getLocation().withMapKey(nextMapKey)))
+                                                        .orElseGet(() -> Futures.of(locationSupplier.get())));
+                                        return nextChunkLocationFut.thenCompose(nextChunkLocation -> {
+                                            LOG.info("********** Writing to chunk at mapkey: " + ArrayOps.bytesToHex(currentOriginal.location.getMapKey()) + " next: " + nextChunkLocation);
+
+                                            // modify chunk, re-encrypt and upload
+                                            int internalStart = (int) (startIndex % Chunk.MAX_SIZE);
+                                            int internalEnd = endIndex - (startIndex - internalStart) > Chunk.MAX_SIZE ?
+                                                    Chunk.MAX_SIZE : (int) (endIndex - (startIndex - internalStart));
+                                            byte[] rawData = currentOriginal.chunk.data();
+                                            // extend data array if necessary
+                                            if (rawData.length < internalEnd)
+                                                rawData = Arrays.copyOfRange(rawData, 0, internalEnd);
+                                            byte[] raw = rawData;
+                                            Optional<SymmetricLinkToSigner> writerLink = startIndex < Chunk.MAX_SIZE ?
+                                                    child.pointer.fileAccess.getWriterLink(child.pointer.capability.rBaseKey) :
+                                                    Optional.empty();
+
+                                            return fileData.readIntoArray(raw, internalStart, internalEnd - internalStart).thenCompose(read -> {
+
+                                                Chunk updated = new Chunk(raw, dataKey, currentOriginal.location.getMapKey(), dataKey.createNonce());
+                                                LocatedChunk located = new LocatedChunk(currentOriginal.location, currentOriginal.existingHash, updated);
+                                                long currentSize = filesSize.get();
+                                                FileProperties newProps = new FileProperties(childProps.name, false, childProps.mimeType,
+                                                        endIndex > currentSize ? endIndex : currentSize,
+                                                        LocalDateTime.now(), childProps.isHidden,
+                                                        childProps.thumbnail, childProps.streamSecret);
+
+                                                CompletableFuture<Snapshot> chunkUploaded = FileUploader.uploadChunk(version, committer, child.signingPair(),
+                                                        newProps, getLocation(), us.getParentKey(), baseKey, located,
+                                                        nextChunkLocation, writerLink, crypto.hasher, network, monitor);
+
+                                                return chunkUploaded.thenCompose(updatedBase -> {
+                                                    //update indices to be relative to next chunk
+                                                    long updatedLength = startIndex + internalEnd - internalStart;
+                                                    if (updatedLength > filesSize.get()) {
+                                                        filesSize.set(updatedLength);
+
+                                                        if (updatedLength > Chunk.MAX_SIZE) {
+                                                            // update file size in FileProperties of first chunk
+                                                            return network.getFile(updatedBase, childCap, getChildsEntryWriter(), ownername)
+                                                                    .thenCompose(updatedChild -> {
+                                                                        FileProperties correctedSize = updatedChild.get()
+                                                                                .getPointer().fileAccess.getProperties(childCap.rBaseKey)
+                                                                                .withSize(endIndex);
+                                                                        return updatedChild.get()
+                                                                                .getPointer().fileAccess.updateProperties(updatedBase,
+                                                                                        committer, childCap, entryWriter, correctedSize, network);
+                                                                    });
+                                                        }
+                                                    }
+                                                    return CompletableFuture.completedFuture(updatedBase);
+                                                });
+                                            });
                                         });
                                     });
-                                });
-                    };
+                        };
 
-                    return Futures.reduceAll(startIndexes, base, composer, (a, b) -> b)
-                            .thenCompose(updatedBase -> {
-                                // update file size
-                                if (existingProps.size >= endIndex)
-                                    return CompletableFuture.completedFuture(updatedBase);
-                                WritableAbsoluteCapability cap = child.writableFilePointer();
-                                FileProperties newProps = childProps.withSize(endIndex);
-                                return network.getFile(updatedBase, cap, getChildsEntryWriter(), ownername)
-                                        .thenCompose(updatedChild -> updatedChild.get()
-                                                .getPointer().fileAccess.updateProperties(updatedBase, committer, cap,
-                                                        getChildsEntryWriter(), newProps, network));
-                            });
+                        return Futures.reduceAll(startIndexes, base, composer, (a, b) -> b)
+                                .thenCompose(updatedBase -> {
+                                    // update file size
+                                    if (existingProps.size >= endIndex)
+                                        return CompletableFuture.completedFuture(updatedBase);
+                                    WritableAbsoluteCapability cap = child.writableFilePointer();
+                                    FileProperties newProps = childProps.withSize(endIndex);
+                                    return network.getFile(updatedBase, cap, getChildsEntryWriter(), ownername)
+                                            .thenCompose(updatedChild -> updatedChild.get()
+                                                    .getPointer().fileAccess.updateProperties(updatedBase, committer, cap,
+                                                            getChildsEntryWriter(), newProps, network));
+                                });
+                    });
                 });
     }
 
@@ -1168,10 +1174,11 @@ public class FileWrapper {
                                         CryptreeNode chunk = mOpt.get();
                                         Optional<byte[]> streamSecret = chunk.getProperties(chunk
                                                 .getParentKey(currentCap.rBaseKey)).streamSecret;
-                                        byte[] nextChunkMapKey = chunk.getNextChunkLocation(currentCap.rBaseKey,
-                                                streamSecret, currentCap.getMapKey(), hasher);
-                                        return copyAllChunks(true, currentCap.withMapKey(nextChunkMapKey),
-                                                targetSigner, hasher, network, updated, committer);
+                                        return chunk.getNextChunkLocation(currentCap.rBaseKey,
+                                                streamSecret, currentCap.getMapKey(), hasher)
+                                                .thenCompose(nextChunkMapKey ->
+                                                        copyAllChunks(true, currentCap.withMapKey(nextChunkMapKey),
+                                                                targetSigner, hasher, network, updated, committer));
                                     })
                                     .thenCompose(updatedVersion -> {
                                         if (! mOpt.get().isDirectory())
@@ -1208,10 +1215,10 @@ public class FileWrapper {
                                         CryptreeNode chunk = mOpt.get();
                                         Optional<byte[]> streamSecret = chunk.getProperties(chunk
                                                 .getParentKey(currentCap.rBaseKey)).streamSecret;
-                                        byte[] nextChunkMapKey = chunk.getNextChunkLocation(currentCap.rBaseKey, streamSecret,
-                                                currentCap.getMapKey(), hasher);
-                                        return deleteAllChunks(currentCap.withMapKey(nextChunkMapKey), signer, tid, hasher,
-                                                network, deletedVersion, committer);
+                                        return chunk.getNextChunkLocation(currentCap.rBaseKey, streamSecret,
+                                                currentCap.getMapKey(), hasher).thenCompose(nextChunkMapKey ->
+                                                deleteAllChunks(currentCap.withMapKey(nextChunkMapKey), signer, tid, hasher,
+                                                        network, deletedVersion, committer));
                                     })
                                     .thenCompose(updatedVersion -> {
                                         if (! mOpt.get().isDirectory())
@@ -1316,11 +1323,12 @@ public class FileWrapper {
             throw new IllegalStateException("Cannot get input stream for a directory!");
         CryptreeNode fileAccess = pointer.fileAccess;
         return fileAccess.retriever(pointer.capability.rBaseKey, props.streamSecret, getLocation().getMapKey(), crypto.hasher)
-                        .getFile(version, network, crypto, pointer.capability, props.streamSecret,
-                                fileSize, fileAccess.committedHash(), monitor);
+                .thenCompose(retriever ->
+                        retriever.getFile(version, network, crypto, pointer.capability, props.streamSecret,
+                                fileSize, fileAccess.committedHash(), monitor));
     }
 
-    private FileRetriever getRetriever(Hasher hasher) {
+    private CompletableFuture<FileRetriever> getRetriever(Hasher hasher) {
         if (pointer.fileAccess.isDirectory())
             throw new IllegalStateException("Cannot get input stream for a directory!");
         return pointer.fileAccess.retriever(pointer.capability.rBaseKey, props.streamSecret, getLocation().getMapKey(), hasher);

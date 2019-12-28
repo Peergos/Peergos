@@ -38,8 +38,8 @@ public class ScryptJava implements Hasher {
     }
 
     @Override
-    public byte[] sha256(byte[] input) {
-        return Hash.sha256(input);
+    public CompletableFuture<byte[]> sha256(byte[] input) {
+        return CompletableFuture.completedFuture(Hash.sha256(input));
     }
 
     @Override

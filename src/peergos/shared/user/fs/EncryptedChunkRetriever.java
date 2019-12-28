@@ -60,14 +60,15 @@ public class EncryptedChunkRetriever implements FileRetriever {
         if (offset < 2*Chunk.MAX_SIZE)
             return CompletableFuture.completedFuture(Optional.of(nextChunkLabel)); // chunk at this location hasn't been written yet, only referenced by previous chunk
         if (streamSecret.isPresent()) {
-            byte[] mapKey = FileProperties.calculateMapKey(streamSecret.get(), startCap.getMapKey(), offset, hasher);
-            return CompletableFuture.completedFuture(Optional.of(mapKey));
+            return FileProperties.calculateMapKey(streamSecret.get(), startCap.getMapKey(), offset, hasher)
+                    .thenApply(Optional::of);
         }
         return network.getMetadata(version, startCap.withMapKey(nextChunkLabel))
                 .thenCompose(meta -> meta.isPresent() ?
                         meta.get().retriever(startCap.rBaseKey, streamSecret, nextChunkLabel, hasher)
-                                .getMapLabelAt(version, startCap.withMapKey(nextChunkLabel), streamSecret,
-                                offset - Chunk.MAX_SIZE, hasher, network) :
+                                .thenCompose(retriever ->
+                                        retriever.getMapLabelAt(version, startCap.withMapKey(nextChunkLabel), streamSecret,
+                                                offset - Chunk.MAX_SIZE, hasher, network)) :
                         CompletableFuture.completedFuture(Optional.empty())
                 );
     }
@@ -87,9 +88,10 @@ public class EncryptedChunkRetriever implements FileRetriever {
                     .thenCompose(meta -> {
                         if (meta.isPresent())
                             return meta.get().retriever(ourCap.rBaseKey, streamSecret, nextChunkLabel, crypto.hasher)
-                                    .getChunk(version, network, crypto, startIndex - Chunk.MAX_SIZE,
-                                            truncateTo - Chunk.MAX_SIZE,
-                                            nextChunkCap, streamSecret, meta.get().committedHash(), l -> {});
+                                    .thenCompose(retriever -> retriever
+                                            .getChunk(version, network, crypto, startIndex - Chunk.MAX_SIZE,
+                                                    truncateTo - Chunk.MAX_SIZE,
+                                                    nextChunkCap, streamSecret, meta.get().committedHash(), l -> {}));
                         Chunk newEmptyChunk = new Chunk(new byte[0], dataKey, nextChunkLabel, dataKey.createNonce());
                         LocatedChunk withLocation = new LocatedChunk(nextChunkCap.getLocation(),
                                 MaybeMultihash.empty(), newEmptyChunk);

@@ -15,7 +15,7 @@ public class ScryptJS implements Hasher {
 
 
     @Override
-    public byte[] sha256(byte[] input) {
+    public CompletableFuture<byte[]> sha256(byte[] input) {
         return scriptJS.sha256(input);
     }
 

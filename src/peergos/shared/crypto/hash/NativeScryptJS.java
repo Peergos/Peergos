@@ -10,7 +10,7 @@ public class NativeScryptJS {
 
     public native CompletableFuture<byte[]> hashToKeyBytes(String username, String password, SecretGenerationAlgorithm algorithm);
 
-    public native byte[] sha256(byte[] input);
+    public native CompletableFuture<byte[]> sha256(byte[] input);
 
     public native byte[] blake2b(byte[] input, int outputBytes);
 }
