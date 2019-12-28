@@ -826,22 +826,22 @@ public class UserContext {
                                 long t2 = System.currentTimeMillis();
                                 RelativeCapability nextChunk =
                                         RelativeCapability.buildSubsequentChunk(crypto.random.randomBytes(32), rootRKey);
-                                CryptreeNode.DirAndChildren root =
-                                        CryptreeNode.createDir(MaybeMultihash.empty(), rootRKey, rootWKey, Optional.of(writerPair),
+                                return CryptreeNode.createDir(MaybeMultihash.empty(), rootRKey, rootWKey, Optional.of(writerPair),
                                                 new FileProperties(directoryName, true, "", 0, LocalDateTime.now(),
                                                         false, Optional.empty(), Optional.empty()),
-                                                Optional.empty(), SymmetricKey.random(), nextChunk, crypto.hasher);
-
-                                LOG.info("Uploading entry point directory");
-                                return WriterData.createEmpty(owner.publicKeyHash, writerPair, network.dhtClient, tid)
-                                        .thenCompose(empty -> empty.commit(owner.publicKeyHash, writerPair, MaybeMultihash.empty(), network, tid))
-                                        .thenCompose(s3 -> root.commit(s3, committer, rootPointer, Optional.of(writerPair), network, tid)
-                                                .thenApply(finalSnapshot -> {
-                                                    long t3 = System.currentTimeMillis();
-                                                    LOG.info("Uploading root dir metadata took " + (t3 - t2) + " mS");
-                                                    return finalSnapshot;
-                                                }))
-                                        .thenCompose(x -> addRootEntryPointAndCommit(x.merge(s2), entry, owner, userRootKey, network, tid));
+                                                Optional.empty(), SymmetricKey.random(), nextChunk, crypto.hasher)
+                                        .thenCompose(root -> {
+                                            LOG.info("Uploading entry point directory");
+                                            return WriterData.createEmpty(owner.publicKeyHash, writerPair, network.dhtClient, tid)
+                                                    .thenCompose(empty -> empty.commit(owner.publicKeyHash, writerPair, MaybeMultihash.empty(), network, tid))
+                                                    .thenCompose(s3 -> root.commit(s3, committer, rootPointer, Optional.of(writerPair), network, tid)
+                                                            .thenApply(finalSnapshot -> {
+                                                                long t3 = System.currentTimeMillis();
+                                                                LOG.info("Uploading root dir metadata took " + (t3 - t2) + " mS");
+                                                                return finalSnapshot;
+                                                            }))
+                                                    .thenCompose(x -> addRootEntryPointAndCommit(x.merge(s2), entry, owner, userRootKey, network, tid));
+                                        });
                             }));
         }), network.dhtClient).thenCompose(s -> addRetrievedEntryPointToTrie(directoryName, TrieNodeImpl.empty(),
                 entry, "/" + directoryName, false, network, crypto));

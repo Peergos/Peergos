@@ -57,12 +57,13 @@ public class FragmentedPaddedCipherText implements Cborable {
         return Arrays.copyOfRange(input, 0, nBlocks * blockSize);
     }
 
-    public static <T extends Cborable> Pair<FragmentedPaddedCipherText, List<FragmentWithHash>> build(SymmetricKey from,
-                                                                                                      T secret,
-                                                                                                      int paddingBlockSize,
-                                                                                                      int maxFragmentSize,
-                                                                                                      Hasher hasher,
-                                                                                                      boolean allowArrayCache) {
+    public static <T extends Cborable>
+    CompletableFuture<Pair<FragmentedPaddedCipherText, List<FragmentWithHash>>> build(SymmetricKey from,
+                                                                                      T secret,
+                                                                                      int paddingBlockSize,
+                                                                                      int maxFragmentSize,
+                                                                                      Hasher hasher,
+                                                                                      boolean allowArrayCache) {
         if (paddingBlockSize < 1)
             throw new IllegalStateException("Invalid padding block size: " + paddingBlockSize);
         byte[] nonce = from.createNonce();
@@ -71,18 +72,20 @@ public class FragmentedPaddedCipherText implements Cborable {
         if (cipherText.length <= 4096 + TweetNaCl.SECRETBOX_OVERHEAD_BYTES) {
             // use inline identity hash for small amount of data (small files or directories)
             FragmentWithHash frag = new FragmentWithHash(new Fragment(cipherText), hasher.identityHash(cipherText, true));
-            return new Pair<>(new FragmentedPaddedCipherText(nonce, Collections.singletonList(frag.hash)), Collections.singletonList(frag));
+            return Futures.of(new Pair<>(new FragmentedPaddedCipherText(nonce, Collections.singletonList(frag.hash)), Collections.singletonList(frag)));
         }
 
         byte[][] split = split(cipherText, maxFragmentSize, allowArrayCache);
 
-        List<FragmentWithHash> frags = Arrays.stream(split)
-                .map(d -> new FragmentWithHash(new Fragment(d), hasher.hash(d, true)))
-                .collect(Collectors.toList());
-        List<Multihash> hashes = frags.stream()
-                .map(f -> f.hash)
-                .collect(Collectors.toList());
-        return new Pair<>(new FragmentedPaddedCipherText(nonce, hashes), frags);
+        return Futures.combineAllInOrder(Arrays.stream(split)
+                .map(d -> hasher.hash(d, true).thenApply(h -> new FragmentWithHash(new Fragment(d), h)))
+                .collect(Collectors.toList()))
+                .thenApply(frags -> {
+                    List<Multihash> hashes = frags.stream()
+                            .map(f -> f.hash)
+                            .collect(Collectors.toList());
+                    return new Pair<>(new FragmentedPaddedCipherText(nonce, hashes), frags);
+                });
     }
 
     public <T> CompletableFuture<T> getAndDecrypt(SymmetricKey from,

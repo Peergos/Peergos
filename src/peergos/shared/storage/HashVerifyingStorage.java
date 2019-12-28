@@ -5,6 +5,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multiaddr.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
@@ -21,20 +22,23 @@ public class HashVerifyingStorage implements ContentAddressedStorage {
         this.hasher = hasher;
     }
 
-    private <T> T verify(byte[] data, Multihash claimed, Supplier<T> result) {
+    private <T> CompletableFuture<T> verify(byte[] data, Multihash claimed, Supplier<T> result) {
         switch (claimed.type) {
             case sha2_256:
-                Multihash computed = new Multihash(Multihash.Type.sha2_256, hasher.sha256(data));
-                if (claimed instanceof Cid)
-                    computed = Cid.build(((Cid) claimed).version, ((Cid) claimed).codec, computed);
+                return hasher.sha256(data)
+                        .thenApply(hash -> {
+                            Multihash computed = new Multihash(Multihash.Type.sha2_256, hash);
+                            if (claimed instanceof Cid)
+                                computed = Cid.build(((Cid) claimed).version, ((Cid) claimed).codec, computed);
 
-                if (computed.equals(claimed))
-                    return result.get();
+                            if (computed.equals(claimed))
+                                return result.get();
 
-                throw new IllegalStateException("Incorrect hash! Are you under attack? Expected: " + claimed + " actual: " + computed);
+                            throw new IllegalStateException("Incorrect hash! Are you under attack? Expected: " + claimed + " actual: " + computed);
+                        });
             case id:
                 if (Arrays.equals(data, claimed.getHash()))
-                    return result.get();
+                    return Futures.of(result.get());
                 throw new IllegalStateException("Incorrect identity hash! This shouldn't ever  happen.");
             default: throw new IllegalStateException("Unimplemented hash algorithm: " + claimed.type);
         }
@@ -67,15 +71,17 @@ public class HashVerifyingStorage implements ContentAddressedStorage {
                                                   List<byte[]> blocks,
                                                   TransactionId tid) {
         return source.put(owner, writer, signatures, blocks, tid)
-                .thenApply(hashes -> hashes.stream()
+                .thenCompose(hashes -> Futures.combineAllInOrder(hashes.stream()
                         .map(h -> verify(blocks.get(hashes.indexOf(h)), h, () -> h))
-                        .collect(Collectors.toList()));
+                        .collect(Collectors.toList())));
     }
 
     @Override
     public CompletableFuture<Optional<CborObject>> get(Multihash hash) {
         return source.get(hash)
-                .thenApply(cborOpt -> cborOpt.map(cbor -> verify(cbor.toByteArray(), hash, () -> cbor)));
+                .thenCompose(cborOpt -> cborOpt.map(cbor -> verify(cbor.toByteArray(), hash, () -> cbor)
+                        .thenApply(Optional::of))
+                        .orElseGet(() -> Futures.of(Optional.empty())));
     }
 
     @Override
@@ -85,15 +91,17 @@ public class HashVerifyingStorage implements ContentAddressedStorage {
                                                      List<byte[]> blocks,
                                                      TransactionId tid) {
         return source.putRaw(owner, writer, signatures, blocks, tid)
-                .thenApply(hashes -> hashes.stream()
+                .thenCompose(hashes -> Futures.combineAllInOrder(hashes.stream()
                         .map(h -> verify(blocks.get(hashes.indexOf(h)), h, () -> h))
-                        .collect(Collectors.toList()));
+                        .collect(Collectors.toList())));
     }
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash) {
         return source.getRaw(hash)
-                .thenApply(arrOpt -> arrOpt.map(bytes -> verify(bytes, hash, () -> bytes)));
+                .thenCompose(arrOpt -> arrOpt.map(bytes -> verify(bytes, hash, () -> bytes)
+                        .thenApply(Optional::of))
+                        .orElseGet(() -> Futures.of(Optional.empty())));
     }
 
     @Override

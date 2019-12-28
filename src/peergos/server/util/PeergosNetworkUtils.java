@@ -997,7 +997,7 @@ public class PeergosNetworkUtils {
     public static List<Set<AbsoluteCapability>> getAllChildCapsByChunk(AbsoluteCapability cap, CryptreeNode dir, NetworkAccess network) {
         Set<AbsoluteCapability> direct = dir.getDirectChildrenCapabilities(cap, network).join();
 
-        AbsoluteCapability nextChunkCap = cap.withMapKey(dir.getNextChunkLocation(cap.rBaseKey, Optional.empty(), cap.getMapKey(), null));
+        AbsoluteCapability nextChunkCap = cap.withMapKey(dir.getNextChunkLocation(cap.rBaseKey, Optional.empty(), cap.getMapKey(), null).join());
 
         Snapshot version = new Snapshot(cap.writer,
                 WriterData.getWriterData(network.mutable.getPointerTarget(cap.owner, cap.writer,
