@@ -126,20 +126,21 @@ public class Simulator implements Runnable {
         index.getDirToFiles(user).get(path.getParent()).remove(path.getFileName().toString());
         FileSystem testFileSystem = fileSystems.getTestFileSystem(user);
         FileSystem referenceFileSystem = fileSystems.getReferenceFileSystem(user);
-
+        log(user, Simulation.RM, path);
         testFileSystem.delete(path);
         referenceFileSystem.delete(path);
     }
 
     private void rmdir(String user) {
         Path path = index.getRandomExistingDirectory(user, false);
-        //rm -r
-        //TODO
+        log(user, Simulation.RMDIR, path);
+
         Map<Path, List<String>> dirsToFiles = index.getDirToFiles(user);
         for (Path p : new ArrayList<>(dirsToFiles.keySet())) {
             if (p.startsWith(path))
                 dirsToFiles.remove(p);
         }
+
         FileSystem testFileSystem = fileSystems.getTestFileSystem(user);
         FileSystem referenceFileSystem = fileSystems.getReferenceFileSystem(user);
 
@@ -152,7 +153,8 @@ public class Simulator implements Runnable {
 
         Path path = index.getRandomExistingDirectory(user, false).resolve(dirBaseName);
         index.getDirToFiles(user).putIfAbsent(path, new ArrayList<>());
-        LOG.info("mkdir-ing  " + path);
+        log(user, Simulation.MKDIR, path);
+
         FileSystem testFileSystem = fileSystems.getTestFileSystem(user);
         FileSystem referenceFileSystem = fileSystems.getReferenceFileSystem(user);
         testFileSystem.mkdir(path);
@@ -247,7 +249,7 @@ public class Simulator implements Runnable {
     }
 
     private boolean read(String user, Path path) {
-        LOG.info("Reading path " + path);
+        log(user, Simulation.READ, path);
 
         FileSystem testFileSystem = fileSystems.getTestFileSystem(user);
         FileSystem referenceFileSystem = fileSystems.getReferenceFileSystem(user);
@@ -255,6 +257,11 @@ public class Simulator implements Runnable {
         byte[] refBytes = referenceFileSystem.read(path);
         byte[] testBytes = testFileSystem.read(path);
         return Arrays.equals(refBytes, testBytes);
+    }
+
+    private void log(String user, Simulation simulation, Path path, String... extra) {
+        String msg = "OP: <" + user + "> " + simulation + " " + path + " " + extra;
+        LOG.info(msg);
     }
 
     private void write(String user) {
@@ -266,7 +273,7 @@ public class Simulator implements Runnable {
         Map<Path, List<String>> dirsToFiles = index.getDirToFiles(user);
         dirsToFiles.get(dirName).add(fileName);
 
-        LOG.info("Writing path " + path.resolve(fileName) + " with length " + fileContents.length);
+        log(user, Simulation.WRITE, path);
 
         FileSystem testFileSystem = fileSystems.getTestFileSystem(user);
         FileSystem referenceFileSystem = fileSystems.getReferenceFileSystem(user);
@@ -276,7 +283,6 @@ public class Simulator implements Runnable {
     }
 
     private boolean grantPermission(String granter, String grantee, Path path, FileSystem.Permission permission) {
-        LOG.info("Granting "+ permission.name()+"-access to " + path + " for granter " + granter + " and grantee " + grantee);
 
         FileSystem testFileSystem = fileSystems.getTestFileSystem(granter);
         FileSystem referenceFileSystem = fileSystems.getReferenceFileSystem(granter);
@@ -288,8 +294,6 @@ public class Simulator implements Runnable {
     }
 
     private boolean revokePermission(String revoker, String revokee, Path path, FileSystem.Permission permission) {
-        LOG.info("Revoking "+permission.name()+"-access to " + path + "for revoker " + revoker + " and revokee " + revokee);
-
         FileSystem testFileSystem = fileSystems.getTestFileSystem(revoker);
         FileSystem referenceFileSystem = fileSystems.getReferenceFileSystem(revoker);
 
@@ -349,15 +353,25 @@ public class Simulator implements Runnable {
                 break;
             case GRANT_READ_FILE:
             case GRANT_WRITE_FILE:
-                grantPermission(user, otherUser.get(), randomFilePathForUser.get(), simulation.permission());
+                Path grantFilePath = randomFilePathForUser.get();
+                String fileGrantee = otherUser.get();
+                log(user, simulation, grantFilePath, " with grantee "+ fileGrantee);
+                grantPermission(user, fileGrantee, grantFilePath, simulation.permission());
+                break;
             case GRANT_READ_DIR:
             case GRANT_WRITE_DIR:
-                grantPermission(user, otherUser.get(), randomFolderPathForUser.get(), simulation.permission());
+                String dirGrantee = otherUser.get();
+                Path grantDirPath = randomFolderPathForUser.get();
+                log(user, simulation, grantDirPath, " with grantee "+ dirGrantee);
+                grantPermission(user, dirGrantee, grantDirPath, simulation.permission());
                 break;
             case REVOKE_READ:
             case REVOKE_WRITE:
-                revokePermission(user, otherUser.get(),
-                        fileSystems.getReferenceFileSystem(user).getRandomSharedPath(random, simulation.permission()), simulation.permission());
+                String revokee = otherUser.get();
+                Path revokePath = fileSystems.getReferenceFileSystem(user).getRandomSharedPath(random, simulation.permission());
+                log(user, simulation, revokePath, " with revokee "+ revokee);
+                revokePermission(user, revokee,
+                        revokePath, simulation.permission());
                 break;
             default:
                 throw new IllegalStateException("Unexpected simulation " + simulation);
