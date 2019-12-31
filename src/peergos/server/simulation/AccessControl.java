@@ -107,6 +107,7 @@ public interface AccessControl {
 
             AccessControlUnit acu = getAcu(permission);
             List<Path> paths = new ArrayList<>(acu.allowed.keySet());
+            Collections.sort(paths);
             if (paths.isEmpty())
                 throw new IllegalStateException();
             Path path = paths.get(random.nextInt(paths.size()));
