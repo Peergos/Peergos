@@ -52,16 +52,18 @@ public class Simulator implements Runnable {
             this.random = random;
         }
 
-        private Path getRandomExistingDirectory(String user) {
-            Map<Path, List<String>> dirToFiles = index.get(user);
-            List<Path> directories = new ArrayList<>(dirToFiles.keySet());
-            int pos = random.nextInt(directories.size());
-            return directories.get(pos);
+        private Path getRandomExistingDirectory(String user,  boolean skipRoot) {
+            List<Path> dirs = new ArrayList<>(index.get(user).keySet());
+            //skip the root folder - it is special
+            if (skipRoot)
+                dirs.remove(Paths.get("/"+user));
+            int pos = random.nextInt(dirs.size());
+            return dirs.get(pos);
         }
 
         private Path getRandomExistingFile(String user) {
 
-            Path dir = getRandomExistingDirectory(user);
+            Path dir = getRandomExistingDirectory(user, false);
             List<String> fileNames = index.get(user).get(dir);
 
             if (fileNames.isEmpty())
@@ -86,7 +88,22 @@ public class Simulator implements Runnable {
 
     enum Simulation {READ, WRITE, MKDIR, RM, RMDIR,
         GRANT_READ_FILE, GRANT_READ_DIR, GRANT_WRITE_FILE, GRANT_WRITE_DIR,
-        REVOKE_READ_FILE,  REVOKE_READ_DIR, REVOKE_WRITE_FILE, REVOKE_WRITE_DIR
+        REVOKE_READ, REVOKE_WRITE;
+
+        public FileSystem.Permission permission() {
+            switch (this) {
+                case GRANT_READ_FILE:
+                case GRANT_READ_DIR:
+                case REVOKE_READ:
+                    return FileSystem.Permission.READ;
+
+                case GRANT_WRITE_DIR:
+                case GRANT_WRITE_FILE:
+                case REVOKE_WRITE:
+                    return FileSystem.Permission.WRITE;
+            }
+            return null;
+        }
     }
 
     private final int opCount;
@@ -115,7 +132,7 @@ public class Simulator implements Runnable {
     }
 
     private void rmdir(String user) {
-        Path path = index.getRandomExistingDirectory(user);
+        Path path = index.getRandomExistingDirectory(user, false);
         //rm -r
         //TODO
         Map<Path, List<String>> dirsToFiles = index.getDirToFiles(user);
@@ -133,7 +150,7 @@ public class Simulator implements Runnable {
     private Path mkdir(String user) {
         String dirBaseName = getNextName();
 
-        Path path = index.getRandomExistingDirectory(user).resolve(dirBaseName);
+        Path path = index.getRandomExistingDirectory(user, false).resolve(dirBaseName);
         index.getDirToFiles(user).putIfAbsent(path, new ArrayList<>());
         LOG.info("mkdir-ing  " + path);
         FileSystem testFileSystem = fileSystems.getTestFileSystem(user);
@@ -144,7 +161,7 @@ public class Simulator implements Runnable {
     }
 
     private Path getAvailableFilePath(String user) {
-        return index.getRandomExistingDirectory(user).resolve(getNextName());
+        return index.getRandomExistingDirectory(user, false).resolve(getNextName());
     }
 
     private int getNextFileLength() {
@@ -258,28 +275,26 @@ public class Simulator implements Runnable {
         referenceFileSystem.write(path, fileContents);
     }
 
-    private boolean grantRead(String granter, String grantee, Path path) {
-        LOG.info("Granting read-access to " + path + " for granter " + granter + " and grantee " + grantee);
-
+    private boolean grantPermission(String granter, String grantee, Path path, FileSystem.Permission permission) {
+        LOG.info("Granting "+ permission.name()+"-access to " + path + " for granter " + granter + " and grantee " + grantee);
 
         FileSystem testFileSystem = fileSystems.getTestFileSystem(granter);
         FileSystem referenceFileSystem = fileSystems.getReferenceFileSystem(granter);
 
-        testFileSystem.grant(path, grantee, FileSystem.Permission.READ);
-        referenceFileSystem.grant(path, grantee, FileSystem.Permission.READ);
+        testFileSystem.grant(path, grantee, permission);
+        referenceFileSystem.grant(path, grantee, permission);
 
         return true;
     }
 
-    private boolean revokeRead(String revoker, String revokee, Path path) {
-        LOG.info("Revoking read-access to " + path + "for revoker " + revoker + " and revokee " + revokee);
-
+    private boolean revokePermission(String revoker, String revokee, Path path, FileSystem.Permission permission) {
+        LOG.info("Revoking "+permission.name()+"-access to " + path + "for revoker " + revoker + " and revokee " + revokee);
 
         FileSystem testFileSystem = fileSystems.getTestFileSystem(revoker);
         FileSystem referenceFileSystem = fileSystems.getReferenceFileSystem(revoker);
 
-        testFileSystem.revoke(path, revokee, FileSystem.Permission.READ);
-        referenceFileSystem.revoke(path, revokee, FileSystem.Permission.READ);
+        testFileSystem.revoke(path, revokee, permission);
+        referenceFileSystem.revoke(path, revokee, permission);
 
         return true;
     }
@@ -314,7 +329,8 @@ public class Simulator implements Runnable {
     private void run(Simulation simulation, String user) {
         Supplier<String> otherUser = () -> fileSystems.getNextUser(user);
         Supplier<Path> randomFilePathForUser = () -> index.getRandomExistingFile(user);
-        Supplier<Path> randomFolderPathForUser = () -> index.getRandomExistingDirectory(user);
+        Supplier<Path> randomFolderPathForUser = () -> index.getRandomExistingDirectory(user, true);
+
         switch (simulation) {
             case READ:
                 read(user, randomFilePathForUser.get());
@@ -332,16 +348,16 @@ public class Simulator implements Runnable {
                 rmdir(user);
                 break;
             case GRANT_READ_FILE:
-                grantRead(user, otherUser.get(), randomFilePathForUser.get());
-                break;
+            case GRANT_WRITE_FILE:
+                grantPermission(user, otherUser.get(), randomFilePathForUser.get(), simulation.permission());
             case GRANT_READ_DIR:
-                grantRead(user, otherUser.get(), randomFolderPathForUser.get());
-            case REVOKE_READ_FILE:
-                revokeRead(user, otherUser.get(),
-                        fileSystems.getReferenceFileSystem(user).getRandomSharedPath(random, FileSystem.Permission.READ));
+            case GRANT_WRITE_DIR:
+                grantPermission(user, otherUser.get(), randomFolderPathForUser.get(), simulation.permission());
                 break;
-            case REVOKE_READ_DIR:
-                revokeRead(user, otherUser.get(), fileSystems.getReferenceFileSystem(user).getRandomSharedPath(random, FileSystem.Permission.READ));
+            case REVOKE_READ:
+            case REVOKE_WRITE:
+                revokePermission(user, otherUser.get(),
+                        fileSystems.getReferenceFileSystem(user).getRandomSharedPath(random, simulation.permission()), simulation.permission());
                 break;
             default:
                 throw new IllegalStateException("Unexpected simulation " + simulation);
@@ -364,6 +380,12 @@ public class Simulator implements Runnable {
         LOG.info("System verified =  " + isVerified);
     }
 
+    /**
+     * This  will  overwrite the content @ path with [0].
+     * @param user
+     * @param path
+     * @return
+     */
     private boolean verifySharingPermissions(String user, Path path) {
         FileSystem peergosFileSystem = fileSystems.getTestFileSystem(user);
         FileSystem nativeFileSystem = fileSystems.getReferenceFileSystem(user);
@@ -380,18 +402,25 @@ public class Simulator implements Runnable {
 
             //check they can actually read
             for (String sharee : shareesInPeergos) {
+
+                byte[] read = null;
+                PeergosFileSystemImpl fs = fileSystems.getTestFileSystem(sharee);
                 switch (permission) {
                     case READ:
-                        PeergosFileSystemImpl fs = fileSystems.getTestFileSystem(sharee);
                         try {
                             //can read?
-                            byte[] read = fs.read(path);
+                            read = fs.read(path);
                         } catch (Exception ex) {
                             LOG.log(Level.WARNING, "User "+ sharee +" could not read shared-path "+ path +"!", ex);
                             isVerified = false;
                         }
-                        break;
                     case WRITE:
+                        try {
+                            // can overwrite?
+                            fs.write(path, new byte[]{0});
+                        } catch (Exception ex) {
+                            LOG.log(Level.WARNING, "User "+ sharee +" could not write  shared-path "+ path +"!", ex);
+                        }
                     default:
                         throw new IllegalStateException();
                 }
@@ -473,6 +502,8 @@ public class Simulator implements Runnable {
                 LOG.info("User " + user + " is not verified!");
                 isGlobalVerified = false;
             }
+
+
         }
         return isGlobalVerified;
     }
@@ -504,7 +535,7 @@ public class Simulator implements Runnable {
         };
 
 
-        int opCount = 10;
+        int opCount = 200;
 
         Map<Simulation, Double> probabilities = Stream.of(
                 new Pair<>(Simulation.READ, 0.0),
@@ -512,8 +543,12 @@ public class Simulator implements Runnable {
                 new Pair<>(Simulation.RM, 0.0),
                 new Pair<>(Simulation.MKDIR, 0.1),
                 new Pair<>(Simulation.RMDIR, 0.0),
-                new Pair<>(Simulation.GRANT_READ_FILE, 0.49),
-                new Pair<>(Simulation.REVOKE_READ_FILE, 0.01)
+                new Pair<>(Simulation.GRANT_READ_FILE, 0.2),
+                new Pair<>(Simulation.GRANT_WRITE_FILE, 0.1),
+                new Pair<>(Simulation.GRANT_READ_DIR, 0.05),
+                new Pair<>(Simulation.GRANT_WRITE_DIR, 0.05),
+                new Pair<>(Simulation.REVOKE_READ, 0.05),
+                new Pair<>(Simulation.REVOKE_WRITE, 0.05)
         ).collect(
                 Collectors.toMap(e -> e.left, e -> e.right));
 

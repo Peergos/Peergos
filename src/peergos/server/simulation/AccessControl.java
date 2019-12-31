@@ -37,7 +37,18 @@ public interface AccessControl {
 
     default boolean can(Path path, String user, FileSystem.Permission permission) {
 
-        return getOwner(path).equals(user) || get(path, permission).contains(user);
+        boolean isOwner = getOwner(path).equals(user);
+        if (isOwner)
+            return true;
+        //check for sharing of the path and all of it's parents
+        Path sharePath = path;
+        while (sharePath != null) {
+            boolean isShared = get(sharePath, permission).contains(user);
+            if (isShared)
+                return true;
+            sharePath = sharePath.getParent();
+        }
+        return false;
     }
 
     class MemoryImpl implements AccessControl {
