@@ -1,12 +1,16 @@
 package peergos.server.simulation;
 
+import peergos.shared.social.FollowRequestWithCipherText;
 import peergos.shared.user.UserContext;
 import peergos.shared.user.fs.*;
+import peergos.shared.util.Pair;
 import peergos.shared.util.ProgressConsumer;
 import peergos.shared.util.Serialize;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -75,10 +79,10 @@ public class PeergosFileSystemImpl implements FileSystem {
         Set<String> userSet = Stream.of(user).collect(Collectors.toSet());
         switch (permission) {
             case READ:
-                userContext.shareReadAccessWith(path, userSet);
+                userContext.shareReadAccessWith(path, userSet).join();
                 return;
             case WRITE:
-                userContext.shareWriteAccessWith(path, userSet);
+                userContext.shareWriteAccessWith(path, userSet).join();
                 return;
         }
         throw new IllegalStateException();
@@ -131,6 +135,38 @@ public class PeergosFileSystemImpl implements FileSystem {
                 userContext.network,
                 false,
                 userContext.crypto).join();
+    }
+
+    @Override
+    public void follow(FileSystem other) {
+        UserContext otherContext = ((PeergosFileSystemImpl) other).userContext;
+
+        this.userContext.sendInitialFollowRequest(other.user()).join();
+        List<FollowRequestWithCipherText> join = otherContext.processFollowRequests().join();
+        FollowRequestWithCipherText req = join.stream()
+                .filter(e -> e.getEntry().ownerName.equals(user()))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException());
+        otherContext.sendReplyFollowRequest(req, true,  true).join();
+        this.userContext.processFollowRequests().join();
+    }
+
+    @Override
+    public Path getRandomSharedPath(Random random, Permission permission) {
+        throw new IllegalStateException("Not implemented");
+    }
+
+    @Override
+    public List<String> getSharees(Path path, Permission permission) {
+        Pair<Set<String>, Set<String>> readersAndWriters = userContext.sharedWith(getPath(path)).join();
+        switch (permission) {
+            case READ:
+                return new ArrayList<>(readersAndWriters.left);
+            case WRITE:
+                return new ArrayList<>(readersAndWriters.right);
+            default:
+                throw new IllegalStateException();
+        }
     }
 }
 

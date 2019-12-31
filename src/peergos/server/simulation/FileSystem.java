@@ -6,6 +6,7 @@ import peergos.shared.user.fs.FileProperties;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
+import java.util.Random;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
@@ -52,7 +53,6 @@ public interface FileSystem {
         return ls(path, true);
     }
 
-
     default void walk(Path path, Consumer<Path> func)  {
         FileProperties fileProperties = stat(path).fileProperties();
 
@@ -75,5 +75,10 @@ public interface FileSystem {
         walk(Paths.get("/"+  user()), func);
     }
 
+    void follow(FileSystem other);
+
+    Path getRandomSharedPath(Random random, FileSystem.Permission permission);
+
+    List<String> getSharees(Path path, Permission permission);
 }
 

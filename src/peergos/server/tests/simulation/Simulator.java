@@ -1,6 +1,7 @@
 package peergos.server.tests.simulation;
 
 import peergos.server.Main;
+import peergos.server.simulation.AccessControl;
 import peergos.server.simulation.FileSystem;
 import peergos.server.simulation.PeergosFileSystemImpl;
 import peergos.server.storage.IpfsWrapper;
@@ -18,6 +19,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -31,8 +33,9 @@ import static peergos.server.tests.UserTests.buildArgs;
  */
 public class Simulator implements Runnable {
     private class SimulationRecord {
-        private final List<Simulation> simuations =  new ArrayList<>();
-        private final List<Long> timestamps =  new ArrayList<>();
+        private final List<Simulation> simuations = new ArrayList<>();
+        private final List<Long> timestamps = new ArrayList<>();
+
         public void add(Simulation simulation) {
             long now = System.currentTimeMillis();
             timestamps.add(now);
@@ -40,21 +43,77 @@ public class Simulator implements Runnable {
         }
     }
 
+    public static class FileSystemIndex {
+        //user -> [dir -> file-name]
+        private final Random random;
+        private final Map<String, Map<Path, List<String>>> index = new HashMap<>();
+
+        public FileSystemIndex(Random random) {
+            this.random = random;
+        }
+
+        private Path getRandomExistingDirectory(String user,  boolean skipRoot) {
+            List<Path> dirs = new ArrayList<>(index.get(user).keySet());
+            //skip the root folder - it is special
+            if (skipRoot)
+                dirs.remove(Paths.get("/"+user));
+            int pos = random.nextInt(dirs.size());
+            return dirs.get(pos);
+        }
+
+        private Path getRandomExistingFile(String user) {
+
+            Path dir = getRandomExistingDirectory(user, false);
+            List<String> fileNames = index.get(user).get(dir);
+
+            if (fileNames.isEmpty())
+                return getRandomExistingFile(user);
+            int pos = random.nextInt(fileNames.size());
+            String fileName = fileNames.get(pos);
+            return dir.resolve(fileName);
+        }
+
+        public void addUser(String user) {
+            index.put(user, new HashMap<>());
+        }
+
+        public Map<Path, List<String>> getDirToFiles(String user) {
+            return index.get(user);
+        }
+    }
+
     private static final Logger LOG = Logging.LOG();
     private static final int MIN_FILE_LENGTH = 256;
     private static final int MAX_FILE_LENGTH = Integer.MAX_VALUE;
 
-    enum Simulation {READ, WRITE, MKDIR, RM, RMDIR}
+    enum Simulation {READ, WRITE, MKDIR, RM, RMDIR,
+        GRANT_READ_FILE, GRANT_READ_DIR, GRANT_WRITE_FILE, GRANT_WRITE_DIR,
+        REVOKE_READ, REVOKE_WRITE;
+
+        public FileSystem.Permission permission() {
+            switch (this) {
+                case GRANT_READ_FILE:
+                case GRANT_READ_DIR:
+                case REVOKE_READ:
+                    return FileSystem.Permission.READ;
+
+                case GRANT_WRITE_DIR:
+                case GRANT_WRITE_FILE:
+                case REVOKE_WRITE:
+                    return FileSystem.Permission.WRITE;
+            }
+            return null;
+        }
+    }
 
     private final int opCount;
     private final Random random;
     private final Supplier<Simulation> getNextSimulation;
     private final long meanFileLength;
     private final SimulationRecord simulationRecord = new SimulationRecord();
+    private final FileSystems fileSystems;
+    private final FileSystemIndex index;
 
-    private final FileSystem referenceFileSystem, testFileSystem;
-
-    private final Map<Path, List<String>> simulatedDirectoryToFiles = new HashMap<>();
 
     long fileNameCounter;
 
@@ -62,65 +121,49 @@ public class Simulator implements Runnable {
         return "" + fileNameCounter++;
     }
 
-
-    private Path getRandomExistingFile() {
-
-        Path dir = getRandomExistingDirectory();
-        List<String> fileNames = simulatedDirectoryToFiles.get(dir);
-        if (fileNames.isEmpty())
-            return getRandomExistingFile();
-        int pos = random.nextInt(fileNames.size());
-        String fileName = fileNames.get(pos);
-        return dir.resolve(fileName);
-    }
-
-    private Path getRandomExistingDirectory() {
-        List<Path> directories = new ArrayList<>(simulatedDirectoryToFiles.keySet());
-
-        try {
-            int pos = random.nextInt(directories.size());
-            return directories.get(pos);
-        } catch (Exception ex) {
-            System.out.println();
-            throw ex;
-        }
-
-    }
-
-    private void rm() {
-        Path path = getRandomExistingFile();
-        simulatedDirectoryToFiles.get(path.getParent()).remove(path.getFileName().toString());
-
+    private void rm(String user) {
+        Path path = index.getRandomExistingFile(user);
+        index.getDirToFiles(user).get(path.getParent()).remove(path.getFileName().toString());
+        FileSystem testFileSystem = fileSystems.getTestFileSystem(user);
+        FileSystem referenceFileSystem = fileSystems.getReferenceFileSystem(user);
+        log(user, Simulation.RM, path);
         testFileSystem.delete(path);
         referenceFileSystem.delete(path);
     }
 
-    private void rmdir() {
-        Path path = getRandomExistingDirectory();
-        //rm -r
+    private void rmdir(String user) {
+        Path path = index.getRandomExistingDirectory(user, false);
+        log(user, Simulation.RMDIR, path);
 
-        for (Path p : new ArrayList<>(simulatedDirectoryToFiles.keySet())) {
+        Map<Path, List<String>> dirsToFiles = index.getDirToFiles(user);
+        for (Path p : new ArrayList<>(dirsToFiles.keySet())) {
             if (p.startsWith(path))
-                simulatedDirectoryToFiles.remove(p);
+                dirsToFiles.remove(p);
         }
+
+        FileSystem testFileSystem = fileSystems.getTestFileSystem(user);
+        FileSystem referenceFileSystem = fileSystems.getReferenceFileSystem(user);
 
         testFileSystem.delete(path);
         referenceFileSystem.delete(path);
     }
 
-    private Path mkdir() {
+    private Path mkdir(String user) {
         String dirBaseName = getNextName();
 
-        Path path = getRandomExistingDirectory().resolve(dirBaseName);
-        simulatedDirectoryToFiles.putIfAbsent(path, new ArrayList<>());
-        LOG.info("mkdir-ing  "+ path);
+        Path path = index.getRandomExistingDirectory(user, false).resolve(dirBaseName);
+        index.getDirToFiles(user).putIfAbsent(path, new ArrayList<>());
+        log(user, Simulation.MKDIR, path);
+
+        FileSystem testFileSystem = fileSystems.getTestFileSystem(user);
+        FileSystem referenceFileSystem = fileSystems.getReferenceFileSystem(user);
         testFileSystem.mkdir(path);
         referenceFileSystem.mkdir(path);
         return path;
     }
 
-    private Path getAvailableFilePath() {
-        return getRandomExistingDirectory().resolve(getNextName());
+    private Path getAvailableFilePath(String user) {
+        return index.getRandomExistingDirectory(user, false).resolve(getNextName());
     }
 
     private int getNextFileLength() {
@@ -136,63 +179,199 @@ public class Simulator implements Runnable {
         return bytes;
     }
 
-    public Simulator(int opCount, Random  random, Supplier<Simulation> getNextSimulation, long meanFileLength, FileSystem referenceFileSystem, FileSystem testFileSystem) {
-        if (! referenceFileSystem.user().equals(testFileSystem.user()))
-            throw new IllegalStateException("Users must be the same");
 
-        simulatedDirectoryToFiles.put(Paths.get("/"+ referenceFileSystem.user()), new ArrayList<>());
+    private static class FileSystems {
+        private final List<Pair<FileSystem, FileSystem>> peergosAndNativeFileSystemPair;
+        private final Random random;
 
+        public FileSystems(List<Pair<FileSystem, FileSystem>> peergosAndNativeFileSystemPair, Random random) {
+            for (Pair<FileSystem, FileSystem> userFileSystem : peergosAndNativeFileSystemPair) {
+                boolean usersMatch = userFileSystem.left.user().equals(userFileSystem.right.user());
+                if (!usersMatch)
+                    throw new IllegalStateException();
+            }
+            this.peergosAndNativeFileSystemPair = peergosAndNativeFileSystemPair;
+            this.random = random;
+        }
+
+        /**
+         * @return (peergosFileSystem, referenceFileSystem)
+         */
+
+        public String getNextUser() {
+            int pos = random.nextInt(peergosAndNativeFileSystemPair.size());
+            return peergosAndNativeFileSystemPair.get(pos).right.user();
+        }
+
+        public String getNextUser(String notThisUser) {
+            do {
+                int pos = random.nextInt(peergosAndNativeFileSystemPair.size());
+                String user = peergosAndNativeFileSystemPair.get(pos).right.user();
+                if (user.equals(notThisUser))
+                    continue;
+                return user;
+            } while (true);
+        }
+
+        public NativeFileSystemImpl getReferenceFileSystem(String user) {
+            return peergosAndNativeFileSystemPair.stream()
+                    .filter(e -> e.right.user().equals(user))
+                    .map(e -> (NativeFileSystemImpl) e.right)
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalStateException());
+        }
+
+        public PeergosFileSystemImpl getTestFileSystem(String user) {
+            return peergosAndNativeFileSystemPair.stream()
+                    .filter(e -> e.right.user().equals(user))
+                    .map(e -> (PeergosFileSystemImpl) e.left)
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalStateException());
+        }
+
+        public List<String> getUsers() {
+            return peergosAndNativeFileSystemPair.stream()
+                    .map(e -> e.left.user())
+                    .collect(Collectors.toList());
+        }
+    }
+
+    public Simulator(int opCount, Random random, long meanFileLength,
+                     Supplier<Simulation> getNextSimulation,
+                     FileSystems fileSystems) {
+
+        this.fileSystems = fileSystems;
         this.opCount = opCount;
         this.random = random;
         this.getNextSimulation = getNextSimulation;
         this.meanFileLength = meanFileLength;
-        this.referenceFileSystem = referenceFileSystem;
-        this.testFileSystem = testFileSystem;
+        this.index = new FileSystemIndex(random);
     }
 
-    private boolean read(Path path) {
-        LOG.info("Reading path " + path);
+    private boolean read(String user, Path path) {
+        log(user, Simulation.READ, path);
+
+        FileSystem testFileSystem = fileSystems.getTestFileSystem(user);
+        FileSystem referenceFileSystem = fileSystems.getReferenceFileSystem(user);
+
         byte[] refBytes = referenceFileSystem.read(path);
         byte[] testBytes = testFileSystem.read(path);
         return Arrays.equals(refBytes, testBytes);
     }
 
-    private void write() {
-        Path path = getAvailableFilePath();
+    private void log(String user, Simulation simulation, Path path, String... extra) {
+        String msg = "OP: <" + user + "> " + simulation + " " + path + " " + extra;
+        LOG.info(msg);
+    }
+
+    private void write(String user) {
+        Path path = getAvailableFilePath(user);
         byte[] fileContents = getNextFileContents();
 
         Path dirName = path.getParent();
         String fileName = path.getFileName().toString();
-        simulatedDirectoryToFiles.get(dirName).add(fileName);
+        Map<Path, List<String>> dirsToFiles = index.getDirToFiles(user);
+        dirsToFiles.get(dirName).add(fileName);
 
-        LOG.info("Writing path " + path.resolve(fileName) + " with length " + fileContents.length);
+        log(user, Simulation.WRITE, path);
+
+        FileSystem testFileSystem = fileSystems.getTestFileSystem(user);
+        FileSystem referenceFileSystem = fileSystems.getReferenceFileSystem(user);
 
         testFileSystem.write(path, fileContents);
         referenceFileSystem.write(path, fileContents);
     }
 
+    private boolean grantPermission(String granter, String grantee, Path path, FileSystem.Permission permission) {
+
+        FileSystem testFileSystem = fileSystems.getTestFileSystem(granter);
+        FileSystem referenceFileSystem = fileSystems.getReferenceFileSystem(granter);
+
+        testFileSystem.grant(path, grantee, permission);
+        referenceFileSystem.grant(path, grantee, permission);
+
+        return true;
+    }
+
+    private boolean revokePermission(String revoker, String revokee, Path path, FileSystem.Permission permission) {
+        FileSystem testFileSystem = fileSystems.getTestFileSystem(revoker);
+        FileSystem referenceFileSystem = fileSystems.getReferenceFileSystem(revoker);
+
+        testFileSystem.revoke(path, revokee, permission);
+        referenceFileSystem.revoke(path, revokee, permission);
+
+        return true;
+    }
+
     private void init() {
-        //seed file-system with a directory and a file
-        run(Simulation.MKDIR);
-        run(Simulation.WRITE);
+        List<String> users = this.fileSystems.getUsers();
+        Collections.sort(users);
+
+        for (String user : users) {
+            index.addUser(user);
+            index.getDirToFiles(user).put(Paths.get("/" + user), new ArrayList<>());
+            // seed the file-system
+            run(Simulation.MKDIR, user);
+            run(Simulation.WRITE, user);
+
+            // ALL PAIRWISE FRIENDS
+            for (String otherUser : users) {
+                if (user.compareTo(otherUser) >= 0)
+                    continue;
+                fileSystems.getTestFileSystem(user).follow(fileSystems.getTestFileSystem(otherUser));
+                fileSystems.getReferenceFileSystem(user).follow(fileSystems.getReferenceFileSystem(otherUser));
+            }
+
+        }
     }
 
     private void run(Simulation simulation) {
+        String nextUser = fileSystems.getNextUser();
+        run(simulation, nextUser);
+    }
+
+    private void run(Simulation simulation, String user) {
+        Supplier<String> otherUser = () -> fileSystems.getNextUser(user);
+        Supplier<Path> randomFilePathForUser = () -> index.getRandomExistingFile(user);
+        Supplier<Path> randomFolderPathForUser = () -> index.getRandomExistingDirectory(user, true);
+
         switch (simulation) {
             case READ:
-                read(getRandomExistingFile());
+                read(user, randomFilePathForUser.get());
                 break;
             case WRITE:
-                write();
+                write(user);
                 break;
             case MKDIR:
-                mkdir();
+                mkdir(user);
                 break;
             case RM:
-                rm();
+                rm(user);
                 break;
             case RMDIR:
-                rmdir();
+                rmdir(user);
+                break;
+            case GRANT_READ_FILE:
+            case GRANT_WRITE_FILE:
+                Path grantFilePath = randomFilePathForUser.get();
+                String fileGrantee = otherUser.get();
+                log(user, simulation, grantFilePath, " with grantee "+ fileGrantee);
+                grantPermission(user, fileGrantee, grantFilePath, simulation.permission());
+                break;
+            case GRANT_READ_DIR:
+            case GRANT_WRITE_DIR:
+                String dirGrantee = otherUser.get();
+                Path grantDirPath = randomFolderPathForUser.get();
+                log(user, simulation, grantDirPath, " with grantee "+ dirGrantee);
+                grantPermission(user, dirGrantee, grantDirPath, simulation.permission());
+                break;
+            case REVOKE_READ:
+            case REVOKE_WRITE:
+                String revokee = otherUser.get();
+                Path revokePath = fileSystems.getReferenceFileSystem(user).getRandomSharedPath(random, simulation.permission());
+                log(user, simulation, revokePath, " with revokee "+ revokee);
+                revokePermission(user, revokee,
+                        revokePath, simulation.permission());
                 break;
             default:
                 throw new IllegalStateException("Unexpected simulation " + simulation);
@@ -212,60 +391,137 @@ public class Simulator implements Runnable {
 
         LOG.info("Running file-system verification");
         boolean isVerified = verify();
-        LOG.info("System verified =  "+ isVerified);
+        LOG.info("System verified =  " + isVerified);
     }
 
-    private boolean verify() {
-        Set<Path> expectedFiles = simulatedDirectoryToFiles.entrySet().stream()
-                .flatMap(e -> e.getValue().stream()
-                        .map(file -> e.getKey().resolve(file)))
-                .collect(Collectors.toSet());
-
-
+    /**
+     * This  will  overwrite the content @ path with [0].
+     * @param user
+     * @param path
+     * @return
+     */
+    private boolean verifySharingPermissions(String user, Path path) {
+        FileSystem peergosFileSystem = fileSystems.getTestFileSystem(user);
+        FileSystem nativeFileSystem = fileSystems.getReferenceFileSystem(user);
 
         boolean isVerified = true;
-
-        for (FileSystem fs : Arrays.asList(testFileSystem, referenceFileSystem)) {
-
-            Set<Path> paths = new HashSet<>();
-            fs.walk(paths::add);
-
-            Set<Path> expectedFilesAndFolders  =  new HashSet<>(expectedFiles);
-            expectedFilesAndFolders.addAll(simulatedDirectoryToFiles.keySet());
-
-            // extras?
-            Set<Path> extras = new HashSet<>(paths);
-            extras.removeAll(expectedFilesAndFolders);
-
-            for (Path extra : extras) {
-                LOG.info("filesystem " + fs + " has an extra path " + extra);
+        for (FileSystem.Permission permission : FileSystem.Permission.values()) {
+            Set<String> shareesInPeergos = new HashSet<>(peergosFileSystem.getSharees(path, permission));
+            Set<String> shareesInLocal = new HashSet<>(nativeFileSystem.getSharees(path, permission));
+            if (! shareesInPeergos.equals(shareesInLocal)) {
+                LOG.info("User " + peergosFileSystem.user() + " path " + path + " has peergos-fs " + permission.name() + "ers " +
+                        shareesInPeergos + " and local-fs " + permission.name() + "ers " + shareesInLocal);
                 isVerified = false;
             }
 
-            // missing?
-            expectedFilesAndFolders.removeAll(paths);
-            for (Path missing : expectedFilesAndFolders) {
-                LOG.info("filesystem " + fs + " is missing  the path " + missing);
-                isVerified = false;
-            }
-        }
+            //check they can actually read
+            for (String sharee : shareesInPeergos) {
 
-        // contents
-        for (Path path : expectedFiles) {
-            try {
-                byte[] testData = testFileSystem.read(path);
-                byte[] refData = referenceFileSystem.read(path);
-                if (!Arrays.equals(testData, refData)) {
-                    LOG.info("Path " + path + " has different contents between the file-systems");
-                    isVerified = false;
+                byte[] read = null;
+                PeergosFileSystemImpl fs = fileSystems.getTestFileSystem(sharee);
+                switch (permission) {
+                    case READ:
+                        try {
+                            //can read?
+                            read = fs.read(path);
+                        } catch (Exception ex) {
+                            LOG.log(Level.WARNING, "User "+ sharee +" could not read shared-path "+ path +"!", ex);
+                            isVerified = false;
+                        }
+                    case WRITE:
+                        try {
+                            // can overwrite?
+                            fs.write(path, new byte[]{0});
+                        } catch (Exception ex) {
+                            LOG.log(Level.WARNING, "User "+ sharee +" could not write  shared-path "+ path +"!", ex);
+                        }
+                    default:
+                        throw new IllegalStateException();
                 }
-            } catch (Exception ex) {
-                LOG.info("Failed to read path + " + path);
-                isVerified = false;
             }
+
+
         }
         return isVerified;
     }
+
+    private boolean verifyContents(String user, Path path) {
+        FileSystem peergosFileSystem = fileSystems.getTestFileSystem(user);
+        FileSystem nativeFileSystem = fileSystems.getReferenceFileSystem(user);
+
+        try {
+            byte[] testData = peergosFileSystem.read(path);
+            byte[] refData = nativeFileSystem.read(path);
+            if (!Arrays.equals(testData, refData)) {
+                LOG.info("Path " + path + " has different contents between the file-systems");
+                return false;
+            }
+        } catch (Exception ex) {
+            LOG.info("Failed to read path + " + path);
+            return false;
+        }
+        return true;
+    }
+
+    private boolean verify() {
+
+        boolean isGlobalVerified = true;
+
+        for (String user : fileSystems.getUsers()) {
+
+            Map<Path, List<String>> dirToFiles = index.getDirToFiles(user);
+            Set<Path> expectedFilesForUser = dirToFiles.entrySet().stream()
+                    .flatMap(ee -> ee.getValue().stream()
+                            .map(file -> ee.getKey().resolve(file)))
+                    .collect(Collectors.toSet());
+
+
+            FileSystem testFileSystem = fileSystems.getTestFileSystem(user);
+            FileSystem referenceFileSystem = fileSystems.getReferenceFileSystem(user);
+
+            boolean isUserVerified = true;
+            for (FileSystem fs : Arrays.asList(testFileSystem, referenceFileSystem)) {
+
+                Set<Path> paths = new HashSet<>();
+                fs.walk(paths::add);
+
+                Set<Path> expectedFilesAndFolders = new HashSet<>(expectedFilesForUser);
+                expectedFilesAndFolders.addAll(dirToFiles.keySet());
+
+                // extras?
+                Set<Path> extras = new HashSet<>(paths);
+                extras.removeAll(expectedFilesAndFolders);
+
+                for (Path extra : extras) {
+                    LOG.info("filesystem " + fs + " has an extra path " + extra);
+                    isUserVerified = false;
+                }
+
+                // missing?
+                expectedFilesAndFolders.removeAll(paths);
+                for (Path missing : expectedFilesAndFolders) {
+                    LOG.info("filesystem " + fs + " is missing  the path " + missing);
+                    isUserVerified = false;
+                }
+            }
+
+            // contents
+            for (Path path : expectedFilesForUser) {
+                boolean verifyContents = verifyContents(user, path);
+                boolean sharingPermissionsAreVerified = verifySharingPermissions(user, path);
+                isUserVerified &= verifyContents;
+                isUserVerified &= sharingPermissionsAreVerified;
+            }
+            if (!isUserVerified) {
+                LOG.info("User " + user + " is not verified!");
+                isGlobalVerified = false;
+            }
+
+
+        }
+        return isGlobalVerified;
+    }
+
 
     public static void main(String[] a) throws Exception {
         Crypto crypto = Crypto.initJava();
@@ -276,30 +532,39 @@ public class Simulator implements Runnable {
                 .with("pki.keyfile.password", "testpassword")
                 .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, ""); // no bootstrapping
         Main.PKI_INIT.main(args);
-
-        NetworkAccess networkAccess = NetworkAccess.buildJava(new URL("http://localhost:" + args.getInt("port"))).get();
-
-
         LOG.info("***NETWORK READY***");
 
+        AccessControl accessControl = new AccessControl.MemoryImpl();
+        Function<String, Pair<FileSystem, FileSystem>> fsPairBuilder = username -> {
+            try {
+                NetworkAccess networkAccess = NetworkAccess.buildJava(new URL("http://localhost:" + args.getInt("port"))).get();
+                UserContext userContext = PeergosNetworkUtils.ensureSignedUp(username, username + "_password", networkAccess, crypto);
+                PeergosFileSystemImpl peergosFileSystem = new PeergosFileSystemImpl(userContext);
+                Path root = Files.createTempDirectory("test_filesystem-" + username);
+                NativeFileSystemImpl nativeFileSystem = new NativeFileSystemImpl(root, username, accessControl);
+                return new Pair<>(peergosFileSystem, nativeFileSystem);
+            } catch (Exception ioe) {
+                throw new IllegalStateException(ioe);
+            }
+        };
 
-        UserContext userContext = PeergosNetworkUtils.ensureSignedUp("some-user", "some password", networkAccess, crypto);
 
-        PeergosFileSystemImpl peergosFileSystem = new PeergosFileSystemImpl(userContext);
-
-        Path root = Files.createTempDirectory("test_filesystem");
-        NativeFileSystemImpl nativeFileSystem = new NativeFileSystemImpl(root, "some-user");
-
-        int opCount = 100;
+        int opCount = 200;
 
         Map<Simulation, Double> probabilities = Stream.of(
                 new Pair<>(Simulation.READ, 0.0),
-                new Pair<>(Simulation.WRITE, 0.5),
+                new Pair<>(Simulation.WRITE, 0.4),
                 new Pair<>(Simulation.RM, 0.0),
-                new Pair<>(Simulation.MKDIR, 0.45),
-                new Pair<>(Simulation.RMDIR, 0.05)
+                new Pair<>(Simulation.MKDIR, 0.1),
+                new Pair<>(Simulation.RMDIR, 0.0),
+                new Pair<>(Simulation.GRANT_READ_FILE, 0.2),
+                new Pair<>(Simulation.GRANT_WRITE_FILE, 0.1),
+                new Pair<>(Simulation.GRANT_READ_DIR, 0.05),
+                new Pair<>(Simulation.GRANT_WRITE_DIR, 0.05),
+                new Pair<>(Simulation.REVOKE_READ, 0.05),
+                new Pair<>(Simulation.REVOKE_WRITE, 0.05)
         ).collect(
-                Collectors.toMap(e -> e.left, e-> e.right));
+                Collectors.toMap(e -> e.left, e -> e.right));
 
         final Random random = new Random(1);
 
@@ -320,7 +585,14 @@ public class Simulator implements Runnable {
         CryptreeNode.setMaxChildLinkPerBlob(10);
 
         int meanFileLength = 256;
-        Simulator simulator = new Simulator(opCount, random, getNextSimulation, meanFileLength, nativeFileSystem, peergosFileSystem);
+        List<Pair<FileSystem, FileSystem>> fs = Arrays.asList(
+                fsPairBuilder.apply("left"),
+                fsPairBuilder.apply("right")
+        );
+
+
+        FileSystems fileSystems = new FileSystems(fs, random);
+        Simulator simulator = new Simulator(opCount, random, meanFileLength, getNextSimulation, fileSystems);
 
         try {
             simulator.run();

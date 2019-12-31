@@ -2,6 +2,7 @@ package peergos.server.tests.simulation;
 
 import peergos.server.simulation.AccessControl;
 import peergos.server.simulation.FileSystem;
+import peergos.server.simulation.PeergosFileSystemImpl;
 import peergos.server.simulation.Stat;
 import peergos.shared.user.fs.FileProperties;
 
@@ -16,6 +17,7 @@ import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.Random;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -24,26 +26,23 @@ public class NativeFileSystemImpl implements FileSystem {
 
     private final Path root;
     private final String user;
-    private final AccessControl accessControl = new AccessControl.MemoryImpl();
+    private final AccessControl accessControl;
 
-    public NativeFileSystemImpl(Path root, String user) {
+    public NativeFileSystemImpl(Path root, String user, AccessControl accessControl) {
         this.root = root;
         this.user = user;
+        this.accessControl =  accessControl;
         init();
     }
 
     private void init() {
         Path userRoot = Paths.get("/" + user);
-//        Path sharedRoot = userRoot.resolve("shared");
-//        Path peergosShare = sharedRoot.resolve("peergos");
 
         for (Path path : Arrays.asList(
                 userRoot
 //                , sharedRoot,
 //                peergosShare
         )) {
-            accessControl.add(path, user(), Permission.WRITE);
-            accessControl.add(path, user(), Permission.READ);
             mkdir(path);
         }
 
@@ -112,14 +111,18 @@ public class NativeFileSystemImpl implements FileSystem {
     }
 
     @Override
-    public void grant(Path path, String user, FileSystem.Permission permission) {
-        ensureCan(path, permission, user);
-        accessControl.add(path, user, permission);
+    public void grant(Path path, String otherUser, FileSystem.Permission permission) {
+        if (! isOwner(path))
+            throw new IllegalStateException();
+
+        accessControl.add(path, otherUser, permission);
     }
 
     @Override
     public void revoke(Path path, String user, FileSystem.Permission permission) {
-        ensureCan(path, permission, user);
+        if (! isOwner(path))
+            throw new IllegalStateException();
+
         accessControl.remove(path, user, permission);
     }
 
@@ -219,5 +222,21 @@ public class NativeFileSystemImpl implements FileSystem {
         Path p5 = Paths.get("/some/thing/else");
         System.out.println(p5.getName(1));
 
+    }
+
+    @Override
+    public void follow(FileSystem other) {
+        return; // this isn't being tested... yet
+    }
+
+
+    @Override
+    public Path getRandomSharedPath(Random random, Permission permission) {
+        return accessControl.getRandomSharedPath(random, permission);
+    }
+
+    @Override
+    public List<String> getSharees(Path path, Permission permission) {
+        return accessControl.get(path, permission);
     }
 }
