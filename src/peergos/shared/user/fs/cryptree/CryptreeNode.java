@@ -477,6 +477,7 @@ public class CryptreeNode implements Cborable {
                     newParent.cap.writer, newMapKey, baseRead, baseWrite);
             return Futures.of(new Pair<>(version, newParent.withCap(newChildCap)));
         }
+
         if (! rotateSigner) {
             WritableAbsoluteCapability newChildCap = new WritableAbsoluteCapability(currentChild.cap.owner,
                     currentChild.cap.writer, newMapKey, baseRead, baseWrite);

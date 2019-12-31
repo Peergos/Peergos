@@ -54,6 +54,7 @@ public class Simulator implements Runnable {
 
         private Path getRandomExistingDirectory(String user,  boolean skipRoot) {
             List<Path> dirs = new ArrayList<>(index.get(user).keySet());
+            Collections.sort(dirs);
             //skip the root folder - it is special
             if (skipRoot)
                 dirs.remove(Paths.get("/"+user));
@@ -260,7 +261,10 @@ public class Simulator implements Runnable {
     }
 
     private void log(String user, Simulation simulation, Path path, String... extra) {
-        String msg = "OP: <" + user + "> " + simulation + " " + path + " " + extra;
+        String extraS = Stream.of(extra)
+                .collect(Collectors.joining(","));
+
+        String msg = "OP: <" + user + "> " + simulation + " " + path + " " + extraS;
         LOG.info(msg);
     }
 
@@ -330,7 +334,7 @@ public class Simulator implements Runnable {
         run(simulation, nextUser);
     }
 
-    private void run(Simulation simulation, String user) {
+    private void run(final Simulation simulation, final String user) {
         Supplier<String> otherUser = () -> fileSystems.getNextUser(user);
         Supplier<Path> randomFilePathForUser = () -> index.getRandomExistingFile(user);
         Supplier<Path> randomFolderPathForUser = () -> index.getRandomExistingDirectory(user, true);
@@ -355,23 +359,34 @@ public class Simulator implements Runnable {
             case GRANT_WRITE_FILE:
                 Path grantFilePath = randomFilePathForUser.get();
                 String fileGrantee = otherUser.get();
-                log(user, simulation, grantFilePath, " with grantee "+ fileGrantee);
+                log(user, simulation, grantFilePath, "with grantee "+ fileGrantee);
                 grantPermission(user, fileGrantee, grantFilePath, simulation.permission());
                 break;
             case GRANT_READ_DIR:
             case GRANT_WRITE_DIR:
-                String dirGrantee = otherUser.get();
                 Path grantDirPath = randomFolderPathForUser.get();
-                log(user, simulation, grantDirPath, " with grantee "+ dirGrantee);
+                String dirGrantee = otherUser.get();
+                log(user, simulation, grantDirPath, "with grantee "+ dirGrantee);
                 grantPermission(user, dirGrantee, grantDirPath, simulation.permission());
                 break;
             case REVOKE_READ:
             case REVOKE_WRITE:
                 String revokee = otherUser.get();
-                Path revokePath = fileSystems.getReferenceFileSystem(user).getRandomSharedPath(random, simulation.permission());
-                log(user, simulation, revokePath, " with revokee "+ revokee);
-                revokePermission(user, revokee,
-                        revokePath, simulation.permission());
+                Path revokePath = null;
+                try {
+                    revokePath = fileSystems.getReferenceFileSystem(user).getRandomSharedPath(random, simulation.permission());
+                } catch (IllegalStateException ile) {
+                    //nothing shared yet
+                    return;
+                }
+                log(user, simulation, revokePath, "with revokee "+ revokee);
+                try {
+                    revokePermission(user, revokee,
+                            revokePath, simulation.permission());
+                } catch (Exception ex) {
+                    System.out.println();
+                    throw ex;
+                }
                 break;
             default:
                 throw new IllegalStateException("Unexpected simulation " + simulation);
@@ -526,7 +541,8 @@ public class Simulator implements Runnable {
     public static void main(String[] a) throws Exception {
         Crypto crypto = Crypto.initJava();
         Args args = buildArgs()
-                .with("useIPFS", "true")
+//                .with("useIPFS", "true")
+                .with("useIPFS", "false")
                 .with("peergos.password", "testpassword")
                 .with("pki.keygen.password", "testpkipassword")
                 .with("pki.keyfile.password", "testpassword")
@@ -534,13 +550,13 @@ public class Simulator implements Runnable {
         Main.PKI_INIT.main(args);
         LOG.info("***NETWORK READY***");
 
-        AccessControl accessControl = new AccessControl.MemoryImpl();
         Function<String, Pair<FileSystem, FileSystem>> fsPairBuilder = username -> {
             try {
                 NetworkAccess networkAccess = NetworkAccess.buildJava(new URL("http://localhost:" + args.getInt("port"))).get();
                 UserContext userContext = PeergosNetworkUtils.ensureSignedUp(username, username + "_password", networkAccess, crypto);
                 PeergosFileSystemImpl peergosFileSystem = new PeergosFileSystemImpl(userContext);
                 Path root = Files.createTempDirectory("test_filesystem-" + username);
+                AccessControl accessControl = new AccessControl.MemoryImpl();
                 NativeFileSystemImpl nativeFileSystem = new NativeFileSystemImpl(root, username, accessControl);
                 return new Pair<>(peergosFileSystem, nativeFileSystem);
             } catch (Exception ioe) {

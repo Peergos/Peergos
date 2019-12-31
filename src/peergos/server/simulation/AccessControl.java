@@ -7,7 +7,7 @@ import java.util.stream.Stream;
 
 public interface AccessControl {
 
-    String getOwner(Path path);
+
 
     List<String> get(Path path, FileSystem.Permission permission);
 
@@ -27,11 +27,23 @@ public interface AccessControl {
         }
 
         void addAllowed(Path path, String user) {
+
             getAllowed(path).add(user);
         }
 
         void removeAllowed(Path path, String user) {
             getAllowed(path).remove(user);
+        }
+    }
+
+    static String getOwner(Path path) {
+        /**
+         * Should be "/owner/..."
+         */
+        try {
+            return path.getName(0).toString();
+        } catch (Throwable t) {
+            throw t;
         }
     }
 
@@ -63,18 +75,6 @@ public interface AccessControl {
                     return writers;
                 default:
                     throw new IllegalStateException("Unimplemented");
-            }
-        }
-
-        @Override
-        public String getOwner(Path path) {
-            /**
-             * Should be "/owner/..."
-             */
-            try {
-                return path.getName(0).toString();
-            } catch (Throwable t) {
-                throw t;
             }
         }
 
