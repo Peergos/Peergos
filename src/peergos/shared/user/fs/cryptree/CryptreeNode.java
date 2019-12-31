@@ -472,10 +472,15 @@ public class CryptreeNode implements Cborable {
         SymmetricKey baseRead = SymmetricKey.random();
         SymmetricKey baseWrite = SymmetricKey.random();
         byte[] newMapKey = crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH);
-        if (currentChild.cap.writer.equals(currentParent.cap.writer) || ! rotateSigner) {
+        if (currentChild.cap.writer.equals(currentParent.cap.writer)) {
             WritableAbsoluteCapability newChildCap = new WritableAbsoluteCapability(currentChild.cap.owner,
                     newParent.cap.writer, newMapKey, baseRead, baseWrite);
             return Futures.of(new Pair<>(version, newParent.withCap(newChildCap)));
+        }
+        if (! rotateSigner) {
+            WritableAbsoluteCapability newChildCap = new WritableAbsoluteCapability(currentChild.cap.owner,
+                    currentChild.cap.writer, newMapKey, baseRead, baseWrite);
+            return Futures.of(new Pair<>(version, currentChild.withCap(newChildCap)));
         }
         SigningKeyPair newSignerPair = SigningKeyPair.random(crypto.random, crypto.signer);
         return initAndAuthoriseSigner(currentChild.cap.owner, newParent.signer, newSignerPair, network, version, committer)
