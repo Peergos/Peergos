@@ -107,14 +107,13 @@ public class NativeFileSystemImpl implements FileSystem {
     }
 
     private boolean isOwner(Path path) {
-        return user().equals(accessControl.getOwner(path));
+        return user().equals(AccessControl.getOwner(path));
     }
 
     @Override
     public void grant(Path path, String otherUser, FileSystem.Permission permission) {
         if (! isOwner(path))
             throw new IllegalStateException();
-
         accessControl.add(path, otherUser, permission);
     }
 
