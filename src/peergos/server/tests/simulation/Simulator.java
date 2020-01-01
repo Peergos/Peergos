@@ -443,6 +443,7 @@ public class Simulator implements Runnable {
                             LOG.log(Level.WARNING, "User "+ sharee +" could not read shared-path "+ path +"!", ex);
                             isVerified = false;
                         }
+                        break;
                     case WRITE:
                         try {
                             // can overwrite?
@@ -450,6 +451,7 @@ public class Simulator implements Runnable {
                         } catch (Exception ex) {
                             LOG.log(Level.WARNING, "User "+ sharee +" could not write  shared-path "+ path +"!", ex);
                         }
+                        break;
                     default:
                         throw new IllegalStateException();
                 }
