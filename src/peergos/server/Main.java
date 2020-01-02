@@ -372,6 +372,10 @@ public class Main {
                 S3Config s3Config = S3Config.build(a);
                 // In this mode of operation we require the ipfs id to be supplied as we don't have a local ipfs running
                 Multihash id = Cid.decode(a.getArg("ipfs.id"));
+                // We also cannot have GC running
+                boolean enableGC = a.getBoolean("enable-gc", false);
+                if (enableGC)
+                    throw new IllegalStateException("GC has not been implemented when directly using S3!");
                 localDht = new S3BlockStorage(s3Config, id);
             } else
                 localDht = new FileContentAddressedStorage(blockstorePath(a));
