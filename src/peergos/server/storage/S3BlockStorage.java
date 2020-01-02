@@ -32,7 +32,7 @@ public class S3BlockStorage implements ContentAddressedStorage {
             .exponentialBuckets(0.01, 2, 16).register();
     private static final Histogram writeTimerLog = Histogram.build()
             .labelNames("filesize")
-            .name("s3_block_write_seconds").help("Time to read a block from immutable storage")
+            .name("s3_block_write_seconds").help("Time to write a block to immutable storage")
             .exponentialBuckets(0.01, 2, 16).register();
 
     private final Multihash id;
