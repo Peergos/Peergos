@@ -368,6 +368,11 @@ public class Main {
                     localDht = new CachingStorage(gced, dhtCacheEntries, maxValueSizeToCache);
                 } else
                     localDht = new CachingStorage(ipfs, dhtCacheEntries, maxValueSizeToCache);
+            } else if (S3Config.useS3(a)) {
+                S3Config s3Config = S3Config.build(a);
+                // In this mode of operation we require the ipfs id to be supplied as we don't have a local ipfs running
+                Multihash id = Cid.decode(a.getArg("ipfs.id"));
+                localDht = new S3BlockStorage(s3Config, id);
             } else
                 localDht = new FileContentAddressedStorage(blockstorePath(a));
 

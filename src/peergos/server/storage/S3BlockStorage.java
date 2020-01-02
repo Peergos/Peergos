@@ -4,6 +4,7 @@ import com.amazonaws.*;
 import com.amazonaws.auth.*;
 import com.amazonaws.services.s3.*;
 import com.amazonaws.services.s3.model.*;
+import peergos.server.util.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
@@ -22,6 +23,7 @@ import java.util.logging.Logger;
 import java.util.stream.*;
 
 public class S3BlockStorage implements ContentAddressedStorage {
+
     private static final Logger LOG = Logger.getGlobal();
 
     private static final Histogram readTimerLog = Histogram.build()
@@ -37,13 +39,14 @@ public class S3BlockStorage implements ContentAddressedStorage {
     private final AmazonS3 s3Client;
     private final String bucket, folder;
 
-    public S3BlockStorage(String region, String accessKey, String secretKey, String bucket, String folder, Multihash id) {
+    public S3BlockStorage(S3Config config, Multihash id) {
         this.id = id;
-        this.bucket = bucket;
-        this.folder = folder.isEmpty() || folder.endsWith("/") ? folder : folder + "/";
+        this.bucket = config.bucket;
+        this.folder = config.path.isEmpty() || config.path.endsWith("/") ? config.path : config.path + "/";
         AmazonS3ClientBuilder builder = AmazonS3ClientBuilder.standard()
-                .withRegion(region)
-                .withCredentials(new AWSStaticCredentialsProvider(new BasicAWSCredentials(accessKey, secretKey)));
+                .withRegion(config.region)
+                .withCredentials(new AWSStaticCredentialsProvider(
+                        new BasicAWSCredentials(config.accessKey, config.secretKey)));
         s3Client = builder.build();
     }
 
@@ -300,17 +303,12 @@ public class S3BlockStorage implements ContentAddressedStorage {
 
     public static void main(String[] args) {
         // Use this method to test access to a bucket
-        String bucket = args[0];
-        String accessKey = args[1];
-        String secretKey = args[2];
-        String region = args.length > 3 ? args[3] : "eu-west-1";
-        String folder = "";
-
-        System.out.println("Testing S3 bucket: " + bucket + " in region " + region + " with base dir: " + folder);
+        S3Config config = S3Config.build(Args.parse(args));
+        System.out.println("Testing S3 bucket: " + config.bucket + " in region " + config.region + " with base dir: " + config.path);
         Multihash id = new Multihash(Multihash.Type.sha2_256, RAMStorage.hash("S3Storage".getBytes()));
-        S3BlockStorage s3 = new S3BlockStorage(region, accessKey, secretKey, bucket, folder, id);
+        S3BlockStorage s3 = new S3BlockStorage(config, id);
 
-        System.out.println("***** Testing ls and read on bucket " + bucket);
+        System.out.println("***** Testing ls and read");
         System.out.println("Testing ls...");
         List<Multihash> files = s3.getFiles(1000);
         System.out.println("Success! found " + files.size());
