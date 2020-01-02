@@ -100,16 +100,6 @@ public class FileContentAddressedStorage implements ContentAddressedStorage {
         return CompletableFuture.completedFuture(Arrays.asList(h));
     }
 
-    @Override
-    public CompletableFuture<List<Multihash>> getLinks(Multihash root) {
-        if (root instanceof Cid && ((Cid) root).codec == Cid.Codec.Raw)
-            return CompletableFuture.completedFuture(Collections.emptyList());
-        return get(root).thenApply(opt -> opt
-                .map(cbor -> cbor.links())
-                .orElse(Collections.emptyList())
-        );
-    }
-
     private Path getFilePath(Multihash h) {
         String name = h.toString();
 

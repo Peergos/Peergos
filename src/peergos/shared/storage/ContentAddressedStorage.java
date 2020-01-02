@@ -8,7 +8,6 @@ import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.api.*;
 import peergos.shared.io.ipfs.cid.*;
-import peergos.shared.io.ipfs.multiaddr.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
@@ -146,7 +145,14 @@ public interface ContentAddressedStorage {
      * @param root The hash of the object whose links we want
      * @return A list of the multihashes referenced with ipld links in this object
      */
-    CompletableFuture<List<Multihash>> getLinks(Multihash root);
+    default CompletableFuture<List<Multihash>> getLinks(Multihash root) {
+        if (root instanceof Cid && ((Cid) root).codec == Cid.Codec.Raw)
+            return CompletableFuture.completedFuture(Collections.emptyList());
+        return get(root).thenApply(opt -> opt
+                .map(cbor -> cbor.links())
+                .orElse(Collections.emptyList())
+        );
+    }
 
     /**
      * Get the size in bytes of the object with the requested hash
