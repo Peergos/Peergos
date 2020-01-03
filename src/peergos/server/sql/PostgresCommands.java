@@ -13,4 +13,9 @@ public class PostgresCommands implements SqlSupplier {
         return "CREATE TABLE IF NOT EXISTS followrequests (id serial primary key, " +
                 "name text not null, followrequest text not null);";
     }
+
+    @Override
+    public String insertTransactionCommand() {
+        return "INSERT INTO transactions (tid, owner, hash) VALUES(?, ?, ?) ON CONFLICT DO NOTHING;";
+    }
 }

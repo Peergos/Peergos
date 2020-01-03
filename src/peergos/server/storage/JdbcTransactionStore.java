@@ -15,15 +15,17 @@ import java.util.stream.*;
 public class JdbcTransactionStore implements TransactionStore {
 	private static final Logger LOG = Logging.LOG();
 
-    private static final String INSERT_TRANSACTIONS_BLOCK = "INSERT INTO transactions (tid, owner, hash) VALUES(?, ?, ?);";
+    public static final String INSERT_TRANSACTIONS_BLOCK = "INSERT OR REPLACE INTO transactions (tid, owner, hash) VALUES(?, ?, ?);";
     private static final String SELECT_TRANSACTIONS_BLOCKS = "SELECT tid, owner, hash FROM transactions;";
     private static final String DELETE_TRANSACTION = "DELETE FROM transactions WHERE tid = ? AND owner = ?;";
 
     private Connection conn;
+    private final SqlSupplier commands;
     private volatile boolean isClosed;
 
     public JdbcTransactionStore(Connection conn, SqlSupplier commands) {
         this.conn = conn;
+        this.commands = commands;
         init(commands);
     }
 
@@ -45,7 +47,7 @@ public class JdbcTransactionStore implements TransactionStore {
 
     @Override
     public void addBlock(Multihash hash, TransactionId tid, PublicKeyHash owner) {
-        try (PreparedStatement insert = conn.prepareStatement(INSERT_TRANSACTIONS_BLOCK)) {
+        try (PreparedStatement insert = conn.prepareStatement(commands.insertTransactionCommand())) {
             insert.setString(1, tid.toString());
             insert.setString(2, owner.toString());
             insert.setString(3, hash.toString());

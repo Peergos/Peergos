@@ -8,6 +8,8 @@ public interface SqlSupplier {
 
     String createFollowRequestsTableCommand();
 
+    String insertTransactionCommand();
+
     default String createMutablePointersTableCommand() {
         return "CREATE TABLE IF NOT EXISTS metadatablobs (writingkey text primary key not null, hash text not null); " +
                 "CREATE UNIQUE INDEX IF NOT EXISTS index_name ON metadatablobs (writingkey);";
