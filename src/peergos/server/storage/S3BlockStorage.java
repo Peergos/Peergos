@@ -4,12 +4,14 @@ import com.amazonaws.*;
 import com.amazonaws.auth.*;
 import com.amazonaws.services.s3.*;
 import com.amazonaws.services.s3.model.*;
+import peergos.server.corenode.*;
 import peergos.server.sql.*;
 import peergos.server.util.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multibase.binary.*;
+import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.io.ipfs.multihash.*;
 import io.prometheus.client.Histogram;
@@ -104,6 +106,36 @@ public class S3BlockStorage implements ContentAddressedStorage {
     @Override
     public CompletableFuture<Boolean> gc() {
         return Futures.errored(new IllegalStateException("S3 doesn't implement GC!"));
+    }
+
+    private void collectGarbage(JdbcIpnsAndSocial pointers) {
+        // TODO: do this more efficiently with a bloom filter, and streaming
+        List<Multihash> present = getFiles(Integer.MAX_VALUE);
+        List<Multihash> pending = transactions.getOpenTransactionBlocks();
+        // This pointers call must happen AFTER the previous two for correctness
+        List<Multihash> currentRoots = pointers.getAllTargets(this);
+        BitSet reachable = new BitSet(present.size());
+        for (Multihash root : currentRoots) {
+            markReachable(root, present, reachable);
+        }
+        for (Multihash additional : pending) {
+            int index = present.indexOf(additional);
+            if (index >= 0)
+                reachable.set(index);
+        }
+        for (int i=0; i < present.size(); i++)
+            if (! reachable.get(i))
+                delete(present.get(i));
+    }
+
+    private void markReachable(Multihash root, List<Multihash> present, BitSet reachable) {
+        int index = present.indexOf(root);
+        if (index >= 0)
+            reachable.set(index);
+        List<Multihash> links = getLinks(root).join();
+        for (Multihash link : links) {
+            markReachable(link, present, reachable);
+        }
     }
 
     @Override
