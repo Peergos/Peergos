@@ -389,19 +389,17 @@ public class Main {
                 } else
                     localDht = new CachingStorage(ipfs, dhtCacheEntries, maxValueSizeToCache);
             } else {
-                // In this mode of operation we require the ipfs id to be supplied as we don't have a local ipfs running
-                Multihash id = Cid.decode(a.getArg("ipfs.id"));
-                // We also cannot have GC running
                 boolean enableGC = a.getBoolean("enable-gc", false);
                 if (enableGC)
-                    throw new IllegalStateException("GC has not been implemented when directly using S3!");
+                    throw new IllegalStateException("GC has not been implemented when not using IPFS!");
                 Connection transactionsDb = usePostgres ?
                     database :
                     Sqlite.build(Sqlite.getDbPath(a, "transactions-sql-file"));
                 SqlSupplier commands = new SqliteCommands();
                 TransactionStore transactions = JdbcTransactionStore.build(transactionsDb, commands);
+                // In S3 mode of operation we require the ipfs id to be supplied as we don't have a local ipfs running
                 if (S3Config.useS3(a))
-                    localDht = new S3BlockStorage(S3Config.build(a), id, transactions);
+                    localDht = new S3BlockStorage(S3Config.build(a), Cid.decode(a.getArg("ipfs.id")), transactions);
                 else
                     localDht = new FileContentAddressedStorage(blockstorePath(a), transactions);
             }
