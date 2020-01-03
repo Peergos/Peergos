@@ -2,6 +2,7 @@ package peergos.server;
 
 import peergos.server.cli.CLI;
 import peergos.server.space.*;
+import peergos.server.sql.*;
 import peergos.server.storage.admin.*;
 import peergos.shared.*;
 import peergos.server.corenode.*;
@@ -358,6 +359,22 @@ public class Main {
             JavaPoster ipfsApi = new JavaPoster(ipfsApiAddress);
             JavaPoster ipfsGateway = new JavaPoster(ipfsGatewayAddress);
 
+            boolean usePostgres = a.getBoolean("use-postgres", false);
+            SqlSupplier sqlCommands = usePostgres ?
+                    new PostgresCommands() :
+                    new SqliteCommands();
+            Connection database;
+            if (usePostgres) {
+                String postgresHost = a.getArg("postgres.host");
+                int postgresPort = a.getInt("postgres.port", 5432);
+                String databaseName = a.getArg("postgres.database", "peergos");
+                String postgresUsername = a.getArg("postgres.username");
+                String postgresPassword = a.getArg("postgres.password");
+                database = Postgres.build(postgresHost, postgresPort, databaseName, postgresUsername, postgresPassword);
+            } else {
+                database = Sqlite.build(Sqlite.getDbPath(a, "mutable-pointers-file"));
+            }
+
             ContentAddressedStorage localDht;
             if (useIPFS) {
                 boolean enableGC = a.getBoolean("enable-gc", true);
@@ -376,28 +393,17 @@ public class Main {
                 boolean enableGC = a.getBoolean("enable-gc", false);
                 if (enableGC)
                     throw new IllegalStateException("GC has not been implemented when directly using S3!");
-                localDht = new S3BlockStorage(s3Config, id);
+                Connection transactionsDb = usePostgres ?
+                    database :
+                    Sqlite.build(Sqlite.getDbPath(a, "transactions-sql-file"));
+                SqlSupplier commands = new SqliteCommands();
+                TransactionStore transactions = JdbcTransactionStore.build(transactionsDb, commands);
+                localDht = new S3BlockStorage(s3Config, id, transactions);
             } else
                 localDht = new FileContentAddressedStorage(blockstorePath(a));
 
             String hostname = a.getArg("domain");
             Multihash nodeId = localDht.id().get();
-
-            boolean usePostgres = a.getBoolean("use-postgres", false);
-            JdbcIpnsAndSocial.SqlSupplier sqlCommands = usePostgres ?
-                    new JdbcIpnsAndSocial.PostgresCommands() :
-                    new JdbcIpnsAndSocial.SqliteCommands();
-            Connection database;
-            if (usePostgres) {
-                String postgresHost = a.getArg("postgres.host");
-                int postgresPort = a.getInt("postgres.port", 5432);
-                String databaseName = a.getArg("postgres.database", "peergos");
-                String postgresUsername = a.getArg("postgres.username");
-                String postgresPassword = a.getArg("postgres.password");
-                database = Postgres.build(postgresHost, postgresPort, databaseName, postgresUsername, postgresPassword);
-            } else {
-                database = Sqlite.build(Sqlite.getDbPath(a, "mutable-pointers-file"));
-            }
 
             JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(database, sqlCommands);
             MutablePointers localPointers = UserRepository.build(localDht, rawPointers);

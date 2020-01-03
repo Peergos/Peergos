@@ -4,6 +4,7 @@ import com.amazonaws.*;
 import com.amazonaws.auth.*;
 import com.amazonaws.services.s3.*;
 import com.amazonaws.services.s3.model.*;
+import peergos.server.sql.*;
 import peergos.server.util.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
@@ -38,8 +39,9 @@ public class S3BlockStorage implements ContentAddressedStorage {
     private final Multihash id;
     private final AmazonS3 s3Client;
     private final String bucket, folder;
+    private final TransactionStore transactions;
 
-    public S3BlockStorage(S3Config config, Multihash id) {
+    public S3BlockStorage(S3Config config, Multihash id, TransactionStore transactions) {
         this.id = id;
         this.bucket = config.bucket;
         this.folder = config.path.isEmpty() || config.path.endsWith("/") ? config.path : config.path + "/";
@@ -48,6 +50,7 @@ public class S3BlockStorage implements ContentAddressedStorage {
                 .withCredentials(new AWSStaticCredentialsProvider(
                         new BasicAWSCredentials(config.accessKey, config.secretKey)));
         s3Client = builder.build();
+        this.transactions = transactions;
     }
 
     private static String hashToKey(Multihash hash) {
@@ -158,13 +161,12 @@ public class S3BlockStorage implements ContentAddressedStorage {
 
     @Override
     public CompletableFuture<TransactionId> startTransaction(PublicKeyHash owner) {
-        // TODO delegate this to a sql table
-        return CompletableFuture.completedFuture(new TransactionId(Long.toString(System.currentTimeMillis())));
+        return CompletableFuture.completedFuture(transactions.startTransaction(owner));
     }
 
     @Override
     public CompletableFuture<Boolean> closeTransaction(PublicKeyHash owner, TransactionId tid) {
-        // TODO delegate this to a sql table
+        transactions.closeTransaction(owner, tid);
         return CompletableFuture.completedFuture(true);
     }
 
@@ -174,7 +176,7 @@ public class S3BlockStorage implements ContentAddressedStorage {
                                                   List<byte[]> signatures,
                                                   List<byte[]> blocks,
                                                   TransactionId tid) {
-        return put(writer, signatures, blocks, false);
+        return put(owner, writer, signatures, blocks, false, tid);
     }
 
     @Override
@@ -183,15 +185,17 @@ public class S3BlockStorage implements ContentAddressedStorage {
                                                      List<byte[]> signatures,
                                                      List<byte[]> blocks,
                                                      TransactionId tid) {
-        return put(writer, signatures, blocks, true);
+        return put(owner, writer, signatures, blocks, true, tid);
     }
 
-    private CompletableFuture<List<Multihash>> put(PublicKeyHash writer,
+    private CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
+                                                   PublicKeyHash writer,
                                                    List<byte[]> signatures,
                                                    List<byte[]> blocks,
-                                                   boolean isRaw) {
+                                                   boolean isRaw,
+                                                   TransactionId tid) {
         return CompletableFuture.completedFuture(blocks.stream()
-                .map(b -> put(b, isRaw))
+                .map(b -> put(b, isRaw, tid, owner))
                 .collect(Collectors.toList()));
     }
 
@@ -199,7 +203,7 @@ public class S3BlockStorage implements ContentAddressedStorage {
      *
      * @param data
      */
-    public Multihash put(byte[] data, boolean isRaw) {
+    public Multihash put(byte[] data, boolean isRaw, TransactionId tid, PublicKeyHash owner) {
         Histogram.Timer writeTimer = writeTimerLog.labels("" +data.length).startTimer();
         try {
             Multihash hash = new Multihash(Multihash.Type.sha2_256, Hash.sha256(data));
@@ -210,6 +214,7 @@ public class S3BlockStorage implements ContentAddressedStorage {
             ObjectMetadata metadata = new ObjectMetadata();
             metadata.setContentLength(data.length);
             PutObjectRequest put = new PutObjectRequest(bucket, folder + hashToKey(cid), new ByteArrayInputStream(data), metadata);
+            transactions.addBlock(cid, tid, owner);
             PutObjectResult putResult = s3Client.putObject(put);
             return cid;
         } catch (AmazonServiceException e) {
@@ -301,12 +306,13 @@ public class S3BlockStorage implements ContentAddressedStorage {
         s3Client.deleteObject(del);
     }
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
         // Use this method to test access to a bucket
         S3Config config = S3Config.build(Args.parse(args));
         System.out.println("Testing S3 bucket: " + config.bucket + " in region " + config.region + " with base dir: " + config.path);
         Multihash id = new Multihash(Multihash.Type.sha2_256, RAMStorage.hash("S3Storage".getBytes()));
-        S3BlockStorage s3 = new S3BlockStorage(config, id);
+        TransactionStore transactions = JdbcTransactionStore.build(Sqlite.build(":memory:"), new SqliteCommands());
+        S3BlockStorage s3 = new S3BlockStorage(config, id, transactions);
 
         System.out.println("***** Testing ls and read");
         System.out.println("Testing ls...");
@@ -320,7 +326,9 @@ public class S3BlockStorage implements ContentAddressedStorage {
         System.out.println("Testing write...");
         byte[] uploadData = new byte[10 * 1024];
         new Random().nextBytes(uploadData);
-        Multihash put = s3.put(uploadData, true);
+        PublicKeyHash owner = PublicKeyHash.NULL;
+        TransactionId tid = s3.startTransaction(owner).join();
+        Multihash put = s3.put(uploadData, true, tid, owner);
         System.out.println("Success!");
 
         System.out.println("Testing delete...");
