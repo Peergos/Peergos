@@ -104,11 +104,10 @@ Architecture
 Development
 --------
 ### Dependencies
-Requires jdk8, ant and javafx to build. Use the following to install dependencies on debian:
+Requires jdk11 and ant to build. Use the following to install dependencies on debian:
 ```shell
 sudo apt-get install ant
-sudo apt-get install openjdk-8-jdk
-sudo apt-get install openjfx
+sudo apt-get install openjdk-11-jdk
 ```
 ### Build
 ```shell
@@ -132,13 +131,13 @@ Usage
 -----
 Instructions for self hosting will be updated once it is supported. 
 
-In the meantime you can experiment (BEWARE: we occasionally need to delete the data on this test network, so don't use it as your only copy of anything) with running your own Peergos server in our demo network by downloading a release from https://demo.peergos.net/public/peergos/releases
+In the meantime you can experiment (BEWARE: we occasionally need to delete the data on this test network, so don't use it as your only copy of anything) with running your own Peergos server in our demo network by downloading a release from https://alpha.peergos.net/public/peergos/releases
 
 or
 
-https://demo.peergos.net/#pQd8rmrEhBN1Lq5xTE7FRhfuc9ZasczuJX6msfcGiHEREQJWBgNZdemC/pQd8rmrEhBN1HfWok6UQWTS29DLGA8sjJdzXqs5z7fudsywKLZhFXYbQ/DGypN6uTfHNGeefjY2zLXwCsFeE4CzR4irN4TUkEMbTU/5Pf7SuySq5tU9nZoHfFDKpjWAYntDaEQ1sx4cvtMRP21SsHCMqD
+https://alpha.peergos.net/public/peergos/releases
 
-You will need Java >= 8 installed. 
+You will need Java >= 11 installed. 
 
 Run Peergos with:
 ```
