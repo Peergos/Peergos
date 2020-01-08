@@ -322,8 +322,8 @@ public class S3BlockStorage implements ContentAddressedStorage {
                to Amazon S3, but was rejected with an error response
                for some reason.
             */
-            LOG.warning("AmazonServiceException: " + ase.getMessage());
-            LOG.warning("AWS Error Code:   " + ase.getErrorCode());
+            LOG.severe("AmazonServiceException: " + ase.getMessage());
+            LOG.severe("AWS Error Code:   " + ase.getErrorCode());
 
         } catch (AmazonClientException ace) {
             /* Caught an AmazonClientException,
