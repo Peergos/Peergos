@@ -2,6 +2,7 @@ package peergos.server.tests;
 
 import org.junit.*;
 import peergos.server.corenode.*;
+import peergos.server.sql.*;
 import peergos.server.storage.*;
 import peergos.server.util.*;
 import peergos.shared.*;
@@ -22,7 +23,7 @@ public class WriterDataTests {
         TransactionId test = new TransactionId("dummy");
         ContentAddressedStorage dht = new RAMStorage();
         Connection db = Sqlite.build("::memory::");
-        MutablePointers mutable = UserRepository.build(dht, new JdbcIpnsAndSocial(db, new JdbcIpnsAndSocial.SqliteCommands()));
+        MutablePointers mutable = UserRepository.build(dht, new JdbcIpnsAndSocial(db, new SqliteCommands()));
 
         SigningKeyPair pairA = SigningKeyPair.insecureRandom();
         PublicKeyHash pubA = ContentAddressedStorage.hashKey(pairA.publicSigningKey);

@@ -74,14 +74,13 @@ public class IpfsInstaller {
             public final String path, bucket, region, accessKey, secretKey, regionEndpoint;
             public final DownloadTarget version;
 
-            public S3(String path, String bucket, String region, String accessKey, String secretKey,
-                      String regionEndpoint, DownloadTarget version) {
-                this.path = path;
-                this.bucket = bucket;
-                this.region = region;
-                this.accessKey = accessKey;
-                this.secretKey = secretKey;
-                this.regionEndpoint = regionEndpoint;
+            public S3(S3Config config, DownloadTarget version) {
+                this.path = config.path;
+                this.bucket = config.bucket;
+                this.region = config.region;
+                this.accessKey = config.accessKey;
+                this.secretKey = config.secretKey;
+                this.regionEndpoint = config.regionEndpoint;
                 this.version = version;
             }
 
@@ -109,15 +108,11 @@ public class IpfsInstaller {
             }
 
             public static S3 build(Args a) {
-                String path = a.getArg("s3.path", "blocks");
-                String bucket = a.getArg("s3.bucket");
-                String region = a.getArg("s3.region");
-                String accessKey = a.getArg("s3.accessKey", "");
-                String secretKey = a.getArg("s3.secretKey", "");
-                String regionEndpoint = a.getArg("s3.region.endpoint", bucket + ".amazonaws.com");
+                S3Config config = S3Config.build(a);
+
                 String osArch = getOsArch();
                 DownloadTarget pluginVersion = DownloadTarget.valueOf(TYPE + "_" + osArch.toUpperCase());
-                return new S3(path, bucket, region, accessKey, secretKey, regionEndpoint, pluginVersion);
+                return new S3(config, pluginVersion);
             }
 
             @Override

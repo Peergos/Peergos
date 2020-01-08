@@ -1,12 +1,16 @@
 package peergos.server.corenode;
 import java.util.logging.*;
 
-import org.sqlite.*;
+import peergos.server.sql.*;
 import peergos.server.util.Logging;
 
 import peergos.shared.cbor.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.mutable.*;
 import peergos.shared.social.*;
+import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
 import java.sql.*;
@@ -15,58 +19,8 @@ import java.util.concurrent.*;
 import java.util.stream.*;
 
 public class JdbcIpnsAndSocial {
-    public interface SqlSupplier {
 
-        String listTablesCommand();
-
-        String createFollowRequestsTableCommand();
-
-        default String createMutablePointersTableCommand() {
-            return "CREATE TABLE IF NOT EXISTS metadatablobs (writingkey text primary key not null, hash text not null); " +
-                    "CREATE UNIQUE INDEX IF NOT EXISTS index_name ON metadatablobs (writingkey);";
-        }
-
-        default String createSpaceRequestsTableCommand() {
-            return "CREATE TABLE IF NOT EXISTS spacerequests (name text primary key not null, spacerequest text not null);";
-        }
-
-        default void createTable(String sqlTableCreate, Connection conn) throws SQLException {
-            Statement createStmt = conn.createStatement();
-            createStmt.executeUpdate(sqlTableCreate);
-            createStmt.close();
-        }
-    }
-
-    public static class SqliteCommands implements SqlSupplier {
-
-        @Override
-        public String listTablesCommand() {
-            return "SELECT NAME FROM sqlite_master WHERE type='table';";
-        }
-
-        @Override
-        public String createFollowRequestsTableCommand() {
-            return "CREATE TABLE IF NOT EXISTS followrequests (id integer primary key autoincrement, " +
-                    "name text not null, followrequest text not null);";
-        }
-    }
-
-	public static class PostgresCommands implements SqlSupplier {
-
-        @Override
-        public String listTablesCommand() {
-            return "SELECT tablename FROM pg_catalog.pg_tables " +
-                    "WHERE schemaname != 'pg_catalog' AND schemaname != 'information_schema';";
-        }
-
-        @Override
-        public String createFollowRequestsTableCommand() {
-            return "CREATE TABLE IF NOT EXISTS followrequests (id serial primary key, " +
-                    "name text not null, followrequest text not null);";
-        }
-    }
-
-	private static final Logger LOG = Logging.LOG();
+    private static final Logger LOG = Logging.LOG();
 
     private static final String FOLLOW_REQUEST_USER_NAME = "name";
     private static final String FOLLOW_REQUEST_DATA_NAME = "followrequest";
@@ -236,6 +190,26 @@ public class JdbcIpnsAndSocial {
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             return Futures.errored(sqe);
+        }
+    }
+
+    public List<Multihash> getAllTargets(ContentAddressedStorage ipfs) {
+        try (PreparedStatement stmt = conn.prepareStatement("SELECT * FROM metadatablobs")) {
+            ResultSet rs = stmt.executeQuery();
+            List<Multihash> results = new ArrayList<>();
+            while (rs.next()) {
+                PublicKeyHash writerHash = PublicKeyHash.fromCbor(CborObject.fromByteArray(Base64.getDecoder().decode(rs.getString("writingKey"))));
+                PublicSigningKey writer = ipfs.getSigningKey(writerHash).join().get();
+                byte[] signedRawCas = Base64.getDecoder().decode(rs.getString(IPNS_TARGET_NAME));
+                byte[] bothHashes = writer.unsignMessage(signedRawCas);
+                HashCasPair cas = HashCasPair.fromCbor(CborObject.fromByteArray(bothHashes));
+                results.add(cas.updated.get());
+            }
+
+            return results;
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            return Collections.emptyList();
         }
     }
 

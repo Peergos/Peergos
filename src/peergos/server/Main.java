@@ -2,6 +2,7 @@ package peergos.server;
 
 import peergos.server.cli.CLI;
 import peergos.server.space.*;
+import peergos.server.sql.*;
 import peergos.server.storage.admin.*;
 import peergos.shared.*;
 import peergos.server.corenode.*;
@@ -103,6 +104,7 @@ public class Main {
                     new Command.Arg("mutable-pointers-file", "The filename for the mutable pointers datastore", true, "mutable.sql"),
                     new Command.Arg("social-sql-file", "The filename for the follow requests datastore", true, "social.sql"),
                     new Command.Arg("space-requests-sql-file", "The filename for the space requests datastore", true, "space-requests.sql"),
+                    new Command.Arg("transactions-sql-file", "The filename for the transactions datastore", false, "transactions.sql"),
                     new Command.Arg("webroot", "the path to the directory to serve as the web root", false),
                     new Command.Arg("default-quota", "default maximum storage per user", false, Long.toString(1024L * 1024 * 1024)),
                     new Command.Arg("mirror.node.id", "Mirror a server's data locally", false),
@@ -127,7 +129,8 @@ public class Main {
             String ipfsApiAddress = args.getArg("ipfs-api-address", "/ip4/127.0.0.1/tcp/5001");
             ContentAddressedStorage dht = useIPFS ?
                     new IpfsDHT(new MultiAddress(ipfsApiAddress)) :
-                    new FileContentAddressedStorage(blockstorePath(args));
+                    new FileContentAddressedStorage(blockstorePath(args),
+                            JdbcTransactionStore.build(Sqlite.build(":memory:"), new SqliteCommands()));
 
             SigningKeyPair peergosIdentityKeys = peergos.getUser();
             PublicKeyHash peergosPublicHash = ContentAddressedStorage.hashKey(peergosIdentityKeys.publicSigningKey);
@@ -234,7 +237,8 @@ public class Main {
 
                     Multihash pkiIpfsNodeId = useIPFS ?
                             new IpfsDHT(getLocalMultiAddress(ipfsApiPort)).id().get() :
-                            new FileContentAddressedStorage(blockstorePath(args)).id().get();
+                            new FileContentAddressedStorage(blockstorePath(args),
+                                    JdbcTransactionStore.build(Sqlite.build(":memory:"), new SqliteCommands())).id().get();
 
                     if (ipfs != null)
                         ipfs.stop();
@@ -283,7 +287,8 @@ public class Main {
 
                     Multihash pkiIpfsNodeId = useIPFS ?
                             new IpfsDHT(getLocalMultiAddress(ipfsApiPort)).id().get() :
-                            new FileContentAddressedStorage(blockstorePath(args)).id().get();
+                            new FileContentAddressedStorage(blockstorePath(args),
+                                    JdbcTransactionStore.build(Sqlite.build(":memory:"), new SqliteCommands())).id().get();
 
                     if (ipfs != null)
                         ipfs.stop();
@@ -358,26 +363,10 @@ public class Main {
             JavaPoster ipfsApi = new JavaPoster(ipfsApiAddress);
             JavaPoster ipfsGateway = new JavaPoster(ipfsGatewayAddress);
 
-            ContentAddressedStorage localDht;
-            if (useIPFS) {
-                boolean enableGC = a.getBoolean("enable-gc", true);
-                ContentAddressedStorage.HTTP ipfs = new ContentAddressedStorage.HTTP(ipfsApi, false);
-                if (enableGC) {
-                    GarbageCollector gced = new GarbageCollector(ipfs, a.getInt("gc.period.millis", 60 * 60 * 1000));
-                    gced.start();
-                    localDht = new CachingStorage(gced, dhtCacheEntries, maxValueSizeToCache);
-                } else
-                    localDht = new CachingStorage(ipfs, dhtCacheEntries, maxValueSizeToCache);
-            } else
-                localDht = new FileContentAddressedStorage(blockstorePath(a));
-
-            String hostname = a.getArg("domain");
-            Multihash nodeId = localDht.id().get();
-
             boolean usePostgres = a.getBoolean("use-postgres", false);
-            JdbcIpnsAndSocial.SqlSupplier sqlCommands = usePostgres ?
-                    new JdbcIpnsAndSocial.PostgresCommands() :
-                    new JdbcIpnsAndSocial.SqliteCommands();
+            SqlSupplier sqlCommands = usePostgres ?
+                    new PostgresCommands() :
+                    new SqliteCommands();
             Connection database;
             if (usePostgres) {
                 String postgresHost = a.getArg("postgres.host");
@@ -389,6 +378,36 @@ public class Main {
             } else {
                 database = Sqlite.build(Sqlite.getDbPath(a, "mutable-pointers-file"));
             }
+
+            ContentAddressedStorage localDht;
+            if (useIPFS) {
+                boolean enableGC = a.getBoolean("enable-gc", true);
+                ContentAddressedStorage.HTTP ipfs = new ContentAddressedStorage.HTTP(ipfsApi, false);
+                if (enableGC) {
+                    GarbageCollector gced = new GarbageCollector(ipfs, a.getInt("gc.period.millis", 60 * 60 * 1000));
+                    gced.start();
+                    localDht = new CachingStorage(gced, dhtCacheEntries, maxValueSizeToCache);
+                } else
+                    localDht = new CachingStorage(ipfs, dhtCacheEntries, maxValueSizeToCache);
+            } else {
+                boolean enableGC = a.getBoolean("enable-gc", false);
+                if (enableGC)
+                    throw new IllegalStateException("GC has not been implemented when not using IPFS!");
+                Connection transactionsDb = usePostgres ?
+                    database :
+                    Sqlite.build(Sqlite.getDbPath(a, "transactions-sql-file"));
+                SqlSupplier commands = new SqliteCommands();
+                TransactionStore transactions = JdbcTransactionStore.build(transactionsDb, commands);
+                // In S3 mode of operation we require the ipfs id to be supplied as we don't have a local ipfs running
+                if (S3Config.useS3(a))
+                    localDht = new S3BlockStorage(S3Config.build(a), Cid.decode(a.getArg("ipfs.id")), transactions);
+                else
+                    localDht = new FileContentAddressedStorage(blockstorePath(a), transactions);
+            }
+
+
+            String hostname = a.getArg("domain");
+            Multihash nodeId = localDht.id().get();
 
             JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(database, sqlCommands);
             MutablePointers localPointers = UserRepository.build(localDht, rawPointers);

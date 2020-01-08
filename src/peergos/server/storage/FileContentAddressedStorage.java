@@ -4,7 +4,6 @@ import peergos.server.util.Logging;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
-import peergos.shared.io.ipfs.multiaddr.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
@@ -27,10 +26,11 @@ public class FileContentAddressedStorage implements ContentAddressedStorage {
     private static final int CID_V1 = 1;
     private static final int DIRECTORY_DEPTH = 5;
     private final Path root;
-    private final Random r = new Random(1);
+    private final TransactionStore transactions;
 
-    public FileContentAddressedStorage(Path root) {
+    public FileContentAddressedStorage(Path root, TransactionStore transactions) {
         this.root = root;
+        this.transactions = transactions;
         File rootDir = root.toFile();
         if (!rootDir.exists()) {
             final boolean mkdirs = root.toFile().mkdirs();
@@ -48,11 +48,12 @@ public class FileContentAddressedStorage implements ContentAddressedStorage {
 
     @Override
     public CompletableFuture<TransactionId> startTransaction(PublicKeyHash owner) {
-        return CompletableFuture.completedFuture(new TransactionId(ArrayOps.bytesToHex(ArrayOps.random(8))));
+        return CompletableFuture.completedFuture(transactions.startTransaction(owner));
     }
 
     @Override
     public CompletableFuture<Boolean> closeTransaction(PublicKeyHash owner, TransactionId tid) {
+        transactions.closeTransaction(owner, tid);
         return CompletableFuture.completedFuture(true);
     }
 
@@ -67,7 +68,7 @@ public class FileContentAddressedStorage implements ContentAddressedStorage {
                                                   List<byte[]> signatures,
                                                   List<byte[]> blocks,
                                                   TransactionId tid) {
-        return put(writer, signatures, blocks, false);
+        return put(owner, writer, signatures, blocks, false, tid);
     }
 
     @Override
@@ -76,12 +77,17 @@ public class FileContentAddressedStorage implements ContentAddressedStorage {
                                                      List<byte[]> signatures,
                                                      List<byte[]> blocks,
                                                      TransactionId tid) {
-        return put(writer, signatures, blocks, true);
+        return put(owner, writer, signatures, blocks, true, tid);
     }
 
-    private CompletableFuture<List<Multihash>> put(PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks, boolean isRaw) {
+    private CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
+                                                   PublicKeyHash writer,
+                                                   List<byte[]> signatures,
+                                                   List<byte[]> blocks,
+                                                   boolean isRaw,
+                                                   TransactionId tid) {
         return CompletableFuture.completedFuture(blocks.stream()
-                .map(b -> put(b, isRaw))
+                .map(b -> put(b, isRaw, tid, owner))
                 .collect(Collectors.toList()));
     }
 
@@ -98,16 +104,6 @@ public class FileContentAddressedStorage implements ContentAddressedStorage {
     @Override
     public CompletableFuture<List<Multihash>> recursiveUnpin(PublicKeyHash owner, Multihash h) {
         return CompletableFuture.completedFuture(Arrays.asList(h));
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> getLinks(Multihash root) {
-        if (root instanceof Cid && ((Cid) root).codec == Cid.Codec.Raw)
-            return CompletableFuture.completedFuture(Collections.emptyList());
-        return get(root).thenApply(opt -> opt
-                .map(cbor -> cbor.links())
-                .orElse(Collections.emptyList())
-        );
     }
 
     private Path getFilePath(Multihash h) {
@@ -152,7 +148,7 @@ public class FileContentAddressedStorage implements ContentAddressedStorage {
         }
     }
 
-    public Multihash put(byte[] data, boolean isRaw) {
+    public Multihash put(byte[] data, boolean isRaw, TransactionId tid, PublicKeyHash owner) {
         try {
             Cid cid = new Cid(CID_V1, isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor,
                     Multihash.Type.sha2_256, RAMStorage.hash(data));
@@ -171,6 +167,7 @@ public class FileContentAddressedStorage implements ContentAddressedStorage {
                         throw new IllegalStateException("Could not make " + someParent.toString() + ", ancestor of " + parentDir.toString() + " writable");
                 }
             }
+            transactions.addBlock(cid, tid, owner);
             File targetFile = target.toFile();
             Path tmp = Files.createTempFile(root, "tmp", "");
             File tmpFile = tmp.toFile();

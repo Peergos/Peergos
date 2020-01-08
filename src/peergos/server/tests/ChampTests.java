@@ -4,7 +4,9 @@ import org.junit.*;
 import org.junit.runner.*;
 import org.junit.runners.*;
 import peergos.server.corenode.*;
+import peergos.server.sql.*;
 import peergos.server.storage.*;
+import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
@@ -44,7 +46,8 @@ public class ChampTests {
 
     @Test
     public void insertAndRetrieve() throws Exception {
-        ContentAddressedStorage storage = new FileContentAddressedStorage(Files.createTempDirectory("peergos-tmp"));
+        ContentAddressedStorage storage = new FileContentAddressedStorage(Files.createTempDirectory("peergos-tmp"),
+                JdbcTransactionStore.build(Sqlite.build(":memory:"), new SqliteCommands()));
         SigningPrivateKeyAndPublicHash user = createUser(storage, crypto);
         Random r = new Random(28);
 
@@ -157,7 +160,8 @@ public class ChampTests {
 
     @Test
     public void diff() throws Exception {
-        ContentAddressedStorage storage = new FileContentAddressedStorage(Files.createTempDirectory("peergos-tmp"));
+        ContentAddressedStorage storage = new FileContentAddressedStorage(Files.createTempDirectory("peergos-tmp"),
+                JdbcTransactionStore.build(Sqlite.build(":memory:"), new SqliteCommands()));
         SigningPrivateKeyAndPublicHash user = createUser(storage, crypto);
         Random r = new Random(28);
 
@@ -272,7 +276,8 @@ public class ChampTests {
 
     @Test
     public void correctDelete() throws Exception {
-        ContentAddressedStorage storage = new FileContentAddressedStorage(Files.createTempDirectory("peergos-tmp"));
+        ContentAddressedStorage storage = new FileContentAddressedStorage(Files.createTempDirectory("peergos-tmp"),
+                JdbcTransactionStore.build(Sqlite.build(":memory:"), new SqliteCommands()));
         SigningPrivateKeyAndPublicHash user = createUser(storage, crypto);
         Random r = new Random(28);
 

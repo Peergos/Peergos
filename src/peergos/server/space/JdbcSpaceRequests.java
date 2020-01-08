@@ -1,6 +1,6 @@
 package peergos.server.space;
 
-import peergos.server.corenode.*;
+import peergos.server.sql.*;
 import peergos.server.util.*;
 import peergos.shared.storage.*;
 
@@ -83,12 +83,12 @@ public class JdbcSpaceRequests {
 
     private volatile boolean isClosed;
 
-    public JdbcSpaceRequests(Connection conn, JdbcIpnsAndSocial.SqlSupplier commands) {
+    public JdbcSpaceRequests(Connection conn, SqlSupplier commands) {
         this.conn = conn;
         init(commands);
     }
 
-    private synchronized void init(JdbcIpnsAndSocial.SqlSupplier commands) {
+    private synchronized void init(SqlSupplier commands) {
         if (isClosed)
             return;
 
@@ -133,7 +133,7 @@ public class JdbcSpaceRequests {
         }
     }
 
-    public static JdbcSpaceRequests build(Connection conn, JdbcIpnsAndSocial.SqlSupplier commands) throws SQLException {
+    public static JdbcSpaceRequests build(Connection conn, SqlSupplier commands) {
         return new JdbcSpaceRequests(conn, commands);
     }
 }
