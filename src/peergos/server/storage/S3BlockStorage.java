@@ -11,7 +11,6 @@ import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multibase.binary.*;
-import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.io.ipfs.multihash.*;
 import io.prometheus.client.Histogram;
@@ -31,12 +30,16 @@ public class S3BlockStorage implements ContentAddressedStorage {
 
     private static final Histogram readTimerLog = Histogram.build()
             .labelNames("filesize")
-            .name("block_read_seconds").help("Time to read a block from immutable storage")
-            .exponentialBuckets(0.01, 2, 16).register();
+            .name("block_read_seconds")
+            .help("Time to read a block from immutable storage")
+            .exponentialBuckets(0.01, 2, 16)
+            .register();
     private static final Histogram writeTimerLog = Histogram.build()
             .labelNames("filesize")
-            .name("s3_block_write_seconds").help("Time to write a block to immutable storage")
-            .exponentialBuckets(0.01, 2, 16).register();
+            .name("s3_block_write_seconds")
+            .help("Time to write a block to immutable storage")
+            .exponentialBuckets(0.01, 2, 16)
+            .register();
 
     private final Multihash id;
     private final AmazonS3 s3Client;
@@ -77,7 +80,7 @@ public class S3BlockStorage implements ContentAddressedStorage {
     public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash) {
         return Futures.of(map(hash, h -> {
             GetObjectRequest get = new GetObjectRequest(bucket, folder + hashToKey(hash));
-            Histogram.Timer readTimer = readTimerLog.labels(h.toString()).startTimer();
+            Histogram.Timer readTimer = readTimerLog.labels("read").startTimer();
             try (S3Object res = s3Client.getObject(get); DataInputStream din = new DataInputStream(new BufferedInputStream(res.getObjectContent()))) {
                 return Optional.of(Serialize.readFully(din));
             } catch (IOException e) {
@@ -142,7 +145,7 @@ public class S3BlockStorage implements ContentAddressedStorage {
     public CompletableFuture<Optional<Integer>> getSize(Multihash hash) {
         return Futures.of(map(hash, h -> {
             GetObjectRequest get = new GetObjectRequest(bucket, folder + hashToKey(hash));
-            Histogram.Timer readTimer = readTimerLog.labels(h.toString()).startTimer();
+            Histogram.Timer readTimer = readTimerLog.labels("size").startTimer();
             try (S3Object res = s3Client.getObject(get)) {
                 return Optional.of((int)res.getObjectMetadata().getContentLength());
             } catch (IOException e) {
@@ -167,7 +170,7 @@ public class S3BlockStorage implements ContentAddressedStorage {
                for some reason.
             */
             if ("NoSuchKey".equals(e.getErrorCode())) {
-                Histogram.Timer readTimer = readTimerLog.labels("0").startTimer();
+                Histogram.Timer readTimer = readTimerLog.labels("absent").startTimer();
                 readTimer.observeDuration();
                 return absent.apply(e);
             }
@@ -236,7 +239,7 @@ public class S3BlockStorage implements ContentAddressedStorage {
      * @param data
      */
     public Multihash put(byte[] data, boolean isRaw, TransactionId tid, PublicKeyHash owner) {
-        Histogram.Timer writeTimer = writeTimerLog.labels("" +data.length).startTimer();
+        Histogram.Timer writeTimer = writeTimerLog.labels("write").startTimer();
         try {
             Multihash hash = new Multihash(Multihash.Type.sha2_256, Hash.sha256(data));
             Cid cid = new Cid(1, isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor, hash.type, hash.getHash());
