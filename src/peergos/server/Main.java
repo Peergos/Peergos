@@ -433,8 +433,10 @@ public class Main {
             JdbcSpaceRequests spaceRequests = JdbcSpaceRequests.build(spaceDb, sqlCommands);
             UserQuotas userQuotas = new UserQuotas(quotaFilePath, defaultQuota, maxUsers);
             CoreNode signupFilter = new SignUpFilter(core, userQuotas, nodeId);
+            RamUsageStore usageStore = RamUsageStore.build(statePath, localPointers, localDht);
+            SpaceCheckingKeyFilter.update(usageStore, localPointers, localDht);
             SpaceCheckingKeyFilter spaceChecker = new SpaceCheckingKeyFilter(core, localPointers, localDht, userQuotas,
-                    spaceRequests, statePath);
+                    spaceRequests, usageStore);
             CorenodeEventPropagator corePropagator = new CorenodeEventPropagator(signupFilter);
             corePropagator.addListener(spaceChecker::accept);
             MutableEventPropagator localMutable = new MutableEventPropagator(localPointers);
