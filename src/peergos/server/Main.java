@@ -433,7 +433,7 @@ public class Main {
             JdbcSpaceRequests spaceRequests = JdbcSpaceRequests.build(spaceDb, sqlCommands);
             UserQuotas userQuotas = new UserQuotas(quotaFilePath, defaultQuota, maxUsers);
             CoreNode signupFilter = new SignUpFilter(core, userQuotas, nodeId);
-            RamUsageStore usageStore = RamUsageStore.build(statePath, localPointers, localDht);
+            RamUsageStore usageStore = RamUsageStore.build(statePath);
             SpaceCheckingKeyFilter.update(usageStore, localPointers, localDht);
             SpaceCheckingKeyFilter spaceChecker = new SpaceCheckingKeyFilter(core, localPointers, localDht, userQuotas,
                     spaceRequests, usageStore);

@@ -148,7 +148,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
      * @param username
      * @param writer
      */
-    public void processCorenodeEvent(String username, PublicKeyHash writer) {
+    private void processCorenodeEvent(String username, PublicKeyHash writer) {
         try {
             usageStore.addUserIfAbsent(username);
             Set<PublicKeyHash> childrenKeys = WriterData.getDirectOwnedKeys(writer, writer, mutable, dht)

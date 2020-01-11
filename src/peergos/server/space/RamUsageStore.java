@@ -129,9 +129,7 @@ public class RamUsageStore implements UsageStore {
                 StandardOpenOption.CREATE);
     }
 
-    public static RamUsageStore build(Path statePath,
-                                      MutablePointers mutable,
-                                      ContentAddressedStorage dht) {
+    public static RamUsageStore build(Path statePath) {
         State state;
         try {
             // Read stored usages and update current view.
