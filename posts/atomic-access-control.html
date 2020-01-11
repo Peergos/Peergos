@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <head>
-    <title>Thank you</title>
+    <title>Atomic access control</title>
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta charset="utf-8">
     <meta name="viewport"
@@ -15,7 +15,7 @@
 
 
  </head>
-<body class="thank-you" style="overflow-y: scroll;">
+<body class="blog" style="overflow-y: scroll;">
 <nav>
     <div class="nav-wrapper">
 
@@ -24,25 +24,25 @@
         <a href="#" data-activates="mobile" class="button-collapse"><i class="material-icons">menu</i></a>
             <ul class="right hide-on-med-and-down">
                     <li >
-                        <a href="./features"
+                        <a href="../features"
 >
                             Features
                         </a>
                     </li>
                     <li >
-                        <a href="./security"
+                        <a href="../security"
 >
                             Security
                         </a>
                     </li>
-                    <li >
-                        <a href="./blog"
+                    <li class="active">
+                        <a href="../blog"
 >
                             Blog
                         </a>
                     </li>
                     <li >
-                        <a href="./about"
+                        <a href="../about"
 >
                             About
                         </a>
@@ -63,19 +63,19 @@
                 <a href="/" class="brand-logo"><img src="/theme/img/peergos/logo-tower-only-green.svg" width="180"/></a>
             </li>
                 <li >
-                    <a href="./features"
+                    <a href="../features"
 >
                         Features
                     </a>
                 </li>
                 <li >
-                    <a href="./security"
+                    <a href="../security"
 >
                         Security
                     </a>
                 </li>
-                <li >
-                    <a href="./blog"
+                <li class="active">
+                    <a href="../blog"
 >
                         Blog
                     </a>
@@ -88,7 +88,7 @@
                         </a>
                     </li>
                 <li >
-                    <a href="./about"
+                    <a href="../about"
 >
                         About
                     </a>
@@ -102,10 +102,52 @@
     <div class="col m3 col s4">
     </div>
     <div class="col m9 col s8" role="main" style="overflow-x:auto; padding-bottom: 10px;">
-    <h1 class="page-header main-title">Thank you</h1>
+    <h1 class="page-header main-title">Atomic access control</h1>
     <div class="bs-docs-section">
-    <p>Thank you for signing up to our alpha release. We will email you when it's ready for testing.</p>
-    </div>
+    <p>At Peergos we care deeply about your privacy, and the core of privacy is access control. Controlling who can see what. We've made some big improvements in this area for our new <a href="https://alpha.peergos.net/public/peergos/releases/v0.1.4">v0.1.4</a> release, so let's learn some more about them.</p>
+<p>We have totally rewritten our access revocation implementation. Previously there were some issues with nested write access which could cause data loss. Now in the new version, revoking write access is a single pass over the files and directories you are revoking access to, rather than 3. We've also made it atomic. This means your machine can crash at any point and your file system is in a consistent state with all data present. </p>
+<p>Similar improvements have been made to revoking read access and we are working on fuzzing the access control mechanism to further assure correctness and safety. While we had the hood popped open, we also removed unnecessary reloads of the current directory which has made the web interface <em>much snappier</em>.</p>
+<p><center>
+<img alt="New public link UI" class="class" id="id" src="/theme/img/blog/new-public-link-ui.png" width="50%" />
+<br/>
+<b>New</b> public link UI for https://alpha.peergos.net/public/peergos/releases
+</center></p>
+<p>We also have a secret to share with you - we have a mechanism for making files public, though it is not added to the web interface yet. Each user can choose to publish a capability to a file or folder that is readable to anyone. The mechanism for this is each user publishing a merkle <a href="https://blog.acolyer.org/2015/11/27/hamt/">CHAMP</a> root, which is a lookup from path to capability. This is currently only used by the "peergos" user for releases of Peergos itself: <a href="https://alpha.peergos.net/public/peergos/releases">https://alpha.peergos.net/public/peergos/releases</a>.</p>
+<p><center>
+<img alt="New public link UI" class="class" id="id" src="/theme/img/blog/old-public-link-ui.png" width="50%" />
+<br/>
+<b>Old</b> public link UI for https://alpha.peergos.net/public/peergos/releases
+</center></p>
+<p>Prior to this release, public files were decrypted server side after retrieving the capability from this CHAMP and delivered directly to the requestor. Clearly if we allowed anyone to use the feature then it would be a trivial cross-site-scripting (XSS) vector. So, in preparation for allowing all users to publicly share files, we now make the server retrieve the capability, and then do a http redirect to a "secret link" to that file. This means we get the full Peergos interface for navigating, viewing and downloading public files, and removes the potential for XSS attacks. The file or directory then becomes accessible under the human readable url</p>
+<p><em>https://alpha.peergos.net/public/$path-to-file</em></p>
+<p>Head on over to the <a href="https://alpha.peergos.net">alpha</a> and enjoy your improved access control!</p>
+<h4>RECENT POSTS</h4>
+<ul id="recent-posts">
+    <li>
+      <a href="../posts/atomic-access-control">Atomic access control</a>
+    </li>
+    <li>
+      <a href="../posts/release-v0.1.3">Peergos release v0.1.3</a>
+    </li>
+    <li>
+      <a href="../posts/applications">Applications on Peergos</a>
+    </li>
+    <li>
+      <a href="../posts/fast-seeking">Fast seeking and encrypted history</a>
+    </li>
+    <li>
+      <a href="../posts/ipfs-camp">IPFS Camp, new features</a>
+    </li>
+    <li>
+      <a href="../posts/alpha-release">Alpha Release</a>
+    </li>
+    <li>
+      <a href="../posts/security-audit">Security Audit</a>
+    </li>
+    <li>
+      <a href="../posts/dev-update">Development update</a>
+    </li>
+</ul>    </div>
     <span class="pull-right">
                                         <a class="btn btn-default" role="button"
                                            href="javascript:window.scrollTo(0,0);">Back to Top</a>

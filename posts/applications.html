@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <head>
-    <title>Thank you</title>
+    <title>Applications on Peergos</title>
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta charset="utf-8">
     <meta name="viewport"
@@ -15,7 +15,7 @@
 
 
  </head>
-<body class="thank-you" style="overflow-y: scroll;">
+<body class="blog" style="overflow-y: scroll;">
 <nav>
     <div class="nav-wrapper">
 
@@ -24,25 +24,25 @@
         <a href="#" data-activates="mobile" class="button-collapse"><i class="material-icons">menu</i></a>
             <ul class="right hide-on-med-and-down">
                     <li >
-                        <a href="./features"
+                        <a href="../features"
 >
                             Features
                         </a>
                     </li>
                     <li >
-                        <a href="./security"
+                        <a href="../security"
 >
                             Security
                         </a>
                     </li>
-                    <li >
-                        <a href="./blog"
+                    <li class="active">
+                        <a href="../blog"
 >
                             Blog
                         </a>
                     </li>
                     <li >
-                        <a href="./about"
+                        <a href="../about"
 >
                             About
                         </a>
@@ -63,19 +63,19 @@
                 <a href="/" class="brand-logo"><img src="/theme/img/peergos/logo-tower-only-green.svg" width="180"/></a>
             </li>
                 <li >
-                    <a href="./features"
+                    <a href="../features"
 >
                         Features
                     </a>
                 </li>
                 <li >
-                    <a href="./security"
+                    <a href="../security"
 >
                         Security
                     </a>
                 </li>
-                <li >
-                    <a href="./blog"
+                <li class="active">
+                    <a href="../blog"
 >
                         Blog
                     </a>
@@ -88,7 +88,7 @@
                         </a>
                     </li>
                 <li >
-                    <a href="./about"
+                    <a href="../about"
 >
                         About
                     </a>
@@ -102,10 +102,91 @@
     <div class="col m3 col s4">
     </div>
     <div class="col m9 col s8" role="main" style="overflow-x:auto; padding-bottom: 10px;">
-    <h1 class="page-header main-title">Thank you</h1>
+    <h1 class="page-header main-title">Applications on Peergos</h1>
     <div class="bs-docs-section">
-    <p>Thank you for signing up to our alpha release. We will email you when it's ready for testing.</p>
-    </div>
+    <p>They're here - the first apps for Peergos!</p>
+<p>The first application we've made available is a read-only viewer for PDF files.
+This is a super-simple app which adds very useful functionality to Peergos. Now
+you can securely and privately read PDF files within Peergos. </p>
+<p><center>
+<img alt="PDF Viewer" class="class" id="id" src="/theme/img/pdf-viewer.png" width="80%" />
+<br/>
+PDF Viewer
+</center></p>
+<p>The second app we've enabled is an editor for text or code. We support plain
+text, markdown, and major programming languages like Java, Go, Rust,
+Javascript, HTML, etc. This is huge! You can use the text editor as a secure
+password manager, a to do list and more! </p>
+<p><center>
+<img alt="Editor" class="class" id="id" src="/theme/img/editor.png" width="80%" />
+<br/>
+Text/Markdown/Code editor
+</center></p>
+<p>These great new features are made possible by a technique we've recently
+discovered. The key component is a sandboxed iframe. Browsers now let you lock
+down code in an iframe so that it can't communicate to the outside world (i.e. can't
+make AJAX requests) and is totally isolated from the parent web page. The
+isolation provided by the sandboxed iframe is absolutely critical to us because
+when you are logged in, your keys are stored in memory and must be protected
+from any potentially malicious code. We can run untrusted code in a sandboxed
+iframe which only lets you render HTML, CSS, run Javascript, and send and
+receive specific messages to and from the parent. This messaging API keeps
+privileged code and keys separate from the application running inside the
+iframe. </p>
+<p>For the PDF viewer, we simply imported
+<a href="https://github.com/mozilla/pdf.js/">pdf.js</a> from Mozilla and implemented
+a one-way message from the external context which sends the content of the PDF
+to render. For the text editor, we used a great library called
+<a href="https://github.com/codemirror/codemirror">Codemirror</a>. This app
+required a slightly more complicated protocol than the one-way message
+system of the PDF viewer. We just needed a message to send the modified content
+back to the external context, and the privileged code could then save the
+modified file contents.</p>
+<p>One of our goals has been to enable third party applications inside Peergos.
+These would be apps which you can choose to install and grant permissions to
+using the strong authentication, encryption and access control in Peergos, but
+which run in a strict sandbox. Eventually we want to allow users to edit HTML
+and Javascript files directly in a folder in Peergos and declare it as an
+application. This would give users a live editing environment, easy publishing,
+and <em>auditable proofs</em> of the authorship of apps. You could even host your
+website directly in Peergos and edit it in place!</p>
+<p>Before we open up the sandbox to truly untrusted apps, there is one
+ prerequisite. Currently, browsers don't put sandboxed iframes into a different
+ operating system process, which is necessary to be fully protected from CPU
+ vulnerabilities such as Spectre or Meltdown. Both Firefox and Chrome are in
+ the process of moving iframes to separate processes and once that lands, we
+ can enable 100% safe sandboxes for Peergos applications! </p>
+<p>In the meantime we can use it to curate semi-trusted apps like the PDF viewer
+ and text editor. We'd love to hear what you use the text editor for!</p>
+<p>Happy Peergossing!</p>
+<p>-The Peergos team</p>
+<h4>RECENT POSTS</h4>
+<ul id="recent-posts">
+    <li>
+      <a href="../posts/atomic-access-control">Atomic access control</a>
+    </li>
+    <li>
+      <a href="../posts/release-v0.1.3">Peergos release v0.1.3</a>
+    </li>
+    <li>
+      <a href="../posts/applications">Applications on Peergos</a>
+    </li>
+    <li>
+      <a href="../posts/fast-seeking">Fast seeking and encrypted history</a>
+    </li>
+    <li>
+      <a href="../posts/ipfs-camp">IPFS Camp, new features</a>
+    </li>
+    <li>
+      <a href="../posts/alpha-release">Alpha Release</a>
+    </li>
+    <li>
+      <a href="../posts/security-audit">Security Audit</a>
+    </li>
+    <li>
+      <a href="../posts/dev-update">Development update</a>
+    </li>
+</ul>    </div>
     <span class="pull-right">
                                         <a class="btn btn-default" role="button"
                                            href="javascript:window.scrollTo(0,0);">Back to Top</a>

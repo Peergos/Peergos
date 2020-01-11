@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <head>
-    <title>Blog</title>
+    <title>Fast seeking and encrypted history</title>
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta charset="utf-8">
     <meta name="viewport"
@@ -24,25 +24,25 @@
         <a href="#" data-activates="mobile" class="button-collapse"><i class="material-icons">menu</i></a>
             <ul class="right hide-on-med-and-down">
                     <li >
-                        <a href="./features"
+                        <a href="../features"
 >
                             Features
                         </a>
                     </li>
                     <li >
-                        <a href="./security"
+                        <a href="../security"
 >
                             Security
                         </a>
                     </li>
                     <li class="active">
-                        <a href="./blog"
+                        <a href="../blog"
 >
                             Blog
                         </a>
                     </li>
                     <li >
-                        <a href="./about"
+                        <a href="../about"
 >
                             About
                         </a>
@@ -63,19 +63,19 @@
                 <a href="/" class="brand-logo"><img src="/theme/img/peergos/logo-tower-only-green.svg" width="180"/></a>
             </li>
                 <li >
-                    <a href="./features"
+                    <a href="../features"
 >
                         Features
                     </a>
                 </li>
                 <li >
-                    <a href="./security"
+                    <a href="../security"
 >
                         Security
                     </a>
                 </li>
                 <li class="active">
-                    <a href="./blog"
+                    <a href="../blog"
 >
                         Blog
                     </a>
@@ -88,7 +88,7 @@
                         </a>
                     </li>
                 <li >
-                    <a href="./about"
+                    <a href="../about"
 >
                         About
                     </a>
@@ -100,39 +100,66 @@
     <div class="container bs-docs-container">
     <div class="row">
     <div class="col m3 col s4">
-    <div id="full-toc" class="bs-docs-sidebar hidden-print affix-top hidden-xs hidden-sm" role="complementary">
-  
-    </div>
     </div>
     <div class="col m9 col s8" role="main" style="overflow-x:auto; padding-bottom: 10px;">
-    <h1 class="page-header main-title">Blog</h1>
+    <h1 class="page-header main-title">Fast seeking and encrypted history</h1>
     <div class="bs-docs-section">
-    
+    <p>Another week, another set of cool new Peergos features. We've been hard at work and wanted to tell you about our latest new features: super fast seeking within a file, encrypted history (fix the back button), and storage usage and quota display. </p>
+<p>Imagine you were watching a long movie in Peergos using our built in streaming video player, and wanted to skip ahead to where you left off last time, around two hours in. Previously this involved downloading the encrypted metadata for every 5MiB chunk of the file (a few network requests), decrypting the location of the next chunk, and repeating this until you reach the desired offset. The links between the chunks are encrypted so that the outside world (or the server) can't deduce the size of your files. This was SLOOOOOW. To seek a gigabyte or so in took about 5 minutes, or more depending on your internet connection latency! No one wants to wait around that long. so we came up with a new scheme for deterministic, but still private subsequent chunk locations. Before this change each chunk location was 32 random bytes. In the new scheme we calculate the location of a subsequent chunk as the following, where the secret is 32 random bytes that are stored in the encrypted metadata of the first chunk of the file:</p>
+<p><center>
+<b>next location = sha256 hash(current location + secret)</b><br/>
+How we now calculate the locations of later parts of a file
+</center></p>
+<p>This means that to seek ahead we don't need to do <em>any</em> IO at all. We just do a bunch of hashing locally. This is ridiculously fast and doesn't leak to the world the connections between your chunks. We can now seek many gigabytes into a file in about 5s, which is mostly the time to retrive the eventual chunk of the file.</p>
+<p><center>
+<video src="theme/video/mind-blown.mp4" width="400px" controls="true"></video>
+</center></p>
+<p><center>
+http://localhost:8000/#{%22nonce%22:%22hl6U6X/ytjRGT+pi5wmJFq...,%22ciphertext%22:%22oK9JAGotzDOELvIon...}
+<br/>
+A URL with the encrypted path in the fragment.
+</center></p>
+<p>The second feature this week is encrypted history. Until now, if you press the browser back button you get logged out of Peergos. Super annoying! Now, every time you change directory we store the path, padded and encrypted, in the url fragment. If we didn't encrypt it then there'd be a log of every directory you visited in your browser history. The other requirement is that we catch changes to the url (e.g. caused by pressing the back button) and try to decrypt and interpet the resulting path. This makes navigation much more intuitive.</p>
+<p>We also add to the history if you open a file in Peergos, and if you log in through one of these links then we will restore you to the correct directory, and open any file you had open. This allows you to store "deep bookmarks" to things in Peergos which don't reveal anything to someone who get's access you your bookmarks!</p>
+<p><center>
+<img alt="Space usage display" class="class" height="20%" id="id" src="/theme/img/peergos-usage.png" width="400px" />
+<br/>
+Space usage display
+</center></p>
+<p>The third feature is a display of your current space usage and allowance. This lets you see at a glance how close to your limit you are, and you can request more from the admin for your storage node. That could be a friend who's running a Peergos server for you and gives you more storage for free. Or later down the line we will add the ability for a hosting provider to charge money for storage. After you've requested more storage an admin can approve it next time they log in.</p>
+<p><center>
+<img alt="Request more space" class="class" height="20%" id="id" src="/theme/img/peergos-request-storage.png" width="400px" />
+<br/>
+Request more space
+</center></p>
+<p>These features are already live on the <a href="https://alpha.peergos.net">alpha server</a>, and in the <a href="https://alpha.peergos.net/public/peergos/releases/v0.1.0/">latest release</a> so go check it out!</p>
+<p>Happy Peergossing!</p>
+<p>-The Peergos team</p>
 <h4>RECENT POSTS</h4>
 <ul id="recent-posts">
     <li>
-      <a href="./posts/atomic-access-control">Atomic access control</a>
+      <a href="../posts/atomic-access-control">Atomic access control</a>
     </li>
     <li>
-      <a href="./posts/release-v0.1.3">Peergos release v0.1.3</a>
+      <a href="../posts/release-v0.1.3">Peergos release v0.1.3</a>
     </li>
     <li>
-      <a href="./posts/applications">Applications on Peergos</a>
+      <a href="../posts/applications">Applications on Peergos</a>
     </li>
     <li>
-      <a href="./posts/fast-seeking">Fast seeking and encrypted history</a>
+      <a href="../posts/fast-seeking">Fast seeking and encrypted history</a>
     </li>
     <li>
-      <a href="./posts/ipfs-camp">IPFS Camp, new features</a>
+      <a href="../posts/ipfs-camp">IPFS Camp, new features</a>
     </li>
     <li>
-      <a href="./posts/alpha-release">Alpha Release</a>
+      <a href="../posts/alpha-release">Alpha Release</a>
     </li>
     <li>
-      <a href="./posts/security-audit">Security Audit</a>
+      <a href="../posts/security-audit">Security Audit</a>
     </li>
     <li>
-      <a href="./posts/dev-update">Development update</a>
+      <a href="../posts/dev-update">Development update</a>
     </li>
 </ul>    </div>
     <span class="pull-right">
