@@ -124,7 +124,7 @@ public class CborEncoder {
     /**
      * Writes a byte string in canonical CBOR-format.
      *
-     * @param value the byte string to write, can be <code>null</code> in which case a byte-string of length <tt>0</tt> is written.
+     * @param bytes the byte string to write, can be <code>null</code> in which case a byte-string of length <tt>0</tt> is written.
      * @throws IOException in case of I/O problems writing the CBOR-encoded value to the underlying output stream.
      */
     public void writeByteString(byte[] bytes) throws IOException {
@@ -386,15 +386,13 @@ public class CborEncoder {
      * Writes a byte string in canonical CBOR-format.
      *
      * @param majorType the major type of the string, should be either 0x40 or 0x60;
-     * @param value the byte string to write, can be <code>null</code> in which case a byte-string of length <tt>0</tt> is written.
+     * @param bytes the byte string to write, can be <code>null</code> in which case a byte-string of length <tt>0</tt> is written.
      * @throws IOException in case of I/O problems writing the CBOR-encoded value to the underlying output stream.
      */
     protected void writeString(int majorType, byte[] bytes) throws IOException {
         int len = (bytes == null) ? 0 : bytes.length;
         writeType(majorType, len);
-        for (int i = 0; i < len; i++) {
-            m_os.write(bytes[i]);
-        }
+        m_os.write(bytes);
     }
 
     /**
