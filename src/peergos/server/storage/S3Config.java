@@ -27,7 +27,7 @@ public class S3Config {
     }
 
     public static S3Config build(Args a) {
-        String path = a.getArg("s3.path", "blocks");
+        String path = a.getArg("s3.path", "");
         String bucket = a.getArg("s3.bucket");
         String region = a.getArg("s3.region");
         String accessKey = a.getArg("s3.accessKey", "");

@@ -285,10 +285,14 @@ public class Main {
 
                     args.setArg("ipfs-api-address", getLocalMultiAddress(ipfsApiPort).toString());
 
-                    Multihash pkiIpfsNodeId = useIPFS ?
-                            new IpfsDHT(getLocalMultiAddress(ipfsApiPort)).id().get() :
-                            new FileContentAddressedStorage(blockstorePath(args),
-                                    JdbcTransactionStore.build(Sqlite.build(":memory:"), new SqliteCommands())).id().get();
+                    JdbcTransactionStore transactions = JdbcTransactionStore.build(Sqlite.build(":memory:"), new SqliteCommands());
+                    ContentAddressedStorage storage = useIPFS ?
+                            new IpfsDHT(getLocalMultiAddress(ipfsApiPort)) :
+                            S3Config.useS3(args) ?
+                                    new S3BlockStorage(S3Config.build(args), Cid.decode(args.getArg("ipfs.id")), transactions) :
+                                    new FileContentAddressedStorage(blockstorePath(args),
+                                            transactions);
+                    Multihash pkiIpfsNodeId = storage.id().get();
 
                     if (ipfs != null)
                         ipfs.stop();
@@ -480,7 +484,7 @@ public class Main {
             Optional<UserService.TlsProperties> tlsProps =
                     tlsHostname.map(host -> new UserService.TlsProperties(host, a.getArg("tls.keyfile.password")));
             peergos.initAndStart(localAddress, tlsProps, webroot, useWebAssetCache);
-            if (! isPkiNode) {
+            if (! isPkiNode && useIPFS) {
                 int pkiNodeSwarmPort = a.getInt("pki.node.swarm.port");
                 InetAddress pkiNodeIpAddress = InetAddress.getByName(a.getArg("pki.node.ipaddress"));
                 ipfsWrapper.connectToNode(new InetSocketAddress(pkiNodeIpAddress, pkiNodeSwarmPort), pkiServerNodeId);

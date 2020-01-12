@@ -2,6 +2,7 @@ package peergos.server.storage;
 
 import com.amazonaws.*;
 import com.amazonaws.auth.*;
+import com.amazonaws.client.builder.*;
 import com.amazonaws.services.s3.*;
 import com.amazonaws.services.s3.model.*;
 import peergos.server.corenode.*;
@@ -51,16 +52,19 @@ public class S3BlockStorage implements ContentAddressedStorage {
         this.bucket = config.bucket;
         this.folder = config.path.isEmpty() || config.path.endsWith("/") ? config.path : config.path + "/";
         AmazonS3ClientBuilder builder = AmazonS3ClientBuilder.standard()
-                .withRegion(config.region)
+                .withEndpointConfiguration(new AwsClientBuilder.EndpointConfiguration(config.regionEndpoint, config.region))
                 .withCredentials(new AWSStaticCredentialsProvider(
                         new BasicAWSCredentials(config.accessKey, config.secretKey)));
         s3Client = builder.build();
+        LOG.info("Using S3 Block Storage at " + config.regionEndpoint + ", bucket " + config.bucket + ", path: " + config.path);
         this.transactions = transactions;
     }
 
     private static String hashToKey(Multihash hash) {
-        // To be compatible with IPFS we use the ame scheme here, the cid bytes encoded as uppercase base32
-        return new Base32().encodeAsString(hash.toBytes());
+        // To be compatible with IPFS we use the same scheme here, the cid bytes encoded as uppercase base32
+        String padded = new Base32().encodeAsString(hash.toBytes());
+        int padStart = padded.indexOf("=");
+        return padStart > 0 ? padded.substring(0, padStart) : padded;
     }
 
     private Multihash keyToHash(String key) {
@@ -93,12 +97,12 @@ public class S3BlockStorage implements ContentAddressedStorage {
 
     @Override
     public CompletableFuture<List<Multihash>> pinUpdate(PublicKeyHash owner, Multihash existing, Multihash updated) {
-        return Futures.of(Collections.emptyList());
+        return Futures.of(Collections.singletonList(updated));
     }
 
     @Override
     public CompletableFuture<List<Multihash>> recursivePin(PublicKeyHash owner, Multihash hash) {
-        return Futures.of(Collections.emptyList());
+        return Futures.of(Collections.singletonList(hash));
     }
 
     @Override
@@ -144,12 +148,10 @@ public class S3BlockStorage implements ContentAddressedStorage {
     @Override
     public CompletableFuture<Optional<Integer>> getSize(Multihash hash) {
         return Futures.of(map(hash, h -> {
-            GetObjectRequest get = new GetObjectRequest(bucket, folder + hashToKey(hash));
             Histogram.Timer readTimer = readTimerLog.labels("size").startTimer();
-            try (S3Object res = s3Client.getObject(get)) {
-                return Optional.of((int)res.getObjectMetadata().getContentLength());
-            } catch (IOException e) {
-                throw new RuntimeException(e.getMessage(), e);
+            try {
+                ObjectMetadata res = s3Client.getObjectMetadata(bucket, folder + hashToKey(hash));
+                return Optional.of((int)res.getContentLength());
             } finally {
                 readTimer.observeDuration();
             }
@@ -243,9 +245,6 @@ public class S3BlockStorage implements ContentAddressedStorage {
         try {
             Multihash hash = new Multihash(Multihash.Type.sha2_256, Hash.sha256(data));
             Cid cid = new Cid(1, isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor, hash.type, hash.getHash());
-            if (contains(cid))
-                return cid;
-
             ObjectMetadata metadata = new ObjectMetadata();
             metadata.setContentLength(data.length);
             PutObjectRequest put = new PutObjectRequest(bucket, folder + hashToKey(cid), new ByteArrayInputStream(data), metadata);
