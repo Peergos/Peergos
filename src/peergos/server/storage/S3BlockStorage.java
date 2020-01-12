@@ -107,7 +107,7 @@ public class S3BlockStorage implements ContentAddressedStorage {
 
     @Override
     public CompletableFuture<List<Multihash>> recursiveUnpin(PublicKeyHash owner, Multihash hash) {
-        return Futures.of(Collections.emptyList());
+        return Futures.of(Collections.singletonList(hash));
     }
 
     @Override
