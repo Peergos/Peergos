@@ -153,7 +153,7 @@ public class S3BlockStorage implements ContentAddressedStorage {
         Path pointerSnapshotFile = Paths.get("pointers-snapshot-" + LocalDateTime.now() + ".txt");
         for (Map.Entry<PublicKeyHash, byte[]> entry : allPointers.entrySet()) {
             Files.write(pointerSnapshotFile, (entry.getKey() + ":" +
-                    ArrayOps.bytesToHex(entry.getValue()) + "\n").getBytes(), StandardOpenOption.APPEND);
+                    ArrayOps.bytesToHex(entry.getValue()) + "\n").getBytes(), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
         }
         long deletedBlocks = 0;
         long deletedSize = 0;
@@ -311,7 +311,13 @@ public class S3BlockStorage implements ContentAddressedStorage {
 
     private List<Multihash> getFiles(long maxReturned) {
         List<Multihash> results = new ArrayList<>();
-        applyToAll(obj -> results.add(keyToHash(obj.getKey())), maxReturned);
+        applyToAll(obj -> {
+            try {
+                results.add(keyToHash(obj.getKey()));
+            } catch (Exception e) {
+                LOG.warning("Couldn't parse S3 key to Cid: " + obj.getKey());
+            }
+        }, maxReturned);
         return results;
     }
 
