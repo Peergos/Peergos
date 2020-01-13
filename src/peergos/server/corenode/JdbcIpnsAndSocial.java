@@ -213,6 +213,23 @@ public class JdbcIpnsAndSocial {
         }
     }
 
+    public Map<PublicKeyHash, byte[]> getAllEntries() {
+        try (PreparedStatement stmt = conn.prepareStatement("SELECT * FROM metadatablobs")) {
+            ResultSet rs = stmt.executeQuery();
+            Map<PublicKeyHash, byte[]> results = new HashMap<>();
+            while (rs.next()) {
+                PublicKeyHash writerHash = PublicKeyHash.fromCbor(CborObject.fromByteArray(Base64.getDecoder().decode(rs.getString("writingKey"))));
+                byte[] signedRawCas = Base64.getDecoder().decode(rs.getString(IPNS_TARGET_NAME));
+                results.put(writerHash, signedRawCas);
+            }
+
+            return results;
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            return Collections.emptyMap();
+        }
+    }
+
     public synchronized void close() {
         if (isClosed)
             return;
