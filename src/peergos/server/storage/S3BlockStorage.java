@@ -155,9 +155,17 @@ public class S3BlockStorage implements ContentAddressedStorage {
             Files.write(pointerSnapshotFile, (entry.getKey() + ":" +
                     ArrayOps.bytesToHex(entry.getValue()) + "\n").getBytes(), StandardOpenOption.APPEND);
         }
+        long deletedBlocks = 0;
+        long deletedSize = 0;
         for (int i=0; i < present.size(); i++)
-            if (! reachable.get(i))
-                delete(present.get(i));
+            if (! reachable.get(i)) {
+                Multihash hash = present.get(i);
+                int size = getSize(hash).join().get();
+                deletedBlocks++;
+                deletedSize += size;
+                delete(hash);
+            }
+        System.out.println("GC complete. Freed " + deletedBlocks + " blocks totalling " + deletedSize + " bytes");
     }
 
     private void markReachable(Multihash root, List<Multihash> present, BitSet reachable) {
