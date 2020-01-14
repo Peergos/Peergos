@@ -392,7 +392,9 @@ public class CborEncoder {
     protected void writeString(int majorType, byte[] bytes) throws IOException {
         int len = (bytes == null) ? 0 : bytes.length;
         writeType(majorType, len);
-        m_os.write(bytes);
+        if (len > 0){
+            m_os.write(bytes);
+        }
     }
 
     /**
