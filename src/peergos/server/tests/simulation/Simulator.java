@@ -19,6 +19,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.logging.Level;
@@ -87,20 +88,33 @@ public class Simulator implements Runnable {
     private static final int MIN_FILE_LENGTH = 256;
     private static final int MAX_FILE_LENGTH = Integer.MAX_VALUE;
 
-    enum Simulation {READ, WRITE, MKDIR, RM, RMDIR,
-        GRANT_READ_FILE, GRANT_READ_DIR, GRANT_WRITE_FILE, GRANT_WRITE_DIR,
-        REVOKE_READ, REVOKE_WRITE;
+    enum Simulation {
+        READ_OWN_FILE,
+        WRITE_OWN_FILE,
+        READ_SHARED_FILE,
+        WRITE_SHARED_FILE,
+        MKDIR,
+        RM,
+        RMDIR,
+        GRANT_READ_FILE,
+        GRANT_READ_DIR,
+        GRANT_WRITE_FILE,
+        GRANT_WRITE_DIR,
+        REVOKE_READ,
+        REVOKE_WRITE;
 
         public FileSystem.Permission permission() {
             switch (this) {
                 case GRANT_READ_FILE:
                 case GRANT_READ_DIR:
                 case REVOKE_READ:
+                case READ_SHARED_FILE:
                     return FileSystem.Permission.READ;
 
                 case GRANT_WRITE_DIR:
                 case GRANT_WRITE_FILE:
                 case REVOKE_WRITE:
+                case WRITE_SHARED_FILE:
                     return FileSystem.Permission.WRITE;
             }
             return null;
@@ -250,8 +264,6 @@ public class Simulator implements Runnable {
     }
 
     private boolean read(String user, Path path) {
-        log(user, Simulation.READ, path);
-
         FileSystem testFileSystem = fileSystems.getTestFileSystem(user);
         FileSystem referenceFileSystem = fileSystems.getReferenceFileSystem(user);
 
@@ -268,16 +280,14 @@ public class Simulator implements Runnable {
         LOG.info(msg);
     }
 
-    private void write(String user) {
-        Path path = getAvailableFilePath(user);
+    private void write(String user, Path path) {
+
         byte[] fileContents = getNextFileContents();
 
         Path dirName = path.getParent();
         String fileName = path.getFileName().toString();
         Map<Path, List<String>> dirsToFiles = index.getDirToFiles(user);
         dirsToFiles.get(dirName).add(fileName);
-
-        log(user, Simulation.WRITE, path);
 
         FileSystem testFileSystem = fileSystems.getTestFileSystem(user);
         FileSystem referenceFileSystem = fileSystems.getReferenceFileSystem(user);
@@ -316,7 +326,7 @@ public class Simulator implements Runnable {
             index.getDirToFiles(user).put(Paths.get("/" + user), new ArrayList<>());
             // seed the file-system
             run(Simulation.MKDIR, user);
-            run(Simulation.WRITE, user);
+            run(Simulation.WRITE_OWN_FILE, user);
 
             // ALL PAIRWISE FRIENDS
             for (String otherUser : users) {
@@ -338,13 +348,43 @@ public class Simulator implements Runnable {
         Supplier<String> otherUser = () -> fileSystems.getNextUser(user);
         Supplier<Path> randomFilePathForUser = () -> index.getRandomExistingFile(user);
         Supplier<Path> randomFolderPathForUser = () -> index.getRandomExistingDirectory(user, true);
+        BiFunction<String, String, Optional<Path>> randomSharedPath = (owner, sharee) -> {
+            try {
+                Path path = fileSystems.getReferenceFileSystem(owner).getRandomSharedPath(random, simulation.permission(), sharee);
+                return Optional.of(path);
+            } catch (IllegalStateException ile) {
+                //Nothing  shared yet
+                return Optional.empty();
+            }
+        };
+
 
         switch (simulation) {
-            case READ:
-                read(user, randomFilePathForUser.get());
+            case READ_OWN_FILE:
+                Path readPath = randomFilePathForUser.get();
+                log(user, simulation, readPath);
+                read(user, readPath);
                 break;
-            case WRITE:
-                write(user);
+            case READ_SHARED_FILE:
+                Optional<Path> sharedOpt = randomSharedPath.apply(otherUser.get(), user);
+                if (! sharedOpt.isPresent())
+                    return;
+                Path sharedPathToRead = sharedOpt.get();
+                log(user, Simulation.READ_SHARED_FILE, sharedPathToRead);
+                read(user, sharedPathToRead);
+                break;
+            case WRITE_OWN_FILE:
+                Path path = getAvailableFilePath(user);
+                log(user, Simulation.WRITE_OWN_FILE, path);
+                write(user, path);
+                break;
+            case WRITE_SHARED_FILE:
+                Optional<Path> sharedOpt2 = randomSharedPath.apply(otherUser.get(), user);
+                if (! sharedOpt2.isPresent())
+                    return;
+                Path  sharedPathToWrite = sharedOpt2.get();
+                log(user, Simulation.WRITE_SHARED_FILE, sharedPathToWrite);
+                write(user, sharedPathToWrite);
                 break;
             case MKDIR:
                 mkdir(user);
@@ -354,6 +394,8 @@ public class Simulator implements Runnable {
                 break;
             case RMDIR:
                 rmdir(user);
+                //ensure not shared
+
                 break;
             case GRANT_READ_FILE:
             case GRANT_WRITE_FILE:
@@ -371,17 +413,13 @@ public class Simulator implements Runnable {
                 break;
             case REVOKE_READ:
             case REVOKE_WRITE:
-                String revokee = otherUser.get();
-                Path revokePath = null;
-                try {
-                    revokePath = fileSystems.getReferenceFileSystem(user).getRandomSharedPath(random, simulation.permission());
-                } catch (IllegalStateException ile) {
-                    //nothing shared yet
+                Optional<Path> revokeOpt = randomSharedPath.apply(user, otherUser.get());
+                if (! revokeOpt.isPresent())
                     return;
-                }
-                log(user, simulation, revokePath, "with revokee "+ revokee);
+                Path revokePath = revokeOpt.get();
+                log(user, simulation, revokePath);
                 try {
-                    revokePermission(user, revokee,
+                    revokePermission(user, AccessControl.getOwner(revokePath),
                             revokePath, simulation.permission());
                 } catch (Exception ex) {
                     System.out.println();
@@ -443,6 +481,7 @@ public class Simulator implements Runnable {
                             LOG.log(Level.WARNING, "User "+ sharee +" could not read shared-path "+ path +"!", ex);
                             isVerified = false;
                         }
+                        break;
                     case WRITE:
                         try {
                             // can overwrite?
@@ -450,6 +489,7 @@ public class Simulator implements Runnable {
                         } catch (Exception ex) {
                             LOG.log(Level.WARNING, "User "+ sharee +" could not write  shared-path "+ path +"!", ex);
                         }
+                        break;
                     default:
                         throw new IllegalStateException();
                 }
@@ -565,11 +605,13 @@ public class Simulator implements Runnable {
         };
 
 
-        int opCount = 200;
+        int opCount = 100;
 
         Map<Simulation, Double> probabilities = Stream.of(
-                new Pair<>(Simulation.READ, 0.0),
-                new Pair<>(Simulation.WRITE, 0.4),
+                new Pair<>(Simulation.READ_OWN_FILE, 0.0),
+//                new Pair<>(Simulation.READ_SHARED_FILE, 0.1),
+                new Pair<>(Simulation.WRITE_OWN_FILE, 0.4),
+//                new Pair<>(Simulation.WRITE_SHARED_FILE, 0.1),
                 new Pair<>(Simulation.RM, 0.0),
                 new Pair<>(Simulation.MKDIR, 0.1),
                 new Pair<>(Simulation.RMDIR, 0.0),
@@ -582,20 +624,50 @@ public class Simulator implements Runnable {
         ).collect(
                 Collectors.toMap(e -> e.left, e -> e.right));
 
+        class SimulationSupplier implements Supplier<Simulation> {
+            private final Simulation[] simulations;
+            private final double[] cumulativeProbabilities;
+            private final Random random;
+            private final double probabililtyNorm;
+
+            @Override
+            public Simulation get() {
+                double v = random.nextDouble() * probabililtyNorm;
+                int pos = Arrays.binarySearch(cumulativeProbabilities, v);
+                if (pos < 0)
+                    pos = Math.max(0, -pos -1-1);
+                return simulations[pos];
+            }
+
+            public SimulationSupplier(Map<Simulation, Double> probabilities, Random random) {
+                // remove simulations with empty probabilities
+                probabilities = probabilities.entrySet()
+                        .stream()
+                        .filter(e -> e.getValue()  > 0)
+                        .collect(Collectors.toMap(e -> e.getKey(), e ->  e.getValue()));
+
+                this.simulations = new Simulation[probabilities.size()];
+                this.cumulativeProbabilities = new double[probabilities.size()];
+                this.random  = random;
+                int pos = 0;
+                double acc = 0;
+
+                for (Map.Entry<Simulation, Double> entry : probabilities.entrySet()) {
+                    Simulation sim = entry.getKey();
+                    Double prob = entry.getValue();
+                    acc += prob;
+                    simulations[pos] = sim;
+                    cumulativeProbabilities[pos] = acc;
+                    pos++;
+                }
+                this.probabililtyNorm = acc;
+
+
+            }
+        }
         final Random random = new Random(1);
 
-        Supplier<Simulation> getNextSimulation = () -> {
-            double acc = 0;
-            double p = random.nextDouble();
-            for (Map.Entry<Simulation, Double> e : probabilities.entrySet()) {
-                Simulation simulation = e.getKey();
-                Double prob = e.getValue();
-                acc += prob;
-                if (p < acc)
-                    return simulation;
-            }
-            throw new IllegalStateException();
-        };
+        Supplier<Simulation> getNextSimulation = new SimulationSupplier(probabilities, random);
 
         //hard-mode
         CryptreeNode.setMaxChildLinkPerBlob(10);

@@ -231,14 +231,14 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
     @Override
     public int read(String s, Pointer pointer, @size_t long size, @off_t long offset, FuseFileInfo fuseFileInfo) {
         ensureNotClosed();
-        debug("READ %s, size %d  offset %d ", s, size, offset);
+        debug("READ_OWN_FILE %s, size %d  offset %d ", s, size, offset);
         return applyIfPresent(s, (stat) -> read(stat, pointer, size, offset));
     }
 
     @Override
     public int write(String s, Pointer pointer, @size_t long size, @off_t long offset, FuseFileInfo fuseFileInfo) {
         ensureNotClosed();
-        debug("WRITE %s, size %d  offset %d ", s, size, offset);
+        debug("WRITE_OWN_FILE %s, size %d  offset %d ", s, size, offset);
         Path path = Paths.get(s);
         String parentPath = path.getParent().toString();
         String name = path.getFileName().toString();

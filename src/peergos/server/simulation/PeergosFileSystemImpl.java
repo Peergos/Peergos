@@ -152,7 +152,7 @@ public class PeergosFileSystemImpl implements FileSystem {
     }
 
     @Override
-    public Path getRandomSharedPath(Random random, Permission permission) {
+    public Path getRandomSharedPath(Random random, Permission permission, String sharee) {
         throw new IllegalStateException("Not implemented");
     }
 

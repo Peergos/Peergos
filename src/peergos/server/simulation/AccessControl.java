@@ -15,7 +15,9 @@ public interface AccessControl {
 
     void remove(Path path, String reader, FileSystem.Permission permission);
 
-    Path getRandomSharedPath(Random random, FileSystem.Permission permission);
+    void remove(Path path);
+
+    Path getRandomSharedPath(Random random, FileSystem.Permission permission, String sharee);
     /**
      * Model owners, reader and writers
      */
@@ -34,6 +36,11 @@ public interface AccessControl {
         void removeAllowed(Path path, String user) {
             getAllowed(path).remove(user);
         }
+
+        void remove(Path p) {
+            allowed.remove(p);
+        }
+
     }
 
     static String getOwner(Path path) {
@@ -103,8 +110,9 @@ public interface AccessControl {
         }
 
         @Override
-        public Path getRandomSharedPath(Random random, FileSystem.Permission permission) {
-
+        public Path getRandomSharedPath(Random random, FileSystem.Permission permission, String sharee) {
+            //TODO: make sharee-specific
+            // for now with two users that are friends this is OK
             AccessControlUnit acu = getAcu(permission);
             List<Path> paths = new ArrayList<>(acu.allowed.keySet());
             Collections.sort(paths);
@@ -116,6 +124,12 @@ public interface AccessControl {
                 throw new IllegalStateException();
             return path;
 
+        }
+
+        @Override
+        public void remove(Path path) {
+            getAcu(FileSystem.Permission.READ).remove(path);
+            getAcu(FileSystem.Permission.WRITE).remove(path);
         }
     }
 }

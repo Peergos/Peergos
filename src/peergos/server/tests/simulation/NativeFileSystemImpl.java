@@ -102,6 +102,7 @@ public class NativeFileSystemImpl implements FileSystem {
                 } catch (IOException ioe) {
                     throw new IllegalStateException(ioe);
                 }
+                accessControl.remove(p);
         });
 
     }
@@ -230,8 +231,8 @@ public class NativeFileSystemImpl implements FileSystem {
 
 
     @Override
-    public Path getRandomSharedPath(Random random, Permission permission) {
-        return accessControl.getRandomSharedPath(random, permission);
+    public Path getRandomSharedPath(Random random, Permission permission, String sharee) {
+        return accessControl.getRandomSharedPath(random, permission, sharee);
     }
 
     @Override

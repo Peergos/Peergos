@@ -77,7 +77,7 @@ public interface FileSystem {
 
     void follow(FileSystem other);
 
-    Path getRandomSharedPath(Random random, FileSystem.Permission permission);
+    Path getRandomSharedPath(Random random, FileSystem.Permission permission, String sharee);
 
     List<String> getSharees(Path path, Permission permission);
 }
