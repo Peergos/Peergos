@@ -86,6 +86,10 @@ public class FileWrapper {
         return new FileWrapper(Optional.of(trie), pointer, entryWriter, ownername, version);
     }
 
+    public FileWrapper withTrieNodeOpt(Optional<TrieNode> trie) {
+        return new FileWrapper(trie, pointer, entryWriter, ownername, version);
+    }
+
     public FileWrapper withVersion(Snapshot version) {
         return new FileWrapper(globalRoot, pointer, entryWriter, ownername, version);
     }
@@ -103,7 +107,8 @@ public class FileWrapper {
         if (this.version.get(writer()).equals(version.get(writer())))
             return CompletableFuture.completedFuture(this);
         return network.getFile(version, pointer.capability, entryWriter, ownername)
-                .thenApply(Optional::get);
+                .thenApply(Optional::get)
+                .thenApply(f -> f.withTrieNodeOpt(globalRoot));
     }
 
     public PublicKeyHash owner() {
@@ -527,10 +532,24 @@ public class FileWrapper {
                                                             Crypto crypto,
                                                             ProgressConsumer<Long> monitor,
                                                             byte[] firstChunkMapKey) {
-        return network.synchronizer.applyComplexUpdate(owner(), signingPair(), (current, committer) ->
-                uploadFileSection(current, committer, filename, fileData, isHidden, startIndex, endIndex,
-                        baseKey, overwriteExisting, network, crypto, monitor, firstChunkMapKey))
-                .thenCompose(finalBase -> getUpdated(finalBase, network));
+        if (isWritable())
+            return network.synchronizer.applyComplexUpdate(owner(), signingPair(), (current, committer) ->
+                    uploadFileSection(current, committer, filename, fileData, isHidden, startIndex, endIndex,
+                            baseKey, overwriteExisting, network, crypto, monitor, firstChunkMapKey))
+                    .thenCompose(finalBase -> getUpdated(finalBase, network));
+
+        if (! overwriteExisting)
+            return Futures.errored(new IllegalStateException("Cannot upload a file to a directory without write acess!"));
+        return getChild(filename, crypto.hasher, network)
+                .thenCompose(c -> {
+                    if (! c.isPresent())
+                        return Futures.errored(new IllegalStateException("No child with name " + filename));
+                    FileWrapper child = c.get();
+                    return network.synchronizer.applyComplexUpdate(owner(), child.signingPair(),
+                            (current, committer) -> updateExistingChild(current, committer, this, child,
+                                    fileData, startIndex, endIndex, network, crypto, monitor))
+                            .thenApply(this::withVersion);
+                });
     }
 
     private CompletableFuture<Snapshot> uploadFileSection(Snapshot intialVersion,

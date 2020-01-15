@@ -261,7 +261,7 @@ public class PeergosNetworkUtils {
         Optional<FileWrapper> fileWithNewBaseKey = updatedSharerUser.getByPath(filePath).get();
         Assert.assertTrue(fileWithNewBaseKey.isPresent());
 
-        // Now modify the file
+        // Now modify the file from the sharer
         byte[] suffix = "Some new data at the end".getBytes();
         AsyncReader suffixStream = new AsyncReader.ArrayBacked(suffix);
         FileWrapper parent = updatedSharerUser.getByPath(updatedSharerUser.username).get().get();
@@ -273,7 +273,34 @@ public class PeergosNetworkUtils {
         byte[] newFileContents = Serialize.readFully(extendedContents, originalFileContents.length + suffix.length).get();
 
         Assert.assertTrue(Arrays.equals(newFileContents, ArrayOps.concat(originalFileContents, suffix)));
+
+        // Now modify the file from the sharee
+        byte[] suffix2 = "Some more data".getBytes();
+        AsyncReader suffixStream2 = new AsyncReader.ArrayBacked(suffix2);
+        UserContext sharee = remainingUsers.get(0);
+        FileWrapper parent2 = sharee.getByPath(updatedSharerUser.username).get().get();
+        parent2.uploadFileSection(filename, suffixStream2, false,
+                originalFileContents.length + suffix.length,
+                originalFileContents.length + suffix.length + suffix2.length,
+                Optional.empty(), true, shareeNode, crypto, l -> {},
+                null).get();
+        AsyncReader extendedContents2 = sharee.getByPath(filePath).get().get()
+                .getInputStream(updatedSharerUser.network,
+                updatedSharerUser.crypto, l -> {}).get();
+        byte[] newFileContents2 = Serialize.readFully(extendedContents2,
+                originalFileContents.length + suffix.length + suffix2.length).get();
+
+        byte[] expected = ArrayOps.concat(ArrayOps.concat(originalFileContents, suffix), suffix2);
+        equalArrays(newFileContents2, expected);
         MultiUserTests.checkUserValidity(sharerNode, sharerUsername);
+    }
+
+    public static void equalArrays(byte[] a, byte[] b) {
+        if (a.length != b.length)
+            throw new IllegalStateException("Different length arrays!");
+        for (int i=0; i < a.length; i++)
+            if (a[i] != b[i])
+                throw new IllegalStateException("Different at index " + i);
     }
 
     public static void shareFileWithDifferentSigner(NetworkAccess sharerNode,
