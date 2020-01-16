@@ -34,9 +34,10 @@ public class UserStats {
                     if (target.isPresent())
                         total += network.dhtClient.getRecursiveBlockSize(target.get()).get();
                 }
-                String summary = "User: " + username + ", expiry: " + expiry + " usage: " + total + "\n";
+                String summary = "User: " + username + ", expiry: " + expiry + " usage: " + total
+                        + ", owned keys: " + ownedKeysRecursive.size() + "\n";
                 System.out.println(summary);
-                return Stream.of(new Summary(username, expiry, total, hosts));
+                return Stream.of(new Summary(username, expiry, total, hosts, ownedKeysRecursive));
             } catch (Exception e) {
                 System.err.println("Error for " + username);
                 e.printStackTrace();
@@ -73,16 +74,19 @@ public class UserStats {
         public final LocalDate expiry;
         public final long usage;
         public final List<Multihash> storageProviders;
+        public final Set<PublicKeyHash> ownedKeys;
 
-        public Summary(String username, LocalDate expiry, long usage, List<Multihash> storageProviders) {
+        public Summary(String username, LocalDate expiry, long usage, List<Multihash> storageProviders, Set<PublicKeyHash> ownedKeys) {
             this.username = username;
             this.expiry = expiry;
             this.usage = usage;
             this.storageProviders = storageProviders;
+            this.ownedKeys = ownedKeys;
         }
 
         public String toString() {
-            return "User: " + username + ", expiry: " + expiry + ", usage: " + usage + ", hosts: " + storageProviders;
+            return "User: " + username + ", expiry: " + expiry + ", usage: " + usage
+                    + ", hosts: " + storageProviders + ", owned keys: " + ownedKeys.size();
         }
     }
 }
