@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<head>
+    <title>The perfect social network</title>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta charset="utf-8">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <link rel="shortcut icon" href="/theme/vendor/peergos-styles/dist/img/icons/favicon.ico"/>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+            <link href="https://fonts.googleapis.com/css?family=Montserrat:400,300,700,900,500" rel="stylesheet" type="text/css">
+    <link rel="stylesheet" href="/theme/vendor/materialize/css/materialize.min.css" type="text/css"/>
+    <link rel="stylesheet" href="/theme/css/peergos.css" type="text/css"/>
+
+
+ </head>
+<body class="blog" style="overflow-y: scroll;">
+<nav>
+    <div class="nav-wrapper">
+
+
+        <a href="/" class="brand-logo"><img src="/theme/img/peergos/logo-main.svg" width="200"/></a>
+        <a href="#" data-activates="mobile" class="button-collapse"><i class="material-icons">menu</i></a>
+            <ul class="right hide-on-med-and-down">
+                    <li >
+                        <a href="../features"
+>
+                            Features
+                        </a>
+                    </li>
+                    <li >
+                        <a href="../security"
+>
+                            Security
+                        </a>
+                    </li>
+                    <li class="active">
+                        <a href="../blog"
+>
+                            Blog
+                        </a>
+                    </li>
+                    <li >
+                        <a href="../about"
+>
+                            About
+                        </a>
+                    </li>
+                        <li>
+                            <a href="https://demo.peergos.net" class="btn">
+                                                        <span>
+                                                                Try the Demo
+                                                        </span>
+                            </a>
+                        </li>
+
+            </ul>
+
+
+        <ul class="side-nav" id="mobile">
+            <li class="side-nav-header">
+                <a href="/" class="brand-logo"><img src="/theme/img/peergos/logo-tower-only-green.svg" width="180"/></a>
+            </li>
+                <li >
+                    <a href="../features"
+>
+                        Features
+                    </a>
+                </li>
+                <li >
+                    <a href="../security"
+>
+                        Security
+                    </a>
+                </li>
+                <li class="active">
+                    <a href="../blog"
+>
+                        Blog
+                    </a>
+                </li>
+                    <li class="hidden-md hidden-lg nav_bar_grey_li">
+                        <a href="https://demo.peergos.net" class="nav_bar_grey_lnk">
+                                                        <span class="nav_bar_grey_span">
+                                                                Demo
+                                                        </span>
+                        </a>
+                    </li>
+                <li >
+                    <a href="../about"
+>
+                        About
+                    </a>
+                </li>
+        </ul>
+
+    </div>
+</nav>
+    <div class="container bs-docs-container">
+    <div class="row">
+    <div class="col m3 col s4">
+    </div>
+    <div class="col m9 col s8" role="main" style="overflow-x:auto; padding-bottom: 10px;">
+    <h1 class="page-header main-title">The perfect social network</h1>
+    <div class="bs-docs-section">
+    <p>What do most people want in a social network? We all have different ideas, but is it possible to have a set of features that makes everyone happy? We think so!</p>
+<p>This is the Peergos list of <strong>user-focused</strong> requirements for the Perfect Social Network:</p>
+<ol>
+<li><strong>Sharing media</strong> of any size with any number of people, including "the public".</li>
+<li><strong>Universal login</strong> - logging in on any device (even when all devices have been lost).</li>
+<li><strong>Unique usernames</strong> (human-memorable).</li>
+<li><strong>Location-independent identity</strong> - users should be able to change hosting provider without losing data or friends.</li>
+<li><strong>Offline</strong> functionality - the ability for many functions to continue to work offline.</li>
+<li><strong>Private data</strong> - the users decide who sees their posts, and the platform, as well as any server operators, can’t access them.</li>
+<li><strong>Private metadata</strong> (including the social graph - who connects with whom and when).</li>
+<li><strong>Post-quantum</strong> (safe if a large quantum computer is built).</li>
+<li>Free from <strong>targetted ads</strong>, or an engagement/outrage-optimised <strong>algorithmic feed</strong>.</li>
+<li>Fine grained <strong>access control</strong> - the user can restrict visibility of individual posts.</li>
+<li>The ability to delete or <strong>modify data</strong>.</li>
+<li><strong>Self-hostable</strong> - for those who want more control, whilst still interacting with everyone else.</li>
+</ol>
+<p>So why do we think these points are important?</p>
+<p>They fall into three broad categories: convenience, privacy and control.</p>
+<h2 id="convenience">Convenience</h2>
+<p>This one’s critical - if something isn't convenient, then most people won't use it. But what do we mean by convenience?</p>
+<p>For instance, we are used to having unique usernames on services like email, Twitter, Instagram etc. This enables everyone to unambiguously find friends via a human-memorable name; it also gives an entry point to log in from anywhere. At the moment, many architectures rely on generating keys on each device, and require an existing device to authorise a new one (e.g. Signal). However, this means you cannot log in if you lose all your devices.</p>
+<p>How many times have you switched email addresses and had to tell all your contacts about it? A location-independent identity means that we are free to choose where our data is stored, and move providers without any loss of data and whilst maintaining our full social graph.</p>
+<p>Can we still do anything if the internet is down? Is it possible to search old messages or write new posts without internet access? Most folks would love a social network with offline functionality.</p>
+<p>Finally, sharing large files. Unfortunately, this requirement rules out a lot of currently available architectures: in some popular social networks, sharing a 4 GB file with friends entails storing 4 GB on all their devices – and in append-only structures (i.e. ones you can only add to, never remove from) these files can't even be deleted!</p>
+<h2 id="privacy">Privacy</h2>
+<p>Privacy is a fundamental human right, and the best way to protect it online is with <a href="https://en.wikipedia.org/wiki/End-to-end_encryption">end-to-end encryption</a> of all data. Beyond that, to maintain freedom of association, we need to also safeguard metadata, in particular the social graph – i.e. not only protect what you send, but also what size, to whom and when. The need for full protection rules out protocols that expose lots of data and metadata to both the server administrators and the rest of the network (e.g. ActivityPub).</p>
+<p>Privacy isn't very good if it is temporary. Given the possibility of a large quantum computer being built, it is important for any privacy-focused protocol to plan for it.</p>
+<h2 id="control">Control</h2>
+<p>Many users would like more control over their data online, especially in social networks – and control comes in different flavours.</p>
+<p>Control over your own social feed means that you cannot be manipulated by the platform or its advertisers (as seen in recent elections!). Ideally this is not just a promise by the network operator, but a property enforced by design.</p>
+<p>Fine-grained access control allows users to do what they do naturally in life – control the flow of their information, whether it's private communication with a friend, or keeping work, family and friends separate.</p>
+<p>Control over modifying or deleting data allows us to be, well, human. People frequently make mistakes and might want to modify something, or simply clear up some space.</p>
+<p>And for those who want Even More Control, the system must be self-hostable. This also keeps the platform honest - a non-self-hostable (centralized) platform can do whatever it wants, and users have no choice but to accept any changes or leave the network entirely. To allow for self-hosting, the platform should be fully open source, including any server code.</p>
+<p>At Peergos, we <em>already</em> tick the above boxes, except offline functionality and post-quantum – both of which are partial ticks and in progress. Currently we look more like a global social file system, but we will be adding a more traditional social feed in the future. Watch this space for more progress reports!</p>
+<p>Do you agree with our list? What is YOUR perfect social network like? Tweet us at <a href="https://twitter.com/peergos">@peergos</a> with your ideas!</p>
+<h4>RECENT POSTS</h4>
+<ul id="recent-posts">
+    <li>
+      <a href="../posts/perfect-social-network">The perfect social network</a>
+    </li>
+    <li>
+      <a href="../posts/atomic-access-control">Atomic access control</a>
+    </li>
+    <li>
+      <a href="../posts/release-v0.1.3">Peergos release v0.1.3</a>
+    </li>
+    <li>
+      <a href="../posts/applications">Applications on Peergos</a>
+    </li>
+    <li>
+      <a href="../posts/fast-seeking">Fast seeking and encrypted history</a>
+    </li>
+    <li>
+      <a href="../posts/ipfs-camp">IPFS Camp, new features</a>
+    </li>
+    <li>
+      <a href="../posts/alpha-release">Alpha Release</a>
+    </li>
+    <li>
+      <a href="../posts/security-audit">Security Audit</a>
+    </li>
+    <li>
+      <a href="../posts/dev-update">Development update</a>
+    </li>
+</ul>    </div>
+    <span class="pull-right">
+                                        <a class="btn btn-default" role="button"
+                                           href="javascript:window.scrollTo(0,0);">Back to Top</a>
+                                </span>
+    </div>
+    </div>
+    </div>
+    <div class="index">
+
+
+<footer class="page-footer">
+    <div class="">
+        <div class="row">
+            <div class="col l6 m6 s12 footer-logo">
+                <img src="/theme/img/peergos/logo-dark-bg.svg" width="230">
+            </div>
+
+            <div class="col l3 m4 s12">
+                <h5 class="white-text">About Us</h5>
+                <ul>
+                    <li><a href="/about" >About</a></li>
+                    <li><a href="/contact" >Contact</a></li>
+                    <li><a href="/faq" >FAQ</a></li>
+                </ul>
+            </div>
+
+            <div class="col l3 m3 s12">
+                <h5 class="white-text">Community</h5>
+                <ul>
+                    <!--<li><a href="http://blog.peergos.org" target="_new">Blog</a></li>-->
+                    <li><a href="https://github.com/peergos" target="_new">GitHub</a></li>
+                    <li><a href="https://twitter.com/peergos" target="_new">Twitter</a></li>
+                    <li><a href="https://reddit.com/r/peergos" target="_new">Reddit</a></li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="footer-copyright">
+            <div class="row">
+                <div class="col s12">
+                    © PEERGOS | Designed by <a href="http://www.antarctic-design.co.uk" target="_blank"> Eamonn
+                    Maguire</a>.
+                </div>
+
+            </div>
+        </div>
+
+</footer>
+
+    </div>
+</div>
+<script src="/theme/vendor/jquery/dist/jquery.min.js"></script>
+<script src="/theme/vendor/materialize/js/materialize.min.js"></script>
+<script>
+    $(".button-collapse").sideNav();
+
+
+</script>
+
+</body>
+</html>
