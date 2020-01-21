@@ -18,6 +18,7 @@ import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
+import java.util.regex.*;
 
 public class Admin implements InstanceAdmin {
 
@@ -110,9 +111,11 @@ public class Admin implements InstanceAdmin {
         return Futures.of(quotas.acceptingSignups());
     }
 
+    private static Pattern VALID_EMAIL = Pattern.compile("^[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,6}$", Pattern.CASE_INSENSITIVE);
+
     @Override
     public synchronized CompletableFuture<Boolean> addToWaitList(String email) {
-        if (! enableWaitList || numberWaiting >= MAX_WAITING)
+        if (! enableWaitList || numberWaiting >= MAX_WAITING || ! VALID_EMAIL.matcher(email).matches())
             return Futures.of(false);
         try {
             Files.write(waitingList, (email + "\n").getBytes(), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
