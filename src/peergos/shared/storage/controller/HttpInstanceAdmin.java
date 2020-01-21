@@ -61,7 +61,7 @@ public class HttpInstanceAdmin implements InstanceAdmin {
 
     @Override
     public CompletableFuture<Boolean> addToWaitList(String email) {
-        return poster.get(Constants.ADMIN_URL + APPROVE + "?email=" + email)
+        return poster.get(Constants.ADMIN_URL + WAIT_LIST + "?email=" + email)
                 .thenApply(res -> ((CborObject.CborBoolean)CborObject.fromByteArray(res)).value);
     }
 
