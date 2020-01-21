@@ -31,6 +31,10 @@ public interface InstanceAdmin {
                                                    Multihash instanceIdentity,
                                                    byte[] signedRequest);
 
+    CompletableFuture<Boolean> acceptingSignups();
+
+    CompletableFuture<Boolean> addToWaitList(String email);
+
     class VersionInfo implements Cborable {
         public final Version version;
 

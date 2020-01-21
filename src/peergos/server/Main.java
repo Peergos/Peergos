@@ -473,7 +473,8 @@ public class Main {
             Set<String> adminUsernames = Arrays.asList(a.getArg("admin-usernames").split(","))
                     .stream()
                     .collect(Collectors.toSet());
-            Admin storageAdmin = new Admin(adminUsernames, spaceRequests, userQuotas, core, localDht);
+            boolean enableWaitlist = a.getBoolean("enable-wait-list", false);
+            Admin storageAdmin = new Admin(adminUsernames, spaceRequests, userQuotas, core, localDht, enableWaitlist);
             HttpSpaceUsage httpSpaceUsage = new HttpSpaceUsage(ipfsGateway, ipfsGateway);
             ProxyingSpaceUsage p2pSpaceUsage = new ProxyingSpaceUsage(nodeId, corePropagator, spaceChecker, httpSpaceUsage);
             UserService peergos = new UserService(p2pDht, crypto, corePropagator, p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage);

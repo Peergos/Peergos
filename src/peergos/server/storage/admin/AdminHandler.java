@@ -56,6 +56,17 @@ public class AdminHandler implements HttpHandler {
                     reply = new CborObject.CborBoolean(result);
                     break;
                 }
+                case HttpInstanceAdmin.WAIT_LIST: {
+                    String email = params.get("email").get(0);
+                    boolean result = target.addToWaitList(email).join();
+                    reply = new CborObject.CborBoolean(result);
+                    break;
+                }
+                case HttpInstanceAdmin.SIGNUPS: {
+                    boolean result = target.acceptingSignups().join();
+                    reply = new CborObject.CborBoolean(result);
+                    break;
+                }
                 default:
                     throw new IOException("Unknown method in admin handler!");
             }

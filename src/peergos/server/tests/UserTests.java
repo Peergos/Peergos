@@ -1234,6 +1234,7 @@ public abstract class UserTests {
     public void usage() {
         String username = generateUsername();
         String password = "password";
+        Assert.assertTrue(network.instanceAdmin.acceptingSignups().join());
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         long quota = context.getQuota().join();
         long usage = context.getSpaceUsage().join();

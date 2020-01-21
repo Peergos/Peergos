@@ -16,6 +16,8 @@ public class HttpInstanceAdmin implements InstanceAdmin {
     public static final String VERSION = "version";
     public static final String PENDING = "pending";
     public static final String APPROVE = "approve";
+    public static final String SIGNUPS = "signups";
+    public static final String WAIT_LIST = "waitlist";
 
     private final HttpPoster poster;
 
@@ -48,6 +50,18 @@ public class HttpInstanceAdmin implements InstanceAdmin {
                 + "?admin=" + encode(adminIdentity.toString())
                 + "&instance=" + encode(instanceIdentity.toString())
                 + "&req=" + ArrayOps.bytesToHex(signedRequest))
+                .thenApply(res -> ((CborObject.CborBoolean)CborObject.fromByteArray(res)).value);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> acceptingSignups() {
+        return poster.get(Constants.ADMIN_URL + SIGNUPS)
+                .thenApply(res -> ((CborObject.CborBoolean)CborObject.fromByteArray(res)).value);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> addToWaitList(String email) {
+        return poster.get(Constants.ADMIN_URL + APPROVE + "?email=" + email)
                 .thenApply(res -> ((CborObject.CborBoolean)CborObject.fromByteArray(res)).value);
     }
 
