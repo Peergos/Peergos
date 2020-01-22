@@ -112,10 +112,14 @@ public class Admin implements InstanceAdmin {
     }
 
     private static Pattern VALID_EMAIL = Pattern.compile("^[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,6}$", Pattern.CASE_INSENSITIVE);
+    private static final int MAX_EMAIL_LENGTH = 256;
 
     @Override
     public synchronized CompletableFuture<Boolean> addToWaitList(String email) {
-        if (! enableWaitList || numberWaiting >= MAX_WAITING || ! VALID_EMAIL.matcher(email).matches())
+        if (! enableWaitList
+                || numberWaiting >= MAX_WAITING
+                || ! VALID_EMAIL.matcher(email).matches()
+                || email.length() > MAX_EMAIL_LENGTH)
             return Futures.of(false);
         try {
             Files.write(waitingList, (email + "\n").getBytes(), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
