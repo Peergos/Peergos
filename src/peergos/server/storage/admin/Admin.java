@@ -118,6 +118,7 @@ public class Admin implements InstanceAdmin {
     public synchronized CompletableFuture<Boolean> addToWaitList(String email) {
         if (! enableWaitList
                 || numberWaiting >= MAX_WAITING
+                || quotas.acceptingSignups()
                 || ! VALID_EMAIL.matcher(email).matches()
                 || email.length() > MAX_EMAIL_LENGTH)
             return Futures.of(false);
