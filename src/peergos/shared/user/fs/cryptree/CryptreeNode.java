@@ -22,6 +22,11 @@ import java.util.stream.*;
  * A directory contains the following distinct symmetric read keys {base, parent}, and file contains {base == parent, data}
  * A directory or file also has a single base symmetric write key
  *
+ * A link node is a special node that behaves like a directory with a single child, and contains only the filename.
+ * These are used when granting write access to prevent the recipient from being able to rename the file/dir to
+ * potentially clash with a sibling that they cannot see. This means you cannot rename something unless you have write
+ * access to the parent directory, which is in line with unix et al.
+ *
  * The serialized encrypted form stores a link from the base key to the other key.
  * For a directory, the base key encrypts the links to child directories and files. For a file the datakey encrypts the
  * file's data. The parent key encrypts the link to the parent directory's parent key and the metadata (FileProperties).
@@ -828,7 +833,7 @@ public class CryptreeNode implements Cborable {
         RelativeCapability nextChunk = new RelativeCapability(Optional.empty(), crypto.random.randomBytes(32), dirReadKey, Optional.empty());
         WritableAbsoluteCapability childCap = us.withBaseKey(dirReadKey).withBaseWriteKey(dirWriteKey).withMapKey(dirMapKey);
         return CryptreeNode.createDir(MaybeMultihash.empty(), dirReadKey, dirWriteKey, Optional.empty(),
-                new FileProperties(name, true, "", 0, LocalDateTime.now(), isSystemFolder,
+                new FileProperties(name, true, false, "", 0, LocalDateTime.now(), isSystemFolder,
                         Optional.empty(), Optional.empty()), Optional.of(ourCap), SymmetricKey.random(), nextChunk, crypto.hasher)
                 .thenCompose(child -> {
 

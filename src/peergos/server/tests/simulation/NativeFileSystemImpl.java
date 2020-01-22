@@ -155,7 +155,7 @@ public class NativeFileSystemImpl implements FileSystem {
 
                 //TODO make files use the new format with a stream secret
                 Optional<byte[]> streamSecret = file.isDirectory() ? Optional.empty() : Optional.empty();
-                return new FileProperties(file.getName(), file.isDirectory(), mimeType, sizeHi, sizeLo, lastModified,
+                return new FileProperties(file.getName(), file.isDirectory(), false, mimeType, sizeHi, sizeLo, lastModified,
                         isHidden, thumbnail, streamSecret);
 
             }

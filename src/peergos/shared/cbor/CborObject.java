@@ -150,6 +150,13 @@ public interface CborObject extends Cborable {
             return ((CborBoolean) get(key)).value;
         }
 
+        public boolean getBoolean(String key, boolean def) {
+            Cborable val = get(key);
+            if (val == null)
+                return def;
+            return ((CborBoolean) val).value;
+        }
+
         public Optional<byte[]> getOptionalByteArray(String key) {
             return Optional.ofNullable((CborByteArray) get(key)).map(c -> c.value);
         }

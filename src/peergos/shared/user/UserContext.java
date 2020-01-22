@@ -827,7 +827,7 @@ public class UserContext {
                                 RelativeCapability nextChunk =
                                         RelativeCapability.buildSubsequentChunk(crypto.random.randomBytes(32), rootRKey);
                                 return CryptreeNode.createDir(MaybeMultihash.empty(), rootRKey, rootWKey, Optional.of(writerPair),
-                                                new FileProperties(directoryName, true, "", 0, LocalDateTime.now(),
+                                                new FileProperties(directoryName, true, false, "", 0, LocalDateTime.now(),
                                                         false, Optional.empty(), Optional.empty()),
                                                 Optional.empty(), SymmetricKey.random(), nextChunk, crypto.hasher)
                                         .thenCompose(root -> {

@@ -297,6 +297,7 @@ public class NetworkAccess {
                 .thenCompose(version -> getMetadata(version.get(e.pointer.writer).props, e.pointer)
                         .thenApply(faOpt ->faOpt.map(fa -> new FileWrapper(Optional.empty(),
                                 new RetrievedCapability(e.pointer, fa),
+                                Optional.empty(),
                                 e.pointer.wBaseKey.map(wBase -> fa.getSigner(e.pointer.rBaseKey, wBase, Optional.empty())),
                                 e.ownerName, version))))
                 .exceptionally(t -> {
@@ -339,9 +340,48 @@ public class NetworkAccess {
                                                             Optional<SigningPrivateKeyAndPublicHash> entryWriter,
                                                             String ownerName) {
         return getMetadata(version.get(cap.writer).props, cap)
-                .thenApply(faOpt -> faOpt.map(fa -> new FileWrapper(Optional.empty(),
-                        new RetrievedCapability(cap, fa),
-                        cap.wBaseKey.map(wBase -> fa.getSigner(cap.rBaseKey, wBase, entryWriter)), ownerName, version)));
+                .thenCompose(faOpt -> {
+                    if (! faOpt.isPresent())
+                        return Futures.of(Optional.empty());
+                    CryptreeNode fa = faOpt.get();
+                    RetrievedCapability rc = new RetrievedCapability(cap, fa);
+                    FileProperties props = rc.getProperties();
+                    if (! props.isLink)
+                        return Futures.of(Optional.of(new FileWrapper(Optional.empty(),
+                                rc,
+                                Optional.empty(),
+                                cap.wBaseKey.map(wBase -> fa.getSigner(cap.rBaseKey, wBase, entryWriter)), ownerName, version)));
+                    return getFileFromLink(cap.owner, rc, entryWriter, ownerName, this, version)
+                            .thenApply(f -> Optional.of(f));
+                });
+    }
+
+    public static CompletableFuture<FileWrapper> getFileFromLink(PublicKeyHash owner,
+                                                                 RetrievedCapability link,
+                                                                 Optional<SigningPrivateKeyAndPublicHash> entryWriter,
+                                                                 String ownername,
+                                                                 NetworkAccess network,
+                                                                 Snapshot version) {
+        // the link is formatted as a directory cryptree node and the target is the solitary child
+        return link.fileAccess.getDirectChildrenCapabilities(link.capability, network)
+                .thenCompose(children -> {
+                    if (children.size() != 1)
+                        throw new IllegalStateException("Link cryptree nodes must have exactly one child link!");
+                    AbsoluteCapability cap = children.stream().findFirst().get();
+                    Set<PublicKeyHash> childWriters = Collections.singleton(cap.writer);
+                    return version.withWriters(owner, childWriters, network)
+                            .thenCompose(fullVersion -> network.retrieveAllMetadata(Collections.singletonList(cap), fullVersion)
+                                    .thenCompose(rcs -> {
+                                        RetrievedCapability rc = rcs.get(0);
+                                        FileProperties props = rc.getProperties();
+                                        if (!props.isLink)
+                                            return Futures.of(new FileWrapper(rc, Optional.of(link), entryWriter, ownername, fullVersion));
+                                        // We have a link chain! Be sure to use the name from the first link,
+                                        // and remaining properties from the final target
+                                        return getFileFromLink(owner, rc, entryWriter, ownername, network, version)
+                                                .thenApply(f -> new FileWrapper(f.getPointer(), Optional.of(link), entryWriter, ownername, fullVersion));
+                                    }));
+                });
     }
 
     public CompletableFuture<Optional<CryptreeNode>> getMetadata(WriterData base, AbsoluteCapability cap) {
