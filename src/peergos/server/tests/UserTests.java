@@ -369,13 +369,13 @@ public abstract class UserTests {
 
         String filename = "file1.bin";
         byte[] data = randomData(6*1024*1024);
-        userRoot.uploadFileJS(filename, new AsyncReader.ArrayBacked(data), 0,data.length, false,
+        userRoot.uploadFileJS(filename, new AsyncReader.ArrayBacked(data), 0,data.length, false, false,
                 network, crypto, l -> {}, context.getTransactionService()).join();
         checkFileContents(data, context.getUserRoot().join().getDescendentByPath(filename, crypto.hasher, context.network).join().get(), context);
 
         String file2name = "file2.bin";
         byte[] data2 = randomData(6*1024*1024);
-        userRootCopy.uploadFileJS(file2name, new AsyncReader.ArrayBacked(data2), 0,data2.length, false,
+        userRootCopy.uploadFileJS(file2name, new AsyncReader.ArrayBacked(data2), 0,data2.length, false, false,
                 network, crypto, l -> {}, context.getTransactionService()).join();
         checkFileContents(data2, context.getUserRoot().join().getDescendentByPath(file2name, crypto.hasher, context.network).join().get(), context);
     }
@@ -674,11 +674,11 @@ public abstract class UserTests {
 
         TransactionService transactions = context.getTransactionService();
         try {
-            userRoot.uploadFileJS(filename, throwingReader, 0, data.length, false, context.network,
+            userRoot.uploadFileJS(filename, throwingReader, 0, data.length, false, false, context.network,
                     context.crypto, l -> {}, transactions).join();
         } catch (Exception e) {}
 
-        userRoot.uploadFileJS(filename, AsyncReader.build(data), 0, data.length, false, context.network,
+        userRoot.uploadFileJS(filename, AsyncReader.build(data), 0, data.length, false, false, context.network,
                     context.crypto, l -> {}, transactions).join();
     }
 
@@ -966,7 +966,7 @@ public abstract class UserTests {
 
         byte[] newData = "Some dataaa".getBytes();
         dirThroughLink.get().uploadFileJS("anoterfile", AsyncReader.build(newData), 0, newData.length,
-                false, linkContext.network, linkContext.crypto, x -> {}, null).join();
+                false, false, linkContext.network, linkContext.crypto, x -> {}, null).join();
     }
 
     @Test

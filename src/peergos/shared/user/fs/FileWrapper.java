@@ -491,6 +491,7 @@ public class FileWrapper {
                                                        int lengthHi,
                                                        int lengthLow,
                                                        boolean overwriteExisting,
+                                                       boolean truncateExisting,
                                                        NetworkAccess network,
                                                        Crypto crypto,
                                                        ProgressConsumer<Long> monitor,
@@ -499,7 +500,7 @@ public class FileWrapper {
         if (transactions == null) // we are in a public writable link
             return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
                     (s, committer) -> uploadFileSection(s, committer, filename, fileData,
-                            false, 0, fileSize, Optional.empty(), overwriteExisting,
+                            false, 0, fileSize, Optional.empty(), overwriteExisting, truncateExisting,
                             network, crypto, monitor, crypto.random.randomBytes(32))
             ).thenCompose(finished -> getUpdated(finished, network));
         return getPath(network).thenCompose(path ->
@@ -508,7 +509,7 @@ public class FileWrapper {
                 .thenCompose(txn -> network.synchronizer.applyComplexUpdate(owner(), transactions.getSigner(),
                         (s, committer) -> transactions.open(s, committer, txn).thenCompose(v -> fileData.reset()
                                 .thenCompose(reset -> uploadFileSection(v, committer, filename, reset,
-                                        false, 0, fileSize, Optional.empty(), overwriteExisting,
+                                        false, 0, fileSize, Optional.empty(), overwriteExisting, truncateExisting,
                                         network, crypto, monitor, txn.getLocations().get(0).getMapKey()))
                                 .thenCompose(uploaded -> transactions.close(uploaded, committer, txn))
                         ))
@@ -702,7 +703,7 @@ public class FileWrapper {
                                     generateThumbnailAndUpdate(snapshot, committer, fileWriteCap, filename, resetAgain,
                                             network, fileSize, isHidden, mimeType, fileSize, LocalDateTime.now(), streamSecret))));
     }
-    
+
     private CompletableFuture<Snapshot> generateThumbnailAndUpdate(Snapshot base,
                                                                    Committer committer,
                                                                    WritableAbsoluteCapability cap,
