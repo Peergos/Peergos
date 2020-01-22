@@ -1,5 +1,6 @@
 package peergos.shared.storage.controller;
 
+import jsinterop.annotations.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
@@ -30,6 +31,12 @@ public interface InstanceAdmin {
     CompletableFuture<Boolean> approveSpaceRequest(PublicKeyHash adminIdentity,
                                                    Multihash instanceIdentity,
                                                    byte[] signedRequest);
+
+    @JsMethod
+    CompletableFuture<Boolean> acceptingSignups();
+
+    @JsMethod
+    CompletableFuture<Boolean> addToWaitList(String email);
 
     class VersionInfo implements Cborable {
         public final Version version;

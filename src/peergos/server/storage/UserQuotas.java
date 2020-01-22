@@ -38,6 +38,10 @@ public class UserQuotas {
         });
     }
 
+    public boolean acceptingSignups() {
+        return quotas.size() < maxUsers;
+    }
+
     public List<String> getLocalUsernames() {
         return new ArrayList<>(quotas.keySet());
     }
