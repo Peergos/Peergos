@@ -826,7 +826,7 @@ public class UserContext {
                                 long t2 = System.currentTimeMillis();
                                 RelativeCapability nextChunk =
                                         RelativeCapability.buildSubsequentChunk(crypto.random.randomBytes(32), rootRKey);
-                                return CryptreeNode.createDir(MaybeMultihash.empty(), rootRKey, rootWKey, Optional.of(writerPair),
+                                return CryptreeNode.createEmptyDir(MaybeMultihash.empty(), rootRKey, rootWKey, Optional.of(writerPair),
                                                 new FileProperties(directoryName, true, false, "", 0, LocalDateTime.now(),
                                                         false, Optional.empty(), Optional.empty()),
                                                 Optional.empty(), SymmetricKey.random(), nextChunk, crypto.hasher)
@@ -1201,6 +1201,10 @@ public class UserContext {
     private CompletableFuture<Snapshot> rotateAllKeys(FileWrapper file,
                                                       FileWrapper parent,
                                                       boolean rotateSigners) {
+        // 1) rotate all the symmetric keys and optionally signers
+        // 2) if parent signer is different, add a link node pointing to the new child
+        // 2) update parent pointer to new child/link
+        // 3) delete old subtree
         PublicKeyHash owner = parent.owner();
         SigningPrivateKeyAndPublicHash parentSigner = parent.signingPair();
         AbsoluteCapability parentCap = parent.getPointer().capability;
@@ -1235,19 +1239,37 @@ public class UserContext {
                         crypto,
                         p.left,
                         c)
-                        .thenCompose(rotated -> parent.getPointer().fileAccess.updateChildLink(
-                                rotated.left, c, (WritableAbsoluteCapability) parentCap,
-                                parentSigner, originalCap, rotated.right,
-                                network, crypto.hasher)
-                                .thenCompose(s -> IpfsTransaction.call(owner,
-                                        tid -> FileWrapper.deleteAllChunks(
-                                                file.writableFilePointer(),
-                                                file.signingPair(),
-                                                tid, crypto.hasher, network, s, c), network.dhtClient))
-                                .thenCompose(s -> rotateSigners ?
-                                        CryptreeNode.deAuthoriseSigner(owner, parentSigner, file.writer(),
-                                                network, s, c) :
-                                        Futures.of(s)))));
+                        .thenCompose(rotated -> {
+                                    // add a link in same writing space as parent to restrict rename access
+                                    if (rotateSigners) {
+                                        SymmetricKey linkRBase = SymmetricKey.random();
+                                        SymmetricKey linkParent = SymmetricKey.random();
+                                        SymmetricKey linkWBase = SymmetricKey.random();
+                                        byte[] linkMapKey = crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH);
+                                        WritableAbsoluteCapability linkCap = new WritableAbsoluteCapability(owner,
+                                                parentCap.writer, linkMapKey, linkRBase, linkWBase);
+                                        return CryptreeNode.createAndCommitLink(parent, rotated.right,
+                                                file.getFileProperties(), linkCap, linkParent,
+                                                crypto, network, rotated.left, c)
+                                                .thenApply(newSnapshot -> new Pair<>(newSnapshot, linkCap));
+                                    } else
+                                        return Futures.of(rotated);
+                        })
+                        .thenCompose(rotated ->
+                                parent.getPointer().fileAccess.updateChildLink(
+                                        rotated.left, c, (WritableAbsoluteCapability) parentCap,
+                                        parentSigner, originalCap, rotated.right,
+                                        network, crypto.hasher)
+                                        .thenCompose(s -> IpfsTransaction.call(owner,
+                                                tid -> FileWrapper.deleteAllChunks(
+                                                        file.writableFilePointer(),
+                                                        file.signingPair(),
+                                                        tid, crypto.hasher, network, s, c), network.dhtClient))
+                                        .thenCompose(s -> rotateSigners ?
+                                                CryptreeNode.deAuthoriseSigner(owner, parentSigner, file.writer(),
+                                                        network, s, c) :
+                                                Futures.of(s)))
+                ));
     }
 
     public CompletableFuture<Boolean> unShareReadAccess(Path path, Set<String> readersToRemove) {

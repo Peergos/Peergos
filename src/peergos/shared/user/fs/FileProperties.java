@@ -158,6 +158,10 @@ public class FileProperties implements Cborable {
         return new FileProperties(name, isDirectory, isLink, mimeType, size, modified, isHidden, thumbnail, Optional.of(streamSecret));
     }
 
+    public FileProperties asLink() {
+        return new FileProperties(name, isDirectory, true, mimeType, size, modified, isHidden, thumbnail, streamSecret);
+    }
+
     public String getType() {
         if (isDirectory)
             return "dir";

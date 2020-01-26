@@ -832,7 +832,7 @@ public class CryptreeNode implements Cborable {
         RelativeCapability ourCap = new RelativeCapability(Optional.empty(), us.getMapKey(), ourParentKey, Optional.empty());
         RelativeCapability nextChunk = new RelativeCapability(Optional.empty(), crypto.random.randomBytes(32), dirReadKey, Optional.empty());
         WritableAbsoluteCapability childCap = us.withBaseKey(dirReadKey).withBaseWriteKey(dirWriteKey).withMapKey(dirMapKey);
-        return CryptreeNode.createDir(MaybeMultihash.empty(), dirReadKey, dirWriteKey, Optional.empty(),
+        return CryptreeNode.createEmptyDir(MaybeMultihash.empty(), dirReadKey, dirWriteKey, Optional.empty(),
                 new FileProperties(name, true, false, "", 0, LocalDateTime.now(), isSystemFolder,
                         Optional.empty(), Optional.empty()), Optional.of(ourCap), SymmetricKey.random(), nextChunk, crypto.hasher)
                 .thenCompose(child -> {
@@ -1054,7 +1054,41 @@ public class CryptreeNode implements Cborable {
         return new CryptreeNode(existingHash, false, encryptedBaseBlock, data, encryptedParentBlock);
     }
 
-    public static CompletableFuture<DirAndChildren> createDir(
+    public static CompletableFuture<Snapshot> createAndCommitLink(FileWrapper parent,
+                                                                  WritableAbsoluteCapability target,
+                                                                  FileProperties targetProps,
+                                                                  WritableAbsoluteCapability linkCap,
+                                                                  SymmetricKey parentKey,
+                                                                  Crypto crypto,
+                                                                  NetworkAccess network,
+                                                                  Snapshot startVersion,
+                                                                  Committer committer) {
+        return createLink(parent, target, targetProps, linkCap.rBaseKey, parentKey, linkCap.wBaseKey.get(), crypto)
+                .thenCompose(link -> IpfsTransaction.call(parent.owner(), tid -> link.commit(startVersion, committer,
+                        linkCap, parent.signingPair(), network, tid), network.dhtClient));
+    }
+
+    public static CompletableFuture<DirAndChildren> createLink(FileWrapper parent,
+                                                               WritableAbsoluteCapability target,
+                                                               FileProperties targetProps,
+                                                               SymmetricKey rBaseKey,
+                                                               SymmetricKey parentKey,
+                                                               SymmetricKey wBaseKey,
+                                                               Crypto crypto) {
+        RelativeCapability toTarget = parent.writableFilePointer().relativise(target);
+        RelativeCapability nextChunk = RelativeCapability.buildSubsequentChunk(
+                crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH), rBaseKey);
+        SymmetricKey parentParentKey = parent.getParentKey();
+        RelativeCapability toParent = new RelativeCapability(Optional.empty(), parent.writableFilePointer().getMapKey(),
+                parentParentKey, Optional.empty());
+        // The link must be in the same writing subspace as the parent
+        Optional<SigningPrivateKeyAndPublicHash> empty = Optional.empty();
+        return createDir(MaybeMultihash.empty(), rBaseKey, wBaseKey, empty, targetProps.asLink(),
+                Optional.of(toParent), parentKey, nextChunk,
+                new ChildrenLinks(Collections.singletonList(toTarget)), crypto.hasher);
+    }
+
+    public static CompletableFuture<DirAndChildren> createEmptyDir(
             MaybeMultihash lastCommittedHash,
             SymmetricKey rBaseKey,
             SymmetricKey wBaseKey,
