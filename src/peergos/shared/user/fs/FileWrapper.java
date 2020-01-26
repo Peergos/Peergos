@@ -630,6 +630,7 @@ public class FileWrapper {
                                                     throw new IllegalStateException("File already exists with name " + filename);
                                                 FileWrapper child = childOpt.get();
                                                 FileProperties childProps = child.getFileProperties();
+                                                long newFileSize = Math.max(childProps.size, endIndex);
                                                 if (truncateExisting && endIndex < childProps.size) {
                                                     return child.truncate(current, committer, endIndex, latest, network, crypto).thenCompose( updatedSnapshot ->
                                                         getUpdated(updatedSnapshot, network).thenCompose( updatedParent ->
@@ -638,16 +639,15 @@ public class FileWrapper {
                                                                         startIndex, endIndex, network, crypto, monitor)
                                                                             .thenCompose(latestSnapshot ->
                                                                                     recalculateThumbnail(latestSnapshot, committer, filename, fileData, isHidden,
-                                                                                            (int) endIndex, network, (WritableAbsoluteCapability)child.pointer.capability,
+                                                                                            (int) newFileSize, network, (WritableAbsoluteCapability)child.pointer.capability,
                                                                                             childProps.streamSecret)))));
                                                 } else {
                                                     return updateExistingChild(current, committer, latest, child, fileData,
                                                             startIndex, endIndex, network, crypto, monitor)
                                                             .thenCompose(latestSnapshot ->
                                                                 recalculateThumbnail(latestSnapshot, committer, filename, fileData, isHidden,
-                                                                        (int) endIndex, network, (WritableAbsoluteCapability)child.pointer.capability,
+                                                                        (int) newFileSize, network, (WritableAbsoluteCapability)child.pointer.capability,
                                                                         childProps.streamSecret));
-
                                                 }
                                             }
                                             if (startIndex > 0) {
