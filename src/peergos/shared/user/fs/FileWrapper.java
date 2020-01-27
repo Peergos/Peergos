@@ -1304,9 +1304,13 @@ public class FileWrapper {
         return (writableParent ? parent.removeChild(this, network, hasher) : CompletableFuture.completedFuture(parent))
                 .thenCompose(updatedParent -> network.synchronizer.applyComplexUpdate(owner(), signingPair(),
                         (version, committer) -> IpfsTransaction.call(owner(),
-                        tid -> FileWrapper.deleteAllChunks(writableFilePointer(), writableParent ?
-                                parent.signingPair() :
-                                signingPair(), tid, hasher, network, version, committer), network.dhtClient))
+                        tid -> FileWrapper.deleteAllChunks(
+                                writableParent ?
+                                        (WritableAbsoluteCapability) getLinkPointer().capability :
+                                        writableFilePointer(),
+                                writableParent ?
+                                        parent.signingPair() :
+                                        signingPair(), tid, hasher, network, version, committer), network.dhtClient))
                         .thenApply(b -> {
                             userContext.sharedWithCache.clearSharedWith(pointer.capability);
                             return updatedParent;
