@@ -983,6 +983,7 @@ public class FileWrapper {
         CompletableFuture<Optional<FileWrapper>> childExists = parent == null ?
                 CompletableFuture.completedFuture(Optional.empty()) :
                 parent.getDescendentByPath(newFilename, userContext.crypto.hasher, userContext.network);
+        ensureUnmodified();
         setModified();
         return childExists
                 .thenCompose(existing -> {
@@ -995,22 +996,24 @@ public class FileWrapper {
                     ).thenCompose(res -> {
 
                         //get current props
-                        AbsoluteCapability relativeCapability = pointer.capability;
-                        SymmetricKey baseKey = relativeCapability.rBaseKey;
-                        CryptreeNode fileAccess = pointer.fileAccess;
+                        RetrievedCapability ourPointer = linkPointer.orElse(pointer);
+                        WritableAbsoluteCapability us = (WritableAbsoluteCapability) ourPointer.capability;
+                        SymmetricKey baseKey = us.rBaseKey;
+                        CryptreeNode nodeToUpdate = ourPointer.fileAccess;
 
                         boolean isDir = this.isDirectory();
-                        SymmetricKey key = isDir ? fileAccess.getParentKey(baseKey) : baseKey;
-                        FileProperties currentProps = fileAccess.getProperties(key);
+                        SymmetricKey key = isDir ? nodeToUpdate.getParentKey(baseKey) : baseKey;
+                        FileProperties currentProps = nodeToUpdate.getProperties(key);
 
-                        FileProperties newProps = new FileProperties(newFilename, isDir, currentProps.isLink,
+                        boolean isLink = ourPointer.getProperties().isLink;
+                        FileProperties newProps = new FileProperties(newFilename, isDir, isLink,
                                 currentProps.mimeType, currentProps.size,
                                 currentProps.modified, currentProps.isHidden,
                                 currentProps.thumbnail, currentProps.streamSecret);
-                        SigningPrivateKeyAndPublicHash signer = signingPair();
+                        SigningPrivateKeyAndPublicHash signer = isLink ? parent.signingPair() : signingPair();
                         return userContext.network.synchronizer.applyComplexUpdate(owner(), signer,
-                                (s, committer) -> fileAccess.updateProperties(s, committer, writableFilePointer(),
-                                        entryWriter, newProps, userContext.network))
+                                (s, committer) -> nodeToUpdate.updateProperties(s, committer, us,
+                                            entryWriter, newProps, userContext.network))
                                 .thenApply(newVersion -> res.withVersion(newVersion));
                     });
                 });
