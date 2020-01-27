@@ -984,6 +984,7 @@ public class FileWrapper {
                 CompletableFuture.completedFuture(Optional.empty()) :
                 parent.getDescendentByPath(newFilename, userContext.crypto.hasher, userContext.network);
         ensureUnmodified();
+        FileProperties currentProps = getFileProperties();
         setModified();
         return childExists
                 .thenCompose(existing -> {
@@ -998,13 +999,9 @@ public class FileWrapper {
                         //get current props
                         RetrievedCapability ourPointer = linkPointer.orElse(pointer);
                         WritableAbsoluteCapability us = (WritableAbsoluteCapability) ourPointer.capability;
-                        SymmetricKey baseKey = us.rBaseKey;
                         CryptreeNode nodeToUpdate = ourPointer.fileAccess;
 
                         boolean isDir = this.isDirectory();
-                        SymmetricKey key = isDir ? nodeToUpdate.getParentKey(baseKey) : baseKey;
-                        FileProperties currentProps = nodeToUpdate.getProperties(key);
-
                         boolean isLink = ourPointer.getProperties().isLink;
                         FileProperties newProps = new FileProperties(newFilename, isDir, isLink,
                                 currentProps.mimeType, currentProps.size,
