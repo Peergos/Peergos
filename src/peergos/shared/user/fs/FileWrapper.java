@@ -383,7 +383,7 @@ public class FileWrapper {
     }
 
     public boolean isLink() {
-        return props.isLink;
+        return linkPointer.isPresent();
     }
 
     @JsMethod
