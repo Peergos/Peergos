@@ -1305,7 +1305,7 @@ public class FileWrapper {
                 .thenCompose(updatedParent -> network.synchronizer.applyComplexUpdate(owner(), signingPair(),
                         (version, committer) -> IpfsTransaction.call(owner(),
                         tid -> FileWrapper.deleteAllChunks(
-                                writableParent ?
+                                isLink() ?
                                         (WritableAbsoluteCapability) getLinkPointer().capability :
                                         writableFilePointer(),
                                 writableParent ?
