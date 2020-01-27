@@ -917,6 +917,8 @@ public class CryptreeNode implements Cborable {
                                                 .thenCompose(nextChunkLocation -> {
                                                     AbsoluteCapability nextChunkCap = ourPointer.withMapKey(nextChunkLocation);
                                                     WritableAbsoluteCapability writableNextPointer = nextChunkCap.toWritable(ourPointer.wBaseKey.get());
+                                                    if (! nextOpt.isPresent())
+                                                        throw new IllegalStateException("Child link not present!");
                                                     return nextOpt.get().fileAccess.updateChildLinks(updated, committer,
                                                             writableNextPointer, signer, remaining, network, hasher);
                                                 });

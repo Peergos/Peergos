@@ -139,6 +139,10 @@ public class FileWrapper {
         return pointer;
     }
 
+    public RetrievedCapability getLinkPointer() {
+        return linkPointer.get();
+    }
+
     public boolean isRoot() {
         return props.name.equals("/");
     }
@@ -376,6 +380,10 @@ public class FileWrapper {
     public boolean isDirectory() {
         boolean isNull = pointer == null;
         return isNull || pointer.fileAccess.isDirectory();
+    }
+
+    public boolean isLink() {
+        return props.isLink;
     }
 
     @JsMethod
