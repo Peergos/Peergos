@@ -1063,27 +1063,26 @@ public class CryptreeNode implements Cborable {
                                                                   NetworkAccess network,
                                                                   Snapshot startVersion,
                                                                   Committer committer) {
-        return createLink(parent, target, targetProps, linkCap.rBaseKey, parentKey, linkCap.wBaseKey.get(), crypto)
+        return createLink(parent, linkCap, target, targetProps, parentKey, crypto)
                 .thenCompose(link -> IpfsTransaction.call(parent.owner(), tid -> link.commit(startVersion, committer,
                         linkCap, parent.signingPair(), network, tid), network.dhtClient));
     }
 
     public static CompletableFuture<DirAndChildren> createLink(FileWrapper parent,
+                                                               WritableAbsoluteCapability linkCap,
                                                                WritableAbsoluteCapability target,
                                                                FileProperties targetProps,
-                                                               SymmetricKey rBaseKey,
                                                                SymmetricKey parentKey,
-                                                               SymmetricKey wBaseKey,
                                                                Crypto crypto) {
-        RelativeCapability toTarget = parent.writableFilePointer().relativise(target);
+        RelativeCapability toTarget = linkCap.relativise(target);
         RelativeCapability nextChunk = RelativeCapability.buildSubsequentChunk(
-                crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH), rBaseKey);
+                crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH), linkCap.rBaseKey);
         SymmetricKey parentParentKey = parent.getParentKey();
         RelativeCapability toParent = new RelativeCapability(Optional.empty(), parent.writableFilePointer().getMapKey(),
                 parentParentKey, Optional.empty());
         // The link must be in the same writing subspace as the parent
         Optional<SigningPrivateKeyAndPublicHash> empty = Optional.empty();
-        return createDir(MaybeMultihash.empty(), rBaseKey, wBaseKey, empty, targetProps.asLink(),
+        return createDir(MaybeMultihash.empty(), linkCap.rBaseKey, linkCap.wBaseKey.get(), empty, targetProps.asLink(),
                 Optional.of(toParent), parentKey, nextChunk,
                 new ChildrenLinks(Collections.singletonList(toTarget)), crypto.hasher);
     }
