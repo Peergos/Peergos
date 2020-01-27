@@ -18,6 +18,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.*;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.stream.*;
 
 import static org.junit.Assert.assertEquals;
@@ -208,6 +209,10 @@ public class PeergosNetworkUtils {
             Assert.assertTrue("shared file present", sharedFile.isPresent());
             Assert.assertTrue("File is writable", sharedFile.get().isWritable());
             checkFileContents(originalFileContents, sharedFile.get(), userContext);
+            // check the other user can't rename the file
+            FileWrapper parent = userContext.getByPath(sharerUser.username).get().get();
+            CompletableFuture<FileWrapper> rename = sharedFile.get().rename("Somenew name.dat", parent, userContext);
+            assertTrue("Cannot rename", rename.isCompletedExceptionally());
         }
 
         // check other users can browser to the friend's root
