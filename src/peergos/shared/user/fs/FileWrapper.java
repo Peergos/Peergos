@@ -630,24 +630,24 @@ public class FileWrapper {
                                                     throw new IllegalStateException("File already exists with name " + filename);
                                                 FileWrapper child = childOpt.get();
                                                 FileProperties childProps = child.getFileProperties();
-                                                long newFileSize = Math.max(childProps.size, endIndex);
                                                 if (truncateExisting && endIndex < childProps.size) {
                                                     return child.truncate(current, committer, endIndex, latest, network, crypto).thenCompose( updatedSnapshot ->
                                                         getUpdated(updatedSnapshot, network).thenCompose( updatedParent ->
                                                                 child.getUpdated(updatedSnapshot, network).thenCompose( updatedChild ->
                                                                     updateExistingChild(updatedSnapshot, committer, updatedParent, updatedChild, fileData,
                                                                         startIndex, endIndex, network, crypto, monitor)
-                                                                            .thenCompose(latestSnapshot ->
-                                                                                    recalculateThumbnail(latestSnapshot, committer, filename, fileData, isHidden,
-                                                                                            (int) newFileSize, network, (WritableAbsoluteCapability)child.pointer.capability,
-                                                                                            childProps.streamSecret)))));
+                                                                            .thenCompose(latestSnapshot -> updatedChild.getInputStream(network, crypto, l -> {})
+                                                                                    .thenCompose( is -> updatedChild.recalculateThumbnail(latestSnapshot, committer, filename, is, isHidden,
+                                                                                            updatedChild.getSize(), network, (WritableAbsoluteCapability)updatedChild.pointer.capability,
+                                                                                            updatedChild.getFileProperties().streamSecret))))));
                                                 } else {
                                                     return updateExistingChild(current, committer, latest, child, fileData,
                                                             startIndex, endIndex, network, crypto, monitor)
-                                                            .thenCompose(latestSnapshot ->
-                                                                recalculateThumbnail(latestSnapshot, committer, filename, fileData, isHidden,
-                                                                        (int) newFileSize, network, (WritableAbsoluteCapability)child.pointer.capability,
-                                                                        childProps.streamSecret));
+                                                            .thenCompose( updatedSnapshot -> child.getUpdated(updatedSnapshot, network).thenCompose( updatedChild ->
+                                                                    updatedChild.getInputStream(updatedSnapshot.get(updatedChild.writer()).props, network, crypto, l -> {})
+                                                                            .thenCompose( is -> updatedChild.recalculateThumbnail(updatedSnapshot, committer, filename, is, isHidden,
+                                                                                    updatedChild.getSize(), network, (WritableAbsoluteCapability)updatedChild.pointer.capability,
+                                                                                    updatedChild.getFileProperties().streamSecret))));
                                                 }
                                             }
                                             if (startIndex > 0) {
@@ -685,7 +685,7 @@ public class FileWrapper {
                                                                 .thenCompose(updatedWD -> latest.addChildPointer(updatedWD, committer, fileWriteCap, network, crypto))
                                                                 .thenCompose(cwd -> fileData.reset().thenCompose(resetAgain ->
                                                                         generateThumbnailAndUpdate(cwd, committer, fileWriteCap, filename, resetAgain,
-                                                                                network, thumbnailSrcImageSize, isHidden, mimeType,
+                                                                                network, isHidden, mimeType,
                                                                                 endIndex, LocalDateTime.now(), streamSecret)));
                                                     }));
                                         })
@@ -694,14 +694,14 @@ public class FileWrapper {
     }
 
     private CompletableFuture<Snapshot> recalculateThumbnail(Snapshot snapshot, Committer committer, String filename, AsyncReader fileData
-             , boolean isHidden, int fileSize, NetworkAccess network, WritableAbsoluteCapability fileWriteCap, Optional<byte[]> streamSecret
+             , boolean isHidden, long fileSize, NetworkAccess network, WritableAbsoluteCapability fileWriteCap, Optional<byte[]> streamSecret
     ) {
         return fileData.reset()
                 .thenCompose(fileData2 -> calculateMimeType(fileData2, fileSize, filename)
                         .thenCompose(mimeType -> fileData.reset()
                                 .thenCompose(resetAgain ->
                                     generateThumbnailAndUpdate(snapshot, committer, fileWriteCap, filename, resetAgain,
-                                            network, fileSize, isHidden, mimeType, fileSize, LocalDateTime.now(), streamSecret))));
+                                            network, isHidden, mimeType, fileSize, LocalDateTime.now(), streamSecret))));
     }
 
     private CompletableFuture<Snapshot> generateThumbnailAndUpdate(Snapshot base,
@@ -710,15 +710,14 @@ public class FileWrapper {
                                                                    String fileName,
                                                                    AsyncReader fileData,
                                                                    NetworkAccess network,
-                                                                   int thumbNailSize,
                                                                    Boolean isHidden,
                                                                    String mimeType,
-                                                                   long endIndex,
+                                                                   long fileSize,
                                                                    LocalDateTime updatedDateTime,
                                                                    Optional<byte[]> streamSecret) {
-        return generateThumbnail(network, fileData, thumbNailSize, fileName)
+        return generateThumbnail(network, fileData, (int) Math.min(fileSize, Integer.MAX_VALUE), fileName)
                 .thenCompose(thumbData -> {
-                    FileProperties fileProps = new FileProperties(fileName, false, props.isLink, mimeType, endIndex,
+                    FileProperties fileProps = new FileProperties(fileName, false, props.isLink, mimeType, fileSize,
                             updatedDateTime, isHidden, thumbData, streamSecret);
 
                     return network.getFile(base, cap, getChildsEntryWriter(), ownername)
