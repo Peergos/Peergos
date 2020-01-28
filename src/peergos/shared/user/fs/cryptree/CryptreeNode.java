@@ -22,6 +22,11 @@ import java.util.stream.*;
  * A directory contains the following distinct symmetric read keys {base, parent}, and file contains {base == parent, data}
  * A directory or file also has a single base symmetric write key
  *
+ * A link node is a special node that behaves like a directory with a single child, and contains only the filename.
+ * These are used when granting write access to prevent the recipient from being able to rename the file/dir to
+ * potentially clash with a sibling that they cannot see. This means you cannot rename something unless you have write
+ * access to the parent directory, which is in line with unix et al.
+ *
  * The serialized encrypted form stores a link from the base key to the other key.
  * For a directory, the base key encrypts the links to child directories and files. For a file the datakey encrypts the
  * file's data. The parent key encrypts the link to the parent directory's parent key and the metadata (FileProperties).
@@ -827,8 +832,8 @@ public class CryptreeNode implements Cborable {
         RelativeCapability ourCap = new RelativeCapability(Optional.empty(), us.getMapKey(), ourParentKey, Optional.empty());
         RelativeCapability nextChunk = new RelativeCapability(Optional.empty(), crypto.random.randomBytes(32), dirReadKey, Optional.empty());
         WritableAbsoluteCapability childCap = us.withBaseKey(dirReadKey).withBaseWriteKey(dirWriteKey).withMapKey(dirMapKey);
-        return CryptreeNode.createDir(MaybeMultihash.empty(), dirReadKey, dirWriteKey, Optional.empty(),
-                new FileProperties(name, true, "", 0, LocalDateTime.now(), isSystemFolder,
+        return CryptreeNode.createEmptyDir(MaybeMultihash.empty(), dirReadKey, dirWriteKey, Optional.empty(),
+                new FileProperties(name, true, false, "", 0, LocalDateTime.now(), isSystemFolder,
                         Optional.empty(), Optional.empty()), Optional.of(ourCap), SymmetricKey.random(), nextChunk, crypto.hasher)
                 .thenCompose(child -> {
 
@@ -912,6 +917,8 @@ public class CryptreeNode implements Cborable {
                                                 .thenCompose(nextChunkLocation -> {
                                                     AbsoluteCapability nextChunkCap = ourPointer.withMapKey(nextChunkLocation);
                                                     WritableAbsoluteCapability writableNextPointer = nextChunkCap.toWritable(ourPointer.wBaseKey.get());
+                                                    if (! nextOpt.isPresent())
+                                                        throw new IllegalStateException("Child link not present!");
                                                     return nextOpt.get().fileAccess.updateChildLinks(updated, committer,
                                                             writableNextPointer, signer, remaining, network, hasher);
                                                 });
@@ -1049,7 +1056,40 @@ public class CryptreeNode implements Cborable {
         return new CryptreeNode(existingHash, false, encryptedBaseBlock, data, encryptedParentBlock);
     }
 
-    public static CompletableFuture<DirAndChildren> createDir(
+    public static CompletableFuture<Snapshot> createAndCommitLink(FileWrapper parent,
+                                                                  WritableAbsoluteCapability target,
+                                                                  FileProperties targetProps,
+                                                                  WritableAbsoluteCapability linkCap,
+                                                                  SymmetricKey parentKey,
+                                                                  Crypto crypto,
+                                                                  NetworkAccess network,
+                                                                  Snapshot startVersion,
+                                                                  Committer committer) {
+        return createLink(parent, linkCap, target, targetProps, parentKey, crypto)
+                .thenCompose(link -> IpfsTransaction.call(parent.owner(), tid -> link.commit(startVersion, committer,
+                        linkCap, parent.signingPair(), network, tid), network.dhtClient));
+    }
+
+    public static CompletableFuture<DirAndChildren> createLink(FileWrapper parent,
+                                                               WritableAbsoluteCapability linkCap,
+                                                               WritableAbsoluteCapability target,
+                                                               FileProperties targetProps,
+                                                               SymmetricKey parentKey,
+                                                               Crypto crypto) {
+        RelativeCapability toTarget = linkCap.relativise(target);
+        RelativeCapability nextChunk = RelativeCapability.buildSubsequentChunk(
+                crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH), linkCap.rBaseKey);
+        SymmetricKey parentParentKey = parent.getParentKey();
+        RelativeCapability toParent = new RelativeCapability(Optional.empty(), parent.writableFilePointer().getMapKey(),
+                parentParentKey, Optional.empty());
+        // The link must be in the same writing subspace as the parent
+        Optional<SigningPrivateKeyAndPublicHash> empty = Optional.empty();
+        return createDir(MaybeMultihash.empty(), linkCap.rBaseKey, linkCap.wBaseKey.get(), empty, targetProps.asLink(),
+                Optional.of(toParent), parentKey, nextChunk,
+                new ChildrenLinks(Collections.singletonList(toTarget)), crypto.hasher);
+    }
+
+    public static CompletableFuture<DirAndChildren> createEmptyDir(
             MaybeMultihash lastCommittedHash,
             SymmetricKey rBaseKey,
             SymmetricKey wBaseKey,

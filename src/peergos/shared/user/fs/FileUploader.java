@@ -43,7 +43,7 @@ public class FileUploader implements AutoCloseable {
                         byte[] firstLocation) {
         long length = (lengthLow & 0xFFFFFFFFL) + ((lengthHi & 0xFFFFFFFFL) << 32);
         if (fileProperties == null)
-            this.props = new FileProperties(name, false, mimeType, length, LocalDateTime.now(),
+            this.props = new FileProperties(name, false, false, mimeType, length, LocalDateTime.now(),
                     false, Optional.empty(), Optional.empty());
         else
             this.props = fileProperties;
