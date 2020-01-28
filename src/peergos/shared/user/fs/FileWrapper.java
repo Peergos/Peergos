@@ -979,7 +979,7 @@ public class FileWrapper {
         if (! isLegalName(newFilename))
             return CompletableFuture.completedFuture(parent);
         if (! parent.isWritable())
-            return Futures.errored(new IllegalStateException("You cannot rename something without write access to the parent!"));
+            return Futures.errored(new IllegalStateException("Unable to rename something without write access to the parent!"));
         CompletableFuture<Optional<FileWrapper>> childExists = parent == null ?
                 CompletableFuture.completedFuture(Optional.empty()) :
                 parent.getDescendentByPath(newFilename, userContext.crypto.hasher, userContext.network);
