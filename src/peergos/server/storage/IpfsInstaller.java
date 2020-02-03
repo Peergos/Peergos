@@ -36,7 +36,7 @@ public class IpfsInstaller {
         LINUX_386("https://github.com/peergos/ipfs-releases/blob/master/v0.4.23/linux-386/ipfs?raw=true",
                 Cid.decode("QmfXwgKYgP6BdutBE413hUz8FsRqGfNBSTF7jD8eWC11PU")),
         LINUX_AMD64("https://github.com/peergos/ipfs-releases/blob/master/v0.4.23/linux-amd64/ipfs?raw=true",
-                Cid.decode("QmbV92CLxEJ4AM1HMHd6mMD1Rz1e8MR8WLMyWpi3QxtzAa")),
+                Cid.decode("QmbV92CLxEJ4AM1HMHd6mMD1Rz1e8MR8WLMyWpi3QxtzAa"), Arrays.asList(S3_LINUX_AMD64)),
         LINUX_ARM("https://github.com/peergos/ipfs-releases/blob/master/v0.4.23/linux-arm/ipfs?raw=true",
                 Cid.decode("QmRPJWxSTH3iAh69uGcqNWE7wuhznbpVHR2smL5hCKKCmW")),
         LINUX_ARM64("https://github.com/peergos/ipfs-releases/blob/master/v0.4.23/linux-arm64/ipfs?raw=true",
