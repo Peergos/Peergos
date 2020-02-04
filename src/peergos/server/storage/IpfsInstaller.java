@@ -21,30 +21,30 @@ import java.util.stream.*;
 public class IpfsInstaller {
 
     public enum DownloadTarget {
-        S3_LINUX_AMD64("https://github.com/peergos/ipfs-releases/blob/master/v0.4.22/linux-amd64/plugins/go-ds-s3.so?raw=true",
-                Cid.decode("QmWAXFcFRZq4tyqVhFfH6yn6gBUGfmhRX19eUwYVE6PwSb")),
-        DARWIN_386("https://github.com/peergos/ipfs-releases/blob/master/v0.4.22/darwin-386/ipfs?raw=true",
-                Cid.decode("QmPNQqAExYqBAS1ruNakdirw36won2ELQJNbijZ4vXhd81")),
-        DARWIN_AMD64("https://github.com/peergos/ipfs-releases/blob/master/v0.4.22/darwin-amd64/ipfs?raw=true",
-                Cid.decode("QmQpC2vfdwyfhBpbYr76HsfFPMNmQqVroNsrqMrEb7BDUH")),
-        FREEBSD_386("https://github.com/peergos/ipfs-releases/blob/master/v0.4.22/freebsd-386/ipfs?raw=true",
-                Cid.decode("QmT7c37jtNN2PUCBT3rZsR7A7ofQzV1a3N3SUses1duLcw")),
-        FREEBSD_AMD64("https://github.com/peergos/ipfs-releases/blob/master/v0.4.22/freebsd-amd64/ipfs?raw=true",
-                Cid.decode("QmX7VgAc8kkYh3cdbe8zeGFC5V66pJeoyjjA7e25txdTBY")),
-        FREEBSD_ARM("https://github.com/peergos/ipfs-releases/blob/master/v0.4.22/freebsd-arm/ipfs?raw=true",
-                Cid.decode("QmZurjJxFJRpi85hTW4ymMXwnoMe5fDsBNAWnN6iwn2UGH")),
-        LINUX_386("https://github.com/peergos/ipfs-releases/blob/master/v0.4.22/linux-386/ipfs?raw=true",
-                Cid.decode("QmRviMmsVPVG3mLyefYXDQwyNh4AN1Yn6yG9YJ4wUv8jMA")),
-        LINUX_AMD64("https://github.com/peergos/ipfs-releases/blob/master/v0.4.22/linux-amd64/ipfs?raw=true",
-                Cid.decode("QmNc6hEaB3PZoiDvZp5hdt4FAkFomJEJHi3zi96VH51ybf"), Arrays.asList(S3_LINUX_AMD64)),
-        LINUX_ARM("https://github.com/peergos/ipfs-releases/blob/master/v0.4.22/linux-arm/ipfs?raw=true",
-                Cid.decode("QmeJ5L16uzPAaLX2K9BeU3yB9eVoeqzCMk11eiBoBHvtN1")),
-        LINUX_ARM64("https://github.com/peergos/ipfs-releases/blob/master/v0.4.22/linux-arm64/ipfs?raw=true",
-                Cid.decode("QmUPRX5aWM9FJpc1pE7fFMjhR3wgfCJpjTAcQJvitoCPpQ")),
-        WINDOWS_386("https://github.com/peergos/ipfs-releases/blob/master/v0.4.22/windows-386/ipfs.exe?raw=true",
-                Cid.decode("QmR5v39qAgKw4DFvg8xTYSek7kaQDTeLPB46QCZSN2sMw9")),
-        WINDOWS_AMD64("https://github.com/peergos/ipfs-releases/blob/master/v0.4.22/windows-amd64/ipfs.exe?raw=true",
-                Cid.decode("QmUKzACmhakxdNp2RQMtZGZQ9skiXX1yFn6A3MLYc3auqq")),;
+        S3_LINUX_AMD64("https://github.com/peergos/ipfs-releases/blob/master/v0.4.23/linux-amd64/plugins/s3plugin.so?raw=true",
+                Cid.decode("QmY2vfud7RftYKT6EuB6Bnt43RBzVWfRLA8HzivaNRVrxp")),
+        DARWIN_386("https://github.com/peergos/ipfs-releases/blob/master/v0.4.23/darwin-386/ipfs?raw=true",
+                Cid.decode("QmSM5bhXnbMZXcoHYMvARaEAogw4ZtMfFtuVh542LEJ52h")),
+        DARWIN_AMD64("https://github.com/peergos/ipfs-releases/blob/master/v0.4.23/darwin-amd64/ipfs?raw=true",
+                Cid.decode("QmcT1RbhR8bjBqkSNLzwXyX2JJnazs5KnNufcS3dbWoLr5")),
+        FREEBSD_386("https://github.com/peergos/ipfs-releases/blob/master/v0.4.23/freebsd-386/ipfs?raw=true",
+                Cid.decode("QmcKGsLEu4sKHLZ79VGW7n7u1B3Hs1TgPwXGU2ufv2kka4")),
+        FREEBSD_AMD64("https://github.com/peergos/ipfs-releases/blob/master/v0.4.23/freebsd-amd64/ipfs?raw=true",
+                Cid.decode("QmZJCSPpyUVMgsgwrgFrdeAquF4Wrk7b4zAMeTTHVz952V")),
+        FREEBSD_ARM("https://github.com/peergos/ipfs-releases/blob/master/v0.4.23/freebsd-arm/ipfs?raw=true",
+                Cid.decode("QmQTNPEbPYDsx7761U1LLD9ad3nfsA3uNTuzQxUkiCBvFe")),
+        LINUX_386("https://github.com/peergos/ipfs-releases/blob/master/v0.4.23/linux-386/ipfs?raw=true",
+                Cid.decode("QmfXwgKYgP6BdutBE413hUz8FsRqGfNBSTF7jD8eWC11PU")),
+        LINUX_AMD64("https://github.com/peergos/ipfs-releases/blob/master/v0.4.23/linux-amd64/ipfs?raw=true",
+                Cid.decode("QmbV92CLxEJ4AM1HMHd6mMD1Rz1e8MR8WLMyWpi3QxtzAa"), Arrays.asList(S3_LINUX_AMD64)),
+        LINUX_ARM("https://github.com/peergos/ipfs-releases/blob/master/v0.4.23/linux-arm/ipfs?raw=true",
+                Cid.decode("QmRPJWxSTH3iAh69uGcqNWE7wuhznbpVHR2smL5hCKKCmW")),
+        LINUX_ARM64("https://github.com/peergos/ipfs-releases/blob/master/v0.4.23/linux-arm64/ipfs?raw=true",
+                Cid.decode("QmP3QqtPEUo4J5hrLA1aKSvyxqYhSAannYE6TtnWPvv2c5")),
+        WINDOWS_386("https://github.com/peergos/ipfs-releases/blob/master/v0.4.23/windows-386/ipfs.exe?raw=true",
+                Cid.decode("QmYjhtFVrD4UHCjCvV8MtNTbbXb1nWRApgGgQGtMkNECAy")),
+        WINDOWS_AMD64("https://github.com/peergos/ipfs-releases/blob/master/v0.4.23/windows-amd64/ipfs.exe?raw=true",
+                Cid.decode("QmRwVrpGKLpajrEejNoeda34Bc2p1hkxTAtsi1LkySrus4")),;
 
         public final String url;
         public final Multihash multihash;
@@ -346,12 +346,13 @@ public class IpfsInstaller {
     }
 
     public static void main(String[] args) throws Exception {
-        String version = "v0.4.22";
+        String version = "v0.4.23";
+        String s3Filename = "s3plugin.so";
         byte[] bytes = Files.readAllBytes(Paths.get("/home", "ian", "ipfs-releases", version,
-                "linux-amd64", "plugins", "go-ds-s3.so"));
+                "linux-amd64", "plugins", s3Filename));
         Multihash hash = new Multihash(Multihash.Type.sha2_256, Hash.sha256(bytes));
         System.out.println("S3_LINUX_AMD64(\"https://github.com/peergos/ipfs-releases/blob/master/" + version +
-                "/linux-amd64/plugins/go-ds-s3.so?raw=true\", Cid.decode(\"" + hash + "\")),");
+                "/linux-amd64/plugins/" + s3Filename + "?raw=true\", Cid.decode(\"" + hash + "\")),");
         codegen(Paths.get("/home/ian/ipfs-releases/" + version));
     }
 
@@ -372,7 +373,7 @@ public class IpfsInstaller {
 
     private static class ReleasePreparation {
         public static void main(String[] a) throws Exception {
-            String version = "v0.4.22";
+            String version = "v0.4.23";
             Path baseDir = Files.createTempDirectory("ipfs");
             for (String os: Arrays.asList("linux", "windows", "darwin", "freebsd")) {
                 for (String arch: Arrays.asList("386", "amd64", "arm", "arm64")) {
