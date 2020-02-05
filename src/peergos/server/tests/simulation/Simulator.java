@@ -413,13 +413,14 @@ public class Simulator implements Runnable {
                 break;
             case REVOKE_READ:
             case REVOKE_WRITE:
-                Optional<Path> revokeOpt = randomSharedPath.apply(user, otherUser.get());
+                String revokee = otherUser.get();
+                Optional<Path> revokeOpt = randomSharedPath.apply(user, revokee);
                 if (! revokeOpt.isPresent())
                     return;
                 Path revokePath = revokeOpt.get();
                 log(user, simulation, revokePath);
                 try {
-                    revokePermission(user, AccessControl.getOwner(revokePath),
+                    revokePermission(user, revokee,
                             revokePath, simulation.permission());
                 } catch (Exception ex) {
                     System.out.println();
