@@ -206,10 +206,11 @@ public class WriterData implements Cborable {
                 (wd, tid) -> {
                     Optional<UserStaticData> newEntryPoints = staticData
                             .map(sd -> new UserStaticData(sd.getEntryPoints(currentKey), newKey));
-                    return network.dhtClient.putBoxingKey(oldSigner.publicKeyHash,
-                            oldSigner.secret.signatureOnly(followRequestReceiver.serialize()),
+                    return network.hasher.sha256(followRequestReceiver.serialize())
+                            .thenCompose(boxerHash -> network.dhtClient.putBoxingKey(oldSigner.publicKeyHash,
+                            oldSigner.secret.signatureOnly(boxerHash),
                             followRequestReceiver, tid
-                    ).thenCompose(boxerHash -> OwnedKeyChamp.createEmpty(oldSigner.publicKeyHash, oldSigner,
+                    )).thenCompose(boxerHash -> OwnedKeyChamp.createEmpty(oldSigner.publicKeyHash, oldSigner,
                             network.dhtClient, network.hasher, tid)
                             .thenCompose(ownedRoot -> {
                                 Map<String, OwnerProof> newNamedOwnedKeys = namedOwnedKeys.entrySet()
