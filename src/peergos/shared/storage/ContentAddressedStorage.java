@@ -27,8 +27,10 @@ public interface ContentAddressedStorage {
     default CompletableFuture<Multihash> put(PublicKeyHash owner,
                                              SigningPrivateKeyAndPublicHash writer,
                                              byte[] block,
+                                             Hasher hasher,
                                              TransactionId tid) {
-        return put(owner, writer.publicKeyHash, writer.secret.signatureOnly(block), block, tid);
+        return hasher.sha256(block)
+                .thenCompose(hash -> put(owner, writer.publicKeyHash, writer.secret.signatureOnly(hash), block, tid));
     }
 
     default CompletableFuture<Multihash> put(PublicKeyHash owner,

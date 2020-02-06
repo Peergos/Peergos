@@ -27,14 +27,21 @@ public class UserFilePinner implements Runnable {
     private final CoreNode coreNode;
     private final MutablePointers mutablePointers;
     private final ContentAddressedStorage dhtClient;
+    private final Hasher hasher;
     private final int delayMs;
     private volatile boolean isFinished;
 
-    public UserFilePinner(Path userPath, CoreNode coreNode, MutablePointers mutablePointers, ContentAddressedStorage dhtClient, int delayMs) {
+    public UserFilePinner(Path userPath,
+                          CoreNode coreNode,
+                          MutablePointers mutablePointers,
+                          ContentAddressedStorage dhtClient,
+                          Hasher hasher,
+                          int delayMs) {
         this.userPath = userPath;
         this.coreNode = coreNode;
         this.mutablePointers = mutablePointers;
         this.dhtClient = dhtClient;
+        this.hasher = hasher;
         this.delayMs = delayMs;
     }
 
@@ -48,7 +55,7 @@ public class UserFilePinner implements Runnable {
                 LOG.info("File pinner read usernames "+ usernames);
                 // pin their files
                 for (String username : usernames) {
-                    pinAllUserFiles(username, coreNode, mutablePointers, dhtClient);
+                    pinAllUserFiles(username, coreNode, mutablePointers, dhtClient, hasher);
                     LOG.info("Pinned files for user "+ username);
                 }
             } catch (IOException ioe) {
@@ -61,8 +68,12 @@ public class UserFilePinner implements Runnable {
         }
     }
 
-    public static void pinAllUserFiles(String username, CoreNode coreNode, MutablePointers mutable, ContentAddressedStorage dhtClient) throws ExecutionException, InterruptedException {
-        Set<PublicKeyHash> ownedKeysRecursive = WriterData.getOwnedKeysRecursive(username, coreNode, mutable, dhtClient).join();
+    public static void pinAllUserFiles(String username,
+                                       CoreNode coreNode,
+                                       MutablePointers mutable,
+                                       ContentAddressedStorage dhtClient,
+                                       Hasher hasher) throws ExecutionException, InterruptedException {
+        Set<PublicKeyHash> ownedKeysRecursive = WriterData.getOwnedKeysRecursive(username, coreNode, mutable, dhtClient, hasher).join();
         Optional<PublicKeyHash> ownerOpt = coreNode.getPublicKeyHash(username).get();
         if (! ownerOpt.isPresent())
             throw new IllegalStateException("Couldn't retrieve public key for " + username);

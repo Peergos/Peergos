@@ -438,9 +438,10 @@ public class Main {
             UserQuotas userQuotas = new UserQuotas(quotaFilePath, defaultQuota, maxUsers);
             CoreNode signupFilter = new SignUpFilter(core, userQuotas, nodeId);
             RamUsageStore usageStore = RamUsageStore.build(statePath);
-            SpaceCheckingKeyFilter.update(usageStore, localPointers, localDht);
-            SpaceCheckingKeyFilter spaceChecker = new SpaceCheckingKeyFilter(core, localPointers, localDht, userQuotas,
-                    spaceRequests, usageStore);
+            Hasher hasher = crypto.hasher;
+            SpaceCheckingKeyFilter.update(usageStore, localPointers, localDht, hasher);
+            SpaceCheckingKeyFilter spaceChecker = new SpaceCheckingKeyFilter(core, localPointers, localDht,
+                    hasher, userQuotas, spaceRequests, usageStore);
             CorenodeEventPropagator corePropagator = new CorenodeEventPropagator(signupFilter);
             corePropagator.addListener(spaceChecker::accept);
             MutableEventPropagator localMutable = new MutableEventPropagator(localPointers);
@@ -451,7 +452,7 @@ public class Main {
             ContentAddressedStorage p2pDht = new ContentAddressedStorage.Proxying(filteringDht, proxingDht, nodeId, core);
 
             Path blacklistPath = a.fromPeergosDir("blacklist_file", "blacklist.txt");
-            PublicKeyBlackList blacklist = new UserBasedBlacklist(blacklistPath, core, localMutable, p2pDht);
+            PublicKeyBlackList blacklist = new UserBasedBlacklist(blacklistPath, core, localMutable, p2pDht, hasher);
             MutablePointers blockingMutablePointers = new BlockingMutablePointers(new PinningMutablePointers(localMutable, p2pDht), blacklist);
             MutablePointers p2mMutable = new ProxyingMutablePointers(nodeId, core, blockingMutablePointers, proxingMutable);
 
@@ -468,7 +469,7 @@ public class Main {
             Path userPath = a.fromPeergosDir("whitelist_file", "user_whitelist.txt");
             int delayMs = a.getInt("whitelist_sleep_period", 1000 * 60 * 10);
 
-            new UserFilePinner(userPath, core, p2mMutable, p2pDht, delayMs).start();
+            new UserFilePinner(userPath, core, p2mMutable, p2pDht, hasher, delayMs).start();
 
             Set<String> adminUsernames = Arrays.asList(a.getArg("admin-usernames").split(","))
                     .stream()
@@ -620,11 +621,11 @@ public class Main {
             SigningPrivateKeyAndPublicHash pkiSigner = new SigningPrivateKeyAndPublicHash(pkiPublicHash, pkiSecretKey);
             if (! currentPkiRoot.isPresent())
                 currentPkiRoot = IpfsTransaction.call(peergosIdentity,
-                        tid -> WriterData.createEmpty(peergosIdentity, pkiSigner, dht, tid).join()
-                                .commit(peergosIdentity, pkiSigner, MaybeMultihash.empty(), mutable, dht, tid)
+                        tid -> WriterData.createEmpty(peergosIdentity, pkiSigner, dht, crypto.hasher, tid).join()
+                                .commit(peergosIdentity, pkiSigner, MaybeMultihash.empty(), mutable, dht, crypto.hasher, tid)
                                 .thenApply(version -> version.get(pkiSigner).hash), dht).join();
 
-            return new IpfsCoreNode(pkiSigner, currentPkiRoot, dht, mutable, peergosIdentity);
+            return new IpfsCoreNode(pkiSigner, currentPkiRoot, dht, crypto.hasher, mutable, peergosIdentity);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

@@ -3,7 +3,7 @@ package peergos.shared.user;
 import peergos.shared.MaybeMultihash;
 import peergos.shared.cbor.CborObject;
 import peergos.shared.crypto.*;
-import peergos.shared.crypto.hash.PublicKeyHash;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.mutable.HashCasPair;
 import peergos.shared.mutable.MutablePointers;
 import peergos.shared.storage.*;
@@ -19,12 +19,14 @@ public class WriteSynchronizer {
 
     private final MutablePointers mutable;
     private final ContentAddressedStorage dht;
+    private final Hasher hasher;
     // The keys are <owner, writer> pairs. The owner is only needed to handle identity changes
     private final Map<Pair<PublicKeyHash, PublicKeyHash>, AsyncLock<Snapshot>> pending = new ConcurrentHashMap<>();
 
-    public WriteSynchronizer(MutablePointers mutable, ContentAddressedStorage dht) {
+    public WriteSynchronizer(MutablePointers mutable, ContentAddressedStorage dht, Hasher hasher) {
         this.mutable = mutable;
         this.dht = dht;
+        this.hasher = hasher;
     }
 
     public void put(PublicKeyHash owner, PublicKeyHash writer, CommittedWriterData val) {
@@ -76,7 +78,7 @@ public class WriteSynchronizer {
         // a previous transaction has completed (another node/user with write access may have concurrently updated the mapping)
         return pending.computeIfAbsent(new Pair<>(owner, writer.publicKeyHash), p -> new AsyncLock<>(getWriterData(owner, p.right)))
                 .runWithLock(current -> IpfsTransaction.call(owner, tid -> transformer.apply(current.get(writer).props, tid)
-                                .thenCompose(wd -> wd.commit(owner, writer, current.get(writer).hash, mutable, dht, tid)), dht),
+                                .thenCompose(wd -> wd.commit(owner, writer, current.get(writer).hash, mutable, dht, hasher, tid)), dht),
                         () -> getWriterData(owner, writer.publicKeyHash));
     }
 
@@ -85,7 +87,7 @@ public class WriteSynchronizer {
                                                           ComplexMutation transformer) {
         return pending.computeIfAbsent(new Pair<>(owner, writer.publicKeyHash), p -> new AsyncLock<>(getWriterData(owner, p.right)))
                 .runWithLock(current -> transformer.apply(current,
-                        (aOwner, signer, wd, existing, tid) -> wd.commit(aOwner, signer, existing.hash, mutable, dht, tid)
+                        (aOwner, signer, wd, existing, tid) -> wd.commit(aOwner, signer, existing.hash, mutable, dht, hasher, tid)
                         .thenCompose(s -> {
                             if (signer.publicKeyHash.equals(writer.publicKeyHash))
                                 return CompletableFuture.completedFuture(s);

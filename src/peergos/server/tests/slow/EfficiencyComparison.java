@@ -45,12 +45,14 @@ public class EfficiencyComparison {
                 RAMStorage champStorage = new RAMStorage();
                 SigningPrivateKeyAndPublicHash champUser = ChampTests.createUser(champStorage, crypto);
                 Pair<Champ, Multihash> current = new Pair<>(Champ.empty(), champStorage.put(champUser.publicKeyHash,
-                        champUser, Champ.empty().serialize(), champStorage.startTransaction(champUser.publicKeyHash).get()).get());
+                        champUser, Champ.empty().serialize(), crypto.hasher,
+                        champStorage.startTransaction(champUser.publicKeyHash).get()).get());
 
                 for (Map.Entry<ByteArrayWrapper, MaybeMultihash> e : state.entrySet()) {
                     current = current.left.put(champUser.publicKeyHash, champUser, e.getKey(), e.getKey().data, 0, MaybeMultihash.empty(),
                             e.getValue(), bitWidth, maxCollisions, x -> x.data,
-                            champStorage.startTransaction(champUser.publicKeyHash).get(), champStorage, current.right).get();
+                            champStorage.startTransaction(champUser.publicKeyHash).get(), champStorage, crypto.hasher,
+                            current.right).get();
                 }
 
                 int champSize = champStorage.totalSize();

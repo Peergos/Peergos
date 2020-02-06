@@ -41,7 +41,8 @@ public class PinChecker {
 
             PublicKeyHash owner = current.owner;
             try {
-                Set<PublicKeyHash> allWriters = WriterData.getOwnedKeysRecursive(owner, owner, network.mutable, network.dhtClient).join();
+                Set<PublicKeyHash> allWriters = WriterData.getOwnedKeysRecursive(owner, owner, network.mutable,
+                        network.dhtClient, network.hasher).join();
                 Set<Multihash> allRoots = allWriters.stream()
                         .map(w -> network.mutable.getPointerTarget(owner, w, network.dhtClient).join())
                         .filter(m -> m.isPresent())

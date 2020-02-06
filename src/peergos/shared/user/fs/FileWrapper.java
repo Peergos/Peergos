@@ -1326,7 +1326,7 @@ public class FileWrapper {
 
         return current.withWriter(owner, parentWriter, network)
                 .thenCompose(s -> s.get(parentSigner).props
-                        .removeOwnedKey(owner, parentSigner, signerToRemove, network.dhtClient)
+                        .removeOwnedKey(owner, parentSigner, signerToRemove, network.dhtClient, network.hasher)
                         .thenCompose(removed -> IpfsTransaction.call(
                                 owner,
                                 tid -> committer.commit(owner, parentSigner, removed, s.get(parentSigner), tid),

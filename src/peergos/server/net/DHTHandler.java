@@ -1,5 +1,4 @@
 package peergos.server.net;
-import java.net.*;
 import java.util.logging.*;
 
 import peergos.server.AggregatedMetrics;
@@ -27,17 +26,24 @@ public class DHTHandler implements HttpHandler {
 
     private static final boolean LOGGING = true;
     private final ContentAddressedStorage dht;
+    private final Hasher hasher;
     private final BiFunction<PublicKeyHash, Integer, Boolean> keyFilter;
     private final String apiPrefix;
 
-    public DHTHandler(ContentAddressedStorage dht, BiFunction<PublicKeyHash, Integer, Boolean> keyFilter, String apiPrefix) {
+    public DHTHandler(ContentAddressedStorage dht,
+                      Hasher hasher,
+                      BiFunction<PublicKeyHash, Integer, Boolean> keyFilter,
+                      String apiPrefix) {
         this.dht = dht;
+        this.hasher = hasher;
         this.keyFilter = keyFilter;
         this.apiPrefix = apiPrefix;
     }
 
-    public DHTHandler(ContentAddressedStorage dht, BiFunction<PublicKeyHash, Integer, Boolean> keyFilter) {
-        this(dht, keyFilter, "/api/v0/");
+    public DHTHandler(ContentAddressedStorage dht,
+                      Hasher hasher,
+                      BiFunction<PublicKeyHash, Integer, Boolean> keyFilter) {
+        this(dht, hasher, keyFilter, "/api/v0/");
     }
 
     @Override
@@ -121,8 +127,9 @@ public class DHTHandler implements HttpHandler {
                     // verify signatures
                     for (int i = 0; i < data.size(); i++) {
                         byte[] signature = signatures.get(i);
-                        byte[] unsigned = writer.unsignMessage(ArrayOps.concat(signature, data.get(i)));
-                        if (!Arrays.equals(unsigned, data.get(i)))
+                        byte[] hash = hasher.sha256(data.get(i)).join();
+                        byte[] unsigned = writer.unsignMessage(ArrayOps.concat(signature, hash));
+                        if (! Arrays.equals(unsigned, hash))
                             throw new IllegalStateException("Invalid signature for block!");
                     }
 

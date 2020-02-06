@@ -238,8 +238,9 @@ public class UserContext {
                             signerHash,
                             publicSigningKey, tid).thenCompose(returnedSignerHash -> {
                         PublicBoxingKey publicBoxingKey = userWithRoot.getBoxingPair().publicBoxingKey;
-                        return network.dhtClient.putBoxingKey(signerHash,
-                                secretSigningKey.signatureOnly(publicBoxingKey.serialize()), publicBoxingKey, tid);
+                        return crypto.hasher.sha256(publicBoxingKey.serialize())
+                                .thenCompose(boxerHash -> network.dhtClient.putBoxingKey(signerHash,
+                                        secretSigningKey.signatureOnly(boxerHash), publicBoxingKey, tid));
                     }).thenCompose(boxerHash -> {
                         progressCallback.accept("Creating filesystem");
                         return WriterData.createEmptyWithStaticData(signerHash,
@@ -247,7 +248,7 @@ public class UserContext {
                                 Optional.of(new PublicKeyHash(boxerHash)),
                                 userWithRoot.getRoot(),
                                 algorithm,
-                                network.dhtClient, tid).thenCompose(newUserData -> {
+                                network.dhtClient, network.hasher, tid).thenCompose(newUserData -> {
 
                             CommittedWriterData notCommitted = new CommittedWriterData(MaybeMultihash.empty(), newUserData);
                             network.synchronizer.put(signer.publicKeyHash, signer.publicKeyHash, notCommitted);
@@ -403,7 +404,7 @@ public class UserContext {
                     throw new IllegalStateException("User " + ownerName + " has not made any files public.");
 
                 Function<ByteArrayWrapper, byte[]> hasher = x -> Hash.sha256(x.data);
-                return ChampWrapper.create(publicData.get(), hasher, network.dhtClient).thenCompose(champ -> {
+                return ChampWrapper.create(publicData.get(), hasher, network.dhtClient, network.hasher).thenCompose(champ -> {
                     // The user might have published an ancestor directory of the requested path,
                     // so drop path elements until we either find a capability, or have none left
                     int depth = originalPath.getNameCount();
@@ -690,7 +691,7 @@ public class UserContext {
 
     public CompletableFuture<Long> getTotalSpaceUsed(PublicKeyHash ownerHash, PublicKeyHash writerHash) {
         // assume no cycles in owned keys
-        return WriterData.getOwnedKeysRecursive(ownerHash, writerHash, network.mutable, network.dhtClient)
+        return WriterData.getOwnedKeysRecursive(ownerHash, writerHash, network.mutable, network.dhtClient, network.hasher)
                 .thenCompose(allOwned -> Futures.reduceAll(allOwned.stream()
                                 .map(w -> network.mutable.getPointerTarget(ownerHash, w, network.dhtClient)
                                         .thenCompose(root -> root.isPresent() ?
@@ -757,7 +758,7 @@ public class UserContext {
                                         // auth new key by adding to existing writer data first
                                         OwnerProof proof = OwnerProof.build(newSigner, signer.publicKeyHash);
                                         return writeSynchronizer.applyUpdate(signer.publicKeyHash, signer, (wd, tid) ->
-                                                wd.addOwnedKey(signer.publicKeyHash, signer, proof, network.dhtClient))
+                                                wd.addOwnedKey(signer.publicKeyHash, signer, proof, network.dhtClient, network.hasher))
                                                 .thenCompose(version -> version.get(signer).props.changeKeys(signer,
                                                         newSigner,
                                                         updatedUser.getBoxingPair().publicBoxingKey,
@@ -832,7 +833,8 @@ public class UserContext {
                                                 Optional.empty(), SymmetricKey.random(), nextChunk, crypto.hasher)
                                         .thenCompose(root -> {
                                             LOG.info("Uploading entry point directory");
-                                            return WriterData.createEmpty(owner.publicKeyHash, writerPair, network.dhtClient, tid)
+                                            return WriterData.createEmpty(owner.publicKeyHash, writerPair,
+                                                    network.dhtClient, network.hasher, tid)
                                                     .thenCompose(empty -> empty.commit(owner.publicKeyHash, writerPair, MaybeMultihash.empty(), network, tid))
                                                     .thenCompose(s3 -> root.commit(s3, committer, rootPointer, Optional.of(writerPair), network, tid)
                                                             .thenApply(finalSnapshot -> {
@@ -884,7 +886,7 @@ public class UserContext {
     private CompletableFuture<CommittedWriterData> addOwnedKeyAndCommit(SigningPrivateKeyAndPublicHash owned) {
         return writeSynchronizer.applyUpdate(signer.publicKeyHash, signer,
                 (wd, tid) -> wd.addOwnedKey(signer.publicKeyHash, signer,
-                        OwnerProof.build(owned, signer.publicKeyHash), network.dhtClient))
+                        OwnerProof.build(owned, signer.publicKeyHash), network.dhtClient, network.hasher))
                 .thenApply(v -> v.get(signer));
     }
 
@@ -904,11 +906,11 @@ public class UserContext {
 
             Function<ByteArrayWrapper, byte[]> hasher = x -> Hash.sha256(x.data);
             CompletableFuture<ChampWrapper> champ = publicData.isPresent() ?
-                    ChampWrapper.create(publicData.get(), hasher, network.dhtClient) :
-                    ChampWrapper.create(signer.publicKeyHash, signer, hasher, tid, network.dhtClient);
+                    ChampWrapper.create(publicData.get(), hasher, network.dhtClient, network.hasher) :
+                    ChampWrapper.create(signer.publicKeyHash, signer, hasher, tid, network.dhtClient, network.hasher);
 
             AbsoluteCapability cap = file.getPointer().capability.readOnly();
-            return network.dhtClient.put(signer.publicKeyHash, signer, cap.serialize(), tid)
+            return network.dhtClient.put(signer.publicKeyHash, signer, cap.serialize(), crypto.hasher, tid)
                     .thenCompose(capHash ->
                             champ.thenCompose(c -> c.put(signer.publicKeyHash, signer, path.getBytes(),
                                     MaybeMultihash.empty(), capHash, tid))

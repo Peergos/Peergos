@@ -207,7 +207,7 @@ public class UserService {
                 tlsServer.createContext(path, new HSTSHandler(handlerFunc));
         };
 
-        addHandler.accept(Constants.DHT_URL, new DHTHandler(storage, (h, i) -> true));
+        addHandler.accept(Constants.DHT_URL, new DHTHandler(storage, crypto.hasher, (h, i) -> true));
         addHandler.accept("/" + Constants.CORE_URL,
                 new HttpCoreNodeServer.CoreNodeHandler(this.coreNode));
         addHandler.accept("/" + Constants.SOCIAL_URL,

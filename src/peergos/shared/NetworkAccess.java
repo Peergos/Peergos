@@ -30,6 +30,7 @@ import java.util.stream.*;
 public class NetworkAccess {
     private static final Logger LOG = Logger.getGlobal();
 
+    public final Hasher hasher;
     public final CoreNode coreNode;
     public final SocialNetwork social;
     public final ContentAddressedStorage dhtClient;
@@ -62,6 +63,7 @@ public class NetworkAccess {
         this.synchronizer = synchronizer;
         this.instanceAdmin = instanceAdmin;
         this.spaceUsage = spaceUsage;
+        this.hasher = isJavascript ? new ScryptJS() : new ScryptJava();
         this.usernames = usernames;
         this.creationTime = LocalDateTime.now();
         this.isJavascript = isJavascript;
@@ -83,16 +85,18 @@ public class NetworkAccess {
     }
 
     public NetworkAccess clear() {
-        WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, dhtClient);
-        MutableTree mutableTree = new MutableTreeImpl(mutable, dhtClient, synchronizer);
-        return new NetworkAccess(coreNode, social, dhtClient, mutable, mutableTree, synchronizer, instanceAdmin, spaceUsage, usernames, isJavascript);
+        WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, dhtClient, hasher);
+        MutableTree mutableTree = new MutableTreeImpl(mutable, dhtClient, hasher, synchronizer);
+        return new NetworkAccess(coreNode, social, dhtClient, mutable, mutableTree, synchronizer, instanceAdmin,
+                spaceUsage, usernames, isJavascript);
     }
 
     public NetworkAccess withMutablePointerCache(int ttl) {
         CachingPointers mutable = new CachingPointers(this.mutable, ttl);
-        WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, dhtClient);
-        MutableTree mutableTree = new MutableTreeImpl(mutable, dhtClient, synchronizer);
-        return new NetworkAccess(coreNode, social, dhtClient, mutable, mutableTree, synchronizer, instanceAdmin, spaceUsage, usernames, isJavascript);
+        WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, dhtClient, hasher);
+        MutableTree mutableTree = new MutableTreeImpl(mutable, dhtClient, hasher, synchronizer);
+        return new NetworkAccess(coreNode, social, dhtClient, mutable, mutableTree, synchronizer, instanceAdmin,
+                spaceUsage, usernames, isJavascript);
     }
 
     public static CoreNode buildProxyingCorenode(HttpPoster poster, Multihash pkiServerNodeId) {
@@ -117,7 +121,7 @@ public class NetworkAccess {
 
         return isPeergosServer(relative)
                 .thenApply(isPeergosServer -> isPeergosServer ? relative : absolute)
-                .thenCompose(poster -> build(poster, poster, pkiServerNodeId, true))
+                .thenCompose(poster -> build(poster, poster, pkiServerNodeId, new ScryptJS(), true))
                 .thenApply(e -> e.withMutablePointerCache(7_000));
     }
 
@@ -134,10 +138,14 @@ public class NetworkAccess {
         Multihash pkiServerNodeId = Cid.decode(pkiNodeId);
         JavaPoster p2pPoster = new JavaPoster(proxyAddress);
         JavaPoster apiPoster = new JavaPoster(apiAddress);
-        return build(apiPoster, p2pPoster, pkiServerNodeId, false);
+        return build(apiPoster, p2pPoster, pkiServerNodeId, new ScryptJava(), false);
     }
 
-    public static CompletableFuture<NetworkAccess> build(HttpPoster apiPoster, HttpPoster p2pPoster, Multihash pkiServerNodeId, boolean isJavascript) {
+    public static CompletableFuture<NetworkAccess> build(HttpPoster apiPoster,
+                                                         HttpPoster p2pPoster,
+                                                         Multihash pkiServerNodeId,
+                                                         Hasher hasher,
+                                                         boolean isJavascript) {
         ContentAddressedStorage localDht = buildLocalDht(apiPoster, true);
 
         CoreNode direct = buildDirectCorenode(apiPoster);
@@ -211,8 +219,9 @@ public class NetworkAccess {
                                        SpaceUsage usage,
                                        List<String> usernames,
                                        boolean isJavascript) {
-        WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, dht);
-        MutableTree btree = new MutableTreeImpl(mutable, dht, synchronizer);
+        Hasher hasher = isJavascript ? new ScryptJS() : new ScryptJava();
+        WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, dht, hasher);
+        MutableTree btree = new MutableTreeImpl(mutable, dht, hasher, synchronizer);
         return new NetworkAccess(coreNode, social, dht, mutable, btree, synchronizer, instanceAdmin, usage, usernames, isJavascript);
     }
 
@@ -245,8 +254,9 @@ public class NetworkAccess {
     public static CompletableFuture<NetworkAccess> buildPublicNetworkAccess(CoreNode core,
                                                                             MutablePointers mutable,
                                                                             ContentAddressedStorage storage) {
-        WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, storage);
-        MutableTree mutableTree = new MutableTreeImpl(mutable, storage, synchronizer);
+        Hasher hasher = null; // not needed for read only public access
+        WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, storage, hasher);
+        MutableTree mutableTree = new MutableTreeImpl(mutable, storage, null, synchronizer);
         return CompletableFuture.completedFuture(new NetworkAccess(core, null, storage, mutable, mutableTree,
                 synchronizer, null, null, Collections.emptyList(), false));
     }
@@ -424,21 +434,34 @@ public class NetworkAccess {
         List<List<Fragment>> grouped = IntStream.range(0, (fragments.size() + FRAGMENTs_PER_QUERY - 1) / FRAGMENTs_PER_QUERY)
                 .mapToObj(i -> fragments.stream().skip(FRAGMENTs_PER_QUERY * i).limit(FRAGMENTs_PER_QUERY).collect(Collectors.toList()))
                 .collect(Collectors.toList());
-        List<CompletableFuture<List<Multihash>>> futures = grouped.stream()
-                .map(g -> bulkUploadFragments(
-                        g,
-                        owner,
-                        writer.publicKeyHash,
-                        g.stream().map(f -> writer.secret.signatureOnly(f.data)).collect(Collectors.toList()),
-                        tid
-                ).thenApply(hash -> {
-                    if (progressCounter != null)
-                        progressCounter.accept((long)(g.stream().mapToInt(f -> f.data.length).sum()));
-                    return hash;
-                })).collect(Collectors.toList());
-        return Futures.combineAllInOrder(futures)
-                .thenApply(groups -> groups.stream()
-                        .flatMap(g -> g.stream()).collect(Collectors.toList()));
+        return Futures.combineAllInOrder(grouped.stream()
+                .map(g -> Futures.combineAllInOrder(g.stream()
+                        .map(f -> hasher.sha256(f.data))
+                        .collect(Collectors.toList())))
+                .collect(Collectors.toList()))
+                .thenCompose(groupsSignatures -> {
+                    List<CompletableFuture<List<Multihash>>> futures = IntStream.range(0, grouped.size())
+                            .mapToObj(i -> bulkUploadFragments(
+                                    grouped.get(i),
+                                    owner,
+                                    writer.publicKeyHash,
+                                    groupsSignatures.get(i)
+                                            .stream()
+                                            .map(sig -> writer.secret.signatureOnly(sig))
+                                            .collect(Collectors.toList()),
+                                    tid
+                            ).thenApply(hash -> {
+                                if (progressCounter != null)
+                                    progressCounter.accept((long) (grouped.get(i)
+                                            .stream()
+                                            .mapToInt(f -> f.data.length)
+                                            .sum()));
+                                return hash;
+                            })).collect(Collectors.toList());
+                    return Futures.combineAllInOrder(futures)
+                            .thenApply(groups -> groups.stream()
+                                    .flatMap(g -> g.stream()).collect(Collectors.toList()));
+                });
     }
 
     public CompletableFuture<Snapshot> uploadChunk(Snapshot current,
@@ -456,8 +479,11 @@ public class NetworkAccess {
                     + " with " + metadata.toCbor().links().size() + " fragments");
             byte[] metaBlob = metadata.serialize();
             CommittedWriterData version = current.get(writer);
-            return dhtClient.put(owner, writer.publicKeyHash, writer.secret.signatureOnly(metaBlob), metaBlob, tid)
-                    .thenCompose(blobHash -> tree.put(version.props, owner, writer, mapKey, metadata.committedHash(), blobHash, tid)
+            return hasher.sha256(metaBlob)
+                    .thenCompose(blobHash -> dhtClient.put(owner, writer.publicKeyHash,
+                            writer.secret.signatureOnly(blobHash), metaBlob, tid))
+                    .thenCompose(blobHash -> tree.put(version.props, owner, writer, mapKey,
+                            metadata.committedHash(), blobHash, tid)
                             .thenCompose(wd -> committer.commit(owner, writer, wd, version, tid)))
                     .thenApply(committed -> current.withVersion(writer.publicKeyHash, committed.get(writer)));
         } catch (Exception e) {

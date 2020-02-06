@@ -27,7 +27,8 @@ public class UserStats {
                 List<Multihash> hosts = last.claim.storageProviders;
                 PublicKeyHash owner = last.owner;
                 Set<PublicKeyHash> ownedKeysRecursive =
-                        WriterData.getOwnedKeysRecursive(username, network.coreNode, network.mutable, network.dhtClient).join();
+                        WriterData.getOwnedKeysRecursive(username, network.coreNode, network.mutable,
+                                network.dhtClient, network.hasher).join();
                 long total = 0;
                 for (PublicKeyHash writer : ownedKeysRecursive) {
                     MaybeMultihash target = network.mutable.getPointerTarget(owner, writer, network.dhtClient).get();
