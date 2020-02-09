@@ -39,8 +39,12 @@ public class Futures {
         CompletableFuture<List<T>> identity = CompletableFuture.completedFuture(Collections.emptyList());
         return futures.stream().reduce(identity,
                 (a, b) -> b.thenCompose(opt ->
-                        a.thenApply(set -> Stream.concat(set.stream(), Stream.of(opt))
-                                .collect(Collectors.toList()))),
+                        a.thenApply(set -> {
+                            ArrayList<T> combined = new ArrayList<>(set.size() + 1);
+                            combined.addAll(set);
+                            combined.add(opt);
+                            return combined;
+                        })),
                 (a, b) -> b.thenCompose(setb ->
                         a.thenApply(seta -> Stream.concat(seta.stream(), setb.stream()).collect(Collectors.toList()))));
     }

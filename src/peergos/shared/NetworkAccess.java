@@ -434,6 +434,9 @@ public class NetworkAccess {
         List<List<Fragment>> grouped = IntStream.range(0, (fragments.size() + FRAGMENTs_PER_QUERY - 1) / FRAGMENTs_PER_QUERY)
                 .mapToObj(i -> fragments.stream().skip(FRAGMENTs_PER_QUERY * i).limit(FRAGMENTs_PER_QUERY).collect(Collectors.toList()))
                 .collect(Collectors.toList());
+        List<Integer> sizes = grouped.stream()
+                .map(frags -> frags.stream().mapToInt(f -> f.data.length).sum())
+                .collect(Collectors.toList());
         return Futures.combineAllInOrder(grouped.stream()
                 .map(g -> Futures.combineAllInOrder(g.stream()
                         .map(f -> hasher.sha256(f.data))
@@ -452,10 +455,7 @@ public class NetworkAccess {
                                     tid
                             ).thenApply(hash -> {
                                 if (progressCounter != null)
-                                    progressCounter.accept((long) (grouped.get(i)
-                                            .stream()
-                                            .mapToInt(f -> f.data.length)
-                                            .sum()));
+                                    progressCounter.accept((long) sizes.get(i));
                                 return hash;
                             })).collect(Collectors.toList());
                     return Futures.combineAllInOrder(futures)
@@ -480,8 +480,8 @@ public class NetworkAccess {
             byte[] metaBlob = metadata.serialize();
             CommittedWriterData version = current.get(writer);
             return hasher.sha256(metaBlob)
-                    .thenCompose(blobHash -> dhtClient.put(owner, writer.publicKeyHash,
-                            writer.secret.signatureOnly(blobHash), metaBlob, tid))
+                    .thenCompose(blobSha -> dhtClient.put(owner, writer.publicKeyHash,
+                            writer.secret.signatureOnly(blobSha), metaBlob, tid))
                     .thenCompose(blobHash -> tree.put(version.props, owner, writer, mapKey,
                             metadata.committedHash(), blobHash, tid)
                             .thenCompose(wd -> committer.commit(owner, writer, wd, version, tid)))
