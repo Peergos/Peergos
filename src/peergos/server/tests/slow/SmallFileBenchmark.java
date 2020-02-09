@@ -51,11 +51,11 @@ public class SmallFileBenchmark {
         return UserContext.ensureSignedUp(username, password, network, crypto).get();
     }
 
-    // UPLOAD(0) duration: 1246 mS, best: 1246 mS, worst: 1246 mS, av: 1246 mS
+    // UPLOAD(0) duration: 1189 mS, best: 1189 mS, worst: 1189 mS, av: 1189 mS
     // to
-    // UPLOAD(99) duration: 1772 mS, best: 1226 mS, worst: 2132 mS, av: 1638 mS
+    // UPLOAD(99) duration: 1444 mS, best: 1084 mS, worst: 1724 mS, av: 1311 mS
     //
-    // GetData(99) duration: 54 mS, best: 51 mS, worst: 234 mS, av: 55 mS
+    // GetData(99) duration: 49 mS, best: 39 mS, worst: 82 mS, av: 45 mS
     @Test
     public void smallFiles() throws Exception {
         String username = generateUsername();
