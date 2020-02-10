@@ -14,8 +14,8 @@ public class IpfsUserTests extends UserTests {
 
     private static Args args = buildArgs()
             .with("useIPFS", "true")
-            .with("enable-gc", "true")
-            .with("gc.period.millis", "10000")
+//            .with("enable-gc", "true")
+//            .with("gc.period.millis", "10000")
             .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, ""); // no bootstrapping
 
     public IpfsUserTests(Args args) {
