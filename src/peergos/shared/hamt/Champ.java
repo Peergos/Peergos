@@ -209,6 +209,7 @@ public class Champ implements Cborable {
                                                          Function<ByteArrayWrapper, byte[]> hasher,
                                                          TransactionId tid,
                                                          ContentAddressedStorage storage,
+                                                         Hasher writeHasher,
                                                          Multihash ourHash) {
         int bitpos = mask(hash, depth, bitWidth);
 
@@ -229,34 +230,34 @@ public class Champ implements Cborable {
 
                     // update mapping
                     Champ champ = copyAndSetValue(index, payloadIndex, value);
-                    return storage.put(owner, writer, champ.serialize(), tid).thenApply(h -> new Pair<>(champ, h));
+                    return storage.put(owner, writer, champ.serialize(), writeHasher, tid).thenApply(h -> new Pair<>(champ, h));
                 }
             }
             if (mappings.length < maxCollisions) {
                 Champ champ = insertIntoPrefix(index, key, value);
-                return storage.put(owner, writer, champ.serialize(), tid).thenApply(h -> new Pair<>(champ, h));
+                return storage.put(owner, writer, champ.serialize(), writeHasher, tid).thenApply(h -> new Pair<>(champ, h));
             }
 
             return pushMappingsDownALevel(owner, writer, mappings,
-                    key, hash, value, depth + 1, bitWidth, maxCollisions, hasher, tid, storage)
+                    key, hash, value, depth + 1, bitWidth, maxCollisions, hasher, tid, storage, writeHasher)
                     .thenCompose(p -> {
                         Champ champ = copyAndMigrateFromInlineToNode(bitpos, p);
-                        return storage.put(owner, writer, champ.serialize(), tid).thenApply(h -> new Pair<>(champ, h));
+                        return storage.put(owner, writer, champ.serialize(), writeHasher, tid).thenApply(h -> new Pair<>(champ, h));
                     });
         } else if (nodeMap.get(bitpos)) { // child node
             return getChild(hash, depth, bitWidth, storage)
                     .thenCompose(child -> child.right.get().put(owner, writer, key, hash, depth + 1, expected, value,
-                            bitWidth, maxCollisions, hasher, tid, storage, child.left)
+                            bitWidth, maxCollisions, hasher, tid, storage, writeHasher, child.left)
                             .thenCompose(newChild -> {
                                 if (newChild.right.equals(child.left))
                                     return CompletableFuture.completedFuture(new Pair<>(this, ourHash));
                                 Champ champ = overwriteChildLink(bitpos, newChild);
-                                return storage.put(owner, writer, champ.serialize(), tid).thenApply(h -> new Pair<>(champ, h));
+                                return storage.put(owner, writer, champ.serialize(), writeHasher, tid).thenApply(h -> new Pair<>(champ, h));
                             }));
         } else {
             // no value
             Champ champ = addNewPrefix(bitpos, key, value);
-            return storage.put(owner, writer, champ.serialize(), tid).thenApply(h -> new Pair<>(champ, h));
+            return storage.put(owner, writer, champ.serialize(), writeHasher, tid).thenApply(h -> new Pair<>(champ, h));
         }
     }
 
@@ -271,21 +272,22 @@ public class Champ implements Cborable {
                                                                              int maxCollisions,
                                                                              Function<ByteArrayWrapper, byte[]> hasher,
                                                                              TransactionId tid,
-                                                                             ContentAddressedStorage storage) {
+                                                                             ContentAddressedStorage storage,
+                                                                             Hasher writeHasher) {
         if (depth >= HASH_CODE_LENGTH) {
              throw new IllegalStateException("Hash collision!");
         }
 
         Champ empty = empty();
-        return storage.put(owner, writer, empty.serialize(), tid)
+        return storage.put(owner, writer, empty.serialize(), writeHasher, tid)
                 .thenApply(h -> new Pair<>(empty, h))
                 .thenCompose(p -> p.left.put(owner, writer, key1, hash1, depth, MaybeMultihash.empty(), val1,
-                        bitWidth, maxCollisions, hasher, tid, storage, p.right))
+                        bitWidth, maxCollisions, hasher, tid, storage, writeHasher, p.right))
                 .thenCompose(one -> Futures.reduceAll(
                         Arrays.stream(mappings).collect(Collectors.toList()),
                         one,
                         (p, e) -> p.left.put(owner, writer, e.key, hasher.apply(e.key), depth, MaybeMultihash.empty(), e.valueHash,
-                                bitWidth, maxCollisions, hasher, tid, storage, p.right),
+                                bitWidth, maxCollisions, hasher, tid, storage, writeHasher, p.right),
                         (a, b) -> a)
                 );
     }
@@ -390,6 +392,7 @@ public class Champ implements Cborable {
                                                             int maxCollisions,
                                                             TransactionId tid,
                                                             ContentAddressedStorage storage,
+                                                            Hasher writeHasher,
                                                             Multihash ourHash) {
         int bitpos = mask(hash, depth, bitWidth);
 
@@ -456,17 +459,18 @@ public class Champ implements Cborable {
 
                             champ = new Champ(newDataMap, new BitSet(), dst);
                         }
-                        return storage.put(owner, writer, champ.serialize(), tid).thenApply(h -> new Pair<>(champ, h));
+                        return storage.put(owner, writer, champ.serialize(), writeHasher, tid).thenApply(h -> new Pair<>(champ, h));
                     } else {
                         Champ champ = removeMapping(bitpos, payloadIndex);
-                        return storage.put(owner, writer, champ.serialize(), tid).thenApply(h -> new Pair<>(champ, h));
+                        return storage.put(owner, writer, champ.serialize(), writeHasher, tid).thenApply(h -> new Pair<>(champ, h));
                     }
                 }
             }
             return CompletableFuture.completedFuture(new Pair<>(this, ourHash));
         } else if (nodeMap.get(bitpos)) { // node (not value)
             return getChild(hash, depth, bitWidth, storage)
-                    .thenCompose(child -> child.right.get().remove(owner, writer, key, hash, depth + 1, expected, bitWidth, maxCollisions, tid, storage, child.left)
+                    .thenCompose(child -> child.right.get().remove(owner, writer, key, hash, depth + 1, expected,
+                            bitWidth, maxCollisions, tid, storage, writeHasher, child.left)
                             .thenCompose(newChild -> {
                                 if (child.left.equals(newChild.right))
                                     return CompletableFuture.completedFuture(new Pair<>(this, ourHash));
@@ -480,12 +484,12 @@ public class Champ implements Cborable {
                                     } else {
                                         // inline value (move to front)
                                         Champ champ = copyAndMigrateFromNodeToInline(bitpos, newChild.left);
-                                        return storage.put(owner, writer, champ.serialize(), tid).thenApply(h -> new Pair<>(champ, h));
+                                        return storage.put(owner, writer, champ.serialize(), writeHasher, tid).thenApply(h -> new Pair<>(champ, h));
                                     }
                                 } else {
                                     // modify current node (set replacement node)
                                     Champ champ = overwriteChildLink(bitpos, newChild);
-                                    return storage.put(owner, writer, champ.serialize(), tid).thenApply(h -> new Pair<>(champ, h));
+                                    return storage.put(owner, writer, champ.serialize(), writeHasher, tid).thenApply(h -> new Pair<>(champ, h));
                                 }
                             }));
         }

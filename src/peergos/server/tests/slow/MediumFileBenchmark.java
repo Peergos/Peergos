@@ -51,11 +51,11 @@ public class MediumFileBenchmark {
         return UserContext.ensureSignedUp(username, password, network, crypto).get();
     }
 
-    // UPLOAD(0) duration: 8115 mS, best: 8115 mS, worst: 8115 mS, av: 8115 mS
+    // UPLOAD(0) duration: 7451 mS, best: 7451 mS, worst: 7451 mS, av: 7451 mS
     // to
-    // UPLOAD(99) duration: 9864 mS, best: 7959 mS, worst: 10653 mS, av: 8974 mS or 1.1 MiB/s
+    // UPLOAD(99) duration: 8320 mS, best: 7276 mS, worst: 9540 mS, av: 8325 mS or 1.2 MiB/s
     //
-    // GetData(10) duration: 1037 mS, best: 868 mS, worst: 1167 mS, av: 944 mS or 10.5 MiB/s
+    // GetData(10) duration: 1093 mS, best: 984 mS, worst: 1317 mS, av: 1141 mS or 8.7 MiB/s
     @Test
     public void mediumFiles() throws Exception {
         String username = generateUsername();

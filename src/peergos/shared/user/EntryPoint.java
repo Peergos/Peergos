@@ -43,7 +43,7 @@ public class EntryPoint implements Cborable {
             if (! ownerKey.isPresent())
                 throw new IllegalStateException("No owner key present for user " + claimedOwner);
             return UserContext.getWriterData(network, ownerKey.get(), ownerKey.get())
-                    .thenCompose(wd -> wd.props.ownsKey(entryWriter, network.dhtClient));
+                    .thenCompose(wd -> wd.props.ownsKey(entryWriter, network.dhtClient, network.hasher));
         });
     }
 

@@ -36,7 +36,8 @@ public class Mirror {
         Optional<PublicKeyHash> identity = source.coreNode.getPublicKeyHash(username).join();
         if (! identity.isPresent())
             return;
-        Set<PublicKeyHash> ownedKeys = WriterData.getOwnedKeysRecursive(username, source.coreNode, source.mutable, source.dhtClient).join();
+        Set<PublicKeyHash> ownedKeys = WriterData.getOwnedKeysRecursive(username, source.coreNode, source.mutable,
+                source.dhtClient, source.hasher).join();
         for (PublicKeyHash ownedKey : ownedKeys) {
             mirrorMutableSubspace(identity.get(), ownedKey, source, targetPointers, targetStorage);
         }

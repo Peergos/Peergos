@@ -84,13 +84,14 @@ public class WriterData implements Cborable {
     public CompletableFuture<WriterData> addOwnedKey(PublicKeyHash owner,
                                                      SigningPrivateKeyAndPublicHash signer,
                                                      OwnerProof newOwned,
-                                                     ContentAddressedStorage ipfs) {
+                                                     ContentAddressedStorage ipfs,
+                                                     Hasher hasher) {
         return IpfsTransaction.call(owner,
                 tid -> (! ownedKeys.isPresent() ?
-                        OwnedKeyChamp.createEmpty(owner, signer, ipfs, tid)
-                                .thenCompose(root -> OwnedKeyChamp.build(root, ipfs)) :
-                        getOwnedKeyChamp(ipfs))
-                        .thenCompose(champ -> champ.add(owner, signer, newOwned, tid))
+                        OwnedKeyChamp.createEmpty(owner, signer, ipfs, hasher, tid)
+                                .thenCompose(root -> OwnedKeyChamp.build(root, ipfs, hasher)) :
+                        getOwnedKeyChamp(ipfs, hasher))
+                        .thenCompose(champ -> champ.add(owner, signer, newOwned, hasher, tid))
                         .thenApply(newRoot -> new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver,
                                 Optional.of(newRoot), namedOwnedKeys, staticData, tree)), ipfs);
     }
@@ -101,8 +102,8 @@ public class WriterData implements Cborable {
                                                             MaybeMultihash currentHash,
                                                             NetworkAccess network,
                                                             TransactionId tid) {
-        return getOwnedKeyChamp(network.dhtClient)
-                .thenCompose(champ -> champ.add(owner, signer, newOwned, tid)
+        return getOwnedKeyChamp(network.dhtClient, network.hasher)
+                .thenCompose(champ -> champ.add(owner, signer, newOwned, network.hasher, tid)
                         .thenApply(newRoot -> new WriterData(controller, generationAlgorithm, publicData,
                                 followRequestReceiver, Optional.of(newRoot), namedOwnedKeys, staticData, tree)))
                 .thenCompose(wd -> wd.commit(owner, signer, currentHash, network, tid));
@@ -111,9 +112,10 @@ public class WriterData implements Cborable {
     public CompletableFuture<WriterData> removeOwnedKey(PublicKeyHash owner,
                                                         SigningPrivateKeyAndPublicHash signer,
                                                         PublicKeyHash ownedKey,
-                                                        ContentAddressedStorage ipfs) {
+                                                        ContentAddressedStorage ipfs,
+                                                        Hasher hasher) {
 
-        return getOwnedKeyChamp(ipfs)
+        return getOwnedKeyChamp(ipfs, hasher)
                 .thenCompose(champ -> IpfsTransaction.call(owner,
                         tid -> champ.remove(owner, signer, ownedKey, tid), ipfs)
                         .thenApply(newRoot -> new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver,
@@ -121,21 +123,23 @@ public class WriterData implements Cborable {
     }
 
     public CompletableFuture<Boolean> ownsKey(PublicKeyHash ownedKey,
-                                              ContentAddressedStorage ipfs) {
+                                              ContentAddressedStorage ipfs,
+                                              Hasher hasher) {
         // TODO do this recursively to handle arbitrary trees of key ownership
-        return getOwnedKeyChamp(ipfs)
+        return getOwnedKeyChamp(ipfs, hasher)
                 .thenCompose(champ -> champ.get(ownedKey))
                 .thenApply(Optional::isPresent);
     }
 
-    public CompletableFuture<OwnedKeyChamp> getOwnedKeyChamp(ContentAddressedStorage ipfs) {
-        return ownedKeys.map(root -> OwnedKeyChamp.build(root, ipfs))
+    public CompletableFuture<OwnedKeyChamp> getOwnedKeyChamp(ContentAddressedStorage ipfs, Hasher hasher) {
+        return ownedKeys.map(root -> OwnedKeyChamp.build(root, ipfs, hasher))
                 .orElseThrow(() -> new IllegalStateException("Owned key champ absent!"));
     }
 
     private <T> CompletableFuture<Set<T>> applyToOwnedKeys(Function<OwnedKeyChamp, CompletableFuture<Set<T>>> processor,
-                                                           ContentAddressedStorage ipfs) {
-        return ownedKeys.map(x -> getOwnedKeyChamp(ipfs).thenCompose(processor))
+                                                           ContentAddressedStorage ipfs,
+                                                           Hasher hasher) {
+        return ownedKeys.map(x -> getOwnedKeyChamp(ipfs, hasher).thenCompose(processor))
                 .orElse(CompletableFuture.completedFuture(Collections.emptySet()));
     }
 
@@ -152,8 +156,9 @@ public class WriterData implements Cborable {
     public static CompletableFuture<WriterData> createEmpty(PublicKeyHash owner,
                                                             SigningPrivateKeyAndPublicHash writer,
                                                             ContentAddressedStorage ipfs,
+                                                            Hasher hasher,
                                                             TransactionId tid) {
-        return OwnedKeyChamp.createEmpty(owner, writer, ipfs, tid)
+        return OwnedKeyChamp.createEmpty(owner, writer, ipfs, hasher, tid)
                 .thenApply(ownedRoot -> new WriterData(writer.publicKeyHash,
                         Optional.empty(),
                         Optional.empty(),
@@ -170,8 +175,9 @@ public class WriterData implements Cborable {
                                                                           SymmetricKey rootKey,
                                                                           SecretGenerationAlgorithm algorithm,
                                                                           ContentAddressedStorage ipfs,
+                                                                          Hasher hasher,
                                                                           TransactionId tid) {
-        return OwnedKeyChamp.createEmpty(owner, writer, ipfs, tid)
+        return OwnedKeyChamp.createEmpty(owner, writer, ipfs, hasher, tid)
                 .thenApply(ownedRoot -> new WriterData(writer.publicKeyHash,
                         Optional.of(algorithm),
                         Optional.empty(),
@@ -200,10 +206,12 @@ public class WriterData implements Cborable {
                 (wd, tid) -> {
                     Optional<UserStaticData> newEntryPoints = staticData
                             .map(sd -> new UserStaticData(sd.getEntryPoints(currentKey), newKey));
-                    return network.dhtClient.putBoxingKey(oldSigner.publicKeyHash,
-                            oldSigner.secret.signatureOnly(followRequestReceiver.serialize()),
+                    return network.hasher.sha256(followRequestReceiver.serialize())
+                            .thenCompose(boxerHash -> network.dhtClient.putBoxingKey(oldSigner.publicKeyHash,
+                            oldSigner.secret.signatureOnly(boxerHash),
                             followRequestReceiver, tid
-                    ).thenCompose(boxerHash -> OwnedKeyChamp.createEmpty(oldSigner.publicKeyHash, oldSigner, network.dhtClient, tid)
+                    )).thenCompose(boxerHash -> OwnedKeyChamp.createEmpty(oldSigner.publicKeyHash, oldSigner,
+                            network.dhtClient, network.hasher, tid)
                             .thenCompose(ownedRoot -> {
                                 Map<String, OwnerProof> newNamedOwnedKeys = namedOwnedKeys.entrySet()
                                         .stream()
@@ -219,12 +227,12 @@ public class WriterData implements Cborable {
                                         newNamedOwnedKeys,
                                         newEntryPoints,
                                         tree);
-                                return getOwnedKeyChamp(network.dhtClient)
+                                return getOwnedKeyChamp(network.dhtClient, network.hasher)
                                         .thenCompose(okChamp -> okChamp.applyToAllMappings(base, (nwd, p) ->
                                                 p.left.equals(signer.publicKeyHash) ? Futures.of(nwd) :
                                                 nwd.addOwnedKey(oldSigner.publicKeyHash, signer,
                                                         OwnerProof.build(ownedKeys.get(p.left), signer.publicKeyHash),
-                                                        network.dhtClient), network.dhtClient)
+                                                        network.dhtClient, network.hasher), network.dhtClient)
                                         );
                             }));
                 })
@@ -241,7 +249,7 @@ public class WriterData implements Cborable {
                                               MaybeMultihash currentHash,
                                               NetworkAccess network,
                                               TransactionId tid) {
-        return commit(owner, signer, currentHash, network.mutable, network.dhtClient, tid);
+        return commit(owner, signer, currentHash, network.mutable, network.dhtClient, network.hasher, tid);
     }
 
     public CompletableFuture<Snapshot> commit(PublicKeyHash owner,
@@ -249,10 +257,12 @@ public class WriterData implements Cborable {
                                               MaybeMultihash currentHash,
                                               MutablePointers mutable,
                                               ContentAddressedStorage immutable,
+                                              Hasher hasher,
                                               TransactionId tid) {
         byte[] raw = serialize();
 
-        return immutable.put(owner, signer.publicKeyHash, signer.secret.signatureOnly(raw), raw, tid)
+        return hasher.sha256(raw)
+                .thenCompose(hash -> immutable.put(owner, signer.publicKeyHash, signer.secret.signatureOnly(hash), raw, tid))
                 .thenCompose(blobHash -> {
                     MaybeMultihash newHash = MaybeMultihash.of(blobHash);
                     if (newHash.equals(currentHash)) {
@@ -317,26 +327,29 @@ public class WriterData implements Cborable {
     public static CompletableFuture<Set<PublicKeyHash>> getOwnedKeysRecursive(String username,
                                                                               CoreNode core,
                                                                               MutablePointers mutable,
-                                                                              ContentAddressedStorage dht) {
+                                                                              ContentAddressedStorage dht,
+                                                                              Hasher hasher) {
         return core.getPublicKeyHash(username)
                 .thenCompose(publicKeyHash -> publicKeyHash
-                        .map(h -> getOwnedKeysRecursive(h, h, mutable, dht))
+                        .map(h -> getOwnedKeysRecursive(h, h, mutable, dht, hasher))
                         .orElseGet(() -> CompletableFuture.completedFuture(Collections.emptySet())));
     }
 
     public static CompletableFuture<Set<PublicKeyHash>> getOwnedKeysRecursive(PublicKeyHash owner,
                                                                               PublicKeyHash writer,
                                                                               MutablePointers mutable,
-                                                                              ContentAddressedStorage ipfs) {
-        return getOwnedKeysRecursive(owner, writer, Collections.emptySet(), mutable, ipfs);
+                                                                              ContentAddressedStorage ipfs,
+                                                                              Hasher hasher) {
+        return getOwnedKeysRecursive(owner, writer, Collections.emptySet(), mutable, ipfs, hasher);
     }
 
     private static CompletableFuture<Set<PublicKeyHash>> getOwnedKeysRecursive(PublicKeyHash owner,
-                                                                              PublicKeyHash writer,
-                                                                              Set<PublicKeyHash> alreadyDone,
-                                                                              MutablePointers mutable,
-                                                                              ContentAddressedStorage ipfs) {
-        return getDirectOwnedKeys(owner, writer, mutable, ipfs)
+                                                                               PublicKeyHash writer,
+                                                                               Set<PublicKeyHash> alreadyDone,
+                                                                               MutablePointers mutable,
+                                                                               ContentAddressedStorage ipfs,
+                                                                               Hasher hasher) {
+        return getDirectOwnedKeys(owner, writer, mutable, ipfs, hasher)
                 .thenCompose(directOwned -> {
                     Set<PublicKeyHash> newKeys = directOwned.stream().
                             filter(h -> ! alreadyDone.contains(h))
@@ -344,7 +357,7 @@ public class WriterData implements Cborable {
                     Set<PublicKeyHash> done = new HashSet<>(alreadyDone);
                     done.add(writer);
                     BiFunction<Set<PublicKeyHash>, PublicKeyHash, CompletableFuture<Set<PublicKeyHash>>> composer =
-                            (a, w) -> getOwnedKeysRecursive(owner, w, a, mutable, ipfs)
+                            (a, w) -> getOwnedKeysRecursive(owner, w, a, mutable, ipfs, hasher)
                                     .thenApply(ws ->
                                             Stream.concat(ws.stream(), a.stream())
                                                     .collect(Collectors.toSet()));
@@ -358,14 +371,16 @@ public class WriterData implements Cborable {
     public static CompletableFuture<Set<PublicKeyHash>> getDirectOwnedKeys(PublicKeyHash owner,
                                                                            PublicKeyHash writer,
                                                                            MutablePointers mutable,
-                                                                           ContentAddressedStorage ipfs) {
+                                                                           ContentAddressedStorage ipfs,
+                                                                           Hasher hasher) {
         return mutable.getPointerTarget(owner, writer, ipfs)
-                .thenCompose(h -> getDirectOwnedKeys(writer, h, ipfs));
+                .thenCompose(h -> getDirectOwnedKeys(writer, h, ipfs, hasher));
     }
 
     public static CompletableFuture<Set<PublicKeyHash>> getDirectOwnedKeys(PublicKeyHash writer,
                                                                            MaybeMultihash root,
-                                                                           ContentAddressedStorage ipfs) {
+                                                                           ContentAddressedStorage ipfs,
+                                                                           Hasher hasher) {
         if (! root.isPresent())
             return CompletableFuture.completedFuture(Collections.emptySet());
 
@@ -381,7 +396,7 @@ public class WriterData implements Cborable {
 
         return getWriterData(root.get(), ipfs)
                 .thenCompose(wd -> wd.props.applyToOwnedKeys(owned ->
-                        owned.applyToAllMappings(Collections.emptySet(), composer, ipfs), ipfs)
+                        owned.applyToAllMappings(Collections.emptySet(), composer, ipfs), ipfs, hasher)
                         .thenApply(owned -> Stream.concat(owned.stream(),
                                 wd.props.namedOwnedKeys.values().stream()).collect(Collectors.toSet())))
                 .thenCompose(all -> Futures.reduceAll(all, Collections.emptySet(),

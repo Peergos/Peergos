@@ -17,13 +17,18 @@ public class MutableTreeImpl implements MutableTree {
 	private static final Logger LOG = Logger.getGlobal();
     private final MutablePointers mutable;
     private final ContentAddressedStorage dht;
+    private final Hasher writeHasher;
     private static final boolean LOGGING = false;
     private final WriteSynchronizer synchronizer;
     private final Function<ByteArrayWrapper, byte[]> hasher = x -> x.data;
 
-    public MutableTreeImpl(MutablePointers mutable, ContentAddressedStorage dht, WriteSynchronizer synchronizer) {
+    public MutableTreeImpl(MutablePointers mutable,
+                           ContentAddressedStorage dht,
+                           Hasher writeHasher,
+                           WriteSynchronizer synchronizer) {
         this.mutable = mutable;
         this.dht = dht;
+        this.writeHasher = writeHasher;
         this.synchronizer = synchronizer;
     }
 
@@ -42,8 +47,8 @@ public class MutableTreeImpl implements MutableTree {
                                              Multihash value,
                                              TransactionId tid) {
         return (base.tree.isPresent() ?
-                ChampWrapper.create(base.tree.get(), hasher, dht) :
-                ChampWrapper.create(owner, writer, x -> x.data, tid, dht)
+                ChampWrapper.create(base.tree.get(), hasher, dht, writeHasher) :
+                ChampWrapper.create(owner, writer, x -> x.data, tid, dht, writeHasher)
         ).thenCompose(tree -> tree.put(owner, writer, mapKey, existing, value, tid))
                 .thenApply(newRoot -> LOGGING ? log(newRoot, "TREE.put (" + ArrayOps.bytesToHex(mapKey)
                         + ", " + value + ") => CAS(" + base.tree + ", " + newRoot + ")") : newRoot)
@@ -54,7 +59,7 @@ public class MutableTreeImpl implements MutableTree {
     public CompletableFuture<MaybeMultihash> get(WriterData base, PublicKeyHash owner, PublicKeyHash writer, byte[] mapKey) {
         if (! base.tree.isPresent())
             throw new IllegalStateException("Tree root not present for " + writer);
-        return ChampWrapper.create(base.tree.get(), hasher, dht).thenCompose(tree -> tree.get(mapKey))
+        return ChampWrapper.create(base.tree.get(), hasher, dht, writeHasher).thenCompose(tree -> tree.get(mapKey))
                 .thenApply(maybe -> LOGGING ?
                         log(maybe, "TREE.get (" + ArrayOps.bytesToHex(mapKey)
                                 + ", root="+base.tree.get()+" => " + maybe) : maybe);
@@ -69,7 +74,7 @@ public class MutableTreeImpl implements MutableTree {
                                                 TransactionId tid) {
         if (! base.tree.isPresent())
             throw new IllegalStateException("Tree root not present!");
-        return ChampWrapper.create(base.tree.get(), hasher, dht)
+        return ChampWrapper.create(base.tree.get(), hasher, dht, writeHasher)
                 .thenCompose(tree -> tree.remove(owner, writer, mapKey, existing, tid))
                 .thenApply(pair -> LOGGING ? log(pair, "TREE.rm ("
                         + ArrayOps.bytesToHex(mapKey) + "  => " + pair) : pair)

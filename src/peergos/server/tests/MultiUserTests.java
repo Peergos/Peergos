@@ -60,7 +60,7 @@ public class MultiUserTests {
         WriterData props = WriterData.getWriterData(owner, writer, network.mutable, network.dhtClient).join().props;
         if (! props.ownedKeys.isPresent())
             return;
-        OwnedKeyChamp ownedChamp = props.getOwnedKeyChamp(network.dhtClient).join();
+        OwnedKeyChamp ownedChamp = props.getOwnedKeyChamp(network.dhtClient, network.hasher).join();
         Set<OwnerProof> empty = Collections.emptySet();
         Set<OwnerProof> claims = ownedChamp.applyToAllMappings(empty,
                 (a, b) -> CompletableFuture.completedFuture(Stream.concat(a.stream(), Stream.of(b.right)).collect(Collectors.toSet())),
@@ -355,7 +355,7 @@ public class MultiUserTests {
                 ! metaOnlyParent.isWritable() && ! metaOnlyParent.isReadable());
 
         Set<PublicKeyHash> keysOwnedByRootSigner = WriterData.getDirectOwnedKeys(theFile.owner(), parentFolder.writer(),
-                u1.network.mutable, u1.network.dhtClient).join();
+                u1.network.mutable, u1.network.dhtClient, u1.network.hasher).join();
         Assert.assertTrue("New writer key present", keysOwnedByRootSigner.contains(theFile.writer()));
 
         AbsoluteCapability cap = theFile.getPointer().capability;
@@ -374,7 +374,7 @@ public class MultiUserTests {
             Assert.assertTrue("shared file removed", ! sharedFile.isPresent());
         }
         Set<PublicKeyHash> updatedKeysOwnedByRootSigner = WriterData.getDirectOwnedKeys(theFile.owner(),
-                parentFolder.writer(), u1.network.mutable, u1.network.dhtClient).join();
+                parentFolder.writer(), u1.network.mutable, u1.network.dhtClient, u1.network.hasher).join();
         Assert.assertTrue("New writer key not present", ! updatedKeysOwnedByRootSigner.contains(theFile.writer()));
     }
 

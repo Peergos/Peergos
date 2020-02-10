@@ -71,7 +71,7 @@ public class MultipartBenchmark {
         for (int i=0; i < 10000; i++) {
             random.nextBytes(data);
             long t1 = System.currentTimeMillis();
-            network.dhtClient.put(context.signer.publicKeyHash, context.signer, data, tid).join();
+            network.dhtClient.put(context.signer.publicKeyHash, context.signer, data, network.hasher, tid).join();
             long duration = System.currentTimeMillis() - t1;
             worst = Math.max(worst, duration);
             best = Math.min(best, duration);

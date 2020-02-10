@@ -511,7 +511,8 @@ public class CryptreeNode implements Cborable {
                             CommittedWriterData cwd = version.get(parentSigner);
                             OwnerProof proof = OwnerProof.build(newSigner, parentSigner.publicKeyHash);
                             return cwd.props.addOwnedKeyAndCommit(owner, parentSigner, proof, cwd.hash, network, tid)
-                                    .thenCompose(v -> WriterData.createEmpty(owner, newSigner, network.dhtClient, tid)
+                                    .thenCompose(v -> WriterData.createEmpty(owner, newSigner, network.dhtClient,
+                                            network.hasher, tid)
                                             .thenCompose(wd -> committer.commit(owner, newSigner, wd, new CommittedWriterData(MaybeMultihash.empty(), null), tid))
                                             .thenApply(s -> new Pair<>(version.mergeAndOverwriteWith(v).mergeAndOverwriteWith(s), newSigner)));
                         }), network.dhtClient);
@@ -526,7 +527,8 @@ public class CryptreeNode implements Cborable {
             Committer committer) {
         PublicKeyHash parentWriter = parentSigner.publicKeyHash;
         CommittedWriterData cwd = version.get(parentSigner);
-        return IpfsTransaction.call(owner, tid -> cwd.props.removeOwnedKey(owner, parentSigner, signer, network.dhtClient)
+        return IpfsTransaction.call(owner, tid -> cwd.props.removeOwnedKey(owner, parentSigner, signer,
+                network.dhtClient, network.hasher)
                 .thenCompose(wd -> committer.commit(owner, parentSigner, wd, cwd, tid)), network.dhtClient)
                 .thenApply(committed -> version.withVersion(parentWriter, committed.get(parentWriter)));
     }

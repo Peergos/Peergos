@@ -46,7 +46,7 @@ public class Playground {
                                    NetworkAccess network) throws Exception {
         // Do something dangerous (you only live once)
         Set<PublicKeyHash> ownedKeys = WriterData.getOwnedKeysRecursive(username, network.coreNode,
-                network.mutable, network.dhtClient).join();
+                network.mutable, network.dhtClient, network.hasher).join();
         for (PublicKeyHash ownedKey : ownedKeys) {
             if (ownedKey.equals(context.signer.publicKeyHash))
                 continue; // only the writer has a tree

@@ -28,14 +28,16 @@ public class OwnedKeyChamp {
     public static CompletableFuture<Multihash> createEmpty(PublicKeyHash owner,
                                                            SigningPrivateKeyAndPublicHash writer,
                                                            ContentAddressedStorage ipfs,
+                                                           Hasher hasher,
                                                            TransactionId tid) {
         Champ newRoot = Champ.empty();
         byte[] raw = newRoot.serialize();
-        return ipfs.put(owner, writer.publicKeyHash, writer.secret.signatureOnly(raw), raw, tid);
+        return hasher.sha256(raw)
+                .thenCompose(hash -> ipfs.put(owner, writer.publicKeyHash, writer.secret.signatureOnly(hash), raw, tid));
     }
 
-    public static CompletableFuture<OwnedKeyChamp> build(Multihash root, ContentAddressedStorage ipfs) {
-        return ChampWrapper.create(root, b -> b.data, ipfs)
+    public static CompletableFuture<OwnedKeyChamp> build(Multihash root, ContentAddressedStorage ipfs, Hasher hasher) {
+        return ChampWrapper.create(root, b -> b.data, ipfs, hasher)
                 .thenApply(c -> new OwnedKeyChamp(root, c, ipfs));
     }
 
@@ -60,8 +62,9 @@ public class OwnedKeyChamp {
     public CompletableFuture<Multihash> add(PublicKeyHash owner,
                                             SigningPrivateKeyAndPublicHash writer,
                                             OwnerProof proof,
+                                            Hasher hasher,
                                             TransactionId tid) {
-        return ipfs.put(owner, writer, proof.serialize(), tid)
+        return ipfs.put(owner, writer, proof.serialize(), hasher, tid)
                 .thenCompose(valueHash ->
                         champ.put(owner, writer, keyToBytes(proof.ownedKey), MaybeMultihash.empty(), valueHash, tid));
     }

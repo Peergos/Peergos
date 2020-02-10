@@ -23,15 +23,21 @@ public class UserBasedBlacklist implements PublicKeyBlackList {
     private final CoreNode core;
     private final MutablePointers mutable;
     private final ContentAddressedStorage dht;
+    private final Hasher hasher;
     private final Path source;
     private final ForkJoinPool pool = new ForkJoinPool(1);
     private long lastModified, lastReloaded;
 
-    public UserBasedBlacklist(Path source, CoreNode core, MutablePointers mutable, ContentAddressedStorage dht) {
+    public UserBasedBlacklist(Path source,
+                              CoreNode core,
+                              MutablePointers mutable,
+                              ContentAddressedStorage dht,
+                              Hasher hasher) {
         this.source = source;
         this.core = core;
         this.mutable = mutable;
         this.dht = dht;
+        this.hasher = hasher;
         pool.submit(() -> {
             while (true) {
                 try {
@@ -80,7 +86,7 @@ public class UserBasedBlacklist implements PublicKeyBlackList {
     private Set<PublicKeyHash> buildBlackList(Set<String> usernames) {
         Set<PublicKeyHash> res = new HashSet<>();
         for (String username : usernames) {
-            res.addAll(WriterData.getOwnedKeysRecursive(username, core, mutable, dht).join());
+            res.addAll(WriterData.getOwnedKeysRecursive(username, core, mutable, dht, hasher).join());
         }
         return res;
     }

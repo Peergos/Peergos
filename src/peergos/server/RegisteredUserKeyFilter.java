@@ -15,12 +15,14 @@ public class RegisteredUserKeyFilter {
     private final CoreNode core;
     private final MutablePointers mutable;
     private final ContentAddressedStorage dht;
+    private final Hasher hasher;
     private final Map<PublicKeyHash, Boolean> allowedKeys = new ConcurrentHashMap<>();
 
-    public RegisteredUserKeyFilter(CoreNode core, MutablePointers mutable, ContentAddressedStorage dht) {
+    public RegisteredUserKeyFilter(CoreNode core, MutablePointers mutable, ContentAddressedStorage dht, Hasher hasher) {
         this.core = core;
         this.mutable = mutable;
         this.dht = dht;
+        this.hasher = hasher;
         ForkJoinPool.commonPool().submit(() -> {
             while(true) {
                 try {
@@ -38,7 +40,7 @@ public class RegisteredUserKeyFilter {
             List<String> usernames = core.getUsernames("").get();
             Set<PublicKeyHash> updated = new HashSet<>();
             for (String username : usernames) {
-                updated.addAll(WriterData.getOwnedKeysRecursive(username, core, mutable, dht).join());
+                updated.addAll(WriterData.getOwnedKeysRecursive(username, core, mutable, dht, hasher).join());
             }
             Set<PublicKeyHash> toRemove = new HashSet<>();
             for (PublicKeyHash hash : allowedKeys.keySet())

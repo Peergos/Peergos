@@ -18,12 +18,19 @@ public class ChampWrapper implements ImmutableTree
     public static final int MAX_HASH_COLLISIONS_PER_LEVEL = 4;
 
     public final ContentAddressedStorage storage;
+    private final Hasher writeHasher;
     public final int bitWidth;
     private final Function<ByteArrayWrapper, byte[]> hasher;
     private Pair<Champ, Multihash> root;
 
-    public ChampWrapper(Champ root, Multihash rootHash, Function<ByteArrayWrapper, byte[]> hasher, ContentAddressedStorage storage, int bitWidth) {
+    public ChampWrapper(Champ root,
+                        Multihash rootHash,
+                        Function<ByteArrayWrapper, byte[]> hasher,
+                        ContentAddressedStorage storage,
+                        Hasher writeHasher,
+                        int bitWidth) {
         this.storage = storage;
+        this.writeHasher = writeHasher;
         this.hasher = hasher;
         this.root = new Pair<>(root, rootHash);
         this.bitWidth = bitWidth;
@@ -31,11 +38,12 @@ public class ChampWrapper implements ImmutableTree
 
     public static CompletableFuture<ChampWrapper> create(Multihash rootHash,
                                                          Function<ByteArrayWrapper, byte[]> hasher,
-                                                         ContentAddressedStorage dht) {
+                                                         ContentAddressedStorage dht,
+                                                         Hasher writeHasher) {
         return dht.get(rootHash).thenApply(rawOpt -> {
             if (! rawOpt.isPresent())
                 throw new IllegalStateException("Champ root not present: " + rootHash);
-            return new ChampWrapper(Champ.fromCbor(rawOpt.get()), rootHash, hasher, dht, BIT_WIDTH);
+            return new ChampWrapper(Champ.fromCbor(rawOpt.get()), rootHash, hasher, dht, writeHasher, BIT_WIDTH);
         });
     }
 
@@ -43,11 +51,13 @@ public class ChampWrapper implements ImmutableTree
                                                          SigningPrivateKeyAndPublicHash writer,
                                                          Function<ByteArrayWrapper, byte[]> hasher,
                                                          TransactionId tid,
-                                                         ContentAddressedStorage dht) {
+                                                         ContentAddressedStorage dht,
+                                                         Hasher writeHasher) {
         Champ newRoot = Champ.empty();
         byte[] raw = newRoot.serialize();
-        return dht.put(owner, writer.publicKeyHash, writer.secret.signatureOnly(raw), raw, tid)
-                .thenApply(put -> new ChampWrapper(newRoot, put, hasher, dht, BIT_WIDTH));
+        return writeHasher.sha256(raw)
+                .thenCompose(hash -> dht.put(owner, writer.publicKeyHash, writer.secret.signatureOnly(hash), raw, tid))
+                .thenApply(put -> new ChampWrapper(newRoot, put, hasher, dht, writeHasher, BIT_WIDTH));
     }
 
     /**
@@ -78,7 +88,7 @@ public class ChampWrapper implements ImmutableTree
                                             TransactionId tid) {
         ByteArrayWrapper key = new ByteArrayWrapper(rawKey);
         return root.left.put(owner, writer, key, hasher.apply(key), 0, existing, MaybeMultihash.of(value),
-                BIT_WIDTH, MAX_HASH_COLLISIONS_PER_LEVEL, hasher, tid, storage, root.right)
+                BIT_WIDTH, MAX_HASH_COLLISIONS_PER_LEVEL, hasher, tid, storage, writeHasher, root.right)
                 .thenCompose(newRoot -> commit(writer, newRoot));
     }
 
@@ -96,7 +106,7 @@ public class ChampWrapper implements ImmutableTree
                                                TransactionId tid) {
         ByteArrayWrapper key = new ByteArrayWrapper(rawKey);
         return root.left.put(owner, writer, key, hasher.apply(key), 0, existing, MaybeMultihash.empty(),
-                BIT_WIDTH, MAX_HASH_COLLISIONS_PER_LEVEL, hasher, tid, storage, root.right)
+                BIT_WIDTH, MAX_HASH_COLLISIONS_PER_LEVEL, hasher, tid, storage, writeHasher, root.right)
                 .thenCompose(newRoot -> commit(writer, newRoot));
     }
 

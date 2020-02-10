@@ -34,8 +34,8 @@ public class NonWriteThroughNetwork extends NetworkAccess {
         MutablePointers nonWriteThroughPointers = new NonWriteThroughMutablePointers(source.mutable, nonWriteThroughIpfs);
         NonWriteThroughCoreNode nonWriteThroughCoreNode = new NonWriteThroughCoreNode(source.coreNode, nonWriteThroughIpfs);
         NonWriteThroughSocialNetwork nonWriteThroughSocial = new NonWriteThroughSocialNetwork(source.social, nonWriteThroughIpfs);
-        WriteSynchronizer synchronizer = new WriteSynchronizer(nonWriteThroughPointers, nonWriteThroughIpfs);
-        MutableTree nonWriteThroughTree = new MutableTreeImpl(nonWriteThroughPointers, nonWriteThroughIpfs, synchronizer);
+        WriteSynchronizer synchronizer = new WriteSynchronizer(nonWriteThroughPointers, nonWriteThroughIpfs, source.hasher);
+        MutableTree nonWriteThroughTree = new MutableTreeImpl(nonWriteThroughPointers, nonWriteThroughIpfs, source.hasher, synchronizer);
         return new NonWriteThroughNetwork(nonWriteThroughCoreNode,
                 nonWriteThroughSocial,
                 nonWriteThroughIpfs,

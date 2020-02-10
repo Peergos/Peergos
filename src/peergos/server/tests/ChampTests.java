@@ -24,6 +24,7 @@ import java.util.stream.*;
 public class ChampTests {
 
     private static final Crypto crypto = Crypto.initJava();
+    private static final Hasher writeHasher = crypto.hasher;
     private final Function<ByteArrayWrapper, byte[]> hasher;
 
     public ChampTests(Function<ByteArrayWrapper, byte[]> hasher) {
@@ -61,7 +62,7 @@ public class ChampTests {
 
         Champ current = Champ.empty();
         TransactionId tid = storage.startTransaction(user.publicKeyHash).get();
-        Multihash currentHash = storage.put(user.publicKeyHash, user, current.serialize(), tid).get();
+        Multihash currentHash = storage.put(user.publicKeyHash, user, current.serialize(), writeHasher, tid).get();
         int bitWidth = 5;
         int maxCollisions = 3;
         // build a random tree and keep track of the state
@@ -70,7 +71,7 @@ public class ChampTests {
             ByteArrayWrapper key = new ByteArrayWrapper(randomHash.get().toBytes());
             Multihash value = randomHash.get();
             Pair<Champ, Multihash> updated = current.put(user.publicKeyHash, user, key, hasher.apply(key), 0,
-                    MaybeMultihash.empty(), MaybeMultihash.of(value), bitWidth, maxCollisions, hasher, tid, storage, currentHash).get();
+                    MaybeMultihash.empty(), MaybeMultihash.of(value), bitWidth, maxCollisions, hasher, tid, storage, writeHasher, currentHash).get();
             MaybeMultihash result = updated.left.get(key, hasher.apply(key), 0, bitWidth, storage).get();
             if (! result.equals(MaybeMultihash.of(value)))
                 throw new IllegalStateException("Incorrect result!");
@@ -96,7 +97,7 @@ public class ChampTests {
             Multihash value = randomHash.get();
             MaybeMultihash currentValue = current.get(e.getKey(), hasher.apply(e.getKey()), 0, bitWidth, storage).get();
             Pair<Champ, Multihash> updated = current.put(user.publicKeyHash, user, key, hasher.apply(key), 0, currentValue,
-                    MaybeMultihash.of(value), bitWidth, maxCollisions, hasher, tid, storage, currentHash).get();
+                    MaybeMultihash.of(value), bitWidth, maxCollisions, hasher, tid, storage, writeHasher, currentHash).get();
             MaybeMultihash result = updated.left.get(key, hasher.apply(key), 0, bitWidth, storage).get();
             if (! result.equals(MaybeMultihash.of(value)))
                 throw new IllegalStateException("Incorrect result!");
@@ -110,7 +111,7 @@ public class ChampTests {
             ByteArrayWrapper key = e.getKey();
             MaybeMultihash currentValue = current.get(e.getKey(), hasher.apply(e.getKey()), 0, bitWidth, storage).get();
             Pair<Champ, Multihash> updated = current.remove(user.publicKeyHash, user, key, hasher.apply(key), 0, currentValue,
-                    bitWidth, maxCollisions, tid, storage, currentHash).get();
+                    bitWidth, maxCollisions, tid, storage, writeHasher, currentHash).get();
             MaybeMultihash result = updated.left.get(key, hasher.apply(key), 0, bitWidth, storage).get();
             if (! result.equals(MaybeMultihash.empty()))
                 throw new IllegalStateException("Incorrect state!");
@@ -121,9 +122,9 @@ public class ChampTests {
             ByteArrayWrapper key = new ByteArrayWrapper(randomHash.get().toBytes());
             Multihash value = randomHash.get();
             Pair<Champ, Multihash> updated = current.put(user.publicKeyHash, user, key, hasher.apply(key), 0, MaybeMultihash.empty(),
-                    MaybeMultihash.of(value), bitWidth, maxCollisions, hasher, tid, storage, currentHash).get();
+                    MaybeMultihash.of(value), bitWidth, maxCollisions, hasher, tid, storage, writeHasher, currentHash).get();
             Pair<Champ, Multihash> removed = updated.left.remove(user.publicKeyHash, user, key, hasher.apply(key), 0,
-                    MaybeMultihash.of(value), bitWidth, maxCollisions, tid, storage, updated.right).get();
+                    MaybeMultihash.of(value), bitWidth, maxCollisions, tid, storage, writeHasher, updated.right).get();
             if (! removed.right.equals(currentHash))
                 throw new IllegalStateException("Non canonical state!");
         }
@@ -144,12 +145,13 @@ public class ChampTests {
             Collections.shuffle(mappings, r);
             Champ current = Champ.empty();
             TransactionId tid = storage.startTransaction(user.publicKeyHash).join();
-            Multihash currentHash = storage.put(user.publicKeyHash, user, current.serialize(), tid).join();
+            Multihash currentHash = storage.put(user.publicKeyHash, user, current.serialize(), writeHasher, tid).join();
             for (int k=0; k < mappings.size(); k++) {
                 ByteArrayWrapper key = mappings.get(k).getKey();
                 Multihash value = mappings.get(k).getValue().get();
                 Pair<Champ, Multihash> updated = current.put(user.publicKeyHash, user, key, hasher.apply(key), 0,
-                        MaybeMultihash.empty(), MaybeMultihash.of(value), bitWidth, maxCollisions, hasher, tid, storage, currentHash).join();
+                        MaybeMultihash.empty(), MaybeMultihash.of(value), bitWidth, maxCollisions, hasher, tid, storage,
+                        writeHasher, currentHash).join();
                 current = updated.left;
                 currentHash = updated.right;
             }
@@ -175,7 +177,7 @@ public class ChampTests {
 
         Champ current = Champ.empty();
         TransactionId tid = storage.startTransaction(user.publicKeyHash).get();
-        Multihash currentHash = storage.put(user.publicKeyHash, user, current.serialize(), tid).get();
+        Multihash currentHash = storage.put(user.publicKeyHash, user, current.serialize(), writeHasher, tid).get();
         int bitWidth = 4;
         int maxCollisions = 2;
         // build a random tree and keep track of the state
@@ -183,7 +185,8 @@ public class ChampTests {
             ByteArrayWrapper key = new ByteArrayWrapper(new byte[]{0, (byte)i, 0});
             Multihash value = randomHash.get();
             Pair<Champ, Multihash> updated = current.put(user.publicKeyHash, user, key, hasher.apply(key), 0,
-                    MaybeMultihash.empty(), MaybeMultihash.of(value), bitWidth, maxCollisions, hasher, tid, storage, currentHash).get();
+                    MaybeMultihash.empty(), MaybeMultihash.of(value), bitWidth, maxCollisions, hasher, tid, storage,
+                    writeHasher, currentHash).get();
             current = updated.left;
             currentHash = updated.right;
             state.put(key, MaybeMultihash.of(value));
@@ -196,7 +199,7 @@ public class ChampTests {
             MaybeMultihash currentValue = state.get(key);
             MaybeMultihash newValue = r.nextBoolean() ? MaybeMultihash.of(randomHash.get()) : MaybeMultihash.empty();
             Pair<Champ, Multihash> updated = current.put(user.publicKeyHash, user, key, hasher.apply(key), 0, currentValue,
-                    newValue, bitWidth, maxCollisions, hasher, tid, storage, currentHash).get();
+                    newValue, bitWidth, maxCollisions, hasher, tid, storage, writeHasher, currentHash).get();
             List<Triple<ByteArrayWrapper, MaybeMultihash, MaybeMultihash>> diffs = new ArrayList<>();
             Champ.applyToDiff(MaybeMultihash.of(currentHash), MaybeMultihash.of(updated.right), 0, hasher,
                     Collections.emptyList(), Collections.emptyList(), diffs::add, bitWidth, storage).join();
@@ -213,7 +216,7 @@ public class ChampTests {
                     .orElse(MaybeMultihash.empty());
             MaybeMultihash newValue = MaybeMultihash.of(randomHash.get());
             Pair<Champ, Multihash> updated = current.put(user.publicKeyHash, user, key, hasher.apply(key), 0, currentValue,
-                    newValue, bitWidth, maxCollisions, hasher, tid, storage, currentHash).get();
+                    newValue, bitWidth, maxCollisions, hasher, tid, storage, writeHasher, currentHash).get();
             List<Triple<ByteArrayWrapper, MaybeMultihash, MaybeMultihash>> diffs = new ArrayList<>();
 
             Champ.applyToDiff(MaybeMultihash.of(currentHash), MaybeMultihash.of(updated.right), 0, hasher,
@@ -231,7 +234,7 @@ public class ChampTests {
             MaybeMultihash currentValue = MaybeMultihash.empty();
             MaybeMultihash newValue = MaybeMultihash.of(randomHash.get());
             Pair<Champ, Multihash> updated = current.put(user.publicKeyHash, user, key, hasher.apply(key), 0, currentValue,
-                    newValue, bitWidth, maxCollisions, hasher, tid, storage, currentHash).get();
+                    newValue, bitWidth, maxCollisions, hasher, tid, storage, writeHasher, currentHash).get();
             List<Triple<ByteArrayWrapper, MaybeMultihash, MaybeMultihash>> diffs = new ArrayList<>();
             Champ.applyToDiff(MaybeMultihash.of(currentHash), MaybeMultihash.of(updated.right), 0, hasher,
                     Collections.emptyList(), Collections.emptyList(), diffs::add, bitWidth, storage).join();
@@ -266,9 +269,10 @@ public class ChampTests {
                 ByteArrayWrapper key = new ByteArrayWrapper(keyBytes);
                 Multihash value = randomHash.get();
                 Pair<Champ, Multihash> added = root.left.put(user.publicKeyHash, user, key, hasher.apply(key), 0,
-                        MaybeMultihash.empty(), MaybeMultihash.of(value), bitWidth, maxCollisions, hasher, tid, storage, root.right).get();
+                        MaybeMultihash.empty(), MaybeMultihash.of(value), bitWidth, maxCollisions, hasher, tid, storage,
+                        writeHasher, root.right).get();
                 Pair<Champ, Multihash> removed = added.left.remove(user.publicKeyHash, user, key, hasher.apply(key), 0,
-                        MaybeMultihash.of(value), bitWidth, maxCollisions, tid, storage, added.right).get();
+                        MaybeMultihash.of(value), bitWidth, maxCollisions, tid, storage, writeHasher, added.right).get();
                 if (! removed.right.equals(root.right))
                     throw new IllegalStateException("Non canonical delete!");
             }
@@ -291,7 +295,7 @@ public class ChampTests {
 
         Champ current = Champ.empty();
         TransactionId tid = storage.startTransaction(user.publicKeyHash).get();
-        Multihash currentHash = storage.put(user.publicKeyHash, user, current.serialize(), tid).get();
+        Multihash currentHash = storage.put(user.publicKeyHash, user, current.serialize(), writeHasher, tid).get();
         int bitWidth = 4;
         int maxCollisions = 2;
         // build a random tree and keep track of the state
@@ -299,7 +303,8 @@ public class ChampTests {
             ByteArrayWrapper key = new ByteArrayWrapper(new byte[]{0, (byte)i, 0});
             Multihash value = randomHash.get();
             Pair<Champ, Multihash> updated = current.put(user.publicKeyHash, user, key, hasher.apply(key), 0,
-                    MaybeMultihash.empty(), MaybeMultihash.of(value), bitWidth, maxCollisions, hasher, tid, storage, currentHash).get();
+                    MaybeMultihash.empty(), MaybeMultihash.of(value), bitWidth, maxCollisions, hasher, tid, storage,
+                    writeHasher, currentHash).get();
             current = updated.left;
             currentHash = updated.right;
             state.put(key, MaybeMultihash.of(value));
@@ -320,7 +325,7 @@ public class ChampTests {
         ByteArrayWrapper key = new ByteArrayWrapper(new byte[]{0, 1, 0});
         MaybeMultihash currentValue = current.get(key, hasher.apply(key), 0, bitWidth, storage).get();
         Pair<Champ, Multihash> updated = current.remove(user.publicKeyHash, user, key, hasher.apply(key), 0, currentValue,
-                bitWidth, maxCollisions, tid, storage, currentHash).get();
+                bitWidth, maxCollisions, tid, storage, writeHasher, currentHash).get();
         current = updated.left;
         state.remove(key);
         MaybeMultihash result = updated.left.get(key, hasher.apply(key), 0, bitWidth, storage).get();
@@ -360,7 +365,7 @@ public class ChampTests {
                                                      RAMStorage storage) throws Exception {
         Champ current = Champ.empty();
         TransactionId tid = storage.startTransaction(user.publicKeyHash).get();
-        Multihash currentHash = storage.put(user.publicKeyHash, user, current.serialize(), tid).get();
+        Multihash currentHash = storage.put(user.publicKeyHash, user, current.serialize(), writeHasher, tid).get();
         // build a random tree and keep track of the state
         byte[] prefix = new byte[prefixLen];
         r.nextBytes(prefix);
@@ -368,7 +373,7 @@ public class ChampTests {
             ByteArrayWrapper key = new ByteArrayWrapper(randomKey(prefix, suffixLen, r));
             Multihash value = randomHash.get();
             Pair<Champ, Multihash> updated = current.put(user.publicKeyHash, user, key, hasher.apply(key), 0, MaybeMultihash.empty(), MaybeMultihash.of(value),
-                    bitWidth, maxCollisions, hasher, tid, storage, currentHash).get();
+                    bitWidth, maxCollisions, hasher, tid, storage, writeHasher, currentHash).get();
             current = updated.left;
             currentHash = updated.right;
         }
