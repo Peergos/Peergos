@@ -7,6 +7,7 @@ import peergos.server.*;
 import peergos.server.tests.*;
 import peergos.server.util.*;
 import peergos.shared.*;
+import peergos.shared.social.*;
 import peergos.shared.user.*;
 
 import java.net.*;
@@ -41,7 +42,6 @@ public class SocialBenchmark {
     }
 
     // SendFollowRequest(19) duration: 2132 mS, best: 1891 mS, worst: 2576 mS, av: 2110 mS
-    //    pointers.set: 4 * 80 mS = 320 mS
     @Test
     public void social() {
         String username = generateUsername();
@@ -60,6 +60,37 @@ public class SocialBenchmark {
             worst = Math.max(worst, duration);
             best = Math.min(best, duration);
             System.err.printf("SendFollowRequest(%d) duration: %d mS, best: %d mS, worst: %d mS, av: %d mS\n", i,
+                    duration, best, worst, (t1 + duration - start) / (i + 1));
+        }
+    }
+
+    // ReplyToFollowRequest(19) duration: 4291 mS, best: 3392 mS, worst: 5239 mS, av: 3898 mS
+    @Test
+    public void replyToFollowRequest() {
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = ensureSignedUp(username, password, network, crypto);
+        List<String> names = new ArrayList<>();
+        IntStream.range(0, 20).forEach(i -> names.add(generateUsername()));
+        List<UserContext> users = names.stream()
+                .map(name -> ensureSignedUp(name, password, network, crypto))
+                .collect(Collectors.toList());
+
+        for (int i = 0; i < 20; i++) {
+            users.get(i).sendInitialFollowRequest(username).join();
+        }
+
+        List<FollowRequestWithCipherText> pending = context.getSocialState().join().pendingIncoming;
+        long worst = 0, best = Long.MAX_VALUE, start = System.currentTimeMillis();
+        // Profile accepting the requests
+        for (int i = 0; i < 20; i++) {
+            FollowRequestWithCipherText req = pending.get(i);
+            long t1 = System.currentTimeMillis();
+            context.sendReplyFollowRequest(req, true, true).join();
+            long duration = System.currentTimeMillis() - t1;
+            worst = Math.max(worst, duration);
+            best = Math.min(best, duration);
+            System.err.printf("ReplyToFollowRequest(%d) duration: %d mS, best: %d mS, worst: %d mS, av: %d mS\n", i,
                     duration, best, worst, (t1 + duration - start) / (i + 1));
         }
     }
