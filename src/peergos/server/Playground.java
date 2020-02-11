@@ -23,7 +23,7 @@ public class Playground {
     private static final Logger LOG = Logging.LOG();
 
     public static void main(String[] args) throws Exception {
-        Crypto crypto = Crypto.initJava();
+        Crypto crypto = Main.initCrypto();
         NetworkAccess source = NetworkAccess.buildJava(new URL("https://demo.peergos.net")).get();
         NetworkAccess nonWriteThrough = NonWriteThroughNetwork.build(source);
 

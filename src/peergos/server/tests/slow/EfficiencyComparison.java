@@ -1,4 +1,5 @@
 package peergos.server.tests.slow;
+import peergos.server.*;
 import peergos.server.util.Logging;
 import java.util.logging.*;
 
@@ -16,7 +17,7 @@ import java.util.function.*;
 public class EfficiencyComparison {
 	private static final Logger LOG = Logging.LOG();
 
-    private static final Crypto crypto = Crypto.initJava();
+    private static final Crypto crypto = Main.initCrypto();
 
     public static void main(String[] a) throws Exception {
         Random r = new Random(28);

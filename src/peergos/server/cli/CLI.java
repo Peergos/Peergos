@@ -7,6 +7,7 @@ import org.jline.reader.impl.completer.StringsCompleter;
 import org.jline.terminal.*;
 import org.jline.utils.*;
 
+import peergos.server.*;
 import peergos.server.simulation.*;
 import peergos.server.simulation.FileSystem;
 import peergos.server.util.Args;
@@ -653,7 +654,7 @@ public class CLI implements Runnable {
     private static Crypto CRYPTO;
 
     public static void main(String[] args) {
-        CRYPTO = Crypto.initJava();
+        CRYPTO = Main.initCrypto();
         Logging.LOG().setLevel(Level.WARNING);
         CLIContext cliContext = buildContextFromCLI();
         new CLI(cliContext).run();

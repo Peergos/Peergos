@@ -1,6 +1,7 @@
 package peergos.server;
 
 import peergos.server.cli.CLI;
+import peergos.server.crypto.*;
 import peergos.server.space.*;
 import peergos.server.sql.*;
 import peergos.server.storage.admin.*;
@@ -17,6 +18,7 @@ import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.password.*;
+import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.multiaddr.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
@@ -40,7 +42,7 @@ public class Main {
             Paths.get(System.getProperty("user.home"), ".peergos");
 
     static {
-        PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, new Ed25519.Java());
+        PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, initCrypto().signer);
     }
 
     public static Command<Boolean> ENSURE_IPFS_INSTALLED = new Command<>("install-ipfs",
@@ -118,7 +120,7 @@ public class Main {
     private static final void bootstrap(Args args) {
         try {
             // This means creating a pki keypair and publishing the public key
-            Crypto crypto = Crypto.initJava();
+            Crypto crypto = initCrypto();
             // setup peergos user and pki keys
             String peergosPassword = args.getArg("peergos.password");
             String pkiUsername = "peergos";
@@ -168,7 +170,7 @@ public class Main {
         try {
             // The final step of bootstrapping a new peergos network, which must be run once after network bootstrap
             // This means signing up the peergos user, and adding the pki public key to the peergos user
-            Crypto crypto = Crypto.initJava();
+            Crypto crypto = initCrypto();
             // recreate peergos user and pki keys
             String password = args.getArg("peergos.password");
             String pkiUsername = "peergos";
@@ -335,10 +337,24 @@ public class Main {
             Collections.emptyList()
     );
 
+    public static Crypto initCrypto() {
+        try {
+            JniTweetNacl nativeNacl = new JniTweetNacl();
+            Salsa20Poly1305 symmetricProvider = new Salsa20Poly1305.Java();
+            Ed25519 signer = new JniTweetNacl.Signer(nativeNacl);
+            Curve25519 boxer = new Curve25519.Java();
+            return Crypto.initNative(symmetricProvider, signer, boxer);
+        } catch (Throwable t) {
+            System.err.println("Couldn't load native crypto library, using pure Java version...");
+            System.err.println("To use the native linux-x86-64 crypto implementation use option -Djava.library.path=native-lib");
+            return Crypto.initJava();
+        }
+    }
 
     public static UserService startPeergos(Args a) {
         try {
-            Crypto crypto = Crypto.initJava();
+            Crypto crypto = initCrypto();
+            PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, crypto.signer);
             int webPort = a.getInt("port");
             MultiAddress localPeergosApi = getLocalMultiAddress(webPort);
             a.setIfAbsent("proxy-target", localPeergosApi.toString());
@@ -557,7 +573,7 @@ public class Main {
         System.out.println("\n\nPeergos mounted at " + path + "\n\n");
         try {
             NetworkAccess network = NetworkAccess.buildJava(webPort).get();
-            Crypto crypto = Crypto.initJava();
+            Crypto crypto = Main.initCrypto();
             UserContext userContext = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
             PeergosFS peergosFS = new PeergosFS(userContext);
             FuseProcess fuseProcess = new FuseProcess(peergosFS, path);
@@ -598,7 +614,7 @@ public class Main {
 
     private static CoreNode buildPkiCorenode(MutablePointers mutable, ContentAddressedStorage dht, Args a) {
         try {
-            Crypto crypto = Crypto.initJava();
+            Crypto crypto = initCrypto();
             PublicKeyHash peergosIdentity = PublicKeyHash.fromString(a.getArg("peergos.identity.hash"));
 
             String pkiSecretKeyfilePassword = a.getArg("pki.keyfile.password");

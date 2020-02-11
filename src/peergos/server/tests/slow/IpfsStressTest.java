@@ -23,7 +23,7 @@ public class IpfsStressTest {
 	private static final Logger LOG = Logging.LOG();
 
     private final NetworkAccess network;
-    private final Crypto crypto = Crypto.initJava();
+    private final Crypto crypto = Main.initCrypto();
 
     private final Random random;
 

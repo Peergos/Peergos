@@ -1,6 +1,7 @@
 package peergos.server.tests;
 
 import org.junit.*;
+import peergos.server.*;
 import peergos.server.storage.*;
 import peergos.server.util.*;
 import peergos.shared.*;
@@ -28,7 +29,7 @@ public class RestartTests {
             .with("useIPFS", "true")
             .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, ""); // no bootstrapping;
     private final NetworkAccess network;
-    private static final Crypto crypto = Crypto.initJava();
+    private static final Crypto crypto = Main.initCrypto();
     private static Process server;
 
     public RestartTests() throws Exception {

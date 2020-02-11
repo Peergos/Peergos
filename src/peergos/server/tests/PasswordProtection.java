@@ -1,6 +1,7 @@
 package peergos.server.tests;
 
 import org.junit.*;
+import peergos.server.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.password.*;
@@ -9,7 +10,7 @@ import java.util.*;
 
 public class PasswordProtection {
 
-    private static Crypto crypto = Crypto.initJava();
+    private static Crypto crypto = Main.initCrypto();
 
     @Test
     public void invertible() {

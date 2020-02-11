@@ -13,7 +13,7 @@ import java.net.*;
 public class Publisher {
 
     public static void main(String[] args) throws Exception {
-        Crypto crypto = Crypto.initJava();
+        Crypto crypto = Main.initCrypto();
         NetworkAccess network = NetworkAccess.buildJava(new URL("https://demo.peergos.net")).get();
         String username = args[0];
         String pathToMakePublic = args[1];

@@ -1,6 +1,7 @@
 package peergos.server.tests;
 
 import org.junit.*;
+import peergos.server.*;
 import peergos.shared.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.fingerprint.*;
@@ -18,7 +19,7 @@ import java.util.*;
 
 public class QrCodeTests {
 
-    private static final Crypto crypto = Crypto.initJava();
+    private static final Crypto crypto = Main.initCrypto();
 
     @Test
     public void invertable() throws Exception {

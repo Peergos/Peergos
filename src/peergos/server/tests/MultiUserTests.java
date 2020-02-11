@@ -34,7 +34,7 @@ public class MultiUserTests {
     private static Args args = UserTests.buildArgs();
     private Random random = new Random();
     private final NetworkAccess network;
-    private static final Crypto crypto = Crypto.initJava();
+    private static final Crypto crypto = Main.initCrypto();
     private final int userCount;
 
     public MultiUserTests() throws Exception {
