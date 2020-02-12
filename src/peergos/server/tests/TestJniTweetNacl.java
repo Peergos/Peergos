@@ -64,7 +64,7 @@ public class TestJniTweetNacl {
     }
 
     @Test
-    public void testBoxingIdentity() {
+    public void testSecretboxIdentity() {
         byte[] key = new byte[32];
         byte[] nonce = new byte[32];
         random.nextBytes(key);
@@ -81,7 +81,7 @@ public class TestJniTweetNacl {
     }
 
     @Test
-    public void testBoxingIAsyncdentity() {
+    public void testSecretboxAsyncIdentity() {
         byte[] key = new byte[32];
         byte[] nonce = new byte[32];
         random.nextBytes(key);
@@ -96,6 +96,4 @@ public class TestJniTweetNacl {
         Assert.assertFalse(Arrays.equals(message, boxed));
         Assert.assertFalse(Arrays.equals(boxed, unboxed));
     }
-
-
-    }
+}
