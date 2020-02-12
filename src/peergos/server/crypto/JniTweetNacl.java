@@ -10,6 +10,13 @@ import java.util.*;
 import java.util.concurrent.*;
 
 public class JniTweetNacl {
+
+    private JniTweetNacl() {}
+
+    public static JniTweetNacl build() {
+        return new JniTweetNacl();
+    }
+
     static {
         try {
             new File("native-lib").mkdirs();
@@ -21,8 +28,10 @@ public class JniTweetNacl {
             String absoluteLibPath = libPath.toFile().getAbsolutePath();
             System.out.println("Trying to load native crypto library at " + absoluteLibPath);
             System.loadLibrary("tweetnacl");
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+        } catch (Throwable t) {
+            System.err.println("Couldn't load native crypto library, using pure Java version...");
+            System.err.println("To use the native linux-x86-64 crypto implementation use option -Djava.library.path=native-lib");
+            throw new RuntimeException(t);
         }
     }
 

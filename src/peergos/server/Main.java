@@ -339,14 +339,12 @@ public class Main {
 
     public static Crypto initCrypto() {
         try {
-            JniTweetNacl nativeNacl = new JniTweetNacl();
+            JniTweetNacl nativeNacl = JniTweetNacl.build();
             Salsa20Poly1305 symmetricProvider = new JniTweetNacl.Symmetric(nativeNacl);
             Ed25519 signer = new JniTweetNacl.Signer(nativeNacl);
             Curve25519 boxer = new Curve25519.Java();
             return Crypto.initNative(symmetricProvider, signer, boxer);
         } catch (Throwable t) {
-            System.err.println("Couldn't load native crypto library, using pure Java version...");
-            System.err.println("To use the native linux-x86-64 crypto implementation use option -Djava.library.path=native-lib");
             return Crypto.initJava();
         }
     }
