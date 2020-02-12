@@ -7,6 +7,7 @@ import peergos.shared.util.*;
 import java.io.*;
 import java.nio.file.*;
 import java.util.*;
+import java.util.concurrent.*;
 
 public class JniTweetNacl {
     static {
@@ -19,7 +20,6 @@ public class JniTweetNacl {
             }
             String absoluteLibPath = libPath.toFile().getAbsolutePath();
             System.out.println("Trying to load native crypto library at " + absoluteLibPath);
-            System.setProperty("java.library.path", absoluteLibPath);
             System.loadLibrary("tweetnacl");
         } catch (IOException e) {
             throw new RuntimeException(e);
@@ -38,6 +38,11 @@ public class JniTweetNacl {
     public static native int crypto_sign(byte[] sm, long smlen, byte[] m, long n, byte[] sk);
 
     public static native int crypto_sign_keypair(byte[] pk, byte[] sk);
+
+
+    public static native int crypto_secretbox_open(byte[] m, byte[] c, long d, byte[] n, byte[] k);
+
+    public static native int crypto_secretbox(byte[] c, byte[] m, long d, byte[] n, byte[] k);
 
 
     public static native int crypto_scalarmult_base(byte[] q, byte[] n);
@@ -71,6 +76,53 @@ public class JniTweetNacl {
         @Override
         public void crypto_sign_keypair(byte[] pk, byte[] sk) {
             impl.crypto_sign_keypair(pk, sk);
+        }
+    }
+
+    public static class Symmetric implements peergos.shared.crypto.symmetric.Salsa20Poly1305 {
+
+        private final JniTweetNacl impl;
+
+        public Symmetric(JniTweetNacl impl) {
+            this.impl = impl;
+        }
+
+        @Override
+        public byte[] secretbox(byte[] data, byte[] nonce, byte[] key) {
+            byte[] cipherText = new byte[data.length + 32]; // add secret box internal overhead bytes
+            byte[] expandedData = new byte[cipherText.length];
+            System.arraycopy(data, 0, expandedData, 32, data.length);
+            int res = impl.crypto_secretbox(cipherText, expandedData, cipherText.length, nonce, key);
+            if (res != 0)
+                throw new TweetNaCl.InvalidSignatureException();
+            return Arrays.copyOfRange(cipherText, 16, cipherText.length);
+        }
+
+        @Override
+        public byte[] secretbox_open(byte[] cipher, byte[] nonce, byte[] key) {
+            byte[] message = new byte[cipher.length + TweetNaCl.SECRETBOX_OVERHEAD_BYTES];
+            byte[] expandedCipher = new byte[message.length];
+            System.arraycopy(cipher, 0, expandedCipher, TweetNaCl.SECRETBOX_OVERHEAD_BYTES, cipher.length);
+            int res = impl.crypto_secretbox_open(message, expandedCipher, expandedCipher.length, nonce, key);
+            if (res != 0)
+                throw new TweetNaCl.InvalidCipherTextException();
+            return Arrays.copyOfRange(message, 32, message.length);
+        }
+
+        @Override
+        public CompletableFuture<byte[]> secretboxAsync(byte[] data, byte[] nonce, byte[] key) {
+            byte[] encrypted = secretbox(data, nonce, key);
+            CompletableFuture<byte[]> res = new CompletableFuture<>();
+            res.complete(encrypted);
+            return res;
+        }
+
+        @Override
+        public CompletableFuture<byte[]> secretbox_openAsync(byte[] cipher, byte[] nonce, byte[] key) {
+            byte[] decrypted = secretbox_open(cipher, nonce, key);
+            CompletableFuture<byte[]> res = new CompletableFuture<>();
+            res.complete(decrypted);
+            return res;
         }
     }
 }

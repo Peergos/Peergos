@@ -65,7 +65,6 @@ public interface Salsa20Poly1305 {
             CompletableFuture<byte[]> res = new CompletableFuture<>();
             res.complete(decrypted);
             return res;
-
         }
     }
 

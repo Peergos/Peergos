@@ -340,7 +340,7 @@ public class Main {
     public static Crypto initCrypto() {
         try {
             JniTweetNacl nativeNacl = new JniTweetNacl();
-            Salsa20Poly1305 symmetricProvider = new Salsa20Poly1305.Java();
+            Salsa20Poly1305 symmetricProvider = new JniTweetNacl.Symmetric(nativeNacl);
             Ed25519 signer = new JniTweetNacl.Signer(nativeNacl);
             Curve25519 boxer = new Curve25519.Java();
             return Crypto.initNative(symmetricProvider, signer, boxer);
