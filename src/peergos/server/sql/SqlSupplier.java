@@ -21,7 +21,7 @@ public interface SqlSupplier {
 
     default String createTransactionsTableCommand() {
         return "CREATE TABLE IF NOT EXISTS transactions (" +
-                "tid text not null, owner text not null, hash text not null, primary key (tid, owner, hash));";
+                "tid varchar(64) not null, owner varchar(64) not null, hash varchar(64) not null);";
     }
 
     default void createTable(String sqlTableCreate, Connection conn) throws SQLException {
