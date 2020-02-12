@@ -33,7 +33,7 @@ public class MultiNodeNetworkTests {
     private static Random random = new Random(0);
     private static List<NetworkAccess> nodes = new ArrayList<>();
 
-    private final Crypto crypto = Crypto.initJava();
+    private final Crypto crypto = Main.initCrypto();
 
     private final int iNode1, iNode2;
 

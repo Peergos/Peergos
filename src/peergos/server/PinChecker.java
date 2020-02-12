@@ -18,7 +18,7 @@ public class PinChecker {
 
     public static void main(String[] args) throws Exception {
         boolean fix = args.length > 0 && args[0].equals("-fix");
-        Crypto.initJava();
+        Main.initCrypto();
 
         IPFS ipfs = new IPFS("localhost", 5001);
         Set<Multihash> allPins = ipfs.pin.ls(IPFS.PinType.recursive).keySet();

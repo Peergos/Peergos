@@ -19,7 +19,7 @@ public class SocialBenchmark {
 
     private static int RANDOM_SEED = 666;
     private final NetworkAccess network;
-    private final Crypto crypto = Crypto.initJava();
+    private final Crypto crypto = Main.initCrypto();
 
     private static Random random = new Random(RANDOM_SEED);
 
@@ -41,7 +41,7 @@ public class SocialBenchmark {
         });
     }
 
-    // SendFollowRequest(19) duration: 2132 mS, best: 1891 mS, worst: 2576 mS, av: 2110 mS
+    // SendFollowRequest(19) duration: 2340 mS, best: 1519 mS, worst: 2340 mS, av: 1734 mS
     @Test
     public void social() {
         String username = generateUsername();

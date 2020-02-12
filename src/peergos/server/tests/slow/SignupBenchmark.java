@@ -17,7 +17,7 @@ public class SignupBenchmark {
 
     private static int RANDOM_SEED = 666;
     private final NetworkAccess network;
-    private final Crypto crypto = Crypto.initJava();
+    private final Crypto crypto = Main.initCrypto();
 
     private static Random random = new Random(RANDOM_SEED);
 
@@ -39,11 +39,7 @@ public class SignupBenchmark {
         });
     }
 
-    // SIGNUP(10) duration: 9447 mS, best: 9336 mS, worst: 9994 mS, av: 9646 mS
-    //    scrypt: 1377 mS
-    //    pointers.set: 15*75 mS = 1125 mS
-    //    pointers.get: 1*45 mS = 45 mS
-    //    and the other 7s  ???
+    // SIGNUP(10) duration: 6800 mS, best: 6748 mS, worst: 7109 mS, av: 6839 mS
     @Test
     public void signup() throws Exception {
         long worst = 0, best = Long.MAX_VALUE, start = System.currentTimeMillis();

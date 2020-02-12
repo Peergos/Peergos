@@ -38,7 +38,7 @@ public abstract class UserTests {
 
     public static int RANDOM_SEED = 666;
     protected final NetworkAccess network;
-    protected final Crypto crypto = Crypto.initJava();
+    protected final Crypto crypto = Main.initCrypto();
     private final URL peergosUrl;
 
     private static Random random = new Random(RANDOM_SEED);
@@ -119,7 +119,6 @@ public abstract class UserTests {
     public void differentLoginTypes() throws Exception {
         String username = generateUsername();
         String password = "letmein";
-        Crypto crypto = Crypto.initJava();
         String extraSalt = ArrayOps.bytesToHex(crypto.random.randomBytes(32));
         List<ScryptGenerator> params = Arrays.asList(
                 new ScryptGenerator(17, 8, 1, 96, extraSalt),

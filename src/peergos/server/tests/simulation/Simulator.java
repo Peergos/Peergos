@@ -539,7 +539,7 @@ public class Simulator implements Runnable {
 
 
     public static void main(String[] a) throws Exception {
-        Crypto crypto = Crypto.initJava();
+        Crypto crypto = Main.initCrypto();
         Args args = buildArgs()
 //                .with("useIPFS", "true")
                 .with("useIPFS", "false")

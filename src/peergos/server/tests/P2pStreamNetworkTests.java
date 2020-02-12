@@ -28,7 +28,7 @@ public class P2pStreamNetworkTests {
     private static Random random = new Random(0);
     private static List<NetworkAccess> nodes = new ArrayList<>();
 
-    private final Crypto crypto = Crypto.initJava();
+    private final Crypto crypto = Main.initCrypto();
 
     @BeforeClass
     public static void init() throws Exception {

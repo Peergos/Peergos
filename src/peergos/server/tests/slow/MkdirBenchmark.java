@@ -20,7 +20,7 @@ public class MkdirBenchmark {
 
     private static int RANDOM_SEED = 666;
     private final NetworkAccess network;
-    private final Crypto crypto = Crypto.initJava();
+    private final Crypto crypto = Main.initCrypto();
 
     private static Random random = new Random(RANDOM_SEED);
 
@@ -56,10 +56,10 @@ public class MkdirBenchmark {
     // IPFS, http        => 660 -  840 ms
     //
     // current baselines:
-    // MKDIR(99) duration: 1106 mS, best: 867 mS, worst: 1467 mS, av: 1063 mS
+    // MKDIR(99) duration: 853 mS, best: 683 mS, worst: 1200 mS, av: 855 mS
     //    mutable.set 130 mS
     //    block.put 62 mS
-    // GetByPath(99) duration: 69 mS, best: 66 mS, worst: 252 mS, av: 80 mS
+    // GetByPath(99) duration: 21 mS, best: 19 mS, worst: 38 mS, av: 21 mS
     @Test
     public void hugeFolder() throws Exception {
         String username = generateUsername();

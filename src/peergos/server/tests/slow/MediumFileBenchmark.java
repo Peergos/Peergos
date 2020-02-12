@@ -21,7 +21,7 @@ public class MediumFileBenchmark {
 
     private static int RANDOM_SEED = 666;
     private final NetworkAccess network;
-    private final Crypto crypto = Crypto.initJava();
+    private final Crypto crypto = Main.initCrypto();
 
     private static Random random = new Random(RANDOM_SEED);
 
@@ -53,9 +53,9 @@ public class MediumFileBenchmark {
 
     // UPLOAD(0) duration: 7451 mS, best: 7451 mS, worst: 7451 mS, av: 7451 mS
     // to
-    // UPLOAD(99) duration: 8320 mS, best: 7276 mS, worst: 9540 mS, av: 8325 mS or 1.2 MiB/s
+    // UPLOAD(99) duration: 8327 mS, best: 7113 mS, worst: 9623 mS, av: 7740 mS or 1.3 MiB/s
     //
-    // GetData(10) duration: 1093 mS, best: 984 mS, worst: 1317 mS, av: 1141 mS or 8.7 MiB/s
+    // GetData(10) duration: 1057 mS, best: 822 mS, worst: 1057 mS, av: 896 mS or 11.2 MiB/s
     @Test
     public void mediumFiles() throws Exception {
         String username = generateUsername();

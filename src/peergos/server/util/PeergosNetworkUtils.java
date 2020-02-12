@@ -1,6 +1,7 @@
 package peergos.server.util;
 
 import org.junit.Assert;
+import peergos.server.*;
 import peergos.server.storage.ResetableFileInputStream;
 import peergos.server.tests.*;
 import peergos.shared.Crypto;
@@ -34,7 +35,7 @@ public class PeergosNetworkUtils {
         return ArrayOps.bytesToHex(crypto.random.randomBytes(32));
     }
 
-    public static final Crypto crypto = Crypto.initJava();
+    public static final Crypto crypto = Main.initCrypto();
 
     public static String randomString() {
         return UUID.randomUUID().toString();

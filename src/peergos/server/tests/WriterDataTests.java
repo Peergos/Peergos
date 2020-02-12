@@ -1,6 +1,7 @@
 package peergos.server.tests;
 
 import org.junit.*;
+import peergos.server.*;
 import peergos.server.corenode.*;
 import peergos.server.sql.*;
 import peergos.server.storage.*;
@@ -19,7 +20,7 @@ public class WriterDataTests {
 
     @Test
     public void tolerateLoopsInOwnedKeys() throws  Exception {
-        Crypto crypto = Crypto.initJava();
+        Crypto crypto = Main.initCrypto();
         Hasher hasher = crypto.hasher;
         TransactionId test = new TransactionId("dummy");
         ContentAddressedStorage dht = new RAMStorage();

@@ -78,10 +78,13 @@
     <copy todir="${dist}/lib">
       <fileset dir="lib"/>
     </copy>
+    <copy todir="${build}/native-lib">
+      <fileset dir="native-lib"/>
+    </copy>
     <manifestclasspath property="manifest_cp" jarfile="myjar.jar">
       <classpath refid="dep.runtime" />
     </manifestclasspath>
-    <jar jarfile="${dist}/Peergos.jar" basedir="${build}" includes="peergos/server/**,peergos/shared/**,peergos/client/**">
+    <jar jarfile="${dist}/Peergos.jar" basedir="${build}" includes="peergos/server/**,peergos/shared/**,peergos/client/**,native-lib/**">
       <manifest>
         <attribute name="Main-Class" value="peergos.server.Main"/>
         <attribute name="Class-Path" value="${manifest_cp}"/>
@@ -111,6 +114,7 @@
     <!-- run one particular test -->
     <junit fork="true" printsummary="true" haltonfailure="yes">
       <jvmarg value="-Xmx2g"/>
+      <jvmarg value="-Djava.library.path=native-lib"/>
       <classpath>
 	<fileset dir="lib-build">
 	  <include name="**/*.jar"/>

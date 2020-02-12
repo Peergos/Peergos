@@ -3,6 +3,7 @@ package peergos.server.tests;
 import org.junit.*;
 import org.junit.runner.*;
 import org.junit.runners.*;
+import peergos.server.*;
 import peergos.server.corenode.*;
 import peergos.server.sql.*;
 import peergos.server.storage.*;
@@ -23,7 +24,7 @@ import java.util.stream.*;
 @RunWith(Parameterized.class)
 public class ChampTests {
 
-    private static final Crypto crypto = Crypto.initJava();
+    private static final Crypto crypto = Main.initCrypto();
     private static final Hasher writeHasher = crypto.hasher;
     private final Function<ByteArrayWrapper, byte[]> hasher;
 

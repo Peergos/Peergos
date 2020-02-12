@@ -31,7 +31,7 @@ public class TweetNaCl {
 
     public static class InvalidSignatureException extends RuntimeException {}
     public static class InvalidCipherTextException extends IllegalStateException {
-        InvalidCipherTextException() {}
+        public InvalidCipherTextException() {}
         InvalidCipherTextException(String msg) {
             super(msg);
         }

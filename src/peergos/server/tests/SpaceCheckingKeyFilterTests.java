@@ -1,5 +1,6 @@
 package peergos.server.tests;
 import org.junit.*;
+import peergos.server.*;
 import peergos.server.space.*;
 import peergos.shared.Crypto;
 import peergos.shared.MaybeMultihash;
@@ -15,7 +16,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class SpaceCheckingKeyFilterTests {
     private static Random RANDOM = new Random(666);
-    private final Crypto crypto = Crypto.initJava();
+    private final Crypto crypto = Main.initCrypto();
 
     private static byte[] random() {
         byte[] bytes = new byte[Multihash.Type.sha2_256.length];

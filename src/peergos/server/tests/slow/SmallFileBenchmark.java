@@ -21,7 +21,7 @@ public class SmallFileBenchmark {
 
     private static int RANDOM_SEED = 666;
     private final NetworkAccess network;
-    private final Crypto crypto = Crypto.initJava();
+    private final Crypto crypto = Main.initCrypto();
 
     private static Random random = new Random(RANDOM_SEED);
 
@@ -51,11 +51,11 @@ public class SmallFileBenchmark {
         return UserContext.ensureSignedUp(username, password, network, crypto).get();
     }
 
-    // UPLOAD(0) duration: 1189 mS, best: 1189 mS, worst: 1189 mS, av: 1189 mS
+    // UPLOAD(0) duration: 1085 mS, best: 1085 mS, worst: 1085 mS, av: 1085 mS
     // to
-    // UPLOAD(99) duration: 1444 mS, best: 1084 mS, worst: 1724 mS, av: 1311 mS
+    // UPLOAD(99) duration: 1240 mS, best: 1015 mS, worst: 1655 mS, av: 1230 mS
     //
-    // GetData(99) duration: 49 mS, best: 39 mS, worst: 82 mS, av: 45 mS
+    // GetData(99) duration: 28 mS, best: 27 mS, worst: 43 mS, av: 29 mS
     @Test
     public void smallFiles() throws Exception {
         String username = generateUsername();

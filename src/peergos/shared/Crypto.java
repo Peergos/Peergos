@@ -61,4 +61,9 @@ public class Crypto {
         Curve25519 boxer = new Curve25519.Java();
         return init(() -> new Crypto(random, new ScryptJava(), symmetricProvider, signer, boxer), true);
     }
+
+    public static Crypto initNative(Salsa20Poly1305 symmetric, Ed25519 signer, Curve25519 boxer) {
+        SafeRandom.Java random = new SafeRandom.Java();
+        return init(() -> new Crypto(random, new ScryptJava(), symmetric, signer, boxer), true);
+    }
 }
