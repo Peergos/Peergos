@@ -21,7 +21,19 @@ More info
 ---------
 You can read more detail about our features and architecture in our [book](https://book.peergos.org).
 
-The slides of a talk introducing Peergos are [here](https://speakerdeck.com/ianopolous/peergos-architecture) and [videos here](https://www.youtube.com/watch?v=h54pShffxvI) and [here](https://www.youtube.com/watch?v=dCLboQDlzds). A short [tour of Peergos](https://vimeo.com/316903779) is here.
+The slides of a talk introducing Peergos are [here](https://speakerdeck.com/ianopolous/peergos-architecture) 
+
+Architecture talk at IPFS Lab Day:
+
+[![Architecture Talk](https://img.youtube.com/vi/h54pShffxvI/0.jpg)](https://www.youtube.com/watch?v=h54pShffxvI)
+
+Introduction:
+
+[![Introduction](https://img.youtube.com/vi/dCLboQDlzds/0.jpg)](https://www.youtube.com/watch?v=dCLboQDlzds)
+
+Tour:
+
+[![Tour](https://i.vimeocdn.com/video/759008279.jpg?mw=480&mh=540)](https://vimeo.com/316903779)
 
 Support
 -------
@@ -67,10 +79,10 @@ Architecture
 2.0 Language
  - The IPFS layer is currently coded in Go
  - The server is coded to run on JVM to get portability and speed, predominantly Java
- - The web interface is mostly coded in Java and cross compiled to Javascript, with the exception of the tweetnacl, scrypt and sha256 libraries, and a small amount of GUI code in JS for Vue.js. 
+ - The web interface is mostly coded in Java and cross compiled to Javascript, with the exception of the tweetnacl and scrypt  libraries, and a small amount of GUI code in JS for Vue.js. 
 
 3.0 Nodes
- - There is a pki node which ensures unique usernames. This data is mirrored on every peergos server. Eventually we might put this small amount of data in a blockchain for full decentralization.
+ - There is a pki node which ensures unique usernames using a strucutre similar to certificate transparency. This data is mirrored on every peergos server. Eventually we might put this small amount of data in a blockchain for full decentralization.
  - A new node contacts any public Peergos server to join the network
 
 4.0 Trust
@@ -86,7 +98,7 @@ Architecture
  - private keys never leave client node, a random key is generated for every file (explicitly not convergent encryption, which leaks information)
 
 5.1 Post-quantum encryption
- - Files that haven't been shared with another user are already resistant to quantum computer based attacks. This is because the operations to decrypt them from logging in, to seeing plain text, include only hashing and symmetric encryption, both of which are currently believed to not be significantly weakened with a quantum computer. 
+ - Files that haven't been shared with another user are already resistant to quantum computer based attacks. This is because the operations to decrypt them from logging in, to seeing plain-text, include only hashing and symmetric encryption, both of which are currently believed to not be significantly weakened with a quantum computer. 
  - Files that have been shared between users are, currently, vulnerable to a large enough quantum computer if an attacker is able to log the initial follow requests sent between the users (before the user retrieves and deletes them). This will be replaced with a post-quantum asymmetric algorithm as soon as a clear candidate arrives.  
 
 6.0 Friend network
