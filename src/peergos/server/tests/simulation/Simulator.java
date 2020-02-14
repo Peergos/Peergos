@@ -653,9 +653,13 @@ public class Simulator implements Runnable {
                 int pos = 0;
                 double acc = 0;
 
-                for (Map.Entry<Simulation, Double> entry : probabilities.entrySet()) {
-                    Simulation sim = entry.getKey();
-                    Double prob = entry.getValue();
+                List<Simulation> sortedSims = probabilities.keySet()
+                        .stream()
+                        .sorted()
+                        .collect(Collectors.toList());
+
+                for (Simulation sim : sortedSims) {
+                    Double prob = probabilities.get(sim);
                     acc += prob;
                     simulations[pos] = sim;
                     cumulativeProbabilities[pos] = acc;
