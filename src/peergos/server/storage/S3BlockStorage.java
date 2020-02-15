@@ -53,8 +53,12 @@ public class S3BlockStorage implements ContentAddressedStorage {
     private final AmazonS3 s3Client;
     private final String bucket, folder;
     private final TransactionStore transactions;
+    private final ContentAddressedStorage p2pFallback;
 
-    public S3BlockStorage(S3Config config, Multihash id, TransactionStore transactions) {
+    public S3BlockStorage(S3Config config,
+                          Multihash id,
+                          TransactionStore transactions,
+                          ContentAddressedStorage p2pFallback) {
         this.id = id;
         this.bucket = config.bucket;
         this.folder = config.path.isEmpty() || config.path.endsWith("/") ? config.path : config.path + "/";
@@ -65,6 +69,7 @@ public class S3BlockStorage implements ContentAddressedStorage {
         s3Client = builder.build();
         LOG.info("Using S3 Block Storage at " + config.regionEndpoint + ", bucket " + config.bucket + ", path: " + config.path);
         this.transactions = transactions;
+        this.p2pFallback = p2pFallback;
     }
 
     private static String hashToKey(Multihash hash) {
@@ -89,7 +94,7 @@ public class S3BlockStorage implements ContentAddressedStorage {
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash) {
-        return Futures.of(map(hash, h -> {
+        Optional<byte[]> fromS3 = map(hash, h -> {
             GetObjectRequest get = new GetObjectRequest(bucket, folder + hashToKey(hash));
             Histogram.Timer readTimer = readTimerLog.labels("read").startTimer();
             try (S3Object res = s3Client.getObject(get); DataInputStream din = new DataInputStream(new BufferedInputStream(res.getObjectContent()))) {
@@ -99,7 +104,10 @@ public class S3BlockStorage implements ContentAddressedStorage {
             } finally {
                 readTimer.observeDuration();
             }
-        }, e -> Optional.empty()));
+        }, e -> Optional.empty());
+        if (fromS3.isPresent())
+            return Futures.of(fromS3);
+        return p2pFallback.getRaw(hash);
     }
 
     @Override
@@ -404,7 +412,7 @@ public class S3BlockStorage implements ContentAddressedStorage {
                     database :
                     Sqlite.build(Sqlite.getDbPath(a, "transactions-sql-file"));
         TransactionStore transactions = JdbcTransactionStore.build(transactionsDb, sqlCommands);
-        S3BlockStorage s3 = new S3BlockStorage(config, Cid.decode(a.getArg("ipfs.id")), transactions);
+        S3BlockStorage s3 = new S3BlockStorage(config, Cid.decode(a.getArg("ipfs.id")), transactions, new RAMStorage());
         JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(database, sqlCommands);
         s3.collectGarbage(rawPointers);
     }
@@ -415,7 +423,7 @@ public class S3BlockStorage implements ContentAddressedStorage {
         System.out.println("Testing S3 bucket: " + config.bucket + " in region " + config.region + " with base dir: " + config.path);
         Multihash id = new Multihash(Multihash.Type.sha2_256, RAMStorage.hash("S3Storage".getBytes()));
         TransactionStore transactions = JdbcTransactionStore.build(Sqlite.build(":memory:"), new SqliteCommands());
-        S3BlockStorage s3 = new S3BlockStorage(config, id, transactions);
+        S3BlockStorage s3 = new S3BlockStorage(config, id, transactions, new RAMStorage());
 
         System.out.println("***** Testing ls and read");
         System.out.println("Testing ls...");
