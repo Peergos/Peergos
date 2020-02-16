@@ -62,9 +62,9 @@ public abstract class UserTests {
             int ipfsSwarmPort = 9000 + r.nextInt(50_000);
             return Args.parse(new String[]{
                     "-port", Integer.toString(port),
-                    "-ipfs-config-api-port", Integer.toString(ipfsApiPort),
-                    "-ipfs-config-gateway-port", Integer.toString(ipfsGatewayPort),
-                    "-ipfs-config-swarm-port", Integer.toString(ipfsSwarmPort),
+                    "-ipfs-api-address", "/ip4/127.0.0.1/tcp/" + ipfsApiPort,
+                    "-ipfs-gateway-address", "/ip4/127.0.0.1/tcp/" + ipfsGatewayPort,
+                    "-ipfs-swarm-port", Integer.toString(ipfsSwarmPort),
                     "-admin-usernames", "peergos",
                     "-logToConsole", "true",
                     "max-users", "10000",
