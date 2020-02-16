@@ -78,17 +78,30 @@ public class Main {
             )
     );
     public static Command<IpfsWrapper> IPFS = new Command<>("ipfs",
-            "Start IPFS daemon and ensure configuration, optionally manage runtime.",
+            "Configure and start IPFS daemon",
             Main::startIpfs,
             Arrays.asList(
                     new Command.Arg("IPFS_PATH", "Path to IPFS directory. Defaults to $PEERGOS_PATH/.ipfs, or ~/.peergos/.ipfs", false),
                     new Command.Arg("ipfs-exe-path", "Path to IPFS executable. Defaults to $PEERGOS_PATH/ipfs", false),
-                    new Command.Arg("ipfs-config-api-port", "IPFS API port", false, "5001"),
-                    new Command.Arg("ipfs-config-gateway-port", "IPFS Gateway port", false, "8080"),
-                    new Command.Arg("ipfs-config-swarm-port", "IPFS Swarm port", false, "4001"),
+                    new Command.Arg("ipfs-api-address", "IPFS API port", false, "/ip4/127.0.0.1/tcp/5001"),
+                    new Command.Arg("ipfs-gateway-address", "IPFS Gateway port", false, "/ip4/127.0.0.1/tcp/8080"),
+                    new Command.Arg("ipfs-swarm-port", "IPFS Swarm port", false, "4001"),
+                    new Command.Arg("proxy-target", "Proxy target for p2p http requests", false, "/ip4/127.0.0.1/tcp/8000"),
                     new Command.Arg("ipfs-config-bootstrap-node-list", "Comma separated list of IPFS bootstrap nodes. Uses existing bootstrap nodes by default.", false),
                     new Command.Arg("ipfs-manage-runtime", "Will manage the IPFS daemon runtime when set (restart on exit)", false, "true")
             )
+    );
+
+    public static Command<IpfsWrapper> INSTALL_AND_RUN_IPFS = new Command<>("ipfs",
+            "Install, configure and start IPFS daemon",
+            a -> {
+                ENSURE_IPFS_INSTALLED.main(a);
+                return IPFS.main(a);
+            },
+            Stream.concat(
+                    ENSURE_IPFS_INSTALLED.params.stream(),
+                    IPFS.params.stream())
+                    .collect(Collectors.toList())
     );
 
     public static final Command<UserService> PEERGOS = new Command<>("daemon",
@@ -224,8 +237,8 @@ public class Main {
             args -> {
                 try {
                     int peergosPort = args.getInt("port");
-                    int ipfsApiPort = args.getInt("ipfs-config-api-port");
                     args.setIfAbsent("proxy-target", getLocalMultiAddress(peergosPort).toString());
+                    MultiAddress ipfsApi = new MultiAddress(args.getArg("ipfs-api-address"));
 
                     IpfsWrapper ipfs = null;
                     boolean useIPFS = args.getBoolean("useIPFS");
@@ -234,11 +247,10 @@ public class Main {
                         ipfs = startIpfs(args);
                     }
 
-                    args.setArg("ipfs-api-address", getLocalMultiAddress(ipfsApiPort).toString());
                     bootstrap(args);
 
                     Multihash pkiIpfsNodeId = useIPFS ?
-                            new IpfsDHT(getLocalMultiAddress(ipfsApiPort)).id().get() :
+                            new IpfsDHT(ipfsApi).id().get() :
                             new FileContentAddressedStorage(blockstorePath(args),
                                     JdbcTransactionStore.build(Sqlite.build(":memory:"), new SqliteCommands())).id().get();
 
@@ -259,8 +271,8 @@ public class Main {
                     new Command.Arg("mutable-pointers-file", "The filename for the mutable pointers (or :memory: or ram based)", true, ":memory:"),
                     new Command.Arg("social-sql-file", "The filename for the follow requests (or :memory: or ram based)", true, ":memory:"),
                     new Command.Arg("space-requests-sql-file", "The filename for the space requests datastore", true, "space-requests.sql"),
-                    new Command.Arg("ipfs-config-api-port", "ipfs api port", true, "5001"),
-                    new Command.Arg("ipfs-config-gateway-port", "ipfs gateway port", true, "8080"),
+                    new Command.Arg("ipfs-api-address", "ipfs api port", true, "/ip4/127.0.0.1/tcp/5001"),
+                    new Command.Arg("ipfs-gateway-address", "ipfs gateway port", true, "/ip4/127.0.0.1/tcp/8080"),
                     new Command.Arg("pki.secret.key.path", "The path to the pki secret key file", true, "test.pki.secret.key"),
                     new Command.Arg("pki.public.key.path", "The path to the pki public key file", true, "test.pki.public.key"),
                     // Secret parameters
@@ -275,7 +287,6 @@ public class Main {
             args -> {
                 try {
                     int peergosPort = args.getInt("port");
-                    int ipfsApiPort = args.getInt("ipfs-config-api-port");
                     args.setIfAbsent("proxy-target", getLocalMultiAddress(peergosPort).toString());
 
                     IpfsWrapper ipfs = null;
@@ -285,14 +296,14 @@ public class Main {
                         ipfs = startIpfs(args);
                     }
 
-                    args.setArg("ipfs-api-address", getLocalMultiAddress(ipfsApiPort).toString());
+                    MultiAddress ipfsApi = new MultiAddress(args.getArg("ipfs-api-address"));
 
                     JdbcTransactionStore transactions = JdbcTransactionStore.build(Sqlite.build(":memory:"), new SqliteCommands());
                     ContentAddressedStorage storage = useIPFS ?
-                            new IpfsDHT(getLocalMultiAddress(ipfsApiPort)) :
+                            new IpfsDHT(ipfsApi) :
                             S3Config.useS3(args) ?
                                     new S3BlockStorage(S3Config.build(args), Cid.decode(args.getArg("ipfs.id")),
-                                            transactions, new IpfsDHT(getLocalMultiAddress(ipfsApiPort))) :
+                                            transactions, new IpfsDHT(ipfsApi)) :
                                     new FileContentAddressedStorage(blockstorePath(args),
                                             transactions);
                     Multihash pkiIpfsNodeId = storage.id().get();
@@ -313,8 +324,8 @@ public class Main {
                     new Command.Arg("mutable-pointers-file", "The filename for the mutable pointers (or :memory: or ram based)", true, ":memory:"),
                     new Command.Arg("social-sql-file", "The filename for the follow requests (or :memory: or ram based)", true, ":memory:"),
                     new Command.Arg("space-requests-sql-file", "The filename for the space requests datastore", true, "space-requests.sql"),
-                    new Command.Arg("ipfs-config-api-port", "ipfs api port", true, "5001"),
-                    new Command.Arg("ipfs-config-gateway-port", "ipfs gateway port", true, "8080"),
+                    new Command.Arg("ipfs-api-address", "ipfs api port", true, "/ip4/127.0.0.1/tcp/5001"),
+                    new Command.Arg("ipfs-gateway-address", "ipfs gateway port", true, "/ip4/127.0.0.1/tcp/8080"),
                     new Command.Arg("pki.secret.key.path", "The path to the pki secret key file", true, "test.pki.secret.key"),
                     new Command.Arg("pki.public.key.path", "The path to the pki public key file", true, "test.pki.public.key"),
                     // Secret parameters
@@ -372,8 +383,8 @@ public class Main {
             }
 
             Multihash pkiServerNodeId = Cid.decode(a.getArg("pki-node-id"));
-            URL ipfsApiAddress = AddressUtil.getLocalAddress(a.getInt("ipfs-config-api-port"));
-            URL ipfsGatewayAddress = AddressUtil.getLocalAddress(a.getInt("ipfs-config-gateway-port"));
+            URL ipfsApiAddress = AddressUtil.getAddress(new MultiAddress(a.getArg("ipfs-api-address")));
+            URL ipfsGatewayAddress = AddressUtil.getAddress(new MultiAddress(a.getArg("ipfs-gateway-address")));
             String domain = a.getArg("domain");
             InetSocketAddress userAPIAddress = new InetSocketAddress(domain, webPort);
 
@@ -591,9 +602,9 @@ public class Main {
 
     public static IpfsWrapper startIpfs(Args a) {
         // test if ipfs is already running
-        int ipfsApiPort = IpfsWrapper.getApiPort(a);
-        if (IpfsWrapper.isHttpApiListening(ipfsApiPort)) {
-            throw new IllegalStateException("IPFS is already running on api port " + ipfsApiPort);
+        String ipfsApiAddress = a.getArg("ipfs-api-address");
+        if (IpfsWrapper.isHttpApiListening(ipfsApiAddress)) {
+            throw new IllegalStateException("IPFS is already running on api " + ipfsApiAddress);
         }
 
         IpfsWrapper ipfs = IpfsWrapper.build(a);
@@ -659,8 +670,9 @@ public class Main {
                     PEERGOS,
                     SHELL,
                     FUSE,
-                    PKI_INIT,
-                    PKI
+                    INSTALL_AND_RUN_IPFS,
+                    PKI,
+                    PKI_INIT
             )
     );
 

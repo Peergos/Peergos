@@ -73,7 +73,7 @@ public class MultiNodeNetworkTests {
         Multihash pkiNodeId = toPki.dhtClient.id().get();
         PublicKeyHash peergosId = PublicKeyHash.fromString(args.getArg("peergos.identity.hash"));
         nodes.add(toPki);
-        int bootstrapSwarmPort = args.getInt("ipfs-config-swarm-port");
+        int bootstrapSwarmPort = args.getInt("ipfs-swarm-port");
 
         // create two other nodes that use the first as a PKI-node
         for (int i = 0; i < 2; i++) {
@@ -86,9 +86,9 @@ public class MultiNodeNetworkTests {
                     .with("port", "" + peergosPort)
                     .with("pki-node-id", pkiNodeId.toBase58())
                     .with("peergos.identity.hash", peergosId.toString())
-                    .with("ipfs-config-api-port", "" + ipfsApiPort)
-                    .with("ipfs-config-gateway-port", "" + ipfsGatewayPort)
-                    .with("ipfs-config-swarm-port", "" + ipfsSwarmPort)
+                    .with("ipfs-api-address", "/ip4/127.0.0.1/tcp/" + ipfsApiPort)
+                    .with("ipfs-gateway-address", "/ip4/127.0.0.1/tcp/" + ipfsGatewayPort)
+                    .with("ipfs-swarm-port", "" + ipfsSwarmPort)
                     .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, "" + Main.getLocalBootstrapAddress(bootstrapSwarmPort, pkiNodeId))
                     .with("proxy-target", Main.getLocalMultiAddress(peergosPort).toString())
                     .with("ipfs-api-address", Main.getLocalMultiAddress(ipfsApiPort).toString())

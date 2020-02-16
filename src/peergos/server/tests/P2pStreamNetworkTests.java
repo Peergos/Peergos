@@ -7,6 +7,7 @@ import peergos.server.Main;
 import peergos.server.storage.*;
 import peergos.server.util.*;
 import peergos.shared.*;
+import peergos.shared.io.ipfs.multiaddr.*;
 import peergos.shared.io.ipfs.multihash.Multihash;
 import peergos.shared.user.UserContext;
 import peergos.shared.user.fs.*;
@@ -37,18 +38,18 @@ public class P2pStreamNetworkTests {
         NetworkAccess toPki = buildApi(args);
         Multihash pkiNodeId = toPki.dhtClient.id().get();
         nodes.add(toPki);
-        int bootstrapSwarmPort = args.getInt("ipfs-config-swarm-port");
+        int bootstrapSwarmPort = args.getInt("ipfs-swarm-port");
 
         // other nodes
         int ipfsApiPort = 9000 + random.nextInt(8000);
         int ipfsGatewayPort = 9000 + random.nextInt(8000);
         int ipfsSwarmPort = 9000 + random.nextInt(8000);
         Args normalNode = UserTests.buildArgs()
-                .with("ipfs-config-api-port", "" + ipfsApiPort)
-                .with("ipfs-config-gateway-port", "" + ipfsGatewayPort)
-                .with("ipfs-config-swarm-port", "" + ipfsSwarmPort)
+                .with("ipfs-api-address", "/ip4/127.0.0.1/tcp/" + ipfsApiPort)
+                .with("ipfs-gateway-address", "/ip4/127.0.0.1/tcp/" + ipfsGatewayPort)
+                .with("ipfs-swarm-port", "" + ipfsSwarmPort)
                 .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, "" + Main.getLocalBootstrapAddress(bootstrapSwarmPort, pkiNodeId))
-                .with("proxy-target", Main.getLocalMultiAddress(args.getInt("ipfs-config-gateway-port")).toString())
+                .with("proxy-target", new MultiAddress(args.getArg("ipfs-gateway-address")).toString())
                 .with("ipfs-api-address", Main.getLocalMultiAddress(ipfsApiPort).toString());
 
         ENSURE_IPFS_INSTALLED.main(normalNode);

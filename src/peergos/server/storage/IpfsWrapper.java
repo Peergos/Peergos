@@ -19,7 +19,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static peergos.server.util.Logging.LOG;
-import static peergos.server.util.AddressUtil.getLocalAddress;
+import static peergos.server.util.AddressUtil.getAddress;
 
 public class IpfsWrapper implements AutoCloseable, Runnable {
     /**
@@ -36,17 +36,18 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
          * Encapsulate IPFS configuration state.
          */
         public final Optional<List<MultiAddress>> bootstrapNode;
-        public final int apiPort, gatewayPort, swarmPort;
+        public final int swarmPort;
+        public final String apiAddress, gatewayAddress;
         public final List<IpfsInstaller.Plugin> plugins;
 
         public Config(Optional<List<MultiAddress>> bootstrapNode,
-                      int apiPort,
-                      int gatewayPort,
+                      String apiAddress,
+                      String gatewayAddress,
                       int swarmPort,
                       List<IpfsInstaller.Plugin> plugins) {
             this.bootstrapNode = bootstrapNode;
-            this.apiPort = apiPort;
-            this.gatewayPort = gatewayPort;
+            this.apiAddress = apiAddress;
+            this.gatewayAddress = gatewayAddress;
             this.swarmPort = swarmPort;
             this.plugins = plugins;
         }
@@ -56,8 +57,8 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
                     "config --json Experimental.Libp2pStreamMounting true",
                     "config --json Experimental.P2pHttpProxy true",
                     "config --json Experimental.PreferTLS true",
-                    String.format("config Addresses.API /ip4/127.0.0.1/tcp/%d", apiPort),
-                    String.format("config Addresses.Gateway /ip4/127.0.0.1/tcp/%d", gatewayPort),
+                    "config Addresses.API " + apiAddress,
+                    "config Addresses.Gateway " + gatewayAddress,
                     String.format("config --json Addresses.Swarm [\"/ip4/0.0.0.0/tcp/%d\",\"/ip6/::/tcp/%d\"]", swarmPort, swarmPort))
                     .map(e -> quoteEscape ? e.replaceAll("\"", "\\\\\"") : e)  //escape quotes for windows
                     .map(e -> e.split("\\s+"))
@@ -77,16 +78,12 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
                 Optional.of(parseMultiAddresses(args.getArg(IPFS_BOOTSTRAP_NODES))) :
                 Optional.empty();
 
-        int apiPort = getApiPort(args);
-        int gatewayPort = args.getInt("ipfs-config-gateway-port", 8080);
-        int swarmPort = args.getInt("ipfs-config-swarm-port", 4001);
+        String apiAddress = args.getArg("ipfs-api-address");
+        String gatewayAddress = args.getArg("ipfs-gateway-address");
+        int swarmPort = args.getInt("ipfs-swarm-port", 4001);
 
         List<IpfsInstaller.Plugin> plugins = IpfsInstaller.Plugin.parseAll(args);
-        return new Config(bootstrapNodes, apiPort, gatewayPort, swarmPort, plugins);
-    }
-
-    public static int getApiPort(Args args) {
-        return args.getInt("ipfs-config-api-port", 5001);
+        return new Config(bootstrapNodes, apiAddress, gatewayAddress, swarmPort, plugins);
     }
 
     private static final String IPFS_DIR = "IPFS_PATH";
@@ -183,7 +180,7 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
                     throw new IllegalStateException("ipfs daemon terminated with return code "+ process.exitValue());
             }
 
-            if (isHttpApiListening(config.apiPort))
+            if (isHttpApiListening(config.apiAddress))
                 return;
 
             try {
@@ -200,9 +197,10 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
         throw new IllegalStateException("ipfs daemon is not ready after specified timeout " + timeoutSeconds + " seconds.");
     }
 
-    public static boolean isHttpApiListening(int ipfsApiPort) {
+    public static boolean isHttpApiListening(String ipfsApiAddress) {
         try {
-            ContentAddressedStorage.HTTP api = new ContentAddressedStorage.HTTP(new JavaPoster(getLocalAddress(ipfsApiPort)), false);
+            MultiAddress ipfsApi = new MultiAddress(ipfsApiAddress);
+            ContentAddressedStorage.HTTP api = new ContentAddressedStorage.HTTP(new JavaPoster(getAddress(ipfsApi)), false);
             api.id().get();
             return true;
         } catch (Exception e) {}
