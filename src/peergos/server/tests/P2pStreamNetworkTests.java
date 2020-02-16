@@ -7,6 +7,7 @@ import peergos.server.Main;
 import peergos.server.storage.*;
 import peergos.server.util.*;
 import peergos.shared.*;
+import peergos.shared.io.ipfs.multiaddr.*;
 import peergos.shared.io.ipfs.multihash.Multihash;
 import peergos.shared.user.UserContext;
 import peergos.shared.user.fs.*;
@@ -48,7 +49,7 @@ public class P2pStreamNetworkTests {
                 .with("ipfs-gateway-address", "/ip4/127.0.0.1/tcp/" + ipfsGatewayPort)
                 .with("ipfs-swarm-port", "" + ipfsSwarmPort)
                 .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, "" + Main.getLocalBootstrapAddress(bootstrapSwarmPort, pkiNodeId))
-                .with("proxy-target", Main.getLocalMultiAddress(args.getInt("ipfs-config-gateway-port")).toString())
+                .with("proxy-target", new MultiAddress(args.getArg("ipfs-gateway-address")).toString())
                 .with("ipfs-api-address", Main.getLocalMultiAddress(ipfsApiPort).toString());
 
         ENSURE_IPFS_INSTALLED.main(normalNode);
