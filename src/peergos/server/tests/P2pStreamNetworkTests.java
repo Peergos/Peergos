@@ -37,7 +37,7 @@ public class P2pStreamNetworkTests {
         NetworkAccess toPki = buildApi(args);
         Multihash pkiNodeId = toPki.dhtClient.id().get();
         nodes.add(toPki);
-        int bootstrapSwarmPort = args.getInt("ipfs-config-swarm-port");
+        int bootstrapSwarmPort = args.getInt("ipfs-swarm-port");
 
         // other nodes
         int ipfsApiPort = 9000 + random.nextInt(8000);

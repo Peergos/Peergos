@@ -73,7 +73,7 @@ public class MultiNodeNetworkTests {
         Multihash pkiNodeId = toPki.dhtClient.id().get();
         PublicKeyHash peergosId = PublicKeyHash.fromString(args.getArg("peergos.identity.hash"));
         nodes.add(toPki);
-        int bootstrapSwarmPort = args.getInt("ipfs-config-swarm-port");
+        int bootstrapSwarmPort = args.getInt("ipfs-swarm-port");
 
         // create two other nodes that use the first as a PKI-node
         for (int i = 0; i < 2; i++) {
