@@ -1,6 +1,6 @@
 package peergos.server.tests.simulation;
 
-import peergos.server.Main;
+import peergos.server.*;
 import peergos.server.simulation.AccessControl;
 import peergos.server.simulation.FileSystem;
 import peergos.server.simulation.PeergosFileSystemImpl;
@@ -10,7 +10,7 @@ import peergos.server.util.Logging;
 import peergos.server.util.PeergosNetworkUtils;
 import peergos.shared.Crypto;
 import peergos.shared.NetworkAccess;
-import peergos.shared.user.UserContext;
+import peergos.shared.user.*;
 import peergos.shared.user.fs.cryptree.CryptreeNode;
 import peergos.shared.util.Pair;
 
@@ -588,12 +588,15 @@ public class Simulator implements Runnable {
                 .with("pki.keygen.password", "testpkipassword")
                 .with("pki.keyfile.password", "testpassword")
                 .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, ""); // no bootstrapping
-        Main.PKI_INIT.main(args);
+        UserService service = Main.PKI_INIT.main(args);
         LOG.info("***NETWORK READY***");
 
         Function<String, Pair<FileSystem, FileSystem>> fsPairBuilder = username -> {
             try {
-                NetworkAccess networkAccess = NetworkAccess.buildJava(new URL("http://localhost:" + args.getInt("port"))).get();
+                WriteSynchronizer synchronizer = new WriteSynchronizer(service.mutable, service.storage);
+                MutableTree mutableTree = new MutableTreeImpl(service.mutable, service.storage, synchronizer);
+                NetworkAccess networkAccess = new NetworkAccess(service.coreNode, service.social, service.storage,
+                        service.mutable, mutableTree, synchronizer, service.controller, service.usage, Arrays.asList("peergos"), false);
                 UserContext userContext = PeergosNetworkUtils.ensureSignedUp(username, username + "_password", networkAccess, crypto);
                 PeergosFileSystemImpl peergosFileSystem = new PeergosFileSystemImpl(userContext);
                 Path root = Files.createTempDirectory("test_filesystem-" + username);

@@ -44,7 +44,7 @@ public class NetworkAccess {
     private final LocalDateTime creationTime;
     private final boolean isJavascript;
 
-    protected NetworkAccess(CoreNode coreNode,
+    public NetworkAccess(CoreNode coreNode,
                             SocialNetwork social,
                             ContentAddressedStorage dhtClient,
                             MutablePointers mutable,

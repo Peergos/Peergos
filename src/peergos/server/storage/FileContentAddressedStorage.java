@@ -135,6 +135,8 @@ public class FileContentAddressedStorage implements ContentAddressedStorage {
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash) {
         try {
+            if (hash.isIdentity())
+                return Futures.of(Optional.of(hash.getHash()));
             Path path = getFilePath(hash);
             File file = root.resolve(path).toFile();
             if (! file.exists()){
