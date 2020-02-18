@@ -25,9 +25,11 @@ import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import static peergos.server.tests.UserTests.buildArgs;
+import static peergos.server.tests.UserTests.randomString;
 
 /**
  * Run some I/O and then check the file-system is as expected.
@@ -125,6 +127,7 @@ public class Simulator implements Runnable {
     private final Random random;
     private final Supplier<Simulation> getNextSimulation;
     private final long meanFileLength;
+    private final boolean randomizeFriendNetwork;
     private final SimulationRecord simulationRecord = new SimulationRecord();
     private final FileSystems fileSystems;
     private final FileSystemIndex index;
@@ -209,15 +212,6 @@ public class Simulator implements Runnable {
             this.random = random;
         }
 
-        /**
-         * @return (peergosFileSystem, referenceFileSystem)
-         */
-
-        public String getNextUser() {
-            int pos = random.nextInt(peergosAndNativeFileSystemPair.size());
-            return peergosAndNativeFileSystemPair.get(pos).right.user();
-        }
-
         public String getNextUser(String notThisUser) {
             do {
                 int pos = random.nextInt(peergosAndNativeFileSystemPair.size());
@@ -226,6 +220,10 @@ public class Simulator implements Runnable {
                     continue;
                 return user;
             } while (true);
+        }
+
+        public String getNextUser() {
+            return getNextUser(null);
         }
 
         public NativeFileSystemImpl getReferenceFileSystem(String user) {
@@ -253,13 +251,15 @@ public class Simulator implements Runnable {
 
     public Simulator(int opCount, Random random, long meanFileLength,
                      Supplier<Simulation> getNextSimulation,
-                     FileSystems fileSystems) {
+                     FileSystems fileSystems,
+                     boolean randomizeFriendNetwork) {
 
         this.fileSystems = fileSystems;
         this.opCount = opCount;
         this.random = random;
         this.getNextSimulation = getNextSimulation;
         this.meanFileLength = meanFileLength;
+        this.randomizeFriendNetwork = randomizeFriendNetwork;
         this.index = new FileSystemIndex(random);
     }
 
@@ -321,19 +321,38 @@ public class Simulator implements Runnable {
         List<String> users = this.fileSystems.getUsers();
         Collections.sort(users);
 
-        for (String user : users) {
-            index.addUser(user);
-            index.getDirToFiles(user).put(Paths.get("/" + user), new ArrayList<>());
+        for (String leftUser : users) {
+            index.addUser(leftUser);
+            index.getDirToFiles(leftUser).put(Paths.get("/" + leftUser), new ArrayList<>());
             // seed the file-system
-            run(Simulation.MKDIR, user);
-            run(Simulation.WRITE_OWN_FILE, user);
+            run(Simulation.MKDIR, leftUser);
+            run(Simulation.WRITE_OWN_FILE, leftUser);
 
-            // ALL PAIRWISE FRIENDS
-            for (String otherUser : users) {
-                if (user.compareTo(otherUser) >= 0)
+            for (String rightUser : users) {
+                if (leftUser.compareTo(rightUser) >= 0)
                     continue;
-                fileSystems.getTestFileSystem(user).follow(fileSystems.getTestFileSystem(otherUser));
-                fileSystems.getReferenceFileSystem(user).follow(fileSystems.getReferenceFileSystem(otherUser));
+
+                if (! randomizeFriendNetwork) {
+                    fileSystems.getTestFileSystem(leftUser).follow(fileSystems.getTestFileSystem(rightUser), true);
+                    fileSystems.getReferenceFileSystem(leftUser).follow(fileSystems.getReferenceFileSystem(rightUser), true);
+                }
+                else {
+                    // If this seems overly-complicated see https://github.com/Peergos/Peergos/issues/638
+                    boolean leftFollowRight = random.nextBoolean();
+                    boolean rightFollowLeft= random.nextBoolean();
+                    if (leftFollowRight && rightFollowLeft) {
+                        fileSystems.getTestFileSystem(leftUser).follow(fileSystems.getTestFileSystem(rightUser), true);
+                        fileSystems.getReferenceFileSystem(leftUser).follow(fileSystems.getReferenceFileSystem(rightUser), true);
+                    }
+                    else if (leftFollowRight) {
+                        fileSystems.getTestFileSystem(leftUser).follow(fileSystems.getTestFileSystem(rightUser), false);
+                        fileSystems.getReferenceFileSystem(leftUser).follow(fileSystems.getReferenceFileSystem(rightUser), false);
+                    }
+                    else if (rightFollowLeft) {
+                        fileSystems.getTestFileSystem(rightUser).follow(fileSystems.getTestFileSystem(leftUser), false);
+                        fileSystems.getReferenceFileSystem(rightUser).follow(fileSystems.getReferenceFileSystem(leftUser), false);
+                    }
+                }
             }
 
         }
@@ -620,7 +639,7 @@ public class Simulator implements Runnable {
                 new Pair<>(Simulation.MKDIR, 0.1),
                 new Pair<>(Simulation.RMDIR, 0.0),
                 new Pair<>(Simulation.GRANT_READ_FILE, 0.2),
-                new Pair<>(Simulation.GRANT_WRITE_FILE, 0.1),
+//                new Pair<>(Simulation.GRANT_WRITE_FILE, 0.1),
                 new Pair<>(Simulation.GRANT_READ_DIR, 0.05),
                 new Pair<>(Simulation.GRANT_WRITE_DIR, 0.05),
                 new Pair<>(Simulation.REVOKE_READ, 0.05),
@@ -673,22 +692,24 @@ public class Simulator implements Runnable {
 
             }
         }
-        final Random random = new Random(1);
+        Args simulatorArgs = Args.parse(a);
+        int seed = simulatorArgs.getInt("random-seed", 1);
+        int nUsers = simulatorArgs.getInt("n-users", 3);
+        int meanFileLength  = simulatorArgs.getInt("mean-file-length", 256);
+        boolean randomizeFriendNetwork = simulatorArgs.getBoolean("randomize-friend-network", true);
+        final Random random = new Random(seed);
 
         Supplier<Simulation> getNextSimulation = new SimulationSupplier(probabilities, random);
 
         //hard-mode
         CryptreeNode.setMaxChildLinkPerBlob(10);
 
-        int meanFileLength = 256;
-        List<Pair<FileSystem, FileSystem>> fs = Arrays.asList(
-                fsPairBuilder.apply("left"),
-                fsPairBuilder.apply("right")
-        );
-
+        List<Pair<FileSystem, FileSystem>> fs = IntStream.range(0, nUsers)
+                .mapToObj(i -> String.format("user_%d", i))
+                .map(fsPairBuilder).collect(Collectors.toList());;
 
         FileSystems fileSystems = new FileSystems(fs, random);
-        Simulator simulator = new Simulator(opCount, random, meanFileLength, getNextSimulation, fileSystems);
+        Simulator simulator = new Simulator(opCount, random, meanFileLength, getNextSimulation, fileSystems, randomizeFriendNetwork);
 
         try {
             simulator.run();

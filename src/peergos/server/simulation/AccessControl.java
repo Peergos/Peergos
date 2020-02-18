@@ -23,22 +23,25 @@ public interface AccessControl {
      */
     class AccessControlUnit {
         private Map<Path, List<String>> allowed = new HashMap<>();
+        private Map<String, Set<Path>> allowedReversed = new HashMap<>();
 
         List<String> getAllowed(Path path) {
             return allowed.computeIfAbsent(path, p -> new ArrayList<>());
         }
 
         void addAllowed(Path path, String user) {
-
             getAllowed(path).add(user);
+            allowedReversed.computeIfAbsent(user, s -> new HashSet<>()).add(path);
         }
 
         void removeAllowed(Path path, String user) {
             getAllowed(path).remove(user);
+            allowedReversed.get(user).remove(path);
         }
 
         void remove(Path p) {
             allowed.remove(p);
+            allowedReversed.forEach((k,v)  -> v.remove(p));
         }
 
     }
@@ -111,25 +114,23 @@ public interface AccessControl {
 
         @Override
         public Path getRandomSharedPath(Random random, FileSystem.Permission permission, String sharee) {
-            //TODO: make sharee-specific
-            // for now with two users that are friends this is OK
             AccessControlUnit acu = getAcu(permission);
-            List<Path> paths = new ArrayList<>(acu.allowed.keySet());
-            Collections.sort(paths);
-            if (paths.isEmpty())
+            Set<Path> sharedPaths  = acu.allowedReversed.get(sharee);
+            if (sharedPaths ==  null || sharedPaths.isEmpty()) {
                 throw new IllegalStateException();
-            Path path = paths.get(random.nextInt(paths.size()));
-
-            if (acu.getAllowed(path).isEmpty())
-                throw new IllegalStateException();
-            return path;
-
+            }
+            int nSkip = random.nextInt(sharedPaths.size());
+            return sharedPaths.stream()
+                    .skip(nSkip)
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalStateException());
         }
 
         @Override
         public void remove(Path path) {
             getAcu(FileSystem.Permission.READ).remove(path);
             getAcu(FileSystem.Permission.WRITE).remove(path);
+
         }
     }
 }

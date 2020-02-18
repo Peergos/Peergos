@@ -225,7 +225,7 @@ public class NativeFileSystemImpl implements FileSystem {
     }
 
     @Override
-    public void follow(FileSystem other) {
+    public void follow(FileSystem other, boolean reciprocate) {
         return; // this isn't being tested... yet
     }
 
