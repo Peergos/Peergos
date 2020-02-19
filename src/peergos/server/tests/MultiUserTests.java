@@ -40,8 +40,8 @@ public class MultiUserTests {
 
     public MultiUserTests() {
         this.userCount = 2;
-        WriteSynchronizer synchronizer = new WriteSynchronizer(service.mutable, service.storage);
-        MutableTree mutableTree = new MutableTreeImpl(service.mutable, service.storage, synchronizer);
+        WriteSynchronizer synchronizer = new WriteSynchronizer(service.mutable, service.storage, crypto.hasher);
+        MutableTree mutableTree = new MutableTreeImpl(service.mutable, service.storage, crypto.hasher, synchronizer);
         this.network = new NetworkAccess(service.coreNode, service.social, service.storage,
                 service.mutable, mutableTree, synchronizer, service.controller, service.usage, Arrays.asList("peergos"), false);
     }

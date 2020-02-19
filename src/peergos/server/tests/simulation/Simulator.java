@@ -612,8 +612,8 @@ public class Simulator implements Runnable {
 
         Function<String, Pair<FileSystem, FileSystem>> fsPairBuilder = username -> {
             try {
-                WriteSynchronizer synchronizer = new WriteSynchronizer(service.mutable, service.storage);
-                MutableTree mutableTree = new MutableTreeImpl(service.mutable, service.storage, synchronizer);
+                WriteSynchronizer synchronizer = new WriteSynchronizer(service.mutable, service.storage, crypto.hasher);
+                MutableTree mutableTree = new MutableTreeImpl(service.mutable, service.storage, crypto.hasher, synchronizer);
                 NetworkAccess networkAccess = new NetworkAccess(service.coreNode, service.social, service.storage,
                         service.mutable, mutableTree, synchronizer, service.controller, service.usage, Arrays.asList("peergos"), false);
                 UserContext userContext = PeergosNetworkUtils.ensureSignedUp(username, username + "_password", networkAccess, crypto);
