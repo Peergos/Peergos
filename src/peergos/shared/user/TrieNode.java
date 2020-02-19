@@ -13,7 +13,11 @@ public interface TrieNode {
 
     CompletableFuture<Optional<FileWrapper>> getByPath(String path, Hasher hasher, NetworkAccess network);
 
+    CompletableFuture<Optional<FileWrapper>> getByPath(String path, Snapshot version, Hasher hasher, NetworkAccess network);
+
     CompletableFuture<Set<FileWrapper>> getChildren(String path, Hasher hasher, NetworkAccess network);
+
+    CompletableFuture<Set<FileWrapper>> getChildren(String path, Hasher hasher, Snapshot version, NetworkAccess network);
 
     Set<String> getChildNames();
 

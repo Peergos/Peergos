@@ -294,12 +294,7 @@ public class NetworkAccess {
 
     public CompletableFuture<Optional<FileWrapper>> retrieveEntryPoint(EntryPoint e) {
         return synchronizer.getValue(e.pointer.owner, e.pointer.writer)
-                .thenCompose(version -> getMetadata(version.get(e.pointer.writer).props, e.pointer)
-                        .thenApply(faOpt ->faOpt.map(fa -> new FileWrapper(Optional.empty(),
-                                new RetrievedCapability(e.pointer, fa),
-                                Optional.empty(),
-                                e.pointer.wBaseKey.map(wBase -> fa.getSigner(e.pointer.rBaseKey, wBase, Optional.empty())),
-                                e.ownerName, version))))
+                .thenCompose(version -> getFile(version, e.pointer, Optional.empty(), e.ownerName))
                 .exceptionally(t -> {
                     LOG.log(Level.SEVERE, t.getMessage(), t);
                     return Optional.empty();
@@ -333,7 +328,11 @@ public class NetworkAccess {
                 });
     }
 
-
+    public CompletableFuture<Optional<FileWrapper>> getFile(EntryPoint e, Snapshot version) {
+        if (version.contains(e.pointer.writer))
+            return getFile(version, e.pointer, Optional.empty(), e.ownerName);
+        return retrieveEntryPoint(e);
+    }
 
     public CompletableFuture<Optional<FileWrapper>> getFile(Snapshot version,
                                                             AbsoluteCapability cap,

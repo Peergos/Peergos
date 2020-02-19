@@ -28,7 +28,7 @@ public class Snapshot {
     public Snapshot merge(Snapshot other) {
         HashMap<PublicKeyHash, CommittedWriterData> merge = new HashMap<>(versions);
         for (Map.Entry<PublicKeyHash, CommittedWriterData> entry : other.versions.entrySet()) {
-            if (merge.containsKey(entry.getKey()))
+            if (merge.containsKey(entry.getKey()) && ! merge.get(entry.getKey()).equals(other.versions.get(entry.getKey())))
                 throw new IllegalStateException("Conflicting merge of Snapshots!");
             merge.put(entry.getKey(), entry.getValue());
         }
@@ -41,6 +41,10 @@ public class Snapshot {
             merge.put(entry.getKey(), entry.getValue());
         }
         return new Snapshot(merge);
+    }
+
+    public boolean contains(PublicKeyHash writer) {
+        return versions.containsKey(writer);
     }
 
     public CommittedWriterData get(PublicKeyHash writer) {

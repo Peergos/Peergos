@@ -997,6 +997,7 @@ public class CryptreeNode implements Cborable {
 
     public static CompletableFuture<Pair<CryptreeNode, List<FragmentWithHash>>> createFile(
             MaybeMultihash existingHash,
+            PublicKeyHash ourWriter,
             SymmetricKey parentKey,
             SymmetricKey dataKey,
             FileProperties props,
@@ -1009,8 +1010,11 @@ public class CryptreeNode implements Cborable {
         return FragmentedPaddedCipherText.build(dataKey, new CborObject.CborByteArray(chunkData),
                         MIN_FRAGMENT_SIZE, Fragment.MAX_LENGTH, hasher, allowArrayCache)
                 .thenApply(linksAndData -> {
-                    RelativeCapability toParent = new RelativeCapability(Optional.empty(), parentLocation.getMapKey(),
-                            parentparentKey, Optional.empty());
+                    RelativeCapability toParent = new RelativeCapability(
+                            parentLocation.writer.equals(ourWriter) ? Optional.empty() : Optional.of(parentLocation.writer),
+                            parentLocation.getMapKey(),
+                            parentparentKey,
+                            Optional.empty());
                     CryptreeNode cryptree = createFile(existingHash, Optional.empty(), parentKey, dataKey, props,
                             linksAndData.left, toParent, nextChunk);
                     return new Pair<>(cryptree, linksAndData.right);
