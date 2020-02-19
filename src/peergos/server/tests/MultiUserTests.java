@@ -32,19 +32,23 @@ import static peergos.server.util.PeergosNetworkUtils.getUserContextsForNode;
 public class MultiUserTests {
 
     private static Args args = UserTests.buildArgs();
+    private static UserService service;
     private Random random = new Random();
     private final NetworkAccess network;
     private static final Crypto crypto = Crypto.initJava();
     private final int userCount;
 
-    public MultiUserTests() throws Exception {
+    public MultiUserTests() {
         this.userCount = 2;
-        this.network = NetworkAccess.buildJava(new URL("http://localhost:" + args.getInt("port"))).get();
+        WriteSynchronizer synchronizer = new WriteSynchronizer(service.mutable, service.storage);
+        MutableTree mutableTree = new MutableTreeImpl(service.mutable, service.storage, synchronizer);
+        this.network = new NetworkAccess(service.coreNode, service.social, service.storage,
+                service.mutable, mutableTree, synchronizer, service.controller, service.usage, Arrays.asList("peergos"), false);
     }
 
     @BeforeClass
     public static void init() {
-        Main.PKI_INIT.main(args);
+        service = Main.PKI_INIT.main(args);
     }
 
     public static void checkUserValidity(NetworkAccess network, String username) {
