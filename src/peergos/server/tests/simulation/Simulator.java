@@ -1,6 +1,6 @@
 package peergos.server.tests.simulation;
 
-import peergos.server.Main;
+import peergos.server.*;
 import peergos.server.simulation.AccessControl;
 import peergos.server.simulation.FileSystem;
 import peergos.server.simulation.PeergosFileSystemImpl;
@@ -10,7 +10,7 @@ import peergos.server.util.Logging;
 import peergos.server.util.PeergosNetworkUtils;
 import peergos.shared.Crypto;
 import peergos.shared.NetworkAccess;
-import peergos.shared.user.UserContext;
+import peergos.shared.user.*;
 import peergos.shared.user.fs.cryptree.CryptreeNode;
 import peergos.shared.util.Pair;
 
@@ -19,14 +19,17 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import static peergos.server.tests.UserTests.buildArgs;
+import static peergos.server.tests.UserTests.randomString;
 
 /**
  * Run some I/O and then check the file-system is as expected.
@@ -87,20 +90,33 @@ public class Simulator implements Runnable {
     private static final int MIN_FILE_LENGTH = 256;
     private static final int MAX_FILE_LENGTH = Integer.MAX_VALUE;
 
-    enum Simulation {READ, WRITE, MKDIR, RM, RMDIR,
-        GRANT_READ_FILE, GRANT_READ_DIR, GRANT_WRITE_FILE, GRANT_WRITE_DIR,
-        REVOKE_READ, REVOKE_WRITE;
+    enum Simulation {
+        READ_OWN_FILE,
+        WRITE_OWN_FILE,
+        READ_SHARED_FILE,
+        WRITE_SHARED_FILE,
+        MKDIR,
+        RM,
+        RMDIR,
+        GRANT_READ_FILE,
+        GRANT_READ_DIR,
+        GRANT_WRITE_FILE,
+        GRANT_WRITE_DIR,
+        REVOKE_READ,
+        REVOKE_WRITE;
 
         public FileSystem.Permission permission() {
             switch (this) {
                 case GRANT_READ_FILE:
                 case GRANT_READ_DIR:
                 case REVOKE_READ:
+                case READ_SHARED_FILE:
                     return FileSystem.Permission.READ;
 
                 case GRANT_WRITE_DIR:
                 case GRANT_WRITE_FILE:
                 case REVOKE_WRITE:
+                case WRITE_SHARED_FILE:
                     return FileSystem.Permission.WRITE;
             }
             return null;
@@ -111,6 +127,7 @@ public class Simulator implements Runnable {
     private final Random random;
     private final Supplier<Simulation> getNextSimulation;
     private final long meanFileLength;
+    private final boolean randomizeFriendNetwork;
     private final SimulationRecord simulationRecord = new SimulationRecord();
     private final FileSystems fileSystems;
     private final FileSystemIndex index;
@@ -195,15 +212,6 @@ public class Simulator implements Runnable {
             this.random = random;
         }
 
-        /**
-         * @return (peergosFileSystem, referenceFileSystem)
-         */
-
-        public String getNextUser() {
-            int pos = random.nextInt(peergosAndNativeFileSystemPair.size());
-            return peergosAndNativeFileSystemPair.get(pos).right.user();
-        }
-
         public String getNextUser(String notThisUser) {
             do {
                 int pos = random.nextInt(peergosAndNativeFileSystemPair.size());
@@ -212,6 +220,10 @@ public class Simulator implements Runnable {
                     continue;
                 return user;
             } while (true);
+        }
+
+        public String getNextUser() {
+            return getNextUser(null);
         }
 
         public NativeFileSystemImpl getReferenceFileSystem(String user) {
@@ -239,19 +251,19 @@ public class Simulator implements Runnable {
 
     public Simulator(int opCount, Random random, long meanFileLength,
                      Supplier<Simulation> getNextSimulation,
-                     FileSystems fileSystems) {
+                     FileSystems fileSystems,
+                     boolean randomizeFriendNetwork) {
 
         this.fileSystems = fileSystems;
         this.opCount = opCount;
         this.random = random;
         this.getNextSimulation = getNextSimulation;
         this.meanFileLength = meanFileLength;
+        this.randomizeFriendNetwork = randomizeFriendNetwork;
         this.index = new FileSystemIndex(random);
     }
 
     private boolean read(String user, Path path) {
-        log(user, Simulation.READ, path);
-
         FileSystem testFileSystem = fileSystems.getTestFileSystem(user);
         FileSystem referenceFileSystem = fileSystems.getReferenceFileSystem(user);
 
@@ -268,16 +280,14 @@ public class Simulator implements Runnable {
         LOG.info(msg);
     }
 
-    private void write(String user) {
-        Path path = getAvailableFilePath(user);
+    private void write(String user, Path path) {
+
         byte[] fileContents = getNextFileContents();
 
         Path dirName = path.getParent();
         String fileName = path.getFileName().toString();
         Map<Path, List<String>> dirsToFiles = index.getDirToFiles(user);
         dirsToFiles.get(dirName).add(fileName);
-
-        log(user, Simulation.WRITE, path);
 
         FileSystem testFileSystem = fileSystems.getTestFileSystem(user);
         FileSystem referenceFileSystem = fileSystems.getReferenceFileSystem(user);
@@ -311,19 +321,38 @@ public class Simulator implements Runnable {
         List<String> users = this.fileSystems.getUsers();
         Collections.sort(users);
 
-        for (String user : users) {
-            index.addUser(user);
-            index.getDirToFiles(user).put(Paths.get("/" + user), new ArrayList<>());
+        for (String leftUser : users) {
+            index.addUser(leftUser);
+            index.getDirToFiles(leftUser).put(Paths.get("/" + leftUser), new ArrayList<>());
             // seed the file-system
-            run(Simulation.MKDIR, user);
-            run(Simulation.WRITE, user);
+            run(Simulation.MKDIR, leftUser);
+            run(Simulation.WRITE_OWN_FILE, leftUser);
 
-            // ALL PAIRWISE FRIENDS
-            for (String otherUser : users) {
-                if (user.compareTo(otherUser) >= 0)
+            for (String rightUser : users) {
+                if (leftUser.compareTo(rightUser) >= 0)
                     continue;
-                fileSystems.getTestFileSystem(user).follow(fileSystems.getTestFileSystem(otherUser));
-                fileSystems.getReferenceFileSystem(user).follow(fileSystems.getReferenceFileSystem(otherUser));
+
+                if (! randomizeFriendNetwork) {
+                    fileSystems.getTestFileSystem(leftUser).follow(fileSystems.getTestFileSystem(rightUser), true);
+                    fileSystems.getReferenceFileSystem(leftUser).follow(fileSystems.getReferenceFileSystem(rightUser), true);
+                }
+                else {
+                    // If this seems overly-complicated see https://github.com/Peergos/Peergos/issues/638
+                    boolean leftFollowRight = random.nextBoolean();
+                    boolean rightFollowLeft= random.nextBoolean();
+                    if (leftFollowRight && rightFollowLeft) {
+                        fileSystems.getTestFileSystem(leftUser).follow(fileSystems.getTestFileSystem(rightUser), true);
+                        fileSystems.getReferenceFileSystem(leftUser).follow(fileSystems.getReferenceFileSystem(rightUser), true);
+                    }
+                    else if (leftFollowRight) {
+                        fileSystems.getTestFileSystem(leftUser).follow(fileSystems.getTestFileSystem(rightUser), false);
+                        fileSystems.getReferenceFileSystem(leftUser).follow(fileSystems.getReferenceFileSystem(rightUser), false);
+                    }
+                    else if (rightFollowLeft) {
+                        fileSystems.getTestFileSystem(rightUser).follow(fileSystems.getTestFileSystem(leftUser), false);
+                        fileSystems.getReferenceFileSystem(rightUser).follow(fileSystems.getReferenceFileSystem(leftUser), false);
+                    }
+                }
             }
 
         }
@@ -338,13 +367,43 @@ public class Simulator implements Runnable {
         Supplier<String> otherUser = () -> fileSystems.getNextUser(user);
         Supplier<Path> randomFilePathForUser = () -> index.getRandomExistingFile(user);
         Supplier<Path> randomFolderPathForUser = () -> index.getRandomExistingDirectory(user, true);
+        BiFunction<String, String, Optional<Path>> randomSharedPath = (owner, sharee) -> {
+            try {
+                Path path = fileSystems.getReferenceFileSystem(owner).getRandomSharedPath(random, simulation.permission(), sharee);
+                return Optional.of(path);
+            } catch (IllegalStateException ile) {
+                //Nothing  shared yet
+                return Optional.empty();
+            }
+        };
+
 
         switch (simulation) {
-            case READ:
-                read(user, randomFilePathForUser.get());
+            case READ_OWN_FILE:
+                Path readPath = randomFilePathForUser.get();
+                log(user, simulation, readPath);
+                read(user, readPath);
                 break;
-            case WRITE:
-                write(user);
+            case READ_SHARED_FILE:
+                Optional<Path> sharedOpt = randomSharedPath.apply(otherUser.get(), user);
+                if (! sharedOpt.isPresent())
+                    return;
+                Path sharedPathToRead = sharedOpt.get();
+                log(user, Simulation.READ_SHARED_FILE, sharedPathToRead);
+                read(user, sharedPathToRead);
+                break;
+            case WRITE_OWN_FILE:
+                Path path = getAvailableFilePath(user);
+                log(user, Simulation.WRITE_OWN_FILE, path);
+                write(user, path);
+                break;
+            case WRITE_SHARED_FILE:
+                Optional<Path> sharedOpt2 = randomSharedPath.apply(otherUser.get(), user);
+                if (! sharedOpt2.isPresent())
+                    return;
+                Path  sharedPathToWrite = sharedOpt2.get();
+                log(user, Simulation.WRITE_SHARED_FILE, sharedPathToWrite);
+                write(user, sharedPathToWrite);
                 break;
             case MKDIR:
                 mkdir(user);
@@ -354,6 +413,8 @@ public class Simulator implements Runnable {
                 break;
             case RMDIR:
                 rmdir(user);
+                //ensure not shared
+
                 break;
             case GRANT_READ_FILE:
             case GRANT_WRITE_FILE:
@@ -372,14 +433,11 @@ public class Simulator implements Runnable {
             case REVOKE_READ:
             case REVOKE_WRITE:
                 String revokee = otherUser.get();
-                Path revokePath = null;
-                try {
-                    revokePath = fileSystems.getReferenceFileSystem(user).getRandomSharedPath(random, simulation.permission());
-                } catch (IllegalStateException ile) {
-                    //nothing shared yet
+                Optional<Path> revokeOpt = randomSharedPath.apply(user, revokee);
+                if (! revokeOpt.isPresent())
                     return;
-                }
-                log(user, simulation, revokePath, "with revokee "+ revokee);
+                Path revokePath = revokeOpt.get();
+                log(user, simulation, revokePath);
                 try {
                     revokePermission(user, revokee,
                             revokePath, simulation.permission());
@@ -443,6 +501,7 @@ public class Simulator implements Runnable {
                             LOG.log(Level.WARNING, "User "+ sharee +" could not read shared-path "+ path +"!", ex);
                             isVerified = false;
                         }
+                        break;
                     case WRITE:
                         try {
                             // can overwrite?
@@ -450,6 +509,7 @@ public class Simulator implements Runnable {
                         } catch (Exception ex) {
                             LOG.log(Level.WARNING, "User "+ sharee +" could not write  shared-path "+ path +"!", ex);
                         }
+                        break;
                     default:
                         throw new IllegalStateException();
                 }
@@ -547,12 +607,15 @@ public class Simulator implements Runnable {
                 .with("pki.keygen.password", "testpkipassword")
                 .with("pki.keyfile.password", "testpassword")
                 .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, ""); // no bootstrapping
-        Main.PKI_INIT.main(args);
+        UserService service = Main.PKI_INIT.main(args);
         LOG.info("***NETWORK READY***");
 
         Function<String, Pair<FileSystem, FileSystem>> fsPairBuilder = username -> {
             try {
-                NetworkAccess networkAccess = NetworkAccess.buildJava(new URL("http://localhost:" + args.getInt("port"))).get();
+                WriteSynchronizer synchronizer = new WriteSynchronizer(service.mutable, service.storage);
+                MutableTree mutableTree = new MutableTreeImpl(service.mutable, service.storage, synchronizer);
+                NetworkAccess networkAccess = new NetworkAccess(service.coreNode, service.social, service.storage,
+                        service.mutable, mutableTree, synchronizer, service.controller, service.usage, Arrays.asList("peergos"), false);
                 UserContext userContext = PeergosNetworkUtils.ensureSignedUp(username, username + "_password", networkAccess, crypto);
                 PeergosFileSystemImpl peergosFileSystem = new PeergosFileSystemImpl(userContext);
                 Path root = Files.createTempDirectory("test_filesystem-" + username);
@@ -565,16 +628,18 @@ public class Simulator implements Runnable {
         };
 
 
-        int opCount = 200;
+        int opCount = 100;
 
         Map<Simulation, Double> probabilities = Stream.of(
-                new Pair<>(Simulation.READ, 0.0),
-                new Pair<>(Simulation.WRITE, 0.4),
+                new Pair<>(Simulation.READ_OWN_FILE, 0.0),
+//                new Pair<>(Simulation.READ_SHARED_FILE, 0.1),
+                new Pair<>(Simulation.WRITE_OWN_FILE, 0.4),
+//                new Pair<>(Simulation.WRITE_SHARED_FILE, 0.1),
                 new Pair<>(Simulation.RM, 0.0),
                 new Pair<>(Simulation.MKDIR, 0.1),
                 new Pair<>(Simulation.RMDIR, 0.0),
                 new Pair<>(Simulation.GRANT_READ_FILE, 0.2),
-                new Pair<>(Simulation.GRANT_WRITE_FILE, 0.1),
+//                new Pair<>(Simulation.GRANT_WRITE_FILE, 0.1),
                 new Pair<>(Simulation.GRANT_READ_DIR, 0.05),
                 new Pair<>(Simulation.GRANT_WRITE_DIR, 0.05),
                 new Pair<>(Simulation.REVOKE_READ, 0.05),
@@ -582,33 +647,69 @@ public class Simulator implements Runnable {
         ).collect(
                 Collectors.toMap(e -> e.left, e -> e.right));
 
-        final Random random = new Random(1);
+        class SimulationSupplier implements Supplier<Simulation> {
+            private final Simulation[] simulations;
+            private final double[] cumulativeProbabilities;
+            private final Random random;
+            private final double probabililtyNorm;
 
-        Supplier<Simulation> getNextSimulation = () -> {
-            double acc = 0;
-            double p = random.nextDouble();
-            for (Map.Entry<Simulation, Double> e : probabilities.entrySet()) {
-                Simulation simulation = e.getKey();
-                Double prob = e.getValue();
-                acc += prob;
-                if (p < acc)
-                    return simulation;
+            @Override
+            public Simulation get() {
+                double v = random.nextDouble() * probabililtyNorm;
+                int pos = Arrays.binarySearch(cumulativeProbabilities, v);
+                if (pos < 0)
+                    pos = Math.max(0, -pos -1-1);
+                return simulations[pos];
             }
-            throw new IllegalStateException();
-        };
+
+            public SimulationSupplier(Map<Simulation, Double> probabilities, Random random) {
+                // remove simulations with empty probabilities
+                probabilities = probabilities.entrySet()
+                        .stream()
+                        .filter(e -> e.getValue()  > 0)
+                        .collect(Collectors.toMap(e -> e.getKey(), e ->  e.getValue()));
+
+                this.simulations = new Simulation[probabilities.size()];
+                this.cumulativeProbabilities = new double[probabilities.size()];
+                this.random  = random;
+                int pos = 0;
+                double acc = 0;
+
+                List<Simulation> sortedSims = probabilities.keySet()
+                        .stream()
+                        .sorted()
+                        .collect(Collectors.toList());
+
+                for (Simulation sim : sortedSims) {
+                    Double prob = probabilities.get(sim);
+                    acc += prob;
+                    simulations[pos] = sim;
+                    cumulativeProbabilities[pos] = acc;
+                    pos++;
+                }
+                this.probabililtyNorm = acc;
+
+
+            }
+        }
+        Args simulatorArgs = Args.parse(a);
+        int seed = simulatorArgs.getInt("random-seed", 1);
+        int nUsers = simulatorArgs.getInt("n-users", 3);
+        int meanFileLength  = simulatorArgs.getInt("mean-file-length", 256);
+        boolean randomizeFriendNetwork = simulatorArgs.getBoolean("randomize-friend-network", true);
+        final Random random = new Random(seed);
+
+        Supplier<Simulation> getNextSimulation = new SimulationSupplier(probabilities, random);
 
         //hard-mode
         CryptreeNode.setMaxChildLinkPerBlob(10);
 
-        int meanFileLength = 256;
-        List<Pair<FileSystem, FileSystem>> fs = Arrays.asList(
-                fsPairBuilder.apply("left"),
-                fsPairBuilder.apply("right")
-        );
-
+        List<Pair<FileSystem, FileSystem>> fs = IntStream.range(0, nUsers)
+                .mapToObj(i -> String.format("user_%d", i))
+                .map(fsPairBuilder).collect(Collectors.toList());;
 
         FileSystems fileSystems = new FileSystems(fs, random);
-        Simulator simulator = new Simulator(opCount, random, meanFileLength, getNextSimulation, fileSystems);
+        Simulator simulator = new Simulator(opCount, random, meanFileLength, getNextSimulation, fileSystems, randomizeFriendNetwork);
 
         try {
             simulator.run();

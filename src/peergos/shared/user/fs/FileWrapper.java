@@ -42,24 +42,24 @@ public class FileWrapper {
     private final Optional<SigningPrivateKeyAndPublicHash> entryWriter;
     private final FileProperties props;
     private final String ownername;
-    private final Optional<TrieNode> globalRoot;
+    private final Optional<TrieNode> capTrie;
     private final Snapshot version;
     private final boolean isWritable;
     private AtomicBoolean modified = new AtomicBoolean(); // This only used as a guard against concurrent modifications
 
     /**
      *
-     * @param globalRoot This is only present if this is the global root
+     * @param capTrie This is only present if this is the global root, or this is read only
      * @param pointer
      * @param ownername
      */
-    public FileWrapper(Optional<TrieNode> globalRoot,
+    public FileWrapper(Optional<TrieNode> capTrie,
                        RetrievedCapability pointer,
                        Optional<RetrievedCapability> linkPointer,
                        Optional<SigningPrivateKeyAndPublicHash> entryWriter,
                        String ownername,
                        Snapshot version) {
-        this.globalRoot = globalRoot;
+        this.capTrie = capTrie;
         this.pointer = pointer;
         this.linkPointer = linkPointer;
         this.entryWriter = entryWriter;
@@ -101,8 +101,12 @@ public class FileWrapper {
         return new FileWrapper(trie, pointer, linkPointer, entryWriter, ownername, version);
     }
 
+    public FileWrapper withLinkPointer(Optional<RetrievedCapability> link) {
+        return new FileWrapper(capTrie, pointer, link, entryWriter, ownername, version);
+    }
+
     public FileWrapper withVersion(Snapshot version) {
-        return new FileWrapper(globalRoot, pointer, linkPointer, entryWriter, ownername, version);
+        return new FileWrapper(capTrie, pointer, linkPointer, entryWriter, ownername, version);
     }
 
     @JsMethod
@@ -119,7 +123,7 @@ public class FileWrapper {
             return CompletableFuture.completedFuture(this);
         return network.getFile(version, pointer.capability, entryWriter, ownername)
                 .thenApply(Optional::get)
-                .thenApply(f -> f.withTrieNodeOpt(globalRoot));
+                .thenApply(f -> f.withTrieNodeOpt(capTrie));
     }
 
     public PublicKeyHash owner() {
@@ -274,6 +278,21 @@ public class FileWrapper {
         return retrieveParent(linkPointer.orElse(pointer), ownername, version, network);
     }
 
+    public CompletableFuture<Optional<RetrievedCapability>> getAnyLinkPointer(NetworkAccess network) {
+        if (pointer == null)
+            return CompletableFuture.completedFuture(Optional.empty());
+        AbsoluteCapability cap = pointer.capability;
+        CompletableFuture<RetrievedCapability> parent = pointer.fileAccess.getParent(cap.owner, cap.writer, cap.rBaseKey, network, version);
+        return parent.thenApply(parentRFP -> {
+            if (parentRFP == null)
+                return Optional.empty();
+            FileProperties parentProps = parentRFP.getProperties();
+            if (! parentProps.isLink)
+                return Optional.empty();
+            return Optional.of(parentRFP);
+        });
+    }
+
     public static CompletableFuture<Optional<FileWrapper>> retrieveParent(RetrievedCapability pointer,
                                                                           String ownerName,
                                                                           Snapshot version,
@@ -313,9 +332,9 @@ public class FileWrapper {
         return getChildren(version, hasher, network);
     }
 
-    private CompletableFuture<Set<FileWrapper>> getChildren(Snapshot version, Hasher hasher, NetworkAccess network) {
-        if (globalRoot.isPresent())
-            return globalRoot.get().getChildren("/", hasher, network);
+    public CompletableFuture<Set<FileWrapper>> getChildren(Snapshot version, Hasher hasher, NetworkAccess network) {
+        if (capTrie.isPresent())
+            return capTrie.get().getChildren("/", hasher, version.merge(this.version), network);
         if (isReadable()) {
             Optional<SigningPrivateKeyAndPublicHash> childsEntryWriter = pointer.capability.wBaseKey
                     .map(wBase -> pointer.fileAccess.getSigner(pointer.capability.rBaseKey, wBase, entryWriter));
@@ -328,8 +347,8 @@ public class FileWrapper {
 
     private CompletableFuture<Set<FileWrapper>> getDirectChildren(NetworkAccess network, Hasher hasher, Snapshot version) {
         ensureUnmodified();
-        if (globalRoot.isPresent())
-            return globalRoot.get().getChildren("/", hasher, network);
+        if (capTrie.isPresent())
+            return capTrie.get().getChildren("/", hasher, network);
         if (isReadable()) {
             Optional<SigningPrivateKeyAndPublicHash> childsEntryWriter = pointer.capability.wBaseKey
                     .map(wBase -> pointer.fileAccess.getSigner(pointer.capability.rBaseKey, wBase, entryWriter));
@@ -416,9 +435,12 @@ public class FileWrapper {
             throw new IllegalStateException("Directories are never dirty (they are cleaned immediately)!");
         } else {
             WritableAbsoluteCapability currentCap = writableFilePointer();
+            boolean isLink = isLink();
+            Location parentOrLinkLocation = isLink ? linkPointer.get().capability.getLocation() : parent.getLocation();
+            SymmetricKey parentOrLinkParentKey = isLink ? linkPointer.get().getParentKey() : parent.getParentKey();
             return pointer.fileAccess.cleanAndCommit(current, committer, currentCap, currentCap, props.streamSecret,
                     Optional.empty(), signingPair(), SymmetricKey.random(),
-                    parent.getLocation(), parent.getParentKey(), network, crypto)
+                    parentOrLinkLocation, parentOrLinkParentKey, network, crypto)
                     .thenApply(cwd -> {
                         setModified();
                         return new Pair<>(parent, cwd);
@@ -566,7 +588,7 @@ public class FileWrapper {
                     .thenCompose(finalBase -> getUpdated(finalBase, network));
 
         if (! overwriteExisting)
-            return Futures.errored(new IllegalStateException("Cannot upload a file to a directory without write acess!"));
+            return Futures.errored(new IllegalStateException("Cannot upload a file to a directory without write access!"));
         return getChild(filename, crypto.hasher, network)
                 .thenCompose(c -> {
                     if (! c.isPresent())

@@ -15,25 +15,35 @@ public interface AccessControl {
 
     void remove(Path path, String reader, FileSystem.Permission permission);
 
-    Path getRandomSharedPath(Random random, FileSystem.Permission permission);
+    void remove(Path path);
+
+    Path getRandomSharedPath(Random random, FileSystem.Permission permission, String sharee);
     /**
      * Model owners, reader and writers
      */
     class AccessControlUnit {
         private Map<Path, List<String>> allowed = new HashMap<>();
+        private Map<String, Set<Path>> allowedReversed = new HashMap<>();
 
         List<String> getAllowed(Path path) {
             return allowed.computeIfAbsent(path, p -> new ArrayList<>());
         }
 
         void addAllowed(Path path, String user) {
-
             getAllowed(path).add(user);
+            allowedReversed.computeIfAbsent(user, s -> new HashSet<>()).add(path);
         }
 
         void removeAllowed(Path path, String user) {
             getAllowed(path).remove(user);
+            allowedReversed.get(user).remove(path);
         }
+
+        void remove(Path p) {
+            allowed.remove(p);
+            allowedReversed.forEach((k,v)  -> v.remove(p));
+        }
+
     }
 
     static String getOwner(Path path) {
@@ -103,18 +113,23 @@ public interface AccessControl {
         }
 
         @Override
-        public Path getRandomSharedPath(Random random, FileSystem.Permission permission) {
-
+        public Path getRandomSharedPath(Random random, FileSystem.Permission permission, String sharee) {
             AccessControlUnit acu = getAcu(permission);
-            List<Path> paths = new ArrayList<>(acu.allowed.keySet());
-            Collections.sort(paths);
-            if (paths.isEmpty())
+            Set<Path> sharedPaths  = acu.allowedReversed.get(sharee);
+            if (sharedPaths ==  null || sharedPaths.isEmpty()) {
                 throw new IllegalStateException();
-            Path path = paths.get(random.nextInt(paths.size()));
+            }
+            int nSkip = random.nextInt(sharedPaths.size());
+            return sharedPaths.stream()
+                    .skip(nSkip)
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalStateException());
+        }
 
-            if (acu.getAllowed(path).isEmpty())
-                throw new IllegalStateException();
-            return path;
+        @Override
+        public void remove(Path path) {
+            getAcu(FileSystem.Permission.READ).remove(path);
+            getAcu(FileSystem.Permission.WRITE).remove(path);
 
         }
     }

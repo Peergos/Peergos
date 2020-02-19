@@ -162,9 +162,22 @@ public class FriendSourcedTrieNode implements TrieNode {
     }
 
     @Override
+    public synchronized CompletableFuture<Optional<FileWrapper>> getByPath(String path, Snapshot version, Hasher hasher, NetworkAccess network) {
+        if (path.isEmpty() || path.equals("/"))
+            return getFriendRoot(network)
+                    .thenApply(opt -> opt.map(f -> f.withTrieNode(this)));
+        return ensureUptodate(crypto, network).thenCompose(x -> root.getByPath(path, version, hasher, network));
+    }
+
+    @Override
     public synchronized CompletableFuture<Set<FileWrapper>> getChildren(String path, Hasher hasher, NetworkAccess network) {
         return ensureUptodate(crypto, network)
                 .thenCompose(x -> root.getChildren(path, hasher, network));
+    }
+
+    @Override
+    public synchronized CompletableFuture<Set<FileWrapper>> getChildren(String path, Hasher hasher, Snapshot version, NetworkAccess network) {
+        return root.getChildren(path, hasher, version, network);
     }
 
     @Override

@@ -97,7 +97,6 @@ public class PeergosNetworkUtils {
                 sharerUser.network, crypto, l -> {}, crypto.random.randomBytes(32)).get();
 
         // share the file from sharer to each of the sharees
-        FileWrapper u1File = sharerUser.getByPath(sharerUser.username + "/" + filename).get().get();
         Set<String> shareeNames = shareeUsers.stream()
                 .map(u -> u.username)
                 .collect(Collectors.toSet());

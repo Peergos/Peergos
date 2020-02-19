@@ -78,13 +78,13 @@ public class UserService {
         LOG.info("jdk.tls.rejectClientInitializedRenegotiation: "+Security.getProperty("jdk.tls.rejectClientInitializedRenegotiation"));
     }
 
-    private final ContentAddressedStorage storage;
+    public final ContentAddressedStorage storage;
     private final Crypto crypto;
-    private final CoreNode coreNode;
-    private final SocialNetwork social;
-    private final MutablePointers mutable;
-    private final InstanceAdmin controller;
-    private final SpaceUsage usage;
+    public final CoreNode coreNode;
+    public final SocialNetwork social;
+    public final MutablePointers mutable;
+    public final InstanceAdmin controller;
+    public final SpaceUsage usage;
 
     public UserService(ContentAddressedStorage storage,
                        Crypto crypto,

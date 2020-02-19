@@ -1217,47 +1217,57 @@ public class UserContext {
                         parentSigner,
                         SigningKeyPair.random(crypto.random, crypto.signer), network, initial, c) :
                 Futures.of(new Pair<>(initial, file.signingPair())))
-                .thenCompose(p -> file.getPointer().fileAccess.rotateAllKeys(
-                        true,
-                        new CryptreeNode.CapAndSigner((WritableAbsoluteCapability)
-                                originalCap, file.signingPair()),
-                        new CryptreeNode.CapAndSigner(new WritableAbsoluteCapability(
-                                owner,
-                                p.right.publicKeyHash,
-                                crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH),
-                                SymmetricKey.random(),
-                                SymmetricKey.random()),
-                                p.right),
-                        new CryptreeNode.CapAndSigner((WritableAbsoluteCapability) parentCap, parent.signingPair()),
-                        new CryptreeNode.CapAndSigner((WritableAbsoluteCapability) parentCap, parent.signingPair()),
-                        Optional.of(new RelativeCapability(
-                                Optional.empty(),
-                                parent.getPointer().capability.getMapKey(),
-                                parent.getParentKey(),
-                                Optional.empty())),
-                        Optional.empty(),
-                        rotateSigners,
-                        network,
-                        crypto,
-                        p.left,
-                        c)
-                        .thenCompose(rotated -> {
-                                    // add a link in same writing space as parent to restrict rename access
-                                    if (rotateSigners) {
-                                        SymmetricKey linkRBase = SymmetricKey.random();
-                                        SymmetricKey linkParent = SymmetricKey.random();
-                                        SymmetricKey linkWBase = SymmetricKey.random();
-                                        byte[] linkMapKey = crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH);
-                                        WritableAbsoluteCapability linkCap = new WritableAbsoluteCapability(owner,
-                                                parentCap.writer, linkMapKey, linkRBase, linkWBase);
-                                        return CryptreeNode.createAndCommitLink(parent, rotated.right,
-                                                file.getFileProperties(), linkCap, linkParent,
-                                                crypto, network, rotated.left, c)
-                                                .thenApply(newSnapshot -> new Pair<>(newSnapshot, linkCap));
-                                    } else
-                                        return Futures.of(rotated);
-                        })
-                        .thenCompose(rotated ->
+                .thenCompose(p -> {
+                    Optional<RelativeCapability> newParentLink = Optional.of(
+                            rotateSigners ?
+                                    new RelativeCapability(
+                                            Optional.of(parent.writer()),
+                                            crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH),
+                                            SymmetricKey.random(),
+                                            Optional.empty()):
+                                    new RelativeCapability(
+                                            Optional.empty(),
+                                            parent.getPointer().capability.getMapKey(),
+                                            parent.getParentKey(),
+                                            Optional.empty())
+                    );
+                    return file.getPointer().fileAccess.rotateAllKeys(
+                            true,
+                            new CryptreeNode.CapAndSigner((WritableAbsoluteCapability)
+                                    originalCap, file.signingPair()),
+                            new CryptreeNode.CapAndSigner(new WritableAbsoluteCapability(
+                                    owner,
+                                    p.right.publicKeyHash,
+                                    crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH),
+                                    SymmetricKey.random(),
+                                    SymmetricKey.random()),
+                                    p.right),
+                            new CryptreeNode.CapAndSigner((WritableAbsoluteCapability) parentCap, parent.signingPair()),
+                            new CryptreeNode.CapAndSigner((WritableAbsoluteCapability) parentCap, parent.signingPair()),
+                            newParentLink,
+                            Optional.empty(),
+                            rotateSigners,
+                            network,
+                            crypto,
+                            p.left,
+                            c)
+                            .thenCompose(rotated -> {
+                                // add a link in same writing space as parent to restrict rename access
+                                if (rotateSigners) {
+                                    SymmetricKey linkRBase = SymmetricKey.random();
+                                    SymmetricKey linkParent = newParentLink.get().rBaseKey;
+                                    SymmetricKey linkWBase = SymmetricKey.random();
+                                    byte[] linkMapKey = newParentLink.get().getMapKey();
+                                    WritableAbsoluteCapability linkCap = new WritableAbsoluteCapability(owner,
+                                            parentCap.writer, linkMapKey, linkRBase, linkWBase);
+                                    return CryptreeNode.createAndCommitLink(parent, rotated.right,
+                                            file.getFileProperties(), linkCap, linkParent,
+                                            crypto, network, rotated.left, c)
+                                            .thenApply(newSnapshot -> new Pair<>(newSnapshot, linkCap));
+                                } else
+                                    return Futures.of(rotated);
+                            });
+                }).thenCompose(rotated ->
                                 parent.getPointer().fileAccess.updateChildLink(
                                         rotated.left, c, (WritableAbsoluteCapability) parentCap,
                                         parentSigner, file.isLink() ? file.getLinkPointer().capability : originalCap, rotated.right,
@@ -1271,7 +1281,7 @@ public class UserContext {
                                                 CryptreeNode.deAuthoriseSigner(owner, parentSigner, file.writer(),
                                                         network, s, c) :
                                                 Futures.of(s)))
-                ));
+        );
     }
 
     public CompletableFuture<Boolean> unShareReadAccess(Path path, Set<String> readersToRemove) {

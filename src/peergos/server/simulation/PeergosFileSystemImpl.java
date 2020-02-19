@@ -138,7 +138,7 @@ public class PeergosFileSystemImpl implements FileSystem {
     }
 
     @Override
-    public void follow(FileSystem other) {
+    public void follow(FileSystem other, boolean reciprocate) {
         UserContext otherContext = ((PeergosFileSystemImpl) other).userContext;
 
         this.userContext.sendInitialFollowRequest(other.user()).join();
@@ -147,12 +147,12 @@ public class PeergosFileSystemImpl implements FileSystem {
                 .filter(e -> e.getEntry().ownerName.equals(user()))
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException());
-        otherContext.sendReplyFollowRequest(req, true,  true).join();
+        otherContext.sendReplyFollowRequest(req, true, reciprocate).join();
         this.userContext.processFollowRequests().join();
     }
 
     @Override
-    public Path getRandomSharedPath(Random random, Permission permission) {
+    public Path getRandomSharedPath(Random random, Permission permission, String sharee) {
         throw new IllegalStateException("Not implemented");
     }
 

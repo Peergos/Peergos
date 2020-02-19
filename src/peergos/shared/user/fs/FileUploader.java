@@ -139,7 +139,7 @@ public class FileUploader implements AutoCloseable {
         if (! writer.publicKeyHash.equals(chunk.location.writer))
             throw new IllegalStateException("Trying to write a chunk to the wrong signing key space!");
         RelativeCapability nextChunk = RelativeCapability.buildSubsequentChunk(nextChunkLocation.getMapKey(), baseKey);
-        return CryptreeNode.createFile(chunk.existingHash, baseKey,
+        return CryptreeNode.createFile(chunk.existingHash, chunk.location.writer, baseKey,
                 chunk.chunk.key(), props, chunk.chunk.data(), parentLocation, parentparentKey, nextChunk,
                 hasher, network.isJavascript())
                 .thenCompose(file -> {

@@ -75,9 +75,14 @@ public interface FileSystem {
         walk(Paths.get("/"+  user()), func);
     }
 
-    void follow(FileSystem other);
+    /**
+     *
+     * @param other user to follow
+     * @param reciprocate uni-directional following when  true, bi-directional when false
+     */
+    void follow(FileSystem other, boolean reciprocate);
 
-    Path getRandomSharedPath(Random random, FileSystem.Permission permission);
+    Path getRandomSharedPath(Random random, FileSystem.Permission permission, String sharee);
 
     List<String> getSharees(Path path, Permission permission);
 }
