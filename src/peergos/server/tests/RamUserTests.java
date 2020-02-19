@@ -5,6 +5,7 @@ import org.junit.runner.*;
 import org.junit.runners.*;
 import peergos.server.*;
 import peergos.server.util.*;
+import peergos.shared.*;
 import peergos.shared.social.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
@@ -16,20 +17,20 @@ import java.util.*;
 public class RamUserTests extends UserTests {
     private static Args args = buildArgs().with("useIPFS", "false");
 
-    public RamUserTests(Args args) {
-        super(args);
+    public RamUserTests(NetworkAccess network) {
+        super(network);
     }
 
     @Parameterized.Parameters()
     public static Collection<Object[]> parameters() {
+        UserService service = Main.PKI_INIT.main(args);
+        WriteSynchronizer synchronizer = new WriteSynchronizer(service.mutable, service.storage, crypto.hasher);
+        MutableTree mutableTree = new MutableTreeImpl(service.mutable, service.storage, crypto.hasher, synchronizer);
+        NetworkAccess network = new NetworkAccess(service.coreNode, service.social, service.storage,
+                service.mutable, mutableTree, synchronizer, service.controller, service.usage, Arrays.asList("peergos"), false);
         return Arrays.asList(new Object[][] {
-                {args}
+                {network}
         });
-    }
-
-    @BeforeClass
-    public static void init() {
-        Main.PKI_INIT.main(args);
     }
 
     @Test

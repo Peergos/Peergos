@@ -27,7 +27,6 @@ import peergos.shared.util.*;
 import peergos.shared.util.Exceptions;
 
 import java.io.*;
-import java.net.*;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
@@ -38,18 +37,12 @@ public abstract class UserTests {
 
     public static int RANDOM_SEED = 666;
     protected final NetworkAccess network;
-    protected final Crypto crypto = Main.initCrypto();
-    private final URL peergosUrl;
+    protected static final Crypto crypto = Main.initCrypto();
 
     private static Random random = new Random(RANDOM_SEED);
 
-    public UserTests(Args args) {
-        try {
-            this.peergosUrl = new URL("http://localhost:" + args.getInt("port"));
-            this.network = NetworkAccess.buildJava(peergosUrl).get();
-        } catch (Exception ex) {
-            throw new IllegalStateException(ex.getMessage(), ex);
-        }
+    public UserTests(NetworkAccess network) {
+        this.network = network;
     }
 
     public static Args buildArgs() {

@@ -1,12 +1,13 @@
 package peergos.server.tests;
 
-import org.junit.BeforeClass;
 import org.junit.runner.*;
 import org.junit.runners.*;
 import peergos.server.*;
 import peergos.server.storage.IpfsWrapper;
 import peergos.server.util.*;
+import peergos.shared.*;
 
+import java.net.*;
 import java.util.*;
 
 @RunWith(Parameterized.class)
@@ -18,19 +19,15 @@ public class IpfsUserTests extends UserTests {
 //            .with("gc.period.millis", "10000")
             .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, ""); // no bootstrapping
 
-    public IpfsUserTests(Args args) {
-        super(args);
+    public IpfsUserTests(NetworkAccess network) {
+        super(network);
     }
 
     @Parameterized.Parameters()
-    public static Collection<Object[]> parameters() {
-        return Arrays.asList(new Object[][] {
-                {args}
-        });
-    }
-
-    @BeforeClass
-    public static void init() {
+    public static Collection<Object[]> parameters() throws Exception {
         Main.PKI_INIT.main(args);
+        return Arrays.asList(new Object[][] {
+                {NetworkAccess.buildJava(new URL("http://localhost:" + args.getInt("port"))).get()}
+        });
     }
 }
