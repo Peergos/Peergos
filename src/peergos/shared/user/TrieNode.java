@@ -1,6 +1,6 @@
 package peergos.shared.user;
 
-import jsinterop.annotations.JsType;
+import jsinterop.annotations.*;
 import peergos.shared.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.user.fs.*;
@@ -13,10 +13,12 @@ public interface TrieNode {
 
     CompletableFuture<Optional<FileWrapper>> getByPath(String path, Hasher hasher, NetworkAccess network);
 
+    @JsIgnore
     CompletableFuture<Optional<FileWrapper>> getByPath(String path, Snapshot version, Hasher hasher, NetworkAccess network);
 
     CompletableFuture<Set<FileWrapper>> getChildren(String path, Hasher hasher, NetworkAccess network);
 
+    @JsIgnore
     CompletableFuture<Set<FileWrapper>> getChildren(String path, Hasher hasher, Snapshot version, NetworkAccess network);
 
     Set<String> getChildNames();

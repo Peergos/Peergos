@@ -1,7 +1,6 @@
 package peergos.shared.user;
 
-import jsinterop.annotations.JsConstructor;
-import jsinterop.annotations.JsType;
+import jsinterop.annotations.*;
 import peergos.shared.NetworkAccess;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.user.fs.FileWrapper;
@@ -75,6 +74,7 @@ public class TrieNodeImpl implements TrieNode {
     }
 
     @Override
+    @JsIgnore
     public CompletableFuture<Optional<FileWrapper>> getByPath(String path, Snapshot version, Hasher hasher, NetworkAccess network) {
         LOG.info("GetByPath: " + path);
         String finalPath = TrieNode.canonicalise(path);
@@ -139,6 +139,7 @@ public class TrieNodeImpl implements TrieNode {
     }
 
     @Override
+    @JsIgnore
     public CompletableFuture<Set<FileWrapper>> getChildren(String path, Hasher hasher, Snapshot version, NetworkAccess network) {
         String trimmedPath = TrieNode.canonicalise(path);
         if (trimmedPath.length() == 0) {
