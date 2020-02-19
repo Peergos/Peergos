@@ -33,7 +33,7 @@ public class UserService {
     public static final Version CURRENT_VERSION = Version.parse("0.0.0");
     public static final String UI_URL = "/";
 
-    public static final int HANDLER_THREADS = 1;
+    public static final int HANDLER_THREADS = 50;
     public static final int CONNECTION_BACKLOG = 100;
 
     static {
