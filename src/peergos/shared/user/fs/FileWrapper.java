@@ -658,7 +658,7 @@ public class FileWrapper {
                                                                 child.getUpdated(updatedSnapshot, network).thenCompose( updatedChild ->
                                                                     updateExistingChild(updatedSnapshot, committer, updatedParent, updatedChild, fileData,
                                                                         startIndex, endIndex, network, crypto, monitor)
-                                                                            .thenCompose(latestSnapshot -> updatedChild.getInputStream(network, crypto, l -> {})
+                                                                            .thenCompose(latestSnapshot -> updatedChild.getInputStream(updatedSnapshot.get(updatedChild.writer()).props, network, crypto, l -> {})
                                                                                     .thenCompose( is -> updatedChild.recalculateThumbnail(latestSnapshot, committer, filename, is, isHidden,
                                                                                             updatedChild.getSize(), network, (WritableAbsoluteCapability)updatedChild.pointer.capability,
                                                                                             updatedChild.getFileProperties().streamSecret))))));
@@ -683,7 +683,6 @@ public class FileWrapper {
                                             CryptreeNode dirAccess = latest.pointer.fileAccess;
                                             SymmetricKey dirParentKey = dirAccess.getParentKey(rootRKey);
                                             Location parentLocation = getLocation();
-                                            int thumbnailSrcImageSize = startIndex == 0 && endIndex < Integer.MAX_VALUE ? (int) endIndex : 0;
 
                                             return calculateMimeType(fileData, endIndex, filename).thenCompose(mimeType -> fileData.reset()
                                                     .thenCompose(resetReader -> {
