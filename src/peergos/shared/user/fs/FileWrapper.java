@@ -329,6 +329,8 @@ public class FileWrapper {
 
     @JsMethod
     public CompletableFuture<Set<FileWrapper>> getChildren(Hasher hasher, NetworkAccess network) {
+        if (capTrie.isPresent())
+            return capTrie.get().getChildren("/", hasher, network);
         return getChildren(version, hasher, network);
     }
 
