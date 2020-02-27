@@ -413,6 +413,13 @@ public class PeergosNetworkUtils {
 
         // check each user can see the shared folder and directory
         for (UserContext sharee : shareeUsers) {
+            // test retrieval via getChildren() which is used by the web-ui
+            Set<FileWrapper> children = sharee.getByPath(sharer.username).join().get()
+                    .getChildren(crypto.hasher, sharee.network).join();
+            Assert.assertTrue(children.stream()
+                    .filter(f -> f.getName().equals(folderName))
+                    .findAny()
+                    .isPresent());
 
             FileWrapper sharedFolder = sharee.getByPath(sharer.username + "/" + folderName).get().orElseThrow(() -> new AssertionError("shared folder is present after sharing"));
             Assert.assertEquals(sharedFolder.getFileProperties().name, folderName);
@@ -531,8 +538,16 @@ public class PeergosNetworkUtils {
         FileWrapper sharedFolderv1 = sharer.getByPath(path).join().get();
         sharedFolderv1.mkdir("asubdir", sharer.network, false, crypto).join();
 
-        // check a sharee can upload a file
         UserContext shareeUploader = shareeUsers.get(0);
+        // check sharee can see folder via getChildren() which is used by the web-ui
+        Set<FileWrapper> children = shareeUploader.getByPath(sharer.username).join().get()
+                .getChildren(crypto.hasher, shareeUploader.network).join();
+        Assert.assertTrue(children.stream()
+                .filter(f -> f.getName().equals(folderName))
+                .findAny()
+                .isPresent());
+
+        // check a sharee can upload a file
         FileWrapper sharedDir = shareeUploader.getByPath(path).join().get();
         sharedDir.uploadFileJS("a-new-file.png", AsyncReader.build(data), 0, data.length,
                 false, false, shareeUploader.network, crypto, x -> {}, shareeUploader.getTransactionService()).join();
@@ -544,7 +559,6 @@ public class PeergosNetworkUtils {
 
         // check each user can see the shared folder and directory
         for (UserContext sharee : shareeUsers) {
-
             FileWrapper sharedFolder = sharee.getByPath(sharer.username + "/" + folderName).get().orElseThrow(() -> new AssertionError("shared folder is present after sharing"));
             Assert.assertEquals(sharedFolder.getFileProperties().name, folderName);
 
