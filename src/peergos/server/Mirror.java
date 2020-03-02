@@ -21,11 +21,19 @@ public class Mirror {
                                   ContentAddressedStorage targetStorage) {
         Logging.LOG().log(Level.INFO, "Mirroring data for node " + nodeId);
         List<String> allUsers = mirror.coreNode.getUsernames("").join();
+        int userCount = 0;
         for (String username : allUsers) {
             List<UserPublicKeyLink> chain = mirror.coreNode.getChain(username).join();
-            if (chain.get(chain.size() - 1).claim.storageProviders.contains(nodeId))
-                mirrorUser(username, mirror, targetPointers, targetStorage);
+            if (chain.get(chain.size() - 1).claim.storageProviders.contains(nodeId)) {
+                try {
+                    mirrorUser(username, mirror, targetPointers, targetStorage);
+                    userCount++;
+                } catch (Exception e) {
+                    Logging.LOG().log(Level.WARNING, "Couldn't mirror user: " + username, e);
+                }
+            }
         }
+        Logging.LOG().log(Level.INFO, "Finished mirroring data for node " + nodeId + ", with " + userCount + " users.");
     }
 
     public static void mirrorUser(String username,
