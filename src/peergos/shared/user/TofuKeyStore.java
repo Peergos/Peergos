@@ -69,9 +69,8 @@ public class TofuKeyStore implements Cborable {
                                     + ArrayOps.bytesToHex(existing.get(0).owner.toCbor().toByteArray()) + " != "
                                     + ArrayOps.bytesToHex(tail.get(0).owner.toCbor().toByteArray()));
                         expired.remove(username);
-                        mergedFuture = UserPublicKeyLink.merge(withoutExpiredClaim, tail, ipfs);
-                    } else
-                        mergedFuture = UserPublicKeyLink.merge(existing, tail, ipfs);
+                    }
+                    mergedFuture = UserPublicKeyLink.merge(existing, tail, ipfs);
 
                     return mergedFuture.thenApply(merged -> {
                         chains.put(username, merged);

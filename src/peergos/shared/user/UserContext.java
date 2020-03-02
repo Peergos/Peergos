@@ -673,9 +673,12 @@ public class UserContext {
                                                                 NetworkAccess network) {
         LOG.info("renewing username: " + username + " with expiry " + expiry);
         return network.coreNode.getChain(username).thenCompose(existing -> {
-            List<Multihash> storage = existing.get(existing.size() - 1).claim.storageProviders;
-            List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createInitial(signer, username, expiry, storage);
-            return network.coreNode.updateChain(username, claimChain);
+            UserPublicKeyLink last = existing.get(existing.size() - 1);
+            List<Multihash> storage = last.claim.storageProviders;
+            UserPublicKeyLink.Claim newClaim = UserPublicKeyLink.Claim.build(username, signer.secret, expiry, storage);
+            List<UserPublicKeyLink> updated = new ArrayList<>(existing.subList(0, existing.size() - 1));
+            updated.add(new UserPublicKeyLink(signer.publicKeyHash, newClaim, Optional.empty()));
+            return network.coreNode.updateChain(username, updated);
         });
     }
 

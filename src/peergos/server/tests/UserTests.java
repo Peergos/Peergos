@@ -1,4 +1,5 @@
 package peergos.server.tests;
+import java.time.*;
 import java.util.concurrent.atomic.*;
 import java.util.logging.*;
 
@@ -164,13 +165,49 @@ public abstract class UserTests {
 
     @Test
     public void singleSignUp() {
-        // This is to ensure a user can't accidentally sign in rather than login and overwrite all their data
+        // This is to ensure a user can't accidentally sign up rather than login and overwrite all their data
         String username = generateUsername();
         String password = "password";
         PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         CompletableFuture<UserContext> secondSignup = UserContext.signUp(username, password, network, crypto);
 
         Assert.assertTrue("Second sign up fails", secondSignup.isCompletedExceptionally());
+    }
+
+    @Test
+    public void expiredSignin() {
+        String username = generateUsername();
+        String password = "password";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+
+        // set username claim to an expiry in the past
+        context.renewUsernameClaim(LocalDate.now().minusDays(1)).join();
+
+        LocalDate expiry = context.getUsernameClaimExpiry().join();
+        Assert.assertTrue(expiry.isBefore(LocalDate.now()));
+
+        UserContext context2 = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        LocalDate expiry2 = context2.getUsernameClaimExpiry().join();
+        Assert.assertTrue(expiry2.isAfter(LocalDate.now()));
+    }
+
+    @Test
+    public void expiredSigninAfterPasswordChange() {
+        String username = generateUsername();
+        String password = "password";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        String newPassword = "G'day mate!";
+        context = context.changePassword(password, newPassword).join();
+
+        // set username claim to an expiry in the past
+        context.renewUsernameClaim(LocalDate.now().minusDays(1)).join();
+
+        LocalDate expiry = context.getUsernameClaimExpiry().join();
+        Assert.assertTrue(expiry.isBefore(LocalDate.now()));
+
+        UserContext context2 = PeergosNetworkUtils.ensureSignedUp(username, newPassword, network, crypto);
+        LocalDate expiry2 = context2.getUsernameClaimExpiry().join();
+        Assert.assertTrue(expiry2.isAfter(LocalDate.now()));
     }
 
     @Test
