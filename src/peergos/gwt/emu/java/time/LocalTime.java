@@ -44,6 +44,18 @@ public class LocalTime implements Comparable<LocalTime>{
         this.nano = nanoOfSecond;
     }
 
+    public int getSecond() {
+        return second;
+    }
+
+    public int getMinute() {
+        return minute;
+    }
+
+    public int getHour() {
+        return hour;
+    }
+
     public int toSecondOfDay() {
         int total = hour * SECONDS_PER_HOUR;
         total += minute * SECONDS_PER_MINUTE;
