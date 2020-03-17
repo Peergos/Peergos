@@ -1445,11 +1445,6 @@ public class UserContext {
     }
 
     @JsMethod
-    public CompletableFuture<FileWrapper> captureVideo(FileWrapper file, String filename, byte[] data) {
-        return file.appendToChild(filename, data, false, network, crypto, x -> {});
-    }
-
-    @JsMethod
     public CompletableFuture<Boolean> shareReadAccessWith(FileWrapper file,
                                                           String pathToFile,
                                                           String usernameToGrantReadAccess) {
