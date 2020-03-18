@@ -552,7 +552,7 @@ public class UserContext {
                                 throw new IllegalStateException("Couldn't retrieve public key for " + req.username);
                             PublicSigningKey pubKey = keyOpt.get();
                             byte[] raw = pubKey.unsignMessage(req.signedRequest);
-                            SpaceUsage.SpaceRequest parsed = SpaceUsage.SpaceRequest.fromCbor(CborObject.fromByteArray(raw));
+                            SpaceUsage.SpaceRequest parsed = QuotaControl.SpaceRequest.fromCbor(CborObject.fromByteArray(raw));
                             return new DecodedSpaceRequest(req, parsed);
                         }))
                 .collect(Collectors.toList()));
@@ -610,7 +610,7 @@ public class UserContext {
      */
     @JsMethod
     public CompletableFuture<Boolean> requestSpace(long requestedQuota) {
-        return network.spaceUsage.requestSpace(username, signer, requestedQuota);
+        return network.spaceUsage.requestQuota(username, signer, requestedQuota);
     }
 
     @JsMethod

@@ -40,9 +40,9 @@ public class ProxyingSpaceUsage implements SpaceUsage {
     }
 
     @Override
-    public CompletableFuture<Boolean> requestSpace(PublicKeyHash owner, byte[] signedRequest) {
+    public CompletableFuture<Boolean> requestQuota(PublicKeyHash owner, byte[] signedRequest) {
         return redirectCall(owner,
-                () -> local.requestSpace(owner, signedRequest),
+                () -> local.requestQuota(owner, signedRequest),
                 targetServer -> p2p.requestSpace(targetServer, owner, signedRequest));
     }
 

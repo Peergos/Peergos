@@ -99,7 +99,7 @@ public class JdbcSpaceRequests {
         }
     }
 
-    public Boolean addSpaceRequest(String username, byte[] signedRequest) {
+    public boolean addSpaceRequest(String username, byte[] signedRequest) {
         SpaceRequestData request = new SpaceRequestData(username, signedRequest);
         return request.insert();
     }

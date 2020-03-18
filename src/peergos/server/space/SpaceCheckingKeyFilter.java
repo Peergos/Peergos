@@ -34,7 +34,6 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
     private final ContentAddressedStorage dht;
     private final Hasher hasher;
     private final UserQuotas quotaSupplier;
-    private final JdbcSpaceRequests spaceRequests;
     private final UsageStore usageStore;
     private final AtomicBoolean isRunning = new AtomicBoolean(true);
     private final BlockingQueue<MutableEvent> mutableQueue = new ArrayBlockingQueue<>(1000);
@@ -44,14 +43,12 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                                   ContentAddressedStorage dht,
                                   Hasher hasher,
                                   UserQuotas quotaSupplier,
-                                  JdbcSpaceRequests spaceRequests,
                                   UsageStore usageStore) {
         this.core = core;
         this.mutable = mutable;
         this.dht = dht;
         this.hasher = hasher;
         this.quotaSupplier = quotaSupplier;
-        this.spaceRequests = spaceRequests;
         this.usageStore = usageStore;
         new Thread(() -> {
             while (isRunning.get()) {
@@ -287,20 +284,8 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
     }
 
     @Override
-    public CompletableFuture<Boolean> requestSpace(PublicKeyHash owner, byte[] signedRequest) {
-        // check request is valid
-        Optional<PublicSigningKey> ownerOpt = dht.getSigningKey(owner).join();
-        if (!ownerOpt.isPresent())
-            throw new IllegalStateException("Couldn't retrieve owner key!");
-        byte[] raw = ownerOpt.get().unsignMessage(signedRequest);
-        CborObject cbor = CborObject.fromByteArray(raw);
-        SpaceUsage.SpaceRequest req = SpaceUsage.SpaceRequest.fromCbor(cbor);
-        if (req.utcMillis < System.currentTimeMillis() - 30_000)
-            throw new IllegalStateException("Stale auth time in space request!");
-        // TODO check proof of payment (if required)
-
-        // TODO check user is signed up to this server
-        return CompletableFuture.completedFuture(spaceRequests.addSpaceRequest(req.username, signedRequest));
+    public CompletableFuture<Boolean> requestQuota(PublicKeyHash owner, byte[] signedRequest) {
+        return quotaSupplier.requestQuota(owner, signedRequest);
     }
 
     public boolean allowWrite(PublicKeyHash writer, int size) {

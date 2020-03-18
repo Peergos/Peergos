@@ -63,7 +63,7 @@ public class HttpSpaceUsage implements SpaceUsageProxy {
     }
 
     @Override
-    public CompletableFuture<Boolean> requestSpace(PublicKeyHash owner, byte[] signedRequest) {
+    public CompletableFuture<Boolean> requestQuota(PublicKeyHash owner, byte[] signedRequest) {
         return requestSpace("", direct, owner, signedRequest);
     }
 
