@@ -1,6 +1,6 @@
 package peergos.server.corenode;
 
-import peergos.server.storage.*;
+import peergos.server.storage.admin.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
@@ -12,10 +12,10 @@ import java.util.concurrent.*;
 public class SignUpFilter implements CoreNode {
 
     private final CoreNode target;
-    private final UserQuotas judge;
+    private final QuotaAdmin judge;
     private final Multihash ourNodeId;
 
-    public SignUpFilter(CoreNode target, UserQuotas judge, Multihash ourNodeId) {
+    public SignUpFilter(CoreNode target, QuotaAdmin judge, Multihash ourNodeId) {
         this.target = target;
         this.judge = judge;
         this.ourNodeId = ourNodeId;

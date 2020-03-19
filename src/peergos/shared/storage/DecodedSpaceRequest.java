@@ -4,10 +4,10 @@ import jsinterop.annotations.*;
 
 @JsType
 public class DecodedSpaceRequest {
-    public final SpaceUsage.LabelledSignedSpaceRequest source;
-    public final SpaceUsage.SpaceRequest decoded;
+    public final QuotaControl.LabelledSignedSpaceRequest source;
+    public final QuotaControl.SpaceRequest decoded;
 
-    public DecodedSpaceRequest(SpaceUsage.LabelledSignedSpaceRequest source, SpaceUsage.SpaceRequest decoded) {
+    public DecodedSpaceRequest(QuotaControl.LabelledSignedSpaceRequest source, QuotaControl.SpaceRequest decoded) {
         this.source = source;
         this.decoded = decoded;
     }

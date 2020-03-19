@@ -59,7 +59,7 @@ public class UserQuotas implements QuotaAdmin {
     }
 
     @Override
-    public List<SpaceUsage.LabelledSignedSpaceRequest> getSpaceRequests() {
+    public List<QuotaControl.LabelledSignedSpaceRequest> getSpaceRequests() {
         return spaceRequests.getSpaceRequests();
     }
 
@@ -71,15 +71,7 @@ public class UserQuotas implements QuotaAdmin {
 
     @Override
     public CompletableFuture<Boolean> requestQuota(PublicKeyHash owner, byte[] signedRequest) {
-        // check request is valid
-        Optional<PublicSigningKey> ownerOpt = dht.getSigningKey(owner).join();
-        if (!ownerOpt.isPresent())
-            throw new IllegalStateException("Couldn't retrieve owner key!");
-        byte[] raw = ownerOpt.get().unsignMessage(signedRequest);
-        CborObject cbor = CborObject.fromByteArray(raw);
-        SpaceUsage.SpaceRequest req = QuotaControl.SpaceRequest.fromCbor(cbor);
-        if (req.utcMillis < System.currentTimeMillis() - 30_000)
-            throw new IllegalStateException("Stale auth time in space request!");
+        SpaceUsage.SpaceRequest req = QuotaAdmin.parseQuotaRequest(owner, signedRequest, dht);
         // TODO check user is signed up to this server
         return Futures.of(spaceRequests.addSpaceRequest(req.username, signedRequest));
     }
@@ -116,10 +108,12 @@ public class UserQuotas implements QuotaAdmin {
         spaceRequests.removeSpaceRequest(username, unsigned);
     }
 
+    @Override
     public boolean acceptingSignups() {
         return quotas.size() < maxUsers;
     }
 
+    @Override
     public List<String> getLocalUsernames() {
         return new ArrayList<>(quotas.keySet());
     }
@@ -138,8 +132,14 @@ public class UserQuotas implements QuotaAdmin {
         }
     }
 
+    @Override
     public long getQuota(String username) {
         return quotas.getOrDefault(username, defaultQuota);
+    }
+
+    @Override
+    public CompletableFuture<PaymentProperties> getPaymentProperties(PublicKeyHash owner, byte[] signedTime) {
+        return Futures.of(new PaymentProperties(Optional.empty()));
     }
 
     public void setQuota(String username, long quota) {

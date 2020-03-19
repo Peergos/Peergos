@@ -459,11 +459,18 @@ public class Main {
             Path quotaFilePath = a.fromPeergosDir("quotas_file","quotas.txt");
             Path statePath = a.fromPeergosDir("state_path","usage-state.cbor");
 
-            Connection spaceDb = usePostgres ?
-                    database :
-                    Sqlite.build(Sqlite.getDbPath(a, "space-requests-sql-file"));
-            JdbcSpaceRequests spaceRequests = JdbcSpaceRequests.build(spaceDb, sqlCommands);
-            UserQuotas userQuotas = new UserQuotas(quotaFilePath, defaultQuota, maxUsers, spaceRequests, localDht, core);
+            boolean paidStorage = a.hasArg("quota-admin-address");
+            QuotaAdmin userQuotas;
+            if (! paidStorage) {
+                Connection spaceDb = usePostgres ?
+                        database :
+                        Sqlite.build(Sqlite.getDbPath(a, "space-requests-sql-file"));
+                JdbcSpaceRequests spaceRequests = JdbcSpaceRequests.build(spaceDb, sqlCommands);
+                userQuotas = new UserQuotas(quotaFilePath, defaultQuota, maxUsers, spaceRequests, localDht, core);
+            } else {
+                JavaPoster poster = new JavaPoster(AddressUtil.getAddress(new MultiAddress(a.getArg("quota-admin-address"))));
+                userQuotas = new HttpQuotaAdmin(poster);
+            }
             CoreNode signupFilter = new SignUpFilter(core, userQuotas, nodeId);
             RamUsageStore usageStore = RamUsageStore.build(statePath);
             Hasher hasher = crypto.hasher;

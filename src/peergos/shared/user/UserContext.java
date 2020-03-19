@@ -539,7 +539,7 @@ public class UserContext {
      * @return raw space requests paired with their decoded request
      */
     @JsMethod
-    public CompletableFuture<List<DecodedSpaceRequest>> decodeSpaceRequests(List<SpaceUsage.LabelledSignedSpaceRequest> in) {
+    public CompletableFuture<List<DecodedSpaceRequest>> decodeSpaceRequests(List<QuotaControl.LabelledSignedSpaceRequest> in) {
         return Futures.combineAllInOrder(in.stream()
                 .map(req -> network.coreNode.getPublicKeyHash(req.username)
                         .thenCompose(keyHashOpt -> {
@@ -552,7 +552,7 @@ public class UserContext {
                                 throw new IllegalStateException("Couldn't retrieve public key for " + req.username);
                             PublicSigningKey pubKey = keyOpt.get();
                             byte[] raw = pubKey.unsignMessage(req.signedRequest);
-                            SpaceUsage.SpaceRequest parsed = QuotaControl.SpaceRequest.fromCbor(CborObject.fromByteArray(raw));
+                            QuotaControl.SpaceRequest parsed = QuotaControl.SpaceRequest.fromCbor(CborObject.fromByteArray(raw));
                             return new DecodedSpaceRequest(req, parsed);
                         }))
                 .collect(Collectors.toList()));
@@ -583,6 +583,12 @@ public class UserContext {
 //        return network.dhtClient.id()
 //                .thenCompose(instanceId -> network.instanceAdmin
 //                        .rejectSpaceRequest(signer.publicKeyHash, instanceId, adminSignedRequest));
+    }
+
+    @JsMethod
+    public CompletableFuture<PaymentProperties> getPaymentProperties() {
+        byte[] signedTime = TimeLimitedClient.signNow(signer.secret);
+        return network.spaceUsage.getPaymentProperties(signer.publicKeyHash, signedTime);
     }
 
     /**

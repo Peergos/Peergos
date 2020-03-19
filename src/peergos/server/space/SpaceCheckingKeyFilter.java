@@ -3,7 +3,7 @@ package peergos.server.space;
 import java.util.concurrent.atomic.*;
 import java.util.logging.*;
 
-import peergos.server.storage.*;
+import peergos.server.storage.admin.*;
 import peergos.server.util.*;
 
 import peergos.server.corenode.*;
@@ -11,7 +11,6 @@ import peergos.server.mutable.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
-import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
@@ -33,7 +32,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
     private final MutablePointers mutable;
     private final ContentAddressedStorage dht;
     private final Hasher hasher;
-    private final UserQuotas quotaSupplier;
+    private final QuotaAdmin quotaAdmin;
     private final UsageStore usageStore;
     private final AtomicBoolean isRunning = new AtomicBoolean(true);
     private final BlockingQueue<MutableEvent> mutableQueue = new ArrayBlockingQueue<>(1000);
@@ -42,13 +41,13 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                                   MutablePointers mutable,
                                   ContentAddressedStorage dht,
                                   Hasher hasher,
-                                  UserQuotas quotaSupplier,
+                                  QuotaAdmin quotaAdmin,
                                   UsageStore usageStore) {
         this.core = core;
         this.mutable = mutable;
         this.dht = dht;
         this.hasher = hasher;
-        this.quotaSupplier = quotaSupplier;
+        this.quotaAdmin = quotaAdmin;
         this.usageStore = usageStore;
         new Thread(() -> {
             while (isRunning.get()) {
@@ -75,7 +74,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
      */
     public void calculateUsage() {
         try {
-            List<String> usernames = quotaSupplier.getLocalUsernames();
+            List<String> usernames = quotaAdmin.getLocalUsernames();
             Logging.LOG().info("Calculating space usage for " + usernames.size() + " local users...");
             for (String username : usernames) {
                 Logging.LOG().info("Calculating space usage of " + username);
@@ -275,17 +274,22 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
     }
 
     @Override
+    public CompletableFuture<PaymentProperties> getPaymentProperties(PublicKeyHash owner, byte[] signedTime) {
+        return quotaAdmin.getPaymentProperties(owner, signedTime);
+    }
+
+    @Override
     public CompletableFuture<Long> getQuota(PublicKeyHash owner, byte[] signedTime) {
         TimeLimited.isAllowedTime(signedTime, 120, dht, owner);
         WriterUsage writerUsage = usageStore.getUsage(owner);
         if (writerUsage == null)
             return Futures.errored(new IllegalStateException("Unknown identity key: " + owner));
-        return CompletableFuture.completedFuture(quotaSupplier.getQuota(writerUsage.owner));
+        return quotaAdmin.getQuota(owner, signedTime);
     }
 
     @Override
     public CompletableFuture<Boolean> requestQuota(PublicKeyHash owner, byte[] signedRequest) {
-        return quotaSupplier.requestQuota(owner, signedRequest);
+        return quotaAdmin.requestQuota(owner, signedRequest);
     }
 
     public boolean allowWrite(PublicKeyHash writer, int size) {
@@ -294,7 +298,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
             throw new IllegalStateException("Unknown writing key hash: " + writer);
 
         UserUsage usage = usageStore.getUsage(writerUsage.owner);
-        long quota = quotaSupplier.getQuota(writerUsage.owner);
+        long quota = quotaAdmin.getQuota(writerUsage.owner);
         long expectedUsage = usage.expectedUsage();
         boolean errored = usage.isErrored();
         if ((! errored && expectedUsage + size > quota) || (errored && expectedUsage + size > quota + USAGE_TOLERANCE)) {

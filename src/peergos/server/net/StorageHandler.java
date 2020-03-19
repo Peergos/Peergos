@@ -28,9 +28,6 @@ public class StorageHandler implements HttpHandler {
     public void handle(HttpExchange exchange)
     {
         long t1 = System.currentTimeMillis();
-        DataInputStream din = new DataInputStream(exchange.getRequestBody());
-
-
         String path = exchange.getRequestURI().getPath();
         if (path.startsWith("/"))
             path = path.substring(1);
@@ -44,20 +41,28 @@ public class StorageHandler implements HttpHandler {
         Cborable result;
         try {
             switch (method) {
-                case "usage":
+                case "payment-properties": {
+                    byte[] signedTime = ArrayOps.hexToBytes(last.apply("auth"));
+                    result = spaceUsage.getPaymentProperties(owner, signedTime).join().toCbor();
+                    break;
+                }
+                case "usage": {
                     long usage = spaceUsage.getUsage(owner).join();
                     result = new CborObject.CborLong(usage);
                     break;
-                case "quota":
+                }
+                case "quota": {
                     byte[] signedTime = ArrayOps.hexToBytes(last.apply("auth"));
                     long quota = spaceUsage.getQuota(owner, signedTime).join();
                     result = new CborObject.CborLong(quota);
                     break;
-                case "request":
+                }
+                case "request": {
                     byte[] signedReq = ArrayOps.hexToBytes(last.apply("req"));
                     boolean res = spaceUsage.requestQuota(owner, signedReq).join();
                     result = new CborObject.CborBoolean(res);
                     break;
+                }
                 default:
                     throw new IOException("Unknown method in StorageHandler!");
             }
