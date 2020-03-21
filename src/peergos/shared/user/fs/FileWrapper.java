@@ -661,7 +661,7 @@ public class FileWrapper {
                                                         return Futures.of(latestSnapshot);
                                                     }
                                                     return updatedChild.recalculateThumbnail(
-                                                                latestSnapshot, committer, filename, is, isHidden, startIndex,
+                                                                latestSnapshot, committer, filename, is, isHidden,
                                                                 updatedChild.getSize(), network, (WritableAbsoluteCapability)updatedChild.pointer.capability,
                                                                 updatedChild.getFileProperties().streamSecret);
                                                 };
@@ -725,7 +725,7 @@ public class FileWrapper {
     }
 
     private CompletableFuture<Snapshot> recalculateThumbnail(Snapshot snapshot, Committer committer, String filename, AsyncReader fileData
-             , boolean isHidden, long startIndex, long fileSize, NetworkAccess network, WritableAbsoluteCapability fileWriteCap, Optional<byte[]> streamSecret
+             , boolean isHidden, long fileSize, NetworkAccess network, WritableAbsoluteCapability fileWriteCap, Optional<byte[]> streamSecret
     ) {
         return fileData.reset()
                 .thenCompose(fileData2 -> calculateMimeType(fileData2, fileSize, filename)
