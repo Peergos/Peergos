@@ -139,7 +139,7 @@ public class UserQuotas implements QuotaAdmin {
 
     @Override
     public CompletableFuture<PaymentProperties> getPaymentProperties(PublicKeyHash owner, byte[] signedTime) {
-        return Futures.of(new PaymentProperties(Optional.empty()));
+        return Futures.of(new PaymentProperties());
     }
 
     public void setQuota(String username, long quota) {
