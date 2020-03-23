@@ -51,7 +51,7 @@ public final class PaymentProperties  implements Cborable {
         Optional<String> url = m.getOptional("url", c -> ((CborObject.CborString)c).value);
         Optional<String> client_secret = m.getOptional("client_secret", c -> ((CborObject.CborString) c).value);
         if (url.isPresent())
-            return new PaymentProperties(url.get(), client_secret.get());
+            return new PaymentProperties(url.get(), client_secret.orElse(""));
         return new PaymentProperties();
     }
 }

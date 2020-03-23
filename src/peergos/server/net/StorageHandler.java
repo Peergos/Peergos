@@ -43,7 +43,8 @@ public class StorageHandler implements HttpHandler {
             switch (method) {
                 case "payment-properties": {
                     byte[] signedTime = ArrayOps.hexToBytes(last.apply("auth"));
-                    result = spaceUsage.getPaymentProperties(owner, signedTime).join().toCbor();
+                    boolean newClientSecret = Boolean.parseBoolean(last.apply("new-client-secret"));
+                    result = spaceUsage.getPaymentProperties(owner, newClientSecret, signedTime).join().toCbor();
                     break;
                 }
                 case "usage": {

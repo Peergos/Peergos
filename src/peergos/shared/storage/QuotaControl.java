@@ -12,7 +12,7 @@ import java.util.concurrent.*;
  */
 public interface QuotaControl {
 
-    CompletableFuture<PaymentProperties> getPaymentProperties(PublicKeyHash owner, byte[] signedTime);
+    CompletableFuture<PaymentProperties> getPaymentProperties(PublicKeyHash owner, boolean newClientSecret, byte[] signedTime);
 
     CompletableFuture<Long> getQuota(PublicKeyHash owner, byte[] signedTime);
 

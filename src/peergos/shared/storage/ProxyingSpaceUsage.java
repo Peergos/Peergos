@@ -33,10 +33,10 @@ public class ProxyingSpaceUsage implements SpaceUsage {
     }
 
     @Override
-    public CompletableFuture<PaymentProperties> getPaymentProperties(PublicKeyHash owner, byte[] signedTime) {
+    public CompletableFuture<PaymentProperties> getPaymentProperties(PublicKeyHash owner, boolean newClientSecret, byte[] signedTime) {
         return redirectCall(owner,
-                () -> local.getPaymentProperties(owner, signedTime),
-                targetServer -> p2p.getPaymentProperties(targetServer, owner, signedTime));
+                () -> local.getPaymentProperties(owner, newClientSecret, signedTime),
+                targetServer -> p2p.getPaymentProperties(targetServer, owner, newClientSecret, signedTime));
     }
 
     @Override

@@ -274,8 +274,8 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
     }
 
     @Override
-    public CompletableFuture<PaymentProperties> getPaymentProperties(PublicKeyHash owner, byte[] signedTime) {
-        return quotaAdmin.getPaymentProperties(owner, signedTime);
+    public CompletableFuture<PaymentProperties> getPaymentProperties(PublicKeyHash owner, boolean newClientSecret, byte[] signedTime) {
+        return quotaAdmin.getPaymentProperties(owner, newClientSecret, signedTime);
     }
 
     @Override

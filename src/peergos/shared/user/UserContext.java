@@ -586,9 +586,9 @@ public class UserContext {
     }
 
     @JsMethod
-    public CompletableFuture<PaymentProperties> getPaymentProperties() {
+    public CompletableFuture<PaymentProperties> getPaymentProperties(boolean newClientSecret) {
         byte[] signedTime = TimeLimitedClient.signNow(signer.secret);
-        return network.spaceUsage.getPaymentProperties(signer.publicKeyHash, signedTime);
+        return network.spaceUsage.getPaymentProperties(signer.publicKeyHash, newClientSecret, signedTime);
     }
 
     /**

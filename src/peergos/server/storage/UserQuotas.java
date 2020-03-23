@@ -138,7 +138,9 @@ public class UserQuotas implements QuotaAdmin {
     }
 
     @Override
-    public CompletableFuture<PaymentProperties> getPaymentProperties(PublicKeyHash owner, byte[] signedTime) {
+    public CompletableFuture<PaymentProperties> getPaymentProperties(PublicKeyHash owner,
+                                                                     boolean newClientSecret,
+                                                                     byte[] signedTime) {
         return Futures.of(new PaymentProperties());
     }
 

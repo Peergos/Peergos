@@ -57,8 +57,10 @@ public class HttpQuotaAdmin implements QuotaAdmin {
     }
 
     @Override
-    public CompletableFuture<PaymentProperties> getPaymentProperties(PublicKeyHash owner, byte[] signedTime) {
-        return poster.get(QUOTA_URL + PAYMENT_PROPERTIES + "?owner="+owner + "&auth=" + ArrayOps.bytesToHex(signedTime))
+    public CompletableFuture<PaymentProperties> getPaymentProperties(PublicKeyHash owner, boolean newClientSecret, byte[] signedTime) {
+        return poster.get(QUOTA_URL + PAYMENT_PROPERTIES + "?owner="+owner
+                + "&new-client-secret=" + newClientSecret
+                + "&auth=" + ArrayOps.bytesToHex(signedTime))
                 .thenApply(res -> PaymentProperties.fromCbor(CborObject.fromByteArray(res)));
     }
 
