@@ -3,7 +3,7 @@ import java.util.logging.*;
 
 import peergos.server.space.*;
 import peergos.server.storage.admin.*;
-import peergos.server.util.Logging;
+import peergos.server.util.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.asymmetric.*;
@@ -65,6 +65,7 @@ public class UserQuotas implements QuotaAdmin {
 
     @Override
     public CompletableFuture<Long> getQuota(PublicKeyHash owner, byte[] signedTime) {
+        TimeLimited.isAllowedTime(signedTime, 300, dht, owner);
         String username = core.getUsername(owner).join();
         return Futures.of(getQuota(username));
     }
@@ -141,7 +142,9 @@ public class UserQuotas implements QuotaAdmin {
     public CompletableFuture<PaymentProperties> getPaymentProperties(PublicKeyHash owner,
                                                                      boolean newClientSecret,
                                                                      byte[] signedTime) {
-        return Futures.of(new PaymentProperties());
+        TimeLimited.isAllowedTime(signedTime, 300, dht, owner);
+        String username = core.getUsername(owner).join();
+        return Futures.of(new PaymentProperties(getQuota(username)));
     }
 
     public void setQuota(String username, long quota) {

@@ -9,18 +9,22 @@ public final class PaymentProperties  implements Cborable {
 
     public final Optional<String> paymentServerUrl;
     public final Optional<String> clientSecret;
+    public final long freeQuota;
     public final long desiredQuota;
 
-    public PaymentProperties() {
-        this.paymentServerUrl = Optional.empty();
-        this.clientSecret = Optional.empty();
-        this.desiredQuota = 0;
+    private PaymentProperties(Optional<String> paymentServerUrl, Optional<String> clientSecret, long freeQuota, long desiredQuota) {
+        this.paymentServerUrl = paymentServerUrl;
+        this.clientSecret = clientSecret;
+        this.freeQuota = freeQuota;
+        this.desiredQuota = desiredQuota;
     }
 
-    public PaymentProperties(String paymentServerUrl, Optional<String> clientSecret, long desiredQuota) {
-        this.paymentServerUrl = Optional.of(paymentServerUrl);
-        this.clientSecret = clientSecret;
-        this.desiredQuota = desiredQuota;
+    public PaymentProperties(long freeQuota) {
+        this(Optional.empty(), Optional.empty(), freeQuota, 0);
+    }
+
+    public PaymentProperties(String paymentServerUrl, Optional<String> clientSecret, long freeQuota, long desiredQuota) {
+        this(Optional.of(paymentServerUrl), clientSecret, freeQuota, desiredQuota);
     }
 
     @JsMethod
@@ -41,6 +45,7 @@ public final class PaymentProperties  implements Cborable {
     @Override
     public CborObject toCbor() {
         SortedMap<String, Cborable> state = new TreeMap<>();
+        state.put("freeQuota", new CborObject.CborLong(desiredQuota));
         state.put("desiredQuota", new CborObject.CborLong(desiredQuota));
         paymentServerUrl.ifPresent(url -> state.put("url", new CborObject.CborString(url)));
         if (clientSecret.isPresent())
@@ -54,9 +59,8 @@ public final class PaymentProperties  implements Cborable {
         CborObject.CborMap m = (CborObject.CborMap) cbor;
         Optional<String> url = m.getOptional("url", c -> ((CborObject.CborString)c).value);
         Optional<String> client_secret = m.getOptional("client_secret", c -> ((CborObject.CborString) c).value);
+        long freeQuota = m.getLong("freeQuota");
         long desiredQuota = m.getLong("desiredQuota");
-        if (url.isPresent())
-            return new PaymentProperties(url.get(), client_secret, desiredQuota);
-        return new PaymentProperties();
+        return new PaymentProperties(url, client_secret, freeQuota, desiredQuota);
     }
 }
