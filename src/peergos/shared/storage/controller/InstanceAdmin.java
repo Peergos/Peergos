@@ -24,9 +24,9 @@ public interface InstanceAdmin {
 
     CompletableFuture<VersionInfo> getVersionInfo();
 
-    CompletableFuture<List<SpaceUsage.LabelledSignedSpaceRequest>> getPendingSpaceRequests(PublicKeyHash adminIdentity,
-                                                                                           Multihash instanceIdentity,
-                                                                                           byte[] signedTime);
+    CompletableFuture<List<QuotaControl.LabelledSignedSpaceRequest>> getPendingSpaceRequests(PublicKeyHash adminIdentity,
+                                                                                             Multihash instanceIdentity,
+                                                                                             byte[] signedTime);
 
     CompletableFuture<Boolean> approveSpaceRequest(PublicKeyHash adminIdentity,
                                                    Multihash instanceIdentity,

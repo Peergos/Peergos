@@ -1,7 +1,16 @@
 package peergos.server.storage;
 import java.util.logging.*;
 
-import peergos.server.util.Logging;
+import peergos.server.space.*;
+import peergos.server.storage.admin.*;
+import peergos.server.util.*;
+import peergos.shared.cbor.*;
+import peergos.shared.corenode.*;
+import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.storage.*;
+import peergos.shared.util.*;
 
 import java.io.*;
 import java.nio.file.*;
@@ -9,7 +18,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.*;
 
-public class UserQuotas {
+public class UserQuotas implements QuotaAdmin {
 	private static final Logger LOG = Logging.LOG();
 
     private static final long RELOAD_PERIOD_MS = 3_600_000;
@@ -18,11 +27,22 @@ public class UserQuotas {
     private final long defaultQuota, maxUsers;
     private Map<String, Long> quotas = new ConcurrentHashMap<>();
     private long lastModified, lastReloaded;
+    private final JdbcSpaceRequests spaceRequests;
+    private final ContentAddressedStorage dht;
+    private final CoreNode core;
 
-    public UserQuotas(Path source, long defaultQuota, long maxUsers) {
+    public UserQuotas(Path source,
+                      long defaultQuota,
+                      long maxUsers,
+                      JdbcSpaceRequests spaceRequests,
+                      ContentAddressedStorage dht,
+                      CoreNode core) {
         this.source = source;
         this.defaultQuota = defaultQuota;
         this.maxUsers = maxUsers;
+        this.spaceRequests = spaceRequests;
+        this.dht = dht;
+        this.core = core;
         updateQuotas();
         new ForkJoinPool(1).submit(() -> {
             while (true) {
@@ -38,10 +58,63 @@ public class UserQuotas {
         });
     }
 
+    @Override
+    public List<QuotaControl.LabelledSignedSpaceRequest> getSpaceRequests() {
+        return spaceRequests.getSpaceRequests();
+    }
+
+    @Override
+    public CompletableFuture<Long> getQuota(PublicKeyHash owner, byte[] signedTime) {
+        TimeLimited.isAllowedTime(signedTime, 300, dht, owner);
+        String username = core.getUsername(owner).join();
+        return Futures.of(getQuota(username));
+    }
+
+    @Override
+    public CompletableFuture<Boolean> requestQuota(PublicKeyHash owner, byte[] signedRequest) {
+        SpaceUsage.SpaceRequest req = QuotaAdmin.parseQuotaRequest(owner, signedRequest, dht);
+        // TODO check user is signed up to this server
+        return Futures.of(spaceRequests.addSpaceRequest(req.username, signedRequest));
+    }
+
+    @Override
+    public void approveSpaceRequest(PublicKeyHash adminIdentity, Multihash instanceIdentity, byte[] signedRequest) {
+        try {
+            Optional<PublicSigningKey> adminOpt = dht.getSigningKey(adminIdentity).join();
+            if (!adminOpt.isPresent())
+                throw new IllegalStateException("Couldn't retrieve admin key!");
+            byte[] rawFromAdmin = adminOpt.get().unsignMessage(signedRequest);
+            SpaceUsage.LabelledSignedSpaceRequest withName = QuotaControl.LabelledSignedSpaceRequest
+                    .fromCbor(CborObject.fromByteArray(rawFromAdmin));
+
+            Optional<PublicKeyHash> userOpt = core.getPublicKeyHash(withName.username).join();
+            if (! userOpt.isPresent())
+                throw new IllegalStateException("Couldn't lookup user key!");
+
+            Optional<PublicSigningKey> userKey = dht.getSigningKey(userOpt.get()).join();
+            if (! userKey.isPresent())
+                throw new IllegalStateException("Couldn't retrieve user key!");
+
+            CborObject cbor = CborObject.fromByteArray(userKey.get().unsignMessage(withName.signedRequest));
+            SpaceUsage.SpaceRequest req = QuotaControl.SpaceRequest.fromCbor(cbor);
+            setQuota(req.username, req.bytes);
+            removeSpaceRequest(req.username, withName.signedRequest);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public void removeSpaceRequest(String username, byte[] unsigned) {
+        spaceRequests.removeSpaceRequest(username, unsigned);
+    }
+
+    @Override
     public boolean acceptingSignups() {
         return quotas.size() < maxUsers;
     }
 
+    @Override
     public List<String> getLocalUsernames() {
         return new ArrayList<>(quotas.keySet());
     }
@@ -60,8 +133,18 @@ public class UserQuotas {
         }
     }
 
+    @Override
     public long getQuota(String username) {
         return quotas.getOrDefault(username, defaultQuota);
+    }
+
+    @Override
+    public CompletableFuture<PaymentProperties> getPaymentProperties(PublicKeyHash owner,
+                                                                     boolean newClientSecret,
+                                                                     byte[] signedTime) {
+        TimeLimited.isAllowedTime(signedTime, 300, dht, owner);
+        String username = core.getUsername(owner).join();
+        return Futures.of(new PaymentProperties(getQuota(username)));
     }
 
     public void setQuota(String username, long quota) {

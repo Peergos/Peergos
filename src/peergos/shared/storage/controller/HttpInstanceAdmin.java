@@ -41,7 +41,7 @@ public class HttpInstanceAdmin implements InstanceAdmin {
                 + "&instance=" + encode(instanceIdentity.toString())
                 + "&auth=" + ArrayOps.bytesToHex(signedTime))
                 .thenApply(raw -> ((CborObject.CborList)CborObject.fromByteArray(raw))
-                        .map(SpaceUsage.LabelledSignedSpaceRequest::fromCbor));
+                        .map(QuotaControl.LabelledSignedSpaceRequest::fromCbor));
     }
 
     @Override

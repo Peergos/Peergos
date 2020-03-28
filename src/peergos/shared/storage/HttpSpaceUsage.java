@@ -45,6 +45,24 @@ public class HttpSpaceUsage implements SpaceUsageProxy {
     }
 
     @Override
+    public CompletableFuture<PaymentProperties> getPaymentProperties(PublicKeyHash owner, boolean newClientSecret, byte[] signedTime) {
+        return getPaymentProperties("", direct, owner, newClientSecret, signedTime);
+    }
+
+    @Override
+    public CompletableFuture<PaymentProperties> getPaymentProperties(Multihash targetServerId, PublicKeyHash owner, boolean newClientSecret, byte[] signedTime) {
+        return getPaymentProperties(getProxyUrlPrefix(targetServerId), p2p, owner, newClientSecret, signedTime);
+    }
+
+    private CompletableFuture<PaymentProperties> getPaymentProperties(String urlPrefix, HttpPoster poster, PublicKeyHash owner, boolean newClientSecret, byte[] signedTime)
+    {
+        return poster.get(urlPrefix + Constants.SPACE_USAGE_URL + "payment-properties?owner=" + encode(owner.toString())
+                + "&new-client-secret=" + newClientSecret
+                + "&auth=" + ArrayOps.bytesToHex(signedTime))
+                .thenApply(res -> PaymentProperties.fromCbor(CborObject.fromByteArray(res)));
+    }
+
+    @Override
     public CompletableFuture<Long> getQuota(PublicKeyHash owner, byte[] signedTime) {
         return getQuota("", direct, owner, signedTime);
     }
@@ -63,7 +81,7 @@ public class HttpSpaceUsage implements SpaceUsageProxy {
     }
 
     @Override
-    public CompletableFuture<Boolean> requestSpace(PublicKeyHash owner, byte[] signedRequest) {
+    public CompletableFuture<Boolean> requestQuota(PublicKeyHash owner, byte[] signedRequest) {
         return requestSpace("", direct, owner, signedRequest);
     }
 

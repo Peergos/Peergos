@@ -459,17 +459,24 @@ public class Main {
             Path quotaFilePath = a.fromPeergosDir("quotas_file","quotas.txt");
             Path statePath = a.fromPeergosDir("state_path","usage-state.cbor");
 
-            Connection spaceDb = usePostgres ?
-                    database :
-                    Sqlite.build(Sqlite.getDbPath(a, "space-requests-sql-file"));
-            JdbcSpaceRequests spaceRequests = JdbcSpaceRequests.build(spaceDb, sqlCommands);
-            UserQuotas userQuotas = new UserQuotas(quotaFilePath, defaultQuota, maxUsers);
+            boolean paidStorage = a.hasArg("quota-admin-address");
+            QuotaAdmin userQuotas;
+            if (! paidStorage) {
+                Connection spaceDb = usePostgres ?
+                        database :
+                        Sqlite.build(Sqlite.getDbPath(a, "space-requests-sql-file"));
+                JdbcSpaceRequests spaceRequests = JdbcSpaceRequests.build(spaceDb, sqlCommands);
+                userQuotas = new UserQuotas(quotaFilePath, defaultQuota, maxUsers, spaceRequests, localDht, core);
+            } else {
+                JavaPoster poster = new JavaPoster(AddressUtil.getAddress(new MultiAddress(a.getArg("quota-admin-address"))));
+                userQuotas = new HttpQuotaAdmin(poster);
+            }
             CoreNode signupFilter = new SignUpFilter(core, userQuotas, nodeId);
             RamUsageStore usageStore = RamUsageStore.build(statePath);
             Hasher hasher = crypto.hasher;
             SpaceCheckingKeyFilter.update(usageStore, localPointers, localDht, hasher);
             SpaceCheckingKeyFilter spaceChecker = new SpaceCheckingKeyFilter(core, localPointers, localDht,
-                    hasher, userQuotas, spaceRequests, usageStore);
+                    hasher, userQuotas, usageStore);
             CorenodeEventPropagator corePropagator = new CorenodeEventPropagator(signupFilter);
             corePropagator.addListener(spaceChecker::accept);
             MutableEventPropagator localMutable = new MutableEventPropagator(localPointers);
@@ -503,7 +510,7 @@ public class Main {
                     .stream()
                     .collect(Collectors.toSet());
             boolean enableWaitlist = a.getBoolean("enable-wait-list", false);
-            Admin storageAdmin = new Admin(adminUsernames, spaceRequests, userQuotas, core, localDht, enableWaitlist);
+            Admin storageAdmin = new Admin(adminUsernames, userQuotas, core, localDht, enableWaitlist);
             HttpSpaceUsage httpSpaceUsage = new HttpSpaceUsage(ipfsGateway, ipfsGateway);
             ProxyingSpaceUsage p2pSpaceUsage = new ProxyingSpaceUsage(nodeId, corePropagator, spaceChecker, httpSpaceUsage);
             UserService peergos = new UserService(p2pDht, crypto, corePropagator, p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage);
