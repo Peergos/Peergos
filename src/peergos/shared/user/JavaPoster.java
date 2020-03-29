@@ -89,6 +89,10 @@ public class JavaPoster implements HttpPoster {
             boolean isGzipped = "gzip".equals(contentEncoding);
             DataInputStream din = new DataInputStream(isGzipped ? new GZIPInputStream(conn.getInputStream()) : conn.getInputStream());
             return CompletableFuture.completedFuture(Serialize.readFully(din));
+        } catch (SocketTimeoutException e) {
+            CompletableFuture<byte[]> res = new CompletableFuture<>();
+            res.completeExceptionally(new RuntimeException("Timeout retrieving: " + url, e));
+            return res;
         } catch (IOException e) {
             CompletableFuture<byte[]> res = new CompletableFuture<>();
             res.completeExceptionally(e);
