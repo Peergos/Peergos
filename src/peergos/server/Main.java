@@ -522,7 +522,9 @@ public class Main {
             Optional<String> tlsHostname = hostname.equals("localhost") ? Optional.empty() : Optional.of(hostname);
             Optional<UserService.TlsProperties> tlsProps =
                     tlsHostname.map(host -> new UserService.TlsProperties(host, a.getArg("tls.keyfile.password")));
-            peergos.initAndStart(localAddress, tlsProps, webroot, useWebAssetCache);
+            int maxConnectionQueue = a.getInt("max-connection-queue", 500);
+            int handlerThreads = a.getInt("handler-threads", 50);
+            peergos.initAndStart(localAddress, tlsProps, webroot, useWebAssetCache, maxConnectionQueue, handlerThreads);
             if (! isPkiNode && useIPFS) {
                 int pkiNodeSwarmPort = a.getInt("pki.node.swarm.port");
                 InetAddress pkiNodeIpAddress = InetAddress.getByName(a.getArg("pki.node.ipaddress"));

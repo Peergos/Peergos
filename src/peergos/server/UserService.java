@@ -33,9 +33,6 @@ public class UserService {
     public static final Version CURRENT_VERSION = Version.parse("0.0.0");
     public static final String UI_URL = "/";
 
-    public static final int HANDLER_THREADS = 50;
-    public static final int CONNECTION_BACKLOG = 100;
-
     static {
         // disable weak algorithms
         LOG.info("\nInitial security properties:");
@@ -114,13 +111,15 @@ public class UserService {
     public boolean initAndStart(InetSocketAddress local,
                                 Optional<TlsProperties> tlsProps,
                                 Optional<Path> webroot,
-                                boolean useWebCache) throws IOException {
+                                boolean useWebCache,
+                                int connectionBacklog,
+                                int handlerPoolSize) throws IOException {
         InetAddress allInterfaces = InetAddress.getByName("::");
         if (tlsProps.isPresent())
             try {
                 HttpServer httpServer = HttpServer.create();
                 httpServer.createContext("/", new RedirectHandler("https://" + tlsProps.get().hostname + ":443/"));
-                httpServer.bind(new InetSocketAddress(allInterfaces, 80), CONNECTION_BACKLOG);
+                httpServer.bind(new InetSocketAddress(allInterfaces, 80), connectionBacklog);
                 httpServer.start();
             } catch (Exception e) {
                 LOG.log(Level.WARNING, e.getMessage(), e);
@@ -130,9 +129,9 @@ public class UserService {
         LOG.info("Starting local Peergos server at: localhost:"+local.getPort());
         if (tlsProps.isPresent())
             LOG.info("Starting Peergos TLS server on all interfaces.");
-        HttpServer localhostServer = HttpServer.create(local, CONNECTION_BACKLOG);
+        HttpServer localhostServer = HttpServer.create(local, connectionBacklog);
         HttpsServer tlsServer = ! tlsProps.isPresent() ? null :
-                HttpsServer.create(new InetSocketAddress(allInterfaces, 443), CONNECTION_BACKLOG);
+                HttpsServer.create(new InetSocketAddress(allInterfaces, 443), connectionBacklog);
 
         if (tlsProps.isPresent()) {
             try {
@@ -221,11 +220,11 @@ public class UserService {
         addHandler.accept("/" + Constants.PUBLIC_FILES_URL, new PublicFileHandler(coreNode, mutable, storage));
         addHandler.accept(UI_URL, handler);
 
-        localhostServer.setExecutor(Executors.newFixedThreadPool(HANDLER_THREADS));
+        localhostServer.setExecutor(Executors.newFixedThreadPool(handlerPoolSize));
         localhostServer.start();
 
         if (tlsServer != null) {
-            tlsServer.setExecutor(Executors.newFixedThreadPool(HANDLER_THREADS));
+            tlsServer.setExecutor(Executors.newFixedThreadPool(handlerPoolSize));
             tlsServer.start();
         }
 
