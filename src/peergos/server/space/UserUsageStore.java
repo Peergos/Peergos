@@ -6,9 +6,9 @@ public interface UserUsageStore extends WriterUsageStore {
 
     void addUserIfAbsent(String username);
 
-    UserUsage getUsage(String owner);
+    UserUsage getUsage(String username);
 
-    void confirmUsage(String owner, PublicKeyHash writer, long usageDelta);
+    void confirmUsage(String username, PublicKeyHash writer, long usageDelta);
 
     void clearPendingUsage(String username, PublicKeyHash writer);
 

@@ -119,6 +119,7 @@ public class Main {
                     new Command.Arg("mutable-pointers-file", "The filename for the mutable pointers datastore", true, "mutable.sql"),
                     new Command.Arg("social-sql-file", "The filename for the follow requests datastore", true, "social.sql"),
                     new Command.Arg("space-requests-sql-file", "The filename for the space requests datastore", true, "space-requests.sql"),
+                    new Command.Arg("space-usage-sql-file", "The filename for the space usage datastore", true, "space-usage.sql"),
                     new Command.Arg("transactions-sql-file", "The filename for the transactions datastore", false, "transactions.sql"),
                     new Command.Arg("webroot", "the path to the directory to serve as the web root", false),
                     new Command.Arg("default-quota", "default maximum storage per user", false, Long.toString(1024L * 1024 * 1024)),
@@ -472,7 +473,11 @@ public class Main {
                 userQuotas = new HttpQuotaAdmin(poster);
             }
             CoreNode signupFilter = new SignUpFilter(core, userQuotas, nodeId);
-            RamUsageStore usageStore = RamUsageStore.build(statePath);
+
+            Connection usageDb = usePostgres ?
+                        database :
+                        Sqlite.build(Sqlite.getDbPath(a, "space-usage-sql-file"));
+            UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
             Hasher hasher = crypto.hasher;
             SpaceCheckingKeyFilter.update(usageStore, localPointers, localDht, hasher);
             SpaceCheckingKeyFilter spaceChecker = new SpaceCheckingKeyFilter(core, localPointers, localDht,
