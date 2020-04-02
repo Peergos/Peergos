@@ -18,4 +18,19 @@ public class PostgresCommands implements SqlSupplier {
     public String insertTransactionCommand() {
         return "INSERT INTO transactions (tid, owner, hash) VALUES(?, ?, ?) ON CONFLICT DO NOTHING;";
     }
+
+    @Override
+    public String insertOrIgnoreCommand(String prefix, String suffix) {
+        return prefix + suffix + " ON CONFLICT DO NOTHING;";
+    }
+
+    @Override
+    public String getByteArrayType() {
+        return "BYTEA";
+    }
+
+    @Override
+    public String getSerialIdType() {
+        return "SERIAL";
+    }
 }

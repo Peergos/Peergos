@@ -10,6 +10,10 @@ public interface SqlSupplier {
 
     String insertTransactionCommand();
 
+    String getByteArrayType();
+
+    String getSerialIdType();
+
     default String createMutablePointersTableCommand() {
         return "CREATE TABLE IF NOT EXISTS metadatablobs (writingkey text primary key not null, hash text not null); " +
                 "CREATE UNIQUE INDEX IF NOT EXISTS index_name ON metadatablobs (writingkey);";
@@ -24,22 +28,24 @@ public interface SqlSupplier {
                 "tid varchar(64) not null, owner varchar(64) not null, hash varchar(64) not null);";
     }
 
+    String insertOrIgnoreCommand(String prefix, String suffix);
+
     default String createUsageTablesCommand() {
         return "CREATE TABLE IF NOT EXISTS users (" +
-                "id INTEGER PRIMARY KEY NOT NULL," +
+                "id " + getSerialIdType() + " PRIMARY KEY NOT NULL," +
                 "name VARCHAR(32) NOT NULL," +
-                "CONSTRAINT uniq UNIQUE (name)" +
+                "CONSTRAINT uniq_users UNIQUE (name)" +
                 ");" +
                 "CREATE TABLE IF NOT EXISTS userusage (" +
                 "user_id INTEGER REFERENCES users(id) PRIMARY KEY," +
                 "total_bytes INTEGER NOT NULL," +
                 "errored BOOLEAN NOT NULL," +
-                "CONSTRAINT uniq UNIQUE (user_id)" +
+                "CONSTRAINT uniq_usage UNIQUE (user_id)" +
                 ");" +
                 "CREATE TABLE IF NOT EXISTS writers (" +
-                "id INTEGER PRIMARY KEY NOT NULL," +
-                "key_hash blob NOT NULL," +
-                "CONSTRAINT uniq UNIQUE (key_hash)" +
+                "id " + getSerialIdType() + " PRIMARY KEY NOT NULL," +
+                "key_hash " + getByteArrayType() + " NOT NULL," +
+                "CONSTRAINT uniq_writers UNIQUE (key_hash)" +
                 ");" +
                 "CREATE TABLE IF NOT EXISTS pendingusage (" +
                 "user_id INTEGER REFERENCES users(id)," +
@@ -49,7 +55,7 @@ public interface SqlSupplier {
                 "CREATE TABLE IF NOT EXISTS writerusage (" +
                 "writer_id INTEGER REFERENCES writers(id)," +
                 "user_id INTEGER REFERENCES users(id)," +
-                "target blob," +
+                "target " + getByteArrayType() + "," +
                 "direct_size INTEGER NOT NULL," +
                 "CONSTRAINT uniq UNIQUE (writer_id)" +
                 ");"+

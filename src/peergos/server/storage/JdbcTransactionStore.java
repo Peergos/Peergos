@@ -17,26 +17,17 @@ import java.util.stream.*;
 public class JdbcTransactionStore implements TransactionStore {
 	private static final Logger LOG = Logging.LOG();
 
-    public static final String INSERT_TRANSACTIONS_BLOCK = "INSERT OR IGNORE INTO transactions (tid, owner, hash) VALUES (?, ?, ?);";
     private static final String SELECT_TRANSACTIONS_BLOCKS = "SELECT tid, owner, hash FROM transactions;";
     private static final String DELETE_TRANSACTION = "DELETE FROM transactions WHERE tid = ? AND owner = ?;";
 
     private Connection conn;
     private final SqlSupplier commands;
     private volatile boolean isClosed;
-    private AtomicLong counter =  new AtomicLong(0);
-    private PreparedStatement insert;
+
     public JdbcTransactionStore(Connection conn, SqlSupplier commands) {
         this.conn = conn;
-
         this.commands = commands;
         init(commands);
-        try {
-            this.conn.setAutoCommit(false);
-            this.insert = conn.prepareStatement(commands.insertTransactionCommand());
-        } catch (SQLException sqle) {
-            LOG.log(Level.WARNING, "", sqle);
-        }
     }
 
     private synchronized void init(SqlSupplier commands) {
@@ -57,8 +48,7 @@ public class JdbcTransactionStore implements TransactionStore {
 
     @Override
     public void addBlock(Multihash hash, TransactionId tid, PublicKeyHash owner) {
-        long l = counter.incrementAndGet();
-        try {
+        try (PreparedStatement insert = conn.prepareStatement(commands.insertTransactionCommand())) {
             insert.clearParameters();
             insert.setString(1, tid.toString());
             insert.setString(2, owner.toString());

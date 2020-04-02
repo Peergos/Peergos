@@ -427,8 +427,7 @@ public class Main {
                 Connection transactionsDb = usePostgres ?
                     database :
                     Sqlite.build(Sqlite.getDbPath(a, "transactions-sql-file"));
-                SqlSupplier commands = new SqliteCommands();
-                TransactionStore transactions = JdbcTransactionStore.build(transactionsDb, commands);
+                TransactionStore transactions = JdbcTransactionStore.build(transactionsDb, sqlCommands);
                 // In S3 mode of operation we require the ipfs id to be supplied as we don't have a local ipfs running
                 if (S3Config.useS3(a)) {
                     ContentAddressedStorage.HTTP ipfs = new ContentAddressedStorage.HTTP(ipfsApi, false);

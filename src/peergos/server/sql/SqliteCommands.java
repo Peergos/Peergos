@@ -1,7 +1,5 @@
 package peergos.server.sql;
 
-import peergos.server.storage.*;
-
 public class SqliteCommands implements SqlSupplier {
 
     @Override
@@ -17,6 +15,21 @@ public class SqliteCommands implements SqlSupplier {
 
     @Override
     public String insertTransactionCommand() {
-        return JdbcTransactionStore.INSERT_TRANSACTIONS_BLOCK;
+        return "INSERT OR IGNORE INTO transactions (tid, owner, hash) VALUES (?, ?, ?);";
+    }
+
+    @Override
+    public String insertOrIgnoreCommand(String prefix, String suffix) {
+        return prefix + "OR IGNORE " + suffix + ";";
+    }
+
+    @Override
+    public String getByteArrayType() {
+        return "blob";
+    }
+
+    @Override
+    public String getSerialIdType() {
+        return "INTEGER";
     }
 }
