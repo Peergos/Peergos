@@ -129,12 +129,10 @@ public class JdbcUsageStore implements UsageStore {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);
         }
-        int currentPending = getPending(writerId);
-        try (PreparedStatement insert = conn.prepareStatement("UPDATE pendingusage SET pending_bytes=? " +
-                "WHERE writer_id = ? AND pending_bytes = ?;")) {
-            insert.setLong(1, size + currentPending);
+        try (PreparedStatement insert = conn.prepareStatement("UPDATE pendingusage SET pending_bytes = pending_bytes + ? " +
+                "WHERE writer_id = ?;")) {
+            insert.setLong(1, size);
             insert.setInt(2, writerId);
-            insert.setLong(3, currentPending);
             int count = insert.executeUpdate();
             if (count != 1)
                 throw new IllegalStateException("Didn't update one record!");
