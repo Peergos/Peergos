@@ -251,20 +251,11 @@ public class JdbcUsageStore implements UsageStore {
 
     private String getOwner(PublicKeyHash writer) {
         int writerId = getWriterId(writer);
-        try (PreparedStatement search = conn.prepareStatement("SELECT user_id FROM writerusage WHERE writer_id = ?;")) {
+        try (PreparedStatement search = conn.prepareStatement("SELECT u.name FROM users u, writerusage wu WHERE u.id = wu.user_id AND wu.writer_id = ?;")) {
             search.setInt(1, writerId);
             ResultSet resultSet = search.executeQuery();
             resultSet.next();
-            int userId = resultSet.getInt(1);
-            try (PreparedStatement usersearch = conn.prepareStatement("SELECT name FROM users WHERE id = ?;")) {
-                usersearch.setInt(1, userId);
-                ResultSet userRes = usersearch.executeQuery();
-                userRes.next();
-                return userRes.getString(1);
-            } catch (SQLException sqe) {
-                LOG.log(Level.WARNING, sqe.getMessage(), sqe);
-                throw new RuntimeException(sqe);
-            }
+            return resultSet.getString(1);
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);
