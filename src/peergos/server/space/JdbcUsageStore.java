@@ -60,28 +60,14 @@ public class JdbcUsageStore implements UsageStore {
         }
     }
 
-    private long getSpaceUsed(int userId) {
-        try (PreparedStatement insert = conn.prepareStatement("SELECT total_bytes FROM userusage WHERE user_id = ?;")) {
-            insert.setInt(1, userId);
-            ResultSet resultSet = insert.executeQuery();
-            resultSet.next();
-            return resultSet.getLong(1);
-        } catch (SQLException sqe) {
-            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
-            throw new RuntimeException(sqe);
-        }
-    }
-
     @Override
     public void confirmUsage(String username, PublicKeyHash writer, long usageDelta) {
         int userId = getUserId(username);
-        long currentUsage = getSpaceUsed(userId);
-        try (PreparedStatement insert = conn.prepareStatement("UPDATE userusage SET total_bytes = ?, errored = ? " +
-                "WHERE user_id = ? AND total_bytes = ?;")) {
-            insert.setLong(1, currentUsage + usageDelta);
+        try (PreparedStatement insert = conn.prepareStatement("UPDATE userusage SET total_bytes = total_bytes + ?, errored = ? " +
+                "WHERE user_id = ?;")) {
+            insert.setLong(1, usageDelta);
             insert.setBoolean(2, false);
             insert.setInt(3, userId);
-            insert.setLong(4, currentUsage);
             int count = insert.executeUpdate();
             if (count != 1)
                 throw new IllegalStateException("Didn't update one record!");
