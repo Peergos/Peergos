@@ -165,22 +165,21 @@ public class JdbcUsageStore implements UsageStore {
     @Override
     public UserUsage getUsage(String username) {
         int userId = getUserId(username);
-        try (PreparedStatement search = conn.prepareStatement("SELECT total_bytes, errored FROM userusage WHERE user_id = ?;")) {
+        try (PreparedStatement search = conn.prepareStatement("SELECT pu.writer_id, pu.pending_bytes, uu.total_bytes, uu.errored " +
+                "FROM userusage uu, pendingusage pu WHERE uu.user_id = pu.user_id AND uu.user_id = ?;")) {
             search.setInt(1, userId);
             ResultSet resultSet = search.executeQuery();
-            resultSet.next();
-            long totalBytes = resultSet.getLong(1);
-            boolean errored = resultSet.getBoolean(2);
             Map<PublicKeyHash, Long> pending = new HashMap<>();
-            try (PreparedStatement pendingSearch = conn.prepareStatement("SELECT writer_id, pending_bytes FROM pendingusage WHERE user_id = ?;")) {
-                pendingSearch.setInt(1, userId);
-                ResultSet pendingResults = pendingSearch.executeQuery();
-                while (pendingResults.next())
-                    pending.put(getWriter(pendingResults.getInt(1)), pendingResults.getLong(2));
-            } catch (SQLException sqe) {
-                LOG.log(Level.WARNING, sqe.getMessage(), sqe);
-                throw new RuntimeException(sqe);
+            long totalBytes = -1;
+            boolean errored = false;
+            while (resultSet.next()) {
+                pending.put(getWriter(resultSet.getInt(1)), resultSet.getLong(2));
+                if (totalBytes == -1) {
+                    totalBytes = resultSet.getLong(3);
+                    errored = resultSet.getBoolean(4);
+                }
             }
+
             return new UserUsage(totalBytes, errored, pending);
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
