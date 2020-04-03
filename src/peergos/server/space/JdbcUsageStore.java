@@ -94,18 +94,6 @@ public class JdbcUsageStore implements UsageStore {
         }
     }
 
-    private int getPending(int writerId) {
-        try (PreparedStatement insert = conn.prepareStatement("SELECT pending_bytes FROM pendingusage WHERE writer_id = ?;")) {
-            insert.setInt(1, writerId);
-            ResultSet resultSet = insert.executeQuery();
-            resultSet.next();
-            return resultSet.getInt(1);
-        } catch (SQLException sqe) {
-            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
-            throw new RuntimeException(sqe);
-        }
-    }
-
     @Override
     public void addPendingUsage(String username, PublicKeyHash writer, int size) {
         int userId = getUserId(username);
