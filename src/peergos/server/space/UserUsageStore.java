@@ -8,12 +8,8 @@ public interface UserUsageStore extends WriterUsageStore {
 
     UserUsage getUsage(String username);
 
-    void confirmUsage(String username, PublicKeyHash writer, long usageDelta);
-
-    void clearPendingUsage(String username, PublicKeyHash writer);
+    void confirmUsage(String username, PublicKeyHash writer, long usageDelta, boolean errored);
 
     void addPendingUsage(String username, PublicKeyHash writer, int size);
-
-    void setErrored(boolean errored, String username, PublicKeyHash writer);
 
 }

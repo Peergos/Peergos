@@ -45,8 +45,11 @@ public class RamUsageStore implements UsageStore {
     }
 
     @Override
-    public void confirmUsage(String owner, PublicKeyHash writer, long usageDelta) {
-        state.usage.get(owner).confirmUsage(writer, usageDelta);
+    public void confirmUsage(String owner, PublicKeyHash writer, long usageDelta, boolean errored) {
+        UserUsage usage = state.usage.get(owner);
+        usage.confirmUsage(writer, usageDelta);
+        usage.clearPending(writer);
+        usage.setErrored(errored);
     }
 
     @Override
@@ -63,11 +66,6 @@ public class RamUsageStore implements UsageStore {
     }
 
     @Override
-    public void clearPendingUsage(String username, PublicKeyHash writer) {
-        state.usage.get(username).clearPending(writer);
-    }
-
-    @Override
     public void addPendingUsage(String username, PublicKeyHash writer, int size) {
         state.usage.get(username).addPending(writer, size);
     }
@@ -76,11 +74,6 @@ public class RamUsageStore implements UsageStore {
     public void setWriters(String username, PublicKeyHash writer, Set<PublicKeyHash> ownedWriters) {
         state.currentView.computeIfAbsent(writer,
                 k -> new WriterUsage(username, MaybeMultihash.empty(), 0, ownedWriters));
-    }
-
-    @Override
-    public void setErrored(boolean erroed, String username, PublicKeyHash writer) {
-        state.usage.get(username).setErrored(erroed);
     }
 
     @Override

@@ -61,32 +61,25 @@ public class JdbcUsageStore implements UsageStore {
     }
 
     @Override
-    public void confirmUsage(String username, PublicKeyHash writer, long usageDelta) {
+    public void confirmUsage(String username, PublicKeyHash writer, long usageDelta, boolean errored) {
         int userId = getUserId(username);
-        try (PreparedStatement insert = conn.prepareStatement("UPDATE userusage SET total_bytes = total_bytes + ?, errored = ? " +
-                "WHERE user_id = ?;")) {
+        try (PreparedStatement insert = conn.prepareStatement(
+                "UPDATE userusage SET total_bytes = total_bytes + ?, errored = ? " +
+                        "WHERE user_id = ?;");
+             PreparedStatement insertPending = conn.prepareStatement(
+                     "UPDATE pendingusage SET pending_bytes = ? " +
+                             "WHERE writer_id = (SELECT id FROM writers WHERE key_hash = ?);")) {
             insert.setLong(1, usageDelta);
-            insert.setBoolean(2, false);
+            insert.setBoolean(2, errored);
             insert.setInt(3, userId);
+
             int count = insert.executeUpdate();
             if (count != 1)
                 throw new IllegalStateException("Didn't update one record!");
-        } catch (SQLException sqe) {
-            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
-            throw new RuntimeException(sqe);
-        }
-        clearPendingUsage(username, writer);
-    }
-
-    @Override
-    public void clearPendingUsage(String username, PublicKeyHash writer) {
-        int writerId = getWriterId(writer);
-        try (PreparedStatement insert = conn.prepareStatement("UPDATE pendingusage SET pending_bytes = ? " +
-                "WHERE writer_id = ?;")) {
-            insert.setLong(1, 0);
-            insert.setInt(2, writerId);
-            int count = insert.executeUpdate();
-            if (count != 1)
+            insertPending.setLong(1, 0);
+            insertPending.setBytes(2, writer.toBytes());
+            int count2 = insertPending.executeUpdate();
+            if (count2 != 1)
                 throw new IllegalStateException("Didn't update one record!");
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
@@ -113,22 +106,6 @@ public class JdbcUsageStore implements UsageStore {
             insert.setInt(2, writerId);
             int count = insert.executeUpdate();
             if (count != 1)
-                throw new IllegalStateException("Didn't update one record!");
-        } catch (SQLException sqe) {
-            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
-            throw new RuntimeException(sqe);
-        }
-    }
-
-    @Override
-    public void setErrored(boolean errored, String username, PublicKeyHash writer) {
-        int userId = getUserId(username);
-        try (PreparedStatement insert = conn.prepareStatement("UPDATE userusage SET errored = ? " +
-                "WHERE user_id = ?;")) {
-            insert.setBoolean(1, errored);
-            insert.setInt(3, userId);
-            boolean updated1Record = insert.execute();
-            if (! updated1Record)
                 throw new IllegalStateException("Didn't update one record!");
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
