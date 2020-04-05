@@ -1,4 +1,5 @@
 package peergos.server.corenode;
+import java.util.function.*;
 import java.util.logging.*;
 
 import peergos.server.sql.*;
@@ -33,8 +34,6 @@ public class JdbcIpnsAndSocial {
     private static final String IPNS_UPDATE = "UPDATE metadatablobs SET hash=? WHERE writingkey = ? AND hash = ?";
     private static final String IPNS_GET = "SELECT * FROM metadatablobs WHERE writingKey = ? LIMIT 1;";
 
-    private Connection conn;
-
     private class FollowRequestData {
         public final String name;
         public final byte[] data;
@@ -59,7 +58,8 @@ public class JdbcIpnsAndSocial {
         }
 
         public boolean insert() {
-            try (PreparedStatement insert = conn.prepareStatement(INSERT_FOLLOW_REQUEST)) {
+            try (Connection conn = getConnection();
+                 PreparedStatement insert = conn.prepareStatement(INSERT_FOLLOW_REQUEST)) {
                 insert.setString(1,this.name);
                 insert.setString(2,this.b64string);
                 insert.executeUpdate();
@@ -71,7 +71,8 @@ public class JdbcIpnsAndSocial {
         }
 
         public FollowRequestData[] select() {
-            try (PreparedStatement select = conn.prepareStatement(SELECT_FOLLOW_REQUESTS)) {
+            try (Connection conn = getConnection();
+                 PreparedStatement select = conn.prepareStatement(SELECT_FOLLOW_REQUESTS)) {
                 select.setString(1, name);
                 ResultSet rs = select.executeQuery();
                 List<FollowRequestData> list = new ArrayList<>();
@@ -89,7 +90,8 @@ public class JdbcIpnsAndSocial {
         }
 
         public boolean delete() {
-            try (PreparedStatement delete = conn.prepareStatement(DELETE_FOLLOW_REQUEST)) {
+            try (Connection conn = getConnection();
+                 PreparedStatement delete = conn.prepareStatement(DELETE_FOLLOW_REQUEST)) {
                 delete.setString(1, name);
                 delete.setString(2, b64string);
                 delete.executeUpdate();
@@ -102,17 +104,22 @@ public class JdbcIpnsAndSocial {
     }
 
     private volatile boolean isClosed;
+    private Supplier<Connection> conn;
 
-    public JdbcIpnsAndSocial(Connection conn, SqlSupplier commands) {
+    public JdbcIpnsAndSocial(Supplier<Connection> conn, SqlSupplier commands) {
         this.conn = conn;
         init(commands);
+    }
+
+    private Connection getConnection() {
+        return conn.get();
     }
 
     private synchronized void init(SqlSupplier commands) {
         if (isClosed)
             return;
 
-        try {
+        try (Connection conn = getConnection()) {
             commands.createTable(commands.createFollowRequestsTableCommand(), conn);
             commands.createTable(commands.createMutablePointersTableCommand(), conn);
         } catch (Exception e) {
@@ -152,7 +159,8 @@ public class JdbcIpnsAndSocial {
 
     public CompletableFuture<Boolean> setPointer(PublicKeyHash writingKey, Optional<byte[]> existingCas, byte[] newCas) {
         if (existingCas.isPresent()) {
-            try (PreparedStatement insert = conn.prepareStatement(IPNS_UPDATE)) {
+            try (Connection conn = getConnection();
+                 PreparedStatement insert = conn.prepareStatement(IPNS_UPDATE)) {
                 conn.setTransactionIsolation(Connection.TRANSACTION_SERIALIZABLE);
                 String key = new String(Base64.getEncoder().encode(writingKey.serialize()));
 
@@ -166,7 +174,8 @@ public class JdbcIpnsAndSocial {
                 return CompletableFuture.completedFuture(false);
             }
         } else {
-            try (PreparedStatement stmt = conn.prepareStatement(IPNS_CREATE)) {
+            try (Connection conn = getConnection();
+                 PreparedStatement stmt = conn.prepareStatement(IPNS_CREATE)) {
                 stmt.setString(1, new String(Base64.getEncoder().encode(writingKey.serialize())));
                 stmt.setString(2, new String(Base64.getEncoder().encode(newCas)));
                 stmt.executeUpdate();
@@ -179,7 +188,8 @@ public class JdbcIpnsAndSocial {
     }
 
     public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash writingKey) {
-        try (PreparedStatement stmt = conn.prepareStatement(IPNS_GET)) {
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(IPNS_GET)) {
             stmt.setString(1, new String(Base64.getEncoder().encode(writingKey.serialize())));
             ResultSet rs = stmt.executeQuery();
             if (rs.next()) {
@@ -194,7 +204,8 @@ public class JdbcIpnsAndSocial {
     }
 
     public List<Multihash> getAllTargets(ContentAddressedStorage ipfs) {
-        try (PreparedStatement stmt = conn.prepareStatement("SELECT * FROM metadatablobs")) {
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement("SELECT * FROM metadatablobs")) {
             ResultSet rs = stmt.executeQuery();
             List<Multihash> results = new ArrayList<>();
             while (rs.next()) {
@@ -214,7 +225,8 @@ public class JdbcIpnsAndSocial {
     }
 
     public Map<PublicKeyHash, byte[]> getAllEntries() {
-        try (PreparedStatement stmt = conn.prepareStatement("SELECT * FROM metadatablobs")) {
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement("SELECT * FROM metadatablobs")) {
             ResultSet rs = stmt.executeQuery();
             Map<PublicKeyHash, byte[]> results = new HashMap<>();
             while (rs.next()) {
@@ -233,12 +245,7 @@ public class JdbcIpnsAndSocial {
     public synchronized void close() {
         if (isClosed)
             return;
-        try {
-            if (conn != null)
-                conn.close();
-            isClosed = true;
-        } catch (Exception e) {
-            LOG.log(Level.WARNING, e.getMessage(), e);
-        }
+
+        isClosed = true;
     }
 }

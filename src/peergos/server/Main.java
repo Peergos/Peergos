@@ -1,5 +1,6 @@
 package peergos.server;
 
+import com.zaxxer.hikari.*;
 import peergos.server.cli.CLI;
 import peergos.server.crypto.*;
 import peergos.server.space.*;
@@ -33,6 +34,7 @@ import java.net.*;
 import java.nio.file.*;
 import java.sql.*;
 import java.util.*;
+import java.util.function.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -146,7 +148,7 @@ public class Main {
             ContentAddressedStorage dht = useIPFS ?
                     new IpfsDHT(new MultiAddress(ipfsApiAddress)) :
                     new FileContentAddressedStorage(blockstorePath(args),
-                            JdbcTransactionStore.build(Sqlite.build(":memory:"), new SqliteCommands()));
+                            JdbcTransactionStore.build(buildEphemeralSqlite(), new SqliteCommands()));
 
             SigningKeyPair peergosIdentityKeys = peergos.getUser();
             PublicKeyHash peergosPublicHash = ContentAddressedStorage.hashKey(peergosIdentityKeys.publicSigningKey);
@@ -253,7 +255,7 @@ public class Main {
                     Multihash pkiIpfsNodeId = useIPFS ?
                             new IpfsDHT(ipfsApi).id().get() :
                             new FileContentAddressedStorage(blockstorePath(args),
-                                    JdbcTransactionStore.build(Sqlite.build(":memory:"), new SqliteCommands())).id().get();
+                                    JdbcTransactionStore.build(buildEphemeralSqlite(), new SqliteCommands())).id().get();
 
                     if (ipfs != null)
                         ipfs.stop();
@@ -299,7 +301,7 @@ public class Main {
 
                     MultiAddress ipfsApi = new MultiAddress(args.getArg("ipfs-api-address"));
 
-                    JdbcTransactionStore transactions = JdbcTransactionStore.build(Sqlite.build(":memory:"), new SqliteCommands());
+                    JdbcTransactionStore transactions = JdbcTransactionStore.build(buildEphemeralSqlite(), new SqliteCommands());
                     ContentAddressedStorage storage = useIPFS ?
                             new IpfsDHT(ipfsApi) :
                             S3Config.useS3(args) ?
@@ -362,6 +364,59 @@ public class Main {
         }
     }
 
+    public static Supplier<Connection> getDBConnector(Args a, String dbName) throws SQLException {
+        boolean usePostgres = a.getBoolean("use-postgres", false);
+        Properties props = new Properties();
+        HikariConfig config;
+        if (usePostgres) {
+            String postgresHost = a.getArg("postgres.host");
+            int postgresPort = a.getInt("postgres.port", 5432);
+            String databaseName = a.getArg("postgres.database", "peergos");
+            String postgresUsername = a.getArg("postgres.username");
+            String postgresPassword = a.getArg("postgres.password");
+
+            props.setProperty("dataSourceClassName", "org.postgresql.ds.PGSimpleDataSource");
+            props.setProperty("dataSource.serverName", postgresHost);
+            props.setProperty("dataSource.portNumber", "" + postgresPort);
+            props.setProperty("dataSource.user", postgresUsername);
+            props.setProperty("dataSource.password", postgresPassword);
+            props.setProperty("dataSource.databaseName", databaseName);
+            config = new HikariConfig(props);
+        } else {
+            String sqlFilePath = Sqlite.getDbPath(a, dbName);
+            if (":memory:".equals(sqlFilePath))
+                return buildEphemeralSqlite();
+            props.setProperty("dataSourceClassName", "org.sqlite.SQLiteDataSource");
+            config = new HikariConfig(props);
+            config.setJdbcUrl("jdbc:sqlite:" + sqlFilePath);
+        }
+        HikariDataSource ds = new HikariDataSource(config);
+
+        return () -> {
+            try {
+                return ds.getConnection();
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
+            }
+        };
+    }
+
+    public static Supplier<Connection> buildEphemeralSqlite() {
+        Properties props = new Properties();
+        HikariConfig config = new HikariConfig(props);
+        config.setDataSourceClassName("org.sqlite.SQLiteDataSource");
+        config.setJdbcUrl("jdbc:sqlite::memory:");
+        HikariDataSource ds = new HikariDataSource(config);
+
+        return () -> {
+            try {
+                return ds.getConnection();
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
+            }
+        };
+    }
+
     public static UserService startPeergos(Args a) {
         try {
             Crypto crypto = initCrypto();
@@ -398,17 +453,6 @@ public class Main {
             SqlSupplier sqlCommands = usePostgres ?
                     new PostgresCommands() :
                     new SqliteCommands();
-            Connection database;
-            if (usePostgres) {
-                String postgresHost = a.getArg("postgres.host");
-                int postgresPort = a.getInt("postgres.port", 5432);
-                String databaseName = a.getArg("postgres.database", "peergos");
-                String postgresUsername = a.getArg("postgres.username");
-                String postgresPassword = a.getArg("postgres.password");
-                database = Postgres.build(postgresHost, postgresPort, databaseName, postgresUsername, postgresPassword);
-            } else {
-                database = Sqlite.build(Sqlite.getDbPath(a, "mutable-pointers-file"));
-            }
 
             ContentAddressedStorage localDht;
             if (useIPFS) {
@@ -424,10 +468,8 @@ public class Main {
                 boolean enableGC = a.getBoolean("enable-gc", false);
                 if (enableGC)
                     throw new IllegalStateException("GC has not been implemented when not using IPFS!");
-                Connection transactionsDb = usePostgres ?
-                    database :
-                    Sqlite.build(Sqlite.getDbPath(a, "transactions-sql-file"));
-                TransactionStore transactions = JdbcTransactionStore.build(transactionsDb, sqlCommands);
+                Supplier<Connection> transactionsDb = getDBConnector(a, "transactions-sql-file");
+                        TransactionStore transactions = JdbcTransactionStore.build(transactionsDb, sqlCommands);
                 // In S3 mode of operation we require the ipfs id to be supplied as we don't have a local ipfs running
                 if (S3Config.useS3(a)) {
                     ContentAddressedStorage.HTTP ipfs = new ContentAddressedStorage.HTTP(ipfsApi, false);
@@ -441,6 +483,7 @@ public class Main {
             String hostname = a.getArg("domain");
             Multihash nodeId = localDht.id().get();
 
+            Supplier<Connection> database = getDBConnector(a, "mutable-pointers-file");
             JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(database, sqlCommands);
             MutablePointers localPointers = UserRepository.build(localDht, rawPointers);
             MutablePointersProxy proxingMutable = new HttpMutablePointers(ipfsGateway, pkiServerNodeId);
@@ -457,14 +500,11 @@ public class Main {
             long maxUsers = a.getLong("max-users");
             Logging.LOG().info("Using default user space quota of " + defaultQuota);
             Path quotaFilePath = a.fromPeergosDir("quotas_file","quotas.txt");
-            Path statePath = a.fromPeergosDir("state_path","usage-state.cbor");
 
             boolean paidStorage = a.hasArg("quota-admin-address");
             QuotaAdmin userQuotas;
             if (! paidStorage) {
-                Connection spaceDb = usePostgres ?
-                        database :
-                        Sqlite.build(Sqlite.getDbPath(a, "space-requests-sql-file"));
+                Supplier<Connection> spaceDb = getDBConnector(a, "space-requests-sql-file");
                 JdbcSpaceRequests spaceRequests = JdbcSpaceRequests.build(spaceDb, sqlCommands);
                 userQuotas = new UserQuotas(quotaFilePath, defaultQuota, maxUsers, spaceRequests, localDht, core);
             } else {
@@ -473,9 +513,7 @@ public class Main {
             }
             CoreNode signupFilter = new SignUpFilter(core, userQuotas, nodeId);
 
-            Connection usageDb = usePostgres ?
-                        database :
-                        Sqlite.build(Sqlite.getDbPath(a, "space-usage-sql-file"));
+            Supplier<Connection> usageDb = getDBConnector(a, "space-usage-sql-file");
             UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
             Hasher hasher = crypto.hasher;
             SpaceCheckingKeyFilter.update(usageStore, localPointers, localDht, hasher);
@@ -497,9 +535,7 @@ public class Main {
 
             SocialNetworkProxy httpSocial = new HttpSocialNetwork(ipfsGateway, ipfsGateway);
 
-            Connection socialDatabase = usePostgres ?
-                    database :
-                    Sqlite.build(Sqlite.getDbPath(a, "social-sql-file"));
+            Supplier<Connection> socialDatabase = getDBConnector(a, "social-sql-file");
 
             JdbcIpnsAndSocial rawSocial = new JdbcIpnsAndSocial(socialDatabase, sqlCommands);
             SocialNetwork local = UserRepository.build(p2pDht, rawSocial);

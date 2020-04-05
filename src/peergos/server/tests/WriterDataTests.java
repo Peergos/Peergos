@@ -25,7 +25,7 @@ public class WriterDataTests {
         TransactionId test = new TransactionId("dummy");
         ContentAddressedStorage dht = new RAMStorage();
         Connection db = Sqlite.build("::memory::");
-        MutablePointers mutable = UserRepository.build(dht, new JdbcIpnsAndSocial(db, new SqliteCommands()));
+        MutablePointers mutable = UserRepository.build(dht, new JdbcIpnsAndSocial(() -> db, new SqliteCommands()));
 
         SigningKeyPair pairA = SigningKeyPair.insecureRandom();
         PublicKeyHash pubA = ContentAddressedStorage.hashKey(pairA.publicSigningKey);

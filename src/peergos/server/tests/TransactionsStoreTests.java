@@ -12,6 +12,7 @@ import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
 
 import java.security.*;
+import java.sql.*;
 import java.util.*;
 
 @RunWith(Parameterized.class)
@@ -25,7 +26,8 @@ public class TransactionsStoreTests {
 
     @Parameterized.Parameters()
     public static Collection<Object[]> parameters() throws Exception {
-        TransactionStore ram = JdbcTransactionStore.build(Sqlite.build(":memory:"), new SqliteCommands());
+        Connection sqlite = Sqlite.build(":memory:");
+        TransactionStore ram = JdbcTransactionStore.build(() -> sqlite, new SqliteCommands());
         return Arrays.asList(new Object[][] {
                 {ram}
         });
