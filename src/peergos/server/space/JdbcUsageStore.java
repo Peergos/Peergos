@@ -24,6 +24,16 @@ public class JdbcUsageStore implements UsageStore {
         init(commands);
     }
 
+    private Connection getNonCommittingConnection() {
+        Connection connection = conn.get();
+        try {
+            connection.setAutoCommit(false);
+            return connection;
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     private Connection getConnection() {
         Connection connection = conn.get();
         try {
@@ -76,25 +86,30 @@ public class JdbcUsageStore implements UsageStore {
     @Override
     public void confirmUsage(String username, PublicKeyHash writer, long usageDelta, boolean errored) {
         int userId = getUserId(username);
-        try (Connection conn = getConnection();
+        try (Connection conn = getNonCommittingConnection();
              PreparedStatement insert = conn.prepareStatement(
                 "UPDATE userusage SET total_bytes = total_bytes + ?, errored = ? " +
                         "WHERE user_id = ?;");
              PreparedStatement insertPending = conn.prepareStatement(
                      "UPDATE pendingusage SET pending_bytes = ? " +
                              "WHERE writer_id = (SELECT id FROM writers WHERE key_hash = ?);")) {
-            insert.setLong(1, usageDelta);
-            insert.setBoolean(2, errored);
-            insert.setInt(3, userId);
+            try {
+                insert.setLong(1, usageDelta);
+                insert.setBoolean(2, errored);
+                insert.setInt(3, userId);
 
-            int count = insert.executeUpdate();
-            if (count != 1)
-                throw new IllegalStateException("Didn't update one record!");
-            insertPending.setLong(1, 0);
-            insertPending.setBytes(2, writer.toBytes());
-            int count2 = insertPending.executeUpdate();
-            if (count2 != 1)
-                throw new IllegalStateException("Didn't update one record!");
+                int count = insert.executeUpdate();
+                if (count != 1)
+                    throw new IllegalStateException("Didn't update one record!");
+                insertPending.setLong(1, 0);
+                insertPending.setBytes(2, writer.toBytes());
+                int count2 = insertPending.executeUpdate();
+                if (count2 != 1)
+                    throw new IllegalStateException("Didn't update one record!");
+                conn.commit();
+            } catch (SQLException sqe) {
+                conn.rollback();
+            }
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);
@@ -105,24 +120,26 @@ public class JdbcUsageStore implements UsageStore {
     public void addPendingUsage(String username, PublicKeyHash writer, int size) {
         int userId = getUserId(username);
         int writerId = getWriterId(writer);
-        try (Connection conn = getConnection();
-             PreparedStatement insert = conn.prepareStatement(commands.insertOrIgnoreCommand("INSERT ", "INTO pendingusage (user_id, writer_id, pending_bytes) VALUES(?, ?, ?)"))) {
-            insert.setInt(1, userId);
-            insert.setInt(2, writerId);
-            insert.setInt(3, 0);
-            insert.executeUpdate();
-        } catch (SQLException sqe) {
-            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
-            throw new RuntimeException(sqe);
-        }
-        try (Connection conn = getConnection();
+        try (Connection conn = getNonCommittingConnection();
+             PreparedStatement defaultInsert = conn.prepareStatement(commands.insertOrIgnoreCommand(
+                     "INSERT ", "INTO pendingusage (user_id, writer_id, pending_bytes) VALUES(?, ?, ?)"));
              PreparedStatement insert = conn.prepareStatement("UPDATE pendingusage SET pending_bytes = pending_bytes + ? " +
-                "WHERE writer_id = ?;")) {
-            insert.setLong(1, size);
-            insert.setInt(2, writerId);
-            int count = insert.executeUpdate();
-            if (count != 1)
-                throw new IllegalStateException("Didn't update one record!");
+                     "WHERE writer_id = ?;")) {
+            try {
+                defaultInsert.setInt(1, userId);
+                defaultInsert.setInt(2, writerId);
+                defaultInsert.setInt(3, 0);
+                defaultInsert.executeUpdate();
+
+                insert.setLong(1, size);
+                insert.setInt(2, writerId);
+                int count = insert.executeUpdate();
+                if (count != 1)
+                    throw new IllegalStateException("Didn't update one record!");
+                conn.commit();
+            } catch (SQLException sqe) {
+                conn.rollback();
+            }
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);
@@ -285,24 +302,29 @@ public class JdbcUsageStore implements UsageStore {
                                   Set<PublicKeyHash> ownedKeys,
                                   long retainedStorage) {
         int writerId = getWriterId(writer);
-        try (Connection conn = getConnection();
+        try (Connection conn = getNonCommittingConnection();
              PreparedStatement insert = conn.prepareStatement("UPDATE writerusage SET target=?, direct_size=? WHERE writer_id = ?;");
              PreparedStatement delete = conn.prepareStatement("DELETE FROM ownedkeys WHERE parent_id = ?;");
              PreparedStatement insertOwned = conn.prepareStatement("INSERT INTO ownedkeys (parent_id, owned_id) VALUES(?, ?);")) {
-            insert.setBytes(1, target.isPresent() ? target.get().toBytes() : null);
-            insert.setLong(2, retainedStorage);
-            insert.setInt(3, writerId);
-            int count = insert.executeUpdate();
-            if (count != 1)
-                throw new IllegalStateException("Didn't update one record!");
-            delete.setInt(1, writerId);
-            delete.executeUpdate();
+            try {
+                insert.setBytes(1, target.isPresent() ? target.get().toBytes() : null);
+                insert.setLong(2, retainedStorage);
+                insert.setInt(3, writerId);
+                int count = insert.executeUpdate();
+                if (count != 1)
+                    throw new IllegalStateException("Didn't update one record!");
+                delete.setInt(1, writerId);
+                delete.executeUpdate();
 
-            for (PublicKeyHash owned : ownedKeys) {
-                insertOwned.setInt(1, writerId);
-                int ownedId = getWriterId(owned);
-                insertOwned.setInt(2, ownedId);
-                insertOwned.execute();
+                for (PublicKeyHash owned : ownedKeys) {
+                    insertOwned.setInt(1, writerId);
+                    int ownedId = getWriterId(owned);
+                    insertOwned.setInt(2, ownedId);
+                    insertOwned.execute();
+                }
+                conn.commit();
+            } catch (SQLException sqe) {
+                conn.rollback();
             }
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
