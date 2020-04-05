@@ -92,7 +92,13 @@ public class JdbcSpaceRequests {
     }
 
     private Connection getConnection() {
-        return conn.get();
+        Connection connection = conn.get();
+        try {
+            connection.setAutoCommit(true);
+            return connection;
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private synchronized void init(SqlSupplier commands) {

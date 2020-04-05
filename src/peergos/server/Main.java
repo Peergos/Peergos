@@ -271,9 +271,10 @@ public class Main {
                     new Command.Arg("domain", "The hostname to listen on", true, "localhost"),
                     new Command.Arg("port", "The port for the local non tls server to listen on", true, "8000"),
                     new Command.Arg("useIPFS", "Whether to use IPFS or a local datastore", true, "false"),
-                    new Command.Arg("mutable-pointers-file", "The filename for the mutable pointers (or :memory: or ram based)", true, ":memory:"),
-                    new Command.Arg("social-sql-file", "The filename for the follow requests (or :memory: or ram based)", true, ":memory:"),
+                    new Command.Arg("mutable-pointers-file", "The filename for the mutable pointers (or :memory: or ram based)", true, "mutable.sql"),
+                    new Command.Arg("social-sql-file", "The filename for the follow requests (or :memory: or ram based)", true, "social.sql"),
                     new Command.Arg("space-requests-sql-file", "The filename for the space requests datastore", true, "space-requests.sql"),
+                    new Command.Arg("space-usage-sql-file", "The filename for the space usage datastore", true, "space-usage.sql"),
                     new Command.Arg("ipfs-api-address", "ipfs api port", true, "/ip4/127.0.0.1/tcp/5001"),
                     new Command.Arg("ipfs-gateway-address", "ipfs gateway port", true, "/ip4/127.0.0.1/tcp/8080"),
                     new Command.Arg("pki.secret.key.path", "The path to the pki secret key file", true, "test.pki.secret.key"),
@@ -324,9 +325,10 @@ public class Main {
                     new Command.Arg("domain", "The hostname to listen on", true, "localhost"),
                     new Command.Arg("port", "The port for the local non tls server to listen on", true, "8000"),
                     new Command.Arg("useIPFS", "Whether to use IPFS or a local datastore", true, "false"),
-                    new Command.Arg("mutable-pointers-file", "The filename for the mutable pointers (or :memory: or ram based)", true, ":memory:"),
-                    new Command.Arg("social-sql-file", "The filename for the follow requests (or :memory: or ram based)", true, ":memory:"),
+                    new Command.Arg("mutable-pointers-file", "The filename for the mutable pointers (or :memory: or ram based)", true, "mutable.sql"),
+                    new Command.Arg("social-sql-file", "The filename for the follow requests (or :memory: or ram based)", true, "social.sql"),
                     new Command.Arg("space-requests-sql-file", "The filename for the space requests datastore", true, "space-requests.sql"),
+                    new Command.Arg("space-usage-sql-file", "The filename for the space usage datastore", true, "space-usage.sql"),
                     new Command.Arg("ipfs-api-address", "ipfs api port", true, "/ip4/127.0.0.1/tcp/5001"),
                     new Command.Arg("ipfs-gateway-address", "ipfs gateway port", true, "/ip4/127.0.0.1/tcp/8080"),
                     new Command.Arg("pki.secret.key.path", "The path to the pki secret key file", true, "test.pki.secret.key"),
@@ -364,9 +366,8 @@ public class Main {
         }
     }
 
-    public static Supplier<Connection> getDBConnector(Args a, String dbName) throws SQLException {
+    public static Supplier<Connection> getDBConnector(Args a, String dbName) {
         boolean usePostgres = a.getBoolean("use-postgres", false);
-        Properties props = new Properties();
         HikariConfig config;
         if (usePostgres) {
             String postgresHost = a.getArg("postgres.host");
@@ -375,6 +376,7 @@ public class Main {
             String postgresUsername = a.getArg("postgres.username");
             String postgresPassword = a.getArg("postgres.password");
 
+            Properties props = new Properties();
             props.setProperty("dataSourceClassName", "org.postgresql.ds.PGSimpleDataSource");
             props.setProperty("dataSource.serverName", postgresHost);
             props.setProperty("dataSource.portNumber", "" + postgresPort);
@@ -386,9 +388,10 @@ public class Main {
             String sqlFilePath = Sqlite.getDbPath(a, dbName);
             if (":memory:".equals(sqlFilePath))
                 return buildEphemeralSqlite();
-            props.setProperty("dataSourceClassName", "org.sqlite.SQLiteDataSource");
-            config = new HikariConfig(props);
+            config = new HikariConfig();
+            config.setDriverClassName("org.sqlite.JDBC");
             config.setJdbcUrl("jdbc:sqlite:" + sqlFilePath);
+            config.setConnectionTestQuery("SELECT 1");
         }
         HikariDataSource ds = new HikariDataSource(config);
 
@@ -402,10 +405,10 @@ public class Main {
     }
 
     public static Supplier<Connection> buildEphemeralSqlite() {
-        Properties props = new Properties();
-        HikariConfig config = new HikariConfig(props);
-        config.setDataSourceClassName("org.sqlite.SQLiteDataSource");
+        HikariConfig config = new HikariConfig();
+        config.setDriverClassName("org.sqlite.JDBC");
         config.setJdbcUrl("jdbc:sqlite::memory:");
+        config.setConnectionTestQuery("SELECT 1");
         HikariDataSource ds = new HikariDataSource(config);
 
         return () -> {
