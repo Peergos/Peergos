@@ -134,14 +134,19 @@ public class JdbcUsageStore implements UsageStore {
         int userId = getUserId(username);
         try (Connection conn = getConnection();
              PreparedStatement search = conn.prepareStatement("SELECT pu.writer_id, pu.pending_bytes, uu.total_bytes, uu.errored " +
-                "FROM userusage uu, pendingusage pu WHERE uu.user_id = pu.user_id AND uu.user_id = ?;")) {
+                "FROM userusage uu, pendingusage pu WHERE uu.user_id = pu.user_id AND uu.user_id = ?;");
+             PreparedStatement writerSearch = conn.prepareStatement("SELECT key_hash FROM writers WHERE id = ?;")) {
             search.setInt(1, userId);
             ResultSet resultSet = search.executeQuery();
             Map<PublicKeyHash, Long> pending = new HashMap<>();
             long totalBytes = -1;
             boolean errored = false;
             while (resultSet.next()) {
-                pending.put(getWriter(resultSet.getInt(1)), resultSet.getLong(2));
+                writerSearch.setInt(1, resultSet.getInt(1));
+                ResultSet writerRes = writerSearch.executeQuery();
+                writerRes.next();
+                PublicKeyHash writer = PublicKeyHash.decode(writerRes.getBytes(1));
+                pending.put(writer, resultSet.getLong(2));
                 if (totalBytes == -1) {
                     totalBytes = resultSet.getLong(3);
                     errored = resultSet.getBoolean(4);
