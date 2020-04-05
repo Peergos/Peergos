@@ -156,7 +156,6 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                     .stream()
                     .filter(k -> ! k.equals(writer))
                     .collect(Collectors.toSet());
-            usageStore.setWriters(username, writer, childrenKeys);
             WriterUsage current = usageStore.getUsage(writer);
             MaybeMultihash updatedRoot = mutable.getPointerTarget(writer, writer, dht).get();
             processMutablePointerEvent(usageStore, writer, writer, current.target(), updatedRoot, mutable, dht, hasher);

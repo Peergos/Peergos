@@ -258,7 +258,6 @@ public class JdbcUsageStore implements UsageStore {
                                   MaybeMultihash target,
                                   Set<PublicKeyHash> ownedKeys,
                                   long retainedStorage) {
-        String owner = getOwner(writer);
         int writerId = getWriterId(writer);
         try (PreparedStatement insert = conn.prepareStatement("UPDATE writerusage SET target=?, direct_size=? WHERE writer_id = ?;")) {
             insert.setBytes(1, target.isPresent() ? target.get().toBytes() : null);
@@ -271,11 +270,10 @@ public class JdbcUsageStore implements UsageStore {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);
         }
-        setWriters(owner, writer, ownedKeys);
+        setWriters(writer, ownedKeys);
     }
 
-    @Override
-    public void setWriters(String username, PublicKeyHash writer, Set<PublicKeyHash> ownedWriters) {
+    private void setWriters(PublicKeyHash writer, Set<PublicKeyHash> ownedWriters) {
         int writerId = getWriterId(writer);
         try (PreparedStatement delete = conn.prepareStatement("DELETE FROM ownedkeys WHERE parent_id = ?;")) {
             delete.setInt(1, writerId);

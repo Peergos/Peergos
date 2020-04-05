@@ -71,12 +71,6 @@ public class RamUsageStore implements UsageStore {
     }
 
     @Override
-    public void setWriters(String username, PublicKeyHash writer, Set<PublicKeyHash> ownedWriters) {
-        state.currentView.computeIfAbsent(writer,
-                k -> new WriterUsage(username, MaybeMultihash.empty(), 0, ownedWriters));
-    }
-
-    @Override
     public void initialized() {
         this.initializedFully = true;
     }
