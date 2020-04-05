@@ -281,41 +281,27 @@ public class JdbcUsageStore implements UsageStore {
                                   long retainedStorage) {
         int writerId = getWriterId(writer);
         try (Connection conn = getConnection();
-             PreparedStatement insert = conn.prepareStatement("UPDATE writerusage SET target=?, direct_size=? WHERE writer_id = ?;")) {
+             PreparedStatement insert = conn.prepareStatement("UPDATE writerusage SET target=?, direct_size=? WHERE writer_id = ?;");
+             PreparedStatement delete = conn.prepareStatement("DELETE FROM ownedkeys WHERE parent_id = ?;");
+             PreparedStatement insertOwned = conn.prepareStatement("INSERT INTO ownedkeys (parent_id, owned_id) VALUES(?, ?);")) {
             insert.setBytes(1, target.isPresent() ? target.get().toBytes() : null);
             insert.setLong(2, retainedStorage);
             insert.setInt(3, writerId);
             int count = insert.executeUpdate();
             if (count != 1)
                 throw new IllegalStateException("Didn't update one record!");
-        } catch (SQLException sqe) {
-            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
-            throw new RuntimeException(sqe);
-        }
-        setWriters(writer, ownedKeys);
-    }
-
-    private void setWriters(PublicKeyHash writer, Set<PublicKeyHash> ownedWriters) {
-        int writerId = getWriterId(writer);
-        try (Connection conn = getConnection();
-             PreparedStatement delete = conn.prepareStatement("DELETE FROM ownedkeys WHERE parent_id = ?;")) {
             delete.setInt(1, writerId);
             delete.executeUpdate();
+
+            for (PublicKeyHash owned : ownedKeys) {
+                insertOwned.setInt(1, writerId);
+                int ownedId = getWriterId(owned);
+                insertOwned.setInt(2, ownedId);
+                insertOwned.execute();
+            }
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);
-        }
-        for (PublicKeyHash owned : ownedWriters) {
-            try (Connection conn = getConnection();
-                 PreparedStatement delete = conn.prepareStatement("INSERT INTO ownedkeys (parent_id, owned_id) VALUES(?, ?);")) {
-                delete.setInt(1, writerId);
-                int ownedId = getWriterId(owned);
-                delete.setInt(2, ownedId);
-                delete.execute();
-            } catch (SQLException sqe) {
-                LOG.log(Level.WARNING, sqe.getMessage(), sqe);
-                throw new RuntimeException(sqe);
-            }
         }
     }
 

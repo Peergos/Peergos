@@ -392,6 +392,8 @@ public class Main {
             config.setDriverClassName("org.sqlite.JDBC");
             config.setJdbcUrl("jdbc:sqlite:" + sqlFilePath);
             config.setConnectionTestQuery("SELECT 1");
+            config.setMaxLifetime(60000); // 60 Sec
+            config.setIdleTimeout(45000); // 45 Sec
         }
         HikariDataSource ds = new HikariDataSource(config);
 
@@ -409,6 +411,8 @@ public class Main {
         config.setDriverClassName("org.sqlite.JDBC");
         config.setJdbcUrl("jdbc:sqlite::memory:");
         config.setConnectionTestQuery("SELECT 1");
+        config.setMaxLifetime(60000); // 60 Sec
+        config.setIdleTimeout(45000); // 45 Sec
         HikariDataSource ds = new HikariDataSource(config);
 
         return () -> {
