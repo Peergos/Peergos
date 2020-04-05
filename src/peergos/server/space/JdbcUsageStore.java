@@ -229,23 +229,19 @@ public class JdbcUsageStore implements UsageStore {
         String owner = getOwner(writer);
         int writerId = getWriterId(writer);
         Set<PublicKeyHash> owned = new HashSet<>();
-        try (PreparedStatement search = conn.prepareStatement("SELECT owned_id FROM ownedkeys WHERE parent_id = ?;")) {
-            search.setInt(1, writerId);
-            ResultSet resultSet = search.executeQuery();
-            while (resultSet.next())
-                owned.add(getWriter(resultSet.getInt(1)));
-        } catch (SQLException sqe) {
-            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
-            throw new RuntimeException(sqe);
-        }
-        try (PreparedStatement search = conn.prepareStatement("SELECT target, direct_size FROM writerusage WHERE writer_id = ?;")) {
-            search.setInt(1, writerId);
-            ResultSet resultSet = search.executeQuery();
-            resultSet.next();
-            MaybeMultihash target = Optional.ofNullable(resultSet.getBytes(1))
+        try (PreparedStatement ownedSearch = conn.prepareStatement("SELECT owned_id FROM ownedkeys WHERE parent_id = ?;");
+             PreparedStatement usageSearch = conn.prepareStatement("SELECT target, direct_size FROM writerusage WHERE writer_id = ?;")) {
+            ownedSearch.setInt(1, writerId);
+            ResultSet ownedRes = ownedSearch.executeQuery();
+            while (ownedRes.next())
+                owned.add(getWriter(ownedRes.getInt(1)));
+            usageSearch.setInt(1, writerId);
+            ResultSet usageRes = usageSearch.executeQuery();
+            usageRes.next();
+            MaybeMultihash target = Optional.ofNullable(usageRes.getBytes(1))
                     .map(x -> MaybeMultihash.of(Cid.cast(x)))
                     .orElse(MaybeMultihash.empty());
-            return new WriterUsage(owner, target, resultSet.getLong(2), owned);
+            return new WriterUsage(owner, target, usageRes.getLong(2), owned);
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);
