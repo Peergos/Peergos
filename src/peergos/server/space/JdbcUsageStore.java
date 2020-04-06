@@ -332,6 +332,7 @@ public class JdbcUsageStore implements UsageStore {
         try (Connection conn = getNonCommittingConnection();
              PreparedStatement insert = conn.prepareStatement("UPDATE writerusage SET target=?, direct_size=? WHERE writer_id = ?;");
              PreparedStatement delete = conn.prepareStatement("DELETE FROM ownedkeys WHERE parent_id = ?;");
+             PreparedStatement writerSelect = conn.prepareStatement("SELECT id FROM writers WHERE key_hash = ?;");
              PreparedStatement insertOwned = conn.prepareStatement("INSERT INTO ownedkeys (parent_id, owned_id) VALUES(?, ?);")) {
             try {
                 insert.setBytes(1, target.isPresent() ? target.get().toBytes() : null);
@@ -344,8 +345,11 @@ public class JdbcUsageStore implements UsageStore {
                 delete.executeUpdate();
 
                 for (PublicKeyHash owned : ownedKeys) {
+                    writerSelect.setBytes(1, owned.toBytes());
+                    ResultSet writerRes = writerSelect.executeQuery();
+                    writerRes.next();
+                    int ownedId = writerRes.getInt(1);
                     insertOwned.setInt(1, writerId);
-                    int ownedId = getWriterId(owned);
                     insertOwned.setInt(2, ownedId);
                     insertOwned.execute();
                 }
