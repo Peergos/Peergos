@@ -16,10 +16,12 @@ import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
 import java.net.*;
+import java.nio.file.*;
 import java.util.*;
 import java.util.stream.*;
 
 import static org.junit.Assert.*;
+import static peergos.server.tests.UserTests.deleteFiles;
 import static peergos.server.tests.UserTests.randomString;
 import static peergos.server.util.PeergosNetworkUtils.ensureSignedUp;
 import static peergos.server.util.PeergosNetworkUtils.generateUsername;
@@ -61,6 +63,18 @@ public class MultiNodeNetworkTests {
         });
     }
 
+    private static final List<Args> argsToCleanUp = new ArrayList<>();
+
+    @AfterClass
+    public static void cleanup() {
+        argsToCleanUp.add(args);
+        for (Args toClean : argsToCleanUp) {
+            Path peergosDir = toClean.fromPeergosDir("", "");
+            System.out.println("Deleting " + peergosDir);
+            deleteFiles(peergosDir.toFile());
+        }
+    }
+
     private NetworkAccess getNode(int i)  {
         return nodes.get(i);
     }
@@ -91,7 +105,10 @@ public class MultiNodeNetworkTests {
                     .with("ipfs-swarm-port", "" + ipfsSwarmPort)
                     .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, "" + Main.getLocalBootstrapAddress(bootstrapSwarmPort, pkiNodeId))
                     .with("proxy-target", Main.getLocalMultiAddress(peergosPort).toString())
-                    .with("ipfs-api-address", Main.getLocalMultiAddress(ipfsApiPort).toString());
+                    .with("ipfs-api-address", Main.getLocalMultiAddress(ipfsApiPort).toString())
+                    .with("mutable-pointers-file", ":memory:")
+                    .with("social-sql-file", ":memory:");
+            argsToCleanUp.add(normalNode);
             Main.PEERGOS.main(normalNode);
 
             IPFS ipfs = new IPFS(Main.getLocalMultiAddress(ipfsApiPort));
