@@ -215,28 +215,41 @@ public class JdbcUsageStore implements UsageStore {
 
     @Override
     public void addWriter(String owner, PublicKeyHash writer) {
-        try (Connection conn = getConnection();
+        try (Connection conn = getNonCommittingConnection();
              PreparedStatement writerInsert = conn.prepareStatement(commands.insertOrIgnoreCommand("INSERT ", "INTO writers (key_hash) VALUES(?)"));
              PreparedStatement userSelect = conn.prepareStatement("SELECT id FROM users WHERE name = ?;");
              PreparedStatement writerSelect = conn.prepareStatement("SELECT id FROM writers WHERE key_hash = ?;");
+             PreparedStatement defaultPendingInsert = conn.prepareStatement(commands.insertOrIgnoreCommand(
+                     "INSERT ", "INTO pendingusage (user_id, writer_id, pending_bytes) VALUES(?, ?, ?)"));
              PreparedStatement usageInsert = conn.prepareStatement(commands.insertOrIgnoreCommand("INSERT ", "INTO writerusage (writer_id, user_id, direct_size) VALUES(?, ?, ?)"))) {
-            writerInsert.setBytes(1, writer.toBytes());
-            writerInsert.executeUpdate();
+            try {
+                writerInsert.setBytes(1, writer.toBytes());
+                writerInsert.executeUpdate();
 
-            userSelect.setString(1, owner);
-            ResultSet resultSet = userSelect.executeQuery();
-            resultSet.next();
-            int userId = resultSet.getInt(1);
+                userSelect.setString(1, owner);
+                ResultSet resultSet = userSelect.executeQuery();
+                resultSet.next();
+                int userId = resultSet.getInt(1);
 
-            writerSelect.setBytes(1, writer.toBytes());
-            ResultSet writerRes = writerSelect.executeQuery();
-            writerRes.next();
-            int writerId = writerRes.getInt(1);
+                writerSelect.setBytes(1, writer.toBytes());
+                ResultSet writerRes = writerSelect.executeQuery();
+                writerRes.next();
+                int writerId = writerRes.getInt(1);
 
-            usageInsert.setInt(1, writerId);
-            usageInsert.setInt(2, userId);
-            usageInsert.setInt(3, 0);
-            usageInsert.executeUpdate();
+                defaultPendingInsert.setInt(1, userId);
+                defaultPendingInsert.setInt(2, writerId);
+                defaultPendingInsert.setInt(3, 0);
+                defaultPendingInsert.executeUpdate();
+
+                usageInsert.setInt(1, writerId);
+                usageInsert.setInt(2, userId);
+                usageInsert.setInt(3, 0);
+                usageInsert.executeUpdate();
+                conn.commit();
+            } catch (SQLException e) {
+                conn.rollback();
+                throw e;
+            }
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);
