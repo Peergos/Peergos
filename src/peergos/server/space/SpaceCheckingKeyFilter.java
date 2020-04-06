@@ -98,9 +98,20 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
     }
 
     public static void update(UsageStore store,
+                              QuotaAdmin quotas,
+                              CoreNode core,
                               MutablePointers mutable,
                               ContentAddressedStorage dht,
                               Hasher hasher) {
+        Logging.LOG().info("Checking for updated usage for users...");
+        List<String> localUsernames = quotas.getLocalUsernames();
+        for (String username : localUsernames) {
+            store.addUserIfAbsent(username);
+            Optional<PublicKeyHash> identity = core.getPublicKeyHash(username).join();
+            if (identity.isPresent())
+                store.addWriter(username, identity.get());
+        }
+
         Logging.LOG().info("Checking for updated mutable pointers...");
         long t1 = System.currentTimeMillis();
         Set<PublicKeyHash> writers = store.getAllWriters();
