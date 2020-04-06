@@ -517,7 +517,7 @@ public class Main {
             Supplier<Connection> usageDb = getDBConnector(a, "space-usage-sql-file");
             UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
             Hasher hasher = crypto.hasher;
-            SpaceCheckingKeyFilter.update(usageStore, localPointers, localDht, hasher);
+            SpaceCheckingKeyFilter.update(usageStore, userQuotas, core, localPointers, localDht, hasher);
             SpaceCheckingKeyFilter spaceChecker = new SpaceCheckingKeyFilter(core, localPointers, localDht,
                     hasher, userQuotas, usageStore);
             CorenodeEventPropagator corePropagator = new CorenodeEventPropagator(signupFilter);
