@@ -115,6 +115,7 @@ public class JdbcIpnsAndSocial {
         Connection connection = conn.get();
         try {
             connection.setAutoCommit(true);
+            connection.setTransactionIsolation(Connection.TRANSACTION_SERIALIZABLE);
             return connection;
         } catch (SQLException e) {
             throw new RuntimeException(e);
