@@ -19,13 +19,12 @@ import java.util.*;
 public class WriterDataTests {
 
     @Test
-    public void tolerateLoopsInOwnedKeys() throws  Exception {
+    public void tolerateLoopsInOwnedKeys() {
         Crypto crypto = Main.initCrypto();
         Hasher hasher = crypto.hasher;
         TransactionId test = new TransactionId("dummy");
         ContentAddressedStorage dht = new RAMStorage();
-        Connection db = Sqlite.build("::memory::");
-        MutablePointers mutable = UserRepository.build(dht, new JdbcIpnsAndSocial(db, new SqliteCommands()));
+        MutablePointers mutable = UserRepository.build(dht, new JdbcIpnsAndSocial(Main.buildEphemeralSqlite(), new SqliteCommands()));
 
         SigningKeyPair pairA = SigningKeyPair.insecureRandom();
         PublicKeyHash pubA = ContentAddressedStorage.hashKey(pairA.publicSigningKey);

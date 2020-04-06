@@ -116,7 +116,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                     Logging.LOG().info("Root hash changed from " + writerUsage.target() + " to " + rootHash);
                     long updatedSize = dht.getRecursiveBlockSize(rootHash.get()).get();
                     long deltaUsage = updatedSize - writerUsage.directRetainedStorage();
-                    store.confirmUsage(writerUsage.owner, writerKey, deltaUsage);
+                    store.confirmUsage(writerUsage.owner, writerKey, deltaUsage, false);
                     Set<PublicKeyHash> directOwnedKeys = WriterData.getDirectOwnedKeys(owner, writerKey, mutable, dht, hasher).join();
                     List<PublicKeyHash> newOwnedKeys = directOwnedKeys.stream()
                             .filter(key -> !writerUsage.ownedKeys().contains(key))
@@ -156,7 +156,6 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                     .stream()
                     .filter(k -> ! k.equals(writer))
                     .collect(Collectors.toSet());
-            usageStore.setWriters(username, writer, childrenKeys);
             WriterUsage current = usageStore.getUsage(writer);
             MaybeMultihash updatedRoot = mutable.getPointerTarget(writer, writer, dht).get();
             processMutablePointerEvent(usageStore, writer, writer, current.target(), updatedRoot, mutable, dht, hasher);
@@ -234,7 +233,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 for (PublicKeyHash owned : updatedOwned) {
                     state.addWriter(current.owner, owned);
                 }
-                state.confirmUsage(current.owner, writer, changeInStorage);
+                state.confirmUsage(current.owner, writer, changeInStorage, false);
 
                 HashSet<PublicKeyHash> removedChildren = new HashSet<>(current.ownedKeys());
                 removedChildren.removeAll(updatedOwned);
@@ -303,8 +302,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         boolean errored = usage.isErrored();
         if ((! errored && expectedUsage + size > quota) || (errored && expectedUsage + size > quota + USAGE_TOLERANCE)) {
             long pending = usage.getPending(writer);
-            usageStore.clearPendingUsage(writerUsage.owner, writer);
-            usageStore.setErrored(true, writerUsage.owner, writer);
+            usageStore.confirmUsage(writerUsage.owner, writer, 0, true);
             throw new IllegalStateException("Storage quota reached! \nUsed "
                     + usage.totalUsage() + " out of " + quota + " bytes. Rejecting write of size " + (size + pending) + ". \n" +
                     "Please delete some files or request more space.");

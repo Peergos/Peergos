@@ -14,6 +14,4 @@ public interface WriterUsageStore {
     WriterUsage getUsage(PublicKeyHash writer);
 
     void updateWriterUsage(PublicKeyHash writer, MaybeMultihash target, Set<PublicKeyHash> ownedKeys, long retainedStorage);
-
-    void setWriters(String username, PublicKeyHash writer, Set<PublicKeyHash> ownedWriters);
 }

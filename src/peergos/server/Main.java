@@ -1,5 +1,6 @@
 package peergos.server;
 
+import com.zaxxer.hikari.*;
 import peergos.server.cli.CLI;
 import peergos.server.crypto.*;
 import peergos.server.space.*;
@@ -33,6 +34,7 @@ import java.net.*;
 import java.nio.file.*;
 import java.sql.*;
 import java.util.*;
+import java.util.function.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -119,6 +121,7 @@ public class Main {
                     new Command.Arg("mutable-pointers-file", "The filename for the mutable pointers datastore", true, "mutable.sql"),
                     new Command.Arg("social-sql-file", "The filename for the follow requests datastore", true, "social.sql"),
                     new Command.Arg("space-requests-sql-file", "The filename for the space requests datastore", true, "space-requests.sql"),
+                    new Command.Arg("space-usage-sql-file", "The filename for the space usage datastore", true, "space-usage.sql"),
                     new Command.Arg("transactions-sql-file", "The filename for the transactions datastore", false, "transactions.sql"),
                     new Command.Arg("webroot", "the path to the directory to serve as the web root", false),
                     new Command.Arg("default-quota", "default maximum storage per user", false, Long.toString(1024L * 1024 * 1024)),
@@ -145,7 +148,7 @@ public class Main {
             ContentAddressedStorage dht = useIPFS ?
                     new IpfsDHT(new MultiAddress(ipfsApiAddress)) :
                     new FileContentAddressedStorage(blockstorePath(args),
-                            JdbcTransactionStore.build(Sqlite.build(":memory:"), new SqliteCommands()));
+                            JdbcTransactionStore.build(buildEphemeralSqlite(), new SqliteCommands()));
 
             SigningKeyPair peergosIdentityKeys = peergos.getUser();
             PublicKeyHash peergosPublicHash = ContentAddressedStorage.hashKey(peergosIdentityKeys.publicSigningKey);
@@ -252,7 +255,7 @@ public class Main {
                     Multihash pkiIpfsNodeId = useIPFS ?
                             new IpfsDHT(ipfsApi).id().get() :
                             new FileContentAddressedStorage(blockstorePath(args),
-                                    JdbcTransactionStore.build(Sqlite.build(":memory:"), new SqliteCommands())).id().get();
+                                    JdbcTransactionStore.build(buildEphemeralSqlite(), new SqliteCommands())).id().get();
 
                     if (ipfs != null)
                         ipfs.stop();
@@ -268,9 +271,10 @@ public class Main {
                     new Command.Arg("domain", "The hostname to listen on", true, "localhost"),
                     new Command.Arg("port", "The port for the local non tls server to listen on", true, "8000"),
                     new Command.Arg("useIPFS", "Whether to use IPFS or a local datastore", true, "false"),
-                    new Command.Arg("mutable-pointers-file", "The filename for the mutable pointers (or :memory: or ram based)", true, ":memory:"),
-                    new Command.Arg("social-sql-file", "The filename for the follow requests (or :memory: or ram based)", true, ":memory:"),
+                    new Command.Arg("mutable-pointers-file", "The filename for the mutable pointers (or :memory: for ram based)", true, "mutable.sql"),
+                    new Command.Arg("social-sql-file", "The filename for the follow requests (or :memory: for ram based)", true, "social.sql"),
                     new Command.Arg("space-requests-sql-file", "The filename for the space requests datastore", true, "space-requests.sql"),
+                    new Command.Arg("space-usage-sql-file", "The filename for the space usage datastore", true, "space-usage.sql"),
                     new Command.Arg("ipfs-api-address", "ipfs api port", true, "/ip4/127.0.0.1/tcp/5001"),
                     new Command.Arg("ipfs-gateway-address", "ipfs gateway port", true, "/ip4/127.0.0.1/tcp/8080"),
                     new Command.Arg("pki.secret.key.path", "The path to the pki secret key file", true, "test.pki.secret.key"),
@@ -298,7 +302,7 @@ public class Main {
 
                     MultiAddress ipfsApi = new MultiAddress(args.getArg("ipfs-api-address"));
 
-                    JdbcTransactionStore transactions = JdbcTransactionStore.build(Sqlite.build(":memory:"), new SqliteCommands());
+                    JdbcTransactionStore transactions = JdbcTransactionStore.build(buildEphemeralSqlite(), new SqliteCommands());
                     ContentAddressedStorage storage = useIPFS ?
                             new IpfsDHT(ipfsApi) :
                             S3Config.useS3(args) ?
@@ -321,9 +325,10 @@ public class Main {
                     new Command.Arg("domain", "The hostname to listen on", true, "localhost"),
                     new Command.Arg("port", "The port for the local non tls server to listen on", true, "8000"),
                     new Command.Arg("useIPFS", "Whether to use IPFS or a local datastore", true, "false"),
-                    new Command.Arg("mutable-pointers-file", "The filename for the mutable pointers (or :memory: or ram based)", true, ":memory:"),
-                    new Command.Arg("social-sql-file", "The filename for the follow requests (or :memory: or ram based)", true, ":memory:"),
+                    new Command.Arg("mutable-pointers-file", "The filename for the mutable pointers (or :memory: for ram based)", true, "mutable.sql"),
+                    new Command.Arg("social-sql-file", "The filename for the follow requests (or :memory: for ram based)", true, "social.sql"),
                     new Command.Arg("space-requests-sql-file", "The filename for the space requests datastore", true, "space-requests.sql"),
+                    new Command.Arg("space-usage-sql-file", "The filename for the space usage datastore", true, "space-usage.sql"),
                     new Command.Arg("ipfs-api-address", "ipfs api port", true, "/ip4/127.0.0.1/tcp/5001"),
                     new Command.Arg("ipfs-gateway-address", "ipfs gateway port", true, "/ip4/127.0.0.1/tcp/8080"),
                     new Command.Arg("pki.secret.key.path", "The path to the pki secret key file", true, "test.pki.secret.key"),
@@ -358,6 +363,58 @@ public class Main {
             return Crypto.initNative(symmetricProvider, signer, boxer);
         } catch (Throwable t) {
             return Crypto.initJava();
+        }
+    }
+
+    public static Supplier<Connection> getDBConnector(Args a, String dbName) {
+        boolean usePostgres = a.getBoolean("use-postgres", false);
+        HikariConfig config;
+        if (usePostgres) {
+            String postgresHost = a.getArg("postgres.host");
+            int postgresPort = a.getInt("postgres.port", 5432);
+            String databaseName = a.getArg("postgres.database", "peergos");
+            String postgresUsername = a.getArg("postgres.username");
+            String postgresPassword = a.getArg("postgres.password");
+
+            Properties props = new Properties();
+            props.setProperty("dataSourceClassName", "org.postgresql.ds.PGSimpleDataSource");
+            props.setProperty("dataSource.serverName", postgresHost);
+            props.setProperty("dataSource.portNumber", "" + postgresPort);
+            props.setProperty("dataSource.user", postgresUsername);
+            props.setProperty("dataSource.password", postgresPassword);
+            props.setProperty("dataSource.databaseName", databaseName);
+            config = new HikariConfig(props);
+        } else {
+            String sqlFilePath = Sqlite.getDbPath(a, dbName);
+            if (":memory:".equals(sqlFilePath))
+                return buildEphemeralSqlite();
+            config = new HikariConfig();
+            config.setDriverClassName("org.sqlite.JDBC");
+            config.setJdbcUrl("jdbc:sqlite:" + sqlFilePath);
+            config.setConnectionTestQuery("SELECT 1");
+            config.setMaxLifetime(60000); // 60 Sec
+            config.setIdleTimeout(45000); // 45 Sec
+            config.setMaximumPoolSize(50); // Number of Connections (including idle connections)
+        }
+        HikariDataSource ds = new HikariDataSource(config);
+
+        return () -> {
+            try {
+                return ds.getConnection();
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
+            }
+        };
+    }
+
+    public static Supplier<Connection> buildEphemeralSqlite() {
+        try {
+            Connection memory = Sqlite.build(":memory:");
+            // We need a connection that ignores close
+            Connection instance = new Sqlite.UncloseableConnection(memory);
+            return () -> instance;
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
         }
     }
 
@@ -397,17 +454,6 @@ public class Main {
             SqlSupplier sqlCommands = usePostgres ?
                     new PostgresCommands() :
                     new SqliteCommands();
-            Connection database;
-            if (usePostgres) {
-                String postgresHost = a.getArg("postgres.host");
-                int postgresPort = a.getInt("postgres.port", 5432);
-                String databaseName = a.getArg("postgres.database", "peergos");
-                String postgresUsername = a.getArg("postgres.username");
-                String postgresPassword = a.getArg("postgres.password");
-                database = Postgres.build(postgresHost, postgresPort, databaseName, postgresUsername, postgresPassword);
-            } else {
-                database = Sqlite.build(Sqlite.getDbPath(a, "mutable-pointers-file"));
-            }
 
             ContentAddressedStorage localDht;
             if (useIPFS) {
@@ -423,11 +469,8 @@ public class Main {
                 boolean enableGC = a.getBoolean("enable-gc", false);
                 if (enableGC)
                     throw new IllegalStateException("GC has not been implemented when not using IPFS!");
-                Connection transactionsDb = usePostgres ?
-                    database :
-                    Sqlite.build(Sqlite.getDbPath(a, "transactions-sql-file"));
-                SqlSupplier commands = new SqliteCommands();
-                TransactionStore transactions = JdbcTransactionStore.build(transactionsDb, commands);
+                Supplier<Connection> transactionsDb = getDBConnector(a, "transactions-sql-file");
+                        TransactionStore transactions = JdbcTransactionStore.build(transactionsDb, sqlCommands);
                 // In S3 mode of operation we require the ipfs id to be supplied as we don't have a local ipfs running
                 if (S3Config.useS3(a)) {
                     ContentAddressedStorage.HTTP ipfs = new ContentAddressedStorage.HTTP(ipfsApi, false);
@@ -441,6 +484,7 @@ public class Main {
             String hostname = a.getArg("domain");
             Multihash nodeId = localDht.id().get();
 
+            Supplier<Connection> database = getDBConnector(a, "mutable-pointers-file");
             JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(database, sqlCommands);
             MutablePointers localPointers = UserRepository.build(localDht, rawPointers);
             MutablePointersProxy proxingMutable = new HttpMutablePointers(ipfsGateway, pkiServerNodeId);
@@ -457,14 +501,11 @@ public class Main {
             long maxUsers = a.getLong("max-users");
             Logging.LOG().info("Using default user space quota of " + defaultQuota);
             Path quotaFilePath = a.fromPeergosDir("quotas_file","quotas.txt");
-            Path statePath = a.fromPeergosDir("state_path","usage-state.cbor");
 
             boolean paidStorage = a.hasArg("quota-admin-address");
             QuotaAdmin userQuotas;
             if (! paidStorage) {
-                Connection spaceDb = usePostgres ?
-                        database :
-                        Sqlite.build(Sqlite.getDbPath(a, "space-requests-sql-file"));
+                Supplier<Connection> spaceDb = getDBConnector(a, "space-requests-sql-file");
                 JdbcSpaceRequests spaceRequests = JdbcSpaceRequests.build(spaceDb, sqlCommands);
                 userQuotas = new UserQuotas(quotaFilePath, defaultQuota, maxUsers, spaceRequests, localDht, core);
             } else {
@@ -472,7 +513,9 @@ public class Main {
                 userQuotas = new HttpQuotaAdmin(poster);
             }
             CoreNode signupFilter = new SignUpFilter(core, userQuotas, nodeId);
-            RamUsageStore usageStore = RamUsageStore.build(statePath);
+
+            Supplier<Connection> usageDb = getDBConnector(a, "space-usage-sql-file");
+            UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
             Hasher hasher = crypto.hasher;
             SpaceCheckingKeyFilter.update(usageStore, localPointers, localDht, hasher);
             SpaceCheckingKeyFilter spaceChecker = new SpaceCheckingKeyFilter(core, localPointers, localDht,
@@ -493,9 +536,7 @@ public class Main {
 
             SocialNetworkProxy httpSocial = new HttpSocialNetwork(ipfsGateway, ipfsGateway);
 
-            Connection socialDatabase = usePostgres ?
-                    database :
-                    Sqlite.build(Sqlite.getDbPath(a, "social-sql-file"));
+            Supplier<Connection> socialDatabase = getDBConnector(a, "social-sql-file");
 
             JdbcIpnsAndSocial rawSocial = new JdbcIpnsAndSocial(socialDatabase, sqlCommands);
             SocialNetwork local = UserRepository.build(p2pDht, rawSocial);

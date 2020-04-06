@@ -33,6 +33,13 @@ public class RamUserTests extends UserTests {
         });
     }
 
+    @AfterClass
+    public static void cleanup() {
+        Path peergosDir = args.fromPeergosDir("", "");
+        System.out.println("Deleting " + peergosDir);
+        deleteFiles(peergosDir.toFile());
+    }
+
     @Test
     public void revokeWriteAccessToTree() throws Exception {
         String username1 = generateUsername();

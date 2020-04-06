@@ -8,10 +8,18 @@ import java.util.*;
 public class UserUsage implements Cborable {
     private long totalBytes;
     private boolean errored;
-    private Map<PublicKeyHash, Long> pending = new HashMap<>();
+    private Map<PublicKeyHash, Long> pending;
 
     public UserUsage(long totalBytes) {
         this.totalBytes = totalBytes;
+        this.pending = new HashMap<>();
+        this.errored = false;
+    }
+
+    public UserUsage(long totalBytes, boolean errored, Map<PublicKeyHash, Long> pending) {
+        this.totalBytes = totalBytes;
+        this.pending = pending;
+        this.errored = errored;
     }
 
     public long totalUsage() {

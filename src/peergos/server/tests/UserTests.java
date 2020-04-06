@@ -72,6 +72,17 @@ public abstract class UserTests {
         }
     }
 
+    public static void deleteFiles(File f) {
+        if (! f.exists())
+            return;
+        if (f.isDirectory()) {
+            for (File child : f.listFiles()) {
+                deleteFiles(child);
+            }
+        }
+        f.delete();
+    }
+
     protected String generateUsername() {
         return "test" + Math.abs(random.nextInt() % 1_000_000);
     }

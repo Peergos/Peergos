@@ -1,6 +1,7 @@
 package peergos.server.tests;
 
 import org.junit.*;
+import peergos.server.*;
 import peergos.server.sql.*;
 import peergos.server.storage.*;
 import peergos.server.util.*;
@@ -15,13 +16,19 @@ import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
 
 import java.nio.file.*;
+import java.sql.*;
 import java.time.LocalDate;
 import java.util.*;
 
 
 public class UserPublicKeyLinkTests {
-    private final ContentAddressedStorage ipfs = new FileContentAddressedStorage(Paths.get("blockstore"),
-            JdbcTransactionStore.build(Sqlite.build(":memory:"), new SqliteCommands()));
+    private final ContentAddressedStorage ipfs;
+
+    {
+        ipfs = new FileContentAddressedStorage(Paths.get("blockstore"),
+                    JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()));
+    }
+
     private final List<Multihash> id;
 
     public UserPublicKeyLinkTests() throws Exception {

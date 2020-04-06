@@ -6,6 +6,7 @@ import peergos.shared.storage.*;
 
 import java.sql.*;
 import java.util.*;
+import java.util.function.*;
 import java.util.logging.*;
 import java.util.stream.*;
 
@@ -17,8 +18,6 @@ public class JdbcSpaceRequests {
     private static final String INSERT_SPACE_REQUEST = "INSERT INTO spacerequests (name, spacerequest) VALUES(?, ?);";
     private static final String SELECT_SPACE_REQUESTS = "SELECT name, spacerequest FROM spacerequests;";
     private static final String DELETE_SPACE_REQUEST = "DELETE FROM spacerequests WHERE name = ? AND spacerequest = ?;";
-
-    private Connection conn;
 
     private class SpaceRequestData {
         public final String name;
@@ -40,7 +39,8 @@ public class JdbcSpaceRequests {
         }
 
         public boolean insert() {
-            try (PreparedStatement insert = conn.prepareStatement(INSERT_SPACE_REQUEST)) {
+            try (Connection conn = getConnection();
+                 PreparedStatement insert = conn.prepareStatement(INSERT_SPACE_REQUEST)) {
                 insert.setString(1,this.name);
                 insert.setString(2,this.b64string);
                 insert.executeUpdate();
@@ -52,7 +52,8 @@ public class JdbcSpaceRequests {
         }
 
         public SpaceRequestData[] select() {
-            try (PreparedStatement select = conn.prepareStatement(SELECT_SPACE_REQUESTS)) {
+            try (Connection conn = getConnection();
+                 PreparedStatement select = conn.prepareStatement(SELECT_SPACE_REQUESTS)) {
                 ResultSet rs = select.executeQuery();
                 List<SpaceRequestData> list = new ArrayList<>();
                 while (rs.next())
@@ -69,7 +70,8 @@ public class JdbcSpaceRequests {
         }
 
         public boolean delete() {
-            try (PreparedStatement delete = conn.prepareStatement(DELETE_SPACE_REQUEST)) {
+            try (Connection conn = getConnection();
+                 PreparedStatement delete = conn.prepareStatement(DELETE_SPACE_REQUEST)) {
                 delete.setString(1, name);
                 delete.setString(2, b64string);
                 delete.executeUpdate();
@@ -82,17 +84,29 @@ public class JdbcSpaceRequests {
     }
 
     private volatile boolean isClosed;
+    private Supplier<Connection> conn;
 
-    public JdbcSpaceRequests(Connection conn, SqlSupplier commands) {
+    public JdbcSpaceRequests(Supplier<Connection> conn, SqlSupplier commands) {
         this.conn = conn;
         init(commands);
+    }
+
+    private Connection getConnection() {
+        Connection connection = conn.get();
+        try {
+            connection.setAutoCommit(true);
+            connection.setTransactionIsolation(Connection.TRANSACTION_SERIALIZABLE);
+            return connection;
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private synchronized void init(SqlSupplier commands) {
         if (isClosed)
             return;
 
-        try {
+        try (Connection conn = getConnection()) {
             commands.createTable(commands.createSpaceRequestsTableCommand(), conn);
         } catch (Exception e) {
             throw new RuntimeException(e);
@@ -124,16 +138,10 @@ public class JdbcSpaceRequests {
     public synchronized void close() {
         if (isClosed)
             return;
-        try {
-            if (conn != null)
-                conn.close();
-            isClosed = true;
-        } catch (Exception e) {
-            LOG.log(Level.WARNING, e.getMessage(), e);
-        }
+        isClosed = true;
     }
 
-    public static JdbcSpaceRequests build(Connection conn, SqlSupplier commands) {
+    public static JdbcSpaceRequests build(Supplier<Connection> conn, SqlSupplier commands) {
         return new JdbcSpaceRequests(conn, commands);
     }
 }

@@ -5,6 +5,7 @@ import com.amazonaws.auth.*;
 import com.amazonaws.client.builder.*;
 import com.amazonaws.services.s3.*;
 import com.amazonaws.services.s3.model.*;
+import peergos.server.*;
 import peergos.server.corenode.*;
 import peergos.server.sql.*;
 import peergos.server.util.*;
@@ -25,7 +26,6 @@ import java.nio.file.*;
 import java.sql.*;
 import java.time.*;
 import java.util.*;
-import java.util.Base64;
 import java.util.concurrent.*;
 import java.util.function.*;
 import java.util.logging.Level;
@@ -394,23 +394,11 @@ public class S3BlockStorage implements ContentAddressedStorage {
         Args a = Args.parse(args);
         S3Config config = S3Config.build(a);
         boolean usePostgres = a.getBoolean("use-postgres", false);
-            SqlSupplier sqlCommands = usePostgres ?
-                    new PostgresCommands() :
-                    new SqliteCommands();
-            Connection database;
-            if (usePostgres) {
-                String postgresHost = a.getArg("postgres.host");
-                int postgresPort = a.getInt("postgres.port", 5432);
-                String databaseName = a.getArg("postgres.database", "peergos");
-                String postgresUsername = a.getArg("postgres.username");
-                String postgresPassword = a.getArg("postgres.password");
-                database = Postgres.build(postgresHost, postgresPort, databaseName, postgresUsername, postgresPassword);
-            } else {
-                database = Sqlite.build(Sqlite.getDbPath(a, "mutable-pointers-file"));
-            }
-        Connection transactionsDb = usePostgres ?
-                    database :
-                    Sqlite.build(Sqlite.getDbPath(a, "transactions-sql-file"));
+        SqlSupplier sqlCommands = usePostgres ?
+                new PostgresCommands() :
+                new SqliteCommands();
+        Supplier<Connection> database = Main.getDBConnector(a, "mutable-pointers-file");
+        Supplier<Connection> transactionsDb = Main.getDBConnector(a, "transactions-sql-file");
         TransactionStore transactions = JdbcTransactionStore.build(transactionsDb, sqlCommands);
         S3BlockStorage s3 = new S3BlockStorage(config, Cid.decode(a.getArg("ipfs.id")), transactions, new RAMStorage());
         JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(database, sqlCommands);
@@ -422,7 +410,7 @@ public class S3BlockStorage implements ContentAddressedStorage {
         S3Config config = S3Config.build(Args.parse(args));
         System.out.println("Testing S3 bucket: " + config.bucket + " in region " + config.region + " with base dir: " + config.path);
         Multihash id = new Multihash(Multihash.Type.sha2_256, RAMStorage.hash("S3Storage".getBytes()));
-        TransactionStore transactions = JdbcTransactionStore.build(Sqlite.build(":memory:"), new SqliteCommands());
+        TransactionStore transactions = JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands());
         S3BlockStorage s3 = new S3BlockStorage(config, id, transactions, new RAMStorage());
 
         System.out.println("***** Testing ls and read");

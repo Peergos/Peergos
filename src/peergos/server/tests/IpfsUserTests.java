@@ -1,5 +1,6 @@
 package peergos.server.tests;
 
+import org.junit.*;
 import org.junit.runner.*;
 import org.junit.runners.*;
 import peergos.server.*;
@@ -8,6 +9,7 @@ import peergos.server.util.*;
 import peergos.shared.*;
 
 import java.net.*;
+import java.nio.file.*;
 import java.util.*;
 
 @RunWith(Parameterized.class)
@@ -29,5 +31,12 @@ public class IpfsUserTests extends UserTests {
         return Arrays.asList(new Object[][] {
                 {NetworkAccess.buildJava(new URL("http://localhost:" + args.getInt("port"))).get()}
         });
+    }
+
+    @AfterClass
+    public static void cleanup() {
+        Path peergosDir = args.fromPeergosDir("", "");
+        System.out.println("Deleting " + peergosDir);
+        deleteFiles(peergosDir.toFile());
     }
 }
