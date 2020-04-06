@@ -408,22 +408,14 @@ public class Main {
     }
 
     public static Supplier<Connection> buildEphemeralSqlite() {
-        HikariConfig config = new HikariConfig();
-        config.setDriverClassName("org.sqlite.JDBC");
-        config.setJdbcUrl("jdbc:sqlite::memory:");
-        config.setConnectionTestQuery("SELECT 1");
-        config.setMaxLifetime(60000); // 60 Sec
-        config.setIdleTimeout(45000); // 45 Sec
-        config.setMaximumPoolSize(50); // 50 Connections (including idle connections)
-        HikariDataSource ds = new HikariDataSource(config);
-
-        return () -> {
-            try {
-                return ds.getConnection();
-            } catch (SQLException e) {
-                throw new RuntimeException(e);
-            }
-        };
+        try {
+            Connection memory = Sqlite.build(":memory:");
+            // We need a connection that ignores close
+            Connection instance = new Sqlite.UncloseableConnection(memory);
+            return () -> memory;
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public static UserService startPeergos(Args a) {
