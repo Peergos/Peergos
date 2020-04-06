@@ -3,6 +3,7 @@ package peergos.server.tests;
 import org.junit.*;
 import org.junit.runner.*;
 import org.junit.runners.*;
+import peergos.server.*;
 import peergos.server.sql.*;
 import peergos.server.storage.*;
 import peergos.server.util.*;
@@ -26,8 +27,7 @@ public class TransactionsStoreTests {
 
     @Parameterized.Parameters()
     public static Collection<Object[]> parameters() throws Exception {
-        Connection sqlite = Sqlite.build(":memory:");
-        TransactionStore ram = JdbcTransactionStore.build(() -> sqlite, new SqliteCommands());
+        TransactionStore ram = JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands());
         return Arrays.asList(new Object[][] {
                 {ram}
         });

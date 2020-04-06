@@ -49,9 +49,8 @@ public class ChampTests {
 
     @Test
     public void insertAndRetrieve() throws Exception {
-        Connection build = Sqlite.build(":memory:");
         ContentAddressedStorage storage = new FileContentAddressedStorage(Files.createTempDirectory("peergos-tmp"),
-                JdbcTransactionStore.build(() -> build, new SqliteCommands()));
+                JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()));
         SigningPrivateKeyAndPublicHash user = createUser(storage, crypto);
         Random r = new Random(28);
 
@@ -165,9 +164,8 @@ public class ChampTests {
 
     @Test
     public void diff() throws Exception {
-        Connection sqlite = Sqlite.build(":memory:");
         ContentAddressedStorage storage = new FileContentAddressedStorage(Files.createTempDirectory("peergos-tmp"),
-                JdbcTransactionStore.build(() -> sqlite, new SqliteCommands()));
+                JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()));
         SigningPrivateKeyAndPublicHash user = createUser(storage, crypto);
         Random r = new Random(28);
 
@@ -284,9 +282,8 @@ public class ChampTests {
 
     @Test
     public void correctDelete() throws Exception {
-        Connection build = Sqlite.build(":memory:");
         ContentAddressedStorage storage = new FileContentAddressedStorage(Files.createTempDirectory("peergos-tmp"),
-                JdbcTransactionStore.build(() -> build, new SqliteCommands()));
+                JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()));
         SigningPrivateKeyAndPublicHash user = createUser(storage, crypto);
         Random r = new Random(28);
 

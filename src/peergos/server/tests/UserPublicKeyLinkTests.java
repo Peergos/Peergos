@@ -1,6 +1,7 @@
 package peergos.server.tests;
 
 import org.junit.*;
+import peergos.server.*;
 import peergos.server.sql.*;
 import peergos.server.storage.*;
 import peergos.server.util.*;
@@ -24,9 +25,8 @@ public class UserPublicKeyLinkTests {
     private final ContentAddressedStorage ipfs;
 
     {
-        Connection build = Sqlite.build(":memory:");
         ipfs = new FileContentAddressedStorage(Paths.get("blockstore"),
-                    JdbcTransactionStore.build(() -> build, new SqliteCommands()));
+                    JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()));
     }
 
     private final List<Multihash> id;
