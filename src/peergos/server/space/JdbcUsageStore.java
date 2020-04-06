@@ -65,20 +65,21 @@ public class JdbcUsageStore implements UsageStore {
     @Override
     public void addUserIfAbsent(String username) {
         try (Connection conn = getConnection();
-             PreparedStatement insert = conn.prepareStatement(commands.insertOrIgnoreCommand("INSERT ", "INTO users (name) VALUES(?)"))) {
-            insert.setString(1, username);
-            insert.executeUpdate();
-        } catch (SQLException sqe) {
-            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
-            throw new RuntimeException(sqe);
-        }
-        int userId = getUserId(username);
-        try (Connection conn = getConnection();
-             PreparedStatement insert = conn.prepareStatement(commands.insertOrIgnoreCommand("INSERT ", "INTO userusage (user_id, total_bytes, errored) VALUES(?, ?, ?)"))) {
-            insert.setInt(1, userId);
-            insert.setLong(2, 0);
-            insert.setBoolean(3, false);
-            insert.executeUpdate();
+             PreparedStatement userInsert = conn.prepareStatement(commands.insertOrIgnoreCommand("INSERT ", "INTO users (name) VALUES(?)"));
+             PreparedStatement select = conn.prepareStatement("SELECT id FROM users WHERE name = ?;");
+             PreparedStatement usageInsert = conn.prepareStatement(commands.insertOrIgnoreCommand("INSERT ", "INTO userusage (user_id, total_bytes, errored) VALUES(?, ?, ?)"))) {
+            userInsert.setString(1, username);
+            userInsert.executeUpdate();
+
+            select.setString(1, username);
+            ResultSet resultSet = select.executeQuery();
+            resultSet.next();
+            int userId = resultSet.getInt(1);
+
+            usageInsert.setInt(1, userId);
+            usageInsert.setLong(2, 0);
+            usageInsert.setBoolean(3, false);
+            usageInsert.executeUpdate();
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);
@@ -188,9 +189,9 @@ public class JdbcUsageStore implements UsageStore {
 
     private int getUserId(String username) {
         try (Connection conn = getConnection();
-             PreparedStatement insert = conn.prepareStatement("SELECT id FROM users WHERE name = ?;")) {
-            insert.setString(1, username);
-            ResultSet resultSet = insert.executeQuery();
+             PreparedStatement userSelect = conn.prepareStatement("SELECT id FROM users WHERE name = ?;")) {
+            userSelect.setString(1, username);
+            ResultSet resultSet = userSelect.executeQuery();
             resultSet.next();
             return resultSet.getInt(1);
         } catch (SQLException sqe) {
@@ -201,11 +202,11 @@ public class JdbcUsageStore implements UsageStore {
 
     private int getWriterId(PublicKeyHash writer) {
         try (Connection conn = getConnection();
-             PreparedStatement insert = conn.prepareStatement("SELECT id FROM writers WHERE key_hash = ?;")) {
-            insert.setBytes(1, writer.toBytes());
-            ResultSet resultSet = insert.executeQuery();
-            resultSet.next();
-            return resultSet.getInt(1);
+             PreparedStatement writerSelect = conn.prepareStatement("SELECT id FROM writers WHERE key_hash = ?;")) {
+            writerSelect.setBytes(1, writer.toBytes());
+            ResultSet writerRes = writerSelect.executeQuery();
+            writerRes.next();
+            return writerRes.getInt(1);
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);
@@ -215,22 +216,27 @@ public class JdbcUsageStore implements UsageStore {
     @Override
     public void addWriter(String owner, PublicKeyHash writer) {
         try (Connection conn = getConnection();
-             PreparedStatement insert = conn.prepareStatement(commands.insertOrIgnoreCommand("INSERT ", "INTO writers (key_hash) VALUES(?)"))) {
-            insert.setBytes(1, writer.toBytes());
-            insert.executeUpdate();
-        } catch (SQLException sqe) {
-            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
-            throw new RuntimeException(sqe);
-        }
-        int userId = getUserId(owner);
-        int writerId = getWriterId(writer);
+             PreparedStatement writerInsert = conn.prepareStatement(commands.insertOrIgnoreCommand("INSERT ", "INTO writers (key_hash) VALUES(?)"));
+             PreparedStatement userSelect = conn.prepareStatement("SELECT id FROM users WHERE name = ?;");
+             PreparedStatement writerSelect = conn.prepareStatement("SELECT id FROM writers WHERE key_hash = ?;");
+             PreparedStatement usageInsert = conn.prepareStatement(commands.insertOrIgnoreCommand("INSERT ", "INTO writerusage (writer_id, user_id, direct_size) VALUES(?, ?, ?)"))) {
+            writerInsert.setBytes(1, writer.toBytes());
+            writerInsert.executeUpdate();
 
-        try (Connection conn = getConnection();
-             PreparedStatement insert = conn.prepareStatement(commands.insertOrIgnoreCommand("INSERT ", "INTO writerusage (writer_id, user_id, direct_size) VALUES(?, ?, ?)"))) {
-            insert.setInt(1, writerId);
-            insert.setInt(2, userId);
-            insert.setInt(3, 0);
-            insert.executeUpdate();
+            userSelect.setString(1, owner);
+            ResultSet resultSet = userSelect.executeQuery();
+            resultSet.next();
+            int userId = resultSet.getInt(1);
+
+            writerSelect.setBytes(1, writer.toBytes());
+            ResultSet writerRes = writerSelect.executeQuery();
+            writerRes.next();
+            int writerId = writerRes.getInt(1);
+
+            usageInsert.setInt(1, writerId);
+            usageInsert.setInt(2, userId);
+            usageInsert.setInt(3, 0);
+            usageInsert.executeUpdate();
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);
