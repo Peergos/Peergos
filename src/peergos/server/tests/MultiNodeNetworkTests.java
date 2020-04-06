@@ -91,9 +91,7 @@ public class MultiNodeNetworkTests {
                     .with("ipfs-swarm-port", "" + ipfsSwarmPort)
                     .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, "" + Main.getLocalBootstrapAddress(bootstrapSwarmPort, pkiNodeId))
                     .with("proxy-target", Main.getLocalMultiAddress(peergosPort).toString())
-                    .with("ipfs-api-address", Main.getLocalMultiAddress(ipfsApiPort).toString())
-                    .with("mutable-pointers-file", ":memory:")
-                    .with("social-sql-file", ":memory:");
+                    .with("ipfs-api-address", Main.getLocalMultiAddress(ipfsApiPort).toString());
             Main.PEERGOS.main(normalNode);
 
             IPFS ipfs = new IPFS(Main.getLocalMultiAddress(ipfsApiPort));
