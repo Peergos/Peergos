@@ -412,7 +412,7 @@ public class Main {
             Connection memory = Sqlite.build(":memory:");
             // We need a connection that ignores close
             Connection instance = new Sqlite.UncloseableConnection(memory);
-            return () -> memory;
+            return () -> instance;
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
