@@ -394,7 +394,7 @@ public class Main {
             config.setConnectionTestQuery("SELECT 1");
             config.setMaxLifetime(60000); // 60 Sec
             config.setIdleTimeout(45000); // 45 Sec
-            config.setMaximumPoolSize(50); // 1 Connection (including idle connections)
+            config.setMaximumPoolSize(50); // Number of Connections (including idle connections)
         }
         HikariDataSource ds = new HikariDataSource(config);
 
