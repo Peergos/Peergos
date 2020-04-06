@@ -107,8 +107,9 @@ public class JdbcUsageStore implements UsageStore {
                 if (count2 != 1)
                     throw new IllegalStateException("Didn't update one record!");
                 conn.commit();
-            } catch (SQLException sqe) {
+            } catch (SQLException e) {
                 conn.rollback();
+                throw e;
             }
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
@@ -137,8 +138,9 @@ public class JdbcUsageStore implements UsageStore {
                 if (count != 1)
                     throw new IllegalStateException("Didn't update one record!");
                 conn.commit();
-            } catch (SQLException sqe) {
+            } catch (SQLException e) {
                 conn.rollback();
+                throw e;
             }
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
@@ -149,28 +151,33 @@ public class JdbcUsageStore implements UsageStore {
     @Override
     public UserUsage getUsage(String username) {
         int userId = getUserId(username);
-        try (Connection conn = getConnection();
+        try (Connection conn = getNonCommittingConnection();
              PreparedStatement search = conn.prepareStatement("SELECT pu.writer_id, pu.pending_bytes, uu.total_bytes, uu.errored " +
                 "FROM userusage uu, pendingusage pu WHERE uu.user_id = pu.user_id AND uu.user_id = ?;");
              PreparedStatement writerSearch = conn.prepareStatement("SELECT key_hash FROM writers WHERE id = ?;")) {
-            search.setInt(1, userId);
-            ResultSet resultSet = search.executeQuery();
-            Map<PublicKeyHash, Long> pending = new HashMap<>();
-            long totalBytes = -1;
-            boolean errored = false;
-            while (resultSet.next()) {
-                writerSearch.setInt(1, resultSet.getInt(1));
-                ResultSet writerRes = writerSearch.executeQuery();
-                writerRes.next();
-                PublicKeyHash writer = PublicKeyHash.decode(writerRes.getBytes(1));
-                pending.put(writer, resultSet.getLong(2));
-                if (totalBytes == -1) {
-                    totalBytes = resultSet.getLong(3);
-                    errored = resultSet.getBoolean(4);
+            try {
+                search.setInt(1, userId);
+                ResultSet resultSet = search.executeQuery();
+                Map<PublicKeyHash, Long> pending = new HashMap<>();
+                long totalBytes = -1;
+                boolean errored = false;
+                while (resultSet.next()) {
+                    writerSearch.setInt(1, resultSet.getInt(1));
+                    ResultSet writerRes = writerSearch.executeQuery();
+                    writerRes.next();
+                    PublicKeyHash writer = PublicKeyHash.decode(writerRes.getBytes(1));
+                    pending.put(writer, resultSet.getLong(2));
+                    if (totalBytes == -1) {
+                        totalBytes = resultSet.getLong(3);
+                        errored = resultSet.getBoolean(4);
+                    }
                 }
+                conn.commit();
+                return new UserUsage(totalBytes, errored, pending);
+            } catch (SQLException e) {
+                conn.rollback();
+                throw e;
             }
-
-            return new UserUsage(totalBytes, errored, pending);
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);
@@ -275,20 +282,32 @@ public class JdbcUsageStore implements UsageStore {
         String owner = getOwner(writer);
         int writerId = getWriterId(writer);
         Set<PublicKeyHash> owned = new HashSet<>();
-        try (Connection conn = getConnection();
+        try (Connection conn = getNonCommittingConnection();
              PreparedStatement ownedSearch = conn.prepareStatement("SELECT owned_id FROM ownedkeys WHERE parent_id = ?;");
-             PreparedStatement usageSearch = conn.prepareStatement("SELECT target, direct_size FROM writerusage WHERE writer_id = ?;")) {
-            ownedSearch.setInt(1, writerId);
-            ResultSet ownedRes = ownedSearch.executeQuery();
-            while (ownedRes.next())
-                owned.add(getWriter(ownedRes.getInt(1)));
-            usageSearch.setInt(1, writerId);
-            ResultSet usageRes = usageSearch.executeQuery();
-            usageRes.next();
-            MaybeMultihash target = Optional.ofNullable(usageRes.getBytes(1))
-                    .map(x -> MaybeMultihash.of(Cid.cast(x)))
-                    .orElse(MaybeMultihash.empty());
-            return new WriterUsage(owner, target, usageRes.getLong(2), owned);
+             PreparedStatement usageSearch = conn.prepareStatement("SELECT target, direct_size FROM writerusage WHERE writer_id = ?;");
+             PreparedStatement search = conn.prepareStatement("SELECT key_hash FROM writers WHERE id = ?;")) {
+            try {
+                ownedSearch.setInt(1, writerId);
+                ResultSet ownedRes = ownedSearch.executeQuery();
+                while (ownedRes.next()) {
+                    search.setInt(1, ownedRes.getInt(1));
+                    ResultSet resultSet = search.executeQuery();
+                    resultSet.next();
+                    PublicKeyHash ownedKey = PublicKeyHash.decode(resultSet.getBytes(1));
+                    owned.add(ownedKey);
+                }
+                usageSearch.setInt(1, writerId);
+                ResultSet usageRes = usageSearch.executeQuery();
+                usageRes.next();
+                MaybeMultihash target = Optional.ofNullable(usageRes.getBytes(1))
+                        .map(x -> MaybeMultihash.of(Cid.cast(x)))
+                        .orElse(MaybeMultihash.empty());
+                conn.commit();
+                return new WriterUsage(owner, target, usageRes.getLong(2), owned);
+            } catch (SQLException e) {
+                conn.rollback();
+                throw e;
+            }
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);
@@ -323,8 +342,9 @@ public class JdbcUsageStore implements UsageStore {
                     insertOwned.execute();
                 }
                 conn.commit();
-            } catch (SQLException sqe) {
+            } catch (SQLException e) {
                 conn.rollback();
+                throw e;
             }
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
