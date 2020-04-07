@@ -37,7 +37,7 @@ public class JavaScriptPoster implements HttpPoster {
 
     @Override
     public CompletableFuture<byte[]> get(String url) {
-        return http.get(canonicalise(url));
+        return postUnzip(url, new byte[0]);
     }
 
     @JsMethod

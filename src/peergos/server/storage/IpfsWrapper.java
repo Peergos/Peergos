@@ -56,7 +56,6 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
             return Stream.of(
                     "config --json Experimental.Libp2pStreamMounting true",
                     "config --json Experimental.P2pHttpProxy true",
-                    "config --json Experimental.PreferTLS true",
                     "config Addresses.API " + apiAddress,
                     "config Addresses.Gateway " + gatewayAddress,
                     String.format("config --json Addresses.Swarm [\"/ip4/0.0.0.0/tcp/%d\",\"/ip6/::/tcp/%d\"]", swarmPort, swarmPort))
@@ -203,7 +202,10 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
             ContentAddressedStorage.HTTP api = new ContentAddressedStorage.HTTP(new JavaPoster(getAddress(ipfsApi)), false);
             api.id().get();
             return true;
-        } catch (Exception e) {}
+        } catch (Exception e) {
+            if (!(e.getCause() instanceof ConnectException))
+                e.printStackTrace();
+        }
         return false;
     }
 

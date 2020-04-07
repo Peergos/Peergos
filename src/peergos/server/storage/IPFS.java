@@ -505,12 +505,17 @@ public class IPFS {
 
     private static byte[] get(URL target) throws IOException {
         HttpURLConnection conn = (HttpURLConnection) target.openConnection();
-        conn.setRequestMethod("GET");
+        conn.setDoOutput(true);
+        conn.setRequestMethod("POST");
         conn.setRequestProperty("Content-Type", "application/json");
         conn.setConnectTimeout(10_000);
         conn.setReadTimeout(60_000);
 
         try {
+            OutputStream out = conn.getOutputStream();
+            out.write(new byte[0]);
+            out.flush();
+            out.close();
             InputStream in = conn.getInputStream();
             ByteArrayOutputStream resp = new ByteArrayOutputStream();
 
