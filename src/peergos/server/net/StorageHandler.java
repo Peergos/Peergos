@@ -40,6 +40,12 @@ public class StorageHandler implements HttpHandler {
 
         Cborable result;
         try {
+            // only allow http POST requests
+            if (!exchange.getRequestMethod().equals("POST")) {
+                exchange.sendResponseHeaders(405, 0);
+                return;
+            }
+
             switch (method) {
                 case "payment-properties": {
                     byte[] signedTime = ArrayOps.hexToBytes(last.apply("auth"));

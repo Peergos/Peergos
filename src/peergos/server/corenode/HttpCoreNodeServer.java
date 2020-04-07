@@ -53,6 +53,12 @@ public class HttpCoreNodeServer {
 //            LOG.info("core method "+ method +" from path "+ path);
 
             try {
+                // only allow http POST requests
+                if (! exchange.getRequestMethod().equals("POST")) {
+                    exchange.sendResponseHeaders(405, 0);
+                    return;
+                }
+
                 switch (method)
                 {
                     case "getChain":

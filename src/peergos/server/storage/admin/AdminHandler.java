@@ -34,6 +34,12 @@ public class AdminHandler implements HttpHandler {
 
         Cborable reply;
         try {
+            // only allow http POST requests
+            if (! exchange.getRequestMethod().equals("POST")) {
+                exchange.sendResponseHeaders(405, 0);
+                return;
+            }
+
             switch (method) {
                 case HttpInstanceAdmin.VERSION:
                     InstanceAdmin.VersionInfo res = target.getVersionInfo().join();

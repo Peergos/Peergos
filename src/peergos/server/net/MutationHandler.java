@@ -44,6 +44,12 @@ public class MutationHandler implements HttpHandler {
         PublicKeyHash owner = PublicKeyHash.fromString(params.get("owner").get(0));
         PublicKeyHash writer = PublicKeyHash.fromString(params.get("writer").get(0));
         try {
+            // only allow http POST requests
+            if (! exchange.getRequestMethod().equals("POST")) {
+                exchange.sendResponseHeaders(405, 0);
+                return;
+            }
+
             switch (method) {
                 case "setPointer":
                     AggregatedMetrics.MUTABLE_POINTERS_SET.inc();

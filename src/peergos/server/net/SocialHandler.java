@@ -47,6 +47,11 @@ public class SocialHandler implements HttpHandler {
 
         PublicKeyHash owner = PublicKeyHash.fromString(last.apply("owner"));
         try {
+            // only allow http POST requests
+            if (! exchange.getRequestMethod().equals("POST")) {
+                exchange.sendResponseHeaders(405, 0);
+                return;
+            }
             switch (method) {
                 case "followRequest":
                     AggregatedMetrics.FOLLOW_REQUEST_COUNTER.inc();

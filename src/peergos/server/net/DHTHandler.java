@@ -51,6 +51,12 @@ public class DHTHandler implements HttpHandler {
         long t1 = System.currentTimeMillis();
         String path = httpExchange.getRequestURI().getPath();
         try {
+            // only allow http POST requests
+            if (! httpExchange.getRequestMethod().equals("POST")) {
+                httpExchange.sendResponseHeaders(405, 0);
+                return;
+            }
+
             if (! path.startsWith(apiPrefix))
                 throw new IllegalStateException("Unsupported api version, required: " + apiPrefix);
             path = path.substring(apiPrefix.length());
