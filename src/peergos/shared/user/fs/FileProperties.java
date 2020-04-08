@@ -78,7 +78,7 @@ public class FileProperties implements Cborable {
         return new FileProperties(link.name, isDirectory, false, mimeType, size, modified, isHidden, thumbnail, streamSecret);
     }
 
-    public static void ensureValidPath(Path path) {
+    public static void ensureValidParsedPath(Path path) {
         ensureValidPath(path.toString());
     }
 

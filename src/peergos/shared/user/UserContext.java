@@ -427,7 +427,7 @@ public class UserContext {
     }
 
     public CompletableFuture<Optional<FileWrapper>> getPublicFile(Path file) {
-        FileProperties.ensureValidPath(file);
+        FileProperties.ensureValidParsedPath(file);
         return getPublicCapability(file, network)
                 .thenCompose(cap -> buildTrieFromCap(cap, TrieNodeImpl.empty(), network, crypto)
                 .thenCompose(t -> t.getByPath(file.toString(), crypto.hasher, network)));
