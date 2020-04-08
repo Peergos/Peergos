@@ -2,17 +2,13 @@ package peergos.shared.user.fs;
 
 import jsinterop.annotations.*;
 import peergos.shared.cbor.*;
-import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.crypto.symmetric.*;
-import peergos.shared.storage.ContentAddressedStorage;
 import peergos.shared.util.*;
 
-import java.io.*;
+import java.nio.file.*;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.stream.*;
 
 /** The FileProperties class represents metadata for a file or directory
  *
@@ -22,6 +18,7 @@ import java.util.stream.*;
 @JsType
 public class FileProperties implements Cborable {
     public static final int MAX_FILE_NAME_SIZE = 255;
+    public static final int MAX_PATH_SIZE = 4096;
     public static final FileProperties EMPTY = new FileProperties("", true, false, "", 0, LocalDateTime.MIN, false, Optional.empty(), Optional.empty());
 
     public final String name;
@@ -79,6 +76,16 @@ public class FileProperties implements Cborable {
      */
     public FileProperties withLink(FileProperties link) {
         return new FileProperties(link.name, isDirectory, false, mimeType, size, modified, isHidden, thumbnail, streamSecret);
+    }
+
+    public static void ensureValidPath(Path path) {
+        ensureValidPath(path.toString());
+    }
+
+    @JsMethod
+    public static void ensureValidPath(String path) {
+        if (path.length() > MAX_PATH_SIZE)
+            throw new IllegalArgumentException("Invalid path! Paths must be smaller than " + MAX_PATH_SIZE);
     }
 
     public static CompletableFuture<byte[]> calculateMapKey(byte[] streamSecret, byte[] firstMapKey, long offset, Hasher h) {
