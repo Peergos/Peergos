@@ -427,6 +427,7 @@ public class UserContext {
     }
 
     public CompletableFuture<Optional<FileWrapper>> getPublicFile(Path file) {
+        FileProperties.ensureValidParsedPath(file);
         return getPublicCapability(file, network)
                 .thenCompose(cap -> buildTrieFromCap(cap, TrieNodeImpl.empty(), network, crypto)
                 .thenCompose(t -> t.getByPath(file.toString(), crypto.hasher, network)));
@@ -1609,6 +1610,7 @@ public class UserContext {
     }
 
     public CompletableFuture<Set<FileWrapper>> getChildren(String path) {
+        FileProperties.ensureValidPath(path);
         return entrie.getChildren(path, crypto.hasher, network);
     }
 
@@ -1620,6 +1622,7 @@ public class UserContext {
     public CompletableFuture<Optional<FileWrapper>> getByPath(String path) {
         if (path.equals("/"))
             return CompletableFuture.completedFuture(Optional.of(FileWrapper.createRoot(entrie)));
+        FileProperties.ensureValidPath(path);
         return entrie.getByPath(path.startsWith("/") ? path : "/" + path, crypto.hasher, network);
     }
 
