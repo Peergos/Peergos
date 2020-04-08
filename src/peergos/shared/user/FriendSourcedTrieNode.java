@@ -155,7 +155,7 @@ public class FriendSourcedTrieNode implements TrieNode {
 
     @Override
     public synchronized CompletableFuture<Optional<FileWrapper>> getByPath(String path, Hasher hasher, NetworkAccess network) {
-        ensureValidPath(path);
+        FileProperties.ensureValidPath(path);
         if (path.isEmpty() || path.equals("/"))
             return getFriendRoot(network)
                     .thenApply(opt -> opt.map(f -> f.withTrieNode(this)));
@@ -164,7 +164,7 @@ public class FriendSourcedTrieNode implements TrieNode {
 
     @Override
     public synchronized CompletableFuture<Optional<FileWrapper>> getByPath(String path, Snapshot version, Hasher hasher, NetworkAccess network) {
-        ensureValidPath(path);
+        FileProperties.ensureValidPath(path);
         if (path.isEmpty() || path.equals("/"))
             return getFriendRoot(network)
                     .thenApply(opt -> opt.map(f -> f.withTrieNode(this)));
@@ -173,14 +173,14 @@ public class FriendSourcedTrieNode implements TrieNode {
 
     @Override
     public synchronized CompletableFuture<Set<FileWrapper>> getChildren(String path, Hasher hasher, NetworkAccess network) {
-        ensureValidPath(path);
+        FileProperties.ensureValidPath(path);
         return ensureUptodate(crypto, network)
                 .thenCompose(x -> root.getChildren(path, hasher, network));
     }
 
     @Override
     public synchronized CompletableFuture<Set<FileWrapper>> getChildren(String path, Hasher hasher, Snapshot version, NetworkAccess network) {
-        ensureValidPath(path);
+        FileProperties.ensureValidPath(path);
         return root.getChildren(path, hasher, version, network);
     }
 
@@ -191,14 +191,14 @@ public class FriendSourcedTrieNode implements TrieNode {
 
     @Override
     public synchronized TrieNode put(String path, EntryPoint e) {
-        ensureValidPath(path);
+        FileProperties.ensureValidPath(path);
         root = root.put(path, e);
         return this;
     }
 
     @Override
     public synchronized TrieNode putNode(String path, TrieNode t) {
-        ensureValidPath(path);
+        FileProperties.ensureValidPath(path);
         root = root.putNode(path, t);
         return this;
     }

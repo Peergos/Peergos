@@ -85,7 +85,7 @@ public class FileProperties implements Cborable {
     @JsMethod
     public static void ensureValidPath(String path) {
         if (path.length() > MAX_PATH_SIZE)
-            throw new IllegalArgumentException("Invalid path! Paths must be smaller than " + MAX_PATH_SIZE);
+            throw new IllegalArgumentException("Path too long! Paths must be smaller than " + MAX_PATH_SIZE);
     }
 
     public static CompletableFuture<byte[]> calculateMapKey(byte[] streamSecret, byte[] firstMapKey, long offset, Hasher h) {

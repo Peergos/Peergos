@@ -11,11 +11,6 @@ import java.util.concurrent.*;
 @JsType
 public interface TrieNode {
 
-    default void ensureValidPath(String path) {
-        if (path.length() > FileProperties.MAX_PATH_SIZE)
-            throw new IllegalArgumentException("Path too long. Paths must be smaller than " + FileProperties.MAX_PATH_SIZE);
-    }
-
     CompletableFuture<Optional<FileWrapper>> getByPath(String path, Hasher hasher, NetworkAccess network);
 
     @JsIgnore

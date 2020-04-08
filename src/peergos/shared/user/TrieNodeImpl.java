@@ -3,7 +3,7 @@ package peergos.shared.user;
 import jsinterop.annotations.*;
 import peergos.shared.NetworkAccess;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.user.fs.FileWrapper;
+import peergos.shared.user.fs.*;
 import peergos.shared.util.Futures;
 
 import java.util.*;
@@ -35,7 +35,7 @@ public class TrieNodeImpl implements TrieNode {
 
     @Override
     public CompletableFuture<Optional<FileWrapper>> getByPath(String path, Hasher hasher, NetworkAccess network) {
-        ensureValidPath(path);
+        FileProperties.ensureValidPath(path);
         LOG.info("GetByPath: " + path);
         String finalPath = TrieNode.canonicalise(path);
         if (finalPath.length() == 0) {
@@ -77,7 +77,7 @@ public class TrieNodeImpl implements TrieNode {
     @Override
     @JsIgnore
     public CompletableFuture<Optional<FileWrapper>> getByPath(String path, Snapshot version, Hasher hasher, NetworkAccess network) {
-        ensureValidPath(path);
+        FileProperties.ensureValidPath(path);
         LOG.info("GetByPath: " + path);
         String finalPath = TrieNode.canonicalise(path);
         if (finalPath.length() == 0) {
@@ -108,7 +108,7 @@ public class TrieNodeImpl implements TrieNode {
 
     @Override
     public CompletableFuture<Set<FileWrapper>> getChildren(String path, Hasher hasher, NetworkAccess network) {
-        ensureValidPath(path);
+        FileProperties.ensureValidPath(path);
         String trimmedPath = TrieNode.canonicalise(path);
         if (trimmedPath.length() == 0) {
             if (! value.isPresent()) { // find a child entry and traverse parent links
@@ -144,7 +144,7 @@ public class TrieNodeImpl implements TrieNode {
     @Override
     @JsIgnore
     public CompletableFuture<Set<FileWrapper>> getChildren(String path, Hasher hasher, Snapshot version, NetworkAccess network) {
-        ensureValidPath(path);
+        FileProperties.ensureValidPath(path);
         String trimmedPath = TrieNode.canonicalise(path);
         if (trimmedPath.length() == 0) {
             if (! value.isPresent()) { // find a child entry and traverse parent links
@@ -184,7 +184,7 @@ public class TrieNodeImpl implements TrieNode {
 
     @Override
     public TrieNodeImpl put(String path, EntryPoint e) {
-        ensureValidPath(path);
+        FileProperties.ensureValidPath(path);
         LOG.info("Entrie.put(" + path + ")");
         path = TrieNode.canonicalise(path);
         if (path.length() == 0) {
@@ -201,7 +201,7 @@ public class TrieNodeImpl implements TrieNode {
 
     @Override
     public TrieNode putNode(String path, TrieNode t) {
-        ensureValidPath(path);
+        FileProperties.ensureValidPath(path);
         LOG.info("Entrie.put(" + path + ")");
         path = TrieNode.canonicalise(path);
         if (path.length() == 0) {
