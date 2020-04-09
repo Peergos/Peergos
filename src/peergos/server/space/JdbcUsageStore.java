@@ -25,21 +25,24 @@ public class JdbcUsageStore implements UsageStore {
     }
 
     private Connection getNonCommittingConnection() {
-        Connection connection = conn.get();
-        try {
-            connection.setAutoCommit(false);
-            connection.setTransactionIsolation(Connection.TRANSACTION_SERIALIZABLE);
-            return connection;
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
+        return getNonCommittingConnection(true);
+    }
+
+    private Connection getNonCommittingConnection(boolean serializable) {
+        return getConnection(false, serializable);
     }
 
     private Connection getConnection() {
+        return getConnection(true, true);
+    }
+
+    private Connection getConnection(boolean autocommit, boolean serializable) {
         Connection connection = conn.get();
         try {
-            connection.setAutoCommit(true);
-            connection.setTransactionIsolation(Connection.TRANSACTION_SERIALIZABLE);
+            if (autocommit)
+                connection.setAutoCommit(true);
+            if (serializable)
+                connection.setTransactionIsolation(Connection.TRANSACTION_SERIALIZABLE);
             return connection;
         } catch (SQLException e) {
             throw new RuntimeException(e);
@@ -64,7 +67,7 @@ public class JdbcUsageStore implements UsageStore {
 
     @Override
     public void addUserIfAbsent(String username) {
-        try (Connection conn = getConnection();
+        try (Connection conn = getConnection(true, false);
              PreparedStatement userInsert = conn.prepareStatement(commands.insertOrIgnoreCommand("INSERT ", "INTO users (name) VALUES(?)"));
              PreparedStatement select = conn.prepareStatement("SELECT id FROM users WHERE name = ?;");
              PreparedStatement usageInsert = conn.prepareStatement(commands.insertOrIgnoreCommand("INSERT ", "INTO userusage (user_id, total_bytes, errored) VALUES(?, ?, ?)"))) {
@@ -89,7 +92,7 @@ public class JdbcUsageStore implements UsageStore {
     @Override
     public void confirmUsage(String username, PublicKeyHash writer, long usageDelta, boolean errored) {
         int userId = getUserId(username);
-        try (Connection conn = getNonCommittingConnection();
+        try (Connection conn = getNonCommittingConnection(false);
              PreparedStatement insert = conn.prepareStatement(
                 "UPDATE userusage SET total_bytes = total_bytes + ?, errored = ? " +
                         "WHERE user_id = ?;");
@@ -122,29 +125,15 @@ public class JdbcUsageStore implements UsageStore {
 
     @Override
     public void addPendingUsage(String username, PublicKeyHash writer, int size) {
-        int userId = getUserId(username);
         int writerId = getWriterId(writer);
-        try (Connection conn = getNonCommittingConnection();
-             PreparedStatement defaultInsert = conn.prepareStatement(commands.insertOrIgnoreCommand(
-                     "INSERT ", "INTO pendingusage (user_id, writer_id, pending_bytes) VALUES(?, ?, ?)"));
+        try (Connection conn = getConnection(true, false);
              PreparedStatement insert = conn.prepareStatement("UPDATE pendingusage SET pending_bytes = pending_bytes + ? " +
                      "WHERE writer_id = ?;")) {
-            try {
-                defaultInsert.setInt(1, userId);
-                defaultInsert.setInt(2, writerId);
-                defaultInsert.setInt(3, 0);
-                defaultInsert.executeUpdate();
-
-                insert.setLong(1, size);
-                insert.setInt(2, writerId);
-                int count = insert.executeUpdate();
-                if (count != 1)
-                    throw new IllegalStateException("Didn't update one record!");
-                conn.commit();
-            } catch (SQLException e) {
-                conn.rollback();
-                throw e;
-            }
+            insert.setLong(1, size);
+            insert.setInt(2, writerId);
+            int count = insert.executeUpdate();
+            if (count != 1)
+                throw new IllegalStateException("Didn't update one record!");
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);
@@ -215,7 +204,7 @@ public class JdbcUsageStore implements UsageStore {
 
     @Override
     public void addWriter(String owner, PublicKeyHash writer) {
-        try (Connection conn = getNonCommittingConnection();
+        try (Connection conn = getNonCommittingConnection(false);
              PreparedStatement writerInsert = conn.prepareStatement(commands.insertOrIgnoreCommand("INSERT ", "INTO writers (key_hash) VALUES(?)"));
              PreparedStatement userSelect = conn.prepareStatement("SELECT id FROM users WHERE name = ?;");
              PreparedStatement writerSelect = conn.prepareStatement("SELECT id FROM writers WHERE key_hash = ?;");
