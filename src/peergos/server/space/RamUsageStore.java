@@ -60,9 +60,10 @@ public class RamUsageStore implements UsageStore {
     @Override
     public void updateWriterUsage(PublicKeyHash writer,
                                   MaybeMultihash target,
-                                  Set<PublicKeyHash> ownedKeys,
+                                  Set<PublicKeyHash> removedOwnedKeys,
+                                  Set<PublicKeyHash> addedOwnedKeys,
                                   long retainedStorage) {
-        state.currentView.get(writer).update(target, ownedKeys, retainedStorage);
+        state.currentView.get(writer).update(target, removedOwnedKeys, addedOwnedKeys, retainedStorage);
     }
 
     @Override

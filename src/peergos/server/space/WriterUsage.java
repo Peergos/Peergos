@@ -20,9 +20,15 @@ public class WriterUsage implements Cborable {
         this.ownedKeys = ownedKeys;
     }
 
-    public synchronized void update(MaybeMultihash target, Set<PublicKeyHash> ownedKeys, long retainedStorage) {
+    public synchronized void update(MaybeMultihash target,
+                                    Set<PublicKeyHash> removedOwnedKeys,
+                                    Set<PublicKeyHash> addedOwnedKeys,
+                                    long retainedStorage) {
         this.target = target;
-        this.ownedKeys = Collections.unmodifiableSet(ownedKeys);
+        HashSet<PublicKeyHash> updated = new HashSet<>(ownedKeys);
+        updated.removeAll(removedOwnedKeys);
+        updated.addAll(addedOwnedKeys);
+        this.ownedKeys = Collections.unmodifiableSet(updated);
         this.directRetainedStorage = retainedStorage;
     }
 

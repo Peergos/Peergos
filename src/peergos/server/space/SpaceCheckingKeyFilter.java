@@ -137,7 +137,9 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                         processMutablePointerEvent(store, owner, newOwnedKey, MaybeMultihash.empty(),
                                 mutable.getPointerTarget(owner, newOwnedKey, dht).get(), mutable, dht, hasher);
                     }
-                    store.updateWriterUsage(writerKey, rootHash, directOwnedKeys, updatedSize);
+                    HashSet<PublicKeyHash> removedOwnedKeys = new HashSet<>(writerUsage.ownedKeys());
+                    removedOwnedKeys.removeAll(directOwnedKeys);
+                    store.updateWriterUsage(writerKey, rootHash, removedOwnedKeys, new HashSet<>(newOwnedKeys), updatedSize);
                     Logging.LOG().info("Updated space used by " + writerKey + " to " + updatedSize);
                 }
             } catch (Throwable t) {
@@ -222,7 +224,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         if (current == null)
             throw new IllegalStateException("Unknown writer key hash: " + writer);
         if (! newRoot.isPresent()) {
-            state.updateWriterUsage(writer, MaybeMultihash.empty(), Collections.emptySet(), 0);
+            state.updateWriterUsage(writer, MaybeMultihash.empty(), Collections.emptySet(), Collections.emptySet(), 0);
             if (existingRoot.isPresent()) {
                 try {
                     // subtract data size from orphaned child keys (this assumes the keys form a tree without dupes)
@@ -249,7 +251,9 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 HashSet<PublicKeyHash> removedChildren = new HashSet<>(current.ownedKeys());
                 removedChildren.removeAll(updatedOwned);
                 processRemovedOwnedKeys(state, owner, removedChildren, mutable, dht, hasher);
-                state.updateWriterUsage(writer, newRoot, updatedOwned, current.directRetainedStorage() + changeInStorage);
+                HashSet<PublicKeyHash> addedOwnedKeys = new HashSet<>(updatedOwned);
+                addedOwnedKeys.removeAll(current.ownedKeys());
+                state.updateWriterUsage(writer, newRoot, removedChildren, addedOwnedKeys, current.directRetainedStorage() + changeInStorage);
             }
         } catch (Exception e) {
             Exceptions.getRootCause(e).printStackTrace();

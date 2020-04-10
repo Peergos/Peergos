@@ -148,7 +148,7 @@ public class Main {
             ContentAddressedStorage dht = useIPFS ?
                     new IpfsDHT(new MultiAddress(ipfsApiAddress)) :
                     new FileContentAddressedStorage(blockstorePath(args),
-                            JdbcTransactionStore.build(buildEphemeralSqlite(), new SqliteCommands()));
+                            JdbcTransactionStore.build(getDBConnector(args, "transactions-sql-file"), new SqliteCommands()));
 
             SigningKeyPair peergosIdentityKeys = peergos.getUser();
             PublicKeyHash peergosPublicHash = ContentAddressedStorage.hashKey(peergosIdentityKeys.publicSigningKey);
@@ -255,7 +255,7 @@ public class Main {
                     Multihash pkiIpfsNodeId = useIPFS ?
                             new IpfsDHT(ipfsApi).id().get() :
                             new FileContentAddressedStorage(blockstorePath(args),
-                                    JdbcTransactionStore.build(buildEphemeralSqlite(), new SqliteCommands())).id().get();
+                                    JdbcTransactionStore.build(getDBConnector(args, "transactions-sql-file"), new SqliteCommands())).id().get();
 
                     if (ipfs != null)
                         ipfs.stop();
@@ -273,6 +273,7 @@ public class Main {
                     new Command.Arg("useIPFS", "Whether to use IPFS or a local datastore", true, "false"),
                     new Command.Arg("mutable-pointers-file", "The filename for the mutable pointers (or :memory: for ram based)", true, "mutable.sql"),
                     new Command.Arg("social-sql-file", "The filename for the follow requests (or :memory: for ram based)", true, "social.sql"),
+                    new Command.Arg("transactions-sql-file", "The filename for the open transactions datastore", true, "transactions.sql"),
                     new Command.Arg("space-requests-sql-file", "The filename for the space requests datastore", true, "space-requests.sql"),
                     new Command.Arg("space-usage-sql-file", "The filename for the space usage datastore", true, "space-usage.sql"),
                     new Command.Arg("ipfs-api-address", "ipfs api port", true, "/ip4/127.0.0.1/tcp/5001"),
@@ -302,7 +303,8 @@ public class Main {
 
                     MultiAddress ipfsApi = new MultiAddress(args.getArg("ipfs-api-address"));
 
-                    JdbcTransactionStore transactions = JdbcTransactionStore.build(buildEphemeralSqlite(), new SqliteCommands());
+                    Supplier<Connection> transactionDb = getDBConnector(args, "transactions-sql-file");
+                    JdbcTransactionStore transactions = JdbcTransactionStore.build(transactionDb, new SqliteCommands());
                     ContentAddressedStorage storage = useIPFS ?
                             new IpfsDHT(ipfsApi) :
                             S3Config.useS3(args) ?
@@ -327,6 +329,7 @@ public class Main {
                     new Command.Arg("useIPFS", "Whether to use IPFS or a local datastore", true, "false"),
                     new Command.Arg("mutable-pointers-file", "The filename for the mutable pointers (or :memory: for ram based)", true, "mutable.sql"),
                     new Command.Arg("social-sql-file", "The filename for the follow requests (or :memory: for ram based)", true, "social.sql"),
+                    new Command.Arg("transactions-sql-file", "The filename for the open transactions datastore", true, "transactions.sql"),
                     new Command.Arg("space-requests-sql-file", "The filename for the space requests datastore", true, "space-requests.sql"),
                     new Command.Arg("space-usage-sql-file", "The filename for the space usage datastore", true, "space-usage.sql"),
                     new Command.Arg("ipfs-api-address", "ipfs api port", true, "/ip4/127.0.0.1/tcp/5001"),
