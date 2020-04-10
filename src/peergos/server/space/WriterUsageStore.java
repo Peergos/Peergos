@@ -13,5 +13,9 @@ public interface WriterUsageStore {
 
     WriterUsage getUsage(PublicKeyHash writer);
 
-    void updateWriterUsage(PublicKeyHash writer, MaybeMultihash target, Set<PublicKeyHash> ownedKeys, long retainedStorage);
+    void updateWriterUsage(PublicKeyHash writer,
+                           MaybeMultihash target,
+                           Set<PublicKeyHash> removedOwnedKeys,
+                           Set<PublicKeyHash> addedOwnedKeys,
+                           long retainedStorage);
 }
