@@ -24,14 +24,6 @@ public class JdbcUsageStore implements UsageStore {
         init(commands);
     }
 
-    private Connection getNonCommittingConnection() {
-        return getNonCommittingConnection(true);
-    }
-
-    private Connection getNonCommittingConnection(boolean serializable) {
-        return getConnection(false, serializable);
-    }
-
     private Connection getConnection() {
         return getConnection(true, true);
     }
