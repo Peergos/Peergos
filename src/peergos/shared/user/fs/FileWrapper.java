@@ -1400,6 +1400,17 @@ public class FileWrapper {
     }
 
     @JsMethod
+    public CompletableFuture<? extends AsyncReader> getBufferedInputStream(NetworkAccess network,
+                                                                           Crypto crypto,
+                                                                           int fileSizeHi,
+                                                                           int fileSizeLow,
+                                                                           int bufferChunks,
+                                                                           ProgressConsumer<Long> monitor) {
+        return getInputStream(network, crypto, fileSizeHi, fileSizeLow, monitor)
+                .thenApply(r -> new BufferedReader(r, bufferChunks));
+    }
+
+    @JsMethod
     public CompletableFuture<? extends AsyncReader> getInputStream(NetworkAccess network,
                                                                    Crypto crypto,
                                                                    int fileSizeHi,
