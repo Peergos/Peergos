@@ -8,17 +8,17 @@ public class BufferedReader implements AsyncReader {
 
     private final AsyncReader source;
     private final byte[] buffer;
-    private final int nChunks;
+    private final long fileSize;
     // bufferStartOffset <= readOffset <= bufferEndOffset at all times
     private long readOffsetInFile, bufferStartInFile, bufferEndInFile;
     private int startInBuffer; // index in buffer corresponding to bufferStartInFile
     private volatile boolean closed = false;
     private CompletableFuture<Integer> currentRetrieval = Futures.of(0);
 
-    public BufferedReader(AsyncReader source, int nChunksToBuffer) {
+    public BufferedReader(AsyncReader source, int nChunksToBuffer, long fileSize) {
         this.source = source;
         this.buffer = new byte[nChunksToBuffer * Chunk.MAX_SIZE];
-        this.nChunks = nChunksToBuffer;
+        this.fileSize = fileSize;
         this.readOffsetInFile = 0;
         this.bufferStartInFile = 0;
         this.bufferEndInFile = 0;
@@ -47,15 +47,18 @@ public class BufferedReader implements AsyncReader {
         long initialBufferEndOffset = bufferEndInFile;
         int writeFromBufferOffset = (int) (initialBufferEndOffset - bufferStartInFile + startInBuffer) % buffer.length;
         int toCopy = Math.min(buffer.length - writeFromBufferOffset, Chunk.MAX_SIZE);
-        System.out.println("Buffering from " + bufferEndInFile + " to array index " + writeFromBufferOffset);
+        if (fileSize - bufferEndInFile < Chunk.MAX_SIZE)
+            toCopy = (int) (fileSize - bufferEndInFile);
+        System.out.println("Buffering from " + bufferEndInFile + " to array index " + writeFromBufferOffset + " size " + toCopy);
         return source.readIntoArray(buffer, writeFromBufferOffset, toCopy)
                 .thenApply(read -> {
                     this.bufferEndInFile = initialBufferEndOffset + read;
                     lock.complete(read);
-                    if (buffered() < buffer.length)
+                    if (buffered() < buffer.length && buffered() < fileSize)
                         asyncBufferFill();
                     return read;
                 }).exceptionally(t -> {
+                    t.printStackTrace();
                     lock.completeExceptionally(t);
                     return 0;
                 });
@@ -102,6 +105,7 @@ public class BufferedReader implements AsyncReader {
                 bufferStartInFile += Chunk.MAX_SIZE;
                 startInBuffer += Chunk.MAX_SIZE;
             }
+            System.out.println("Finished read from buffer of " + length);
             return Futures.of(length);
         }
         if (available > 0) {
@@ -117,8 +121,13 @@ public class BufferedReader implements AsyncReader {
                 bufferStartInFile += Chunk.MAX_SIZE;
                 startInBuffer += Chunk.MAX_SIZE;
             }
+            return bufferNextChunk()
+                    .thenCompose(x -> readIntoArray(res, offset + toCopy, length - toCopy))
+                    .exceptionally(Futures::logAndThrow);
         }
-        return bufferNextChunk().thenCompose(x -> readIntoArray(res, offset, length)).exceptionally(Futures::logAndThrow);
+        return bufferNextChunk()
+                .thenCompose(x -> readIntoArray(res, offset, length))
+                .exceptionally(Futures::logAndThrow);
     }
 
     @Override
