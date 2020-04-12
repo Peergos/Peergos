@@ -120,7 +120,8 @@ public class BufferedAsyncReader implements AsyncReader {
                 startInBuffer += Chunk.MAX_SIZE;
             }
             return lock.runWithLock(x -> bufferNextChunk())
-                    .thenCompose(x -> readIntoArray(res, offset + toCopy, length - toCopy))
+                    .thenCompose(x -> readIntoArray(res, offset + toCopy, length - toCopy)
+                            .thenApply(i -> length))
                     .exceptionally(Futures::logAndThrow);
         }
         return lock.runWithLock(x -> bufferNextChunk())
