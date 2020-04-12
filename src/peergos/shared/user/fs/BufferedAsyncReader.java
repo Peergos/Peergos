@@ -12,6 +12,7 @@ public class BufferedAsyncReader implements AsyncReader {
     // bufferStartOffset <= readOffset <= bufferEndOffset at all times
     private long readOffsetInFile, bufferStartInFile, bufferEndInFile;
     private int startInBuffer; // index in buffer corresponding to bufferStartInFile
+    private long lastReadEnd = -1;
     private volatile boolean closed = false;
     private final AsyncLock<Integer> lock = new AsyncLock<>(Futures.of(0));
 
@@ -30,16 +31,16 @@ public class BufferedAsyncReader implements AsyncReader {
     }
 
     private void asyncBufferFill() {
+        System.out.println("Async buffer fill");
         ForkJoinPool.commonPool().execute(() -> lock.runWithLock(x -> bufferNextChunk()));
     }
 
     private synchronized CompletableFuture<Integer> bufferNextChunk() {
-        System.out.println("BufferNextChunk() " + toString());
         if (closed)
             return Futures.errored(new RuntimeException("Stream Closed!"));
         if (bufferEndInFile - bufferStartInFile >= buffer.length) {
             System.out.println("Buffer full!");
-            return Futures.errored(new RuntimeException("Buffer already full!"));
+            return Futures.of(0);
         }
 
         long initialBufferEndOffset = bufferEndInFile;
@@ -49,16 +50,11 @@ public class BufferedAsyncReader implements AsyncReader {
             toCopy = (int) (fileSize - bufferEndInFile);
         if (toCopy == 0)
             return Futures.of(0);
-        System.out.println("Buffering from " + bufferEndInFile + " to array index " + writeFromBufferOffset + " size " + toCopy);
+        System.out.println("Buffering  " + toString() + " size " + toCopy);
         return source.readIntoArray(buffer, writeFromBufferOffset, toCopy)
                 .thenApply(read -> {
                     this.bufferEndInFile = initialBufferEndOffset + read;
-                    if (buffered() < buffer.length && buffered() < fileSize && ! closed)
-                        asyncBufferFill();
                     return read;
-                }).exceptionally(t -> {
-                    t.printStackTrace();
-                    return 0;
                 });
     }
 
@@ -88,7 +84,18 @@ public class BufferedAsyncReader implements AsyncReader {
 
     @Override
     public synchronized CompletableFuture<Integer> readIntoArray(byte[] res, int offset, int length) {
+        boolean twoConsecutiveReads = lastReadEnd == readOffsetInFile;
+        lastReadEnd = readOffsetInFile + length;
         System.out.println("Read "+length+" from buffer " + toString());
+        return internalReadIntoArray(res, offset, length).thenApply(r -> {
+            // Only pre-buffer the next chunk if we've done two consecutive reads,i.e. we're probably streaming
+            if (twoConsecutiveReads && buffered() < buffer.length && buffered() < fileSize && ! closed)
+                asyncBufferFill();
+            return r;
+        });
+    }
+
+    private synchronized CompletableFuture<Integer> internalReadIntoArray(byte[] res, int offset, int length) {
         int available = available();
         if (available >= length) {
             // we already have all the data buffered
@@ -119,14 +126,14 @@ public class BufferedAsyncReader implements AsyncReader {
                 bufferStartInFile += Chunk.MAX_SIZE;
                 startInBuffer += Chunk.MAX_SIZE;
             }
+            System.out.println("Partial read from buffer of " + toCopy);
             return lock.runWithLock(x -> bufferNextChunk())
-                    .thenCompose(x -> readIntoArray(res, offset + toCopy, length - toCopy)
-                            .thenApply(i -> length))
-                    .exceptionally(Futures::logAndThrow);
+                    .thenCompose(x -> internalReadIntoArray(res, offset + toCopy, length - toCopy)
+                            .thenApply(i -> length));
         }
+        System.out.println("Buffer empty, refilling...");
         return lock.runWithLock(x -> bufferNextChunk())
-                .thenCompose(x -> readIntoArray(res, offset, length))
-                .exceptionally(Futures::logAndThrow);
+                .thenCompose(x -> internalReadIntoArray(res, offset, length));
     }
 
     @Override
