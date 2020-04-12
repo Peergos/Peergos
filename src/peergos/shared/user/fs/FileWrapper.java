@@ -1408,7 +1408,7 @@ public class FileWrapper {
                                                                            ProgressConsumer<Long> monitor) {
         long fileSize = (fileSizeLow & 0xFFFFFFFFL) + ((fileSizeHi & 0xFFFFFFFFL) << 32);
         return getInputStream(network, crypto, fileSizeHi, fileSizeLow, monitor)
-                .thenApply(r -> new BufferedReader(r, bufferChunks, fileSize));
+                .thenApply(r -> new BufferedAsyncReader(r, bufferChunks, fileSize));
     }
 
     @JsMethod

@@ -4,18 +4,18 @@ import peergos.shared.util.*;
 
 import java.util.concurrent.*;
 
-public class BufferedReader implements AsyncReader {
+public class BufferedAsyncReader implements AsyncReader {
 
     private final AsyncReader source;
-    private final byte[] buffer;
     private final long fileSize;
+    private final byte[] buffer;
     // bufferStartOffset <= readOffset <= bufferEndOffset at all times
     private long readOffsetInFile, bufferStartInFile, bufferEndInFile;
     private int startInBuffer; // index in buffer corresponding to bufferStartInFile
     private volatile boolean closed = false;
-    private CompletableFuture<Integer> currentRetrieval = Futures.of(0);
+    private final AsyncLock<Integer> lock = new AsyncLock<>(Futures.of(0));
 
-    public BufferedReader(AsyncReader source, int nChunksToBuffer, long fileSize) {
+    public BufferedAsyncReader(AsyncReader source, int nChunksToBuffer, long fileSize) {
         this.source = source;
         this.buffer = new byte[nChunksToBuffer * Chunk.MAX_SIZE];
         this.fileSize = fileSize;
@@ -27,7 +27,7 @@ public class BufferedReader implements AsyncReader {
     }
 
     private void asyncBufferFill() {
-        ForkJoinPool.commonPool().execute(this::bufferNextChunk);
+        ForkJoinPool.commonPool().execute(() -> lock.runWithLock(x -> bufferNextChunk()));
     }
 
     private synchronized CompletableFuture<Integer> bufferNextChunk() {
@@ -38,28 +38,23 @@ public class BufferedReader implements AsyncReader {
             System.out.println("Buffer full!");
             return Futures.errored(new RuntimeException("Buffer already full!"));
         }
-        System.out.println("Buffer lock: " + (currentRetrieval.isDone() ? "done" : "waiting"));
-        if (! currentRetrieval.isDone())
-            return currentRetrieval;
-        CompletableFuture<Integer> lock = new CompletableFuture<>();
-        this.currentRetrieval = lock;
 
         long initialBufferEndOffset = bufferEndInFile;
         int writeFromBufferOffset = (int) (initialBufferEndOffset - bufferStartInFile + startInBuffer) % buffer.length;
         int toCopy = Math.min(buffer.length - writeFromBufferOffset, Chunk.MAX_SIZE);
         if (fileSize - bufferEndInFile < Chunk.MAX_SIZE)
             toCopy = (int) (fileSize - bufferEndInFile);
+        if (toCopy == 0)
+            return Futures.of(0);
         System.out.println("Buffering from " + bufferEndInFile + " to array index " + writeFromBufferOffset + " size " + toCopy);
         return source.readIntoArray(buffer, writeFromBufferOffset, toCopy)
                 .thenApply(read -> {
                     this.bufferEndInFile = initialBufferEndOffset + read;
-                    lock.complete(read);
-                    if (buffered() < buffer.length && buffered() < fileSize)
+                    if (buffered() < buffer.length && buffered() < fileSize && ! closed)
                         asyncBufferFill();
                     return read;
                 }).exceptionally(t -> {
                     t.printStackTrace();
-                    lock.completeExceptionally(t);
                     return 0;
                 });
     }
@@ -121,11 +116,11 @@ public class BufferedReader implements AsyncReader {
                 bufferStartInFile += Chunk.MAX_SIZE;
                 startInBuffer += Chunk.MAX_SIZE;
             }
-            return bufferNextChunk()
+            return lock.runWithLock(x -> bufferNextChunk())
                     .thenCompose(x -> readIntoArray(res, offset + toCopy, length - toCopy))
                     .exceptionally(Futures::logAndThrow);
         }
-        return bufferNextChunk()
+        return lock.runWithLock(x -> bufferNextChunk())
                 .thenCompose(x -> readIntoArray(res, offset, length))
                 .exceptionally(Futures::logAndThrow);
     }
@@ -137,19 +132,27 @@ public class BufferedReader implements AsyncReader {
     }
 
     @Override
-    public CompletableFuture<AsyncReader> seek(long offset) {
+    public synchronized CompletableFuture<AsyncReader> seek(long offset) {
         System.out.println("BufferedReader.seek " + offset);
         if (offset == readOffsetInFile)
             return Futures.of(this);
-        return source.seek(offset)
-                .thenApply(r -> this);
+        return lock.runWithLock(x -> source.seek(offset)
+                .thenApply(r -> {
+                    bufferStartInFile = bufferEndInFile = readOffsetInFile = offset;
+                    startInBuffer = 0;
+                    return 0;
+                })).thenApply(x -> this);
     }
 
     @Override
     public CompletableFuture<AsyncReader> reset() {
         System.out.println("BufferedReader.reset()");
-        return source.reset()
-                .thenApply(reset -> this);
+        return lock.runWithLock(x -> source.reset()
+                .thenApply(r -> {
+                    bufferStartInFile = bufferEndInFile = readOffsetInFile = 0;
+                    startInBuffer = 0;
+                    return 0;
+                })).thenApply(x -> this);
     }
 
     @Override

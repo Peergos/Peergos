@@ -9,9 +9,11 @@ import peergos.shared.*;
 import peergos.shared.social.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
+import peergos.shared.util.*;
 
 import java.nio.file.*;
 import java.util.*;
+import java.util.concurrent.*;
 
 @RunWith(Parameterized.class)
 public class RamUserTests extends UserTests {
@@ -38,6 +40,90 @@ public class RamUserTests extends UserTests {
         Path peergosDir = args.fromPeergosDir("", "");
         System.out.println("Deleting " + peergosDir);
         deleteFiles(peergosDir.toFile());
+    }
+
+    @Test
+    public void kevTest() throws Exception {
+
+        String username = "kev";
+        String password = "test01";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        FileWrapper userRoot = context.getUserRoot().join();
+
+        String filename = "sintel.mp4";
+        byte[] fileData = Files.readAllBytes(Paths.get("assets", filename));
+
+        FileWrapper userRoot2 = userRoot.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(fileData), fileData.length,
+                context.network, context.crypto, l -> {}, context.crypto.random.randomBytes(32)).join();
+
+        FileWrapper file = context.getByPath(Paths.get(username, filename)).join().get();
+        FileProperties props = file.getFileProperties();
+        int sizeHigh = props.sizeHigh();
+        int sizeLow = props.sizeLow();
+
+        int seekHi = 0;
+        //int seekLo = 0;
+        //int length = 1048576;
+
+        int seekLo = 14581760;
+        int length = 39784;
+        //file length = 14,621,544
+        final int maxBlockSize = 1024 * 1024 * 5;
+
+        List<byte[]> resultBytes = new ArrayList<>();
+        boolean result = file.getBufferedInputStream(network, crypto, sizeHigh, sizeLow, 1, l -> {}).thenCompose(reader -> {
+            return reader.seekJS(seekHi, seekLo).thenApply(seekReader -> {
+                final int blockSize = length > maxBlockSize ? maxBlockSize : length;
+                return pump(seekReader, length, blockSize, resultBytes);
+            });
+        }).join().get();
+
+        List<byte[]> resultBytes2 = new ArrayList<>();
+        boolean result2 = file.getInputStream(network, crypto, sizeHigh, sizeLow, l -> {}).thenCompose(reader -> {
+            return reader.seekJS(seekHi, seekLo).thenApply(seekReader -> {
+                final int blockSize = length > maxBlockSize ? maxBlockSize : length;
+                return pump(seekReader, length, blockSize, resultBytes2);
+            });
+        }).join().get();
+        compare(resultBytes, resultBytes2);
+
+        System.currentTimeMillis();
+    }
+
+    private void compare(List<byte[]> resultBytes, List<byte[]> resultBytes2 ) {
+        if(resultBytes.size() != resultBytes2.size()) {
+            throw new Error("wrong!");
+        }
+        for(int i=0; i < resultBytes.size(); i++) {
+            byte[] result1 = resultBytes.get(i);
+            byte[] result2 = resultBytes2.get(i);
+            if(result1.length != result2.length) {
+                throw new Error("wrong!");
+            }
+            for(int j=0; j < result1.length; j++) {
+                if(result1[j] != result2[j]) {
+                    throw new Error("wrong!");
+                }
+            }
+        }
+        System.currentTimeMillis();
+    }
+
+    private CompletableFuture<Boolean> pump(AsyncReader reader, Integer currentSize, Integer blockSize, List<byte[]> resultBytes) {
+        final int maxBlockSize = 1024 * 1024 * 5;
+        if(blockSize > 0) {
+            byte[] data = new byte[blockSize];
+            return reader.readIntoArray(data, 0, blockSize).thenCompose(read -> {
+                int newCurrentSize = currentSize - read;
+                int newBlockSize = newCurrentSize > maxBlockSize ? maxBlockSize : newCurrentSize;
+                resultBytes.add(data);
+                return pump(reader, newCurrentSize, newBlockSize, resultBytes);
+            });
+        } else {
+            CompletableFuture<Boolean> future = Futures.incomplete();
+            future.complete(true);
+            return future;
+        }
     }
 
     @Test
