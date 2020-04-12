@@ -23,7 +23,6 @@ public class BufferedAsyncReader implements AsyncReader {
         this.readOffsetInFile = bufferStartInFile;
         this.bufferEndInFile = bufferStartInFile;
         this.startInBuffer = 0;
-        asyncBufferFill();
     }
 
     public BufferedAsyncReader(AsyncReader source, int nChunksToBuffer, long fileSize) {
