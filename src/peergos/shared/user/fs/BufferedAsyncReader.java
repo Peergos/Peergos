@@ -153,7 +153,7 @@ public class BufferedAsyncReader implements AsyncReader {
                 .thenCompose(r -> {
                     BufferedAsyncReader res = new BufferedAsyncReader(r, buffer.length / Chunk.MAX_SIZE, fileSize, aligned);
                     // do a dummy read into our buffer to get to correct position
-                    return res.readIntoArray(buffer, 0, (int) (offset - aligned))
+                    return res.internalReadIntoArray(buffer, 0, (int) (offset - aligned))
                             .thenApply(n -> res);
                 });
     }
