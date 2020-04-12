@@ -92,7 +92,7 @@ public class BufferedAsyncReader implements AsyncReader {
         int available = available();
         if (available >= length) {
             // we already have all the data buffered
-            int readStartInBuffer = startInBuffer + (int) (readOffsetInFile - bufferStartInFile);
+            int readStartInBuffer = (int) (startInBuffer + readOffsetInFile - bufferStartInFile) % buffer.length;
             int toCopy = Math.min(length, buffer.length - readStartInBuffer);
             System.arraycopy(buffer, readStartInBuffer, res, offset, toCopy);
             if (toCopy < length)

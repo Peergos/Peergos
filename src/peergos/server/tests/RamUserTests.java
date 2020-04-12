@@ -65,8 +65,8 @@ public class RamUserTests extends UserTests {
         //int seekLo = 0;
         //int length = 1048576;
 
-        int seekLo = 14581760;
-        int length = 39784;
+        int seekLo = 786432;
+        int length = 5242880;
         //file length = 14,621,544
         final int maxBlockSize = 1024 * 1024 * 5;
 
