@@ -15,15 +15,19 @@ public class BufferedAsyncReader implements AsyncReader {
     private volatile boolean closed = false;
     private final AsyncLock<Integer> lock = new AsyncLock<>(Futures.of(0));
 
-    public BufferedAsyncReader(AsyncReader source, int nChunksToBuffer, long fileSize) {
+    public BufferedAsyncReader(AsyncReader source, int nChunksToBuffer, long fileSize, long bufferStartInFile) {
         this.source = source;
         this.buffer = new byte[nChunksToBuffer * Chunk.MAX_SIZE];
         this.fileSize = fileSize;
-        this.readOffsetInFile = 0;
-        this.bufferStartInFile = 0;
-        this.bufferEndInFile = 0;
+        this.bufferStartInFile = bufferStartInFile;
+        this.readOffsetInFile = bufferStartInFile;
+        this.bufferEndInFile = bufferStartInFile;
         this.startInBuffer = 0;
         asyncBufferFill();
+    }
+
+    public BufferedAsyncReader(AsyncReader source, int nChunksToBuffer, long fileSize) {
+        this(source, nChunksToBuffer, fileSize, 0);
     }
 
     private void asyncBufferFill() {
@@ -136,23 +140,23 @@ public class BufferedAsyncReader implements AsyncReader {
         System.out.println("BufferedReader.seek " + offset);
         if (offset == readOffsetInFile)
             return Futures.of(this);
-        return lock.runWithLock(x -> source.seek(offset)
-                .thenApply(r -> {
-                    bufferStartInFile = bufferEndInFile = readOffsetInFile = offset;
-                    startInBuffer = 0;
-                    return 0;
-                })).thenApply(x -> this);
+        close();
+        long aligned = offset - offset % Chunk.MAX_SIZE;
+        return source.seek(aligned)
+                .thenCompose(r -> {
+                    BufferedAsyncReader res = new BufferedAsyncReader(r, buffer.length / Chunk.MAX_SIZE, fileSize, aligned);
+                    // do a dummy read into our buffer to get to correct position
+                    return res.readIntoArray(buffer, 0, (int) (offset - aligned))
+                            .thenApply(n -> res);
+                });
     }
 
     @Override
     public CompletableFuture<AsyncReader> reset() {
         System.out.println("BufferedReader.reset()");
-        return lock.runWithLock(x -> source.reset()
-                .thenApply(r -> {
-                    bufferStartInFile = bufferEndInFile = readOffsetInFile = 0;
-                    startInBuffer = 0;
-                    return 0;
-                })).thenApply(x -> this);
+        close();
+        return source.reset()
+                .thenApply(r -> new BufferedAsyncReader(r, buffer.length/Chunk.MAX_SIZE, fileSize));
     }
 
     @Override
