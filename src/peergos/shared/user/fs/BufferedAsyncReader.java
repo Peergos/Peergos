@@ -144,7 +144,7 @@ public class BufferedAsyncReader implements AsyncReader {
 
     @Override
     public synchronized CompletableFuture<AsyncReader> seek(long offset) {
-        System.out.println("BufferedReader.seek " + offset);
+        System.out.println("BufferedReader.seek " + offset + " on " + toString());
         if (offset == readOffsetInFile)
             return Futures.of(this);
         close();
