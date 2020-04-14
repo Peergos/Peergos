@@ -44,9 +44,9 @@ public class RamUserTests extends UserTests {
     }
 
     @Test
-    public void kevTest() throws Exception {
+    public void bufferedReaderTest() throws Exception {
 
-        String username = "kev";
+        String username = "test";
         String password = "test01";
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         FileWrapper userRoot = context.getUserRoot().join();
@@ -87,8 +87,72 @@ public class RamUserTests extends UserTests {
             });
         }).join().get();
         compare(resultBytes, resultBytes2);
+    }
 
+    @Test
+    public void testReuseOfAsyncReader() throws Exception {
+
+        String username = "test";
+        String password = "test01";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        FileWrapper userRoot = context.getUserRoot().join();
+
+        String filename = "sintel.mp4";
+        byte[] fileData = Files.readAllBytes(Paths.get("assets", filename));
+
+        FileWrapper userRoot2 = userRoot.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(fileData), fileData.length,
+                context.network, context.crypto, l -> {
+                }, context.crypto.random.randomBytes(32)).join();
+
+        FileWrapper file = context.getByPath(Paths.get(username, filename)).join().get();
+        FileProperties props = file.getFileProperties();
+        int sizeHigh = props.sizeHigh();
+        int sizeLow = props.sizeLow();
+
+        final int maxBlockSize = 1024 * 1024 * 5;
+        final int fileLength = sizeLow;
+        AsyncReader reader = file.getInputStream(network, crypto, sizeHigh, sizeLow, l -> {}).join();
+        int seekHi = 0;
+        int seekLo = 0;
+        int length = 1 * 1024 * 1024;
+        reader = reuseExistingReader(reader, file, sizeHigh, sizeLow, seekHi, seekLo, length, maxBlockSize);
+
+        seekLo = fileLength - (1024 * 1024 * 1);
+        length = fileLength - seekLo;
+        reader = reuseExistingReader(reader, file, sizeHigh, sizeLow, seekHi, seekLo, length, maxBlockSize);
         System.currentTimeMillis();
+
+        seekHi = 0;
+        seekLo = 0;
+        length = fileLength;
+        reader = reuseExistingReader(reader, file, sizeHigh, sizeLow, seekHi, seekLo, length, maxBlockSize);
+        System.currentTimeMillis();
+    }
+
+    private AsyncReader reuseExistingReader(AsyncReader reader, FileWrapper file, int sizeHigh, int sizeLow,
+                                           int seekHi, int seekLo, int length, int maxBlockSize) throws Exception {
+        List<AsyncReader> currentAsyncReader = new ArrayList<>();
+        currentAsyncReader.add(reader);
+        List<byte[]> resultBytes2 = new ArrayList<>();
+        boolean result2 = file.getInputStream(network, crypto, sizeHigh, sizeLow, l -> {
+        }).thenCompose(reader2 -> {
+            return reader2.seekJS(seekHi, seekLo).thenApply(seekReader -> {
+                final int blockSize = length > maxBlockSize ? maxBlockSize : length;
+                return pump(seekReader, length, blockSize, resultBytes2);
+            });
+        }).join().get();
+
+        List<byte[]> resultBytes3 = new ArrayList<>();
+
+        boolean result3 = reader.seekJS(seekHi, seekLo).thenApply(seekReader -> {
+            currentAsyncReader.remove(0);
+            currentAsyncReader.add(seekReader);
+            final int blockSize = length > maxBlockSize ? maxBlockSize : length;
+            return pump(currentAsyncReader.get(0), length, blockSize, resultBytes3);
+        }).join().get();
+
+        compare(resultBytes2, resultBytes3);
+        return currentAsyncReader.get(0);
     }
 
     private void compare(List<byte[]> resultBytes, List<byte[]> resultBytes2 ) {
