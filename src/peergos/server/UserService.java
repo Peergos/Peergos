@@ -8,7 +8,6 @@ import peergos.server.util.Logging;
 import java.util.logging.Level;
 
 import com.sun.net.httpserver.*;
-import peergos.server.corenode.*;
 import peergos.shared.*;
 import peergos.shared.corenode.*;
 import peergos.shared.mutable.*;
@@ -112,6 +111,7 @@ public class UserService {
                                 Optional<TlsProperties> tlsProps,
                                 Optional<Path> webroot,
                                 boolean useWebCache,
+                                boolean isPublicServer,
                                 int connectionBacklog,
                                 int handlerPoolSize) throws IOException {
         InetAddress allInterfaces = InetAddress.getByName("::");
@@ -206,17 +206,17 @@ public class UserService {
                 tlsServer.createContext(path, new HSTSHandler(handlerFunc));
         };
 
-        addHandler.accept(Constants.DHT_URL, new DHTHandler(storage, crypto.hasher, (h, i) -> true));
+        addHandler.accept(Constants.DHT_URL, new DHTHandler(storage, crypto.hasher, (h, i) -> true, isPublicServer));
         addHandler.accept("/" + Constants.CORE_URL,
-                new HttpCoreNodeServer.CoreNodeHandler(this.coreNode));
+                new CoreNodeHandler(this.coreNode, isPublicServer));
         addHandler.accept("/" + Constants.SOCIAL_URL,
-                new SocialHandler(this.social));
+                new SocialHandler(this.social, isPublicServer));
         addHandler.accept("/" + Constants.MUTABLE_POINTERS_URL,
-                new MutationHandler(this.mutable));
+                new MutationHandler(this.mutable, isPublicServer));
         addHandler.accept("/" + Constants.ADMIN_URL,
-                new AdminHandler(this.controller));
+                new AdminHandler(this.controller, isPublicServer));
         addHandler.accept("/" + Constants.SPACE_USAGE_URL,
-                new StorageHandler(this.usage));
+                new SpaceHandler(this.usage, isPublicServer));
         addHandler.accept("/" + Constants.PUBLIC_FILES_URL, new PublicFileHandler(coreNode, mutable, storage));
         addHandler.accept(UI_URL, handler);
 

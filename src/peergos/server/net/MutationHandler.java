@@ -2,14 +2,12 @@ package peergos.server.net;
 
 import com.sun.net.httpserver.*;
 import peergos.server.*;
-import peergos.server.mutable.*;
 import peergos.server.util.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.mutable.*;
 import peergos.shared.util.*;
 
 import java.io.*;
-import java.net.*;
 import java.util.*;
 import java.util.logging.*;
 
@@ -20,9 +18,11 @@ public class MutationHandler implements HttpHandler {
     private static final Logger LOG = Logging.LOG();
 
     private final MutablePointers mutable;
+    private final boolean isPublicServer;
 
-    public MutationHandler(MutablePointers mutable) {
+    public MutationHandler(MutablePointers mutable, boolean isPublicServer) {
         this.mutable = mutable;
+        this.isPublicServer = isPublicServer;
     }
 
     public void handle(HttpExchange exchange) throws IOException
@@ -44,8 +44,7 @@ public class MutationHandler implements HttpHandler {
         PublicKeyHash owner = PublicKeyHash.fromString(params.get("owner").get(0));
         PublicKeyHash writer = PublicKeyHash.fromString(params.get("writer").get(0));
         try {
-            // only allow http POST requests
-            if (! exchange.getRequestMethod().equals("POST")) {
+            if (! HttpUtil.allowedQuery(exchange, isPublicServer)) {
                 exchange.sendResponseHeaders(405, 0);
                 return;
             }

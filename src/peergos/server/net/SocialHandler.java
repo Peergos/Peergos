@@ -23,9 +23,11 @@ public class SocialHandler implements HttpHandler {
     private static final Logger LOG = Logging.LOG();
 
     private final SocialNetwork social;
+    private final boolean isPublicServer;
 
-    public SocialHandler(SocialNetwork social) {
+    public SocialHandler(SocialNetwork social, boolean isPublicServer) {
         this.social = social;
+        this.isPublicServer = isPublicServer;
     }
 
     public void handle(HttpExchange exchange)
@@ -47,8 +49,7 @@ public class SocialHandler implements HttpHandler {
 
         PublicKeyHash owner = PublicKeyHash.fromString(last.apply("owner"));
         try {
-            // only allow http POST requests
-            if (! exchange.getRequestMethod().equals("POST")) {
+            if (! HttpUtil.allowedQuery(exchange, isPublicServer)) {
                 exchange.sendResponseHeaders(405, 0);
                 return;
             }
