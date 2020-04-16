@@ -131,9 +131,13 @@ public class BufferedAsyncReader implements AsyncReader {
                     .thenCompose(x -> internalReadIntoArray(res, offset + toCopy, length - toCopy)
                             .thenApply(i -> length));
         }
-        System.out.println("Buffer empty, refilling...");
-        return lock.runWithLock(x -> bufferNextChunk())
-                .thenCompose(x -> internalReadIntoArray(res, offset, length));
+
+        return lock.runWithLock(x -> {
+            if (available() > 0) // A concurrent buffer load completed, no need to wait for another
+                return Futures.of(0);
+            System.out.println("Buffer empty, refilling...");
+            return bufferNextChunk();
+        }).thenCompose(x -> internalReadIntoArray(res, offset, length));
     }
 
     @Override
@@ -145,12 +149,9 @@ public class BufferedAsyncReader implements AsyncReader {
     @Override
     public synchronized CompletableFuture<AsyncReader> seek(long offset) {
         System.out.println("BufferedReader.seek " + offset + " on " + toString());
-        if (offset == readOffsetInFile) {
-            if (offset > 0) {
-                System.out.println("BufferedReader.seek reuse");
-            }
+        if (offset == readOffsetInFile)
             return Futures.of(this);
-        }
+
         close();
         long aligned = offset - offset % Chunk.MAX_SIZE;
         return source.seek(aligned)
