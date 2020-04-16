@@ -30,9 +30,13 @@ public class BufferedAsyncReader implements AsyncReader {
         this(source, nChunksToBuffer, fileSize, 0);
     }
 
-    private void asyncBufferFill() {
-        System.out.println("Async buffer fill");
-        ForkJoinPool.commonPool().execute(() -> lock.runWithLock(x -> bufferNextChunk()));
+    private void asyncBufferFill(int chunksToQueue) {
+        if (chunksToQueue == 0 || buffered() == buffer.length)
+            return;
+        System.out.println("Async buffer fill " + chunksToQueue);
+        ForkJoinPool.commonPool().execute(() ->
+                lock.runWithLock(x -> bufferNextChunk())
+                        .thenAccept(i -> asyncBufferFill(chunksToQueue - 1)));
     }
 
     private synchronized CompletableFuture<Integer> bufferNextChunk() {
@@ -88,9 +92,11 @@ public class BufferedAsyncReader implements AsyncReader {
         lastReadEnd = readOffsetInFile + length;
         System.out.println("Read "+length+" from buffer " + toString());
         return internalReadIntoArray(res, offset, length).thenApply(r -> {
-            // Only pre-buffer the next chunk if we've done two consecutive reads,i.e. we're probably streaming
-            if (twoConsecutiveReads && buffered() < buffer.length && buffered() < fileSize && ! closed)
-                asyncBufferFill();
+            // Only prefetch more chunks if we've done two consecutive reads, i.e. we're probably streaming
+            if (twoConsecutiveReads && buffered() < buffer.length && buffered() < fileSize && ! closed) {
+                int nChunks = (buffer.length - available()) / Chunk.MAX_SIZE;
+                asyncBufferFill(nChunks);
+            }
             return r;
         });
     }
