@@ -88,12 +88,10 @@ public class IpfsInstaller {
                 return "go-ds-s3.so";
             }
 
-            public Object toJson(Multihash nodeId) {
+            public Object toJson() {
                 Map<String, Object> res = new TreeMap<>();
                 Map<String, Object> child = new TreeMap<>();
-                // Make sure that multiple IPFS instances can use the same S3 bucket by prefixing the path with their nodeID
-                String s3PathPrefix = nodeId.toString() + "/" + path;
-                child.put("path", s3PathPrefix);
+                child.put("path", path);
                 child.put("bucket", bucket);
                 child.put("accessKey", accessKey);
                 child.put("secretKey", secretKey);
@@ -123,7 +121,7 @@ public class IpfsInstaller {
 
                 // update the config file
                 List<Object> mount = Arrays.asList(
-                        toJson(nodeId),
+                        toJson(),
                         JSONParser.parse("{\n" +
                                 "          \"child\": {\n" +
                                 "            \"compression\": \"none\",\n" +
