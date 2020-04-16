@@ -506,6 +506,23 @@ public class IPFS {
     private static byte[] get(URL target) throws IOException {
         HttpURLConnection conn = (HttpURLConnection) target.openConnection();
         conn.setDoOutput(true);
+        /* See IFFS commit for why this is a POST and not a GET https://github.com/ipfs/go-ipfs/pull/7097
+           This commit upgrades go-ipfs-cmds and configures the commands HTTP API Handler
+           to only allow POST/OPTIONS, disallowing GET and others in the handling of
+           command requests in the IPFS HTTP API (where before every type of request
+           method was handled, with GET/POST/PUT/PATCH being equivalent).
+
+           The Read-Only commands that the HTTP API attaches to the gateway endpoint will
+           additional handled GET as they did before (but stop handling PUT,DELETEs).
+
+           By limiting the request types we address the possibility that a website
+           accessed by a browser abuses the IPFS API by issuing GET requests to it which
+           have no Origin or Referrer set, and are thus bypass CORS and CSRF protections.
+
+           This is a breaking change for clients that relay on GET requests against the
+           HTTP endpoint (usually :5001). Applications integrating on top of the
+           gateway-read-only API should still work (including cross-domain access).
+        */
         conn.setRequestMethod("POST");
         conn.setRequestProperty("Content-Type", "application/json");
         conn.setConnectTimeout(10_000);
