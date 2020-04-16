@@ -145,8 +145,12 @@ public class BufferedAsyncReader implements AsyncReader {
     @Override
     public synchronized CompletableFuture<AsyncReader> seek(long offset) {
         System.out.println("BufferedReader.seek " + offset + " on " + toString());
-        if (offset == readOffsetInFile)
+        if (offset == readOffsetInFile) {
+            if (offset > 0) {
+                System.out.println("BufferedReader.seek reuse");
+            }
             return Futures.of(this);
+        }
         close();
         long aligned = offset - offset % Chunk.MAX_SIZE;
         return source.seek(aligned)

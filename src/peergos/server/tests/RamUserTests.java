@@ -111,26 +111,59 @@ public class RamUserTests extends UserTests {
 
         final int maxBlockSize = 1024 * 1024 * 5;
         final int fileLength = sizeLow;
-        AsyncReader reader = file.getInputStream(network, crypto, sizeHigh, sizeLow, l -> {}).join();
+        AsyncReader reader = file.getBufferedInputStream(network, crypto, sizeHigh, sizeLow, 2, l -> {}).join();
         int seekHi = 0;
         int seekLo = 0;
         int length = 1 * 1024 * 1024;
-        reader = reuseExistingReader(reader, file, sizeHigh, sizeLow, seekHi, seekLo, length, maxBlockSize);
+        reader = reuseExistingReader(reader, file, sizeHigh, sizeLow, seekHi, seekLo, length, maxBlockSize, false);
 
         seekLo = fileLength - (1024 * 1024 * 1);
         length = fileLength - seekLo;
-        reader = reuseExistingReader(reader, file, sizeHigh, sizeLow, seekHi, seekLo, length, maxBlockSize);
+        reader = reuseExistingReader(reader, file, sizeHigh, sizeLow, seekHi, seekLo, length, maxBlockSize, false);
         System.currentTimeMillis();
 
         seekHi = 0;
         seekLo = 0;
         length = fileLength;
-        reader = reuseExistingReader(reader, file, sizeHigh, sizeLow, seekHi, seekLo, length, maxBlockSize);
+        reader = reuseExistingReader(reader, file, sizeHigh, sizeLow, seekHi, seekLo, length, maxBlockSize, false);
+        System.currentTimeMillis();
+    }
+
+    @Test
+    public void testReuseOfAsyncReaderSerialRead() throws Exception {
+
+        String username = "test";
+        String password = "test01";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        FileWrapper userRoot = context.getUserRoot().join();
+
+        String filename = "sintel.mp4";
+        byte[] fileData = Files.readAllBytes(Paths.get("assets", filename));
+
+        FileWrapper userRoot2 = userRoot.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(fileData), fileData.length,
+                context.network, context.crypto, l -> {
+                }, context.crypto.random.randomBytes(32)).join();
+
+        FileWrapper file = context.getByPath(Paths.get(username, filename)).join().get();
+        FileProperties props = file.getFileProperties();
+        int sizeHigh = props.sizeHigh();
+        int sizeLow = props.sizeLow();
+
+        final int maxBlockSize = 1024 * 1024 * 5;
+        AsyncReader reader = file.getBufferedInputStream(network, crypto, sizeHigh, sizeLow, 2, l -> {}).join();
+        int seekHi = 0;
+        int seekLo = 0;
+        int length = maxBlockSize;
+        reader = reuseExistingReader(reader, file, sizeHigh, sizeLow, seekHi, seekLo, length, maxBlockSize, false);
+
+        seekLo = maxBlockSize;
+        length = maxBlockSize;
+        reader = reuseExistingReader(reader, file, sizeHigh, sizeLow, seekHi, seekLo, length, maxBlockSize, true);
         System.currentTimeMillis();
     }
 
     private AsyncReader reuseExistingReader(AsyncReader reader, FileWrapper file, int sizeHigh, int sizeLow,
-                                           int seekHi, int seekLo, int length, int maxBlockSize) throws Exception {
+                                           int seekHi, int seekLo, int length, int maxBlockSize, boolean serialAccess) throws Exception {
         List<AsyncReader> currentAsyncReader = new ArrayList<>();
         currentAsyncReader.add(reader);
         List<byte[]> resultBytes2 = new ArrayList<>();
@@ -145,6 +178,9 @@ public class RamUserTests extends UserTests {
         List<byte[]> resultBytes3 = new ArrayList<>();
 
         boolean result3 = reader.seekJS(seekHi, seekLo).thenApply(seekReader -> {
+            if(serialAccess && reader != seekReader) {
+                throw new Error("Expecting reader reuse!");
+            }
             currentAsyncReader.remove(0);
             currentAsyncReader.add(seekReader);
             final int blockSize = length > maxBlockSize ? maxBlockSize : length;
