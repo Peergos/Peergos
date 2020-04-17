@@ -387,27 +387,28 @@ public class Main {
             props.setProperty("dataSource.password", postgresPassword);
             props.setProperty("dataSource.databaseName", databaseName);
             config = new HikariConfig(props);
+            HikariDataSource ds = new HikariDataSource(config);
+
+            return () -> {
+                try {
+                    return ds.getConnection();
+                } catch (SQLException e) {
+                    throw new RuntimeException(e);
+                }
+            };
         } else {
             String sqlFilePath = Sqlite.getDbPath(a, dbName);
             if (":memory:".equals(sqlFilePath))
                 return buildEphemeralSqlite();
-            config = new HikariConfig();
-            config.setDriverClassName("org.sqlite.JDBC");
-            config.setJdbcUrl("jdbc:sqlite:" + sqlFilePath);
-            config.setConnectionTestQuery("SELECT 1");
-            config.setMaxLifetime(60000); // 60 Sec
-            config.setIdleTimeout(45000); // 45 Sec
-            config.setMaximumPoolSize(50); // Number of Connections (including idle connections)
-        }
-        HikariDataSource ds = new HikariDataSource(config);
-
-        return () -> {
             try {
-                return ds.getConnection();
+                Connection memory = Sqlite.build(sqlFilePath);
+                // We need a connection that ignores close
+                Connection instance = new Sqlite.UncloseableConnection(memory);
+                return () -> instance;
             } catch (SQLException e) {
                 throw new RuntimeException(e);
             }
-        };
+        }
     }
 
     public static Supplier<Connection> buildEphemeralSqlite() {
