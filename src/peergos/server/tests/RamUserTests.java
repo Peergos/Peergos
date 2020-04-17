@@ -52,7 +52,9 @@ public class RamUserTests extends UserTests {
         FileWrapper userRoot = context.getUserRoot().join();
 
         String filename = "sintel.mp4";
-        byte[] fileData = Files.readAllBytes(Paths.get("assets", filename));
+        Random random = new Random(666);
+        byte[] fileData = new byte[14621544];
+        random.nextBytes(fileData);
 
         FileWrapper userRoot2 = userRoot.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(fileData), fileData.length,
                 context.network, context.crypto, l -> {}, context.crypto.random.randomBytes(32)).join();
@@ -98,8 +100,9 @@ public class RamUserTests extends UserTests {
         FileWrapper userRoot = context.getUserRoot().join();
 
         String filename = "sintel.mp4";
-        byte[] fileData = Files.readAllBytes(Paths.get("assets", filename));
-
+        Random random = new Random(666);
+        byte[] fileData = new byte[14621544];
+        random.nextBytes(fileData);
         FileWrapper userRoot2 = userRoot.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(fileData), fileData.length,
                 context.network, context.crypto, l -> {
                 }, context.crypto.random.randomBytes(32)).join();
@@ -138,7 +141,9 @@ public class RamUserTests extends UserTests {
         FileWrapper userRoot = context.getUserRoot().join();
 
         String filename = "sintel.mp4";
-        byte[] fileData = Files.readAllBytes(Paths.get("assets", filename));
+        Random random = new Random(666);
+        byte[] fileData = new byte[14621544];
+        random.nextBytes(fileData);
 
         FileWrapper userRoot2 = userRoot.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(fileData), fileData.length,
                 context.network, context.crypto, l -> {
