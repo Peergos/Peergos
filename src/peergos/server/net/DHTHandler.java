@@ -29,21 +29,25 @@ public class DHTHandler implements HttpHandler {
     private final Hasher hasher;
     private final BiFunction<PublicKeyHash, Integer, Boolean> keyFilter;
     private final String apiPrefix;
+    private final boolean isPublicServer;
 
     public DHTHandler(ContentAddressedStorage dht,
                       Hasher hasher,
                       BiFunction<PublicKeyHash, Integer, Boolean> keyFilter,
-                      String apiPrefix) {
+                      String apiPrefix,
+                      boolean isPublicServer) {
         this.dht = dht;
         this.hasher = hasher;
         this.keyFilter = keyFilter;
         this.apiPrefix = apiPrefix;
+        this.isPublicServer = isPublicServer;
     }
 
     public DHTHandler(ContentAddressedStorage dht,
                       Hasher hasher,
-                      BiFunction<PublicKeyHash, Integer, Boolean> keyFilter) {
-        this(dht, hasher, keyFilter, "/api/v0/");
+                      BiFunction<PublicKeyHash, Integer, Boolean> keyFilter,
+                      boolean isPublicServer) {
+        this(dht, hasher, keyFilter, "/api/v0/", isPublicServer);
     }
 
     @Override
@@ -51,6 +55,11 @@ public class DHTHandler implements HttpHandler {
         long t1 = System.currentTimeMillis();
         String path = httpExchange.getRequestURI().getPath();
         try {
+            if (! HttpUtil.allowedQuery(httpExchange, isPublicServer)) {
+                httpExchange.sendResponseHeaders(405, 0);
+                return;
+            }
+
             if (! path.startsWith(apiPrefix))
                 throw new IllegalStateException("Unsupported api version, required: " + apiPrefix);
             path = path.substring(apiPrefix.length());

@@ -127,6 +127,7 @@ public class Main {
                     new Command.Arg("default-quota", "default maximum storage per user", false, Long.toString(1024L * 1024 * 1024)),
                     new Command.Arg("mirror.node.id", "Mirror a server's data locally", false),
                     new Command.Arg("mirror.username", "Mirror a user's data locally", false),
+                    new Command.Arg("public-server", "Are we a public server? (allow http GETs to API)", false, "false"),
                     new Command.Arg("collect-metrics", "Export aggregated metrics", false, "false"),
                     new Command.Arg("metrics.address", "Listen address for serving aggregated metrics", false, "localhost"),
                     new Command.Arg("metrics.port", "Port for serving aggregated metrics", false, "8001")
@@ -569,7 +570,9 @@ public class Main {
                     tlsHostname.map(host -> new UserService.TlsProperties(host, a.getArg("tls.keyfile.password")));
             int maxConnectionQueue = a.getInt("max-connection-queue", 500);
             int handlerThreads = a.getInt("handler-threads", 50);
-            peergos.initAndStart(localAddress, tlsProps, webroot, useWebAssetCache, maxConnectionQueue, handlerThreads);
+            boolean isPublicServer = a.getBoolean("public-server", false);
+            peergos.initAndStart(localAddress, tlsProps, webroot, useWebAssetCache, isPublicServer, maxConnectionQueue,
+                    handlerThreads);
             if (! isPkiNode && useIPFS) {
                 int pkiNodeSwarmPort = a.getInt("pki.node.swarm.port");
                 InetAddress pkiNodeIpAddress = InetAddress.getByName(a.getArg("pki.node.ipaddress"));

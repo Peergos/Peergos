@@ -8,10 +8,11 @@ import java.util.concurrent.*;
 public class JavaScriptPoster implements HttpPoster {
 
     private final NativeJSHttp http = new NativeJSHttp();
-    private final boolean isAbsolute;
+    private final boolean isAbsolute, useGet;
 
-    public JavaScriptPoster(boolean isAbsolute) {
+    public JavaScriptPoster(boolean isAbsolute, boolean useGet) {
         this.isAbsolute = isAbsolute;
+        this.useGet = useGet;
     }
 
     private String canonicalise(String url) {
@@ -37,7 +38,9 @@ public class JavaScriptPoster implements HttpPoster {
 
     @Override
     public CompletableFuture<byte[]> get(String url) {
-        return http.get(canonicalise(url));
+        if (isAbsolute || useGet) // Still do a get if we are served from an IPFS gateway
+            return http.get(url);
+        return postUnzip(url, new byte[0]);
     }
 
     @JsMethod

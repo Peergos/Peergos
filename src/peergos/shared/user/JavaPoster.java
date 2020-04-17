@@ -37,6 +37,7 @@ public class JavaPoster implements HttpPoster {
         try
         {
             conn = (HttpURLConnection) buildURL(url).openConnection();
+            conn.setReadTimeout(15000);
             conn.setDoInput(true);
             conn.setDoOutput(true);
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
@@ -73,33 +74,6 @@ public class JavaPoster implements HttpPoster {
             return CompletableFuture.completedFuture(mPost.finish().getBytes());
         } catch (IOException e) {
             throw new RuntimeException(e);
-        }
-    }
-
-    @Override
-    public CompletableFuture<byte[]> get(String url) {
-        HttpURLConnection conn = null;
-        try
-        {
-            conn = (HttpURLConnection) buildURL(url).openConnection();
-            conn.setReadTimeout(15000);
-            conn.setDoInput(true);
-
-            String contentEncoding = conn.getContentEncoding();
-            boolean isGzipped = "gzip".equals(contentEncoding);
-            DataInputStream din = new DataInputStream(isGzipped ? new GZIPInputStream(conn.getInputStream()) : conn.getInputStream());
-            return CompletableFuture.completedFuture(Serialize.readFully(din));
-        } catch (SocketTimeoutException e) {
-            CompletableFuture<byte[]> res = new CompletableFuture<>();
-            res.completeExceptionally(new RuntimeException("Timeout retrieving: " + url, e));
-            return res;
-        } catch (IOException e) {
-            CompletableFuture<byte[]> res = new CompletableFuture<>();
-            res.completeExceptionally(e);
-            return res;
-        } finally {
-            if (conn != null)
-                conn.disconnect();
         }
     }
 

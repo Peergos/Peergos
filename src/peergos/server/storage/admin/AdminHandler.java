@@ -17,9 +17,11 @@ import java.util.function.*;
 public class AdminHandler implements HttpHandler {
 
     private final InstanceAdmin target;
+    private final boolean isPublicServer;
 
-    public AdminHandler(InstanceAdmin target) {
+    public AdminHandler(InstanceAdmin target, boolean isPublicServer) {
         this.target = target;
+        this.isPublicServer = isPublicServer;
     }
 
     public void handle(HttpExchange exchange) {
@@ -34,6 +36,11 @@ public class AdminHandler implements HttpHandler {
 
         Cborable reply;
         try {
+            if (! HttpUtil.allowedQuery(exchange, isPublicServer)) {
+                exchange.sendResponseHeaders(405, 0);
+                return;
+            }
+
             switch (method) {
                 case HttpInstanceAdmin.VERSION:
                     InstanceAdmin.VersionInfo res = target.getVersionInfo().join();

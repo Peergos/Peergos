@@ -9,6 +9,14 @@ import java.util.logging.*;
 
 public class HttpUtil {
 
+    public static boolean allowedQuery(HttpExchange exchange, boolean isPublicServer) {
+        // only allow http POST requests unless we are a public server (not localhost)
+        if (! exchange.getRequestMethod().equals("POST") && ! isPublicServer) {
+            return false;
+        }
+        return true;
+    }
+
     /** Parse a url query string ignoring encoding
      *
      * @param query

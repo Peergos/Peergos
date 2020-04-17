@@ -16,13 +16,15 @@ import java.util.logging.*;
 /** This is the http endpoint for SpaceUsage calls
  *
  */
-public class StorageHandler implements HttpHandler {
+public class SpaceHandler implements HttpHandler {
     private static final Logger LOG = Logging.LOG();
 
     private final SpaceUsage spaceUsage;
+    private final boolean isPublicServer;
 
-    public StorageHandler(SpaceUsage spaceUsage) {
+    public SpaceHandler(SpaceUsage spaceUsage, boolean isPublicServer) {
         this.spaceUsage = spaceUsage;
+        this.isPublicServer = isPublicServer;
     }
 
     public void handle(HttpExchange exchange)
@@ -40,6 +42,11 @@ public class StorageHandler implements HttpHandler {
 
         Cborable result;
         try {
+            if (! HttpUtil.allowedQuery(exchange, isPublicServer)) {
+                exchange.sendResponseHeaders(405, 0);
+                return;
+            }
+
             switch (method) {
                 case "payment-properties": {
                     byte[] signedTime = ArrayOps.hexToBytes(last.apply("auth"));
