@@ -21,8 +21,8 @@ import java.util.stream.*;
 public class IpfsInstaller {
 
     public enum DownloadTarget {
-        S3_LINUX_AMD64("https://github.com/peergos/ipfs-releases/blob/master/v0.5.0-rc2/linux-amd64/plugins/s3plugin.so?raw=true",
-                Cid.decode("QmWAtqjnrRtNQRuzsaJAgBwJDXan9T4yiUs32hgksxCmHX")),
+        SS3_LINUX_AMD64("https://github.com/peergos/ipfs-releases/blob/master/v0.5.0-rc2/linux-amd64/plugins/s3plugin.so?raw=true",
+                Cid.decode("QmZFXgrTpimbQvWpxYdeVTmJrhiXrS9QuRrk4awgA4MYhi")),
         DARWIN_386("https://github.com/peergos/ipfs-releases/blob/master/v0.5.0-rc2/darwin-386/ipfs?raw=true",
                 Cid.decode("QmQH5fZGjdfnFdDhtudZMvcgAiafn6geMnJqC6Jqt2MhYx")),
         DARWIN_AMD64("https://github.com/peergos/ipfs-releases/blob/master/v0.5.0-rc2/darwin-amd64/ipfs?raw=true",
