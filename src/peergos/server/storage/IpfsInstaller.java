@@ -21,7 +21,7 @@ import java.util.stream.*;
 public class IpfsInstaller {
 
     public enum DownloadTarget {
-        SS3_LINUX_AMD64("https://github.com/peergos/ipfs-releases/blob/master/v0.5.0-rc2/linux-amd64/plugins/s3plugin.so?raw=true",
+        S3_LINUX_AMD64("https://github.com/peergos/ipfs-releases/blob/master/v0.5.0-rc2/linux-amd64/plugins/s3plugin.so?raw=true",
                 Cid.decode("QmZFXgrTpimbQvWpxYdeVTmJrhiXrS9QuRrk4awgA4MYhi")),
         DARWIN_386("https://github.com/peergos/ipfs-releases/blob/master/v0.5.0-rc2/darwin-386/ipfs?raw=true",
                 Cid.decode("QmQH5fZGjdfnFdDhtudZMvcgAiafn6geMnJqC6Jqt2MhYx")),
@@ -36,7 +36,7 @@ public class IpfsInstaller {
         LINUX_386("https://github.com/peergos/ipfs-releases/blob/master/v0.5.0-rc2/linux-386/ipfs?raw=true",
                 Cid.decode("QmWgmyr7tZiXinijETTYaXXUGffrBJKkjxEu6XFTEid6D7")),
         LINUX_AMD64("https://github.com/peergos/ipfs-releases/blob/master/v0.5.0-rc2/linux-amd64/ipfs?raw=true",
-                Cid.decode("QmUkUzLr2wNswAig8a2HPmMHHnCRdPDPYfJGo1GffUvYCj")),
+                Cid.decode("QmUkUzLr2wNswAig8a2HPmMHHnCRdPDPYfJGo1GffUvYCj"), Arrays.asList(S3_LINUX_AMD64)),
         LINUX_ARM("https://github.com/peergos/ipfs-releases/blob/master/v0.5.0-rc2/linux-arm/ipfs?raw=true",
                 Cid.decode("QmbNyxPV3EfeneqvAAebMFSYG5jefM5M2UHASfhXGB4Fnw")),
         LINUX_ARM64("https://github.com/peergos/ipfs-releases/blob/master/v0.5.0-rc2/linux-arm64/ipfs?raw=true",
