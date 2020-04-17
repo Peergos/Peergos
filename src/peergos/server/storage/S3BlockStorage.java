@@ -285,12 +285,13 @@ public class S3BlockStorage implements ContentAddressedStorage {
      */
     public Multihash put(byte[] data, boolean isRaw, TransactionId tid, PublicKeyHash owner) {
         Histogram.Timer writeTimer = writeTimerLog.labels("write").startTimer();
+        Multihash hash = new Multihash(Multihash.Type.sha2_256, Hash.sha256(data));
+        Cid cid = new Cid(1, isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor, hash.type, hash.getHash());
+        String key = hashToKey(cid);
         try {
-            Multihash hash = new Multihash(Multihash.Type.sha2_256, Hash.sha256(data));
-            Cid cid = new Cid(1, isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor, hash.type, hash.getHash());
             ObjectMetadata metadata = new ObjectMetadata();
             metadata.setContentLength(data.length);
-            PutObjectRequest put = new PutObjectRequest(bucket, folder + hashToKey(cid), new ByteArrayInputStream(data), metadata);
+            PutObjectRequest put = new PutObjectRequest(bucket, folder + key, new ByteArrayInputStream(data), metadata);
             transactions.addBlock(cid, tid, owner);
             PutObjectResult putResult = s3Client.putObject(put);
             return cid;
@@ -300,7 +301,7 @@ public class S3BlockStorage implements ContentAddressedStorage {
                to Amazon S3, but was rejected with an error response
                for some reason.
             */
-            LOG.severe("AmazonServiceException: " + e.getMessage());
+            LOG.severe("AmazonServiceException: " + e.getMessage() + " for " + key);
             LOG.severe("AWS Error Code:   " + e.getErrorCode());
             throw new RuntimeException(e.getMessage(), e);
         } catch (AmazonClientException e) {
