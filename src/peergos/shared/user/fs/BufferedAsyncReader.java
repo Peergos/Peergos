@@ -57,7 +57,9 @@ public class BufferedAsyncReader implements AsyncReader {
         System.out.println("Buffering  " + toString() + " size " + toCopy);
         return source.readIntoArray(buffer, writeFromBufferOffset, toCopy)
                 .thenApply(read -> {
-                    this.bufferEndInFile = initialBufferEndOffset + read;
+                    synchronized (this) {
+                        this.bufferEndInFile = initialBufferEndOffset + read;
+                    }
                     return read;
                 });
     }
