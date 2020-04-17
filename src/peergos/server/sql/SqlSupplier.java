@@ -38,7 +38,7 @@ public interface SqlSupplier {
                 ");" +
                 "CREATE TABLE IF NOT EXISTS userusage (" +
                 "user_id INTEGER REFERENCES users(id) PRIMARY KEY," +
-                "total_bytes INTEGER NOT NULL," +
+                "total_bytes BIGINT NOT NULL," +
                 "errored BOOLEAN NOT NULL," +
                 "CONSTRAINT uniq_usage UNIQUE (user_id)" +
                 ");" +
