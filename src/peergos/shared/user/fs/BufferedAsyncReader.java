@@ -48,7 +48,7 @@ public class BufferedAsyncReader implements AsyncReader {
         }
 
         long initialBufferEndOffset = bufferEndInFile;
-        int writeFromBufferOffset = (int) (initialBufferEndOffset - bufferStartInFile + startInBuffer) % buffer.length;
+        int writeFromBufferOffset = (buffered() + startInBuffer) % buffer.length;
         int toCopy = Math.min(buffer.length - writeFromBufferOffset, Chunk.MAX_SIZE);
         if (fileSize - bufferEndInFile < Chunk.MAX_SIZE)
             toCopy = (int) (fileSize - bufferEndInFile);
@@ -107,7 +107,7 @@ public class BufferedAsyncReader implements AsyncReader {
         int available = available();
         if (available >= length) {
             // we already have all the data buffered
-            int readStartInBuffer = (int) (startInBuffer + readOffsetInFile - bufferStartInFile) % buffer.length;
+            int readStartInBuffer = (startInBuffer + read()) % buffer.length;
             int toCopy = Math.min(length, buffer.length - readStartInBuffer);
             System.arraycopy(buffer, readStartInBuffer, res, offset, toCopy);
             if (toCopy < length)
@@ -117,13 +117,14 @@ public class BufferedAsyncReader implements AsyncReader {
             while (read() >= Chunk.MAX_SIZE) {
                 bufferStartInFile += Chunk.MAX_SIZE;
                 startInBuffer += Chunk.MAX_SIZE;
+                startInBuffer %= buffer.length;
             }
             System.out.println("Finished read from buffer of " + length);
             return Futures.of(length);
         }
         if (available > 0) {
             // drain the rest of the buffer
-            int readStartInBuffer = startInBuffer + (int) (readOffsetInFile - bufferStartInFile);
+            int readStartInBuffer = (startInBuffer + read()) % buffer.length;
             int toCopy = Math.min(available, buffer.length - readStartInBuffer);
             System.arraycopy(buffer, readStartInBuffer, res, offset, toCopy);
             if (toCopy < available)
@@ -133,6 +134,7 @@ public class BufferedAsyncReader implements AsyncReader {
             while (read() >= Chunk.MAX_SIZE) {
                 bufferStartInFile += Chunk.MAX_SIZE;
                 startInBuffer += Chunk.MAX_SIZE;
+                startInBuffer %= buffer.length;
             }
             System.out.println("Partial read from buffer of " + toCopy);
             return lock.runWithLock(x -> bufferNextChunk())
