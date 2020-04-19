@@ -89,13 +89,17 @@ public class BufferedAsyncReader implements AsyncReader {
     }
 
     @Override
-    public synchronized CompletableFuture<Integer> readIntoArray(byte[] res, int offset, int length) {
-        boolean twoConsecutiveReads = lastReadEnd == readOffsetInFile;
-        lastReadEnd = readOffsetInFile + length;
+    public CompletableFuture<Integer> readIntoArray(byte[] res, int offset, int length) {
+        boolean twoConsecutiveReads;
+        synchronized (this) {
+            twoConsecutiveReads = lastReadEnd == readOffsetInFile;
+            lastReadEnd = readOffsetInFile + length;
+        }
         System.out.println("Read "+length+" from buffer " + toString());
         return internalReadIntoArray(res, offset, length).thenApply(r -> {
             // Only prefetch more chunks if we've done two consecutive reads, i.e. we're probably streaming
-            if (twoConsecutiveReads && buffered() < buffer.length && buffered() < fileSize && ! closed) {
+            int buffered = buffered();
+            if (twoConsecutiveReads && buffered < buffer.length && buffered < fileSize && ! closed) {
                 int nChunks = (buffer.length - available()) / Chunk.MAX_SIZE;
                 asyncBufferFill(nChunks);
             }
@@ -103,40 +107,45 @@ public class BufferedAsyncReader implements AsyncReader {
         });
     }
 
-    private synchronized CompletableFuture<Integer> internalReadIntoArray(byte[] res, int offset, int length) {
+    private CompletableFuture<Integer> internalReadIntoArray(byte[] res, int offset, int length) {
         int available = available();
         if (available >= length) {
-            // we already have all the data buffered
-            int readStartInBuffer = (startInBuffer + read()) % buffer.length;
-            int toCopy = Math.min(length, buffer.length - readStartInBuffer);
-            System.arraycopy(buffer, readStartInBuffer, res, offset, toCopy);
-            if (toCopy < length)
-                System.arraycopy(buffer, 0, res, offset + toCopy, length - toCopy);
+            synchronized (this) {
+                // we already have all the data buffered
+                int readStartInBuffer = (startInBuffer + read()) % buffer.length;
+                int toCopy = Math.min(length, buffer.length - readStartInBuffer);
+                System.arraycopy(buffer, readStartInBuffer, res, offset, toCopy);
+                if (toCopy < length)
+                    System.arraycopy(buffer, 0, res, offset + toCopy, length - toCopy);
 
-            readOffsetInFile += length;
-            while (read() >= Chunk.MAX_SIZE) {
-                bufferStartInFile += Chunk.MAX_SIZE;
-                startInBuffer += Chunk.MAX_SIZE;
-                startInBuffer %= buffer.length;
+                readOffsetInFile += length;
+                while (read() >= Chunk.MAX_SIZE) {
+                    bufferStartInFile += Chunk.MAX_SIZE;
+                    startInBuffer += Chunk.MAX_SIZE;
+                    startInBuffer %= buffer.length;
+                }
+                System.out.println("Finished read from buffer of " + length);
+                return Futures.of(length);
             }
-            System.out.println("Finished read from buffer of " + length);
-            return Futures.of(length);
         }
         if (available > 0) {
-            // drain the rest of the buffer
-            int readStartInBuffer = (startInBuffer + read()) % buffer.length;
-            int toCopy = Math.min(available, buffer.length - readStartInBuffer);
-            System.arraycopy(buffer, readStartInBuffer, res, offset, toCopy);
-            if (toCopy < available)
-                System.arraycopy(buffer, 0, res, offset + toCopy, available - toCopy);
+            int toCopy;
+            synchronized (this) {
+                // drain the rest of the buffer
+                int readStartInBuffer = (startInBuffer + read()) % buffer.length;
+                toCopy = Math.min(available, buffer.length - readStartInBuffer);
+                System.arraycopy(buffer, readStartInBuffer, res, offset, toCopy);
+                if (toCopy < available)
+                    System.arraycopy(buffer, 0, res, offset + toCopy, available - toCopy);
 
-            readOffsetInFile += toCopy;
-            while (read() >= Chunk.MAX_SIZE) {
-                bufferStartInFile += Chunk.MAX_SIZE;
-                startInBuffer += Chunk.MAX_SIZE;
-                startInBuffer %= buffer.length;
+                readOffsetInFile += toCopy;
+                while (read() >= Chunk.MAX_SIZE) {
+                    bufferStartInFile += Chunk.MAX_SIZE;
+                    startInBuffer += Chunk.MAX_SIZE;
+                    startInBuffer %= buffer.length;
+                }
+                System.out.println("Partial read from buffer of " + toCopy);
             }
-            System.out.println("Partial read from buffer of " + toCopy);
             return lock.runWithLock(x -> bufferNextChunk())
                     .thenCompose(x -> internalReadIntoArray(res, offset + toCopy, length - toCopy)
                             .thenApply(i -> length));
