@@ -35,6 +35,7 @@ public class IpfsUserTests extends UserTests {
 
     @AfterClass
     public static void cleanup() {
+        try {Thread.sleep(2000);}catch (InterruptedException e) {}
         Path peergosDir = args.fromPeergosDir("", "");
         System.out.println("Deleting " + peergosDir);
         deleteFiles(peergosDir.toFile());

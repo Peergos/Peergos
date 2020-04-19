@@ -67,6 +67,7 @@ public class MultiNodeNetworkTests {
 
     @AfterClass
     public static void cleanup() {
+        try {Thread.sleep(2000);}catch (InterruptedException e) {}
         argsToCleanUp.add(args);
         for (Args toClean : argsToCleanUp) {
             Path peergosDir = toClean.fromPeergosDir("", "");

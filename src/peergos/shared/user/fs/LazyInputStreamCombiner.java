@@ -62,6 +62,30 @@ public class LazyInputStreamCombiner implements AsyncReader {
         this.index = 0;
     }
 
+    private LazyInputStreamCombiner(WriterData version, NetworkAccess network, Crypto crypto, SymmetricKey baseKey,
+                                    ProgressConsumer<Long> monitor, long totalLength, byte[] originalChunk, byte[] originalChunkLocation, Optional<byte[]> streamSecret,
+                                    AbsoluteCapability originalNextPointer, byte[] currentChunk, AbsoluteCapability nextChunkPointer, long globalIndex, int index) {
+        this.version = version;
+        this.network = network;
+        this.crypto = crypto;
+        this.baseKey = baseKey;
+        this.monitor = monitor;
+        this.totalLength = totalLength;
+        this.originalChunk = originalChunk;
+        this.originalChunkLocation = originalChunkLocation;
+        this.streamSecret = streamSecret;
+        this.originalNextPointer = originalNextPointer;
+        this.currentChunk = currentChunk;
+        this.nextChunkPointer = nextChunkPointer;
+        this.globalIndex = globalIndex;
+        this.index = index;
+    }
+
+    private LazyInputStreamCombiner copy() {
+        return new LazyInputStreamCombiner( version, network, crypto, baseKey, monitor, totalLength, originalChunk, originalChunkLocation,
+                streamSecret, originalNextPointer, currentChunk, nextChunkPointer, globalIndex, index);
+    }
+
     public CompletableFuture<Boolean> getNextStream(int len) {
         return getSubsequentMetadata(this.nextChunkPointer, 0)
                 .thenCompose(access -> getChunk(access, nextChunkPointer.getMapKey(), len))
@@ -140,19 +164,17 @@ public class LazyInputStreamCombiner implements AsyncReader {
                             AbsoluteCapability targetPointer = nextChunkPointer.withMapKey(targetChunkLocation);
                             return getSubsequentMetadata(targetPointer, 0)
                                     .thenCompose(access -> getChunk(access, targetPointer.getMapKey(), truncateTo))
-                                    .thenApply(p -> new LazyInputStreamCombiner(version, finalOffset, p.left, p.right.getLocation(),
-                                            originalChunk, originalChunkLocation, streamSecret, originalNextPointer.getLocation(),
-                                            network, crypto, baseKey, totalLength, x -> {
-                                    }))
-                                    .thenCompose(reader -> reader.skip(finalInternalIndex));
+                                    .thenCompose(p -> {
+                                        updateState(index, finalOffset, p.left, p.right);
+                                        return skip(finalInternalIndex);});
                         });
             }
             return getSubsequentMetadata(nextChunkPointer, chunksToSkip)
                     .thenCompose(access -> getChunk(access, nextChunkPointer.getMapKey(), truncateTo))
-                    .thenApply(p -> new LazyInputStreamCombiner(version, finalOffset, p.left, p.right.getLocation(),
-                            originalChunk, originalChunkLocation, streamSecret, originalNextPointer.getLocation(),
-                            network, crypto, baseKey, totalLength, x -> {}))
-                    .thenCompose(reader -> reader.skip(finalInternalIndex));
+                    .thenCompose(p -> {
+                        updateState(index, finalOffset, p.left, p.right);
+                        return skip(finalInternalIndex);
+                    });
     }
 
     @Override
@@ -163,8 +185,8 @@ public class LazyInputStreamCombiner implements AsyncReader {
             throw new IllegalStateException("Cannot seek to position "+ seek);
         long globalOffset = globalIndex + index;
         if (seek > globalOffset)
-            return skip(seek - globalOffset);
-        return reset().thenCompose(x -> ((LazyInputStreamCombiner)x).skip(seek));
+            return copy().skip(seek - globalOffset);
+        return copy().reset().thenCompose(x -> ((LazyInputStreamCombiner)x).skip(seek));
     }
 
     private int bytesReady() {
