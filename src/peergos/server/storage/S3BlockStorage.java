@@ -291,7 +291,8 @@ public class S3BlockStorage implements ContentAddressedStorage {
         try {
             ObjectMetadata metadata = new ObjectMetadata();
             metadata.setContentLength(data.length);
-            PutObjectRequest put = new PutObjectRequest(bucket, folder + key, new ByteArrayInputStream(data), metadata);
+            PutObjectRequest put = new PutObjectRequest(bucket, folder + key, new ByteArrayInputStream(data), metadata)
+                    .withCannedAcl(CannedAccessControlList.PublicRead);
             transactions.addBlock(cid, tid, owner);
             PutObjectResult putResult = s3Client.putObject(put);
             return cid;
