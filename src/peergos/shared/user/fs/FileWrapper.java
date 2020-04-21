@@ -459,6 +459,14 @@ public class FileWrapper {
                         .thenApply(Optional::get));
     }
 
+
+    @JsMethod
+    public CompletableFuture<FileWrapper> getLatest(NetworkAccess network) {
+        return network.synchronizer.getValue(owner(), writer())
+            .thenCompose(finished -> getUpdated(finished, network));
+
+    }
+
     @JsMethod
     public CompletableFuture<FileWrapper> truncate(long newSize, FileWrapper parent, NetworkAccess network, Crypto crypto) {
         return network.synchronizer.applyComplexUpdate(owner(), signingPair(), (current, committer) ->
