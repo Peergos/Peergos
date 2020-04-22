@@ -111,6 +111,17 @@ public class NetworkAccess {
         return new ContentAddressedStorage.HTTP(apiPoster, isPeergosServer);
     }
 
+    public static CompletableFuture<ContentAddressedStorage> buildDirectS3Blockstore(ContentAddressedStorage localDht,
+                                                                                     HttpPoster direct,
+                                                                                     boolean isPeergosServer) {
+        if (! isPeergosServer)
+            return Futures.of(localDht);
+        return localDht.blockStoreProperties()
+                .thenApply(bp -> bp.baseUrl.isPresent() ?
+                        new DirectReadS3BlockStore(bp.baseUrl.get(), direct, localDht) :
+                        localDht);
+    }
+
     @JsMethod
     public static CompletableFuture<NetworkAccess> buildJS(String pkiNodeId, boolean isPublic) {
         Multihash pkiServerNodeId = Cid.decode(pkiNodeId);
@@ -120,8 +131,10 @@ public class NetworkAccess {
         JavaScriptPoster absolute = new JavaScriptPoster(true, true);
 
         return isPeergosServer(relative)
-                .thenApply(isPeergosServer -> isPeergosServer ? relative : absolute)
-                .thenCompose(poster -> build(poster, poster, pkiServerNodeId, new ScryptJS(), true))
+                .thenApply(isPeergosServer -> new Pair<>(isPeergosServer ? relative : absolute, isPeergosServer))
+                .thenCompose(p ->
+                        buildDirectS3Blockstore(buildLocalDht(p.left, true), relative, p.right)
+                                .thenCompose(dht -> build(p.left, p.left, pkiServerNodeId, dht, new ScryptJS(), true)))
                 .thenApply(e -> e.withMutablePointerCache(7_000));
     }
 
@@ -138,16 +151,15 @@ public class NetworkAccess {
         Multihash pkiServerNodeId = Cid.decode(pkiNodeId);
         JavaPoster p2pPoster = new JavaPoster(proxyAddress);
         JavaPoster apiPoster = new JavaPoster(apiAddress);
-        return build(apiPoster, p2pPoster, pkiServerNodeId, new ScryptJava(), false);
+        return build(apiPoster, p2pPoster, pkiServerNodeId, buildLocalDht(apiPoster, true), new ScryptJava(), false);
     }
 
     public static CompletableFuture<NetworkAccess> build(HttpPoster apiPoster,
                                                          HttpPoster p2pPoster,
                                                          Multihash pkiServerNodeId,
+                                                         ContentAddressedStorage localDht,
                                                          Hasher hasher,
                                                          boolean isJavascript) {
-        ContentAddressedStorage localDht = buildLocalDht(apiPoster, true);
-
         CoreNode direct = buildDirectCorenode(apiPoster);
         CompletableFuture<NetworkAccess> result = new CompletableFuture<>();
         direct.getUsernames("")

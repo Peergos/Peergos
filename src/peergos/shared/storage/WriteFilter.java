@@ -25,6 +25,11 @@ public class WriteFilter implements ContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<BlockStoreProperties> blockStoreProperties() {
+        return dht.blockStoreProperties();
+    }
+
+    @Override
     public CompletableFuture<TransactionId> startTransaction(PublicKeyHash owner) {
         return dht.startTransaction(owner);
     }

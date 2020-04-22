@@ -310,7 +310,7 @@ public class Main {
                             new IpfsDHT(ipfsApi) :
                             S3Config.useS3(args) ?
                                     new S3BlockStorage(S3Config.build(args), Cid.decode(args.getArg("ipfs.id")),
-                                            transactions, new IpfsDHT(ipfsApi)) :
+                                            BlockStoreProperties.empty(), transactions, new IpfsDHT(ipfsApi)) :
                                     new FileContentAddressedStorage(blockstorePath(args),
                                             transactions);
                     Multihash pkiIpfsNodeId = storage.id().get();
@@ -479,8 +479,9 @@ public class Main {
                 // In S3 mode of operation we require the ipfs id to be supplied as we don't have a local ipfs running
                 if (S3Config.useS3(a)) {
                     ContentAddressedStorage.HTTP ipfs = new ContentAddressedStorage.HTTP(ipfsApi, false);
+                    BlockStoreProperties props = new BlockStoreProperties(Optional.ofNullable(a.getArg("blockstore-url", null)));
                     localDht = new S3BlockStorage(S3Config.build(a), Cid.decode(a.getArg("ipfs.id")),
-                            transactions, ipfs);
+                            props, transactions, ipfs);
                 } else
                     localDht = new FileContentAddressedStorage(blockstorePath(a), transactions);
             }

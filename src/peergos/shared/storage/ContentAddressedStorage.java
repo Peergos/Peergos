@@ -24,6 +24,10 @@ public interface ContentAddressedStorage {
     boolean DEBUG_GC = false;
     int MAX_BLOCK_SIZE  = 2*1024*1024;
 
+    default CompletableFuture<BlockStoreProperties> blockStoreProperties() {
+        return Futures.of(BlockStoreProperties.empty());
+    }
+
     default CompletableFuture<Multihash> put(PublicKeyHash owner,
                                              SigningPrivateKeyAndPublicHash writer,
                                              byte[] block,
@@ -269,6 +273,7 @@ public interface ContentAddressedStorage {
         private final HttpPoster poster;
         private static final String apiPrefix = "api/v0/";
         public static final String ID = "id";
+        public static final String BLOCKSTORE_PROPERTIES = "blockstore/props";
         public static final String TRANSACTION_START = "transaction/start";
         public static final String TRANSACTION_CLOSE = "transaction/close";
         public static final String GC = "repo/gc";
@@ -315,6 +320,14 @@ public interface ContentAddressedStorage {
         public CompletableFuture<Multihash> id() {
             return poster.get(apiPrefix + ID)
                     .thenApply(raw -> Multihash.fromBase58((String)((Map)JSONParser.parse(new String(raw))).get("ID")));
+        }
+
+        @Override
+        public CompletableFuture<BlockStoreProperties> blockStoreProperties() {
+            if (! isPeergosServer)
+                return Futures.of(BlockStoreProperties.empty());
+            return poster.get(apiPrefix + BLOCKSTORE_PROPERTIES)
+                    .thenApply(raw -> BlockStoreProperties.fromCbor(CborObject.fromByteArray(raw)));
         }
 
         @Override
@@ -407,7 +420,7 @@ public interface ContentAddressedStorage {
 
         @Override
         public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash) {
-            if (hash.type == Multihash.Type.id)
+            if (hash.isIdentity())
                 return CompletableFuture.completedFuture(Optional.of(hash.getHash()));
             return poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash.toString())
                     .thenApply(raw -> raw.length == 0 ? Optional.empty() : Optional.of(raw));
@@ -471,6 +484,11 @@ public interface ContentAddressedStorage {
         @Override
         public CompletableFuture<Multihash> id() {
             return local.id();
+        }
+
+        @Override
+        public CompletableFuture<BlockStoreProperties> blockStoreProperties() {
+            return local.blockStoreProperties();
         }
 
         @Override

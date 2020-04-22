@@ -69,6 +69,12 @@ public class DHTHandler implements HttpHandler {
             Function<String, String> last = key -> params.get(key).get(params.get(key).size() - 1);
 
             switch (path) {
+                case BLOCKSTORE_PROPERTIES: {
+                    dht.blockStoreProperties().thenAccept(p -> {
+                        replyBytes(httpExchange, p.serialize(), Optional.empty());
+                    }).exceptionally(Futures::logAndThrow).get();
+                    break;
+                }
                 case TRANSACTION_START: {
                     AggregatedMetrics.DHT_TRANSACTION_START.inc();
                     PublicKeyHash ownerHash = PublicKeyHash.fromString(last.apply("owner"));
