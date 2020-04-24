@@ -17,7 +17,6 @@ public class S3V4SignatureTests {
         String bucketName = "examplebucket";
         String region = "us-east-1";
         String host = bucketName + ".s3.amazonaws.com";
-        String baseUrl = "https://" + host + "/";
         Map<String, String> extraHeaders = new TreeMap<>();
         extraHeaders.put("date", "Fri, 24 May 2013 00:00:00 GMT");
         extraHeaders.put("x-amz-storage-class", "REDUCED_REDUNDANCY");
@@ -25,7 +24,7 @@ public class S3V4SignatureTests {
                 .atStartOfDay()
                 .toInstant(ZoneOffset.UTC);
         UploadPolicy.PresignedUrl url = UploadPolicy.preSignUrl(s3Key, payload.length, sha256(payload), false, timestamp,
-                "PUT", host, extraHeaders, baseUrl, region, bucketName, accessKey, secretKey);
+                "PUT", host, extraHeaders, region, bucketName, accessKey, secretKey);
         Assert.assertTrue(("AWS4-HMAC-SHA256 Credential=AKIAIOSFODNN7EXAMPLE/20130524/us-east-1/s3/aws4_request," +
                 "SignedHeaders=date;host;x-amz-content-sha256;x-amz-date;x-amz-storage-class," +
                 "Signature=98ad721746da40c64f1a55b78f14c238d841ea1380cd77a1b5971af0ece108bd")

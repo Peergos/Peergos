@@ -21,6 +21,8 @@ public class UploadPolicy {
         public static void main(String[] a) throws Exception {
             String accessKey = "";
             String secretKey = "";
+            String bucketName = "";
+            String region = "us-east-1";
 
             for (boolean useIllegalPayload: Arrays.asList(false)) {
 
@@ -28,21 +30,20 @@ public class UploadPolicy {
                 new Random(42).nextBytes(payload);
                 Multihash contentHash = new RAMStorage().put(null, null, null, Arrays.asList(payload), null).join().get(0);
                 String s3Key = DirectReadS3BlockStore.hashToKey(contentHash);
-                String bucketName = "";
-                String region = "us-east-1";
                 String host = bucketName + "." + region + ".linodeobjects.com";
-                String baseUrl = "https://" + host + "/";
                 Map<String, String> extraHeaders = new TreeMap<>();
-                extraHeaders.put("content-type", "binary/octet-stream");
+                extraHeaders.put("Origin", "https://test.peergos.net");
+                extraHeaders.put("Content-Type", "application/octet-stream");
+                extraHeaders.put("Content-Length", "" + payload.length);
 
                 PresignedUrl url = preSignUrl(s3Key, payload.length, contentHash.getHash(), true,
-                        Instant.now(), "PUT", host, extraHeaders, baseUrl, region, bucketName, accessKey, secretKey);
+                        Instant.now(), "PUT", host, extraHeaders, region, bucketName, accessKey, secretKey);
 
                 String res = new String(put(new URI(url.base).toURL(), url.fields, useIllegalPayload ? new byte[1024] : payload));
                 System.out.println(res);
                 String webUrl = "https://" + bucketName + ".website-" + region + ".linodeobjects.com/" + s3Key;
                 byte[] getResult = get(new URI(webUrl).toURL());
-                if (!Arrays.equals(getResult, payload))
+                if (! Arrays.equals(getResult, payload))
                     System.out.println("Incorrect contents!");
             }
         }
@@ -142,7 +143,6 @@ public class UploadPolicy {
                                           String verb,
                                           String host,
                                           Map<String, String> extraHeaders,
-                                          String baseUrl,
                                           String region,
                                           String bucketName,
                                           String accessKeyId,
@@ -153,7 +153,7 @@ public class UploadPolicy {
 
         String signature = computeSignature(policy, s3SecretKey);
 
-        return new PresignedUrl(baseUrl, policy.getHeaders(signature));
+        return new PresignedUrl("https://" + host + "/" + key, policy.getHeaders(signature));
     }
 
     private static byte[] hmacSha256(byte[] secretKeyBytes, byte[] message) {
@@ -199,28 +199,41 @@ public class UploadPolicy {
         }
     }
 
-    public SortedMap<String, String> getHeaders(String signature) {
-        SortedMap<String, String> headers = getCanonicalHeaders();
+    public Map<String, String> getHeaders(String signature) {
+        Map<String, String> headers = getOriginalHeaders();
         headers.put("Authorization", "AWS4-HMAC-SHA256 Credential=" + credential()
                 + ",SignedHeaders=" + headersToSign() + ",Signature=" + signature);
         return headers;
     }
 
-    public SortedMap<String, String> getCanonicalHeaders() {
-        SortedMap<String, String> res = new TreeMap<>();
-        res.put("host", host);
+    public Map<String, String> getOriginalHeaders() {
+        Map<String, String> res = new LinkedHashMap<>();
+        res.put("Host", host);
         res.put("x-amz-date", asAwsDate(date));
+        res.put("x-amz-expires", asAwsDate(date.plus(untilExpiration)));
         res.put("x-amz-content-sha256", ArrayOps.bytesToHex(contentSha256));
         for (Map.Entry<String, String> e : extraHeaders.entrySet()) {
             res.put(e.getKey(), e.getValue());
         }
         if (allowPublicReads)
-            res.put("acl", "public-read");
+            res.put("x-amz-acl", "public-read");
+        return res;
+    }
+
+    public SortedMap<String, String> getCanonicalHeaders() {
+        SortedMap<String, String> res = new TreeMap<>();
+        Map<String, String> originalHeaders = getOriginalHeaders();
+        for (Map.Entry<String, String> e : originalHeaders.entrySet()) {
+            res.put(e.getKey().toLowerCase(), e.getValue());
+        }
         return res;
     }
 
     public String headersToSign() {
-        return getCanonicalHeaders().keySet().stream().sorted().collect(Collectors.joining(";"));
+        return getCanonicalHeaders().keySet()
+                .stream()
+                .sorted()
+                .collect(Collectors.joining(";"));
     }
 
     public String toCanonicalRequest() {
@@ -232,7 +245,7 @@ public class UploadPolicy {
 
         Map<String, String> headers = getCanonicalHeaders();
         for (Map.Entry<String, String> e : headers.entrySet()) {
-            res.append(e.getKey() + ":" + e.getValue() + "\n");
+            res.append(e.getKey().toLowerCase() + ":" + e.getValue() + "\n");
         }
         res.append("\n");
 
