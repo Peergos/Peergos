@@ -14,7 +14,6 @@ import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
-import peergos.shared.io.ipfs.multibase.binary.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.io.ipfs.multihash.*;
@@ -51,7 +50,8 @@ public class S3BlockStorage implements ContentAddressedStorage {
 
     private final Multihash id;
     private final AmazonS3 s3Client;
-    private final String bucket, folder;
+    private final String region, bucket, folder;
+    private final String accessKeyId, secretKey;
     private final BlockStoreProperties props;
     private final TransactionStore transactions;
     private final ContentAddressedStorage p2pFallback;
@@ -62,8 +62,11 @@ public class S3BlockStorage implements ContentAddressedStorage {
                           TransactionStore transactions,
                           ContentAddressedStorage p2pFallback) {
         this.id = id;
+        this.region = config.region;
         this.bucket = config.bucket;
         this.folder = config.path.isEmpty() || config.path.endsWith("/") ? config.path : config.path + "/";
+        this.accessKeyId = config.accessKey;
+        this.secretKey = config.secretKey;
         AmazonS3ClientBuilder builder = AmazonS3ClientBuilder.standard()
                 .withEndpointConfiguration(new AwsClientBuilder.EndpointConfiguration(config.regionEndpoint, config.region))
                 .withCredentials(new AWSStaticCredentialsProvider(

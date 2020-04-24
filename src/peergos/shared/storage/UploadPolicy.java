@@ -9,7 +9,7 @@ import javax.crypto.*;
 import javax.crypto.spec.*;
 import java.io.*;
 import java.net.*;
-import java.nio.charset.*;
+import java.security.*;
 import java.time.*;
 import java.time.temporal.*;
 import java.util.*;
@@ -17,24 +17,28 @@ import java.util.stream.*;
 
 public class UploadPolicy {
 
-    static class Test {
+    static class Scratch {
         public static void main(String[] a) throws Exception {
             String accessKey = "";
             String secretKey = "";
 
-            for (boolean useIllegalPayload: Arrays.asList(true, false)) {
+            for (boolean useIllegalPayload: Arrays.asList(false)) {
 
                 byte[] payload = new byte[1024];
                 new Random(42).nextBytes(payload);
                 Multihash contentHash = new RAMStorage().put(null, null, null, Arrays.asList(payload), null).join().get(0);
                 String s3Key = DirectReadS3BlockStore.hashToKey(contentHash);
                 String bucketName = "";
-                String baseUrl = "https://" + bucketName + ".us-east-1.linodeobjects.com/";
                 String region = "us-east-1";
-                PresignedUrl url = preSignUrl(s3Key, payload.length, contentHash, true, baseUrl, region, bucketName, accessKey, secretKey);
+                String host = bucketName + "." + region + ".linodeobjects.com";
+                String baseUrl = "https://" + host + "/";
+                Map<String, String> extraHeaders = new TreeMap<>();
+                extraHeaders.put("content-type", "binary/octet-stream");
 
-                String res = new String(postMultipart(url.base, url.fields, useIllegalPayload ? new byte[1024] : payload));
-//                String res = new String(put(new URI(url.base).toURL(), url.fields, useIllegalPayload ? new byte[1024] : payload));
+                PresignedUrl url = preSignUrl(s3Key, payload.length, contentHash.getHash(), true,
+                        Instant.now(), "PUT", host, extraHeaders, baseUrl, region, bucketName, accessKey, secretKey);
+
+                String res = new String(put(new URI(url.base).toURL(), url.fields, useIllegalPayload ? new byte[1024] : payload));
                 System.out.println(res);
                 String webUrl = "https://" + bucketName + ".website-" + region + ".linodeobjects.com/" + s3Key;
                 byte[] getResult = get(new URI(webUrl).toURL());
@@ -131,31 +135,25 @@ public class UploadPolicy {
      * @link https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/AWS/S3.html#createPresignedPost-property
      */
     public static PresignedUrl preSignUrl(String key,
-                                    int size,
-                                    Multihash contentHash,
-                                    boolean allowPublicReads,
-                                    String baseUrl,
-                                    String region,
-                                    String bucketName,
-                                    String accessKeyId,
-                                    String s3SecretKey) {
-        Instant instant = Instant.now();
-//        String endpointUrl = String.format("https://s3.%s.amazonaws.com/%s", region, bucketName);
-
+                                          int size,
+                                          byte[] contentSha256,
+                                          boolean allowPublicReads,
+                                          Instant now,
+                                          String verb,
+                                          String host,
+                                          Map<String, String> extraHeaders,
+                                          String baseUrl,
+                                          String region,
+                                          String bucketName,
+                                          String accessKeyId,
+                                          String s3SecretKey) {
         Duration duration = Duration.of(1, ChronoUnit.HOURS);
-        UploadPolicy policy = new UploadPolicy(key, size, contentHash, allowPublicReads, bucketName, accessKeyId, region, instant, duration);
-        AwsPolicy awsPolicy = UploadPolicy.asAwsPolicy(policy);
-        String signature = computeSignature(awsPolicy, policy, s3SecretKey);
+        UploadPolicy policy = new UploadPolicy(verb, host, key, size, contentSha256, allowPublicReads, extraHeaders,
+                bucketName, accessKeyId, region, now, duration);
 
-        Map<String, String> fields = Stream.concat(
-                awsPolicy.conditions.stream(),
-                Stream.of(
-                        new Pair<>("Policy", encodePolicy(awsPolicy)),
-                        new Pair<>("X-Amz-Signature", signature)
-                )
-        ).collect(Collectors.toMap(p -> p.left, p -> p.right));
+        String signature = computeSignature(policy, s3SecretKey);
 
-        return new PresignedUrl(baseUrl, fields);
+        return new PresignedUrl(baseUrl, policy.getHeaders(signature));
     }
 
     private static byte[] hmacSha256(byte[] secretKeyBytes, byte[] message) {
@@ -178,10 +176,9 @@ public class UploadPolicy {
      *
      * @link https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-authenticating-requests.html
      */
-    private static String computeSignature(AwsPolicy policyToSign,
-                                           UploadPolicy policy,
+    private static String computeSignature(UploadPolicy policy,
                                            String s3SecretKey) {
-        String encodedPolicy = encodePolicy(policyToSign);
+        String stringToSign = policy.stringToSign();
         String shortDate = UploadPolicy.asAwsShortDate(policy.date);
 
         byte[] dateKey = hmacSha256("AWS4" + s3SecretKey, shortDate.getBytes());
@@ -189,12 +186,77 @@ public class UploadPolicy {
         byte[] dateRegionServiceKey = hmacSha256(dateRegionKey, "s3".getBytes());
         byte[] signingKey = hmacSha256(dateRegionServiceKey, "aws4_request".getBytes());
 
-        return ArrayOps.bytesToHex(hmacSha256(signingKey, encodedPolicy.getBytes()));
+        return ArrayOps.bytesToHex(hmacSha256(signingKey, stringToSign.getBytes()));
     }
 
-    private static String encodePolicy(AwsPolicy policy) {
-        String policyJson = JSONParser.toString(policy.toMap());
-        return Base64.getEncoder().encodeToString(policyJson.getBytes(StandardCharsets.UTF_8));
+    private static byte[] sha256(byte[] input) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            md.update(input);
+            return md.digest();
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("couldn't find hash algorithm");
+        }
+    }
+
+    public SortedMap<String, String> getHeaders(String signature) {
+        SortedMap<String, String> headers = getCanonicalHeaders();
+        headers.put("Authorization", "AWS4-HMAC-SHA256 Credential=" + credential()
+                + ",SignedHeaders=" + headersToSign() + ",Signature=" + signature);
+        return headers;
+    }
+
+    public SortedMap<String, String> getCanonicalHeaders() {
+        SortedMap<String, String> res = new TreeMap<>();
+        res.put("host", host);
+        res.put("x-amz-date", asAwsDate(date));
+        res.put("x-amz-content-sha256", ArrayOps.bytesToHex(contentSha256));
+        for (Map.Entry<String, String> e : extraHeaders.entrySet()) {
+            res.put(e.getKey(), e.getValue());
+        }
+        if (allowPublicReads)
+            res.put("acl", "public-read");
+        return res;
+    }
+
+    public String headersToSign() {
+        return getCanonicalHeaders().keySet().stream().sorted().collect(Collectors.joining(";"));
+    }
+
+    public String toCanonicalRequest() {
+        StringBuilder res = new StringBuilder();
+        res.append(verb + "\n");
+        res.append("/" + key + "\n");
+
+        res.append("\n"); // no query parameters
+
+        Map<String, String> headers = getCanonicalHeaders();
+        for (Map.Entry<String, String> e : headers.entrySet()) {
+            res.append(e.getKey() + ":" + e.getValue() + "\n");
+        }
+        res.append("\n");
+
+        res.append(headersToSign() + "\n");
+        res.append(ArrayOps.bytesToHex(contentSha256));
+        return res.toString();
+    }
+
+    private String scope() {
+        return String.format(
+                "%s/%s/%s/%s",
+                asAwsShortDate(date),
+                region,
+                "s3",
+                "aws4_request");
+    }
+
+    public String stringToSign() {
+        StringBuilder res = new StringBuilder();
+        res.append("AWS4-HMAC-SHA256" + "\n");
+        res.append(asAwsDate(date) + "\n");
+        res.append(scope() + "\n");
+        res.append(ArrayOps.bytesToHex(sha256(toCanonicalRequest().getBytes())));
+        return res.toString();
     }
 
     /**
@@ -214,50 +276,37 @@ public class UploadPolicy {
         return asAwsDate(instant).substring(0, 8);
     }
 
-    public static AwsPolicy asAwsPolicy(UploadPolicy policy) {
-        String credentialsId = credentialsId(policy);
-        List<Pair<String, String>> conditions = new ArrayList<>();
-
-        conditions.add(new Pair<>("key", policy.key));
-        conditions.add(new Pair<>("bucket", policy.bucket));
-        conditions.add(new Pair<>("x-amz-algorithm", "AWS4-HMAC-SHA256"));
-        conditions.add(new Pair<>("x-amz-credential", credentialsId));
-        conditions.add(new Pair<>("x-amz-date", asAwsDate(policy.date)));
-        conditions.add(new Pair<>("x-amz-content-sha256", ArrayOps.bytesToHex(policy.contentHash.getHash())));
-        conditions.add(new Pair<>("content-type", "binary/octet-stream"));
-        if (policy.allowPublicReads)
-            conditions.add(new Pair<>("acl", "public-read"));
-
-        Instant expirationTime = policy.date.plus(policy.untilExpiration);
-        List<List<String>> extraConditions = new ArrayList<>();
-        String size = Integer.toString(policy.size);
-        extraConditions.add(Arrays.asList("content-length-range", size, size));
-        return new AwsPolicy(expirationTime, conditions, extraConditions);
-    }
-
+    public final String verb, host;
     public final String key;
     public final int size;
-    public final Multihash contentHash;
+    public final byte[] contentSha256;
     public final boolean allowPublicReads;
     public final String bucket;
     public final String accessKeyId;
     public final String region;
+    public final Map<String, String> extraHeaders;
     public final Instant date;
     public final Duration untilExpiration;
 
-    public UploadPolicy(String key,
+    public UploadPolicy(String verb,
+                        String host,
+                        String key,
                         int size,
-                        Multihash contentHash,
+                        byte[] contentSha256,
                         boolean allowPublicReads,
+                        Map<String, String> extraHeaders,
                         String bucket,
                         String accessKeyId,
                         String region,
                         Instant date,
                         Duration untilExpiration) {
+        this.verb = verb;
+        this.host = host;
         this.key = key;
         this.size = size;
-        this.contentHash = contentHash;
+        this.contentSha256 = contentSha256;
         this.allowPublicReads = allowPublicReads;
+        this.extraHeaders = extraHeaders;
         this.bucket = bucket;
         this.accessKeyId = accessKeyId;
         this.region = region;
@@ -265,43 +314,15 @@ public class UploadPolicy {
         this.untilExpiration = untilExpiration;
     }
 
-    private static String credentialsId(UploadPolicy policy) {
+    private String credential() {
         return String.format(
                 "%s/%s/%s/%s/%s",
-                policy.accessKeyId,
-                asAwsShortDate(policy.date),
-                policy.region,
+                accessKeyId,
+                asAwsShortDate(date),
+                region,
                 "s3",
                 "aws4_request"
         );
-    }
-
-    static class AwsPolicy {
-        public final Instant expiration;
-        public final List<Pair<String, String>> conditions;
-        public final List<List<String>> extraConditions;
-
-        public AwsPolicy(Instant expiration, List<Pair<String, String>> conditions, List<List<String>> extraConditions) {
-            this.expiration = expiration;
-            this.conditions = conditions;
-            this.extraConditions = extraConditions;
-        }
-
-        public Object toMap() {
-            Map<String, Object> res = new LinkedHashMap<>();
-            res.put("expiration", expiration.toString());
-            List<Object> jsonConditions = new ArrayList<>();
-            for (Pair<String, String> p : conditions) {
-                Map<String, Object> condition = new LinkedHashMap<>();
-                condition.put(p.left, p.right);
-                jsonConditions.add(condition);
-            }
-            for (List<String> extraCondition : extraConditions) {
-                jsonConditions.add(extraCondition);
-            }
-            res.put("conditions", jsonConditions);
-            return res;
-        }
     }
 }
 
