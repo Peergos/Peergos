@@ -1,7 +1,8 @@
 package peergos.server.tests;
 
 import org.junit.*;
-import peergos.shared.storage.*;
+import peergos.server.storage.*;
+import peergos.shared.util.*;
 
 import java.security.*;
 import java.time.*;
@@ -23,7 +24,8 @@ public class S3V4SignatureTests {
         Instant timestamp = LocalDate.of(2013, Month.MAY, 24)
                 .atStartOfDay()
                 .toInstant(ZoneOffset.UTC);
-        UploadPolicy.PresignedUrl url = UploadPolicy.preSignUrl(s3Key, payload.length, sha256(payload), false, timestamp,
+        String contentSha256 = ArrayOps.bytesToHex(sha256(payload));
+        UploadPolicy.PresignedUrl url = UploadPolicy.preSignUrl(s3Key, payload.length, contentSha256, false, timestamp,
                 "PUT", host, extraHeaders, region, bucketName, accessKey, secretKey);
         Assert.assertTrue(("AWS4-HMAC-SHA256 Credential=AKIAIOSFODNN7EXAMPLE/20130524/us-east-1/s3/aws4_request," +
                 "SignedHeaders=date;host;x-amz-content-sha256;x-amz-date;x-amz-storage-class," +

@@ -1,8 +1,8 @@
-package peergos.shared.storage;
+package peergos.server.storage;
 
-import peergos.server.storage.*;
 import peergos.shared.io.ipfs.api.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
 import javax.crypto.*;
@@ -24,19 +24,25 @@ public class UploadPolicy {
             String bucketName = "";
             String region = "us-east-1";
 
+
             for (boolean useIllegalPayload: Arrays.asList(false)) {
 
                 byte[] payload = new byte[1024];
                 new Random(42).nextBytes(payload);
-                Multihash contentHash = new RAMStorage().put(null, null, null, Arrays.asList(payload), null).join().get(0);
-                String s3Key = DirectReadS3BlockStore.hashToKey(contentHash);
+                Multihash content = new RAMStorage().put(null, null, null, Arrays.asList(payload), null).join().get(0);
+                String s3Key = DirectReadS3BlockStore.hashToKey(content);
                 String host = bucketName + "." + region + ".linodeobjects.com";
                 Map<String, String> extraHeaders = new TreeMap<>();
                 extraHeaders.put("Origin", "https://test.peergos.net");
                 extraHeaders.put("Content-Type", "application/octet-stream");
                 extraHeaders.put("Content-Length", "" + payload.length);
+                extraHeaders.put("amz-sdk-retry", "0/0/500");
+                extraHeaders.put("amz-sdk-invocation-id", "c1423ccb-b44d-f1d1-89fa-5a30c02b1f6b");
+                extraHeaders.put("User-Agent", "Bond, James Bond");
 
-                PresignedUrl url = preSignUrl(s3Key, payload.length, contentHash.getHash(), true,
+                boolean hashContent = false;
+                String contentHash = hashContent ? ArrayOps.bytesToHex(content.getHash()) : "UNSIGNED-PAYLOAD";
+                PresignedUrl url = preSignUrl(s3Key, payload.length, contentHash, true,
                         Instant.now(), "PUT", host, extraHeaders, region, bucketName, accessKey, secretKey);
 
                 String res = new String(put(new URI(url.base).toURL(), url.fields, useIllegalPayload ? new byte[1024] : payload));
@@ -137,7 +143,7 @@ public class UploadPolicy {
      */
     public static PresignedUrl preSignUrl(String key,
                                           int size,
-                                          byte[] contentSha256,
+                                          String contentSha256,
                                           boolean allowPublicReads,
                                           Instant now,
                                           String verb,
@@ -211,7 +217,7 @@ public class UploadPolicy {
         res.put("Host", host);
         res.put("x-amz-date", asAwsDate(date));
         res.put("x-amz-expires", asAwsDate(date.plus(untilExpiration)));
-        res.put("x-amz-content-sha256", ArrayOps.bytesToHex(contentSha256));
+        res.put("x-amz-content-sha256", contentSha256);
         for (Map.Entry<String, String> e : extraHeaders.entrySet()) {
             res.put(e.getKey(), e.getValue());
         }
@@ -250,7 +256,7 @@ public class UploadPolicy {
         res.append("\n");
 
         res.append(headersToSign() + "\n");
-        res.append(ArrayOps.bytesToHex(contentSha256));
+        res.append(contentSha256);
         return res.toString();
     }
 
@@ -292,7 +298,7 @@ public class UploadPolicy {
     public final String verb, host;
     public final String key;
     public final int size;
-    public final byte[] contentSha256;
+    public final String contentSha256;
     public final boolean allowPublicReads;
     public final String bucket;
     public final String accessKeyId;
@@ -305,7 +311,7 @@ public class UploadPolicy {
                         String host,
                         String key,
                         int size,
-                        byte[] contentSha256,
+                        String contentSha256,
                         boolean allowPublicReads,
                         Map<String, String> extraHeaders,
                         String bucket,
