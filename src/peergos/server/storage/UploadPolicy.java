@@ -1,6 +1,5 @@
 package peergos.server.storage;
 
-import peergos.shared.io.ipfs.api.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
@@ -32,13 +31,12 @@ public class UploadPolicy {
                 Map<String, String> extraHeaders = new TreeMap<>();
 //                extraHeaders.put("Origin", "https://test.peergos.net");
                 extraHeaders.put("Content-Type", "application/octet-stream");
-                extraHeaders.put("Content-Length", "" + payload.length);
                 extraHeaders.put("User-Agent", "Bond, James Bond");
 
                 boolean hashContent = true;
                 String contentHash = hashContent ? ArrayOps.bytesToHex(content.getHash()) : "UNSIGNED-PAYLOAD";
                 PresignedUrl url = preSignUrl(s3Key, payload.length, contentHash, false,
-                        ZonedDateTime.now().withNano(0).withZoneSameInstant(ZoneId.of("UTC")).toInstant(), "PUT", host, extraHeaders, region, accessKey, secretKey);
+                        ZonedDateTime.now().minusMinutes(14), "PUT", host, extraHeaders, region, accessKey, secretKey);
 
                 String res = new String(put(new URI(url.base).toURL(), url.fields, useIllegalPayload ? new byte[payload.length] : payload));
                 System.out.println(res);
@@ -76,7 +74,7 @@ public class UploadPolicy {
                 int r;
                 while ((r = err.read(buf)) >= 0)
                     resp.write(buf, 0, r);
-                return resp.toByteArray();
+                throw new IOException("HTTP " + conn.getResponseCode() + ": " + conn.getResponseMessage() + "\nbody:\n" + new String(resp.toByteArray()));
             }
         }
 
@@ -127,15 +125,16 @@ public class UploadPolicy {
                                           int size,
                                           String contentSha256,
                                           boolean allowPublicReads,
-                                          Instant now,
+                                          ZonedDateTime now,
                                           String verb,
                                           String host,
                                           Map<String, String> extraHeaders,
                                           String region,
                                           String accessKeyId,
                                           String s3SecretKey) {
-        UploadPolicy policy = new UploadPolicy(verb, host, key, size, contentSha256, allowPublicReads, extraHeaders,
-                accessKeyId, region, now);
+        extraHeaders.put("Content-Length", "" + size);
+        UploadPolicy policy = new UploadPolicy(verb, host, key, contentSha256, allowPublicReads, extraHeaders,
+                accessKeyId, region, now.withNano(0).withZoneSameInstant(ZoneId.of("UTC")).toInstant());
 
         String signature = computeSignature(policy, s3SecretKey);
 
@@ -276,7 +275,6 @@ public class UploadPolicy {
 
     public final String verb, host;
     public final String key;
-    public final int size;
     public final String contentSha256;
     public final boolean allowPublicReads;
     public final String accessKeyId;
@@ -287,7 +285,6 @@ public class UploadPolicy {
     public UploadPolicy(String verb,
                         String host,
                         String key,
-                        int size,
                         String contentSha256,
                         boolean allowPublicReads,
                         Map<String, String> extraHeaders,
@@ -297,7 +294,6 @@ public class UploadPolicy {
         this.verb = verb;
         this.host = host;
         this.key = key;
-        this.size = size;
         this.contentSha256 = contentSha256;
         this.allowPublicReads = allowPublicReads;
         this.extraHeaders = extraHeaders;

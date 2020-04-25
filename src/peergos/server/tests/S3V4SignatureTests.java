@@ -21,13 +21,14 @@ public class S3V4SignatureTests {
         Map<String, String> extraHeaders = new TreeMap<>();
         extraHeaders.put("date", "Fri, 24 May 2013 00:00:00 GMT");
         extraHeaders.put("x-amz-storage-class", "REDUCED_REDUNDANCY");
-        Instant timestamp = LocalDate.of(2013, Month.MAY, 24)
+        ZonedDateTime timestamp = LocalDate.of(2013, Month.MAY, 24)
                 .atStartOfDay()
-                .toInstant(ZoneOffset.UTC);
+                .toInstant(ZoneOffset.UTC)
+                .atZone(ZoneId.of("UTC"));
         String contentSha256 = ArrayOps.bytesToHex(sha256(payload));
 
-        UploadPolicy policy = new UploadPolicy("PUT", host, s3Key, payload.length, contentSha256, false, extraHeaders,
-                accessKey, region, timestamp);
+        UploadPolicy policy = new UploadPolicy("PUT", host, s3Key, contentSha256, false, extraHeaders,
+                accessKey, region, timestamp.toInstant());
         String toSign = policy.stringToSign();
         Assert.assertTrue(toSign.equals("AWS4-HMAC-SHA256\n" +
                 "20130524T000000Z\n" +
@@ -36,13 +37,6 @@ public class S3V4SignatureTests {
 
         String signature = UploadPolicy.computeSignature(policy, secretKey);
         Assert.assertTrue(signature.equals("98ad721746da40c64f1a55b78f14c238d841ea1380cd77a1b5971af0ece108bd"));
-
-        UploadPolicy.PresignedUrl url = UploadPolicy.preSignUrl(s3Key, payload.length, contentSha256, false, timestamp,
-                "PUT", host, extraHeaders, region, accessKey, secretKey);
-        Assert.assertTrue(("AWS4-HMAC-SHA256 Credential=AKIAIOSFODNN7EXAMPLE/20130524/us-east-1/s3/aws4_request," +
-                "SignedHeaders=date;host;x-amz-content-sha256;x-amz-date;x-amz-storage-class," +
-                "Signature=98ad721746da40c64f1a55b78f14c238d841ea1380cd77a1b5971af0ece108bd")
-                .equals(url.fields.get("Authorization")));
     }
 
     @Test
@@ -60,17 +54,18 @@ public class S3V4SignatureTests {
         extraHeaders.put("Content-Length", "" + payload.length);
         extraHeaders.put("Content-Type", "application/octet-stream");
         extraHeaders.put("User-Agent", "aws-sdk-java/1.11.705 Linux/5.3.0-46-generic OpenJDK_64-Bit_Server_VM/11.0.7+10-post-Ubuntu-2ubuntu218.04 java/11.0.7 vendor/Ubuntu");
-        Instant timestamp = LocalDate.of(2020, Month.APRIL, 25)
+        ZonedDateTime timestamp = LocalDate.of(2020, Month.APRIL, 25)
                 .atStartOfDay()
                 .withHour(20)
                 .withMinute(41)
                 .withSecond(56)
                 .withNano(0)
-                .toInstant(ZoneOffset.UTC);
+                .toInstant(ZoneOffset.UTC)
+                .atZone(ZoneId.of("UTC"));
         String contentSha256 = "UNSIGNED-PAYLOAD";
 
-        UploadPolicy policy = new UploadPolicy("PUT", host, s3Key, payload.length, contentSha256, false, extraHeaders,
-                accessKey, region, timestamp);
+        UploadPolicy policy = new UploadPolicy("PUT", host, s3Key, contentSha256, false, extraHeaders,
+                accessKey, region, timestamp.toInstant());
 
         String canonicalRequest = policy.toCanonicalRequest();
         Assert.assertTrue(canonicalRequest.equals("PUT\n" +
