@@ -13,7 +13,7 @@ import java.time.*;
 import java.util.*;
 import java.util.stream.*;
 
-public class UploadPolicy {
+public class S3Request {
 
     static class Scratch {
         public static void main(String[] a) throws Exception {
@@ -114,12 +114,9 @@ public class UploadPolicy {
     }
 
     /**
-     * Method mimics behavior of "createPresignedPost" operation from Node.js S3 SDK.
+     * Presign a url for a GET, PUT or POST
      *
-     * @link https://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-UsingHTTPPOST.html
-     * @link https://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-post-example.html
-     * @link https://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-HTTPPOSTForms.html
-     * @link https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/AWS/S3.html#createPresignedPost-property
+     * @link https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-header-based-auth.html
      */
     public static PresignedUrl preSignUrl(String key,
                                           int size,
@@ -133,7 +130,7 @@ public class UploadPolicy {
                                           String accessKeyId,
                                           String s3SecretKey) {
         extraHeaders.put("Content-Length", "" + size);
-        UploadPolicy policy = new UploadPolicy(verb, host, key, contentSha256, allowPublicReads, extraHeaders,
+        S3Request policy = new S3Request(verb, host, key, contentSha256, allowPublicReads, extraHeaders,
                 accessKeyId, region, now.withNano(0).withZoneSameInstant(ZoneId.of("UTC")).toInstant());
 
         String signature = computeSignature(policy, s3SecretKey);
@@ -161,10 +158,10 @@ public class UploadPolicy {
      *
      * @link https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-authenticating-requests.html
      */
-    public static String computeSignature(UploadPolicy policy,
-                                           String s3SecretKey) {
+    public static String computeSignature(S3Request policy,
+                                          String s3SecretKey) {
         String stringToSign = policy.stringToSign();
-        String shortDate = UploadPolicy.asAwsShortDate(policy.date);
+        String shortDate = S3Request.asAwsShortDate(policy.date);
 
         byte[] dateKey = hmacSha256("AWS4" + s3SecretKey, shortDate.getBytes());
         byte[] dateRegionKey = hmacSha256(dateKey, policy.region.getBytes());
@@ -256,19 +253,11 @@ public class UploadPolicy {
         return res.toString();
     }
 
-    /**
-     * AWS date format converter.
-     * Implementation taken directly from Node JS SDK
-     */
     public static String asAwsDate(Instant instant) {
         return instant.toString()
                 .replaceAll("[:\\-]|\\.\\d{3}", "");
     }
 
-    /**
-     * AWS short date format converter.
-     * Implementation taken directly from Node JS SDK
-     */
     public static String asAwsShortDate(Instant instant) {
         return asAwsDate(instant).substring(0, 8);
     }
@@ -282,15 +271,15 @@ public class UploadPolicy {
     public final Map<String, String> extraHeaders;
     public final Instant date;
 
-    public UploadPolicy(String verb,
-                        String host,
-                        String key,
-                        String contentSha256,
-                        boolean allowPublicReads,
-                        Map<String, String> extraHeaders,
-                        String accessKeyId,
-                        String region,
-                        Instant date) {
+    public S3Request(String verb,
+                     String host,
+                     String key,
+                     String contentSha256,
+                     boolean allowPublicReads,
+                     Map<String, String> extraHeaders,
+                     String accessKeyId,
+                     String region,
+                     Instant date) {
         this.verb = verb;
         this.host = host;
         this.key = key;

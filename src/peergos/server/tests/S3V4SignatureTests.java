@@ -27,7 +27,7 @@ public class S3V4SignatureTests {
                 .atZone(ZoneId.of("UTC"));
         String contentSha256 = ArrayOps.bytesToHex(sha256(payload));
 
-        UploadPolicy policy = new UploadPolicy("PUT", host, s3Key, contentSha256, false, extraHeaders,
+        S3Request policy = new S3Request("PUT", host, s3Key, contentSha256, false, extraHeaders,
                 accessKey, region, timestamp.toInstant());
         String toSign = policy.stringToSign();
         Assert.assertTrue(toSign.equals("AWS4-HMAC-SHA256\n" +
@@ -35,7 +35,7 @@ public class S3V4SignatureTests {
                 "20130524/us-east-1/s3/aws4_request\n" +
                 "9e0e90d9c76de8fa5b200d8c849cd5b8dc7a3be3951ddb7f6a76b4158342019d"));
 
-        String signature = UploadPolicy.computeSignature(policy, secretKey);
+        String signature = S3Request.computeSignature(policy, secretKey);
         Assert.assertTrue(signature.equals("98ad721746da40c64f1a55b78f14c238d841ea1380cd77a1b5971af0ece108bd"));
     }
 
@@ -64,7 +64,7 @@ public class S3V4SignatureTests {
                 .atZone(ZoneId.of("UTC"));
         String contentSha256 = "UNSIGNED-PAYLOAD";
 
-        UploadPolicy policy = new UploadPolicy("PUT", host, s3Key, contentSha256, false, extraHeaders,
+        S3Request policy = new S3Request("PUT", host, s3Key, contentSha256, false, extraHeaders,
                 accessKey, region, timestamp.toInstant());
 
         String canonicalRequest = policy.toCanonicalRequest();
@@ -89,10 +89,10 @@ public class S3V4SignatureTests {
                 "20200425/us-east-1/s3/aws4_request\n" +
                 "8dc8ddc0eef8bc2f62ef0ae12a89df788b73780404358bfaba915d58096b9cec"));
 
-        String signature = UploadPolicy.computeSignature(policy, secretKey);
+        String signature = S3Request.computeSignature(policy, secretKey);
         Assert.assertTrue(signature.equals("5cc3daea623ac6d43b482209892cc6eb95e46b068e232eabd85343caf79bb17e"));
 
-        UploadPolicy.PresignedUrl url = UploadPolicy.preSignUrl(s3Key, payload.length, contentSha256, false, timestamp,
+        S3Request.PresignedUrl url = S3Request.preSignUrl(s3Key, payload.length, contentSha256, false, timestamp,
                 "PUT", host, extraHeaders, region, accessKey, secretKey);
         Assert.assertTrue(("AWS4-HMAC-SHA256 Credential=AKIAIOSFODNN7EXAMPLE/20200425/us-east-1/s3/aws4_request," +
                 "SignedHeaders=amz-sdk-invocation-id;amz-sdk-retry;content-length;content-type;host;user-agent;x-amz-content-sha256;x-amz-date," +
