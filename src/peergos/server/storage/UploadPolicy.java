@@ -1,5 +1,8 @@
 package peergos.server.storage;
 
+import peergos.server.*;
+import peergos.server.sql.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.api.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
@@ -11,7 +14,6 @@ import java.io.*;
 import java.net.*;
 import java.security.*;
 import java.time.*;
-import java.time.temporal.*;
 import java.util.*;
 import java.util.stream.*;
 
@@ -19,31 +21,34 @@ public class UploadPolicy {
 
     static class Scratch {
         public static void main(String[] a) throws Exception {
-            String accessKey = "";
-            String secretKey = "";
-            String bucketName = "";
+            String accessKey = a[0];
+            String secretKey = a[1];
+            String bucketName = a[2];
             String region = "us-east-1";
 
+            S3Config config = new S3Config("", bucketName, region, accessKey, secretKey, region + ".linodeobjects.com");
+            TransactionStore transactions = JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands());
+            S3BlockStorage s3 = new S3BlockStorage(config, PublicKeyHash.NULL.multihash, BlockStoreProperties.empty(), transactions, new RAMStorage());
+            s3.put("Hi Linode!".getBytes(), true, new TransactionId("12345"), PublicKeyHash.NULL);
 
             for (boolean useIllegalPayload: Arrays.asList(false)) {
 
-                byte[] payload = new byte[1024];
-                new Random(42).nextBytes(payload);
+                byte[] payload = "Hi Linode!".getBytes();
                 Multihash content = new RAMStorage().put(null, null, null, Arrays.asList(payload), null).join().get(0);
                 String s3Key = DirectReadS3BlockStore.hashToKey(content);
                 String host = bucketName + "." + region + ".linodeobjects.com";
                 Map<String, String> extraHeaders = new TreeMap<>();
-                extraHeaders.put("Origin", "https://test.peergos.net");
+//                extraHeaders.put("Origin", "https://test.peergos.net");
                 extraHeaders.put("Content-Type", "application/octet-stream");
                 extraHeaders.put("Content-Length", "" + payload.length);
-                extraHeaders.put("amz-sdk-retry", "0/0/500");
-                extraHeaders.put("amz-sdk-invocation-id", "c1423ccb-b44d-f1d1-89fa-5a30c02b1f6b");
-                extraHeaders.put("User-Agent", "Bond, James Bond");
+//                extraHeaders.put("amz-sdk-retry", "0/0/500");
+//                extraHeaders.put("amz-sdk-invocation-id", "c1423ccb-b44d-f1d1-89fa-5a30c02b1f6b");
+//                extraHeaders.put("User-Agent", "Bond, James Bond");
 
                 boolean hashContent = false;
                 String contentHash = hashContent ? ArrayOps.bytesToHex(content.getHash()) : "UNSIGNED-PAYLOAD";
                 PresignedUrl url = preSignUrl(s3Key, payload.length, contentHash, true,
-                        Instant.now(), "PUT", host, extraHeaders, region, bucketName, accessKey, secretKey);
+                        Instant.now(), "PUT", host, extraHeaders, region, accessKey, secretKey);
 
                 String res = new String(put(new URI(url.base).toURL(), url.fields, useIllegalPayload ? new byte[1024] : payload));
                 System.out.println(res);
@@ -150,12 +155,10 @@ public class UploadPolicy {
                                           String host,
                                           Map<String, String> extraHeaders,
                                           String region,
-                                          String bucketName,
                                           String accessKeyId,
                                           String s3SecretKey) {
-        Duration duration = Duration.of(1, ChronoUnit.HOURS);
         UploadPolicy policy = new UploadPolicy(verb, host, key, size, contentSha256, allowPublicReads, extraHeaders,
-                bucketName, accessKeyId, region, now, duration);
+                accessKeyId, region, now);
 
         String signature = computeSignature(policy, s3SecretKey);
 
@@ -182,7 +185,7 @@ public class UploadPolicy {
      *
      * @link https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-authenticating-requests.html
      */
-    private static String computeSignature(UploadPolicy policy,
+    public static String computeSignature(UploadPolicy policy,
                                            String s3SecretKey) {
         String stringToSign = policy.stringToSign();
         String shortDate = UploadPolicy.asAwsShortDate(policy.date);
@@ -216,7 +219,6 @@ public class UploadPolicy {
         Map<String, String> res = new LinkedHashMap<>();
         res.put("Host", host);
         res.put("x-amz-date", asAwsDate(date));
-        res.put("x-amz-expires", asAwsDate(date.plus(untilExpiration)));
         res.put("x-amz-content-sha256", contentSha256);
         for (Map.Entry<String, String> e : extraHeaders.entrySet()) {
             res.put(e.getKey(), e.getValue());
@@ -300,12 +302,10 @@ public class UploadPolicy {
     public final int size;
     public final String contentSha256;
     public final boolean allowPublicReads;
-    public final String bucket;
     public final String accessKeyId;
     public final String region;
     public final Map<String, String> extraHeaders;
     public final Instant date;
-    public final Duration untilExpiration;
 
     public UploadPolicy(String verb,
                         String host,
@@ -314,11 +314,9 @@ public class UploadPolicy {
                         String contentSha256,
                         boolean allowPublicReads,
                         Map<String, String> extraHeaders,
-                        String bucket,
                         String accessKeyId,
                         String region,
-                        Instant date,
-                        Duration untilExpiration) {
+                        Instant date) {
         this.verb = verb;
         this.host = host;
         this.key = key;
@@ -326,11 +324,9 @@ public class UploadPolicy {
         this.contentSha256 = contentSha256;
         this.allowPublicReads = allowPublicReads;
         this.extraHeaders = extraHeaders;
-        this.bucket = bucket;
         this.accessKeyId = accessKeyId;
         this.region = region;
         this.date = date;
-        this.untilExpiration = untilExpiration;
     }
 
     private String credential() {

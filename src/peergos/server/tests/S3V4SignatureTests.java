@@ -27,7 +27,7 @@ public class S3V4SignatureTests {
         String contentSha256 = ArrayOps.bytesToHex(sha256(payload));
 
         UploadPolicy policy = new UploadPolicy("PUT", host, s3Key, payload.length, contentSha256, false, extraHeaders,
-                bucketName, accessKey, region, timestamp);
+                accessKey, region, timestamp);
         String toSign = policy.stringToSign();
         Assert.assertTrue(toSign.equals("AWS4-HMAC-SHA256\n" +
                 "20130524T000000Z\n" +
@@ -38,7 +38,7 @@ public class S3V4SignatureTests {
         Assert.assertTrue(signature.equals("98ad721746da40c64f1a55b78f14c238d841ea1380cd77a1b5971af0ece108bd"));
 
         UploadPolicy.PresignedUrl url = UploadPolicy.preSignUrl(s3Key, payload.length, contentSha256, false, timestamp,
-                "PUT", host, extraHeaders, region, bucketName, accessKey, secretKey);
+                "PUT", host, extraHeaders, region, accessKey, secretKey);
         Assert.assertTrue(("AWS4-HMAC-SHA256 Credential=AKIAIOSFODNN7EXAMPLE/20130524/us-east-1/s3/aws4_request," +
                 "SignedHeaders=date;host;x-amz-content-sha256;x-amz-date;x-amz-storage-class," +
                 "Signature=98ad721746da40c64f1a55b78f14c238d841ea1380cd77a1b5971af0ece108bd")
