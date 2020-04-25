@@ -3,7 +3,8 @@ package java.net;
 public class HttpURLConnection extends URLConnection{
 
 	public static final int HTTP_OK = 200;
-	
+	public static final int HTTP_NO_CONTENT = 204;
+
 	public void setRequestMethod(String method) throws ProtocolException {
 		
 	}
