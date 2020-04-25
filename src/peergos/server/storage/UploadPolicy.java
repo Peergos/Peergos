@@ -1,8 +1,5 @@
 package peergos.server.storage;
 
-import peergos.server.*;
-import peergos.server.sql.*;
-import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.api.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
@@ -26,11 +23,6 @@ public class UploadPolicy {
             String bucketName = a[2];
             String region = "us-east-1";
 
-            S3Config config = new S3Config("", bucketName, region, accessKey, secretKey, region + ".linodeobjects.com");
-            TransactionStore transactions = JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands());
-            S3BlockStorage s3 = new S3BlockStorage(config, PublicKeyHash.NULL.multihash, BlockStoreProperties.empty(), transactions, new RAMStorage());
-            s3.put("Hi Linode!".getBytes(), true, new TransactionId("12345"), PublicKeyHash.NULL);
-
             for (boolean useIllegalPayload: Arrays.asList(false)) {
 
                 byte[] payload = "Hi Linode!".getBytes();
@@ -41,16 +33,14 @@ public class UploadPolicy {
 //                extraHeaders.put("Origin", "https://test.peergos.net");
                 extraHeaders.put("Content-Type", "application/octet-stream");
                 extraHeaders.put("Content-Length", "" + payload.length);
-//                extraHeaders.put("amz-sdk-retry", "0/0/500");
-//                extraHeaders.put("amz-sdk-invocation-id", "c1423ccb-b44d-f1d1-89fa-5a30c02b1f6b");
-//                extraHeaders.put("User-Agent", "Bond, James Bond");
+                extraHeaders.put("User-Agent", "Bond, James Bond");
 
-                boolean hashContent = false;
+                boolean hashContent = true;
                 String contentHash = hashContent ? ArrayOps.bytesToHex(content.getHash()) : "UNSIGNED-PAYLOAD";
-                PresignedUrl url = preSignUrl(s3Key, payload.length, contentHash, true,
-                        Instant.now(), "PUT", host, extraHeaders, region, accessKey, secretKey);
+                PresignedUrl url = preSignUrl(s3Key, payload.length, contentHash, false,
+                        ZonedDateTime.now().withNano(0).withZoneSameInstant(ZoneId.of("UTC")).toInstant(), "PUT", host, extraHeaders, region, accessKey, secretKey);
 
-                String res = new String(put(new URI(url.base).toURL(), url.fields, useIllegalPayload ? new byte[1024] : payload));
+                String res = new String(put(new URI(url.base).toURL(), url.fields, useIllegalPayload ? new byte[payload.length] : payload));
                 System.out.println(res);
                 String webUrl = "https://" + bucketName + ".website-" + region + ".linodeobjects.com/" + s3Key;
                 byte[] getResult = get(new URI(webUrl).toURL());
@@ -87,19 +77,6 @@ public class UploadPolicy {
                 while ((r = err.read(buf)) >= 0)
                     resp.write(buf, 0, r);
                 return resp.toByteArray();
-            }
-        }
-
-        private static byte[] postMultipart(String url, Map<String, String> fields, byte[] file) {
-            try {
-                Multipart mPost = new Multipart(url, "UTF-8", fields);
-                for (Map.Entry<String, String> e : fields.entrySet()) {
-                    mPost.addFormField(e.getKey(), e.getValue());
-                }
-                mPost.addFilePart("file", new NamedStreamable.ByteArrayWrapper(file));
-                return mPost.finish().getBytes();
-            } catch (IOException e) {
-                throw new RuntimeException(e);
             }
         }
 
