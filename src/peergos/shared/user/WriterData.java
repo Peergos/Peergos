@@ -208,7 +208,7 @@ public class WriterData implements Cborable {
                             .map(sd -> new UserStaticData(sd.getEntryPoints(currentKey), newKey));
                     return network.hasher.sha256(followRequestReceiver.serialize())
                             .thenCompose(boxerHash -> network.dhtClient.putBoxingKey(oldSigner.publicKeyHash,
-                            oldSigner.secret.signatureOnly(boxerHash),
+                            oldSigner.secret.signMessage(boxerHash),
                             followRequestReceiver, tid
                     )).thenCompose(boxerHash -> OwnedKeyChamp.createEmpty(oldSigner.publicKeyHash, oldSigner,
                             network.dhtClient, network.hasher, tid)
@@ -262,7 +262,7 @@ public class WriterData implements Cborable {
         byte[] raw = serialize();
 
         return hasher.sha256(raw)
-                .thenCompose(hash -> immutable.put(owner, signer.publicKeyHash, signer.secret.signatureOnly(hash), raw, tid))
+                .thenCompose(hash -> immutable.put(owner, signer.publicKeyHash, signer.secret.signMessage(hash), raw, tid))
                 .thenCompose(blobHash -> {
                     MaybeMultihash newHash = MaybeMultihash.of(blobHash);
                     if (newHash.equals(currentHash)) {

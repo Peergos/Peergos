@@ -79,16 +79,54 @@ public class S3BlockStorage implements ContentAddressedStorage {
     }
 
     private static String hashToKey(Multihash hash) {
-        return DirectReadS3BlockStore.hashToKey(hash);
+        return DirectS3BlockStore.hashToKey(hash);
     }
 
     private Multihash keyToHash(String key) {
-        return DirectReadS3BlockStore.keyToHash(key.substring(folder.length()));
+        return DirectS3BlockStore.keyToHash(key.substring(folder.length()));
     }
 
     @Override
     public CompletableFuture<BlockStoreProperties> blockStoreProperties() {
         return Futures.of(props);
+    }
+
+    @Override
+    public CompletableFuture<List<PresignedUrl>> authWrites(PublicKeyHash owner,
+                                                            PublicKeyHash writerHash,
+                                                            List<byte[]> signedHashes,
+                                                            List<Integer> blockSizes,
+                                                            boolean isRaw,
+                                                            TransactionId tid) {
+        try {
+            if (signedHashes.size() > 50)
+                throw new IllegalStateException("Too many writes to auth!");
+            if (blockSizes.size() != signedHashes.size())
+                throw new IllegalStateException("Number of sizes doesn't match number of signed hashes!");
+            PublicSigningKey writer = getSigningKey(writerHash).get().get();
+            List<Pair<Multihash, Integer>> blockProps = new ArrayList<>();
+            for (int i=0; i < signedHashes.size(); i++) {
+                Cid.Codec codec = isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor;
+                Cid cid = new Cid(1, codec, Multihash.Type.sha2_256, writer.unsignMessage(signedHashes.get(i)));
+                blockProps.add(new Pair<>(cid, blockSizes.get(i)));
+            }
+            List<PresignedUrl> res = new ArrayList<>();
+            for (Pair<Multihash, Integer> props : blockProps) {
+                if (props.left.type != Multihash.Type.sha2_256)
+                    throw new IllegalStateException("Can only pre-auth writes of sha256 hashed blocks!");
+                transactions.addBlock(props.left, tid, owner);
+                String s3Key = hashToKey(props.left);
+                String contentSha256 = ArrayOps.bytesToHex(props.left.getHash());
+                String host = bucket + "." + region + ".linodeobjects.com";
+                Map<String, String> extraHeaders = new LinkedHashMap<>();
+                extraHeaders.put("Content-Type", "application/octet-stream");
+                res.add(S3Request.preSignUrl(s3Key, props.right, contentSha256, false,
+                        ZonedDateTime.now(), "PUT", host, extraHeaders, region, accessKeyId, secretKey));
+            }
+            return Futures.of(res);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override

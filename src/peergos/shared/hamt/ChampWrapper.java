@@ -56,7 +56,7 @@ public class ChampWrapper implements ImmutableTree
         Champ newRoot = Champ.empty();
         byte[] raw = newRoot.serialize();
         return writeHasher.sha256(raw)
-                .thenCompose(hash -> dht.put(owner, writer.publicKeyHash, writer.secret.signatureOnly(hash), raw, tid))
+                .thenCompose(hash -> dht.put(owner, writer.publicKeyHash, writer.secret.signMessage(hash), raw, tid))
                 .thenApply(put -> new ChampWrapper(newRoot, put, hasher, dht, writeHasher, BIT_WIDTH));
     }
 

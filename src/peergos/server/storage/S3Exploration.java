@@ -20,19 +20,20 @@ class S3Exploration {
 
             byte[] payload = "Hi Linode!".getBytes();
             Multihash content = new RAMStorage().put(null, null, null, Arrays.asList(payload), null).join().get(0);
-            String s3Key = DirectReadS3BlockStore.hashToKey(content);
+            String s3Key = DirectS3BlockStore.hashToKey(content);
             String host = bucketName + "." + region + ".linodeobjects.com";
             Map<String, String> extraHeaders = new TreeMap<>();
-//                extraHeaders.put("Origin", "https://test.peergos.net");
+//            extraHeaders.put("Origin", "https://test.peergos.net");
             extraHeaders.put("Content-Type", "application/octet-stream");
             extraHeaders.put("User-Agent", "Bond, James Bond");
 
             boolean hashContent = true;
             String contentHash = hashContent ? ArrayOps.bytesToHex(content.getHash()) : "UNSIGNED-PAYLOAD";
-            S3Request.PresignedUrl url = S3Request.preSignUrl(s3Key, payload.length, contentHash, false,
-                    ZonedDateTime.now().minusMinutes(14), "PUT", host, extraHeaders, region, accessKey, secretKey);
+            String method = "PUT";
+            PresignedUrl url = S3Request.preSignUrl(s3Key, payload.length, contentHash, false,
+                    ZonedDateTime.now().minusMinutes(14), method, host, extraHeaders, region, accessKey, secretKey);
 
-            String res = new String(put(new URI(url.base).toURL(), url.fields, useIllegalPayload ? new byte[payload.length] : payload));
+            String res = new String(write(new URI(url.base).toURL(), method, url.fields, useIllegalPayload ? new byte[payload.length] : payload));
             System.out.println(res);
             String webUrl = "https://" + bucketName + ".website-" + region + ".linodeobjects.com/" + s3Key;
             byte[] getResult = get(new URI(webUrl).toURL());
@@ -41,9 +42,9 @@ class S3Exploration {
         }
     }
 
-    private static byte[] put(URL target, Map<String, String> headers, byte[] body) throws Exception {
+    private static byte[] write(URL target, String method, Map<String, String> headers, byte[] body) throws Exception {
         HttpURLConnection conn = (HttpURLConnection) target.openConnection();
-        conn.setRequestMethod("PUT");
+        conn.setRequestMethod(method);
         for (Map.Entry<String, String> e : headers.entrySet()) {
             conn.setRequestProperty(e.getKey(), e.getValue());
         }

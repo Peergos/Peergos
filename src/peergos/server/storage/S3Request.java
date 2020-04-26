@@ -1,30 +1,16 @@
 package peergos.server.storage;
 
-import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
 import javax.crypto.*;
 import javax.crypto.spec.*;
-import java.io.*;
-import java.net.*;
 import java.security.*;
 import java.time.*;
 import java.util.*;
 import java.util.stream.*;
 
 public class S3Request {
-
-    public static class PresignedUrl {
-
-        public final String base;
-        public final Map<String, String> fields;
-
-        public PresignedUrl(String base, Map<String, String> fields) {
-            this.base = base;
-            this.fields = fields;
-        }
-    }
 
     /**
      * Presign a url for a GET, PUT or POST

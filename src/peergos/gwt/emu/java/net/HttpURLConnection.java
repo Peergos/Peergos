@@ -33,4 +33,8 @@ public class HttpURLConnection extends URLConnection{
 	public String getHeaderField(String name) {
 		return null;
 	}
+
+	public String getResponseMessage() {
+		return null;
+	}
 }

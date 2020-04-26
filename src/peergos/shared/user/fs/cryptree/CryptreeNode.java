@@ -501,7 +501,7 @@ public class CryptreeNode implements Cborable {
             NetworkAccess network,
             Snapshot version,
             Committer committer) {
-        byte[] signature = parentSigner.secret.signatureOnly(newSignerPair.publicSigningKey.serialize());
+        byte[] signature = parentSigner.secret.signMessage(newSignerPair.publicSigningKey.serialize());
         return IpfsTransaction.call(owner,
                 tid -> network.dhtClient.putSigningKey(signature, owner, parentSigner.publicKeyHash,
                         newSignerPair.publicSigningKey, tid)

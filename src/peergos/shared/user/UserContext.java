@@ -234,13 +234,13 @@ public class UserContext {
                         }
                         return true;
                     }).thenCompose(x -> IpfsTransaction.call(signerHash, tid -> network.dhtClient.putSigningKey(
-                            secretSigningKey.signatureOnly(publicSigningKey.serialize()),
+                            secretSigningKey.signMessage(publicSigningKey.serialize()),
                             signerHash,
                             publicSigningKey, tid).thenCompose(returnedSignerHash -> {
                         PublicBoxingKey publicBoxingKey = userWithRoot.getBoxingPair().publicBoxingKey;
                         return crypto.hasher.sha256(publicBoxingKey.serialize())
                                 .thenCompose(boxerHash -> network.dhtClient.putBoxingKey(signerHash,
-                                        secretSigningKey.signatureOnly(boxerHash), publicBoxingKey, tid));
+                                        secretSigningKey.signMessage(boxerHash), publicBoxingKey, tid));
                     }).thenCompose(boxerHash -> {
                         progressCallback.accept("Creating filesystem");
                         return WriterData.createEmptyWithStaticData(signerHash,
@@ -750,7 +750,7 @@ public class UserContext {
                                 PublicKeyHash existingOwner = ContentAddressedStorage.hashKey(existingUser.getUser().publicSigningKey);
                                 return IpfsTransaction.call(existingOwner,
                                         tid -> network.dhtClient.putSigningKey(
-                                                existingUser.getUser().secretSigningKey.signatureOnly(newPublicSigningKey.serialize()),
+                                                existingUser.getUser().secretSigningKey.signMessage(newPublicSigningKey.serialize()),
                                                 existingOwner,
                                                 newPublicSigningKey,
                                                 tid),
@@ -824,7 +824,7 @@ public class UserContext {
                 new WritableAbsoluteCapability(owner.publicKeyHash, preHash, rootMapKey, rootRKey, rootWKey);
         EntryPoint entry = new EntryPoint(rootPointer, directoryName);
         return IpfsTransaction.call(owner.publicKeyHash, tid -> network.dhtClient.putSigningKey(
-                owner.secret.signatureOnly(writer.publicSigningKey.serialize()),
+                owner.secret.signMessage(writer.publicSigningKey.serialize()),
                 owner.publicKeyHash,
                 writer.publicSigningKey,
                 tid).thenCompose(writerHash -> {

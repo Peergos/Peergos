@@ -33,7 +33,7 @@ public class OwnedKeyChamp {
         Champ newRoot = Champ.empty();
         byte[] raw = newRoot.serialize();
         return hasher.sha256(raw)
-                .thenCompose(hash -> ipfs.put(owner, writer.publicKeyHash, writer.secret.signatureOnly(hash), raw, tid));
+                .thenCompose(hash -> ipfs.put(owner, writer.publicKeyHash, writer.secret.signMessage(hash), raw, tid));
     }
 
     public static CompletableFuture<OwnedKeyChamp> build(Multihash root, ContentAddressedStorage ipfs, Hasher hasher) {

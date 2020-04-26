@@ -117,8 +117,8 @@ public class NetworkAccess {
         if (! isPeergosServer)
             return Futures.of(localDht);
         return localDht.blockStoreProperties()
-                .thenApply(bp -> bp.baseUrl.isPresent() ?
-                        new DirectReadS3BlockStore(bp.baseUrl.get(), direct, localDht) :
+                .thenApply(bp -> bp.useDirectBlockStore() ?
+                        new DirectS3BlockStore(bp, direct, localDht) :
                         localDht);
     }
 
@@ -461,7 +461,7 @@ public class NetworkAccess {
                                     writer.publicKeyHash,
                                     groupsSignatures.get(i)
                                             .stream()
-                                            .map(sig -> writer.secret.signatureOnly(sig))
+                                            .map(sig -> writer.secret.signMessage(sig))
                                             .collect(Collectors.toList()),
                                     tid
                             ).thenApply(hash -> {
@@ -492,7 +492,7 @@ public class NetworkAccess {
             CommittedWriterData version = current.get(writer);
             return hasher.sha256(metaBlob)
                     .thenCompose(blobSha -> dhtClient.put(owner, writer.publicKeyHash,
-                            writer.secret.signatureOnly(blobSha), metaBlob, tid))
+                            writer.secret.signMessage(blobSha), metaBlob, tid))
                     .thenCompose(blobHash -> tree.put(version.props, owner, writer, mapKey,
                             metadata.committedHash(), blobHash, tid)
                             .thenCompose(wd -> committer.commit(owner, writer, wd, version, tid)))
