@@ -93,6 +93,20 @@ public class S3BlockStorage implements ContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<List<PresignedUrl>> authReads(List<Multihash> blocks) {
+        if (blocks.size() > 50)
+            throw new IllegalStateException("Too many reads to auth!");
+        List<PresignedUrl> res = new ArrayList<>();
+        String host = bucket + "." + regionEndpoint;
+
+        for (Multihash block : blocks) {
+            String s3Key = hashToKey(block);
+            res.add(S3Request.preSignGet(s3Key, ZonedDateTime.now(), host, region, accessKeyId, secretKey));
+        }
+        return Futures.of(res);
+    }
+
+    @Override
     public CompletableFuture<List<PresignedUrl>> authWrites(PublicKeyHash owner,
                                                             PublicKeyHash writerHash,
                                                             List<byte[]> signedHashes,
