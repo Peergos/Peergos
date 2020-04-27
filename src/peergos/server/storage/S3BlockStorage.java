@@ -50,7 +50,7 @@ public class S3BlockStorage implements ContentAddressedStorage {
 
     private final Multihash id;
     private final AmazonS3 s3Client;
-    private final String region, bucket, folder;
+    private final String region, bucket, folder, regionEndpoint;
     private final String accessKeyId, secretKey;
     private final BlockStoreProperties props;
     private final TransactionStore transactions;
@@ -65,6 +65,7 @@ public class S3BlockStorage implements ContentAddressedStorage {
         this.region = config.region;
         this.bucket = config.bucket;
         this.folder = config.path.isEmpty() || config.path.endsWith("/") ? config.path : config.path + "/";
+        this.regionEndpoint = config.regionEndpoint;
         this.accessKeyId = config.accessKey;
         this.secretKey = config.secretKey;
         AmazonS3ClientBuilder builder = AmazonS3ClientBuilder.standard()
@@ -117,7 +118,7 @@ public class S3BlockStorage implements ContentAddressedStorage {
                 transactions.addBlock(props.left, tid, owner);
                 String s3Key = hashToKey(props.left);
                 String contentSha256 = ArrayOps.bytesToHex(props.left.getHash());
-                String host = bucket + "." + region + ".linodeobjects.com";
+                String host = bucket + "." + regionEndpoint;
                 Map<String, String> extraHeaders = new LinkedHashMap<>();
                 extraHeaders.put("Content-Type", "application/octet-stream");
                 res.add(S3Request.preSignUrl(s3Key, props.right, contentSha256, false,
