@@ -1,16 +1,45 @@
 package peergos.server.storage;
 
+import peergos.shared.crypto.hash.*;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
 import javax.crypto.*;
 import javax.crypto.spec.*;
-import java.security.*;
 import java.time.*;
 import java.util.*;
 import java.util.stream.*;
 
 public class S3Request {
+
+    public final String verb, host;
+    public final String key;
+    public final String contentSha256;
+    public final boolean allowPublicReads;
+    public final String accessKeyId;
+    public final String region;
+    public final Map<String, String> extraHeaders;
+    public final Instant date;
+
+    public S3Request(String verb,
+                     String host,
+                     String key,
+                     String contentSha256,
+                     boolean allowPublicReads,
+                     Map<String, String> extraHeaders,
+                     String accessKeyId,
+                     String region,
+                     Instant date) {
+        this.verb = verb;
+        this.host = host;
+        this.key = key;
+        this.contentSha256 = contentSha256;
+        this.allowPublicReads = allowPublicReads;
+        this.extraHeaders = extraHeaders;
+        this.accessKeyId = accessKeyId;
+        this.region = region;
+        this.date = date;
+    }
 
     /**
      * Presign a url for a GET, PUT or POST
@@ -70,50 +99,13 @@ public class S3Request {
         return ArrayOps.bytesToHex(hmacSha256(signingKey, stringToSign.getBytes()));
     }
 
-    private static byte[] sha256(byte[] input) {
-        try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            md.update(input);
-            return md.digest();
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("couldn't find hash algorithm");
-        }
-    }
-
-    public Map<String, String> getHeaders(String signature) {
-        Map<String, String> headers = getOriginalHeaders();
-        headers.put("Authorization", "AWS4-HMAC-SHA256 Credential=" + credential()
-                + ",SignedHeaders=" + headersToSign() + ",Signature=" + signature);
-        return headers;
-    }
-
-    public Map<String, String> getOriginalHeaders() {
-        Map<String, String> res = new LinkedHashMap<>();
-        res.put("Host", host);
-        res.put("x-amz-date", asAwsDate(date));
-        res.put("x-amz-content-sha256", contentSha256);
-        for (Map.Entry<String, String> e : extraHeaders.entrySet()) {
-            res.put(e.getKey(), e.getValue());
-        }
-        if (allowPublicReads)
-            res.put("x-amz-acl", "public-read");
-        return res;
-    }
-
-    public SortedMap<String, String> getCanonicalHeaders() {
-        SortedMap<String, String> res = new TreeMap<>();
-        Map<String, String> originalHeaders = getOriginalHeaders();
-        for (Map.Entry<String, String> e : originalHeaders.entrySet()) {
-            res.put(e.getKey().toLowerCase(), e.getValue());
-        }
-        return res;
-    }
-
-    public String headersToSign() {
-        return getCanonicalHeaders().keySet()
-                .stream()
-                .sorted()
-                .collect(Collectors.joining(";"));
+    public String stringToSign() {
+        StringBuilder res = new StringBuilder();
+        res.append("AWS4-HMAC-SHA256" + "\n");
+        res.append(asAwsDate(date) + "\n");
+        res.append(scope() + "\n");
+        res.append(ArrayOps.bytesToHex(Hash.sha256(toCanonicalRequest().getBytes())));
+        return res.toString();
     }
 
     public String toCanonicalRequest() {
@@ -134,6 +126,42 @@ public class S3Request {
         return res.toString();
     }
 
+    private Map<String, String> getHeaders(String signature) {
+        Map<String, String> headers = getOriginalHeaders();
+        headers.put("Authorization", "AWS4-HMAC-SHA256 Credential=" + credential()
+                + ",SignedHeaders=" + headersToSign() + ",Signature=" + signature);
+        return headers;
+    }
+
+    private Map<String, String> getOriginalHeaders() {
+        Map<String, String> res = new LinkedHashMap<>();
+        res.put("Host", host);
+        res.put("x-amz-date", asAwsDate(date));
+        res.put("x-amz-content-sha256", contentSha256);
+        for (Map.Entry<String, String> e : extraHeaders.entrySet()) {
+            res.put(e.getKey(), e.getValue());
+        }
+        if (allowPublicReads)
+            res.put("x-amz-acl", "public-read");
+        return res;
+    }
+
+    private SortedMap<String, String> getCanonicalHeaders() {
+        SortedMap<String, String> res = new TreeMap<>();
+        Map<String, String> originalHeaders = getOriginalHeaders();
+        for (Map.Entry<String, String> e : originalHeaders.entrySet()) {
+            res.put(e.getKey().toLowerCase(), e.getValue());
+        }
+        return res;
+    }
+
+    private String headersToSign() {
+        return getCanonicalHeaders().keySet()
+                .stream()
+                .sorted()
+                .collect(Collectors.joining(";"));
+    }
+
     private String scope() {
         return String.format(
                 "%s/%s/%s/%s",
@@ -141,53 +169,6 @@ public class S3Request {
                 region,
                 "s3",
                 "aws4_request");
-    }
-
-    public String stringToSign() {
-        StringBuilder res = new StringBuilder();
-        res.append("AWS4-HMAC-SHA256" + "\n");
-        res.append(asAwsDate(date) + "\n");
-        res.append(scope() + "\n");
-        res.append(ArrayOps.bytesToHex(sha256(toCanonicalRequest().getBytes())));
-        return res.toString();
-    }
-
-    public static String asAwsDate(Instant instant) {
-        return instant.toString()
-                .replaceAll("[:\\-]|\\.\\d{3}", "");
-    }
-
-    public static String asAwsShortDate(Instant instant) {
-        return asAwsDate(instant).substring(0, 8);
-    }
-
-    public final String verb, host;
-    public final String key;
-    public final String contentSha256;
-    public final boolean allowPublicReads;
-    public final String accessKeyId;
-    public final String region;
-    public final Map<String, String> extraHeaders;
-    public final Instant date;
-
-    public S3Request(String verb,
-                     String host,
-                     String key,
-                     String contentSha256,
-                     boolean allowPublicReads,
-                     Map<String, String> extraHeaders,
-                     String accessKeyId,
-                     String region,
-                     Instant date) {
-        this.verb = verb;
-        this.host = host;
-        this.key = key;
-        this.contentSha256 = contentSha256;
-        this.allowPublicReads = allowPublicReads;
-        this.extraHeaders = extraHeaders;
-        this.accessKeyId = accessKeyId;
-        this.region = region;
-        this.date = date;
     }
 
     private String credential() {
@@ -199,6 +180,15 @@ public class S3Request {
                 "s3",
                 "aws4_request"
         );
+    }
+
+    private static String asAwsDate(Instant instant) {
+        return instant.toString()
+                .replaceAll("[:\\-]|\\.\\d{3}", "");
+    }
+
+    private static String asAwsShortDate(Instant instant) {
+        return asAwsDate(instant).substring(0, 8);
     }
 }
 
