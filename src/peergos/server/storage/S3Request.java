@@ -42,11 +42,11 @@ public class S3Request {
     }
 
     /**
-     * Presign a url for a GET, PUT or POST
+     * Presign a url for a PUT
      *
      * @link https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-header-based-auth.html
      */
-    public static PresignedUrl preSignUrl(String key,
+    public static PresignedUrl preSignPut(String key,
                                           int size,
                                           String contentSha256,
                                           boolean allowPublicReads,
@@ -59,6 +59,29 @@ public class S3Request {
                                           String s3SecretKey) {
         extraHeaders.put("Content-Length", "" + size);
         S3Request policy = new S3Request(verb, host, key, contentSha256, allowPublicReads, extraHeaders,
+                accessKeyId, region, now.withNano(0).withZoneSameInstant(ZoneId.of("UTC")).toInstant());
+
+        String signature = computeSignature(policy, s3SecretKey);
+
+        return new PresignedUrl("https://" + host + "/" + key, policy.getHeaders(signature));
+    }
+
+    private static String EMPTY_ARRAY_SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
+    /**
+     * Presign a url for a PUT
+     *
+     * @link https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-header-based-auth.html
+     */
+    public static PresignedUrl preSignGet(String key,
+                                          ZonedDateTime now,
+                                          String host,
+                                          Map<String, String> extraHeaders,
+                                          String region,
+                                          String accessKeyId,
+                                          String s3SecretKey) {
+
+        S3Request policy = new S3Request("GET", host, key, EMPTY_ARRAY_SHA256, false, extraHeaders,
                 accessKeyId, region, now.withNano(0).withZoneSameInstant(ZoneId.of("UTC")).toInstant());
 
         String signature = computeSignature(policy, s3SecretKey);
