@@ -346,6 +346,18 @@ public interface ContentAddressedStorage {
         }
 
         @Override
+        public CompletableFuture<List<PresignedUrl>> authReads(List<Multihash> blocks) {
+            if (! isPeergosServer)
+                return Futures.errored(new IllegalStateException("Cannot auth reads when not talking to a Peergos server!"));
+            return poster.get(apiPrefix + AUTH_READS
+                    + "?hashes=" + blocks.stream().map(x -> x.toString()).collect(Collectors.joining(",")))
+                    .thenApply(raw -> ((CborObject.CborList)CborObject.fromByteArray(raw)).value
+                            .stream()
+                            .map(PresignedUrl::fromCbor)
+                            .collect(Collectors.toList()));
+        }
+
+        @Override
         public CompletableFuture<List<PresignedUrl>> authWrites(PublicKeyHash owner,
                                                                 PublicKeyHash writer,
                                                                 List<byte[]> signedHashes,
