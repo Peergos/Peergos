@@ -36,8 +36,7 @@ class S3Exploration {
             String res = new String(write(new URI(putUrl.base).toURL(), method, putUrl.fields, useIllegalPayload ? new byte[payload.length] : payload));
             System.out.println(res);
             // test an authed read
-            PresignedUrl getUrl = S3Request.preSignGet(s3Key, ZonedDateTime.now(), host,
-                    Collections.emptyMap(), region, accessKey, secretKey);
+            PresignedUrl getUrl = S3Request.preSignGet(s3Key, ZonedDateTime.now(), host, region, accessKey, secretKey);
             String readRes = new String(get(new URI(getUrl.base).toURL(), getUrl.fields));
             System.out.println(readRes);
 
