@@ -2,6 +2,7 @@ package peergos.server.tests;
 
 import org.junit.*;
 import peergos.server.storage.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
@@ -26,7 +27,7 @@ public class S3V4SignatureTests {
                 .atStartOfDay()
                 .toInstant(ZoneOffset.UTC)
                 .atZone(ZoneId.of("UTC"));
-        String contentSha256 = ArrayOps.bytesToHex(sha256(payload));
+        String contentSha256 = ArrayOps.bytesToHex(Hash.sha256(payload));
 
         S3Request policy = new S3Request("PUT", host, s3Key, contentSha256, false, extraHeaders,
                 accessKey, region, timestamp.toInstant());
@@ -99,15 +100,5 @@ public class S3V4SignatureTests {
                 "SignedHeaders=amz-sdk-invocation-id;amz-sdk-retry;content-length;content-type;host;user-agent;x-amz-content-sha256;x-amz-date," +
                 "Signature=5cc3daea623ac6d43b482209892cc6eb95e46b068e232eabd85343caf79bb17e")
                 .equals(url.fields.get("Authorization")));
-    }
-
-    private static byte[] sha256(byte[] input) {
-        try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            md.update(input);
-            return md.digest();
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("couldn't find hash algorithm");
-        }
     }
 }
