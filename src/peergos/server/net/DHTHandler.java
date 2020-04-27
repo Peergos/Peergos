@@ -91,6 +91,15 @@ public class DHTHandler implements HttpHandler {
                     }).exceptionally(Futures::logAndThrow).get();
                     break;
                 }
+                case AUTH_READS: {
+                    List<Multihash> blockHashes = Arrays.stream(last.apply("hashes").split(","))
+                            .map(Cid::decode)
+                            .collect(Collectors.toList());
+                    dht.authReads(blockHashes).thenAccept(res -> {
+                        replyBytes(httpExchange, new CborObject.CborList(res).serialize(), Optional.empty());
+                    }).exceptionally(Futures::logAndThrow).get();
+                    break;
+                }
                 case TRANSACTION_START: {
                     AggregatedMetrics.DHT_TRANSACTION_START.inc();
                     PublicKeyHash ownerHash = PublicKeyHash.fromString(last.apply("owner"));

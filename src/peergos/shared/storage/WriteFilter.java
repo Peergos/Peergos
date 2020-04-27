@@ -30,6 +30,11 @@ public class WriteFilter implements ContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<List<PresignedUrl>> authReads(List<Multihash> blocks) {
+        return dht.authReads(blocks);
+    }
+
+    @Override
     public CompletableFuture<List<PresignedUrl>> authWrites(PublicKeyHash owner,
                                                             PublicKeyHash writer,
                                                             List<byte[]> signedHashes,

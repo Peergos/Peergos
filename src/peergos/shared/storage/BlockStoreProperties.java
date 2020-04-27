@@ -5,12 +5,13 @@ import peergos.shared.cbor.*;
 import java.util.*;
 
 public class BlockStoreProperties implements Cborable {
-    public final boolean directWrites, publicReads;
+    public final boolean directWrites, publicReads, authedReads;
     public final Optional<String> baseUrl;
 
-    public BlockStoreProperties(boolean directWrites, boolean publicReads, Optional<String> baseUrl) {
+    public BlockStoreProperties(boolean directWrites, boolean publicReads, boolean authedReads, Optional<String> baseUrl) {
         this.directWrites = directWrites;
         this.publicReads = publicReads;
+        this.authedReads = authedReads;
         this.baseUrl = baseUrl;
     }
 
@@ -19,7 +20,7 @@ public class BlockStoreProperties implements Cborable {
     }
 
     public static BlockStoreProperties empty() {
-        return new BlockStoreProperties(false, false, Optional.empty());
+        return new BlockStoreProperties(false, false, false, Optional.empty());
     }
 
     @Override
@@ -27,6 +28,7 @@ public class BlockStoreProperties implements Cborable {
         Map<String, CborObject> props = new TreeMap<>();
         props.put("w", new CborObject.CborBoolean(directWrites));
         props.put("pr", new CborObject.CborBoolean(publicReads));
+        props.put("ar", new CborObject.CborBoolean(authedReads));
         baseUrl.ifPresent(base -> props.put("b", new CborObject.CborString(base)));
         return CborObject.CborMap.build(props);
     }
@@ -36,6 +38,7 @@ public class BlockStoreProperties implements Cborable {
         Optional<String> base = map.getOptional("b", c -> ((CborObject.CborString)c).value);
         boolean directWrites = map.getBoolean("w");
         boolean publicReads = map.getBoolean("pr");
-        return new BlockStoreProperties(directWrites, publicReads, base);
+        boolean authedReads = map.getBoolean("ar");
+        return new BlockStoreProperties(directWrites, publicReads, authedReads, base);
     }
 }

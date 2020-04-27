@@ -482,7 +482,8 @@ public class Main {
                     Optional<String> publicReadUrl = Optional.ofNullable(a.getArg("blockstore-url", null));
                     boolean directWrites = a.getBoolean("direct-s3-writes", false);
                     boolean publicReads = a.getBoolean("public-s3-reads", false);
-                    BlockStoreProperties props = new BlockStoreProperties(directWrites, publicReads, publicReadUrl);
+                    boolean authedReads = a.getBoolean("authed-s3-reads", false);
+                    BlockStoreProperties props = new BlockStoreProperties(directWrites, publicReads, authedReads, publicReadUrl);
                     localDht = new S3BlockStorage(S3Config.build(a), Cid.decode(a.getArg("ipfs.id")),
                             props, transactions, ipfs);
                 } else

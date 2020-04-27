@@ -28,6 +28,10 @@ public interface ContentAddressedStorage {
         return Futures.of(BlockStoreProperties.empty());
     }
 
+    default CompletableFuture<List<PresignedUrl>> authReads(List<Multihash> blocks) {
+        return Futures.errored(new IllegalStateException("Unimplemented call!"));
+    }
+
     default CompletableFuture<List<PresignedUrl>> authWrites(PublicKeyHash owner,
                                                              PublicKeyHash writer,
                                                              List<byte[]> signedHashes,
@@ -283,6 +287,7 @@ public interface ContentAddressedStorage {
         private static final String apiPrefix = "api/v0/";
         public static final String ID = "id";
         public static final String BLOCKSTORE_PROPERTIES = "blockstore/props";
+        public static final String AUTH_READS = "blockstore/auth-reads";
         public static final String AUTH_WRITES = "blockstore/auth";
         public static final String TRANSACTION_START = "transaction/start";
         public static final String TRANSACTION_CLOSE = "transaction/close";
@@ -338,6 +343,18 @@ public interface ContentAddressedStorage {
                 return Futures.of(BlockStoreProperties.empty());
             return poster.get(apiPrefix + BLOCKSTORE_PROPERTIES)
                     .thenApply(raw -> BlockStoreProperties.fromCbor(CborObject.fromByteArray(raw)));
+        }
+
+        @Override
+        public CompletableFuture<List<PresignedUrl>> authReads(List<Multihash> blocks) {
+            if (! isPeergosServer)
+                return Futures.errored(new IllegalStateException("Cannot auth reads when not talking to a Peergos server!"));
+            return poster.get(apiPrefix + AUTH_READS
+                    + "?hashes=" + blocks.stream().map(x -> x.toString()).collect(Collectors.joining(",")))
+                    .thenApply(raw -> ((CborObject.CborList)CborObject.fromByteArray(raw)).value
+                            .stream()
+                            .map(PresignedUrl::fromCbor)
+                            .collect(Collectors.toList()));
         }
 
         @Override
@@ -520,6 +537,11 @@ public interface ContentAddressedStorage {
         @Override
         public CompletableFuture<BlockStoreProperties> blockStoreProperties() {
             return local.blockStoreProperties();
+        }
+
+        @Override
+        public CompletableFuture<List<PresignedUrl>> authReads(List<Multihash> blocks) {
+            return local.authReads(blocks);
         }
 
         @Override

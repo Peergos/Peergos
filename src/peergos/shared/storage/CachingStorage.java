@@ -135,6 +135,11 @@ public class CachingStorage implements ContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<List<PresignedUrl>> authReads(List<Multihash> blocks) {
+        return target.authReads(blocks);
+    }
+
+    @Override
     public CompletableFuture<List<PresignedUrl>> authWrites(PublicKeyHash owner,
                                                             PublicKeyHash writer,
                                                             List<byte[]> signedHashes,

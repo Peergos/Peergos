@@ -50,6 +50,11 @@ public class HashVerifyingStorage implements ContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<List<PresignedUrl>> authReads(List<Multihash> blocks) {
+        return source.authReads(blocks);
+    }
+
+    @Override
     public CompletableFuture<List<PresignedUrl>> authWrites(PublicKeyHash owner,
                                                             PublicKeyHash writer,
                                                             List<byte[]> signedHashes,

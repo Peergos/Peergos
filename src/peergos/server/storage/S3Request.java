@@ -6,11 +6,16 @@ import peergos.shared.util.*;
 
 import javax.crypto.*;
 import javax.crypto.spec.*;
+import java.io.*;
+import java.net.*;
 import java.time.*;
 import java.util.*;
 import java.util.stream.*;
 
 public class S3Request {
+
+    private static final String ALGORITHM = "AWS4-HMAC-SHA256";
+    private static final String UNSIGNED = "UNSIGNED-PAYLOAD";
 
     public final String verb, host;
     public final String key;
@@ -42,11 +47,11 @@ public class S3Request {
     }
 
     /**
-     * Presign a url for a GET, PUT or POST
+     * Presign a url for a PUT
      *
      * @link https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-header-based-auth.html
      */
-    public static PresignedUrl preSignUrl(String key,
+    public static PresignedUrl preSignPut(String key,
                                           int size,
                                           String contentSha256,
                                           boolean allowPublicReads,
@@ -58,12 +63,33 @@ public class S3Request {
                                           String accessKeyId,
                                           String s3SecretKey) {
         extraHeaders.put("Content-Length", "" + size);
-        S3Request policy = new S3Request(verb, host, key, contentSha256, allowPublicReads, extraHeaders,
-                accessKeyId, region, now.withNano(0).withZoneSameInstant(ZoneId.of("UTC")).toInstant());
+        Instant timestamp = now.withNano(0).withZoneSameInstant(ZoneId.of("UTC")).toInstant();
+        S3Request policy = new S3Request(verb, host, key, contentSha256, allowPublicReads, extraHeaders, accessKeyId,
+                region, timestamp);
 
         String signature = computeSignature(policy, s3SecretKey);
 
         return new PresignedUrl("https://" + host + "/" + key, policy.getHeaders(signature));
+    }
+
+    /**
+     * Presign a url for a GET
+     *
+     * @link https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-header-based-auth.html
+     */
+    public static PresignedUrl preSignGet(String key,
+                                          ZonedDateTime now,
+                                          String host,
+                                          String region,
+                                          String accessKeyId,
+                                          String s3SecretKey) {
+        S3Request policy = new S3Request("GET", host, key, UNSIGNED, false, Collections.emptyMap(),
+                accessKeyId, region, now.withNano(0).withZoneSameInstant(ZoneId.of("UTC")).toInstant());
+
+        String signature = computeSignature(policy, s3SecretKey);
+
+        String query = policy.getQueryString(signature);
+        return new PresignedUrl("https://" + host + "/" + key + query, policy.getHeaders(signature));
     }
 
     private static byte[] hmacSha256(byte[] secretKeyBytes, byte[] message) {
@@ -101,11 +127,19 @@ public class S3Request {
 
     public String stringToSign() {
         StringBuilder res = new StringBuilder();
-        res.append("AWS4-HMAC-SHA256" + "\n");
+        res.append(ALGORITHM + "\n");
         res.append(asAwsDate(date) + "\n");
         res.append(scope() + "\n");
         res.append(ArrayOps.bytesToHex(Hash.sha256(toCanonicalRequest().getBytes())));
         return res.toString();
+    }
+
+    private static String urlEncode(String in) {
+        try {
+            return URLEncoder.encode(in, "UTF-8");
+        } catch (UnsupportedEncodingException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public String toCanonicalRequest() {
@@ -113,6 +147,10 @@ public class S3Request {
         res.append(verb + "\n");
         res.append("/" + key + "\n");
 
+        res.append(getQueryParameters().entrySet()
+                .stream()
+                .map(e -> urlEncode(e.getKey()) + "=" + urlEncode(e.getValue()))
+                .collect(Collectors.joining("&")));
         res.append("\n"); // no query parameters
 
         Map<String, String> headers = getCanonicalHeaders();
@@ -128,7 +166,9 @@ public class S3Request {
 
     private Map<String, String> getHeaders(String signature) {
         Map<String, String> headers = getOriginalHeaders();
-        headers.put("Authorization", "AWS4-HMAC-SHA256 Credential=" + credential()
+        if (isGet())
+            return headers;
+        headers.put("Authorization", ALGORITHM + " Credential=" + credential()
                 + ",SignedHeaders=" + headersToSign() + ",Signature=" + signature);
         return headers;
     }
@@ -136,6 +176,8 @@ public class S3Request {
     private Map<String, String> getOriginalHeaders() {
         Map<String, String> res = new LinkedHashMap<>();
         res.put("Host", host);
+        if (isGet())
+            return res;
         res.put("x-amz-date", asAwsDate(date));
         res.put("x-amz-content-sha256", contentSha256);
         for (Map.Entry<String, String> e : extraHeaders.entrySet()) {
@@ -143,6 +185,29 @@ public class S3Request {
         }
         if (allowPublicReads)
             res.put("x-amz-acl", "public-read");
+        return res;
+    }
+
+    private String getQueryString(String signature) {
+        if (! isGet())
+            return "";
+        Map<String, String> res = getQueryParameters();
+        res.put("x-amz-signature", signature);
+        return "?" + res.entrySet()
+                .stream()
+                .map(e -> urlEncode(e.getKey()) + "=" + urlEncode(e.getValue()))
+                .collect(Collectors.joining("&"));
+    }
+
+    private Map<String, String> getQueryParameters() {
+        if (! isGet())
+            return Collections.emptyMap();
+        Map<String, String> res = new TreeMap<>();
+        res.put("x-amz-algorithm", ALGORITHM);
+        res.put("x-amz-content-sha256", contentSha256);
+        res.put("x-amz-credential", credential());
+        res.put("x-amz-date", asAwsDate(date));
+        res.put("x-amz-signedheaders", "host");
         return res;
     }
 
@@ -180,6 +245,10 @@ public class S3Request {
                 "s3",
                 "aws4_request"
         );
+    }
+
+    public boolean isGet() {
+        return "GET".equals(verb);
     }
 
     private static String asAwsDate(Instant instant) {

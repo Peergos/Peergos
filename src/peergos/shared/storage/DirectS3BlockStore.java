@@ -14,7 +14,7 @@ import java.util.stream.*;
 
 public class DirectS3BlockStore implements ContentAddressedStorage {
 
-    private final boolean directWrites, publicReads;
+    private final boolean directWrites, publicReads, authedReads;
     private final Optional<String> baseUrl;
     private final HttpPoster direct;
     private final ContentAddressedStorage fallback;
@@ -22,6 +22,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
     public DirectS3BlockStore(BlockStoreProperties blockStoreProperties, HttpPoster direct, ContentAddressedStorage fallback) {
         this.directWrites = blockStoreProperties.directWrites;
         this.publicReads = blockStoreProperties.publicReads;
+        this.authedReads = blockStoreProperties.authedReads;
         this.baseUrl = blockStoreProperties.baseUrl;
         this.direct = direct;
         this.fallback = fallback;
@@ -117,6 +118,23 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
         if (publicReads) {
             CompletableFuture<Optional<byte[]>> res = new CompletableFuture<>();
             direct.get(baseUrl.get() + hashToKey(hash))
+                    .thenAccept(raw -> res.complete(Optional.of(raw)))
+                    .exceptionally(t -> {
+                        fallback.authReads(Arrays.asList(hash))
+                                .thenCompose(preAuthedGet -> direct.get(preAuthedGet.get(0).base))
+                                .thenAccept(raw -> res.complete(Optional.of(raw)))
+                                .exceptionally(e -> {
+                                    res.completeExceptionally(e);
+                                    return null;
+                                });
+                        return null;
+                    });
+            return res;
+        }
+        if (authedReads) {
+            CompletableFuture<Optional<byte[]>> res = new CompletableFuture<>();
+            fallback.authReads(Arrays.asList(hash))
+                    .thenCompose(preAuthedGet -> direct.get(preAuthedGet.get(0).base))
                     .thenAccept(raw -> res.complete(Optional.of(raw)))
                     .exceptionally(t -> {
                         fallback.getRaw(hash)
