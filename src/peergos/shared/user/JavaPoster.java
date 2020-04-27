@@ -78,6 +78,41 @@ public class JavaPoster implements HttpPoster {
     }
 
     @Override
+    public CompletableFuture<byte[]> put(String url, byte[] body, Map<String, String> headers) {
+        HttpURLConnection conn = null;
+        try {
+            conn = (HttpURLConnection) buildURL(url).openConnection();
+            conn.setRequestMethod("PUT");
+            for (Map.Entry<String, String> e : headers.entrySet()) {
+                conn.setRequestProperty(e.getKey(), e.getValue());
+            }
+            conn.setDoOutput(true);
+            OutputStream out = conn.getOutputStream();
+            out.write(body);
+            out.flush();
+            out.close();
+
+            InputStream in = conn.getInputStream();
+            return Futures.of(Serialize.readFully(in));
+        } catch (IOException e) {
+            CompletableFuture<byte[]> res = new CompletableFuture<>();
+            if (conn != null) {
+                try {
+                    InputStream err = conn.getErrorStream();
+                    res.completeExceptionally(new IOException("HTTP " + conn.getResponseCode() + ": " + conn.getResponseMessage()));
+                } catch (IOException f) {
+                    res.completeExceptionally(f);
+                }
+            } else
+                res.completeExceptionally(e);
+            return res;
+        } finally {
+            if (conn != null)
+                conn.disconnect();
+        }
+    }
+
+    @Override
     public String toString() {
         return dht.toString();
     }

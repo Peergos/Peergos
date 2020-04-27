@@ -1,5 +1,7 @@
 package peergos.shared.io.ipfs.api;
 
+import peergos.shared.util.*;
+
 import java.io.*;
 import java.net.*;
 import java.util.*;
@@ -13,6 +15,9 @@ public class Multipart {
     private PrintWriter writer;
 
     public Multipart(String requestURL, String charset) throws IOException {
+        this(requestURL, charset, Collections.emptyMap());
+    }
+    public Multipart(String requestURL, String charset, Map<String, String> headers) throws IOException {
         this.charset = charset;
 
         boundary = createBoundary();
@@ -22,6 +27,9 @@ public class Multipart {
         httpConn.setUseCaches(false);
         httpConn.setDoOutput(true);
         httpConn.setDoInput(true);
+        for (Map.Entry<String, String> e : headers.entrySet()) {
+            httpConn.setRequestProperty(e.getKey(), e.getValue());
+        }
         httpConn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
         httpConn.setRequestProperty("User-Agent", "Java IPFS Client");
         out = httpConn.getOutputStream();
@@ -124,6 +132,9 @@ public class Multipart {
             }
             reader.close();
             httpConn.disconnect();
+        } else if (status == HttpURLConnection.HTTP_NO_CONTENT) {
+            httpConn.disconnect();
+            return "";
         } else {
             try {
                 BufferedReader reader = new BufferedReader(new InputStreamReader(
@@ -134,6 +145,11 @@ public class Multipart {
                 }
                 reader.close();
             } catch (Throwable t) {}
+            InputStream errorStream = httpConn.getErrorStream();
+            if (errorStream != null) {
+                String errBody = new String(Serialize.readFully(errorStream));
+                b.append(errBody);
+            }
             throw new IOException("Server returned status: " + status + " with body: "+b.toString() + " and Trailer header: "+httpConn.getHeaderFields().get("Trailer"));
         }
 

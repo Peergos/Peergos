@@ -69,6 +69,28 @@ public class DHTHandler implements HttpHandler {
             Function<String, String> last = key -> params.get(key).get(params.get(key).size() - 1);
 
             switch (path) {
+                case BLOCKSTORE_PROPERTIES: {
+                    dht.blockStoreProperties().thenAccept(p -> {
+                        replyBytes(httpExchange, p.serialize(), Optional.empty());
+                    }).exceptionally(Futures::logAndThrow).get();
+                    break;
+                }
+                case AUTH_WRITES: {
+                    PublicKeyHash ownerHash = PublicKeyHash.fromString(last.apply("owner"));
+                    TransactionId tid = new TransactionId(last.apply("transaction"));
+                    PublicKeyHash writerHash = PublicKeyHash.fromString(last.apply("writer"));
+                    List<byte[]> signatures = Arrays.stream(last.apply("signatures").split(","))
+                            .map(ArrayOps::hexToBytes)
+                            .collect(Collectors.toList());
+                    List<Integer> blockSizes = Arrays.stream(last.apply("sizes").split(","))
+                            .map(Integer::parseInt)
+                            .collect(Collectors.toList());
+                    boolean isRaw = Boolean.parseBoolean(last.apply("raw"));
+                    dht.authWrites(ownerHash, writerHash, signatures, blockSizes, isRaw, tid).thenAccept(res -> {
+                        replyBytes(httpExchange, new CborObject.CborList(res).serialize(), Optional.empty());
+                    }).exceptionally(Futures::logAndThrow).get();
+                    break;
+                }
                 case TRANSACTION_START: {
                     AggregatedMetrics.DHT_TRANSACTION_START.inc();
                     PublicKeyHash ownerHash = PublicKeyHash.fromString(last.apply("owner"));
@@ -122,7 +144,7 @@ public class DHTHandler implements HttpHandler {
                             PublicSigningKey candidateKey = PublicSigningKey.fromByteArray(data.get(0));
                             PublicKeyHash calculatedHash = ContentAddressedStorage.hashKey(candidateKey);
                             if (calculatedHash.equals(writerHash)) {
-                                candidateKey.unsignMessage(ArrayOps.concat(signatures.get(0), data.get(0)));
+                                candidateKey.unsignMessage(signatures.get(0));
                                 return candidateKey;
                             }
                         } catch (Throwable e) {
@@ -137,7 +159,7 @@ public class DHTHandler implements HttpHandler {
                     for (int i = 0; i < data.size(); i++) {
                         byte[] signature = signatures.get(i);
                         byte[] hash = hasher.sha256(data.get(i)).join();
-                        byte[] unsigned = writer.unsignMessage(ArrayOps.concat(signature, hash));
+                        byte[] unsigned = writer.unsignMessage(signature);
                         if (! Arrays.equals(unsigned, hash))
                             throw new IllegalStateException("Invalid signature for block!");
                     }

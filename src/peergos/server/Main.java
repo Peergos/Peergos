@@ -161,7 +161,7 @@ public class Main {
             SigningKeyPair pkiKeys = UserUtil.generateUser(pkiUsername, pkiPassword, crypto.hasher, crypto.symmetricProvider,
                     crypto.random, crypto.signer, crypto.boxer, SecretGenerationAlgorithm.getDefaultWithoutExtraSalt()).get().getUser();
             IpfsTransaction.call(peergosPublicHash,
-                    tid -> dht.putSigningKey(peergosIdentityKeys.secretSigningKey.signatureOnly(
+                    tid -> dht.putSigningKey(peergosIdentityKeys.secretSigningKey.signMessage(
                             pkiKeys.publicSigningKey.serialize()),
                             peergosPublicHash,
                             pkiKeys.publicSigningKey, tid), dht).get();
@@ -218,7 +218,7 @@ public class Main {
                 // write pki public key to ipfs
                 IpfsTransaction.call(peergosPublicHash,
                         tid -> network.dhtClient.putSigningKey(peergosIdentityKeys.secretSigningKey
-                                .signatureOnly(pkiPublic.serialize()), peergosPublicHash, pkiPublic, tid),
+                                .signMessage(pkiPublic.serialize()), peergosPublicHash, pkiPublic, tid),
                         network.dhtClient).get();
                 context.addNamedOwnedKeyAndCommit("pki", pkiKeyPair).join();
             }
@@ -310,7 +310,7 @@ public class Main {
                             new IpfsDHT(ipfsApi) :
                             S3Config.useS3(args) ?
                                     new S3BlockStorage(S3Config.build(args), Cid.decode(args.getArg("ipfs.id")),
-                                            transactions, new IpfsDHT(ipfsApi)) :
+                                            BlockStoreProperties.empty(), transactions, new IpfsDHT(ipfsApi)) :
                                     new FileContentAddressedStorage(blockstorePath(args),
                                             transactions);
                     Multihash pkiIpfsNodeId = storage.id().get();
@@ -479,8 +479,12 @@ public class Main {
                 // In S3 mode of operation we require the ipfs id to be supplied as we don't have a local ipfs running
                 if (S3Config.useS3(a)) {
                     ContentAddressedStorage.HTTP ipfs = new ContentAddressedStorage.HTTP(ipfsApi, false);
+                    Optional<String> publicReadUrl = Optional.ofNullable(a.getArg("blockstore-url", null));
+                    boolean directWrites = a.getBoolean("direct-s3-writes", false);
+                    boolean publicReads = a.getBoolean("public-s3-reads", false);
+                    BlockStoreProperties props = new BlockStoreProperties(directWrites, publicReads, publicReadUrl);
                     localDht = new S3BlockStorage(S3Config.build(a), Cid.decode(a.getArg("ipfs.id")),
-                            transactions, ipfs);
+                            props, transactions, ipfs);
                 } else
                     localDht = new FileContentAddressedStorage(blockstorePath(a), transactions);
             }

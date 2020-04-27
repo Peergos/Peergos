@@ -25,6 +25,23 @@ public class WriteFilter implements ContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<BlockStoreProperties> blockStoreProperties() {
+        return dht.blockStoreProperties();
+    }
+
+    @Override
+    public CompletableFuture<List<PresignedUrl>> authWrites(PublicKeyHash owner,
+                                                            PublicKeyHash writer,
+                                                            List<byte[]> signedHashes,
+                                                            List<Integer> blockSizes,
+                                                            boolean isRaw,
+                                                            TransactionId tid) {
+        if (! keyFilter.apply(writer, blockSizes.stream().mapToInt(x -> x).sum()))
+            throw new IllegalStateException("Key not allowed to write to this server: " + writer);
+        return dht.authWrites(owner, writer, signedHashes, blockSizes, isRaw, tid);
+    }
+
+    @Override
     public CompletableFuture<TransactionId> startTransaction(PublicKeyHash owner) {
         return dht.startTransaction(owner);
     }

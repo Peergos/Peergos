@@ -135,6 +135,16 @@ public class CachingStorage implements ContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<List<PresignedUrl>> authWrites(PublicKeyHash owner,
+                                                            PublicKeyHash writer,
+                                                            List<byte[]> signedHashes,
+                                                            List<Integer> blockSizes,
+                                                            boolean isRaw,
+                                                            TransactionId tid) {
+        return target.authWrites(owner, writer, signedHashes, blockSizes, isRaw, tid);
+    }
+
+    @Override
     public CompletableFuture<List<Multihash>> recursivePin(PublicKeyHash owner, Multihash h) {
         return target.recursivePin(owner, h);
     }

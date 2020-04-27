@@ -388,7 +388,7 @@ public class ChampTests {
             PublicKeyHash ownerHash = ContentAddressedStorage.hashKey(random.publicSigningKey);
             TransactionId tid = storage.startTransaction(ownerHash).get();
             PublicKeyHash publicHash = storage.putSigningKey(
-                    random.secretSigningKey.signatureOnly(random.publicSigningKey.serialize()),
+                    random.secretSigningKey.signMessage(random.publicSigningKey.serialize()),
                     ownerHash,
                     random.publicSigningKey, tid).get();
             return new SigningPrivateKeyAndPublicHash(publicHash, random.secretSigningKey);

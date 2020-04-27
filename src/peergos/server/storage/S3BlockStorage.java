@@ -14,7 +14,6 @@ import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
-import peergos.shared.io.ipfs.multibase.binary.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.io.ipfs.multihash.*;
@@ -51,38 +50,84 @@ public class S3BlockStorage implements ContentAddressedStorage {
 
     private final Multihash id;
     private final AmazonS3 s3Client;
-    private final String bucket, folder;
+    private final String region, bucket, folder, regionEndpoint;
+    private final String accessKeyId, secretKey;
+    private final BlockStoreProperties props;
     private final TransactionStore transactions;
     private final ContentAddressedStorage p2pFallback;
 
     public S3BlockStorage(S3Config config,
                           Multihash id,
+                          BlockStoreProperties props,
                           TransactionStore transactions,
                           ContentAddressedStorage p2pFallback) {
         this.id = id;
+        this.region = config.region;
         this.bucket = config.bucket;
         this.folder = config.path.isEmpty() || config.path.endsWith("/") ? config.path : config.path + "/";
+        this.regionEndpoint = config.regionEndpoint;
+        this.accessKeyId = config.accessKey;
+        this.secretKey = config.secretKey;
         AmazonS3ClientBuilder builder = AmazonS3ClientBuilder.standard()
                 .withEndpointConfiguration(new AwsClientBuilder.EndpointConfiguration(config.regionEndpoint, config.region))
                 .withCredentials(new AWSStaticCredentialsProvider(
                         new BasicAWSCredentials(config.accessKey, config.secretKey)));
         s3Client = builder.build();
         LOG.info("Using S3 Block Storage at " + config.regionEndpoint + ", bucket " + config.bucket + ", path: " + config.path);
+        this.props = props;
         this.transactions = transactions;
         this.p2pFallback = p2pFallback;
     }
 
     private static String hashToKey(Multihash hash) {
-        // To be compatible with IPFS we use the same scheme here, the cid bytes encoded as uppercase base32
-        String padded = new Base32().encodeAsString(hash.toBytes());
-        int padStart = padded.indexOf("=");
-        return padStart > 0 ? padded.substring(0, padStart) : padded;
+        return DirectS3BlockStore.hashToKey(hash);
     }
 
     private Multihash keyToHash(String key) {
-        // To be compatible with IPFS we use the ame scheme here, the cid bytes encoded as uppercase base32
-        byte[] decoded = new Base32().decode(key.substring(folder.length()));
-        return Cid.cast(decoded);
+        return DirectS3BlockStore.keyToHash(key.substring(folder.length()));
+    }
+
+    @Override
+    public CompletableFuture<BlockStoreProperties> blockStoreProperties() {
+        return Futures.of(props);
+    }
+
+    @Override
+    public CompletableFuture<List<PresignedUrl>> authWrites(PublicKeyHash owner,
+                                                            PublicKeyHash writerHash,
+                                                            List<byte[]> signedHashes,
+                                                            List<Integer> blockSizes,
+                                                            boolean isRaw,
+                                                            TransactionId tid) {
+        try {
+            if (signedHashes.size() > 50)
+                throw new IllegalStateException("Too many writes to auth!");
+            if (blockSizes.size() != signedHashes.size())
+                throw new IllegalStateException("Number of sizes doesn't match number of signed hashes!");
+            PublicSigningKey writer = getSigningKey(writerHash).get().get();
+            List<Pair<Multihash, Integer>> blockProps = new ArrayList<>();
+            for (int i=0; i < signedHashes.size(); i++) {
+                Cid.Codec codec = isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor;
+                Cid cid = new Cid(1, codec, Multihash.Type.sha2_256, writer.unsignMessage(signedHashes.get(i)));
+                blockProps.add(new Pair<>(cid, blockSizes.get(i)));
+            }
+            List<PresignedUrl> res = new ArrayList<>();
+            for (Pair<Multihash, Integer> props : blockProps) {
+                if (props.left.type != Multihash.Type.sha2_256)
+                    throw new IllegalStateException("Can only pre-auth writes of sha256 hashed blocks!");
+                transactions.addBlock(props.left, tid, owner);
+                String s3Key = hashToKey(props.left);
+                String contentSha256 = ArrayOps.bytesToHex(props.left.getHash());
+                String host = bucket + "." + regionEndpoint;
+                Map<String, String> extraHeaders = new LinkedHashMap<>();
+                extraHeaders.put("Content-Type", "application/octet-stream");
+                res.add(S3Request.preSignUrl(s3Key, props.right, contentSha256, false,
+                        ZonedDateTime.now(), "PUT", host, extraHeaders, region, accessKeyId, secretKey));
+            }
+            return Futures.of(res);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override
@@ -291,8 +336,7 @@ public class S3BlockStorage implements ContentAddressedStorage {
         try {
             ObjectMetadata metadata = new ObjectMetadata();
             metadata.setContentLength(data.length);
-            PutObjectRequest put = new PutObjectRequest(bucket, folder + key, new ByteArrayInputStream(data), metadata)
-                    .withCannedAcl(CannedAccessControlList.PublicRead);
+            PutObjectRequest put = new PutObjectRequest(bucket, folder + key, new ByteArrayInputStream(data), metadata);
             transactions.addBlock(cid, tid, owner);
             PutObjectResult putResult = s3Client.putObject(put);
             return cid;
@@ -402,7 +446,7 @@ public class S3BlockStorage implements ContentAddressedStorage {
         Supplier<Connection> database = Main.getDBConnector(a, "mutable-pointers-file");
         Supplier<Connection> transactionsDb = Main.getDBConnector(a, "transactions-sql-file");
         TransactionStore transactions = JdbcTransactionStore.build(transactionsDb, sqlCommands);
-        S3BlockStorage s3 = new S3BlockStorage(config, Cid.decode(a.getArg("ipfs.id")), transactions, new RAMStorage());
+        S3BlockStorage s3 = new S3BlockStorage(config, Cid.decode(a.getArg("ipfs.id")), BlockStoreProperties.empty(), transactions, new RAMStorage());
         JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(database, sqlCommands);
         s3.collectGarbage(rawPointers);
     }
@@ -413,7 +457,7 @@ public class S3BlockStorage implements ContentAddressedStorage {
         System.out.println("Testing S3 bucket: " + config.bucket + " in region " + config.region + " with base dir: " + config.path);
         Multihash id = new Multihash(Multihash.Type.sha2_256, RAMStorage.hash("S3Storage".getBytes()));
         TransactionStore transactions = JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands());
-        S3BlockStorage s3 = new S3BlockStorage(config, id, transactions, new RAMStorage());
+        S3BlockStorage s3 = new S3BlockStorage(config, id, BlockStoreProperties.empty(), transactions, new RAMStorage());
 
         System.out.println("***** Testing ls and read");
         System.out.println("Testing ls...");
