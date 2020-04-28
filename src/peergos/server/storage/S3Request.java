@@ -207,6 +207,7 @@ public class S3Request {
         res.put("x-amz-content-sha256", contentSha256);
         res.put("x-amz-credential", credential());
         res.put("x-amz-date", asAwsDate(date));
+        res.put("x-amz-expires", "" + 3600);
         res.put("x-amz-signedheaders", "host");
         return res;
     }
