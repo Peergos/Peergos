@@ -29,7 +29,7 @@ public class S3V4SignatureTests {
         String contentSha256 = ArrayOps.bytesToHex(Hash.sha256(payload));
 
         S3Request policy = new S3Request("PUT", host, s3Key, contentSha256, false, true,
-                Collections.emptyMap(), extraHeaders, accessKey, region, timestamp.toInstant());
+                Collections.emptyMap(), extraHeaders, accessKey, region, timestamp);
         String toSign = policy.stringToSign();
         Assert.assertTrue(toSign.equals("AWS4-HMAC-SHA256\n" +
                 "20130524T000000Z\n" +
@@ -66,7 +66,7 @@ public class S3V4SignatureTests {
         String contentSha256 = "UNSIGNED-PAYLOAD";
 
         S3Request policy = new S3Request("PUT", host, s3Key, contentSha256, false, true,
-                Collections.emptyMap(), extraHeaders, accessKey, region, timestamp.toInstant());
+                Collections.emptyMap(), extraHeaders, accessKey, region, timestamp);
 
         String canonicalRequest = policy.toCanonicalRequest();
         Assert.assertTrue(canonicalRequest.equals("PUT\n" +

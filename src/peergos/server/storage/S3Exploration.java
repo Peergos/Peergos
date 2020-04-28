@@ -61,6 +61,11 @@ class S3Exploration {
             byte[] getResult = get(new URI(webUrl).toURL(), Collections.emptyMap());
             if (! Arrays.equals(getResult, payload))
                 System.out.println("Incorrect contents!");
+
+            // test a delete
+            PresignedUrl delUrl = S3Request.preSignDelete(s3Key, ZonedDateTime.now(), host, region, accessKey, secretKey);
+            delete(new URI(delUrl.base).toURL(), delUrl.fields);
+            System.out.println();
         }
     }
 
@@ -141,6 +146,35 @@ class S3Exploration {
             while ((r = err.read(buf)) >= 0)
                 resp.write(buf, 0, r);
             return resp.toByteArray();
+        }
+    }
+
+    private static void delete(URL target, Map<String, String> headers) throws Exception {
+        HttpURLConnection conn = (HttpURLConnection) target.openConnection();
+        conn.setRequestMethod("DELETE");
+        for (Map.Entry<String, String> e : headers.entrySet()) {
+            conn.setRequestProperty(e.getKey(), e.getValue());
+        }
+
+        try {
+            int code = conn.getResponseCode();
+            if (code == 204)
+                return;
+            InputStream in = conn.getInputStream();
+            ByteArrayOutputStream resp = new ByteArrayOutputStream();
+            byte[] buf = new byte[4096];
+            int r;
+            while ((r = in.read(buf)) >= 0)
+                resp.write(buf, 0, r);
+            throw new IllegalStateException("HTTP " + code + "-" + resp.toByteArray());
+        } catch (IOException e) {
+            InputStream err = conn.getErrorStream();
+            ByteArrayOutputStream resp = new ByteArrayOutputStream();
+            byte[] buf = new byte[4096];
+            int r;
+            while ((r = err.read(buf)) >= 0)
+                resp.write(buf, 0, r);
+            throw new IllegalStateException(new String(resp.toByteArray()), e);
         }
     }
 }

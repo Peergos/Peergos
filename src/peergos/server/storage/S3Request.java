@@ -42,7 +42,7 @@ public class S3Request {
                      Map<String, String> extraHeaders,
                      String accessKeyId,
                      String region,
-                     Instant date) {
+                     ZonedDateTime timestamp) {
         this.verb = verb;
         this.host = host;
         this.key = key;
@@ -53,7 +53,7 @@ public class S3Request {
         this.extraHeaders = extraHeaders;
         this.accessKeyId = accessKeyId;
         this.region = region;
-        this.date = date;
+        this.date = timestamp.withNano(0).withZoneSameInstant(ZoneId.of("UTC")).toInstant();
     }
 
     public static PresignedUrl preSignPut(String key,
@@ -67,9 +67,8 @@ public class S3Request {
                                           String accessKeyId,
                                           String s3SecretKey) {
         extraHeaders.put("Content-Length", "" + size);
-        Instant sanitisedTimestamp = now.withNano(0).withZoneSameInstant(ZoneId.of("UTC")).toInstant();
         S3Request policy = new S3Request("PUT", host, key, contentSha256, allowPublicReads, true,
-                Collections.emptyMap(), extraHeaders, accessKeyId, region, sanitisedTimestamp);
+                Collections.emptyMap(), extraHeaders, accessKeyId, region, now);
         return preSignRequest(policy, key, host, s3SecretKey);
     }
 
@@ -80,6 +79,17 @@ public class S3Request {
                                           String accessKeyId,
                                           String s3SecretKey) {
         return preSignNulliPotent("GET", key, now, host, region, accessKeyId, s3SecretKey);
+    }
+
+    public static PresignedUrl preSignDelete(String key,
+                                             ZonedDateTime now,
+                                             String host,
+                                             String region,
+                                             String accessKeyId,
+                                             String s3SecretKey) {
+        S3Request policy = new S3Request("DELETE", host, key, UNSIGNED, false, true,
+                Collections.emptyMap(), Collections.emptyMap(), accessKeyId, region, now);
+        return preSignRequest(policy, key, host, s3SecretKey);
     }
 
     public static PresignedUrl preSignHead(String key,
@@ -106,9 +116,8 @@ public class S3Request {
         extraQueryParameters.put("prefix", prefix);
         continuationToken.ifPresent(t -> extraQueryParameters.put("continuation-token", t));
 
-        Instant sanitisedTimestamp = now.withNano(0).withZoneSameInstant(ZoneId.of("UTC")).toInstant();
         S3Request policy = new S3Request("GET", host, "", UNSIGNED, false, true,
-                extraQueryParameters, Collections.emptyMap(), accessKeyId, region, sanitisedTimestamp);
+                extraQueryParameters, Collections.emptyMap(), accessKeyId, region, now);
         return preSignRequest(policy, "", host, s3SecretKey);
     }
 
@@ -119,9 +128,8 @@ public class S3Request {
                                                    String region,
                                                    String accessKeyId,
                                                    String s3SecretKey) {
-        Instant sanitisedTimestamp = now.withNano(0).withZoneSameInstant(ZoneId.of("UTC")).toInstant();
         S3Request policy = new S3Request(verb, host, key, UNSIGNED, false, false,
-                Collections.emptyMap(), Collections.emptyMap(), accessKeyId, region, sanitisedTimestamp);
+                Collections.emptyMap(), Collections.emptyMap(), accessKeyId, region, now);
         return preSignRequest(policy, key, host, s3SecretKey);
     }
 
