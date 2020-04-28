@@ -15,14 +15,19 @@ class S3Exploration {
         String secretKey = a[1];
         String bucketName = a[2];
         String region = "us-east-1";
+        String regionEndpoint = region + ".linodeobjects.com";
+        String host = bucketName + "." + regionEndpoint;
 
         for (boolean useIllegalPayload: Arrays.asList(false)) {
+            // Test a list objects GET
+            PresignedUrl listUrl = S3Request.preSignList("", 10, Optional.empty(),
+                    ZonedDateTime.now(), host, region, accessKey, secretKey);
+            String listRes = new String(get(new URI(listUrl.base).toURL(), listUrl.fields));
 
             // test a authed PUT
             byte[] payload = "Hi Linode2!".getBytes();
             Multihash content = new RAMStorage().put(null, null, null, Arrays.asList(payload), null).join().get(0);
             String s3Key = DirectS3BlockStore.hashToKey(content);
-            String host = bucketName + "." + region + ".linodeobjects.com";
             Map<String, String> extraHeaders = new TreeMap<>();
             extraHeaders.put("Content-Type", "application/octet-stream");
             extraHeaders.put("User-Agent", "Bond, James Bond");
@@ -35,20 +40,25 @@ class S3Exploration {
             String res = new String(write(new URI(putUrl.base).toURL(), "PUT", putUrl.fields, useIllegalPayload ? new byte[payload.length] : payload));
             System.out.println(res);
 
+            // Test a list objects GET continuation
+            PresignedUrl list2Url = S3Request.preSignList("", 10, Optional.of(s3Key),
+                    ZonedDateTime.now(), host, region, accessKey, secretKey);
+            String list2Res = new String(get(new URI(list2Url.base).toURL(), list2Url.fields));
+
             // test an authed HEAD
             PresignedUrl headUrl = S3Request.preSignHead(s3Key, ZonedDateTime.now(), host, region, accessKey, secretKey);
-            Map<String, List<String>> headRes = head(new URI(headUrl.base).toURL());
+            Map<String, List<String>> headRes = head(new URI(headUrl.base).toURL(), Collections.emptyMap());
             String size = headRes.get("Content-Length").get(0);
             System.out.println(size);
 
             // test an authed read
             PresignedUrl getUrl = S3Request.preSignGet(s3Key, ZonedDateTime.now().minusMinutes(100), host, region, accessKey, secretKey);
-            String readRes = new String(get(new URI(getUrl.base).toURL()));
+            String readRes = new String(get(new URI(getUrl.base).toURL(), Collections.emptyMap()));
             System.out.println(readRes);
 
             // test a public read
             String webUrl = "https://" + bucketName + ".website-" + region + ".linodeobjects.com/" + s3Key;
-            byte[] getResult = get(new URI(webUrl).toURL());
+            byte[] getResult = get(new URI(webUrl).toURL(), Collections.emptyMap());
             if (! Arrays.equals(getResult, payload))
                 System.out.println("Incorrect contents!");
         }
@@ -85,9 +95,12 @@ class S3Exploration {
         }
     }
 
-    private static Map<String, List<String>> head(URL target) throws Exception {
+    private static Map<String, List<String>> head(URL target, Map<String, String> headers) throws Exception {
         HttpURLConnection conn = (HttpURLConnection) target.openConnection();
         conn.setRequestMethod("HEAD");
+        for (Map.Entry<String, String> e : headers.entrySet()) {
+            conn.setRequestProperty(e.getKey(), e.getValue());
+        }
 
         try {
             int resp = conn.getResponseCode();
@@ -105,9 +118,12 @@ class S3Exploration {
         }
     }
 
-    private static byte[] get(URL target) throws Exception {
+    private static byte[] get(URL target, Map<String, String> headers) throws Exception {
         HttpURLConnection conn = (HttpURLConnection) target.openConnection();
         conn.setRequestMethod("GET");
+        for (Map.Entry<String, String> e : headers.entrySet()) {
+            conn.setRequestProperty(e.getKey(), e.getValue());
+        }
 
         try {
             InputStream in = conn.getInputStream();
