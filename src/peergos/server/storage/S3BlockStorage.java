@@ -136,7 +136,7 @@ public class S3BlockStorage implements ContentAddressedStorage {
                 Map<String, String> extraHeaders = new LinkedHashMap<>();
                 extraHeaders.put("Content-Type", "application/octet-stream");
                 res.add(S3Request.preSignPut(s3Key, props.right, contentSha256, false,
-                        ZonedDateTime.now(), "PUT", host, extraHeaders, region, accessKeyId, secretKey));
+                        ZonedDateTime.now(), host, extraHeaders, region, accessKeyId, secretKey));
             }
             return Futures.of(res);
         } catch (Exception e) {

@@ -94,7 +94,7 @@ public class S3V4SignatureTests {
         Assert.assertTrue(signature.equals("5cc3daea623ac6d43b482209892cc6eb95e46b068e232eabd85343caf79bb17e"));
 
         PresignedUrl url = S3Request.preSignPut(s3Key, payload.length, contentSha256, false, timestamp,
-                "PUT", host, extraHeaders, region, accessKey, secretKey);
+                host, extraHeaders, region, accessKey, secretKey);
         Assert.assertTrue(("AWS4-HMAC-SHA256 Credential=AKIAIOSFODNN7EXAMPLE/20200425/us-east-1/s3/aws4_request," +
                 "SignedHeaders=amz-sdk-invocation-id;amz-sdk-retry;content-length;content-type;host;user-agent;x-amz-content-sha256;x-amz-date," +
                 "Signature=5cc3daea623ac6d43b482209892cc6eb95e46b068e232eabd85343caf79bb17e")
