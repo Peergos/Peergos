@@ -24,6 +24,7 @@ public class S3Request {
     public final String verb, host;
     public final String key;
     public final String contentSha256;
+    public final Optional<Integer> expiresSeconds;
     public final boolean allowPublicReads;
     public final boolean useAuthHeader;
     public final String accessKeyId;
@@ -36,6 +37,7 @@ public class S3Request {
                      String host,
                      String key,
                      String contentSha256,
+                     Optional<Integer> expiresSeconds,
                      boolean allowPublicReads,
                      boolean useAuthHeader,
                      Map<String, String> extraQueryParameters,
@@ -47,6 +49,7 @@ public class S3Request {
         this.host = host;
         this.key = key;
         this.contentSha256 = contentSha256;
+        this.expiresSeconds = expiresSeconds;
         this.allowPublicReads = allowPublicReads;
         this.useAuthHeader = useAuthHeader;
         this.extraQueryParameters = extraQueryParameters;
@@ -67,18 +70,19 @@ public class S3Request {
                                           String accessKeyId,
                                           String s3SecretKey) {
         extraHeaders.put("Content-Length", "" + size);
-        S3Request policy = new S3Request("PUT", host, key, contentSha256, allowPublicReads, true,
+        S3Request policy = new S3Request("PUT", host, key, contentSha256, Optional.empty(), allowPublicReads, true,
                 Collections.emptyMap(), extraHeaders, accessKeyId, region, now);
         return preSignRequest(policy, key, host, s3SecretKey);
     }
 
     public static PresignedUrl preSignGet(String key,
+                                          Optional<Integer> expirySeconds,
                                           ZonedDateTime now,
                                           String host,
                                           String region,
                                           String accessKeyId,
                                           String s3SecretKey) {
-        return preSignNulliPotent("GET", key, now, host, region, accessKeyId, s3SecretKey);
+        return preSignNulliPotent("GET", key, expirySeconds, now, host, region, accessKeyId, s3SecretKey);
     }
 
     public static PresignedUrl preSignDelete(String key,
@@ -87,18 +91,19 @@ public class S3Request {
                                              String region,
                                              String accessKeyId,
                                              String s3SecretKey) {
-        S3Request policy = new S3Request("DELETE", host, key, UNSIGNED, false, true,
+        S3Request policy = new S3Request("DELETE", host, key, UNSIGNED, Optional.empty(), false, true,
                 Collections.emptyMap(), Collections.emptyMap(), accessKeyId, region, now);
         return preSignRequest(policy, key, host, s3SecretKey);
     }
 
     public static PresignedUrl preSignHead(String key,
+                                           Optional<Integer> expirySeconds,
                                            ZonedDateTime now,
                                            String host,
                                            String region,
                                            String accessKeyId,
                                            String s3SecretKey) {
-        return preSignNulliPotent("HEAD", key, now, host, region, accessKeyId, s3SecretKey);
+        return preSignNulliPotent("HEAD", key, expirySeconds, now, host, region, accessKeyId, s3SecretKey);
     }
 
     public static PresignedUrl preSignList(String prefix,
@@ -116,19 +121,20 @@ public class S3Request {
         extraQueryParameters.put("prefix", prefix);
         continuationToken.ifPresent(t -> extraQueryParameters.put("continuation-token", t));
 
-        S3Request policy = new S3Request("GET", host, "", UNSIGNED, false, true,
+        S3Request policy = new S3Request("GET", host, "", UNSIGNED, Optional.empty(), false, true,
                 extraQueryParameters, Collections.emptyMap(), accessKeyId, region, now);
         return preSignRequest(policy, "", host, s3SecretKey);
     }
 
     private static PresignedUrl preSignNulliPotent(String verb,
                                                    String key,
+                                                   Optional<Integer> expiresSeconds,
                                                    ZonedDateTime now,
                                                    String host,
                                                    String region,
                                                    String accessKeyId,
                                                    String s3SecretKey) {
-        S3Request policy = new S3Request(verb, host, key, UNSIGNED, false, false,
+        S3Request policy = new S3Request(verb, host, key, UNSIGNED, expiresSeconds, false, false,
                 Collections.emptyMap(), Collections.emptyMap(), accessKeyId, region, now);
         return preSignRequest(policy, key, host, s3SecretKey);
     }
@@ -202,7 +208,7 @@ public class S3Request {
                 .stream()
                 .map(e -> urlEncode(e.getKey()) + "=" + urlEncode(e.getValue()))
                 .collect(Collectors.joining("&")));
-        res.append("\n"); // no query parameters
+        res.append("\n");
 
         Map<String, String> headers = getCanonicalHeaders();
         for (Map.Entry<String, String> e : headers.entrySet()) {
@@ -242,7 +248,7 @@ public class S3Request {
     private String getQueryString(String signature) {
         Map<String, String> res = getQueryParameters();
         if (! useAuthHeader)
-            res.put("x-amz-signature", signature);
+            res.put("X-Amz-Signature", signature);
         return "?" + res.entrySet()
                 .stream()
                 .map(e -> urlEncode(e.getKey()) + "=" + urlEncode(e.getValue()))
@@ -253,12 +259,11 @@ public class S3Request {
         Map<String, String> res = new TreeMap<>();
         res.putAll(extraQueryParameters);
         if (! useAuthHeader) {
-            res.put("x-amz-algorithm", ALGORITHM);
-            res.put("x-amz-content-sha256", contentSha256);
-            res.put("x-amz-credential", credential());
-            res.put("x-amz-date", asAwsDate(date));
-            res.put("x-amz-expires", "" + 3600);
-            res.put("x-amz-signedheaders", "host");
+            res.put("X-Amz-Algorithm", ALGORITHM);
+            res.put("X-Amz-Credential", credential());
+            res.put("X-Amz-Date", asAwsDate(date));
+            expiresSeconds.ifPresent(seconds -> res.put("X-Amz-Expires", "" + seconds));
+            res.put("X-Amz-SignedHeaders", "host");
         }
         return res;
     }

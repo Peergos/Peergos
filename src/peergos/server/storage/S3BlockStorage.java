@@ -101,7 +101,7 @@ public class S3BlockStorage implements ContentAddressedStorage {
 
         for (Multihash block : blocks) {
             String s3Key = hashToKey(block);
-            res.add(S3Request.preSignGet(s3Key, ZonedDateTime.now(), host, region, accessKeyId, secretKey));
+            res.add(S3Request.preSignGet(s3Key, Optional.of(600), ZonedDateTime.now(), host, region, accessKeyId, secretKey));
         }
         return Futures.of(res);
     }

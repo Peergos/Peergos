@@ -11,7 +11,7 @@ import java.util.*;
 
 public class S3V4SignatureTests {
     @Test
-    public void validSignature() {
+    public void validPutSignature() {
         String accessKey = "AKIAIOSFODNN7EXAMPLE";
         String secretKey = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY";
         byte[] payload = "Welcome to Amazon S3.".getBytes();
@@ -28,7 +28,7 @@ public class S3V4SignatureTests {
                 .atZone(ZoneId.of("UTC"));
         String contentSha256 = ArrayOps.bytesToHex(Hash.sha256(payload));
 
-        S3Request policy = new S3Request("PUT", host, s3Key, contentSha256, false, true,
+        S3Request policy = new S3Request("PUT", host, s3Key, contentSha256, Optional.empty(), false, true,
                 Collections.emptyMap(), extraHeaders, accessKey, region, timestamp);
         String toSign = policy.stringToSign();
         Assert.assertTrue(toSign.equals("AWS4-HMAC-SHA256\n" +
@@ -38,6 +38,32 @@ public class S3V4SignatureTests {
 
         String signature = S3Request.computeSignature(policy, secretKey);
         Assert.assertTrue(signature.equals("98ad721746da40c64f1a55b78f14c238d841ea1380cd77a1b5971af0ece108bd"));
+    }
+
+    @Test
+    public void validGetSignature() {
+        String accessKey = "AKIAIOSFODNN7EXAMPLE";
+        String secretKey = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY";
+        String s3Key = "test.txt";
+        String bucketName = "examplebucket";
+        String region = "us-east-1";
+        String host = bucketName + ".s3.amazonaws.com";
+        ZonedDateTime timestamp = LocalDate.of(2013, Month.MAY, 24)
+                .atStartOfDay()
+                .toInstant(ZoneOffset.UTC)
+                .atZone(ZoneId.of("UTC"));
+        String contentSha256 = "UNSIGNED-PAYLOAD";
+
+        S3Request policy = new S3Request("GET", host, s3Key, contentSha256, Optional.of(86400), false, false,
+                Collections.emptyMap(), Collections.emptyMap(), accessKey, region, timestamp);
+        String toSign = policy.stringToSign();
+        Assert.assertTrue(toSign.equals("AWS4-HMAC-SHA256\n" +
+                "20130524T000000Z\n" +
+                "20130524/us-east-1/s3/aws4_request\n" +
+                "3bfa292879f6447bbcda7001decf97f4a54dc650c8942174ae0a9121cf58ad04"));
+
+        String signature = S3Request.computeSignature(policy, secretKey);
+        Assert.assertTrue(signature.equals("aeeed9bbccd4d02ee5c0109b86d86835f995330da4c265957d157751f604d404"));
     }
 
     @Test
@@ -65,7 +91,7 @@ public class S3V4SignatureTests {
                 .atZone(ZoneId.of("UTC"));
         String contentSha256 = "UNSIGNED-PAYLOAD";
 
-        S3Request policy = new S3Request("PUT", host, s3Key, contentSha256, false, true,
+        S3Request policy = new S3Request("PUT", host, s3Key, contentSha256, Optional.empty(), false, true,
                 Collections.emptyMap(), extraHeaders, accessKey, region, timestamp);
 
         String canonicalRequest = policy.toCanonicalRequest();

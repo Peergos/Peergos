@@ -46,15 +46,20 @@ class S3Exploration {
             String list2Res = new String(get(new URI(list2Url.base).toURL(), list2Url.fields));
 
             // test an authed HEAD
-            PresignedUrl headUrl = S3Request.preSignHead(s3Key, ZonedDateTime.now(), host, region, accessKey, secretKey);
+            PresignedUrl headUrl = S3Request.preSignHead(s3Key, Optional.of(600), ZonedDateTime.now(), host, region, accessKey, secretKey);
             Map<String, List<String>> headRes = head(new URI(headUrl.base).toURL(), Collections.emptyMap());
             String size = headRes.get("Content-Length").get(0);
             System.out.println(size);
 
             // test an authed read
-            PresignedUrl getUrl = S3Request.preSignGet(s3Key, ZonedDateTime.now().minusMinutes(100), host, region, accessKey, secretKey);
-            String readRes = new String(get(new URI(getUrl.base).toURL(), Collections.emptyMap()));
+            PresignedUrl getUrl = S3Request.preSignGet(s3Key, Optional.of(600), ZonedDateTime.now(), host, region, accessKey, secretKey);
+            String readRes = new String(get(new URI(getUrl.base).toURL(), getUrl.fields));
             System.out.println(readRes);
+
+            // test an authed read which has expired
+            PresignedUrl failGetUrl = S3Request.preSignGet(s3Key, Optional.of(600), ZonedDateTime.now().minusMinutes(11), host, region, accessKey, secretKey);
+            String failReadRes = new String(get(new URI(failGetUrl.base).toURL(), failGetUrl.fields));
+            System.out.println(failReadRes);
 
             // test a public read
             String webUrl = "https://" + bucketName + ".website-" + region + ".linodeobjects.com/" + s3Key;
