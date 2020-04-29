@@ -1,6 +1,7 @@
 package peergos.shared.storage;
 
 import peergos.shared.cbor.*;
+import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multibase.binary.*;
@@ -18,14 +19,23 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
     private final Optional<String> baseUrl;
     private final HttpPoster direct;
     private final ContentAddressedStorage fallback;
+    private final Multihash nodeId;
+    private final LRUCache<PublicKeyHash, Multihash> storageNodeByOwner = new LRUCache<>(100);
+    private final CoreNode core;
 
-    public DirectS3BlockStore(BlockStoreProperties blockStoreProperties, HttpPoster direct, ContentAddressedStorage fallback) {
+    public DirectS3BlockStore(BlockStoreProperties blockStoreProperties,
+                              HttpPoster direct,
+                              ContentAddressedStorage fallback,
+                              Multihash nodeId,
+                              CoreNode core) {
         this.directWrites = blockStoreProperties.directWrites;
         this.publicReads = blockStoreProperties.publicReads;
         this.authedReads = blockStoreProperties.authedReads;
         this.baseUrl = blockStoreProperties.baseUrl;
         this.direct = direct;
         this.fallback = fallback;
+        this.nodeId = nodeId;
+        this.core = core;
     }
 
     public static String hashToKey(Multihash hash) {
@@ -62,23 +72,40 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                                                   List<byte[]> signatures,
                                                   List<byte[]> blocks,
                                                   TransactionId tid) {
-        if (directWrites) {
-            CompletableFuture<List<Multihash>> res = new CompletableFuture<>();
-            fallback.authWrites(owner, writer, signatures, blocks.stream().map(x -> x.length).collect(Collectors.toList()), false, tid)
-                    .thenCompose(preAuthed -> {
-                        List<CompletableFuture<Multihash>> futures = new ArrayList<>();
-                        for (int i=0; i < blocks.size(); i++) {
-                            PresignedUrl url = preAuthed.get(i);
-                            Multihash targetName = keyToHash(url.base.substring(url.base.lastIndexOf("/") + 1));
-                            futures.add(direct.put(url.base, blocks.get(i), url.fields)
-                                    .thenApply(x -> targetName));
-                        }
-                        return Futures.combineAllInOrder(futures);
-                    }).thenApply(res::complete)
-                    .exceptionally(res::completeExceptionally);
-            return res;
-        }
-        return fallback.put(owner, writer, signatures, blocks, tid);
+        return onOwnersNode(owner).thenCompose(ownersNode -> {
+            if (ownersNode && directWrites) {
+                CompletableFuture<List<Multihash>> res = new CompletableFuture<>();
+                fallback.authWrites(owner, writer, signatures, blocks.stream().map(x -> x.length).collect(Collectors.toList()), false, tid)
+                        .thenCompose(preAuthed -> {
+                            List<CompletableFuture<Multihash>> futures = new ArrayList<>();
+                            for (int i = 0; i < blocks.size(); i++) {
+                                PresignedUrl url = preAuthed.get(i);
+                                Multihash targetName = keyToHash(url.base.substring(url.base.lastIndexOf("/") + 1));
+                                futures.add(direct.put(url.base, blocks.get(i), url.fields)
+                                        .thenApply(x -> targetName));
+                            }
+                            return Futures.combineAllInOrder(futures);
+                        }).thenApply(res::complete)
+                        .exceptionally(res::completeExceptionally);
+                return res;
+            }
+            return fallback.put(owner, writer, signatures, blocks, tid);
+        });
+    }
+
+    private CompletableFuture<Boolean> onOwnersNode(PublicKeyHash owner) {
+        Multihash cached = storageNodeByOwner.get(owner);
+        if (cached != null)
+            return Futures.of(cached.equals(nodeId));
+        return core.getUsername(owner)
+                .thenCompose(user -> core.getChain(user))
+                .thenApply(chain -> {
+                    List<Multihash> storageProviders = chain.get(chain.size() - 1).claim.storageProviders;
+                    Multihash mainNode = storageProviders.get(0);
+                    storageNodeByOwner.put(owner, mainNode);
+                    System.out.println("Are we on owner's node? " + mainNode + " == " + nodeId);
+                    return mainNode.equals(nodeId);
+                });
     }
 
     @Override
@@ -87,23 +114,25 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                                                      List<byte[]> signatures,
                                                      List<byte[]> blocks,
                                                      TransactionId tid) {
-        if (directWrites) {
-            CompletableFuture<List<Multihash>> res = new CompletableFuture<>();
-            fallback.authWrites(owner, writer, signatures, blocks.stream().map(x -> x.length).collect(Collectors.toList()), true, tid)
-                    .thenCompose(preAuthed -> {
-                        List<CompletableFuture<Multihash>> futures = new ArrayList<>();
-                        for (int i=0; i < blocks.size(); i++) {
-                            PresignedUrl url = preAuthed.get(i);
-                            Multihash targetName = keyToHash(url.base.substring(url.base.lastIndexOf("/") + 1));
-                            futures.add(direct.put(url.base, blocks.get(i), url.fields)
-                                    .thenApply(x -> targetName));
-                        }
-                        return Futures.combineAllInOrder(futures);
-                    }).thenApply(res::complete)
-                    .exceptionally(res::completeExceptionally);
-            return res;
-        }
-        return fallback.putRaw(owner, writer, signatures, blocks, tid);
+        return onOwnersNode(owner).thenCompose(ownersNode -> {
+            if (ownersNode && directWrites) {
+                CompletableFuture<List<Multihash>> res = new CompletableFuture<>();
+                fallback.authWrites(owner, writer, signatures, blocks.stream().map(x -> x.length).collect(Collectors.toList()), true, tid)
+                        .thenCompose(preAuthed -> {
+                            List<CompletableFuture<Multihash>> futures = new ArrayList<>();
+                            for (int i = 0; i < blocks.size(); i++) {
+                                PresignedUrl url = preAuthed.get(i);
+                                Multihash targetName = keyToHash(url.base.substring(url.base.lastIndexOf("/") + 1));
+                                futures.add(direct.put(url.base, blocks.get(i), url.fields)
+                                        .thenApply(x -> targetName));
+                            }
+                            return Futures.combineAllInOrder(futures);
+                        }).thenApply(res::complete)
+                        .exceptionally(res::completeExceptionally);
+                return res;
+            }
+            return fallback.putRaw(owner, writer, signatures, blocks, tid);
+        });
     }
 
     @Override
