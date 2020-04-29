@@ -174,8 +174,9 @@ public class JdbcUsageStore implements UsageStore {
              PreparedStatement writerSelect = conn.prepareStatement("SELECT id FROM writers WHERE key_hash = ?;")) {
             writerSelect.setBytes(1, writer.toBytes());
             ResultSet writerRes = writerSelect.executeQuery();
-            writerRes.next();
-            return writerRes.getInt(1);
+            if (writerRes.next())
+                return writerRes.getInt(1);
+            throw new IllegalStateException("Writer not present on this server: " + writer);
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);

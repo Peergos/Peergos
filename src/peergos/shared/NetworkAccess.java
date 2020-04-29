@@ -112,14 +112,15 @@ public class NetworkAccess {
     }
 
     public static CompletableFuture<ContentAddressedStorage> buildDirectS3Blockstore(ContentAddressedStorage localDht,
+                                                                                     CoreNode core,
                                                                                      HttpPoster direct,
                                                                                      boolean isPeergosServer) {
         if (! isPeergosServer)
             return Futures.of(localDht);
         return localDht.blockStoreProperties()
-                .thenApply(bp -> bp.useDirectBlockStore() ?
-                        new DirectS3BlockStore(bp, direct, localDht) :
-                        localDht);
+                .thenCompose(bp -> bp.useDirectBlockStore() ?
+                        localDht.id().thenApply(id -> new DirectS3BlockStore(bp, direct, localDht, id, core)) :
+                        Futures.of(localDht));
     }
 
     @JsMethod
@@ -132,9 +133,7 @@ public class NetworkAccess {
 
         return isPeergosServer(relative)
                 .thenApply(isPeergosServer -> new Pair<>(isPeergosServer ? relative : absolute, isPeergosServer))
-                .thenCompose(p ->
-                        buildDirectS3Blockstore(buildLocalDht(p.left, true), relative, p.right)
-                                .thenCompose(dht -> build(p.left, p.left, pkiServerNodeId, dht, new ScryptJS(), true)))
+                .thenCompose(p -> build(p.left, p.left, pkiServerNodeId, buildLocalDht(p.left, p.right), new ScryptJS(), true))
                 .thenApply(e -> e.withMutablePointerCache(7_000));
     }
 
@@ -166,7 +165,8 @@ public class NetworkAccess {
                 .thenAccept(usernames -> {
                     // We are on a Peergos server
                     CoreNode core = direct;
-                    build(core, localDht, apiPoster, p2pPoster, usernames, true, isJavascript)
+                    buildDirectS3Blockstore(localDht, core, apiPoster, true)
+                            .thenCompose(dht -> build(core, dht, apiPoster, p2pPoster, usernames, true, isJavascript))
                             .thenApply(result::complete)
                             .exceptionally(t -> {
                                 result.completeExceptionally(t);
