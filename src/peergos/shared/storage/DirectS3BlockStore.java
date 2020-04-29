@@ -118,13 +118,20 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
         if (publicReads) {
             CompletableFuture<Optional<byte[]>> res = new CompletableFuture<>();
             direct.get(baseUrl.get() + hashToKey(hash))
-                    .thenAccept(raw -> res.complete(Optional.of(raw)))
+                    .thenApply(Optional::of)
+                    .thenAccept(res::complete)
                     .exceptionally(t -> {
                         fallback.authReads(Arrays.asList(hash))
                                 .thenCompose(preAuthedGet -> direct.get(preAuthedGet.get(0).base))
-                                .thenAccept(raw -> res.complete(Optional.of(raw)))
+                                .thenApply(Optional::of)
+                                .thenAccept(res::complete)
                                 .exceptionally(e -> {
-                                    res.completeExceptionally(e);
+                                    fallback.getRaw(hash)
+                                            .thenAccept(res::complete)
+                                            .exceptionally(f -> {
+                                                res.completeExceptionally(f);
+                                                return null;
+                                            });
                                     return null;
                                 });
                         return null;
@@ -135,10 +142,11 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
             CompletableFuture<Optional<byte[]>> res = new CompletableFuture<>();
             fallback.authReads(Arrays.asList(hash))
                     .thenCompose(preAuthedGet -> direct.get(preAuthedGet.get(0).base))
-                    .thenAccept(raw -> res.complete(Optional.of(raw)))
+                    .thenApply(Optional::of)
+                    .thenAccept(res::complete)
                     .exceptionally(t -> {
                         fallback.getRaw(hash)
-                                .thenAccept(fallbackRes -> res.complete(fallbackRes))
+                                .thenAccept(res::complete)
                                 .exceptionally(e -> {
                                     res.completeExceptionally(e);
                                     return null;
