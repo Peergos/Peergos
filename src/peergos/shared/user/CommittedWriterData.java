@@ -2,6 +2,8 @@ package peergos.shared.user;
 
 import peergos.shared.*;
 
+import java.util.Objects;
+
 public class CommittedWriterData {
 
     public final MaybeMultihash hash;
@@ -16,4 +18,18 @@ public class CommittedWriterData {
     public String toString() {
         return hash.toString();
     }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        CommittedWriterData that = (CommittedWriterData) o;
+        return Objects.equals(hash, that.hash);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(hash);
+    }
+
 }
