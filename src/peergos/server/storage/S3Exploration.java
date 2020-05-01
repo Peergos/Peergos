@@ -23,30 +23,29 @@ class S3Exploration {
 //        TransactionStore transactions = JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands());
 //        S3Config config = new S3Config("", bucketName, region, accessKey, secretKey, regionEndpoint);
 //        S3BlockStorage s3 = new S3BlockStorage(config, null, BlockStoreProperties.empty(), transactions, new RAMStorage());
-        String name = "AFYREIBF5Y4OUJXNGRCHBAR2ZMPQBSW62SZDHFNX2GA6V4J3W7I63LA4UQ";
-        {
-            PresignedUrl getaUrl = S3Request.preSignGet(name, Optional.of(600), ZonedDateTime.now(), host, region, accessKey, secretKey);
-            get(new URI(getaUrl.base).toURL(), getaUrl.fields);
-            {
-                PresignedUrl copyUrl = S3Request.preSignCopy(bucketName, name, name + "Z",
-                    ZonedDateTime.now(), host, Collections.emptyMap(), region, accessKey, secretKey);
-                String res = new String(write(new URI(copyUrl.base).toURL(), "PUT", copyUrl.fields, new byte[0]));
-                System.out.println(res);
-            }
-            {
-                PresignedUrl copyUrl = S3Request.preSignCopy(bucketName, name + "Z", name,
-                    ZonedDateTime.now(), host, Collections.emptyMap(), region, accessKey, secretKey);
-                String res = new String(write(new URI(copyUrl.base).toURL(), "PUT", copyUrl.fields, new byte[0]));
-                System.out.println(res);
-            }
-            get(new URI(getaUrl.base).toURL(), getaUrl.fields);
-        }
+//        String name = "AFYREIBF5Y4OUJXNGRCHBAR2ZMPQBSW62SZDHFNX2GA6V4J3W7I63LA4UQ";
+//        {
+//            PresignedUrl getaUrl = S3Request.preSignGet(name, Optional.of(600), ZonedDateTime.now(), host, region, accessKey, secretKey);
+//            get(new URI(getaUrl.base).toURL(), getaUrl.fields);
+//            {
+//                PresignedUrl copyUrl = S3Request.preSignCopy(bucketName, name, name + "Z",
+//                    ZonedDateTime.now(), host, Collections.emptyMap(), region, accessKey, secretKey);
+//                String res = new String(write(new URI(copyUrl.base).toURL(), "PUT", copyUrl.fields, new byte[0]));
+//                System.out.println(res);
+//            }
+//            {
+//                PresignedUrl copyUrl = S3Request.preSignCopy(bucketName, name + "Z", name,
+//                    ZonedDateTime.now(), host, Collections.emptyMap(), region, accessKey, secretKey);
+//                String res = new String(write(new URI(copyUrl.base).toURL(), "PUT", copyUrl.fields, new byte[0]));
+//                System.out.println(res);
+//            }
+//            get(new URI(getaUrl.base).toURL(), getaUrl.fields);
+//        }
 
         for (boolean useIllegalPayload: Arrays.asList(false)) {
             // Test a list objects GET
-            PresignedUrl listUrl = S3Request.preSignList("", 10, Optional.empty(),
-                    ZonedDateTime.now(), host, region, accessKey, secretKey);
-            String listRes = new String(get(new URI(listUrl.base).toURL(), listUrl.fields));
+            S3Request.ListObjectsReply listing = S3Request.listObjects("", 10, Optional.empty(),
+                    ZonedDateTime.now(), host, region, accessKey, secretKey, url -> get(url));
 
             // test a authed PUT
             byte[] payload = "Hi Linode2!".getBytes();
@@ -149,6 +148,14 @@ class S3Exploration {
             while ((r = err.read(buf)) >= 0)
                 resp.write(buf, 0, r);
             throw new IllegalStateException(new String(resp.toByteArray()));
+        }
+    }
+
+    private static byte[] get(PresignedUrl url) {
+        try {
+            return get(new URI(url.base).toURL(), url.fields);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         }
     }
 
