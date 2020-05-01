@@ -75,6 +75,23 @@ public class S3Request {
         return preSignRequest(policy, key, host, s3SecretKey);
     }
 
+    public static PresignedUrl preSignCopy(String sourceBucket,
+                                           String sourceKey,
+                                           String targetKey,
+                                           ZonedDateTime now,
+                                           String host,
+                                           Map<String, String> extraHeaders,
+                                           String region,
+                                           String accessKeyId,
+                                           String s3SecretKey) {
+        Map<String, String> extras = new TreeMap<>();
+        extras.putAll(extraHeaders);
+        extras.put("x-amz-copy-source", "/" + sourceBucket + "/" + sourceKey);
+        S3Request policy = new S3Request("PUT", host, targetKey, UNSIGNED, Optional.empty(), false, true,
+                Collections.emptyMap(), extras, accessKeyId, region, now);
+        return preSignRequest(policy, targetKey, host, s3SecretKey);
+    }
+
     public static PresignedUrl preSignGet(String key,
                                           Optional<Integer> expirySeconds,
                                           ZonedDateTime now,

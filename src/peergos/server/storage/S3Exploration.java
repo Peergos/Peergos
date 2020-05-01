@@ -1,5 +1,7 @@
 package peergos.server.storage;
 
+import peergos.server.*;
+import peergos.server.sql.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
@@ -17,6 +19,28 @@ class S3Exploration {
         String region = "us-east-1";
         String regionEndpoint = region + ".linodeobjects.com";
         String host = bucketName + "." + regionEndpoint;
+
+//        TransactionStore transactions = JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands());
+//        S3Config config = new S3Config("", bucketName, region, accessKey, secretKey, regionEndpoint);
+//        S3BlockStorage s3 = new S3BlockStorage(config, null, BlockStoreProperties.empty(), transactions, new RAMStorage());
+        String name = "AFYREIBF5Y4OUJXNGRCHBAR2ZMPQBSW62SZDHFNX2GA6V4J3W7I63LA4UQ";
+        {
+            PresignedUrl getaUrl = S3Request.preSignGet(name, Optional.of(600), ZonedDateTime.now(), host, region, accessKey, secretKey);
+            get(new URI(getaUrl.base).toURL(), getaUrl.fields);
+            {
+                PresignedUrl copyUrl = S3Request.preSignCopy(bucketName, name, name + "Z",
+                    ZonedDateTime.now(), host, Collections.emptyMap(), region, accessKey, secretKey);
+                String res = new String(write(new URI(copyUrl.base).toURL(), "PUT", copyUrl.fields, new byte[0]));
+                System.out.println(res);
+            }
+            {
+                PresignedUrl copyUrl = S3Request.preSignCopy(bucketName, name + "Z", name,
+                    ZonedDateTime.now(), host, Collections.emptyMap(), region, accessKey, secretKey);
+                String res = new String(write(new URI(copyUrl.base).toURL(), "PUT", copyUrl.fields, new byte[0]));
+                System.out.println(res);
+            }
+            get(new URI(getaUrl.base).toURL(), getaUrl.fields);
+        }
 
         for (boolean useIllegalPayload: Arrays.asList(false)) {
             // Test a list objects GET
