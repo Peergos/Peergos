@@ -194,8 +194,6 @@ public class S3Request {
                             deleted.add(n.getTextContent());
                         }
                     }
-                } else {
-                    System.out.println(top.getNodeName());
                 }
             }
             return new BulkDeleteReply(deleted);

@@ -82,9 +82,9 @@ class S3Exploration {
             keysToDelete.add(new DeleteObjectsRequest.KeyVersion(tempKey));
             keysToDelete.add(new DeleteObjectsRequest.KeyVersion(tempKey2));
             deleteObjectsRequest.setKeys(keysToDelete);
-//            s3.s3Client.deleteObjects(deleteObjectsRequest);
-            S3Request.BulkDeleteReply bulkDelete = S3Request.bulkDelete(Arrays.asList(tempKey, tempKey2), ZonedDateTime.now(), host, region, accessKey,
-                    secretKey, b -> ArrayOps.bytesToHex(Hash.sha256(b)),
+            String nonExistentKey = tempKey2 + "ZZ";
+            S3Request.BulkDeleteReply bulkDelete = S3Request.bulkDelete(Arrays.asList(tempKey, tempKey2, nonExistentKey),
+                    ZonedDateTime.now(), host, region, accessKey, secretKey, b -> ArrayOps.bytesToHex(Hash.sha256(b)),
                     (url, body) -> {
                         try {
                             return write(toURL(url.base), "POST", url.fields, body);
@@ -92,7 +92,8 @@ class S3Exploration {
                             throw new RuntimeException(e);
                         }
                     });
-            System.out.println();
+            if (! bulkDelete.deletedKeys.containsAll(Arrays.asList(tempKey, tempKey2, nonExistentKey)))
+                throw new IllegalStateException("Delete failed");
         }
 
         // Test a list objects GET
