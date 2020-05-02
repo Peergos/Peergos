@@ -359,7 +359,7 @@ public class S3BlockStorage implements ContentAddressedStorage {
             S3Request.ListObjectsReply result;
             long processedObjects = 0;
             do {
-                result = S3Request.listObjects(folder, 10_000, continuationToken,
+                result = S3Request.listObjects(folder, 1_000, continuationToken,
                         ZonedDateTime.now(), host, region, accessKeyId, secretKey, url -> {
                             try {
                                 return HttpUtil.get(url);
@@ -389,9 +389,28 @@ public class S3BlockStorage implements ContentAddressedStorage {
 
     public void delete(Multihash hash) {
         try {
-            PresignedUrl delUrl = S3Request.preSignDelete(folder + hashToKey(hash), ZonedDateTime.now(), host, region,
-                    accessKeyId, secretKey);
+            PresignedUrl delUrl = S3Request.preSignDelete(folder + hashToKey(hash), ZonedDateTime.now(), host,
+                    region, accessKeyId, secretKey);
             HttpUtil.delete(delUrl);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public void bulkDelete(List<Multihash> hash) {
+        try {
+            List<String> keys = hash.stream()
+                    .map(h -> folder + hashToKey(h))
+                    .collect(Collectors.toList());
+            S3Request.bulkDelete(keys, ZonedDateTime.now(), host, region, accessKeyId, secretKey,
+                    b -> ArrayOps.bytesToHex(Hash.sha256(b)),
+                    (url, body) -> {
+                        try {
+                            return HttpUtil.post(url, body);
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
+                    });
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

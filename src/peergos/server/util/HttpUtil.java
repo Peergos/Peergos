@@ -110,10 +110,18 @@ public class HttpUtil {
     }
 
     public static byte[] put(PresignedUrl target, byte[] body) throws IOException {
+        return putOrPost("PUT", target, body);
+    }
+
+    public static byte[] post(PresignedUrl target, byte[] body) throws IOException {
+        return putOrPost("POST", target, body);
+    }
+
+    private static byte[] putOrPost(String method, PresignedUrl target, byte[] body) throws IOException {
         HttpURLConnection conn = null;
         try {
             conn = (HttpURLConnection) new URI(target.base).toURL().openConnection();
-            conn.setRequestMethod("PUT");
+            conn.setRequestMethod(method);
             for (Map.Entry<String, String> e : target.fields.entrySet()) {
                 conn.setRequestProperty(e.getKey(), e.getValue());
             }
