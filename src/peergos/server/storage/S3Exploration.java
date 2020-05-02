@@ -23,78 +23,81 @@ class S3Exploration {
 //        TransactionStore transactions = JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands());
 //        S3Config config = new S3Config("", bucketName, region, accessKey, secretKey, regionEndpoint);
 //        S3BlockStorage s3 = new S3BlockStorage(config, null, BlockStoreProperties.empty(), transactions, new RAMStorage());
-//        String name = "AFYREIBF5Y4OUJXNGRCHBAR2ZMPQBSW62SZDHFNX2GA6V4J3W7I63LA4UQ";
-//        {
-//            PresignedUrl getaUrl = S3Request.preSignGet(name, Optional.of(600), ZonedDateTime.now(), host, region, accessKey, secretKey);
-//            get(new URI(getaUrl.base).toURL(), getaUrl.fields);
-//            {
-//                PresignedUrl copyUrl = S3Request.preSignCopy(bucketName, name, name + "Z",
-//                    ZonedDateTime.now(), host, Collections.emptyMap(), region, accessKey, secretKey);
-//                String res = new String(write(new URI(copyUrl.base).toURL(), "PUT", copyUrl.fields, new byte[0]));
-//                System.out.println(res);
-//            }
-//            {
-//                PresignedUrl copyUrl = S3Request.preSignCopy(bucketName, name + "Z", name,
-//                    ZonedDateTime.now(), host, Collections.emptyMap(), region, accessKey, secretKey);
-//                String res = new String(write(new URI(copyUrl.base).toURL(), "PUT", copyUrl.fields, new byte[0]));
-//                System.out.println(res);
-//            }
-//            get(new URI(getaUrl.base).toURL(), getaUrl.fields);
-//        }
-
-        for (boolean useIllegalPayload: Arrays.asList(false)) {
-            // Test a list objects GET
-            S3Request.ListObjectsReply listing = S3Request.listObjects("", 10, Optional.empty(),
-                    ZonedDateTime.now(), host, region, accessKey, secretKey, url -> get(url));
-
-            // test a authed PUT
-            byte[] payload = "Hi Linode2!".getBytes();
-            Multihash content = new RAMStorage().put(null, null, null, Arrays.asList(payload), null).join().get(0);
-            String s3Key = DirectS3BlockStore.hashToKey(content);
-            Map<String, String> extraHeaders = new TreeMap<>();
-            extraHeaders.put("Content-Type", "application/octet-stream");
-            extraHeaders.put("User-Agent", "Bond, James Bond");
-
-            boolean hashContent = true;
-            String contentHash = hashContent ? ArrayOps.bytesToHex(content.getHash()) : "UNSIGNED-PAYLOAD";
-            PresignedUrl putUrl = S3Request.preSignPut(s3Key, payload.length, contentHash, false,
-                    ZonedDateTime.now().minusMinutes(14), host, extraHeaders, region, accessKey, secretKey);
-
-            String res = new String(write(new URI(putUrl.base).toURL(), "PUT", putUrl.fields, useIllegalPayload ? new byte[payload.length] : payload));
-            System.out.println(res);
-
-            // Test a list objects GET continuation
-            PresignedUrl list2Url = S3Request.preSignList("", 10, Optional.of(s3Key),
-                    ZonedDateTime.now(), host, region, accessKey, secretKey);
-            String list2Res = new String(get(new URI(list2Url.base).toURL(), list2Url.fields));
-
-            // test an authed HEAD
-            PresignedUrl headUrl = S3Request.preSignHead(s3Key, Optional.of(600), ZonedDateTime.now(), host, region, accessKey, secretKey);
-            Map<String, List<String>> headRes = head(new URI(headUrl.base).toURL(), Collections.emptyMap());
-            String size = headRes.get("Content-Length").get(0);
-            System.out.println(size);
-
-            // test an authed read
-            PresignedUrl getUrl = S3Request.preSignGet(s3Key, Optional.of(600), ZonedDateTime.now(), host, region, accessKey, secretKey);
-            String readRes = new String(get(new URI(getUrl.base).toURL(), getUrl.fields));
-            System.out.println(readRes);
-
-            // test an authed read which has expired
-            PresignedUrl failGetUrl = S3Request.preSignGet(s3Key, Optional.of(600), ZonedDateTime.now().minusMinutes(11), host, region, accessKey, secretKey);
-            String failReadRes = new String(get(new URI(failGetUrl.base).toURL(), failGetUrl.fields));
-            System.out.println(failReadRes);
-
-            // test a public read
-            String webUrl = "https://" + bucketName + ".website-" + region + ".linodeobjects.com/" + s3Key;
-            byte[] getResult = get(new URI(webUrl).toURL(), Collections.emptyMap());
-            if (! Arrays.equals(getResult, payload))
-                System.out.println("Incorrect contents!");
+        byte[] payload = "Hi Linode2!".getBytes();
+        Multihash content = new RAMStorage().put(null, null, null, Arrays.asList(payload), null).join().get(0);
+        String s3Key = DirectS3BlockStore.hashToKey(content);// "AFYREIBF5Y4OUJXNGRCHBAR2ZMPQBSW62SZDHFNX2GA6V4J3W7I63LA4UQ"
+        {
+            // test copying over to reset modified time
+            PresignedUrl getaUrl = S3Request.preSignGet(s3Key, Optional.of(600), ZonedDateTime.now(), host, region, accessKey, secretKey);
+            get(new URI(getaUrl.base).toURL(), getaUrl.fields);
+            String tempKey = s3Key + "Z";
+            {
+                PresignedUrl copyUrl = S3Request.preSignCopy(bucketName, s3Key, tempKey,
+                    ZonedDateTime.now(), host, Collections.emptyMap(), region, accessKey, secretKey);
+                String res = new String(write(new URI(copyUrl.base).toURL(), "PUT", copyUrl.fields, new byte[0]));
+                System.out.println(res);
+            }
+            {
+                PresignedUrl copyUrl = S3Request.preSignCopy(bucketName, tempKey, s3Key,
+                    ZonedDateTime.now(), host, Collections.emptyMap(), region, accessKey, secretKey);
+                String res = new String(write(new URI(copyUrl.base).toURL(), "PUT", copyUrl.fields, new byte[0]));
+                System.out.println(res);
+            }
+            get(new URI(getaUrl.base).toURL(), getaUrl.fields);
 
             // test a delete
-            PresignedUrl delUrl = S3Request.preSignDelete(s3Key, ZonedDateTime.now(), host, region, accessKey, secretKey);
+            PresignedUrl delUrl = S3Request.preSignDelete(tempKey, ZonedDateTime.now(), host, region, accessKey, secretKey);
             delete(new URI(delUrl.base).toURL(), delUrl.fields);
             System.out.println();
         }
+
+        // Test a list objects GET
+        S3Request.ListObjectsReply listing = S3Request.listObjects("", 10, Optional.empty(),
+                ZonedDateTime.now(), host, region, accessKey, secretKey, url -> get(url));
+
+        // test an authed PUT
+        Map<String, String> extraHeaders = new TreeMap<>();
+        extraHeaders.put("Content-Type", "application/octet-stream");
+        extraHeaders.put("User-Agent", "Bond, James Bond");
+
+        boolean useIllegalPayload = false;
+        boolean hashContent = true;
+        String contentHash = hashContent ? ArrayOps.bytesToHex(content.getHash()) : "UNSIGNED-PAYLOAD";
+        PresignedUrl putUrl = S3Request.preSignPut(s3Key, payload.length, contentHash, false,
+                ZonedDateTime.now().minusMinutes(14), host, extraHeaders, region, accessKey, secretKey);
+
+        String res = new String(write(new URI(putUrl.base).toURL(), "PUT", putUrl.fields, useIllegalPayload ? new byte[payload.length] : payload));
+        System.out.println(res);
+
+        // Test a list objects GET continuation
+        S3Request.ListObjectsReply listing2 = S3Request.listObjects("", 10, Optional.of(s3Key),
+                ZonedDateTime.now(), host, region, accessKey, secretKey, url -> get(url));
+        if (listing2.objects.get(0).key.equals(listing.objects.get(0).key))
+            throw new IllegalStateException("Incorrect listing!");
+
+        // test an authed HEAD
+        PresignedUrl headUrl = S3Request.preSignHead(s3Key, Optional.of(600), ZonedDateTime.now(), host, region, accessKey, secretKey);
+        Map<String, List<String>> headRes = head(new URI(headUrl.base).toURL(), Collections.emptyMap());
+        int size = Integer.parseInt(headRes.get("Content-Length").get(0));
+        if (size != payload.length)
+            throw new IllegalStateException("Incorrect size: " + size);
+
+        // test an authed read
+        PresignedUrl getUrl = S3Request.preSignGet(s3Key, Optional.of(600), ZonedDateTime.now(), host, region, accessKey, secretKey);
+        byte[] authReadBytes = get(new URI(getUrl.base).toURL(), getUrl.fields);
+        if (! Arrays.equals(authReadBytes, payload))
+            throw new IllegalStateException("Incorrect contents: " + new String(authReadBytes));
+
+        // test an authed read which has expired
+        PresignedUrl failGetUrl = S3Request.preSignGet(s3Key, Optional.of(600), ZonedDateTime.now().minusMinutes(11), host, region, accessKey, secretKey);
+        String failReadRes = new String(get(new URI(failGetUrl.base).toURL(), failGetUrl.fields));
+        System.out.println(failReadRes);
+
+        // test a public read
+        String webUrl = "https://" + bucketName + ".website-" + regionEndpoint + "/" + s3Key;
+        byte[] getResult = get(new URI(webUrl).toURL(), Collections.emptyMap());
+        if (! Arrays.equals(getResult, payload))
+            System.out.println("Incorrect contents!");
     }
 
     private static byte[] write(URL target, String method, Map<String, String> headers, byte[] body) throws Exception {
