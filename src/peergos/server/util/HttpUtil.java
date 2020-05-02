@@ -1,6 +1,7 @@
 package peergos.server.util;
 
 import com.sun.net.httpserver.*;
+import peergos.shared.storage.*;
 
 import java.io.*;
 import java.net.*;
@@ -52,6 +53,125 @@ public class HttpUtil {
             exchange.sendResponseHeaders(400, 0);
         } catch (IOException e) {
             Logging.LOG().log(Level.WARNING, e.getMessage(), e);
+        }
+    }
+
+    public static byte[] get(PresignedUrl url) throws IOException {
+        try {
+            HttpURLConnection conn = (HttpURLConnection) new URI(url.base).toURL().openConnection();
+            conn.setRequestMethod("GET");
+            for (Map.Entry<String, String> e : url.fields.entrySet()) {
+                conn.setRequestProperty(e.getKey(), e.getValue());
+            }
+
+            try {
+                InputStream in = conn.getInputStream();
+                ByteArrayOutputStream resp = new ByteArrayOutputStream();
+                byte[] buf = new byte[4096];
+                int r;
+                while ((r = in.read(buf)) >= 0)
+                    resp.write(buf, 0, r);
+                return resp.toByteArray();
+            } catch (IOException e) {
+                InputStream err = conn.getErrorStream();
+                ByteArrayOutputStream resp = new ByteArrayOutputStream();
+                byte[] buf = new byte[4096];
+                int r;
+                while ((r = err.read(buf)) >= 0)
+                    resp.write(buf, 0, r);
+                throw new IOException(new String(resp.toByteArray()), e);
+            }
+        } catch (URISyntaxException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static Map<String, List<String>> head(PresignedUrl head) throws Exception {
+        HttpURLConnection conn = (HttpURLConnection) new URI(head.base).toURL().openConnection();
+        conn.setRequestMethod("HEAD");
+        for (Map.Entry<String, String> e : head.fields.entrySet()) {
+            conn.setRequestProperty(e.getKey(), e.getValue());
+        }
+
+        try {
+            int resp = conn.getResponseCode();
+            if (resp == 200)
+                return conn.getHeaderFields();
+            throw new IllegalStateException("HTTP " + resp);
+        } catch (IOException e) {
+            InputStream err = conn.getErrorStream();
+            ByteArrayOutputStream resp = new ByteArrayOutputStream();
+            byte[] buf = new byte[4096];
+            int r;
+            while ((r = err.read(buf)) >= 0)
+                resp.write(buf, 0, r);
+            throw new IllegalStateException(new String(resp.toByteArray()));
+        }
+    }
+
+    public static byte[] put(PresignedUrl target, byte[] body) throws IOException {
+        HttpURLConnection conn = null;
+        try {
+            conn = (HttpURLConnection) new URI(target.base).toURL().openConnection();
+            conn.setRequestMethod("PUT");
+            for (Map.Entry<String, String> e : target.fields.entrySet()) {
+                conn.setRequestProperty(e.getKey(), e.getValue());
+            }
+            conn.setDoOutput(true);
+            OutputStream out = conn.getOutputStream();
+            out.write(body);
+            out.flush();
+            out.close();
+
+            InputStream in = conn.getInputStream();
+            ByteArrayOutputStream resp = new ByteArrayOutputStream();
+            byte[] buf = new byte[4096];
+            int r;
+            while ((r = in.read(buf)) >= 0)
+                resp.write(buf, 0, r);
+            return resp.toByteArray();
+        } catch (IOException e) {
+            if (conn != null) {
+                InputStream err = conn.getErrorStream();
+                ByteArrayOutputStream resp = new ByteArrayOutputStream();
+                byte[] buf = new byte[4096];
+                int r;
+                while ((r = err.read(buf)) >= 0)
+                    resp.write(buf, 0, r);
+                throw new IOException("HTTP " + conn.getResponseCode() + ": " + conn.getResponseMessage() + "\nbody:\n" + new String(resp.toByteArray()));
+            }
+            throw new RuntimeException(e);
+        } catch (URISyntaxException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static void delete(PresignedUrl target) throws Exception {
+        HttpURLConnection conn = (HttpURLConnection) new URI(target.base).toURL().openConnection();
+        conn.setRequestMethod("DELETE");
+        for (Map.Entry<String, String> e : target.fields.entrySet()) {
+            conn.setRequestProperty(e.getKey(), e.getValue());
+        }
+
+        try {
+            int code = conn.getResponseCode();
+            if (code == 204)
+                return;
+            InputStream in = conn.getInputStream();
+            ByteArrayOutputStream resp = new ByteArrayOutputStream();
+            byte[] buf = new byte[4096];
+            int r;
+            while ((r = in.read(buf)) >= 0)
+                resp.write(buf, 0, r);
+            throw new IllegalStateException("HTTP " + code + "-" + resp.toByteArray());
+        } catch (IOException e) {
+            InputStream err = conn.getErrorStream();
+            ByteArrayOutputStream resp = new ByteArrayOutputStream();
+            byte[] buf = new byte[4096];
+            int r;
+            while ((r = err.read(buf)) >= 0)
+                resp.write(buf, 0, r);
+            throw new IllegalStateException(new String(resp.toByteArray()), e);
         }
     }
 }
