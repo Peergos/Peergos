@@ -1,7 +1,9 @@
 package peergos.server.storage;
 
+import com.amazonaws.services.s3.model.*;
 import peergos.server.*;
 import peergos.server.sql.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
@@ -27,6 +29,18 @@ class S3Exploration {
         Multihash content = new RAMStorage().put(null, null, null, Arrays.asList(payload), null).join().get(0);
         String s3Key = DirectS3BlockStore.hashToKey(content);// "AFYREIBF5Y4OUJXNGRCHBAR2ZMPQBSW62SZDHFNX2GA6V4J3W7I63LA4UQ"
         {
+            // test an authed PUT
+            Map<String, String> extraHeaders = new TreeMap<>();
+            extraHeaders.put("Content-Type", "application/octet-stream");
+            extraHeaders.put("User-Agent", "Bond, James Bond");
+            boolean useIllegalPayload = false;
+            boolean hashContent = true;
+            String contentHash = hashContent ? ArrayOps.bytesToHex(content.getHash()) : "UNSIGNED-PAYLOAD";
+            PresignedUrl putUrl = S3Request.preSignPut(s3Key, payload.length, contentHash, false,
+                    ZonedDateTime.now().minusMinutes(14), host, extraHeaders, region, accessKey, secretKey);
+            String putRes = new String(write(new URI(putUrl.base).toURL(), "PUT", putUrl.fields, useIllegalPayload ? new byte[payload.length] : payload));
+            System.out.println(putRes);
+
             // test copying over to reset modified time
             PresignedUrl getaUrl = S3Request.preSignGet(s3Key, Optional.of(600), ZonedDateTime.now(), host, region, accessKey, secretKey);
             get(new URI(getaUrl.base).toURL(), getaUrl.fields);
@@ -49,25 +63,41 @@ class S3Exploration {
             PresignedUrl delUrl = S3Request.preSignDelete(tempKey, ZonedDateTime.now(), host, region, accessKey, secretKey);
             delete(new URI(delUrl.base).toURL(), delUrl.fields);
             System.out.println();
+
+            // test bulk delete of two copies
+            {
+                PresignedUrl copyUrl = S3Request.preSignCopy(bucketName, s3Key, tempKey,
+                        ZonedDateTime.now(), host, Collections.emptyMap(), region, accessKey, secretKey);
+                String res = new String(write(new URI(copyUrl.base).toURL(), "PUT", copyUrl.fields, new byte[0]));
+            }
+            String tempKey2 = s3Key + "ZZ";
+            {
+                PresignedUrl copyUrl = S3Request.preSignCopy(bucketName, s3Key, tempKey2,
+                        ZonedDateTime.now(), host, Collections.emptyMap(), region, accessKey, secretKey);
+                String res = new String(write(new URI(copyUrl.base).toURL(), "PUT", copyUrl.fields, new byte[0]));
+                System.out.println(res);
+            }
+            DeleteObjectsRequest deleteObjectsRequest = new DeleteObjectsRequest(bucketName);
+            ArrayList<DeleteObjectsRequest.KeyVersion> keysToDelete = new ArrayList<>();
+            keysToDelete.add(new DeleteObjectsRequest.KeyVersion(tempKey));
+            keysToDelete.add(new DeleteObjectsRequest.KeyVersion(tempKey2));
+            deleteObjectsRequest.setKeys(keysToDelete);
+//            s3.s3Client.deleteObjects(deleteObjectsRequest);
+            S3Request.BulkDeleteReply bulkDelete = S3Request.bulkDelete(Arrays.asList(tempKey, tempKey2), ZonedDateTime.now(), host, region, accessKey,
+                    secretKey, b -> ArrayOps.bytesToHex(Hash.sha256(b)),
+                    (url, body) -> {
+                        try {
+                            return write(toURL(url.base), "POST", url.fields, body);
+                        } catch (Exception e) {
+                            throw new RuntimeException(e);
+                        }
+                    });
+            System.out.println();
         }
 
         // Test a list objects GET
         S3Request.ListObjectsReply listing = S3Request.listObjects("", 10, Optional.empty(),
                 ZonedDateTime.now(), host, region, accessKey, secretKey, url -> get(url));
-
-        // test an authed PUT
-        Map<String, String> extraHeaders = new TreeMap<>();
-        extraHeaders.put("Content-Type", "application/octet-stream");
-        extraHeaders.put("User-Agent", "Bond, James Bond");
-
-        boolean useIllegalPayload = false;
-        boolean hashContent = true;
-        String contentHash = hashContent ? ArrayOps.bytesToHex(content.getHash()) : "UNSIGNED-PAYLOAD";
-        PresignedUrl putUrl = S3Request.preSignPut(s3Key, payload.length, contentHash, false,
-                ZonedDateTime.now().minusMinutes(14), host, extraHeaders, region, accessKey, secretKey);
-
-        String res = new String(write(new URI(putUrl.base).toURL(), "PUT", putUrl.fields, useIllegalPayload ? new byte[payload.length] : payload));
-        System.out.println(res);
 
         // Test a list objects GET continuation
         S3Request.ListObjectsReply listing2 = S3Request.listObjects("", 10, Optional.of(s3Key),
@@ -98,6 +128,14 @@ class S3Exploration {
         byte[] getResult = get(new URI(webUrl).toURL(), Collections.emptyMap());
         if (! Arrays.equals(getResult, payload))
             System.out.println("Incorrect contents!");
+    }
+
+    private static URL toURL(String url) {
+        try {
+            return new URI(url).toURL();
+        } catch (URISyntaxException | MalformedURLException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private static byte[] write(URL target, String method, Map<String, String> headers, byte[] body) throws Exception {

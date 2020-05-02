@@ -90,6 +90,14 @@ public class S3Request {
         }
     }
 
+    public static class BulkDeleteReply {
+        public final List<String> deletedKeys;
+
+        public BulkDeleteReply(List<String> deletedKeys) {
+            this.deletedKeys = deletedKeys;
+        }
+    }
+
     public static PresignedUrl preSignPut(String key,
                                           int size,
                                           String contentSha256,
@@ -142,6 +150,58 @@ public class S3Request {
         S3Request policy = new S3Request("DELETE", host, key, UNSIGNED, Optional.empty(), false, true,
                 Collections.emptyMap(), Collections.emptyMap(), accessKeyId, region, now);
         return preSignRequest(policy, key, host, s3SecretKey);
+    }
+
+    public static BulkDeleteReply bulkDelete(List<String> keys,
+                                             ZonedDateTime now,
+                                             String host,
+                                             String region,
+                                             String accessKeyId,
+                                             String s3SecretKey,
+                                             Function<byte[], String> sha256,
+                                             BiFunction<PresignedUrl, byte[], byte[]> poster) {
+        StringBuilder xmlBuilder = new StringBuilder();
+        xmlBuilder.append("<Delete>");
+        for (String key : keys) {
+            xmlBuilder.append("<Object><Key>");
+            xmlBuilder.append(key);
+            xmlBuilder.append("</Key></Object>");
+        }
+        xmlBuilder.append("</Delete>");
+        String reqXml = xmlBuilder.toString();
+        byte[] body = reqXml.getBytes();
+        String contentSha256 = sha256.apply(body);
+        Map<String, String> extraHeaders = new TreeMap<>();
+        extraHeaders.put("Content-Length", "" + body.length);
+        Map<String, String> extraQueryParameters = new TreeMap<>();
+        extraQueryParameters.put("delete", "true");
+        S3Request policy = new S3Request("POST", host, "", contentSha256, Optional.empty(), false, true,
+                extraQueryParameters, extraHeaders, accessKeyId, region, now);
+        PresignedUrl reqUrl = preSignRequest(policy, "", host, s3SecretKey);
+        byte[] respBytes = poster.apply(reqUrl, body);
+        try {
+            Document xml = builder.get().parse(new ByteArrayInputStream(respBytes));
+            List<String> deleted = new ArrayList<>();
+            Node root = xml.getFirstChild();
+            NodeList topLevel = root.getChildNodes();
+            for (int t=0; t < topLevel.getLength(); t++) {
+                Node top = topLevel.item(t);
+                if ("Deleted".equals(top.getNodeName())) {
+                    NodeList childNodes = top.getChildNodes();
+                    for (int i = 0; i < childNodes.getLength(); i++) {
+                        Node n = childNodes.item(i);
+                        if ("Key".equals(n.getNodeName())) {
+                            deleted.add(n.getTextContent());
+                        }
+                    }
+                } else {
+                    System.out.println(top.getNodeName());
+                }
+            }
+            return new BulkDeleteReply(deleted);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public static PresignedUrl preSignHead(String key,
@@ -362,6 +422,8 @@ public class S3Request {
         Map<String, String> res = getQueryParameters();
         if (! useAuthHeader)
             res.put("X-Amz-Signature", signature);
+        if (res.isEmpty())
+            return "";
         return "?" + res.entrySet()
                 .stream()
                 .map(e -> urlEncode(e.getKey()) + "=" + urlEncode(e.getValue()))
