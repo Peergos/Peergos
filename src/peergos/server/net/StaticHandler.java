@@ -93,10 +93,8 @@ public abstract class StaticHandler implements HttpHandler
             httpExchange.sendResponseHeaders(200, res.data.length);
             httpExchange.getResponseBody().write(res.data);
             httpExchange.getResponseBody().close();
-        } catch (NullPointerException t) {
-            System.err.println("Error retrieving: " + path);
         } catch (Throwable t) {
-            System.err.println("Error retrieving: " + path);
+            System.err.println("404 FileNotFound: " + path);
             httpExchange.sendResponseHeaders(404, 0);
             httpExchange.getResponseBody().close();
         }
