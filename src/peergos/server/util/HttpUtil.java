@@ -59,6 +59,8 @@ public class HttpUtil {
     public static byte[] get(PresignedUrl url) throws IOException {
         try {
             HttpURLConnection conn = (HttpURLConnection) new URI(url.base).toURL().openConnection();
+            conn.setConnectTimeout(10_000);
+            conn.setReadTimeout(60_000);
             conn.setRequestMethod("GET");
             for (Map.Entry<String, String> e : url.fields.entrySet()) {
                 conn.setRequestProperty(e.getKey(), e.getValue());
