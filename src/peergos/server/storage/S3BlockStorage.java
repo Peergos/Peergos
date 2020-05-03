@@ -320,7 +320,6 @@ public class S3BlockStorage implements ContentAddressedStorage {
             String s3Key = folder + key;
             Map<String, String> extraHeaders = new TreeMap<>();
             extraHeaders.put("Content-Type", "application/octet-stream");
-            extraHeaders.put("User-Agent", "Bond, James Bond");
             boolean hashContent = true;
             String contentHash = hashContent ? ArrayOps.bytesToHex(hash.getHash()) : "UNSIGNED-PAYLOAD";
             PresignedUrl putUrl = S3Request.preSignPut(s3Key, data.length, contentHash, false,
