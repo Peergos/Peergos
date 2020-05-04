@@ -117,12 +117,6 @@ public class FileWrapper {
     }
 
     @JsMethod
-    public CompletableFuture<Boolean> isLatest(NetworkAccess network) {
-        return network.synchronizer.getValue(owner(), writer())
-                .thenApply(finished -> this.version.get(writer()).equals(finished.get(writer())));
-    }
-
-    @JsMethod
     public boolean equals(Object other) {
         if (other == null)
             return false;
