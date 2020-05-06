@@ -92,7 +92,7 @@ public class FragmentedPaddedCipherText implements Cborable {
                                                   Function<CborObject, T> fromCbor,
                                                   NetworkAccess network,
                                                   ProgressConsumer<Long> monitor) {
-        return network.downloadFragments(cipherTextFragments, monitor, 1.0)
+        return network.dhtClient.downloadFragments(cipherTextFragments, monitor, 1.0)
                 .thenApply(fargs -> new CipherText(nonce, recombine(fargs)).decrypt(from, fromCbor));
     }
 

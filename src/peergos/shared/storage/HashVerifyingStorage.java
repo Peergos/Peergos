@@ -3,8 +3,8 @@ package peergos.shared.storage;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
-import peergos.shared.io.ipfs.multiaddr.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -52,6 +52,13 @@ public class HashVerifyingStorage implements ContentAddressedStorage {
     @Override
     public CompletableFuture<List<PresignedUrl>> authReads(List<Multihash> blocks) {
         return source.authReads(blocks);
+    }
+
+    @Override
+    public CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Multihash> hashes,
+                                                                       ProgressConsumer<Long> monitor,
+                                                                       double spaceIncreaseFactor) {
+        return source.downloadFragments(hashes, monitor, spaceIncreaseFactor);
     }
 
     @Override

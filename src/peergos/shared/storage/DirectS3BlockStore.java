@@ -1,5 +1,6 @@
 package peergos.shared.storage;
 
+import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
@@ -7,6 +8,7 @@ import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multibase.binary.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.user.*;
+import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -133,6 +135,47 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
             }
             return fallback.putRaw(owner, writer, signatures, blocks, tid);
         });
+    }
+
+    @Override
+    public CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Multihash> hashes,
+                                                                       ProgressConsumer<Long> monitor,
+                                                                       double spaceIncreaseFactor) {
+        if (publicReads || ! authedReads)
+            return NetworkAccess.downloadFragments(hashes, this, monitor, spaceIncreaseFactor);
+
+        // Do a bulk auth in a single call
+        List<Pair<Integer, Multihash>> indexAndHash = IntStream.range(0, hashes.size())
+                .mapToObj(i -> new Pair<>(i, hashes.get(i)))
+                .collect(Collectors.toList());
+        List<Pair<Integer, Multihash>> nonIdentity = indexAndHash.stream()
+                .filter(p -> ! p.right.isIdentity())
+                .collect(Collectors.toList());
+        return fallback.authReads(nonIdentity.stream().map(p -> p.right).collect(Collectors.toList()))
+                .thenCompose(preAuthedGets ->
+                        Futures.combineAllInOrder(IntStream.range(0, preAuthedGets.size())
+                                .parallel()
+                                .mapToObj(i -> direct.get(preAuthedGets.get(i).base)
+                                        .thenApply(b -> {
+                                            Pair<Integer, Multihash> hashAndIndex = nonIdentity.get(i);
+                                            return new Pair<>(hashAndIndex.left,
+                                                    new FragmentWithHash(new Fragment(b), hashAndIndex.right));
+                                        }))
+                                .collect(Collectors.toList()))
+                ).thenApply(retrieved -> {
+                    List<FragmentWithHash> res = new ArrayList<>(hashes.size());
+                    for (Pair<Integer, FragmentWithHash> p : retrieved) {
+                        res.set(p.left, p.right);
+                    }
+                    for (int i=0; i < res.size(); i++)
+                        if (res.get(i) == null) {
+                            Multihash identity = hashes.get(i);
+                            if (! identity.isIdentity())
+                                throw new IllegalStateException("Hash should be identity!");
+                            res.set(i, new FragmentWithHash(new Fragment(identity.getHash()), identity));
+                        }
+                    return res;
+                });
     }
 
     @Override

@@ -2,8 +2,8 @@ package peergos.shared.storage;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.io.ipfs.multiaddr.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -132,6 +132,13 @@ public class CachingStorage implements ContentAddressedStorage {
             pipe.completeExceptionally(t);
             return null;
         });
+    }
+
+    @Override
+    public CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Multihash> hashes,
+                                                                       ProgressConsumer<Long> monitor,
+                                                                       double spaceIncreaseFactor) {
+        return target.downloadFragments(hashes, monitor, spaceIncreaseFactor);
     }
 
     @Override

@@ -10,6 +10,7 @@ import peergos.shared.io.ipfs.api.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.user.*;
+import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
 import java.io.*;
@@ -179,6 +180,12 @@ public interface ContentAddressedStorage {
      * @return The size in bytes, or Optional.empty() if it cannot be found.
      */
     CompletableFuture<Optional<Integer>> getSize(Multihash block);
+
+    default CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Multihash> hashes,
+                                                                        ProgressConsumer<Long> monitor,
+                                                                        double spaceIncreaseFactor) {
+        return NetworkAccess.downloadFragments(hashes, this, monitor, spaceIncreaseFactor);
+    }
 
     default CompletableFuture<PublicKeyHash> putSigningKey(byte[] signature,
                                                            PublicKeyHash owner,
