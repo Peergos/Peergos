@@ -3,13 +3,12 @@ package peergos.shared.storage;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
-import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
 
-public class CachingStorage implements ContentAddressedStorage {
+public class CachingStorage extends DelegatingStorage {
     private final ContentAddressedStorage target;
     private final LRUCache<Multihash, byte[]> cache;
     private final LRUCache<Multihash, CompletableFuture<Optional<CborObject>>> pending;
@@ -17,31 +16,12 @@ public class CachingStorage implements ContentAddressedStorage {
     private final int maxValueSize;
 
     public CachingStorage(ContentAddressedStorage target, int cacheSize, int maxValueSize) {
+        super(target);
         this.target = target;
         this.cache = new LRUCache<>(cacheSize);
         this.maxValueSize = maxValueSize;
         this.pending = new LRUCache<>(100);
         this.pendingRaw = new LRUCache<>(100);
-    }
-
-    @Override
-    public CompletableFuture<Multihash> id() {
-        return target.id();
-    }
-
-    @Override
-    public CompletableFuture<TransactionId> startTransaction(PublicKeyHash owner) {
-        return target.startTransaction(owner);
-    }
-
-    @Override
-    public CompletableFuture<Boolean> closeTransaction(PublicKeyHash owner, TransactionId tid) {
-        return target.closeTransaction(owner, tid);
-    }
-
-    @Override
-    public CompletableFuture<Boolean> gc() {
-        return target.gc();
     }
 
     @Override
@@ -132,52 +112,5 @@ public class CachingStorage implements ContentAddressedStorage {
             pipe.completeExceptionally(t);
             return null;
         });
-    }
-
-    @Override
-    public CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Multihash> hashes,
-                                                                       ProgressConsumer<Long> monitor,
-                                                                       double spaceIncreaseFactor) {
-        return target.downloadFragments(hashes, monitor, spaceIncreaseFactor);
-    }
-
-    @Override
-    public CompletableFuture<List<PresignedUrl>> authReads(List<Multihash> blocks) {
-        return target.authReads(blocks);
-    }
-
-    @Override
-    public CompletableFuture<List<PresignedUrl>> authWrites(PublicKeyHash owner,
-                                                            PublicKeyHash writer,
-                                                            List<byte[]> signedHashes,
-                                                            List<Integer> blockSizes,
-                                                            boolean isRaw,
-                                                            TransactionId tid) {
-        return target.authWrites(owner, writer, signedHashes, blockSizes, isRaw, tid);
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> recursivePin(PublicKeyHash owner, Multihash h) {
-        return target.recursivePin(owner, h);
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> recursiveUnpin(PublicKeyHash owner, Multihash h) {
-        return target.recursiveUnpin(owner, h);
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> pinUpdate(PublicKeyHash owner, Multihash existing, Multihash updated) {
-        return target.pinUpdate(owner, existing, updated);
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> getLinks(Multihash root) {
-        return target.getLinks(root);
-    }
-
-    @Override
-    public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
-        return target.getSize(block);
     }
 }
