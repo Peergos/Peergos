@@ -2,6 +2,7 @@ package peergos.server.util;
 
 import com.sun.net.httpserver.*;
 import peergos.shared.storage.*;
+import peergos.shared.util.*;
 
 import java.io.*;
 import java.net.*;
@@ -68,20 +69,11 @@ public class HttpUtil {
 
             try {
                 InputStream in = conn.getInputStream();
-                ByteArrayOutputStream resp = new ByteArrayOutputStream();
-                byte[] buf = new byte[4096];
-                int r;
-                while ((r = in.read(buf)) >= 0)
-                    resp.write(buf, 0, r);
-                return resp.toByteArray();
+                return Serialize.readFully(in);
             } catch (IOException e) {
                 InputStream err = conn.getErrorStream();
-                ByteArrayOutputStream resp = new ByteArrayOutputStream();
-                byte[] buf = new byte[4096];
-                int r;
-                while ((r = err.read(buf)) >= 0)
-                    resp.write(buf, 0, r);
-                throw new IOException(new String(resp.toByteArray()), e);
+                byte[] errBody = Serialize.readFully(err);
+                throw new IOException(new String(errBody), e);
             }
         } catch (URISyntaxException e) {
             throw new RuntimeException(e);
@@ -102,12 +94,8 @@ public class HttpUtil {
             throw new IllegalStateException("HTTP " + resp);
         } catch (IOException e) {
             InputStream err = conn.getErrorStream();
-            ByteArrayOutputStream resp = new ByteArrayOutputStream();
-            byte[] buf = new byte[4096];
-            int r;
-            while ((r = err.read(buf)) >= 0)
-                resp.write(buf, 0, r);
-            throw new IllegalStateException(new String(resp.toByteArray()));
+            byte[] errBody = Serialize.readFully(err);
+            throw new IllegalStateException(new String(errBody));
         }
     }
 
@@ -134,21 +122,12 @@ public class HttpUtil {
             out.close();
 
             InputStream in = conn.getInputStream();
-            ByteArrayOutputStream resp = new ByteArrayOutputStream();
-            byte[] buf = new byte[4096];
-            int r;
-            while ((r = in.read(buf)) >= 0)
-                resp.write(buf, 0, r);
-            return resp.toByteArray();
+            return Serialize.readFully(in);
         } catch (IOException e) {
             if (conn != null) {
                 InputStream err = conn.getErrorStream();
-                ByteArrayOutputStream resp = new ByteArrayOutputStream();
-                byte[] buf = new byte[4096];
-                int r;
-                while ((r = err.read(buf)) >= 0)
-                    resp.write(buf, 0, r);
-                throw new IOException("HTTP " + conn.getResponseCode() + ": " + conn.getResponseMessage() + "\nbody:\n" + new String(resp.toByteArray()));
+                byte[] errBody = Serialize.readFully(err);
+                throw new IOException("HTTP " + conn.getResponseCode() + ": " + conn.getResponseMessage() + "\nbody:\n" + new String(errBody));
             }
             throw new RuntimeException(e);
         } catch (URISyntaxException e) {
@@ -168,20 +147,12 @@ public class HttpUtil {
             if (code == 204)
                 return;
             InputStream in = conn.getInputStream();
-            ByteArrayOutputStream resp = new ByteArrayOutputStream();
-            byte[] buf = new byte[4096];
-            int r;
-            while ((r = in.read(buf)) >= 0)
-                resp.write(buf, 0, r);
-            throw new IllegalStateException("HTTP " + code + "-" + resp.toByteArray());
+            byte[] body = Serialize.readFully(in);
+            throw new IllegalStateException("HTTP " + code + "-" + body);
         } catch (IOException e) {
             InputStream err = conn.getErrorStream();
-            ByteArrayOutputStream resp = new ByteArrayOutputStream();
-            byte[] buf = new byte[4096];
-            int r;
-            while ((r = err.read(buf)) >= 0)
-                resp.write(buf, 0, r);
-            throw new IllegalStateException(new String(resp.toByteArray()), e);
+            byte[] errBody = Serialize.readFully(err);
+            throw new IllegalStateException(new String(errBody), e);
         }
     }
 }
