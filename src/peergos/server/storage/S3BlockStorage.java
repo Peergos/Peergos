@@ -323,7 +323,8 @@ public class S3BlockStorage implements ContentAddressedStorage {
                                                      PublicKeyHash writer,
                                                      List<byte[]> signatures,
                                                      List<byte[]> blocks,
-                                                     TransactionId tid) {
+                                                     TransactionId tid,
+                                                     ProgressConsumer<Long> progressConsumer) {
         return put(owner, writer, signatures, blocks, true, tid);
     }
 

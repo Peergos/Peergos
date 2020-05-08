@@ -2,6 +2,7 @@ package peergos.shared.storage;
 
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
@@ -46,9 +47,10 @@ public class WriteFilter extends DelegatingStorage {
                                                      PublicKeyHash writer,
                                                      List<byte[]> signatures,
                                                      List<byte[]> blocks,
-                                                     TransactionId tid) {
+                                                     TransactionId tid,
+                                                     ProgressConsumer<Long> progressConsumer) {
         if (! keyFilter.apply(writer, blocks.stream().mapToInt(x -> x.length).sum()))
             throw new IllegalStateException("Key not allowed to write to this server: " + writer);
-        return dht.putRaw(owner, writer, signatures, blocks, tid);
+        return dht.putRaw(owner, writer, signatures, blocks, tid, progressConsumer);
     }
 }

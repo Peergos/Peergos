@@ -115,7 +115,8 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                                                      PublicKeyHash writer,
                                                      List<byte[]> signatures,
                                                      List<byte[]> blocks,
-                                                     TransactionId tid) {
+                                                     TransactionId tid,
+                                                     ProgressConsumer<Long> progressCounter) {
         return onOwnersNode(owner).thenCompose(ownersNode -> {
             if (ownersNode && directWrites) {
                 CompletableFuture<List<Multihash>> res = new CompletableFuture<>();
@@ -125,15 +126,19 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                             for (int i = 0; i < blocks.size(); i++) {
                                 PresignedUrl url = preAuthed.get(i);
                                 Multihash targetName = keyToHash(url.base.substring(url.base.lastIndexOf("/") + 1));
+                                Long size = (long) blocks.get(i).length;
                                 futures.add(direct.put(url.base, blocks.get(i), url.fields)
-                                        .thenApply(x -> targetName));
+                                        .thenApply(x -> {
+                                            progressCounter.accept(size);
+                                            return targetName;
+                                        }));
                             }
                             return Futures.combineAllInOrder(futures);
                         }).thenApply(res::complete)
                         .exceptionally(res::completeExceptionally);
                 return res;
             }
-            return fallback.putRaw(owner, writer, signatures, blocks, tid);
+            return fallback.putRaw(owner, writer, signatures, blocks, tid, progressCounter);
         });
     }
 

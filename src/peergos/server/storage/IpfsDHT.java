@@ -5,6 +5,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multiaddr.MultiAddress;
 import peergos.shared.io.ipfs.multihash.Multihash;
 import peergos.shared.storage.*;
+import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
@@ -74,7 +75,8 @@ public class IpfsDHT implements ContentAddressedStorage {
                                                      PublicKeyHash writer,
                                                      List<byte[]> signatures,
                                                      List<byte[]> blocks,
-                                                     TransactionId tid) {
+                                                     TransactionId tid,
+                                                     ProgressConsumer<Long> progressConsumer) {
         return put(writer, signatures, blocks, "raw", tid);
     }
 

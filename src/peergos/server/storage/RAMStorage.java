@@ -54,7 +54,8 @@ public class RAMStorage implements ContentAddressedStorage {
                                                      PublicKeyHash writer,
                                                      List<byte[]> signatures,
                                                      List<byte[]> blocks,
-                                                     TransactionId tid) {
+                                                     TransactionId tid,
+                                                     ProgressConsumer<Long> progressConsumer) {
         return put(writer, blocks, true);
     }
 
