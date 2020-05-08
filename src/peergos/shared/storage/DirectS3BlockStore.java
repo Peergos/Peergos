@@ -151,30 +151,34 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
         List<Pair<Integer, Multihash>> nonIdentity = indexAndHash.stream()
                 .filter(p -> ! p.right.isIdentity())
                 .collect(Collectors.toList());
-        return fallback.authReads(nonIdentity.stream().map(p -> p.right).collect(Collectors.toList()))
+        CompletableFuture<List<PresignedUrl>> auths = nonIdentity.isEmpty() ?
+                Futures.of(Collections.emptyList()) :
+                fallback.authReads(nonIdentity.stream().map(p -> p.right).collect(Collectors.toList()));
+        return auths
                 .thenCompose(preAuthedGets ->
                         Futures.combineAllInOrder(IntStream.range(0, preAuthedGets.size())
                                 .parallel()
                                 .mapToObj(i -> direct.get(preAuthedGets.get(i).base)
                                         .thenApply(b -> {
+                                            monitor.accept((long)b.length);
                                             Pair<Integer, Multihash> hashAndIndex = nonIdentity.get(i);
                                             return new Pair<>(hashAndIndex.left,
                                                     new FragmentWithHash(new Fragment(b), hashAndIndex.right));
                                         }))
                                 .collect(Collectors.toList()))
                 ).thenApply(retrieved -> {
-                    List<FragmentWithHash> res = new ArrayList<>(hashes.size());
+                    FragmentWithHash[] res = new FragmentWithHash[hashes.size()];
                     for (Pair<Integer, FragmentWithHash> p : retrieved) {
-                        res.set(p.left, p.right);
+                        res[p.left] = p.right;
                     }
-                    for (int i=0; i < res.size(); i++)
-                        if (res.get(i) == null) {
+                    for (int i=0; i < hashes.size(); i++)
+                        if (res[i] == null) {
                             Multihash identity = hashes.get(i);
                             if (! identity.isIdentity())
                                 throw new IllegalStateException("Hash should be identity!");
-                            res.set(i, new FragmentWithHash(new Fragment(identity.getHash()), identity));
+                            res[i] = new FragmentWithHash(new Fragment(identity.getHash()), identity);
                         }
-                    return res;
+                    return Arrays.asList(res);
                 });
     }
 
