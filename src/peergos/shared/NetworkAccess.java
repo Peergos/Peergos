@@ -544,9 +544,10 @@ public class NetworkAccess {
                 .thenApply(committed -> current.withVersion(writer.publicKeyHash, committed.get(writer)));
     }
 
-    public CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Multihash> hashes,
-                                                                       ProgressConsumer<Long> monitor,
-                                                                       double spaceIncreaseFactor) {
+    public static CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Multihash> hashes,
+                                                                              ContentAddressedStorage dhtClient,
+                                                                              ProgressConsumer<Long> monitor,
+                                                                              double spaceIncreaseFactor) {
         List<CompletableFuture<Optional<FragmentWithHash>>> futures = hashes.stream().parallel()
                 .map(h -> (h.isIdentity() ?
                         CompletableFuture.completedFuture(Optional.of(h.getHash())) :
