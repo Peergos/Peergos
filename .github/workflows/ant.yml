@@ -18,6 +18,7 @@ jobs:
     - name: GWT build
       run: ant -noinput -buildfile build.xml gwtc
     - name: Run tests
+      timeout-minutes: 90
       run: ant -noinput -buildfile build.xml test
     - name: Reproducible build
       run: ./reproducible-test.sh
