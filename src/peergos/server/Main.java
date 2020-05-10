@@ -552,11 +552,6 @@ public class Main {
             SocialNetwork local = UserRepository.build(p2pDht, rawSocial);
             SocialNetwork p2pSocial = new ProxyingSocialNetwork(nodeId, core, local, httpSocial);
 
-            Path userPath = a.fromPeergosDir("whitelist_file", "user_whitelist.txt");
-            int delayMs = a.getInt("whitelist_sleep_period", 1000 * 60 * 10);
-
-            new UserFilePinner(userPath, core, p2mMutable, p2pDht, hasher, delayMs).start();
-
             Set<String> adminUsernames = Arrays.asList(a.getArg("admin-usernames").split(","))
                     .stream()
                     .collect(Collectors.toSet());
