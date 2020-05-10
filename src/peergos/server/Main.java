@@ -462,7 +462,7 @@ public class Main {
 
             ContentAddressedStorage localDht;
             if (useIPFS) {
-                boolean enableGC = a.getBoolean("enable-gc", true);
+                boolean enableGC = a.getBoolean("enable-gc", false);
                 ContentAddressedStorage.HTTP ipfs = new ContentAddressedStorage.HTTP(ipfsApi, false);
                 if (enableGC) {
                     GarbageCollector gced = new GarbageCollector(ipfs, a.getInt("gc.period.millis", 60 * 60 * 1000));
