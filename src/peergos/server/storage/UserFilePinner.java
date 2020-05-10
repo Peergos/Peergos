@@ -52,7 +52,8 @@ public class UserFilePinner implements Runnable {
                 Thread.sleep(delayMs);
                 // get usernames
                 List<String> usernames = getUsernames();
-                LOG.info("File pinner read usernames "+ usernames);
+                if (! usernames.isEmpty())
+                    LOG.info("File pinner read usernames "+ usernames);
                 // pin their files
                 for (String username : usernames) {
                     pinAllUserFiles(username, coreNode, mutablePointers, dhtClient, hasher);
