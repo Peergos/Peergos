@@ -494,7 +494,7 @@ public interface ContentAddressedStorage {
             for (byte[] block : blocks) {
                 if (block.length > MAX_BLOCK_SIZE)
                     throw new IllegalStateException("Invalid block size: " + block.length
-                            + ", blocks must be smaller than 2MiB!");
+                            + ", blocks must be smaller than 1MiB!");
             }
             return poster.postMultipart(apiPrefix + BLOCK_PUT + "?format=" + format
                     + "&owner=" + encode(owner.toString())
@@ -508,6 +508,8 @@ public interface ContentAddressedStorage {
                     .thenApply(hashes -> {
                         if (DEBUG_GC)
                             System.out.println("Added blocks: " + hashes);
+                        if (hashes.size() != blocks.size())
+                            throw new IllegalStateException("Incorrect number of hashes returned from bulk write: " + hashes.size() + " != " + blocks.size());
                         return hashes;
                     });
         }
