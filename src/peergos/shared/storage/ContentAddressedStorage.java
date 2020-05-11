@@ -456,7 +456,7 @@ public interface ContentAddressedStorage {
                                                            ProgressConsumer<Long> progressConsumer) {
             // Do 8 fragments per query to spread the 40 fragments in a chunk over the 5 connections in a browser
             // Unless we are talking to IPFS directly, then upload one per query because IPFS doesn't support more than one
-            int FRAGMENTs_PER_QUERY = isPeergosServer ? 8 : 1;
+            int FRAGMENTs_PER_QUERY = isPeergosServer ? 1 : 1;
             List<List<byte[]>> grouped = IntStream.range(0, (blocks.size() + FRAGMENTs_PER_QUERY - 1) / FRAGMENTs_PER_QUERY)
                     .mapToObj(i -> blocks.stream().skip(FRAGMENTs_PER_QUERY * i).limit(FRAGMENTs_PER_QUERY).collect(Collectors.toList()))
                     .collect(Collectors.toList());
