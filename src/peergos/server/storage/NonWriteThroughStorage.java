@@ -2,9 +2,9 @@ package peergos.server.storage;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.io.ipfs.multiaddr.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
+import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
@@ -52,8 +52,9 @@ public class NonWriteThroughStorage implements ContentAddressedStorage {
                                                      PublicKeyHash writer,
                                                      List<byte[]> signatures,
                                                      List<byte[]> blocks,
-                                                     TransactionId tid) {
-        return modifications.putRaw(owner, writer, signatures, blocks, tid);
+                                                     TransactionId tid,
+                                                     ProgressConsumer<Long> progressConsumer) {
+        return modifications.putRaw(owner, writer, signatures, blocks, tid, progressConsumer);
     }
 
     @Override

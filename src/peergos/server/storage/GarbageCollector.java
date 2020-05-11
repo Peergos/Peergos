@@ -6,6 +6,7 @@ import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
+import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
@@ -112,8 +113,9 @@ public class GarbageCollector implements ContentAddressedStorage {
                                                      PublicKeyHash writer,
                                                      List<byte[]> signatures,
                                                      List<byte[]> blocks,
-                                                     TransactionId tid) {
-        return target.putRaw(owner, writer, signatures, blocks, tid);
+                                                     TransactionId tid,
+                                                     ProgressConsumer<Long> progressConsumer) {
+        return target.putRaw(owner, writer, signatures, blocks, tid, progressConsumer);
     }
 
     @Override

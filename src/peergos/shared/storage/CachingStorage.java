@@ -76,8 +76,9 @@ public class CachingStorage extends DelegatingStorage {
                                                      PublicKeyHash writer,
                                                      List<byte[]> signatures,
                                                      List<byte[]> blocks,
-                                                     TransactionId tid) {
-        return target.putRaw(owner, writer, signatures, blocks, tid)
+                                                     TransactionId tid,
+                                                     ProgressConsumer<Long> progressConsumer) {
+        return target.putRaw(owner, writer, signatures, blocks, tid, progressConsumer)
                 .thenApply(res -> {
                     for (int i=0; i < blocks.size(); i++) {
                         byte[] block = blocks.get(i);

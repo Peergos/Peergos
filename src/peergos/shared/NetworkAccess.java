@@ -414,23 +414,16 @@ public class NetworkAccess {
         });
     }
 
-    private CompletableFuture<Multihash> uploadFragment(Fragment f,
-                                                        PublicKeyHash owner,
-                                                        PublicKeyHash writer,
-                                                        byte[] signature,
-                                                        TransactionId tid) {
-        return dhtClient.putRaw(owner, writer, signature, f.data, tid);
-    }
-
     private CompletableFuture<List<Multihash>> bulkUploadFragments(List<Fragment> fragments,
                                                                    PublicKeyHash owner,
                                                                    PublicKeyHash writer,
                                                                    List<byte[]> signatures,
-                                                                   TransactionId tid) {
+                                                                   TransactionId tid,
+                                                                   ProgressConsumer<Long> progressCounter) {
         return dhtClient.putRaw(owner, writer, signatures, fragments
                 .stream()
                 .map(f -> f.data)
-                .collect(Collectors.toList()), tid);
+                .collect(Collectors.toList()), tid, progressCounter);
     }
 
     public CompletableFuture<List<Multihash>> uploadFragments(List<Fragment> fragments,
@@ -440,39 +433,20 @@ public class NetworkAccess {
                                                               TransactionId tid) {
         if (fragments.isEmpty())
             return CompletableFuture.completedFuture(Collections.emptyList());
-        // upload one per query because IPFS doesn't support more than one
-        int FRAGMENTs_PER_QUERY = 1;
-        List<List<Fragment>> grouped = IntStream.range(0, (fragments.size() + FRAGMENTs_PER_QUERY - 1) / FRAGMENTs_PER_QUERY)
-                .mapToObj(i -> fragments.stream().skip(FRAGMENTs_PER_QUERY * i).limit(FRAGMENTs_PER_QUERY).collect(Collectors.toList()))
-                .collect(Collectors.toList());
-        List<Integer> sizes = grouped.stream()
-                .map(frags -> frags.stream().mapToInt(f -> f.data.length).sum())
-                .collect(Collectors.toList());
-        return Futures.combineAllInOrder(grouped.stream()
-                .map(g -> Futures.combineAllInOrder(g.stream()
-                        .map(f -> hasher.sha256(f.data))
-                        .collect(Collectors.toList())))
+
+        return Futures.combineAllInOrder(fragments.stream()
+                .map(f -> hasher.sha256(f.data))
                 .collect(Collectors.toList()))
-                .thenCompose(groupsSignatures -> {
-                    List<CompletableFuture<List<Multihash>>> futures = IntStream.range(0, grouped.size())
-                            .mapToObj(i -> bulkUploadFragments(
-                                    grouped.get(i),
-                                    owner,
-                                    writer.publicKeyHash,
-                                    groupsSignatures.get(i)
-                                            .stream()
-                                            .map(sig -> writer.secret.signMessage(sig))
-                                            .collect(Collectors.toList()),
-                                    tid
-                            ).thenApply(hash -> {
-                                if (progressCounter != null)
-                                    progressCounter.accept((long) sizes.get(i));
-                                return hash;
-                            })).collect(Collectors.toList());
-                    return Futures.combineAllInOrder(futures)
-                            .thenApply(groups -> groups.stream()
-                                    .flatMap(g -> g.stream()).collect(Collectors.toList()));
-                });
+                .thenCompose(hashes -> bulkUploadFragments(
+                        fragments,
+                        owner,
+                        writer.publicKeyHash,
+                        hashes.stream()
+                                .map(writer.secret::signMessage)
+                                .collect(Collectors.toList()),
+                        tid,
+                        progressCounter
+                ));
     }
 
     public CompletableFuture<Snapshot> uploadChunk(Snapshot current,

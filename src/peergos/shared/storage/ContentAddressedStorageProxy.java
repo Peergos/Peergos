@@ -32,7 +32,8 @@ public interface ContentAddressedStorageProxy {
                                               PublicKeyHash writer,
                                               List<byte[]> signatures,
                                               List<byte[]> blocks,
-                                              TransactionId tid);
+                                              TransactionId tid,
+                                              ProgressConsumer<Long> progressConsumer);
 
     CompletableFuture<List<Multihash>> pinUpdate(Multihash targetServerId,
                                                     PublicKeyHash owner,
@@ -110,7 +111,8 @@ public interface ContentAddressedStorageProxy {
                                                          PublicKeyHash writer,
                                                          List<byte[]> signatures,
                                                          List<byte[]> blocks,
-                                                         TransactionId tid) {
+                                                         TransactionId tid,
+                                                         ProgressConsumer<Long> progressConsumer) {
             return put(targetServerId, owner, writer, signatures, blocks, "raw", tid);
         }
 

@@ -174,7 +174,7 @@ public class DHTHandler implements HttpHandler {
                     }
 
                     List<Multihash> hashes = (isRaw ?
-                            dht.putRaw(ownerHash, writerHash, signatures, data, tid) :
+                            dht.putRaw(ownerHash, writerHash, signatures, data, tid, x -> {}) :
                             dht.put(ownerHash, writerHash, signatures, data, tid)).get();
                     List<Object> json = hashes.stream()
                             .map(h -> wrapHash(h))

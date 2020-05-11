@@ -69,8 +69,9 @@ public class HashVerifyingStorage extends DelegatingStorage {
                                                      PublicKeyHash writer,
                                                      List<byte[]> signatures,
                                                      List<byte[]> blocks,
-                                                     TransactionId tid) {
-        return source.putRaw(owner, writer, signatures, blocks, tid)
+                                                     TransactionId tid,
+                                                     ProgressConsumer<Long> progressConsumer) {
+        return source.putRaw(owner, writer, signatures, blocks, tid, progressConsumer)
                 .thenCompose(hashes -> Futures.combineAllInOrder(hashes.stream()
                         .map(h -> verify(blocks.get(hashes.indexOf(h)), h, () -> h))
                         .collect(Collectors.toList())));

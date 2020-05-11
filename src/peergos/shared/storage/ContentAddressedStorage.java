@@ -64,8 +64,9 @@ public interface ContentAddressedStorage {
                                                 PublicKeyHash writer,
                                                 byte[] signature,
                                                 byte[] block,
-                                                TransactionId tid) {
-        return putRaw(owner, writer, Arrays.asList(signature), Arrays.asList(block), tid)
+                                                TransactionId tid,
+                                                ProgressConsumer<Long> progressConsumer) {
+        return putRaw(owner, writer, Arrays.asList(signature), Arrays.asList(block), tid, progressConsumer)
                 .thenApply(hashes -> hashes.get(0));
     }
 
@@ -117,9 +118,15 @@ public interface ContentAddressedStorage {
      * @param signatures
      * @param blocks
      * @param tid
+     * @param progressCounter
      * @return
      */
-    CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks, TransactionId tid);
+    CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner,
+                                              PublicKeyHash writer,
+                                              List<byte[]> signatures,
+                                              List<byte[]> blocks,
+                                              TransactionId tid,
+                                              ProgressConsumer<Long> progressCounter);
 
     /**
      * Get a block of data that is not in ipld cbor format, just raw bytes
@@ -422,7 +429,7 @@ public interface ContentAddressedStorage {
                                                       List<byte[]> signatures,
                                                       List<byte[]> blocks,
                                                       TransactionId tid) {
-            return put(owner, writer, signatures, blocks, "cbor", tid);
+            return bulkPut(owner, writer, signatures, blocks, "cbor", tid, x -> {});
         }
 
         @Override
@@ -430,8 +437,9 @@ public interface ContentAddressedStorage {
                                                          PublicKeyHash writer,
                                                          List<byte[]> signatures,
                                                          List<byte[]> blocks,
-                                                         TransactionId tid) {
-            return put(owner, writer, signatures, blocks, "raw", tid)
+                                                         TransactionId tid,
+                                                         ProgressConsumer<Long> progressConsumer) {
+            return bulkPut(owner, writer, signatures, blocks, "raw", tid, progressConsumer)
                     .thenApply(hashes -> {
                         if (DEBUG_GC)
                             System.out.println("Added blocks: " + hashes);
@@ -439,15 +447,54 @@ public interface ContentAddressedStorage {
                     });
         }
 
+        private CompletableFuture<List<Multihash>> bulkPut(PublicKeyHash owner,
+                                                           PublicKeyHash writer,
+                                                           List<byte[]> signatures,
+                                                           List<byte[]> blocks,
+                                                           String format,
+                                                           TransactionId tid,
+                                                           ProgressConsumer<Long> progressConsumer) {
+            // Do 8 fragments per query to spread the 40 fragments in a chunk over the 5 connections in a browser
+            // Unless we are talking to IPFS directly, then upload one per query because IPFS doesn't support more than one
+            int FRAGMENTs_PER_QUERY = isPeergosServer ? 1 : 1;
+            List<List<byte[]>> grouped = IntStream.range(0, (blocks.size() + FRAGMENTs_PER_QUERY - 1) / FRAGMENTs_PER_QUERY)
+                    .mapToObj(i -> blocks.stream().skip(FRAGMENTs_PER_QUERY * i).limit(FRAGMENTs_PER_QUERY).collect(Collectors.toList()))
+                    .collect(Collectors.toList());
+            List<List<byte[]>> groupedSignatures = IntStream.range(0, (signatures.size() + FRAGMENTs_PER_QUERY - 1) / FRAGMENTs_PER_QUERY)
+                    .mapToObj(i -> signatures.stream().skip(FRAGMENTs_PER_QUERY * i).limit(FRAGMENTs_PER_QUERY).collect(Collectors.toList()))
+                    .collect(Collectors.toList());
+            List<Integer> sizes = grouped.stream()
+                    .map(frags -> frags.stream().mapToInt(f -> f.length).sum())
+                    .collect(Collectors.toList());
+            List<CompletableFuture<List<Multihash>>> futures = IntStream.range(0, grouped.size())
+                    .parallel()
+                    .mapToObj(i -> put(
+                            owner,
+                            writer,
+                            groupedSignatures.get(i),
+                            grouped.get(i),
+                            format,
+                            tid
+                    ).thenApply(hash -> {
+                        if (progressConsumer != null)
+                            progressConsumer.accept((long) sizes.get(i));
+                        return hash;
+                    })).collect(Collectors.toList());
+            return Futures.combineAllInOrder(futures)
+                    .thenApply(groups -> groups.stream()
+                            .flatMap(g -> g.stream()).collect(Collectors.toList()));
+        }
+
         private CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
                                                        PublicKeyHash writer,
                                                        List<byte[]> signatures,
-                                                       List<byte[]> blocks, String format,
+                                                       List<byte[]> blocks,
+                                                       String format,
                                                        TransactionId tid) {
             for (byte[] block : blocks) {
                 if (block.length > MAX_BLOCK_SIZE)
                     throw new IllegalStateException("Invalid block size: " + block.length
-                            + ", blocks must be smaller than 2MiB!");
+                            + ", blocks must be smaller than 1MiB!");
             }
             return poster.postMultipart(apiPrefix + BLOCK_PUT + "?format=" + format
                     + "&owner=" + encode(owner.toString())
@@ -461,6 +508,8 @@ public interface ContentAddressedStorage {
                     .thenApply(hashes -> {
                         if (DEBUG_GC)
                             System.out.println("Added blocks: " + hashes);
+                        if (hashes.size() != blocks.size())
+                            throw new IllegalStateException("Incorrect number of hashes returned from bulk write: " + hashes.size() + " != " + blocks.size());
                         return hashes;
                     });
         }
@@ -608,10 +657,15 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks, TransactionId tid) {
+        public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner,
+                                                         PublicKeyHash writer,
+                                                         List<byte[]> signatures,
+                                                         List<byte[]> blocks,
+                                                         TransactionId tid,
+                                                         ProgressConsumer<Long> progressConsumer) {
             return redirectCall(owner,
-                    () -> local.putRaw(owner, writer, signatures, blocks, tid),
-                    target -> p2p.putRaw(target, owner, writer, signatures, blocks, tid));
+                    () -> local.putRaw(owner, writer, signatures, blocks, tid, progressConsumer),
+                    target -> p2p.putRaw(target, owner, writer, signatures, blocks, tid, progressConsumer));
         }
 
         @Override

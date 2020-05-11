@@ -462,7 +462,7 @@ public class Main {
 
             ContentAddressedStorage localDht;
             if (useIPFS) {
-                boolean enableGC = a.getBoolean("enable-gc", true);
+                boolean enableGC = a.getBoolean("enable-gc", false);
                 ContentAddressedStorage.HTTP ipfs = new ContentAddressedStorage.HTTP(ipfsApi, false);
                 if (enableGC) {
                     GarbageCollector gced = new GarbageCollector(ipfs, a.getInt("gc.period.millis", 60 * 60 * 1000));
@@ -551,11 +551,6 @@ public class Main {
             JdbcIpnsAndSocial rawSocial = new JdbcIpnsAndSocial(socialDatabase, sqlCommands);
             SocialNetwork local = UserRepository.build(p2pDht, rawSocial);
             SocialNetwork p2pSocial = new ProxyingSocialNetwork(nodeId, core, local, httpSocial);
-
-            Path userPath = a.fromPeergosDir("whitelist_file", "user_whitelist.txt");
-            int delayMs = a.getInt("whitelist_sleep_period", 1000 * 60 * 10);
-
-            new UserFilePinner(userPath, core, p2mMutable, p2pDht, hasher, delayMs).start();
 
             Set<String> adminUsernames = Arrays.asList(a.getArg("admin-usernames").split(","))
                     .stream()
