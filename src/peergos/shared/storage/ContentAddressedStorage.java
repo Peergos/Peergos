@@ -380,12 +380,14 @@ public interface ContentAddressedStorage {
                                                                 TransactionId tid) {
             if (! isPeergosServer)
                 return Futures.errored(new IllegalStateException("Cannot auth writes when not talking to a Peergos server!"));
-            return poster.get(apiPrefix + AUTH_WRITES + "?owner=" + encode(owner.toString())
+            List<Long> sizes = blockSizes.stream()
+                    .map(Integer::longValue)
+                    .collect(Collectors.toList());
+            WriteAuthRequest req = new WriteAuthRequest(signedHashes, sizes);
+            return poster.postUnzip(apiPrefix + AUTH_WRITES + "?owner=" + encode(owner.toString())
                     + "&writer=" + encode(writer.toString())
                     + "&transaction=" + encode(tid.toString())
-                    + "&raw=" + isRaw
-                    + "&signatures=" + signedHashes.stream().map(ArrayOps::bytesToHex).collect(Collectors.joining(","))
-                    + "&sizes=" + blockSizes.stream().map(Object::toString).collect(Collectors.joining(",")))
+                    + "&raw=" + isRaw, req.serialize())
                     .thenApply(raw -> ((CborObject.CborList)CborObject.fromByteArray(raw)).value
                             .stream()
                             .map(PresignedUrl::fromCbor)

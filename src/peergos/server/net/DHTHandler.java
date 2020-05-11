@@ -10,10 +10,10 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.api.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.io.ipfs.cid.*;
-import peergos.shared.storage.ContentAddressedStorage;
+import peergos.shared.storage.*;
 import com.sun.net.httpserver.*;
 import peergos.shared.util.*;
-import peergos.shared.storage.TransactionId;
+
 import static peergos.shared.storage.ContentAddressedStorage.HTTP.*;
 
 import java.io.*;
@@ -79,11 +79,11 @@ public class DHTHandler implements HttpHandler {
                     PublicKeyHash ownerHash = PublicKeyHash.fromString(last.apply("owner"));
                     TransactionId tid = new TransactionId(last.apply("transaction"));
                     PublicKeyHash writerHash = PublicKeyHash.fromString(last.apply("writer"));
-                    List<byte[]> signatures = Arrays.stream(last.apply("signatures").split(","))
-                            .map(ArrayOps::hexToBytes)
-                            .collect(Collectors.toList());
-                    List<Integer> blockSizes = Arrays.stream(last.apply("sizes").split(","))
-                            .map(Integer::parseInt)
+                    byte[] reqBody = Serialize.readFully(httpExchange.getRequestBody());
+                    WriteAuthRequest req = WriteAuthRequest.fromCbor(CborObject.fromByteArray(reqBody));
+                    List<byte[]> signatures = req.signatures;
+                    List<Integer> blockSizes = req.sizes.stream()
+                            .map(x -> x.intValue())
                             .collect(Collectors.toList());
                     boolean isRaw = Boolean.parseBoolean(last.apply("raw"));
                     dht.authWrites(ownerHash, writerHash, signatures, blockSizes, isRaw, tid).thenAccept(res -> {
