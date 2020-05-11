@@ -1,9 +1,19 @@
 package peergos.shared.util;
 
 import java.util.*;
+import java.util.stream.*;
 
 public class ArrayOps
 {
+    public static <X> List<List<X>> group(List<X> x, int maxGroupSize) {
+        return IntStream.range(0, (x.size() + maxGroupSize - 1) / maxGroupSize)
+                .mapToObj(i -> x.stream()
+                        .skip(maxGroupSize * i)
+                        .limit(maxGroupSize)
+                        .collect(Collectors.toList()))
+                .collect(Collectors.toList());
+    }
+
     public static byte[] concat(byte[] one, byte[] two)
     {
         byte[] res = new byte[one.length+two.length];

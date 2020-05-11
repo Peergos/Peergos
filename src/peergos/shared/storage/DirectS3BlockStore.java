@@ -119,27 +119,53 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                                                      ProgressConsumer<Long> progressCounter) {
         return onOwnersNode(owner).thenCompose(ownersNode -> {
             if (ownersNode && directWrites) {
-                CompletableFuture<List<Multihash>> res = new CompletableFuture<>();
-                fallback.authWrites(owner, writer, signatures, blocks.stream().map(x -> x.length).collect(Collectors.toList()), true, tid)
-                        .thenCompose(preAuthed -> {
-                            List<CompletableFuture<Multihash>> futures = new ArrayList<>();
-                            for (int i = 0; i < blocks.size(); i++) {
-                                PresignedUrl url = preAuthed.get(i);
-                                Multihash targetName = keyToHash(url.base.substring(url.base.lastIndexOf("/") + 1));
-                                Long size = (long) blocks.get(i).length;
-                                futures.add(direct.put(url.base, blocks.get(i), url.fields)
-                                        .thenApply(x -> {
-                                            progressCounter.accept(size);
-                                            return targetName;
-                                        }));
-                            }
-                            return Futures.combineAllInOrder(futures);
-                        }).thenApply(res::complete)
-                        .exceptionally(res::completeExceptionally);
-                return res;
+                // we have a trade-off here. The first block upload cannot start until the auth call returns.
+                // So we only auth 6 at once, to max out the 6 connections per host in a browser
+                int FRAGMENTS_PER_AUTH_QUERY = 6;
+                List<List<byte[]>> grouped = ArrayOps.group(blocks, FRAGMENTS_PER_AUTH_QUERY);
+                List<List<byte[]>> groupedSignatures = ArrayOps.group(signatures, FRAGMENTS_PER_AUTH_QUERY);
+                List<CompletableFuture<List<Multihash>>> futures = IntStream.range(0, grouped.size())
+                        .parallel()
+                        .mapToObj(i -> bulkPutRaw(
+                                owner,
+                                writer,
+                                groupedSignatures.get(i),
+                                grouped.get(i),
+                                tid,
+                                progressCounter
+                        )).collect(Collectors.toList());
+                return Futures.combineAllInOrder(futures)
+                        .thenApply(groups -> groups.stream()
+                                .flatMap(g -> g.stream()).collect(Collectors.toList()));
             }
             return fallback.putRaw(owner, writer, signatures, blocks, tid, progressCounter);
         });
+    }
+
+    private CompletableFuture<List<Multihash>> bulkPutRaw(PublicKeyHash owner,
+                                                          PublicKeyHash writer,
+                                                          List<byte[]> signatures,
+                                                          List<byte[]> blocks,
+                                                          TransactionId tid,
+                                                          ProgressConsumer<Long> progressCounter) {
+        CompletableFuture<List<Multihash>> res = new CompletableFuture<>();
+        fallback.authWrites(owner, writer, signatures, blocks.stream().map(x -> x.length).collect(Collectors.toList()), true, tid)
+                .thenCompose(preAuthed -> {
+                    List<CompletableFuture<Multihash>> futures = new ArrayList<>();
+                    for (int i = 0; i < blocks.size(); i++) {
+                        PresignedUrl url = preAuthed.get(i);
+                        Multihash targetName = keyToHash(url.base.substring(url.base.lastIndexOf("/") + 1));
+                        Long size = (long) blocks.get(i).length;
+                        futures.add(direct.put(url.base, blocks.get(i), url.fields)
+                                .thenApply(x -> {
+                                    progressCounter.accept(size);
+                                    return targetName;
+                                }));
+                    }
+                    return Futures.combineAllInOrder(futures);
+                }).thenApply(res::complete)
+                .exceptionally(res::completeExceptionally);
+        return res;
     }
 
     @Override
