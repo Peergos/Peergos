@@ -64,10 +64,10 @@ public class IpfsDHT implements ContentAddressedStorage {
     @Override
     public CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
                                                   PublicKeyHash writer,
-                                                  List<byte[]> signatures,
+                                                  List<byte[]> signedHashes,
                                                   List<byte[]> blocks,
                                                   TransactionId tid) {
-        return put(writer, signatures, blocks, "cbor", tid);
+        return put(writer, signedHashes, blocks, "cbor", tid);
     }
 
     @Override

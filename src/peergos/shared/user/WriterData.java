@@ -263,6 +263,7 @@ public class WriterData implements Cborable {
 
         return hasher.sha256(raw)
                 .thenCompose(hash -> immutable.put(owner, signer.publicKeyHash, signer.secret.signMessage(hash), raw, tid))
+                .thenCompose(blobHash -> immutable.flush().thenApply(x -> blobHash))
                 .thenCompose(blobHash -> {
                     MaybeMultihash newHash = MaybeMultihash.of(blobHash);
                     if (newHash.equals(currentHash)) {

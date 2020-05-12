@@ -65,10 +65,10 @@ public class FileContentAddressedStorage implements ContentAddressedStorage {
     @Override
     public CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
                                                   PublicKeyHash writer,
-                                                  List<byte[]> signatures,
+                                                  List<byte[]> signedHashes,
                                                   List<byte[]> blocks,
                                                   TransactionId tid) {
-        return put(owner, writer, signatures, blocks, false, tid);
+        return put(owner, writer, signedHashes, blocks, false, tid);
     }
 
     @Override

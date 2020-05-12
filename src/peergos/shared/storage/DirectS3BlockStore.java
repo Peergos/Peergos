@@ -71,13 +71,13 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
     @Override
     public CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
                                                   PublicKeyHash writer,
-                                                  List<byte[]> signatures,
+                                                  List<byte[]> signedHashes,
                                                   List<byte[]> blocks,
                                                   TransactionId tid) {
         return onOwnersNode(owner).thenCompose(ownersNode -> {
             if (ownersNode && directWrites) {
                 CompletableFuture<List<Multihash>> res = new CompletableFuture<>();
-                fallback.authWrites(owner, writer, signatures, blocks.stream().map(x -> x.length).collect(Collectors.toList()), false, tid)
+                fallback.authWrites(owner, writer, signedHashes, blocks.stream().map(x -> x.length).collect(Collectors.toList()), false, tid)
                         .thenCompose(preAuthed -> {
                             List<CompletableFuture<Multihash>> futures = new ArrayList<>();
                             for (int i = 0; i < blocks.size(); i++) {
@@ -91,7 +91,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                         .exceptionally(res::completeExceptionally);
                 return res;
             }
-            return fallback.put(owner, writer, signatures, blocks, tid);
+            return fallback.put(owner, writer, signedHashes, blocks, tid);
         });
     }
 
