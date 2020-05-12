@@ -3,14 +3,13 @@ package peergos.shared.storage;
 import peergos.shared.cbor.CborObject;
 import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.io.ipfs.multihash.Multihash;
-import peergos.shared.user.NativeJSCallback;
+import peergos.shared.user.NativeJSScheduler;
 import peergos.shared.user.fs.FragmentWithHash;
 import peergos.shared.util.ProgressConsumer;
 
 import java.util.List;
 import java.util.Optional;
 import java.util.Random;
-import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -19,30 +18,25 @@ public class RetryStorage implements ContentAddressedStorage {
 
     private static final int RANDOM_SEED = 987447;
     private static Random random = new Random(RANDOM_SEED);
-    private NativeJSCallback callback = new NativeJSCallback();
+    private NativeJSScheduler callback = new NativeJSScheduler();
     private final ContentAddressedStorage target;
 
     public RetryStorage(ContentAddressedStorage target) {
         this.target = target;
     }
 
-    private <Y> void retryAfter(Callable<CompletableFuture<Y>> method, int milliseconds) {
+    private <Y> void retryAfter(Supplier<CompletableFuture<Y>> method, int milliseconds) {
         long before = System.currentTimeMillis();
         try {
             Thread.sleep(milliseconds + 100); //+100 just to be safe from OS timer precision
         } catch (InterruptedException ie) {}
         long after = System.currentTimeMillis();
         long duration = after - before;
-        try {
             if(duration < milliseconds) { //must be javascript as Thread sleep is a noop
                 callback.callAfterDelay(method, milliseconds);
             } else {
-                method.call();
+                method.get();
             }
-        } catch (Exception e) {
-            e.printStackTrace();
-            throw new Error("Not expected! error:" + e.getMessage());
-        }
     }
 
     private int jitter(int minMilliseconds, int rangeMilliseconds){

@@ -19,9 +19,6 @@ public class RetryStorageTests {
     public class FailingStorage implements ContentAddressedStorage {
         private int counter = 1;
         private final int retryLimit;
-        public FailingStorage() {
-            this(3);
-        }
         public FailingStorage(int retryLimit) {
             this.retryLimit = retryLimit;
         }
@@ -174,7 +171,7 @@ public class RetryStorageTests {
     }
     @Test
     public void retryMethodSuccess() {
-        ContentAddressedStorage storage = new RetryStorage(new FailingStorage());
+        ContentAddressedStorage storage = new RetryStorage(new FailingStorage(3));
 
         Boolean result = storage.gc().join();
         Assert.assertNotNull("Retry should succeed", result);
