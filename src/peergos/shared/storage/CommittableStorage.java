@@ -20,9 +20,12 @@ public class CommittableStorage extends DelegatingStorage {
         this.target = target;
     }
 
-    public synchronized CompletableFuture<Boolean> flush() {
-        List<PutArgs> local = new ArrayList<>(pending);
-        pending.clear();
+    public CompletableFuture<Boolean> flush() {
+        List<PutArgs> local;
+        synchronized (pending) {
+            local = new ArrayList<>(pending);
+            pending.clear();
+        }
         List<CompletableFuture<Multihash>> uploads = local.stream()
                 .map(p -> target.put(p.owner, p.writer, p.signature, p.block, p.tid)
                         .thenApply(h -> {
