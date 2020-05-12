@@ -63,21 +63,17 @@ public class RetryStorage implements ContentAddressedStorage {
         CompletableFuture<Y> res = new CompletableFuture<>();
         Function<Integer, CompletableFuture<Y>> compose = recurse(
             (i, f) -> {
-                if(i > 3){
-                    return res;
-                } else {
-                    func.get()
-                            .thenAccept(res::complete)
-                            .exceptionally(e ->  {
-                                if(i == 3) {
-                                    res.completeExceptionally(e);
-                                } else {
-                                    retryAfter(() -> f.apply(i + 1, f), jitter(i * 1000, 1000));
-                                }
-                                return null;
-                            });
-                    return res;
-                }
+                func.get()
+                        .thenAccept(res::complete)
+                        .exceptionally(e ->  {
+                            if(i == 3) {
+                                res.completeExceptionally(e);
+                            } else {
+                                retryAfter(() -> f.apply(i + 1, f), jitter(i * 1000, 1000));
+                            }
+                            return null;
+                        });
+                return res;
             });
         compose.apply(1);
         return res;
