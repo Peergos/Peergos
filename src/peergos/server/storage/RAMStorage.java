@@ -43,7 +43,7 @@ public class RAMStorage implements ContentAddressedStorage {
     @Override
     public CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
                                                   PublicKeyHash writer,
-                                                  List<byte[]> signatures,
+                                                  List<byte[]> signedHashes,
                                                   List<byte[]> blocks,
                                                   TransactionId tid) {
         return put(writer, blocks, false);

@@ -47,10 +47,10 @@ public class HashVerifyingStorage extends DelegatingStorage {
     @Override
     public CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
                                                   PublicKeyHash writer,
-                                                  List<byte[]> signatures,
+                                                  List<byte[]> signedHashes,
                                                   List<byte[]> blocks,
                                                   TransactionId tid) {
-        return source.put(owner, writer, signatures, blocks, tid)
+        return source.put(owner, writer, signedHashes, blocks, tid)
                 .thenCompose(hashes -> Futures.combineAllInOrder(hashes.stream()
                         .map(h -> verify(blocks.get(hashes.indexOf(h)), h, () -> h))
                         .collect(Collectors.toList())));

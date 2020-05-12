@@ -70,6 +70,10 @@ public interface ContentAddressedStorage {
                 .thenApply(hashes -> hashes.get(0));
     }
 
+    default CompletableFuture<Boolean> flush() {
+        return Futures.of(true);
+    }
+
     /**
      *
      * @return The identity (hash of the public key) of the storage node we are talking to
@@ -97,12 +101,16 @@ public interface ContentAddressedStorage {
      *
      * @param owner The owner of these blocks of data
      * @param writer The public signing key authorizing these writes, which must be owned by the owner key
-     * @param signatures The signatures of each block being written (by the writer)
+     * @param signedHashes The signatures of the sha256 of each block being written (by the writer)
      * @param blocks The blocks to write
      * @param tid The transaction to group these writes under
      * @return
      */
-    CompletableFuture<List<Multihash>> put(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks, TransactionId tid);
+    CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
+                                           PublicKeyHash writer,
+                                           List<byte[]> signedHashes,
+                                           List<byte[]> blocks,
+                                           TransactionId tid);
 
     /**
      *
@@ -428,10 +436,10 @@ public interface ContentAddressedStorage {
         @Override
         public CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
                                                       PublicKeyHash writer,
-                                                      List<byte[]> signatures,
+                                                      List<byte[]> signedHashes,
                                                       List<byte[]> blocks,
                                                       TransactionId tid) {
-            return bulkPut(owner, writer, signatures, blocks, "cbor", tid, x -> {});
+            return bulkPut(owner, writer, signedHashes, blocks, "cbor", tid, x -> {});
         }
 
         @Override
@@ -648,10 +656,10 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<List<Multihash>> put(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks, TransactionId tid) {
+        public CompletableFuture<List<Multihash>> put(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signedHashes, List<byte[]> blocks, TransactionId tid) {
             return redirectCall(owner,
-                () -> local.put(owner, writer, signatures, blocks, tid),
-                target -> p2p.put(target, owner, writer, signatures, blocks, tid));
+                () -> local.put(owner, writer, signedHashes, blocks, tid),
+                target -> p2p.put(target, owner, writer, signedHashes, blocks, tid));
         }
 
         @Override

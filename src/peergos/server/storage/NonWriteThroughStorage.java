@@ -41,10 +41,10 @@ public class NonWriteThroughStorage implements ContentAddressedStorage {
     @Override
     public CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
                                                   PublicKeyHash writer,
-                                                  List<byte[]> signatures,
+                                                  List<byte[]> signedHashes,
                                                   List<byte[]> blocks,
                                                   TransactionId tid) {
-        return modifications.put(owner, writer, signatures, blocks, tid);
+        return modifications.put(owner, writer, signedHashes, blocks, tid);
     }
 
     @Override

@@ -37,8 +37,8 @@ public abstract class DelegatingStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> put(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks, TransactionId tid) {
-        return target.put(owner, writer, signatures, blocks, tid);
+    public CompletableFuture<List<Multihash>> put(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signedHashes, List<byte[]> blocks, TransactionId tid) {
+        return target.put(owner, writer, signedHashes, blocks, tid);
     }
 
     @Override
@@ -54,6 +54,11 @@ public abstract class DelegatingStorage implements ContentAddressedStorage {
                                                      TransactionId tid,
                                                      ProgressConsumer<Long> progressCounter) {
         return target.putRaw(owner, writer, signatures, blocks, tid, progressCounter);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> flush() {
+        return target.flush();
     }
 
     @Override

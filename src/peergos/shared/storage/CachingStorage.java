@@ -27,10 +27,10 @@ public class CachingStorage extends DelegatingStorage {
     @Override
     public CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
                                                   PublicKeyHash writer,
-                                                  List<byte[]> signatures,
+                                                  List<byte[]> signedHashes,
                                                   List<byte[]> blocks,
                                                   TransactionId tid) {
-        return target.put(owner, writer, signatures, blocks, tid)
+        return target.put(owner, writer, signedHashes, blocks, tid)
                 .thenApply(res -> {
                     for (int i=0; i < blocks.size(); i++) {
                         byte[] block = blocks.get(i);
