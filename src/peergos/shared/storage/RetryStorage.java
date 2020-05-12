@@ -29,7 +29,7 @@ public class RetryStorage implements ContentAddressedStorage {
     private <Y> void retryAfter(Callable<CompletableFuture<Y>> method, int milliseconds) {
         long before = System.currentTimeMillis();
         try {
-            Thread.sleep(milliseconds);
+            Thread.sleep(milliseconds + 100); //+100 just to be safe from OS timer precision
         } catch (InterruptedException ie) {}
         long after = System.currentTimeMillis();
         long duration = after - before;
@@ -49,30 +49,30 @@ public class RetryStorage implements ContentAddressedStorage {
         return minMilliseconds + random.nextInt(rangeMilliseconds);
     }
 
-    public interface Recursable<T, U, X> {
+    private interface Recursable<T, U, X> {
         U apply(T t, Recursable<T, U, X> r);
     }
 
-    public static <T, U, X> Function<T, U> recurse(Recursable<T, U, X> f) {
+    private static <T, U, X> Function<T, U> recurse(Recursable<T, U, X> f) {
         return t -> f.apply(t, f);
     }
 
 
     public <Y> CompletableFuture<Y> runWithRetry(Supplier<CompletableFuture<Y>> func) {
-
+        System.out.println("calling....");
         CompletableFuture<Y> res = new CompletableFuture<>();
         Function<Integer, CompletableFuture<Y>> compose = recurse(
             (i, f) -> {
                 func.get()
-                        .thenAccept(res::complete)
-                        .exceptionally(e ->  {
-                            if(i == 3) {
-                                res.completeExceptionally(e);
-                            } else {
-                                retryAfter(() -> f.apply(i + 1, f), jitter(i * 1000, 1000));
-                            }
-                            return null;
-                        });
+                    .thenAccept(res::complete)
+                    .exceptionally(e ->  {
+                        if(i == 3) {
+                            res.completeExceptionally(e);
+                        } else {
+                            retryAfter(() -> f.apply(i + 1, f), jitter(i * 1000, 1000));
+                        }
+                        return null;
+                    });
                 return res;
             });
         compose.apply(1);
@@ -80,31 +80,31 @@ public class RetryStorage implements ContentAddressedStorage {
     }
     @Override
     public CompletableFuture<BlockStoreProperties> blockStoreProperties() {
-        return runWithRetry(target::blockStoreProperties);
+        return runWithRetry(() -> target.blockStoreProperties());
     }
     @Override
     public CompletableFuture<Multihash> id() {
-        return runWithRetry(target::id);
+        return runWithRetry(() -> target.id());
     }
 
     @Override
     public CompletableFuture<TransactionId> startTransaction(PublicKeyHash owner) {
-        return target.startTransaction(owner);
+        return runWithRetry(() -> target.startTransaction(owner));
     }
 
     @Override
     public CompletableFuture<Boolean> closeTransaction(PublicKeyHash owner, TransactionId tid) {
-        return target.closeTransaction(owner, tid);
+        return runWithRetry(() -> target.closeTransaction(owner, tid));
     }
 
     @Override
     public CompletableFuture<List<Multihash>> put(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks, TransactionId tid) {
-        return target.put(owner, writer, signatures, blocks, tid);
+        return runWithRetry(() -> target.put(owner, writer, signatures, blocks, tid));
     }
 
     @Override
     public CompletableFuture<Optional<CborObject>> get(Multihash hash) {
-        return target.get(hash);
+        return runWithRetry(() -> target.get(hash));
     }
 
     @Override
@@ -114,54 +114,54 @@ public class RetryStorage implements ContentAddressedStorage {
                                                      List<byte[]> blocks,
                                                      TransactionId tid,
                                                      ProgressConsumer<Long> progressCounter) {
-        return target.putRaw(owner, writer, signatures, blocks, tid, progressCounter);
+        return runWithRetry(() -> target.putRaw(owner, writer, signatures, blocks, tid, progressCounter));
     }
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash) {
-        return target.getRaw(hash);
+        return runWithRetry(() -> target.getRaw(hash));
     }
 
     @Override
     public CompletableFuture<List<Multihash>> pinUpdate(PublicKeyHash owner, Multihash existing, Multihash updated) {
-        return target.pinUpdate(owner, existing, updated);
+        return runWithRetry(() -> target.pinUpdate(owner, existing, updated));
     }
 
     @Override
     public CompletableFuture<List<Multihash>> recursivePin(PublicKeyHash owner, Multihash hash) {
-        return target.recursivePin(owner, hash);
+        return runWithRetry(() -> target.recursivePin(owner, hash));
     }
 
     @Override
     public CompletableFuture<List<Multihash>> recursiveUnpin(PublicKeyHash owner, Multihash hash) {
-        return target.recursiveUnpin(owner, hash);
+        return runWithRetry(() -> target.recursiveUnpin(owner, hash));
     }
 
     @Override
     public CompletableFuture<Boolean> gc() {
-        return runWithRetry(target::gc);
+        return runWithRetry(() -> target.gc());
     }
 
     @Override
     public CompletableFuture<List<Multihash>> getLinks(Multihash root) {
-        return target.getLinks(root);
+        return runWithRetry(() -> target.getLinks(root));
     }
 
     @Override
     public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
-        return target.getSize(block);
+        return runWithRetry(() -> target.getSize(block));
     }
 
     @Override
     public CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Multihash> hashes,
                                                                        ProgressConsumer<Long> monitor,
                                                                        double spaceIncreaseFactor) {
-        return target.downloadFragments(hashes, monitor, spaceIncreaseFactor);
+        return runWithRetry(() -> target.downloadFragments(hashes, monitor, spaceIncreaseFactor));
     }
 
     @Override
     public CompletableFuture<List<PresignedUrl>> authReads(List<Multihash> blocks) {
-        return target.authReads(blocks);
+        return runWithRetry(() -> target.authReads(blocks));
     }
 
     @Override
@@ -171,6 +171,6 @@ public class RetryStorage implements ContentAddressedStorage {
                                                             List<Integer> blockSizes,
                                                             boolean isRaw,
                                                             TransactionId tid) {
-        return target.authWrites(owner, writer, signedHashes, blockSizes, isRaw, tid);
+        return runWithRetry(() -> target.authWrites(owner, writer, signedHashes, blockSizes, isRaw, tid));
     }
 }
