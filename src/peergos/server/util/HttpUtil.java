@@ -1,6 +1,8 @@
 package peergos.server.util;
 
 import com.sun.net.httpserver.*;
+import peergos.shared.storage.*;
+import peergos.shared.util.*;
 
 import java.io.*;
 import java.net.*;
@@ -52,6 +54,105 @@ public class HttpUtil {
             exchange.sendResponseHeaders(400, 0);
         } catch (IOException e) {
             Logging.LOG().log(Level.WARNING, e.getMessage(), e);
+        }
+    }
+
+    public static byte[] get(PresignedUrl url) throws IOException {
+        try {
+            HttpURLConnection conn = (HttpURLConnection) new URI(url.base).toURL().openConnection();
+            conn.setConnectTimeout(10_000);
+            conn.setReadTimeout(60_000);
+            conn.setRequestMethod("GET");
+            for (Map.Entry<String, String> e : url.fields.entrySet()) {
+                conn.setRequestProperty(e.getKey(), e.getValue());
+            }
+
+            try {
+                InputStream in = conn.getInputStream();
+                return Serialize.readFully(in);
+            } catch (IOException e) {
+                InputStream err = conn.getErrorStream();
+                byte[] errBody = Serialize.readFully(err);
+                throw new IOException(new String(errBody), e);
+            }
+        } catch (URISyntaxException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static Map<String, List<String>> head(PresignedUrl head) throws Exception {
+        HttpURLConnection conn = (HttpURLConnection) new URI(head.base).toURL().openConnection();
+        conn.setRequestMethod("HEAD");
+        for (Map.Entry<String, String> e : head.fields.entrySet()) {
+            conn.setRequestProperty(e.getKey(), e.getValue());
+        }
+
+        try {
+            int resp = conn.getResponseCode();
+            if (resp == 200)
+                return conn.getHeaderFields();
+            throw new IllegalStateException("HTTP " + resp);
+        } catch (IOException e) {
+            InputStream err = conn.getErrorStream();
+            byte[] errBody = Serialize.readFully(err);
+            throw new IllegalStateException(new String(errBody));
+        }
+    }
+
+    public static byte[] put(PresignedUrl target, byte[] body) throws IOException {
+        return putOrPost("PUT", target, body);
+    }
+
+    public static byte[] post(PresignedUrl target, byte[] body) throws IOException {
+        return putOrPost("POST", target, body);
+    }
+
+    private static byte[] putOrPost(String method, PresignedUrl target, byte[] body) throws IOException {
+        HttpURLConnection conn = null;
+        try {
+            conn = (HttpURLConnection) new URI(target.base).toURL().openConnection();
+            conn.setRequestMethod(method);
+            for (Map.Entry<String, String> e : target.fields.entrySet()) {
+                conn.setRequestProperty(e.getKey(), e.getValue());
+            }
+            conn.setDoOutput(true);
+            OutputStream out = conn.getOutputStream();
+            out.write(body);
+            out.flush();
+            out.close();
+
+            InputStream in = conn.getInputStream();
+            return Serialize.readFully(in);
+        } catch (IOException e) {
+            if (conn != null) {
+                InputStream err = conn.getErrorStream();
+                byte[] errBody = Serialize.readFully(err);
+                throw new IOException("HTTP " + conn.getResponseCode() + ": " + conn.getResponseMessage() + "\nbody:\n" + new String(errBody));
+            }
+            throw new RuntimeException(e);
+        } catch (URISyntaxException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static void delete(PresignedUrl target) throws Exception {
+        HttpURLConnection conn = (HttpURLConnection) new URI(target.base).toURL().openConnection();
+        conn.setRequestMethod("DELETE");
+        for (Map.Entry<String, String> e : target.fields.entrySet()) {
+            conn.setRequestProperty(e.getKey(), e.getValue());
+        }
+
+        try {
+            int code = conn.getResponseCode();
+            if (code == 204)
+                return;
+            InputStream in = conn.getInputStream();
+            byte[] body = Serialize.readFully(in);
+            throw new IllegalStateException("HTTP " + code + "-" + body);
+        } catch (IOException e) {
+            InputStream err = conn.getErrorStream();
+            byte[] errBody = Serialize.readFully(err);
+            throw new IllegalStateException(new String(errBody), e);
         }
     }
 }

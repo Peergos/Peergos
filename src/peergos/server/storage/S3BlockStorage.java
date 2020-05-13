@@ -1,10 +1,5 @@
 package peergos.server.storage;
 
-import com.amazonaws.*;
-import com.amazonaws.auth.*;
-import com.amazonaws.client.builder.*;
-import com.amazonaws.services.s3.*;
-import com.amazonaws.services.s3.model.*;
 import peergos.server.*;
 import peergos.server.corenode.*;
 import peergos.server.sql.*;
@@ -49,8 +44,7 @@ public class S3BlockStorage implements ContentAddressedStorage {
             .register();
 
     private final Multihash id;
-    private final AmazonS3 s3Client;
-    private final String region, bucket, folder, regionEndpoint;
+    private final String region, bucket, folder, regionEndpoint, host;
     private final String accessKeyId, secretKey;
     private final BlockStoreProperties props;
     private final TransactionStore transactions;
@@ -66,13 +60,9 @@ public class S3BlockStorage implements ContentAddressedStorage {
         this.bucket = config.bucket;
         this.folder = config.path.isEmpty() || config.path.endsWith("/") ? config.path : config.path + "/";
         this.regionEndpoint = config.regionEndpoint;
+        this.host = bucket + "." + regionEndpoint;
         this.accessKeyId = config.accessKey;
         this.secretKey = config.secretKey;
-        AmazonS3ClientBuilder builder = AmazonS3ClientBuilder.standard()
-                .withEndpointConfiguration(new AwsClientBuilder.EndpointConfiguration(config.regionEndpoint, config.region))
-                .withCredentials(new AWSStaticCredentialsProvider(
-                        new BasicAWSCredentials(config.accessKey, config.secretKey)));
-        s3Client = builder.build();
         LOG.info("Using S3 Block Storage at " + config.regionEndpoint + ", bucket " + config.bucket + ", path: " + config.path);
         this.props = props;
         this.transactions = transactions;
@@ -153,20 +143,16 @@ public class S3BlockStorage implements ContentAddressedStorage {
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash) {
-        Optional<byte[]> fromS3 = map(hash, h -> {
-            GetObjectRequest get = new GetObjectRequest(bucket, folder + hashToKey(hash));
-            Histogram.Timer readTimer = readTimerLog.labels("read").startTimer();
-            try (S3Object res = s3Client.getObject(get); DataInputStream din = new DataInputStream(new BufferedInputStream(res.getObjectContent()))) {
-                return Optional.of(Serialize.readFully(din));
-            } catch (IOException e) {
-                throw new RuntimeException(e.getMessage(), e);
-            } finally {
-                readTimer.observeDuration();
-            }
-        }, e -> Optional.empty());
-        if (fromS3.isPresent())
-            return Futures.of(fromS3);
-        return p2pFallback.getRaw(hash);
+        PresignedUrl getUrl = S3Request.preSignGet(folder + hashToKey(hash), Optional.of(600),
+                ZonedDateTime.now(), host, region, accessKeyId, secretKey);
+        Histogram.Timer readTimer = readTimerLog.labels("read").startTimer();
+        try {
+            return Futures.of(Optional.of(HttpUtil.get(getUrl)));
+        } catch (IOException e) {
+            return p2pFallback.getRaw(hash);
+        } finally {
+            readTimer.observeDuration();
+        }
     }
 
     @Override
@@ -247,49 +233,31 @@ public class S3BlockStorage implements ContentAddressedStorage {
 
     @Override
     public CompletableFuture<Optional<Integer>> getSize(Multihash hash) {
-        return Futures.of(map(hash, h -> {
-            if (hash.isIdentity()) // Identity hashes are not actually stored explicitly
-                return Optional.of(0);
-            Histogram.Timer readTimer = readTimerLog.labels("size").startTimer();
-            try {
-                ObjectMetadata res = s3Client.getObjectMetadata(bucket, folder + hashToKey(hash));
-                return Optional.of((int)res.getContentLength());
-            } finally {
-                readTimer.observeDuration();
-            }
-        }, e -> Optional.empty()));
-    }
-
-    public boolean contains(Multihash key) {
-        return map(key, h -> s3Client.doesObjectExist(bucket, folder + hashToKey(h)), e -> false);
-    }
-
-    public <T> T map(Multihash hash, Function<Multihash, T> success, Function<Throwable, T> absent) {
+        if (hash.isIdentity()) // Identity hashes are not actually stored explicitly
+            return Futures.of(Optional.of(0));
+        Histogram.Timer readTimer = readTimerLog.labels("size").startTimer();
         try {
-            return success.apply(hash);
-        } catch (AmazonServiceException e) {
-            /* Caught an AmazonServiceException,
-               which means our request made it
-               to Amazon S3, but was rejected with an error response
-               for some reason.
-            */
-            if ("NoSuchKey".equals(e.getErrorCode())) {
-                Histogram.Timer readTimer = readTimerLog.labels("absent").startTimer();
-                readTimer.observeDuration();
-                return absent.apply(e);
-            }
-            LOG.warning("AmazonServiceException: " + e.getMessage());
-            LOG.warning("AWS Error Code:   " + e.getErrorCode());
-            throw new RuntimeException(e.getMessage(), e);
-        } catch (AmazonClientException e) {
-            /* Caught an AmazonClientException,
-               which means the client encountered
-               an internal error while trying to communicate
-               with S3, such as not being able to access the network.
-            */
-            LOG.severe("AmazonClientException: " + e.getMessage());
-            LOG.severe("Thrown at:" + e.getCause().toString());
-            throw new RuntimeException(e.getMessage(), e);
+            PresignedUrl headUrl = S3Request.preSignHead(folder + hashToKey(hash), Optional.of(60),
+                    ZonedDateTime.now(), host, region, accessKeyId, secretKey);
+            Map<String, List<String>> headRes = HttpUtil.head(headUrl);
+            long size = Long.parseLong(headRes.get("Content-Length").get(0));
+            return Futures.of(Optional.of((int)size));
+        } catch (Exception e) {
+            LOG.log(Level.SEVERE, e.getMessage(), e);
+            return Futures.of(Optional.empty());
+        } finally {
+            readTimer.observeDuration();
+        }
+    }
+
+    public boolean contains(Multihash hash) {
+        try {
+            PresignedUrl headUrl = S3Request.preSignHead(folder + hashToKey(hash), Optional.of(60),
+                    ZonedDateTime.now(), host, region, accessKeyId, secretKey);
+            Map<String, List<String>> headRes = HttpUtil.head(headUrl);
+            return true;
+        } catch (Exception e) {
+            return false;
         }
     }
 
@@ -349,29 +317,18 @@ public class S3BlockStorage implements ContentAddressedStorage {
         Cid cid = new Cid(1, isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor, hash.type, hash.getHash());
         String key = hashToKey(cid);
         try {
-            ObjectMetadata metadata = new ObjectMetadata();
-            metadata.setContentLength(data.length);
-            PutObjectRequest put = new PutObjectRequest(bucket, folder + key, new ByteArrayInputStream(data), metadata);
             transactions.addBlock(cid, tid, owner);
-            PutObjectResult putResult = s3Client.putObject(put);
+            String s3Key = folder + key;
+            Map<String, String> extraHeaders = new TreeMap<>();
+            extraHeaders.put("Content-Type", "application/octet-stream");
+            boolean hashContent = true;
+            String contentHash = hashContent ? ArrayOps.bytesToHex(hash.getHash()) : "UNSIGNED-PAYLOAD";
+            PresignedUrl putUrl = S3Request.preSignPut(s3Key, data.length, contentHash, false,
+                    ZonedDateTime.now(), host, extraHeaders, region, accessKeyId, secretKey);
+            HttpUtil.put(putUrl, data);
             return cid;
-        } catch (AmazonServiceException e) {
-            /* Caught an AmazonServiceException,
-               which means our request made it
-               to Amazon S3, but was rejected with an error response
-               for some reason.
-            */
-            LOG.severe("AmazonServiceException: " + e.getMessage() + " for " + key);
-            LOG.severe("AWS Error Code:   " + e.getErrorCode());
-            throw new RuntimeException(e.getMessage(), e);
-        } catch (AmazonClientException e) {
-            /* Caught an AmazonClientException,
-               which means the client encountered
-               an internal error while trying to communicate
-               with S3, such as not being able to access the network.
-            */
-            LOG.severe("AmazonClientException: " + e.getMessage());
-            LOG.severe("Thrown at:" + e.getCause().toString());
+        } catch (IOException e) {
+            LOG.log(Level.SEVERE, e.getMessage(), e);
             throw new RuntimeException(e.getMessage(), e);
         } finally {
             writeTimer.observeDuration();
@@ -382,9 +339,9 @@ public class S3BlockStorage implements ContentAddressedStorage {
         List<Multihash> results = new ArrayList<>();
         applyToAll(obj -> {
             try {
-                results.add(keyToHash(obj.getKey()));
+                results.add(keyToHash(obj.key));
             } catch (Exception e) {
-                LOG.warning("Couldn't parse S3 key to Cid: " + obj.getKey());
+                LOG.warning("Couldn't parse S3 key to Cid: " + obj.key);
             }
         }, maxReturned);
         return results;
@@ -392,62 +349,71 @@ public class S3BlockStorage implements ContentAddressedStorage {
 
     private List<String> getFilenames(long maxReturned) {
         List<String> results = new ArrayList<>();
-        applyToAll(obj -> results.add(obj.getKey()), maxReturned);
+        applyToAll(obj -> results.add(obj.key), maxReturned);
         return results;
     }
 
-    private void applyToAll(Consumer<S3ObjectSummary> processor, long maxObjects) {
+    private void applyToAll(Consumer<S3Request.ObjectMetadata> processor, long maxObjects) {
         try {
-            LOG.log(Level.FINE, "Listing blobs");
-            final ListObjectsV2Request req = new ListObjectsV2Request()
-                    .withBucketName(bucket)
-                    .withPrefix(folder)
-                    .withMaxKeys(10_000);
-            ListObjectsV2Result result;
+            Optional<String> continuationToken = Optional.empty();
+            S3Request.ListObjectsReply result;
             long processedObjects = 0;
             do {
-                result = s3Client.listObjectsV2(req);
+                result = S3Request.listObjects(folder, 1_000, continuationToken,
+                        ZonedDateTime.now(), host, region, accessKeyId, secretKey, url -> {
+                            try {
+                                return HttpUtil.get(url);
+                            } catch (IOException e) {
+                                throw new RuntimeException(e);
+                            }
+                        });
 
-                for (S3ObjectSummary objectSummary : result.getObjectSummaries()) {
-                    if (objectSummary.getKey().endsWith("/")) {
-                        LOG.fine(" - " + objectSummary.getKey() + "  " + "(directory)");
+                for (S3Request.ObjectMetadata objectSummary : result.objects) {
+                    if (objectSummary.key.endsWith("/")) {
+                        LOG.fine(" - " + objectSummary.key + "  " + "(directory)");
                         continue;
                     }
-                    LOG.fine(" - " + objectSummary.getKey() + "  " +
-                            "(size = " + objectSummary.getSize() +
-                            "; modified: " + objectSummary.getLastModified() + ")");
                     processor.accept(objectSummary);
                     processedObjects++;
                     if (processedObjects >= maxObjects)
                         return;
                 }
-                LOG.log(Level.FINE, "Next Continuation Token : " + result.getNextContinuationToken());
-                req.setContinuationToken(result.getNextContinuationToken());
-            } while (result.isTruncated());
+                LOG.log(Level.FINE, "Next Continuation Token : " + result.continuationToken);
+                continuationToken = result.continuationToken;
+            } while (result.isTruncated);
 
-        } catch (AmazonServiceException ase) {
-            /* Caught an AmazonServiceException,
-               which means our request made it
-               to Amazon S3, but was rejected with an error response
-               for some reason.
-            */
-            LOG.severe("AmazonServiceException: " + ase.getMessage());
-            LOG.severe("AWS Error Code:   " + ase.getErrorCode());
-
-        } catch (AmazonClientException ace) {
-            /* Caught an AmazonClientException,
-               which means the client encountered
-               an internal error while trying to communicate
-               with S3, such as not being able to access the network.
-            */
-            LOG.severe("AmazonClientException: " + ace.getMessage());
-            LOG.severe("Thrown at:" + ace.getCause().toString());
+        } catch (Exception e) {
+            LOG.log(Level.SEVERE, e.getMessage(), e);
         }
     }
 
     public void delete(Multihash hash) {
-        DeleteObjectRequest del = new DeleteObjectRequest(bucket, folder + hashToKey(hash));
-        s3Client.deleteObject(del);
+        try {
+            PresignedUrl delUrl = S3Request.preSignDelete(folder + hashToKey(hash), ZonedDateTime.now(), host,
+                    region, accessKeyId, secretKey);
+            HttpUtil.delete(delUrl);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public void bulkDelete(List<Multihash> hash) {
+        try {
+            List<String> keys = hash.stream()
+                    .map(h -> folder + hashToKey(h))
+                    .collect(Collectors.toList());
+            S3Request.bulkDelete(keys, ZonedDateTime.now(), host, region, accessKeyId, secretKey,
+                    b -> ArrayOps.bytesToHex(Hash.sha256(b)),
+                    (url, body) -> {
+                        try {
+                            return HttpUtil.post(url, body);
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
+                    });
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public static void main(String[] args) throws Exception {

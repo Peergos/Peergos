@@ -1,8 +1,6 @@
 package peergos.server.storage;
 
-import com.amazonaws.services.s3.model.*;
-import peergos.server.*;
-import peergos.server.sql.*;
+import peergos.server.util.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
@@ -22,9 +20,6 @@ class S3Exploration {
         String regionEndpoint = region + ".linodeobjects.com";
         String host = bucketName + "." + regionEndpoint;
 
-//        TransactionStore transactions = JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands());
-//        S3Config config = new S3Config("", bucketName, region, accessKey, secretKey, regionEndpoint);
-//        S3BlockStorage s3 = new S3BlockStorage(config, null, BlockStoreProperties.empty(), transactions, new RAMStorage());
         byte[] payload = "Hi Linode2!".getBytes();
         Multihash content = new RAMStorage().put(null, null, null, Arrays.asList(payload), null).join().get(0);
         String s3Key = DirectS3BlockStore.hashToKey(content);// "AFYREIBF5Y4OUJXNGRCHBAR2ZMPQBSW62SZDHFNX2GA6V4J3W7I63LA4UQ"
@@ -77,11 +72,6 @@ class S3Exploration {
                 String res = new String(write(new URI(copyUrl.base).toURL(), "PUT", copyUrl.fields, new byte[0]));
                 System.out.println(res);
             }
-            DeleteObjectsRequest deleteObjectsRequest = new DeleteObjectsRequest(bucketName);
-            ArrayList<DeleteObjectsRequest.KeyVersion> keysToDelete = new ArrayList<>();
-            keysToDelete.add(new DeleteObjectsRequest.KeyVersion(tempKey));
-            keysToDelete.add(new DeleteObjectsRequest.KeyVersion(tempKey2));
-            deleteObjectsRequest.setKeys(keysToDelete);
             String nonExistentKey = tempKey2 + "ZZ";
             S3Request.BulkDeleteReply bulkDelete = S3Request.bulkDelete(Arrays.asList(tempKey, tempKey2, nonExistentKey),
                     ZonedDateTime.now(), host, region, accessKey, secretKey, b -> ArrayOps.bytesToHex(Hash.sha256(b)),
@@ -108,7 +98,7 @@ class S3Exploration {
 
         // test an authed HEAD
         PresignedUrl headUrl = S3Request.preSignHead(s3Key, Optional.of(600), ZonedDateTime.now(), host, region, accessKey, secretKey);
-        Map<String, List<String>> headRes = head(new URI(headUrl.base).toURL(), Collections.emptyMap());
+        Map<String, List<String>> headRes = HttpUtil.head(headUrl);
         int size = Integer.parseInt(headRes.get("Content-Length").get(0));
         if (size != payload.length)
             throw new IllegalStateException("Incorrect size: " + size);
@@ -167,29 +157,6 @@ class S3Exploration {
             while ((r = err.read(buf)) >= 0)
                 resp.write(buf, 0, r);
             throw new IOException("HTTP " + conn.getResponseCode() + ": " + conn.getResponseMessage() + "\nbody:\n" + new String(resp.toByteArray()));
-        }
-    }
-
-    private static Map<String, List<String>> head(URL target, Map<String, String> headers) throws Exception {
-        HttpURLConnection conn = (HttpURLConnection) target.openConnection();
-        conn.setRequestMethod("HEAD");
-        for (Map.Entry<String, String> e : headers.entrySet()) {
-            conn.setRequestProperty(e.getKey(), e.getValue());
-        }
-
-        try {
-            int resp = conn.getResponseCode();
-            if (resp == 200)
-                return conn.getHeaderFields();
-            throw new IllegalStateException("HTTP " + resp);
-        } catch (IOException e) {
-            InputStream err = conn.getErrorStream();
-            ByteArrayOutputStream resp = new ByteArrayOutputStream();
-            byte[] buf = new byte[4096];
-            int r;
-            while ((r = err.read(buf)) >= 0)
-                resp.write(buf, 0, r);
-            throw new IllegalStateException(new String(resp.toByteArray()));
         }
     }
 
