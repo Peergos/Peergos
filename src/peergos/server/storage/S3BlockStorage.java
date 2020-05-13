@@ -222,18 +222,19 @@ public class S3BlockStorage implements ContentAddressedStorage {
         }
         long deletedBlocks = 0;
         long deletedSize = 0;
-        for (int i=0; i < present.size(); i++)
-            if (! reachable.get(i)) {
-                Multihash hash = present.get(i);
-                try {
-                    int size = getSize(hash).join().get();
-                    deletedBlocks++;
-                    deletedSize += size;
-                    delete(hash);
-                } catch (Exception e) {
-                    System.out.println("Unable to read " + hash);
-                }
+        for (int i = reachable.nextClearBit(0); i >= 0 && i < present.size(); i = reachable.nextClearBit(i + 1)) {
+            Multihash hash = present.get(i);
+            try {
+                int size = getSize(hash).join().get();
+                deletedBlocks++;
+                deletedSize += size;
+                delete(hash);
+            } catch (Exception e) {
+                System.out.println("Unable to read " + hash);
             }
+        }
+        long t5 = System.nanoTime();
+        System.out.println("Deleting blocks took " + (t5-t4)/1_000_000_000 + "s");
         System.out.println("GC complete. Freed " + deletedBlocks + " blocks totalling " + deletedSize + " bytes");
     }
 
