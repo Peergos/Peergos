@@ -91,7 +91,7 @@ public class HttpUtil {
             int resp = conn.getResponseCode();
             if (resp == 200)
                 return conn.getHeaderFields();
-            throw new IllegalStateException("HTTP " + resp);
+            throw new IllegalStateException("HTTP " + resp + " " + head.base);
         } catch (IOException e) {
             InputStream err = conn.getErrorStream();
             byte[] errBody = Serialize.readFully(err);

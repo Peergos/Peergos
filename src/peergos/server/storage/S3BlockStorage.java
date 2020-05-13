@@ -183,10 +183,20 @@ public class S3BlockStorage implements ContentAddressedStorage {
      */
     private void collectGarbage(JdbcIpnsAndSocial pointers) throws IOException {
         // TODO: do this more efficiently with a bloom filter, and streaming
+        long t0 = System.nanoTime();
         List<Multihash> present = getFiles(Integer.MAX_VALUE);
+        long t1 = System.nanoTime();
+        System.out.println("Listing block store took " + (t1-t0)/1_000_000_000 + "s");
+
         List<Multihash> pending = transactions.getOpenTransactionBlocks();
+        long t2 = System.nanoTime();
+        System.out.println("Listing pending blocks took " + (t2-t1)/1_000_000_000 + "s");
+
         // This pointers call must happen AFTER the previous two for correctness
         Map<PublicKeyHash, byte[]> allPointers = pointers.getAllEntries();
+        long t3 = System.nanoTime();
+        System.out.println("Listing pointers took " + (t3-t2)/1_000_000_000 + "s");
+
         BitSet reachable = new BitSet(present.size());
         for (PublicKeyHash writerHash : allPointers.keySet()) {
             byte[] signedRawCas = allPointers.get(writerHash);
@@ -202,6 +212,8 @@ public class S3BlockStorage implements ContentAddressedStorage {
             if (index >= 0)
                 reachable.set(index);
         }
+        long t4 = System.nanoTime();
+        System.out.println("Marking reachable took " + (t4-t3)/1_000_000_000 + "s");
         // Save pointers snapshot to file
         Path pointerSnapshotFile = Paths.get("pointers-snapshot-" + LocalDateTime.now() + ".txt");
         for (Map.Entry<PublicKeyHash, byte[]> entry : allPointers.entrySet()) {
@@ -213,10 +225,14 @@ public class S3BlockStorage implements ContentAddressedStorage {
         for (int i=0; i < present.size(); i++)
             if (! reachable.get(i)) {
                 Multihash hash = present.get(i);
-                int size = getSize(hash).join().get();
-                deletedBlocks++;
-                deletedSize += size;
-                delete(hash);
+                try {
+                    int size = getSize(hash).join().get();
+                    deletedBlocks++;
+                    deletedSize += size;
+                    delete(hash);
+                } catch (Exception e) {
+                    System.out.println("Unable to read " + hash);
+                }
             }
         System.out.println("GC complete. Freed " + deletedBlocks + " blocks totalling " + deletedSize + " bytes");
     }
