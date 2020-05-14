@@ -3,7 +3,6 @@ package peergos.shared.storage;
 import peergos.shared.cbor.CborObject;
 import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.io.ipfs.multihash.Multihash;
-import peergos.shared.user.NativeJSScheduler;
 import peergos.shared.user.fs.FragmentWithHash;
 import peergos.shared.util.ProgressConsumer;
 
@@ -11,6 +10,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Random;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -18,27 +19,15 @@ public class RetryStorage implements ContentAddressedStorage {
 
     private static final int RANDOM_SEED = 987447;
     private static Random random = new Random(RANDOM_SEED);
-    private NativeJSScheduler callback = new NativeJSScheduler();
     private final ContentAddressedStorage target;
-    //not possible in GWT ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(1);
+    ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(1);
 
     public RetryStorage(ContentAddressedStorage target) {
         this.target = target;
     }
 
     private <Y> void retryAfter(Supplier<CompletableFuture<Y>> method, int milliseconds) {
-        //ideally - executor.schedule(() -> method.get(), milliseconds, TimeUnit.MILLISECONDS);
-        long before = System.currentTimeMillis();
-        try {
-            Thread.sleep(milliseconds + 100); //+100 just to be safe from OS timer precision
-        } catch (InterruptedException ie) {}
-        long after = System.currentTimeMillis();
-        long duration = after - before;
-        if(duration < milliseconds) { //must be javascript as Thread sleep is a noop
-            callback.callAfterDelay(method, milliseconds);
-        } else {
-            method.get();
-        }
+        executor.schedule(() -> method.get(), milliseconds, TimeUnit.MILLISECONDS);
     }
 
     private int jitter(int minMilliseconds, int rangeMilliseconds){
