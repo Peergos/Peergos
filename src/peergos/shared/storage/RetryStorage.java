@@ -34,11 +34,11 @@ public class RetryStorage implements ContentAddressedStorage {
         return minMilliseconds + random.nextInt(rangeMilliseconds);
     }
 
-    private interface Recursable<T, U, X> {
-        U apply(T t, Recursable<T, U, X> r);
+    private interface Recursable<T, U> {
+        U apply(T t, Recursable<T, U> r);
     }
 
-    private static <T, U, X> Function<T, U> recurse(Recursable<T, U, X> f) {
+    private static <T, U> Function<T, U> recurse(Recursable<T, U> f) {
         return t -> f.apply(t, f);
     }
 
