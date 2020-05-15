@@ -118,20 +118,5 @@ public class JniTweetNacl {
             return Arrays.copyOfRange(message, 32, message.length);
         }
 
-        @Override
-        public CompletableFuture<byte[]> secretboxAsync(byte[] data, byte[] nonce, byte[] key) {
-            byte[] encrypted = secretbox(data, nonce, key);
-            CompletableFuture<byte[]> res = new CompletableFuture<>();
-            res.complete(encrypted);
-            return res;
-        }
-
-        @Override
-        public CompletableFuture<byte[]> secretbox_openAsync(byte[] cipher, byte[] nonce, byte[] key) {
-            byte[] decrypted = secretbox_open(cipher, nonce, key);
-            CompletableFuture<byte[]> res = new CompletableFuture<>();
-            res.complete(decrypted);
-            return res;
-        }
     }
 }

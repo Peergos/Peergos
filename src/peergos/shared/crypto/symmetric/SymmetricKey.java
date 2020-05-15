@@ -50,10 +50,6 @@ public interface SymmetricKey extends Cborable
     @JsMethod
     byte[] decrypt(byte[] data, byte[] nonce);
 
-    CompletableFuture<byte[]> encryptAsync(byte[] data, byte[] nonce);
-
-    CompletableFuture<byte[]> decryptAsync(byte[] data, byte[] nonce);
-
     @JsMethod
     byte[] createNonce();
 
