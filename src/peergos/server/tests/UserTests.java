@@ -333,6 +333,43 @@ public abstract class UserTests {
     }
 
     @Test
+    public void concurrentFileModificationFailure() throws Exception {
+        String username = generateUsername();
+        String password = "test";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        FileWrapper userRoot = context.getUserRoot().get();
+
+        String filename = "somedata.txt";
+        // write empty file
+        byte[] data = new byte[120*1024];
+        userRoot.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
+                context.crypto, l -> {}, context.crypto.random.randomBytes(32)).get();
+        checkFileContents(data, context.getUserRoot().get().getDescendentByPath(filename, crypto.hasher, context.network).get().get(), context);
+
+        Path filePath = Paths.get(username, filename);
+        FileWrapper fileV1 = context.getByPath(filePath).join().get();
+        FileWrapper fileV2 = context.getByPath(filePath).join().get();
+        byte[] section1 = "11111111".getBytes();
+        PublicKeyHash owner = fileV2.owner();
+        SigningPrivateKeyAndPublicHash writer = fileV2.signingPair();
+        network.synchronizer.applyComplexUpdate(owner, writer,
+                (v, c) -> fileV2.overwriteSection(v, c, AsyncReader.build(section1),
+                        1024, 1024 + section1.length, userRoot.getLocation(), network, crypto, x -> {})).join();
+        System.out.println();
+        byte[] section2 = "22222222".getBytes();
+        try {
+            network.synchronizer.applyComplexUpdate(owner, writer,
+                    (v, c) -> fileV1.overwriteSection(v, c, AsyncReader.build(section2),
+                            1024, 1024 + section2.length, userRoot.getLocation(), network, crypto, x -> {
+                            })).join();
+            throw new RuntimeException("Concurrentmodification should have failed!");
+        } catch (CompletionException c) {
+            if (!(c.getCause() instanceof MutableTree.CasException))
+                throw new RuntimeException("Failure!");
+        }
+    }
+
+    @Test
     public void writeReadVariations() throws Exception {
         String username = generateUsername();
         String password = "test";
