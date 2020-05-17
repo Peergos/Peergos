@@ -354,14 +354,13 @@ public abstract class UserTests {
         SigningPrivateKeyAndPublicHash writer = fileV2.signingPair();
         network.synchronizer.applyComplexUpdate(owner, writer,
                 (v, c) -> fileV2.overwriteSection(v, c, AsyncReader.build(section1),
-                        1024, 1024 + section1.length, userRoot.getLocation(), network, crypto, x -> {})).join();
+                        1024, 1024 + section1.length, network, crypto, x -> {})).join();
         System.out.println();
         byte[] section2 = "22222222".getBytes();
         try {
             network.synchronizer.applyComplexUpdate(owner, writer,
                     (v, c) -> fileV1.overwriteSection(v, c, AsyncReader.build(section2),
-                            1024, 1024 + section2.length, userRoot.getLocation(), network, crypto, x -> {
-                            })).join();
+                            1024, 1024 + section2.length, network, crypto, x -> {})).join();
             throw new RuntimeException("Concurrentmodification should have failed!");
         } catch (CompletionException c) {
             if (!(c.getCause() instanceof MutableTree.CasException))

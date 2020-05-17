@@ -562,7 +562,6 @@ public class FileWrapper {
                                                         AsyncReader fileData,
                                                         long inputStartIndex,
                                                         long endIndex,
-                                                        Location parentLocation,
                                                         NetworkAccess network,
                                                         Crypto crypto,
                                                         ProgressConsumer<Long> monitor) {
@@ -578,6 +577,7 @@ public class FileWrapper {
         Supplier<Location> locationSupplier = () -> new Location(getLocation().owner, getLocation().writer, crypto.random.randomBytes(32));
 
         SymmetricKey parentParentKey = getPointer().getParentParentKey();
+        Location parentLocation = getPointer().getParentCap().getLocation(owner(), writer());
         WritableAbsoluteCapability childCap = writableFilePointer();
         return current.withWriter(owner(), writer(), network)
                 .thenCompose(base -> {
@@ -968,7 +968,7 @@ public class FileWrapper {
                                         .thenApply(cleanedChild -> cleanedChild.get())) :
                         CompletableFuture.completedFuture(existingChild))
                 ).thenCompose(updatedChild -> updatedChild.overwriteSection(updatedChild.version, committer, fileData,
-                        inputStartIndex, endIndex, getLocation(), network, crypto, monitor));
+                        inputStartIndex, endIndex, network, crypto, monitor));
     }
 
     static boolean isLegalName(String name) {
