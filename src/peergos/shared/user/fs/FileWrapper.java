@@ -520,7 +520,7 @@ public class FileWrapper {
                                                        Crypto crypto,
                                                        ProgressConsumer<Long> monitor,
                                                        TransactionService transactions) {
-        long fileSize = (lengthLow & 0xFFFFFFFFL) + ((lengthHi & 0xFFFFFFFFL) << 32);
+        long fileSize = LongUtil.intsToLong(lengthHi, lengthLow);
         if (transactions == null) // we are in a public writable link
             return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
                     (s, committer) -> uploadFileSection(s, committer, filename, fileData,
@@ -555,6 +555,21 @@ public class FileWrapper {
                                                                 byte[] firstChunkMapKey) {
         return uploadFileSection(filename, fileData, false, 0, length, Optional.empty(),
                 true, network, crypto, monitor, firstChunkMapKey);
+    }
+
+    @JsMethod
+    public CompletableFuture<Snapshot> overwriteSectionJS(AsyncReader fileData,
+                                                          int startHigh,
+                                                          int startLow,
+                                                          int endHigh,
+                                                          int endLow,
+                                                          NetworkAccess network,
+                                                          Crypto crypto,
+                                                          ProgressConsumer<Long> monitor) {
+        return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
+                (s, committer) -> overwriteSection(s, committer, fileData,
+                        LongUtil.intsToLong(startHigh, startLow),
+                        LongUtil.intsToLong(endHigh, endLow), network, crypto, monitor));
     }
 
     public CompletableFuture<Snapshot> overwriteSection(Snapshot current,
