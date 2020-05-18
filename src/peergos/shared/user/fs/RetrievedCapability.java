@@ -31,6 +31,14 @@ public class RetrievedCapability {
         return fileAccess.getProperties(getParentKey());
     }
 
+    public SymmetricKey getParentParentKey() {
+        return fileAccess.getParentCapability(capability.rBaseKey).get().rBaseKey;
+    }
+
+    public RelativeCapability getParentCap() {
+        return fileAccess.getParentCapability(capability.rBaseKey).get();
+    }
+
     private static SymmetricKey getParentKey(CryptreeNode node, SymmetricKey baseKey) {
         if (node.isDirectory())
             try {
@@ -40,8 +48,6 @@ public class RetrievedCapability {
             }
         return baseKey;
     }
-
-
 
     public RetrievedCapability withCryptree(CryptreeNode fileAccess) {
         return new RetrievedCapability(capability, fileAccess);
