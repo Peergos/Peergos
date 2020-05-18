@@ -570,23 +570,22 @@ public class FileWrapper {
         if (isDirty())
             return Futures.errored(new IllegalStateException("File needs cleaning before modification."));
 
-        FileProperties existingProps = getFileProperties();
-        String filename = existingProps.name;
+        FileProperties props = getFileProperties();
+        String filename = props.name;
         LOG.info("Overwriting section [" + Long.toHexString(inputStartIndex) + ", " + Long.toHexString(endIndex) + "] of: " + filename);
 
-        Supplier<Location> locationSupplier = () -> new Location(getLocation().owner, getLocation().writer, crypto.random.randomBytes(32));
+        Supplier<Location> legacyLocs = () -> new Location(getLocation().owner, getLocation().writer, crypto.random.randomBytes(32));
 
         SymmetricKey parentParentKey = getPointer().getParentParentKey();
         Location parentLocation = getPointer().getParentCap().getLocation(owner(), writer());
-        WritableAbsoluteCapability childCap = writableFilePointer();
+        WritableAbsoluteCapability ourCap = writableFilePointer();
         return current.withWriter(owner(), writer(), network)
                 .thenCompose(base -> {
-                    FileWrapper child = this;
-                    FileProperties childProps = child.getFileProperties();
-                    final AtomicLong filesSize = new AtomicLong(childProps.size);
-                    return child.getRetriever(crypto.hasher).thenCompose(retriever -> {
-                        SymmetricKey baseKey = child.pointer.capability.rBaseKey;
-                        CryptreeNode fileAccess = child.pointer.fileAccess;
+                    FileWrapper us = this;
+                    final AtomicLong filesSize = new AtomicLong(props.size);
+                    return us.getRetriever(crypto.hasher).thenCompose(retriever -> {
+                        SymmetricKey baseKey = us.pointer.capability.rBaseKey;
+                        CryptreeNode fileAccess = us.pointer.fileAccess;
                         SymmetricKey dataKey = fileAccess.getDataKey(baseKey);
 
                         List<Long> startIndexes = new ArrayList<>();
@@ -595,13 +594,13 @@ public class FileWrapper {
                             startIndexes.add(startIndex);
 
                         BiFunction<Snapshot, Long, CompletableFuture<Snapshot>> composer = (version, startIndex) -> {
-                            MaybeMultihash currentHash = child.pointer.fileAccess.committedHash();
-                            return retriever.getChunk(version.get(child.writer()).props, network, crypto, startIndex,
-                                    filesSize.get(), childCap, childProps.streamSecret, currentHash, monitor)
+                            MaybeMultihash currentHash = us.pointer.fileAccess.committedHash();
+                            return retriever.getChunk(version.get(us.writer()).props, network, crypto, startIndex,
+                                    filesSize.get(), ourCap, props.streamSecret, currentHash, monitor)
                                     .thenCompose(currentLocation -> {
                                                 CompletableFuture<Optional<Location>> locationAt = retriever
-                                                        .getMapLabelAt(version.get(child.writer()).props, childCap,
-                                                                childProps.streamSecret, startIndex + Chunk.MAX_SIZE, crypto.hasher, network)
+                                                        .getMapLabelAt(version.get(us.writer()).props, ourCap,
+                                                                props.streamSecret, startIndex + Chunk.MAX_SIZE, crypto.hasher, network)
                                                         .thenApply(x -> x.map(m -> getLocation().withMapKey(m)));
                                                 return locationAt.thenCompose(location ->
                                                         CompletableFuture.completedFuture(new Pair<>(currentLocation, location)));
@@ -618,11 +617,11 @@ public class FileWrapper {
                                         Optional<Location> nextChunkLocationOpt = pair.right;
                                         CompletableFuture<Location> nextChunkLocationFut = nextChunkLocationOpt
                                                 .map(Futures::of)
-                                                .orElseGet(() -> childProps.streamSecret
+                                                .orElseGet(() -> props.streamSecret
                                                         .map(streamSecret -> FileProperties.calculateNextMapKey(streamSecret,
                                                                 currentOriginal.location.getMapKey(), crypto.hasher)
-                                                                .thenApply(nextMapKey -> child.getLocation().withMapKey(nextMapKey)))
-                                                        .orElseGet(() -> Futures.of(locationSupplier.get())));
+                                                                .thenApply(nextMapKey -> us.getLocation().withMapKey(nextMapKey)))
+                                                        .orElseGet(() -> Futures.of(legacyLocs.get())));
                                         return nextChunkLocationFut.thenCompose(nextChunkLocation -> {
                                             LOG.info("********** Writing to chunk at mapkey: " + ArrayOps.bytesToHex(currentOriginal.location.getMapKey()) + " next: " + nextChunkLocation);
 
@@ -636,7 +635,7 @@ public class FileWrapper {
                                                 rawData = Arrays.copyOfRange(rawData, 0, internalEnd);
                                             byte[] raw = rawData;
                                             Optional<SymmetricLinkToSigner> writerLink = startIndex < Chunk.MAX_SIZE ?
-                                                    child.pointer.fileAccess.getWriterLink(child.pointer.capability.rBaseKey) :
+                                                    us.pointer.fileAccess.getWriterLink(us.pointer.capability.rBaseKey) :
                                                     Optional.empty();
 
                                             return fileData.readIntoArray(raw, internalStart, internalEnd - internalStart).thenCompose(read -> {
@@ -644,13 +643,13 @@ public class FileWrapper {
                                                 Chunk updated = new Chunk(raw, dataKey, currentOriginal.location.getMapKey(), dataKey.createNonce());
                                                 LocatedChunk located = new LocatedChunk(currentOriginal.location, currentOriginal.existingHash, updated);
                                                 long currentSize = filesSize.get();
-                                                FileProperties newProps = new FileProperties(childProps.name, false,
-                                                        childProps.isLink, childProps.mimeType,
+                                                FileProperties newProps = new FileProperties(props.name, false,
+                                                        props.isLink, props.mimeType,
                                                         endIndex > currentSize ? endIndex : currentSize,
-                                                        LocalDateTime.now(), childProps.isHidden,
-                                                        childProps.thumbnail, childProps.streamSecret);
+                                                        LocalDateTime.now(), props.isHidden,
+                                                        props.thumbnail, props.streamSecret);
 
-                                                CompletableFuture<Snapshot> chunkUploaded = FileUploader.uploadChunk(version, committer, child.signingPair(),
+                                                CompletableFuture<Snapshot> chunkUploaded = FileUploader.uploadChunk(version, committer, us.signingPair(),
                                                         newProps, parentLocation, parentParentKey, baseKey, located,
                                                         nextChunkLocation, writerLink, crypto.hasher, network, monitor);
 
@@ -662,14 +661,14 @@ public class FileWrapper {
 
                                                         if (updatedLength > Chunk.MAX_SIZE) {
                                                             // update file size in FileProperties of first chunk
-                                                            return network.getFile(updatedBase, childCap, entryWriter, ownername)
-                                                                    .thenCompose(updatedChild -> {
-                                                                        FileProperties correctedSize = updatedChild.get()
-                                                                                .getPointer().fileAccess.getProperties(childCap.rBaseKey)
+                                                            return network.getFile(updatedBase, ourCap, entryWriter, ownername)
+                                                                    .thenCompose(updatedUs -> {
+                                                                        FileProperties correctedSize = updatedUs.get()
+                                                                                .getPointer().fileAccess.getProperties(ourCap.rBaseKey)
                                                                                 .withSize(endIndex);
-                                                                        return updatedChild.get()
+                                                                        return updatedUs.get()
                                                                                 .getPointer().fileAccess.updateProperties(updatedBase,
-                                                                                        committer, childCap, entryWriter, correctedSize, network);
+                                                                                        committer, ourCap, entryWriter, correctedSize, network);
                                                                     });
                                                         }
                                                     }
@@ -683,10 +682,10 @@ public class FileWrapper {
                         return Futures.reduceAll(startIndexes, base, composer, (a, b) -> b)
                                 .thenCompose(updatedBase -> {
                                     // update file size
-                                    if (existingProps.size >= endIndex)
+                                    if (props.size >= endIndex)
                                         return CompletableFuture.completedFuture(updatedBase);
-                                    WritableAbsoluteCapability cap = child.writableFilePointer();
-                                    FileProperties newProps = childProps.withSize(endIndex);
+                                    WritableAbsoluteCapability cap = us.writableFilePointer();
+                                    FileProperties newProps = props.withSize(endIndex);
                                     return network.getFile(updatedBase, cap, entryWriter, ownername)
                                             .thenCompose(updatedChild -> updatedChild.get()
                                                     .getPointer().fileAccess.updateProperties(updatedBase, committer, cap,
