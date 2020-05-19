@@ -29,7 +29,7 @@ public class CommittedWriterData {
 
     @Override
     public int hashCode() {
-        return Objects.hash(hash);
+        return hash.hashCode();
     }
 
 }
