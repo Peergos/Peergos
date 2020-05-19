@@ -112,7 +112,7 @@ public class FileWrapper {
     @JsMethod
     public CompletableFuture<FileWrapper> getLatest(NetworkAccess network) {
         return network.synchronizer.getValue(owner(), writer())
-                .thenCompose(finished -> getUpdated(finished, network));
+                .thenCompose(latest -> getUpdated(latest, network));
 
     }
 
