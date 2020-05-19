@@ -558,18 +558,19 @@ public class FileWrapper {
     }
 
     @JsMethod
-    public CompletableFuture<Snapshot> overwriteSectionJS(AsyncReader fileData,
-                                                          int startHigh,
-                                                          int startLow,
-                                                          int endHigh,
-                                                          int endLow,
-                                                          NetworkAccess network,
-                                                          Crypto crypto,
-                                                          ProgressConsumer<Long> monitor) {
+    public CompletableFuture<FileWrapper> overwriteSectionJS(AsyncReader fileData,
+                                                             int startHigh,
+                                                             int startLow,
+                                                             int endHigh,
+                                                             int endLow,
+                                                             NetworkAccess network,
+                                                             Crypto crypto,
+                                                             ProgressConsumer<Long> monitor) {
         return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
                 (s, committer) -> overwriteSection(s, committer, fileData,
                         LongUtil.intsToLong(startHigh, startLow),
-                        LongUtil.intsToLong(endHigh, endLow), network, crypto, monitor));
+                        LongUtil.intsToLong(endHigh, endLow), network, crypto, monitor))
+                .thenCompose(v -> getUpdated(v, network));
     }
 
     public CompletableFuture<Snapshot> overwriteSection(Snapshot current,
