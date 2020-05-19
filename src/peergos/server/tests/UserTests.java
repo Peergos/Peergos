@@ -340,13 +340,13 @@ public abstract class UserTests {
         FileWrapper userRoot = context.getUserRoot().get();
 
         String filename = "somedata.txt";
+        Path filePath = Paths.get(username, filename);
         // write empty file
         byte[] data = new byte[120*1024];
         userRoot.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
                 context.crypto, l -> {}, context.crypto.random.randomBytes(32)).get();
-        checkFileContents(data, context.getUserRoot().get().getDescendentByPath(filename, crypto.hasher, context.network).get().get(), context);
+        checkFileContents(data, context.getByPath(filePath).join().get(), context);
 
-        Path filePath = Paths.get(username, filename);
         FileWrapper fileV1 = context.getByPath(filePath).join().get();
         FileWrapper fileV2 = context.getByPath(filePath).join().get();
         byte[] section1 = "11111111".getBytes();
@@ -355,7 +355,9 @@ public abstract class UserTests {
         network.synchronizer.applyComplexUpdate(owner, writer,
                 (v, c) -> fileV2.overwriteSection(v, c, AsyncReader.build(section1),
                         1024, 1024 + section1.length, network, crypto, x -> {})).join();
-        System.out.println();
+        byte[] data1 = Arrays.copyOfRange(data, 0, data.length);
+        System.arraycopy(section1, 0, data1, 1024, section1.length);
+        checkFileContents(data1, context.getByPath(filePath).join().get(), context);
         byte[] section2 = "22222222".getBytes();
         try {
             network.synchronizer.applyComplexUpdate(owner, writer,
