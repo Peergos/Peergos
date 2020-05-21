@@ -205,7 +205,7 @@ public class MirrorCoreNode implements CoreNode {
                     currentPkiRoot.equals(current.pkiKeyTarget))
                 return false;
 
-            Logging.LOG().info("Updating pki mirror state...");
+            Logging.LOG().info("Updating pki mirror state... Please wait. This could take a minute or two");
             CorenodeState updated = CorenodeState.buildEmpty(peergosKey, pkiKey, newPeergosRoot, currentPkiRoot);
             updated.load(current);
             IpfsCoreNode.updateAllMappings(pkiKey, current.pkiKeyTarget, currentPkiRoot, ipfs, updated.chains,
