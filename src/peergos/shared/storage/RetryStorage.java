@@ -56,7 +56,7 @@ public class RetryStorage implements ContentAddressedStorage {
                             retryAfter(() -> f.apply(i + 1, f), jitter(i * 1000, 1000));
                         }
                         return null;
-                    });
+                    }).thenCompose(possiblyNull -> res);
                 return res;
             });
         compose.apply(1);
