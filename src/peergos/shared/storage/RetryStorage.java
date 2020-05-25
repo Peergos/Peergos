@@ -52,7 +52,11 @@ public class RetryStorage implements ContentAddressedStorage {
                                     res.completeExceptionally(e);
                                 } else {
                                     retryAfter(() -> recurse(i - 1, f)
-                                            .thenAccept(res::complete),
+                                            .thenAccept(res::complete)
+                                            .exceptionally(t -> {
+                                                res.completeExceptionally(t);
+                                                return null;
+                                            }),
                                             jitter((maxAttempts + 1 - i) * 1000, 500));
                                 }
                                 return null;
