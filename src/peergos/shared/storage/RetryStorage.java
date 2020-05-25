@@ -20,47 +20,50 @@ public class RetryStorage implements ContentAddressedStorage {
     private static final int RANDOM_SEED = 987447;
     private static Random random = new Random(RANDOM_SEED);
     private final ContentAddressedStorage target;
-    ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(1);
+    private final ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(1);
+    private final int maxAttempts;
 
-    public RetryStorage(ContentAddressedStorage target) {
+
+    public RetryStorage(ContentAddressedStorage target, int maxAttempts) {
         this.target = target;
+        this.maxAttempts = maxAttempts;
     }
 
-    private <Y> void retryAfter(Supplier<CompletableFuture<Y>> method, int milliseconds) {
-        executor.schedule(() -> method.get(), milliseconds, TimeUnit.MILLISECONDS);
+    private <V> void retryAfter(Supplier<CompletableFuture<V>> method, int milliseconds) {
+        executor.schedule(method::get, milliseconds, TimeUnit.MILLISECONDS);
     }
 
-    private int jitter(int minMilliseconds, int rangeMilliseconds){
+    private int jitter(int minMilliseconds, int rangeMilliseconds) {
         return minMilliseconds + random.nextInt(rangeMilliseconds);
     }
 
-    private interface Recursable<T, U> {
-        U apply(T t, Recursable<T, U> r);
+    private <V> CompletableFuture<V> runWithRetry(Supplier<CompletableFuture<V>> f) {
+        return recurse(maxAttempts, f);
     }
 
-    private static <T, U> Function<T, U> recurse(Recursable<T, U> f) {
-        return t -> f.apply(t, f);
-    }
-
-
-    public <Y> CompletableFuture<Y> runWithRetry(Supplier<CompletableFuture<Y>> func) {
-        CompletableFuture<Y> res = new CompletableFuture<>();
-        Function<Integer, CompletableFuture<Y>> compose = recurse(
-            (i, f) -> {
-                func.get()
-                    .thenAccept(res::complete)
-                    .exceptionally(e ->  {
-                        if(i == 3) {
-                            res.completeExceptionally(e);
-                        } else {
-                            retryAfter(() -> f.apply(i + 1, f), jitter(i * 1000, 1000));
-                        }
-                        return null;
-                    }).thenCompose(possiblyNull -> res);
-                return res;
-            });
-        compose.apply(1);
-        return res;
+    private <V> CompletableFuture<V> recurse(int retriesLeft, Supplier<CompletableFuture<V>> f) {
+        Function<Integer, CompletableFuture<V>> compose =
+                i-> {
+                    CompletableFuture<V> res = new CompletableFuture<>();
+                    f.get()
+                            .thenAccept(res::complete)
+                            .exceptionally(e ->  {
+                                if (i == 1) {
+                                    res.completeExceptionally(e);
+                                } else {
+                                    retryAfter(() -> recurse(i - 1, f)
+                                            .thenAccept(res::complete)
+                                            .exceptionally(t -> {
+                                                res.completeExceptionally(t);
+                                                return null;
+                                            }),
+                                            jitter((maxAttempts + 1 - i) * 1000, 500));
+                                }
+                                return null;
+                            });
+                    return res;
+                };
+        return compose.apply(retriesLeft);
     }
     @Override
     public CompletableFuture<BlockStoreProperties> blockStoreProperties() {

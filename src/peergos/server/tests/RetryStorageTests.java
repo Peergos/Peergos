@@ -164,21 +164,21 @@ public class RetryStorageTests {
 
     @Test
     public void callMethod() {
-        ContentAddressedStorage storage = new RetryStorage(new RAMStorage());
+        ContentAddressedStorage storage = new RetryStorage(new RAMStorage(), 3);
 
         BlockStoreProperties props = storage.blockStoreProperties().join();
         Assert.assertNotNull("props should not be null", props);
     }
     @Test
     public void retryMethodSuccess() {
-        ContentAddressedStorage storage = new RetryStorage(new FailingStorage(3));
+        ContentAddressedStorage storage = new RetryStorage(new FailingStorage(3), 3);
 
         Boolean result = storage.gc().join();
         Assert.assertNotNull("Retry should succeed", result);
     }
     @Test
     public void retryMethodFailure() {
-        ContentAddressedStorage storage = new RetryStorage(new FailingStorage(4));
+        ContentAddressedStorage storage = new RetryStorage(new FailingStorage(4), 3);
 
         try {
             Boolean result = storage.gc().join();
