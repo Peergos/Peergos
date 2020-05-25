@@ -203,7 +203,7 @@ public class NetworkAccess {
                     ContentAddressedStorage storage = isPeergosServer ?
                             localDht :
                             new ContentAddressedStorage.Proxying(localDht, proxingDht, nodeId, core);
-                    HashVerifyingStorage verifyingStorage = new HashVerifyingStorage(new RetryStorage(storage), isJavascript ? new ScryptJS() : new ScryptJava());
+                    HashVerifyingStorage verifyingStorage = new HashVerifyingStorage(new RetryStorage(storage, 3), isJavascript ? new ScryptJS() : new ScryptJava());
                     ContentAddressedStorage p2pDht = new CachingStorage(verifyingStorage, 1_000, 50 * 1024);
                     MutablePointersProxy httpMutable = new HttpMutablePointers(apiPoster, p2pPoster);
                     MutablePointers p2pMutable =
