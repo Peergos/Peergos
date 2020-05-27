@@ -79,21 +79,4 @@ public class TestJniTweetNacl {
         Assert.assertFalse(Arrays.equals(message, boxed));
         Assert.assertFalse(Arrays.equals(boxed, unboxed));
     }
-
-    @Test
-    public void testSecretboxAsyncIdentity() {
-        byte[] key = new byte[32];
-        byte[] nonce = new byte[32];
-        random.nextBytes(key);
-        random.nextBytes(nonce);
-
-        byte[] message = new byte[messageLength];
-        random.nextBytes(message);
-        byte[] boxed = symmetric.secretboxAsync(message, nonce, key).join();
-        byte[] unboxed = symmetric.secretbox_openAsync(boxed, nonce, key).join();
-
-        Assert.assertArrayEquals(message, unboxed);
-        Assert.assertFalse(Arrays.equals(message, boxed));
-        Assert.assertFalse(Arrays.equals(boxed, unboxed));
-    }
 }
