@@ -1412,7 +1412,7 @@ public abstract class UserTests {
 
         String filename = "somedata.txt";
         Path filePath = Paths.get(username, filename);
-        byte[] data = new byte[6];
+        byte[] data = randomData(6);
         userRoot.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
                 context.crypto, l -> {}, context.crypto.random.randomBytes(32)).get();
         checkFileContents(data, context.getByPath(filePath).join().get(), context);
@@ -1437,7 +1437,7 @@ public abstract class UserTests {
 
         String filename = "somedata.txt";
         Path filePath = Paths.get(username, filename);
-        byte[] data = new byte[6000];
+        byte[] data = randomData(6000);
         userRoot.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
                 context.crypto, l -> {}, context.crypto.random.randomBytes(32)).get();
         checkFileContents(data, context.getByPath(filePath).join().get(), context);
@@ -1451,6 +1451,14 @@ public abstract class UserTests {
                 context.network, context.crypto, len -> {}).join();
 
         checkFileContents(bytes, context.getByPath(filePath).join().get(), context);
+
+        FileWrapper fileV3 = context.getByPath(filePath).join().get();
+        byte[] retrievedData = Serialize.readFully(fileV3.getInputStream(context.network, context.crypto,
+                6000, l-> {}).join(), 6000).join();
+        int nonZeroBytes = (int)IntStream.range(0, retrievedData.length).map(i-> retrievedData[i]).filter(a -> a != 0).count();
+        Assert.assertTrue("File truncated", nonZeroBytes == bytes.length);
+
+
     }
 
     public static String randomString() {
