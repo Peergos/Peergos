@@ -575,9 +575,9 @@ public class FileWrapper {
         return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
                 (s, committer) -> overwriteSection(s, committer, fileData,
                         0L, newSize, network, crypto, monitor)
-                        .thenCompose(v -> getUpdated(v, network).thenCompose(f -> newSize < size ?
-                                f.truncate(v, committer, newSize, network, crypto) :
-                                Futures.of(v))))
+                        .thenCompose(v -> newSize >= size ? Futures.of(v) :
+                                getUpdated(v, network)
+                                        .thenCompose(f -> f.truncate(v, committer, newSize, network, crypto))))
                 .thenCompose(v -> getUpdated(v, network));
     }
 
