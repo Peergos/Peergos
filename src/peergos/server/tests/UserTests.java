@@ -1412,7 +1412,6 @@ public abstract class UserTests {
 
         String filename = "somedata.txt";
         Path filePath = Paths.get(username, filename);
-        // write empty file
         byte[] data = new byte[6];
         userRoot.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
                 context.crypto, l -> {}, context.crypto.random.randomBytes(32)).get();
@@ -1438,7 +1437,6 @@ public abstract class UserTests {
 
         String filename = "somedata.txt";
         Path filePath = Paths.get(username, filename);
-        // write empty file
         byte[] data = new byte[6000];
         userRoot.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
                 context.crypto, l -> {}, context.crypto.random.randomBytes(32)).get();
