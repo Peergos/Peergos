@@ -1403,6 +1403,58 @@ public abstract class UserTests {
 
     }
 
+    @Test
+    public void overwriteContentsOfFileGrowFile() throws Exception {
+        String username = generateUsername();
+        String password = "test";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        FileWrapper userRoot = context.getUserRoot().get();
+
+        String filename = "somedata.txt";
+        Path filePath = Paths.get(username, filename);
+        // write empty file
+        byte[] data = new byte[6];
+        userRoot.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
+                context.crypto, l -> {}, context.crypto.random.randomBytes(32)).get();
+        checkFileContents(data, context.getByPath(filePath).join().get(), context);
+
+        FileWrapper fileV2 = context.getByPath(filePath).join().get();
+
+        byte[] bytes = "11111111".getBytes();
+        AsyncReader java_reader = peergos.shared.user.fs.AsyncReader.build(bytes);
+        int newSizeLo = bytes.length;
+        fileV2.overwriteFileJS(java_reader, 0, newSizeLo,
+                context.network, context.crypto, len -> {}).join();
+
+        checkFileContents(bytes, context.getByPath(filePath).join().get(), context);
+    }
+
+    @Test
+    public void overwriteContentsOfFileShrinkFile() throws Exception {
+        String username = generateUsername();
+        String password = "test";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        FileWrapper userRoot = context.getUserRoot().get();
+
+        String filename = "somedata.txt";
+        Path filePath = Paths.get(username, filename);
+        // write empty file
+        byte[] data = new byte[6000];
+        userRoot.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
+                context.crypto, l -> {}, context.crypto.random.randomBytes(32)).get();
+        checkFileContents(data, context.getByPath(filePath).join().get(), context);
+
+        FileWrapper fileV2 = context.getByPath(filePath).join().get();
+
+        byte[] bytes = "11111111".getBytes();
+        AsyncReader java_reader = peergos.shared.user.fs.AsyncReader.build(bytes);
+        int newSizeLo = bytes.length;
+        fileV2.overwriteFileJS(java_reader, 0, newSizeLo,
+                context.network, context.crypto, len -> {}).join();
+
+        checkFileContents(bytes, context.getByPath(filePath).join().get(), context);
+    }
+
     public static String randomString() {
         return UUID.randomUUID().toString();
     }
