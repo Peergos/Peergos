@@ -583,7 +583,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
                     currentPos += sizeInChunk;
                 }
             } else
-                file.treeNode.truncate(size, parent.treeNode, context.network, context.crypto).get();
+                file.treeNode.truncate(size, context.network, context.crypto).get();
             return (int) size;
         } catch (Throwable t) {
             LOG.log(Level.WARNING, t.getMessage(), t);

@@ -847,7 +847,7 @@ public abstract class UserTests {
         byte[] thirdChunkLabel = original.getMapKey(12 * 1024 * 1024, network, crypto).join();
 
         int truncateLength = 7 * 1024 * 1024;
-        FileWrapper truncated = original.truncate(truncateLength, userRoot2, network, crypto).join();
+        FileWrapper truncated = original.truncate(truncateLength, network, crypto).join();
         checkFileContents(Arrays.copyOfRange(data, 0, truncateLength), truncated, context);
         // check we can't get the third chunk any more
         WritableAbsoluteCapability pointer = original.writableFilePointer();
@@ -858,13 +858,13 @@ public abstract class UserTests {
 
         // truncate to first chunk
         int truncateLength2 = 1 * 1024 * 1024;
-        FileWrapper truncated2 = truncated.truncate(truncateLength2, context.getUserRoot().join(), network, crypto).join();
+        FileWrapper truncated2 = truncated.truncate(truncateLength2, network, crypto).join();
         checkFileContents(Arrays.copyOfRange(data, 0, truncateLength2), truncated2, context);
         Assert.assertTrue("File has correct size", truncated2.getFileProperties().size == truncateLength2);
 
         // truncate within first chunk
         int truncateLength3 = 1024 * 1024 / 2;
-        FileWrapper truncated3 = truncated2.truncate(truncateLength3, context.getUserRoot().join(), network, crypto).join();
+        FileWrapper truncated3 = truncated2.truncate(truncateLength3, network, crypto).join();
         checkFileContents(Arrays.copyOfRange(data, 0, truncateLength2), truncated2, context);
         Assert.assertTrue("File has correct size", truncated3.getFileProperties().size == truncateLength3);
     }
