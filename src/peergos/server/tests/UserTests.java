@@ -847,7 +847,7 @@ public abstract class UserTests {
         byte[] thirdChunkLabel = original.getMapKey(12 * 1024 * 1024, network, crypto).join();
 
         int truncateLength = 7 * 1024 * 1024;
-        FileWrapper truncated = original.truncate(truncateLength, userRoot2, network, crypto).join();
+        FileWrapper truncated = original.truncate(truncateLength, network, crypto).join();
         checkFileContents(Arrays.copyOfRange(data, 0, truncateLength), truncated, context);
         // check we can't get the third chunk any more
         WritableAbsoluteCapability pointer = original.writableFilePointer();
@@ -858,13 +858,13 @@ public abstract class UserTests {
 
         // truncate to first chunk
         int truncateLength2 = 1 * 1024 * 1024;
-        FileWrapper truncated2 = truncated.truncate(truncateLength2, context.getUserRoot().join(), network, crypto).join();
+        FileWrapper truncated2 = truncated.truncate(truncateLength2, network, crypto).join();
         checkFileContents(Arrays.copyOfRange(data, 0, truncateLength2), truncated2, context);
         Assert.assertTrue("File has correct size", truncated2.getFileProperties().size == truncateLength2);
 
         // truncate within first chunk
         int truncateLength3 = 1024 * 1024 / 2;
-        FileWrapper truncated3 = truncated2.truncate(truncateLength3, context.getUserRoot().join(), network, crypto).join();
+        FileWrapper truncated3 = truncated2.truncate(truncateLength3, network, crypto).join();
         checkFileContents(Arrays.copyOfRange(data, 0, truncateLength2), truncated2, context);
         Assert.assertTrue("File has correct size", truncated3.getFileProperties().size == truncateLength3);
     }
@@ -1400,6 +1400,69 @@ public abstract class UserTests {
         } catch (Exception ex) {
             fail("Failed to log-in and see user-root " + ex.getMessage());
         }
+
+    }
+
+    @Test
+    public void overwriteContentsOfFileGrowFile() throws Exception {
+        String username = generateUsername();
+        String password = "test";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        FileWrapper userRoot = context.getUserRoot().get();
+
+        String filename = "somedata.txt";
+        Path filePath = Paths.get(username, filename);
+        byte[] data = randomData(6);
+        userRoot.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
+                context.crypto, l -> {}, context.crypto.random.randomBytes(32)).get();
+        checkFileContents(data, context.getByPath(filePath).join().get(), context);
+
+        FileWrapper fileV2 = context.getByPath(filePath).join().get();
+
+        byte[] bytes = "11111111".getBytes();
+        AsyncReader java_reader = peergos.shared.user.fs.AsyncReader.build(bytes);
+        int newSizeLo = bytes.length;
+        fileV2.overwriteFileJS(java_reader, 0, newSizeLo,
+                context.network, context.crypto, len -> {}).join();
+
+        checkFileContents(bytes, context.getByPath(filePath).join().get(), context);
+    }
+
+    @Test
+    public void overwriteContentsOfFileShrinkFile() throws Exception {
+        String username = generateUsername();
+        String password = "test";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        FileWrapper userRoot = context.getUserRoot().get();
+
+        String filename = "somedata.txt";
+        Path filePath = Paths.get(username, filename);
+        byte[] data = randomData(6000);
+        for(int i=0; i < data.length; i++) {
+            if(data[i] == 0) {
+                data[i] = 1;
+            }
+        }
+        userRoot.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
+                context.crypto, l -> {}, context.crypto.random.randomBytes(32)).get();
+        checkFileContents(data, context.getByPath(filePath).join().get(), context);
+
+        FileWrapper fileV2 = context.getByPath(filePath).join().get();
+
+        byte[] bytes = "11111111".getBytes();
+        AsyncReader java_reader = peergos.shared.user.fs.AsyncReader.build(bytes);
+        int newSizeLo = bytes.length;
+        fileV2.overwriteFileJS(java_reader, 0, newSizeLo,
+                context.network, context.crypto, len -> {}).join();
+
+        checkFileContents(bytes, context.getByPath(filePath).join().get(), context);
+
+        FileWrapper fileV3 = context.getByPath(filePath).join().get();
+        byte[] retrievedData = Serialize.readFully(fileV3.getInputStream(context.network, context.crypto,
+                6000, l-> {}).join(), 6000).join();
+        int nonZeroBytes = (int)IntStream.range(0, retrievedData.length).map(i-> retrievedData[i]).filter(a -> a != 0).count();
+        Assert.assertTrue("File truncated", nonZeroBytes == bytes.length);
+
 
     }
 

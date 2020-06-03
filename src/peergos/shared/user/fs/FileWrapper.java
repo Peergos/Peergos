@@ -467,13 +467,13 @@ public class FileWrapper {
     }
 
     @JsMethod
-    public CompletableFuture<FileWrapper> truncate(long newSize, FileWrapper parent, NetworkAccess network, Crypto crypto) {
+    public CompletableFuture<FileWrapper> truncate(long newSize, NetworkAccess network, Crypto crypto) {
         return network.synchronizer.applyComplexUpdate(owner(), signingPair(), (current, committer) ->
-                truncate(current, committer, newSize, parent, network, crypto)
+                truncate(current, committer, newSize, network, crypto)
         ).thenCompose(finished -> getUpdated(finished, network));
     }
 
-    public CompletableFuture<Snapshot> truncate(Snapshot snapshot, Committer committer, long newSize, FileWrapper parent, NetworkAccess network, Crypto crypto) {
+    public CompletableFuture<Snapshot> truncate(Snapshot snapshot, Committer committer, long newSize, NetworkAccess network, Crypto crypto) {
         FileProperties props = getFileProperties();
         if (props.size < newSize)
             return CompletableFuture.completedFuture(snapshot);
@@ -491,10 +491,9 @@ public class FileWrapper {
                                                     signingPair(), tid, crypto.hasher, network, snapshot, committer),
                                     network.dhtClient);
                         }).thenCompose(deleted -> pointer.fileAccess.updateProperties(deleted, committer, writableFilePointer(),
-                                entryWriter, props.withSize(startOfLastChunk), network).thenCompose(resized -> parent
-                                .uploadFileSection(resized, committer, getName(), AsyncReader.build(lastChunk),
-                                        props.isHidden, startOfLastChunk, newSize, Optional.empty(),
-                                        true, false, network, crypto, x -> {}, pointer.capability.getMapKey())));
+                                entryWriter, props.withSize(startOfLastChunk), network).thenCompose(resized ->
+                                getUpdated(resized, network).thenCompose(f -> f.overwriteSection(resized, committer,
+                                        AsyncReader.build(lastChunk), startOfLastChunk, newSize, network, crypto, x -> {}))));
                     });
                 }));
     }
@@ -562,6 +561,24 @@ public class FileWrapper {
                                                                 byte[] firstChunkMapKey) {
         return uploadFileSection(filename, fileData, false, 0, length, Optional.empty(),
                 true, network, crypto, monitor, firstChunkMapKey);
+    }
+
+    @JsMethod
+    public CompletableFuture<FileWrapper> overwriteFileJS(AsyncReader fileData,
+                                                          int endHigh,
+                                                          int endLow,
+                                                          NetworkAccess network,
+                                                          Crypto crypto,
+                                                          ProgressConsumer<Long> monitor) {
+        long size = getSize();
+        long newSize = LongUtil.intsToLong(endHigh, endLow);
+        return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
+                (s, committer) -> overwriteSection(s, committer, fileData,
+                        0L, newSize, network, crypto, monitor)
+                        .thenCompose(v -> newSize >= size ? Futures.of(v) :
+                                getUpdated(v, network)
+                                        .thenCompose(f -> f.truncate(v, committer, newSize, network, crypto))))
+                .thenCompose(v -> getUpdated(v, network));
     }
 
     @JsMethod
@@ -828,7 +845,7 @@ public class FileWrapper {
                                                 };
 
                                                 if (truncateExisting && endIndex < childProps.size) {
-                                                    return child.truncate(current, committer, endIndex, latest, network, crypto).thenCompose( updatedSnapshot ->
+                                                    return child.truncate(current, committer, endIndex, network, crypto).thenCompose( updatedSnapshot ->
                                                         getUpdated(updatedSnapshot, network).thenCompose( updatedParent ->
                                                                 child.getUpdated(updatedSnapshot, network).thenCompose( updatedChild ->
                                                                     updateExistingChild(updatedSnapshot, committer, updatedParent, updatedChild, fileData,
