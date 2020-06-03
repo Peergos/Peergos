@@ -1438,6 +1438,11 @@ public abstract class UserTests {
         String filename = "somedata.txt";
         Path filePath = Paths.get(username, filename);
         byte[] data = randomData(6000);
+        for(int i=0; i < data.length; i++) {
+            if(data[i] == 0) {
+                data[i] = 1;
+            }
+        }
         userRoot.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
                 context.crypto, l -> {}, context.crypto.random.randomBytes(32)).get();
         checkFileContents(data, context.getByPath(filePath).join().get(), context);
