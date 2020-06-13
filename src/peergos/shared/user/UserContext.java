@@ -1312,11 +1312,17 @@ public class UserContext {
     }
 
     @JsMethod
-    public CompletableFuture<Pair<Set<String>, Set<String>>> sharedWith(FileWrapper file) {
-        AbsoluteCapability cap = file.getPointer().capability;
-        Set<String> sharedReadAccessWith = sharedWithCache.getSharedWith(SharedWithCache.Access.READ, cap);
-        Set<String> sharedWriteAccessWith = sharedWithCache.getSharedWith(SharedWithCache.Access.WRITE, cap);
-        return CompletableFuture.completedFuture(new Pair<>(sharedReadAccessWith, sharedWriteAccessWith));
+    public CompletableFuture<Pair<Set<String>, Set<String>>> sharedWith(String path) {
+        return getByPath(path)
+            .thenCompose( file -> {
+                if (! file.isPresent()) {
+                    throw new IllegalStateException("Could not find path " + path.toString());
+                }
+                AbsoluteCapability cap = file.get().getPointer().capability;
+                Set<String> sharedReadAccessWith = sharedWithCache.getSharedWith(SharedWithCache.Access.READ, cap);
+                Set<String> sharedWriteAccessWith = sharedWithCache.getSharedWith(SharedWithCache.Access.WRITE, cap);
+                return CompletableFuture.completedFuture(new Pair<>(sharedReadAccessWith, sharedWriteAccessWith));
+            });
     }
 
     public CompletableFuture<Boolean> shareReadAccessWith(Path path, Set<String> readersToAdd) {
@@ -1374,15 +1380,19 @@ public class UserContext {
         });
     }
 
-    public CompletableFuture<Boolean> shareWriteAccessWithAll(Path fileToShare,
-                                                               Set<String> writersToAdd) {
+
+    @JsMethod
+    public CompletableFuture<Boolean> shareWriteAccessWith(String pathToFile,
+                                                              String usernameToGrantWriteAccess) {
+        Path fileToShare = Paths.get(pathToFile);
         return getByPath(fileToShare.getParent())
                 .thenCompose(parentOpt -> ! parentOpt.isPresent() ?
                                 Futures.errored(new IllegalStateException("Unable to read " + fileToShare.getParent())) :
                 parentOpt.get().getChild(fileToShare.getFileName().toString(), crypto.hasher, network)
                         .thenCompose(fileOpt -> ! fileOpt.isPresent() ?
                                 Futures.errored(new IllegalStateException("Unable to read " + fileToShare)) :
-                                shareWriteAccessWithAll(fileOpt.get(), fileToShare, parentOpt.get(), writersToAdd)));
+                                shareWriteAccessWithAll(fileOpt.get(), fileToShare, parentOpt.get(),
+                                        Collections.singleton(usernameToGrantWriteAccess))));
     }
 
     public CompletableFuture<Boolean> shareWriteAccessWithAll(FileWrapper file,
@@ -1452,18 +1462,9 @@ public class UserContext {
     }
 
     @JsMethod
-    public CompletableFuture<Boolean> shareReadAccessWith(FileWrapper file,
-                                                          String pathToFile,
+    public CompletableFuture<Boolean> shareReadAccessWith(String pathToFile,
                                                           String usernameToGrantReadAccess) {
-        return shareReadAccessWithAll(file, Paths.get(pathToFile), Collections.singleton(usernameToGrantReadAccess));
-    }
-
-    @JsMethod
-    public CompletableFuture<Boolean> shareWriteAccessWith(FileWrapper file,
-                                                           String pathToFile,
-                                                           FileWrapper parent,
-                                                           String usernameToGrantWriteAccess) {
-        return shareWriteAccessWithAll(file, Paths.get(pathToFile), parent, Collections.singleton(usernameToGrantWriteAccess));
+        return shareReadAccessWith(Paths.get(pathToFile), Collections.singleton(usernameToGrantReadAccess));
     }
 
     public CompletableFuture<Boolean> shareAccessWith(FileWrapper file, String usernameToGrantAccess,
