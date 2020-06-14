@@ -120,11 +120,6 @@ public class MultiUserTests {
     }
 
     @Test
-    public void shareAndUnshareTestingSharedWith() throws Exception {
-        PeergosNetworkUtils.shareAndUnshareTestingSharedWith(network);
-    }
-
-    @Test
     public void grantAndRevokeDirWriteAccess() throws Exception {
         PeergosNetworkUtils.grantAndRevokeDirWriteAccess(network, network, 2, random);
     }

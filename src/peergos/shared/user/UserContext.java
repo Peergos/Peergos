@@ -1312,17 +1312,11 @@ public class UserContext {
     }
 
     @JsMethod
-    public CompletableFuture<Pair<Set<String>, Set<String>>> sharedWith(String path) {
-        return getByPath(path)
-            .thenCompose( file -> {
-                if (! file.isPresent()) {
-                    throw new IllegalStateException("Could not find path " + path.toString());
-                }
-                AbsoluteCapability cap = file.get().getPointer().capability;
-                Set<String> sharedReadAccessWith = sharedWithCache.getSharedWith(SharedWithCache.Access.READ, cap);
-                Set<String> sharedWriteAccessWith = sharedWithCache.getSharedWith(SharedWithCache.Access.WRITE, cap);
-                return CompletableFuture.completedFuture(new Pair<>(sharedReadAccessWith, sharedWriteAccessWith));
-            });
+    public Pair<Set<String>, Set<String>> sharedWith(FileWrapper file) {
+        AbsoluteCapability cap = file.getPointer().capability;
+        Set<String> sharedReadAccessWith = sharedWithCache.getSharedWith(SharedWithCache.Access.READ, cap);
+        Set<String> sharedWriteAccessWith = sharedWithCache.getSharedWith(SharedWithCache.Access.WRITE, cap);
+        return new Pair<>(sharedReadAccessWith, sharedWriteAccessWith);
     }
 
     public CompletableFuture<Boolean> shareReadAccessWith(Path path, Set<String> readersToAdd) {

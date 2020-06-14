@@ -484,48 +484,6 @@ public class PeergosNetworkUtils {
         }
     }
 
-    public static void shareAndUnshareTestingSharedWith(NetworkAccess sharerNode) throws Exception {
-
-        String sharerUsername = "sharer";
-        String sharerPassword = "sharer1";
-        UserContext sharer = PeergosNetworkUtils.ensureSignedUp(sharerUsername, sharerPassword, sharerNode, crypto);
-
-        String shareeUsername = "sharee";
-        String shareePassword = "sharee1";
-        UserContext sharee = PeergosNetworkUtils.ensureSignedUp(shareeUsername, shareePassword, sharerNode, crypto);
-
-        // friend sharer with others
-        friendBetweenGroups(Arrays.asList(sharer), Arrays.asList(sharee));
-
-        // friends are now connected
-        // share a file from u1 to the others
-        FileWrapper u1Root = sharer.getUserRoot().get();
-        String folderName = "afolder";
-        u1Root.mkdir(folderName, sharer.network, SymmetricKey.random(), false, crypto).get();
-        String path = Paths.get(sharerUsername, folderName).toString();
-        System.out.println("PATH "+ path);
-        FileWrapper file = sharer.getByPath(path).join().get();
-        //Read sharing
-        for(int i=0; i < 3; i++) {
-            Pair<Set<String>, Set<String>> result = sharer.sharedWith(path).join();
-            Assert.assertTrue(result.left.size() == 0);
-            sharer.shareReadAccessWith(path, sharee.username).join();
-            result = sharer.sharedWith(path).join();
-            Assert.assertTrue(result.left.size() == 1);
-            sharer.unShareReadAccess(file, sharee.username).join();
-        }
-        //Now write sharing
-        for(int i=0; i < 3; i++) {
-            Pair<Set<String>, Set<String>> result = sharer.sharedWith(path).join();
-            Assert.assertTrue(result.right.size() == 0);
-            sharer.shareWriteAccessWith(path, sharee.username).join();
-            result = sharer.sharedWith(path).join();
-            Assert.assertTrue(result.right.size() == 1);
-            sharer.unShareWriteAccess(file, sharee.username).join();
-        }
-    }
-
-
     public static void grantAndRevokeDirWriteAccess(NetworkAccess sharerNode,
                                                     NetworkAccess shareeNode,
                                                     int shareeCount,
