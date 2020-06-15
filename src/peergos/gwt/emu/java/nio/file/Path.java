@@ -40,7 +40,12 @@ public class Path {
             return new Path(pathString);
         } else {
             if(index == pathString.length() - 1) {
-                return null;
+                if (index == 0) {
+                    return null;
+                } else {
+                    int secondLastIndex = pathString.lastIndexOf(SEPARATOR, index - 1);
+                    return new Path(pathString.substring(secondLastIndex + 1, index));
+                }
             } else {
                 return new Path(pathString.substring(index + 1));
             }
