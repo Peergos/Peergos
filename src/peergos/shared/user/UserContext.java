@@ -113,18 +113,18 @@ public class UserContext {
     }
 
     @JsMethod
-    public CompletableFuture<Boolean> unShareReadAccess(FileWrapper file, String readerToRemove) {
-
+    public CompletableFuture<Boolean> unShareReadAccess(FileWrapper file, String[] readers) {
+        Set<String> readersToUnShare = new HashSet<>(Arrays.asList(readers));
         return file.getPath(network).thenCompose(pathString ->
-                unShareReadAccess(Paths.get(pathString), Collections.singleton(readerToRemove))
+                unShareReadAccess(Paths.get(pathString), readersToUnShare)
         );
     }
 
     @JsMethod
-    public CompletableFuture<Boolean> unShareWriteAccess(FileWrapper file, String writerToRemove) {
-
+    public CompletableFuture<Boolean> unShareWriteAccess(FileWrapper file, String[] writers) {
+        Set<String> writersToUnShare = new HashSet<>(Arrays.asList(writers));
         return file.getPath(network).thenCompose(pathString ->
-                unShareWriteAccess(Paths.get(pathString), Collections.singleton(writerToRemove))
+                unShareWriteAccess(Paths.get(pathString), writersToUnShare)
         );
     }
 
@@ -1312,11 +1312,11 @@ public class UserContext {
     }
 
     @JsMethod
-    public CompletableFuture<Pair<Set<String>, Set<String>>> sharedWith(FileWrapper file) {
+    public Pair<Set<String>, Set<String>> sharedWith(FileWrapper file) {
         AbsoluteCapability cap = file.getPointer().capability;
         Set<String> sharedReadAccessWith = sharedWithCache.getSharedWith(SharedWithCache.Access.READ, cap);
         Set<String> sharedWriteAccessWith = sharedWithCache.getSharedWith(SharedWithCache.Access.WRITE, cap);
-        return CompletableFuture.completedFuture(new Pair<>(sharedReadAccessWith, sharedWriteAccessWith));
+        return new Pair<>(sharedReadAccessWith, sharedWriteAccessWith);
     }
 
     public CompletableFuture<Boolean> shareReadAccessWith(Path path, Set<String> readersToAdd) {
