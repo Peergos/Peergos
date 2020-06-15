@@ -1422,13 +1422,14 @@ public class UserContext {
         System.out.println("Resharing WRITE cap to " + toFile + " with " + writersToAdd);
         return getByPath(toFile.getParent())
                 .thenCompose(parent -> getByPath(toFile)
-                        .thenCompose(fileOpt -> fileOpt.map(file -> sendWriteCapToAll(file, parent.get(), writersToAdd))
+                        .thenCompose(fileOpt -> fileOpt.map(file -> sendWriteCapToAll(file, parent.get(), toFile, writersToAdd))
                                 .orElseGet(() -> Futures.errored(
                                         new IllegalStateException("Couldn't retrieve file at " + toFile)))));
     }
 
     public CompletableFuture<Boolean> sendWriteCapToAll(FileWrapper file,
                                                         FileWrapper parent,
+                                                        Path p,
                                                         Set<String> writersToAdd) {
         if (parent.writer().equals(file.writer()))
             return Futures.errored(
@@ -1440,7 +1441,14 @@ public class UserContext {
         return Futures.reduceAll(writersToAdd,
                 true,
                 (x, username) -> shareAccessWith(file, username, sharingFunction),
-                (a, b) -> a && b);
+                (a, b) -> a && b).thenCompose(result -> {
+            if (!result) {
+                CompletableFuture<Boolean> res = new CompletableFuture<>();
+                res.complete(false);
+                return res;
+            }
+            return updatedSharedWithCache(file, p, writersToAdd, SharedWithCache.Access.WRITE);
+        });
     }
 
     private CompletableFuture<Boolean> updatedSharedWithCache(FileWrapper file,
