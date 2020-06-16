@@ -13,6 +13,7 @@ import peergos.shared.user.fs.*;
 import peergos.shared.user.fs.FileWrapper;
 import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.ArrayOps;
+import peergos.shared.util.Pair;
 import peergos.shared.util.Serialize;
 
 import java.io.File;
@@ -363,6 +364,86 @@ public class PeergosNetworkUtils {
         Set<FileWrapper> friendChildren = friend.getChildren(crypto.hasher, sharee.network).join();
         Assert.assertEquals(friendChildren.size(), 1);
     }
+
+    public static void sharedwithPermutations(NetworkAccess sharerNode) throws Exception {
+
+        String sharerUsername = "sharer";
+        String sharerPassword = "sharer1";
+        UserContext sharer = PeergosNetworkUtils.ensureSignedUp(sharerUsername, sharerPassword, sharerNode, crypto);
+
+        String shareeUsername = "sharee";
+        String shareePassword = "sharee1";
+        UserContext sharee = PeergosNetworkUtils.ensureSignedUp(shareeUsername, shareePassword, sharerNode, crypto);
+
+        String shareeUsername2 = "sharee2";
+        String shareePassword2 = "sharee21";
+        UserContext sharee2 = PeergosNetworkUtils.ensureSignedUp(shareeUsername2, shareePassword2, sharerNode, crypto);
+
+
+        // friend sharer with others
+        friendBetweenGroups(Arrays.asList(sharer), Arrays.asList(sharee));
+        friendBetweenGroups(Arrays.asList(sharer), Arrays.asList(sharee2));
+
+        // friends are now connected
+        // share a file from u1 to the others
+        FileWrapper u1Root = sharer.getUserRoot().get();
+        String folderName = "afolder";
+        u1Root.mkdir(folderName, sharer.network, SymmetricKey.random(), false, crypto).get();
+        String path = Paths.get(sharerUsername, folderName).toString();
+        System.out.println("PATH "+ path);
+        FileWrapper file = sharer.getByPath(path).join().get();
+
+        Pair<Set<String>, Set<String>> result = sharer.sharedWith(file);
+        Assert.assertTrue(result.left.size() == 0 && result.right.size() == 0);
+        sharer.shareReadAccessWith(file, path, sharee.username).join();
+        result = sharer.sharedWith(file);
+        Assert.assertTrue(result.left.size() == 1);
+
+        file = sharer.getByPath(path).join().get();
+        FileWrapper parent = sharer.getUserRoot().get();
+
+        sharer.shareWriteAccessWith(file, path, parent, sharee2.username).join();
+
+        file = sharer.getByPath(path).join().get();
+        result = sharer.sharedWith(file);
+        Assert.assertTrue(result.left.size() == 1 && result.right.size() == 1);
+
+        file = sharer.getByPath(path).join().get();
+        String[] names = new String[] {sharee.username };
+        sharer.unShareReadAccess(file, names).join();
+        file = sharer.getByPath(path).join().get();
+        result = sharer.sharedWith(file);
+        Assert.assertTrue(result.left.size() == 0 && result.right.size() == 1);
+
+        names = new String[] {sharee2.username };
+        sharer.unShareWriteAccess(file, names).join();
+        file = sharer.getByPath(path).join().get();
+        result = sharer.sharedWith(file);
+        Assert.assertTrue(result.left.size() == 0 && result.right.size() == 0);
+
+        // now try again, but after adding read, write sharees, remove the write sharee
+        sharer.shareReadAccessWith(file, path, sharee.username).join();
+        result = sharer.sharedWith(file);
+        Assert.assertTrue(result.left.size() == 1);
+
+        file = sharer.getByPath(path).join().get();
+        parent = sharer.getUserRoot().get();
+
+        sharer.shareWriteAccessWith(file, path, parent, sharee2.username).join();
+
+        file = sharer.getByPath(path).join().get();
+        result = sharer.sharedWith(file);
+        Assert.assertTrue(result.left.size() == 1 && result.right.size() == 1);
+
+        file = sharer.getByPath(path).join().get();
+        names = new String[] {sharee2.username };
+        sharer.unShareWriteAccess(file, names).join();
+        file = sharer.getByPath(path).join().get();
+        result = sharer.sharedWith(file);
+        Assert.assertTrue(result.left.size() == 1 && result.right.size() == 0);
+
+    }
+
 
     public static void grantAndRevokeDirReadAccess(NetworkAccess sharerNode, NetworkAccess shareeNode, int shareeCount, Random random) throws Exception {
         Assert.assertTrue(0 < shareeCount);

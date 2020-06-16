@@ -113,18 +113,18 @@ public class UserContext {
     }
 
     @JsMethod
-    public CompletableFuture<Boolean> unShareReadAccess(FileWrapper file, String readerToRemove) {
-
+    public CompletableFuture<Boolean> unShareReadAccess(FileWrapper file, String[] readers) {
+        Set<String> readersToUnShare = new HashSet<>(Arrays.asList(readers));
         return file.getPath(network).thenCompose(pathString ->
-                unShareReadAccess(Paths.get(pathString), Collections.singleton(readerToRemove))
+                unShareReadAccess(Paths.get(pathString), readersToUnShare)
         );
     }
 
     @JsMethod
-    public CompletableFuture<Boolean> unShareWriteAccess(FileWrapper file, String writerToRemove) {
-
+    public CompletableFuture<Boolean> unShareWriteAccess(FileWrapper file, String[] writers) {
+        Set<String> writersToUnShare = new HashSet<>(Arrays.asList(writers));
         return file.getPath(network).thenCompose(pathString ->
-                unShareWriteAccess(Paths.get(pathString), Collections.singleton(writerToRemove))
+                unShareWriteAccess(Paths.get(pathString), writersToUnShare)
         );
     }
 
@@ -1312,11 +1312,11 @@ public class UserContext {
     }
 
     @JsMethod
-    public CompletableFuture<Pair<Set<String>, Set<String>>> sharedWith(FileWrapper file) {
+    public Pair<Set<String>, Set<String>> sharedWith(FileWrapper file) {
         AbsoluteCapability cap = file.getPointer().capability;
         Set<String> sharedReadAccessWith = sharedWithCache.getSharedWith(SharedWithCache.Access.READ, cap);
         Set<String> sharedWriteAccessWith = sharedWithCache.getSharedWith(SharedWithCache.Access.WRITE, cap);
-        return CompletableFuture.completedFuture(new Pair<>(sharedReadAccessWith, sharedWriteAccessWith));
+        return new Pair<>(sharedReadAccessWith, sharedWriteAccessWith);
     }
 
     public CompletableFuture<Boolean> shareReadAccessWith(Path path, Set<String> readersToAdd) {
@@ -1422,13 +1422,14 @@ public class UserContext {
         System.out.println("Resharing WRITE cap to " + toFile + " with " + writersToAdd);
         return getByPath(toFile.getParent())
                 .thenCompose(parent -> getByPath(toFile)
-                        .thenCompose(fileOpt -> fileOpt.map(file -> sendWriteCapToAll(file, parent.get(), writersToAdd))
+                        .thenCompose(fileOpt -> fileOpt.map(file -> sendWriteCapToAll(file, parent.get(), toFile, writersToAdd))
                                 .orElseGet(() -> Futures.errored(
                                         new IllegalStateException("Couldn't retrieve file at " + toFile)))));
     }
 
     public CompletableFuture<Boolean> sendWriteCapToAll(FileWrapper file,
                                                         FileWrapper parent,
+                                                        Path pathToFile,
                                                         Set<String> writersToAdd) {
         if (parent.writer().equals(file.writer()))
             return Futures.errored(
@@ -1440,14 +1441,19 @@ public class UserContext {
         return Futures.reduceAll(writersToAdd,
                 true,
                 (x, username) -> shareAccessWith(file, username, sharingFunction),
-                (a, b) -> a && b);
+                (a, b) -> a && b).thenCompose(result -> {
+            if (!result) {
+                return Futures.of(false);
+            }
+            return updatedSharedWithCache(file, pathToFile, writersToAdd, SharedWithCache.Access.WRITE);
+        });
     }
 
     private CompletableFuture<Boolean> updatedSharedWithCache(FileWrapper file,
-                                                              Path p,
+                                                              Path pathToFile,
                                                               Set<String> usersToAdd,
                                                               SharedWithCache.Access access) {
-        sharedWithCache.addSharedWith(access, p, file.getPointer().capability, usersToAdd);
+        sharedWithCache.addSharedWith(access, pathToFile, file.getPointer().capability, usersToAdd);
         return Futures.of(true);
     }
 

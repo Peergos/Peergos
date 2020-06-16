@@ -105,6 +105,12 @@ public class MultiUserTests {
     }
 
     @Test
+    public void sharedwithPermutations() throws Exception {
+        PeergosNetworkUtils.sharedwithPermutations(network);
+    }
+
+
+    @Test
     public void grantAndRevokeFileWriteAccess() throws Exception {
         PeergosNetworkUtils.grantAndRevokeFileWriteAccess(network, network, userCount, random);
     }
@@ -1154,7 +1160,7 @@ public class MultiUserTests {
 
         Set<String> newU1Followers = u1.getFollowerNames().get();
         Assert.assertTrue("u1 no longer has u2 as follower", !newU1Followers.contains(u2.username));
-        
+
         Set<String> u2Following = u2.getFollowing().get();
         Assert.assertTrue("u2 is no longer following u1", !u2Following.contains(u1.username));
 
