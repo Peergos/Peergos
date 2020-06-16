@@ -365,7 +365,7 @@ public class PeergosNetworkUtils {
         Assert.assertEquals(friendChildren.size(), 1);
     }
 
-    public static void shareAndUnshare(NetworkAccess sharerNode) throws Exception {
+    public static void sharedwithPermutations(NetworkAccess sharerNode) throws Exception {
 
         String sharerUsername = "sharer";
         String sharerPassword = "sharer1";

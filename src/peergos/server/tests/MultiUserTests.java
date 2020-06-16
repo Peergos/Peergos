@@ -105,8 +105,8 @@ public class MultiUserTests {
     }
 
     @Test
-    public void shareAndUnshare() throws Exception {
-        PeergosNetworkUtils.shareAndUnshare(network);
+    public void sharedwithPermutations() throws Exception {
+        PeergosNetworkUtils.sharedwithPermutations(network);
     }
 
 

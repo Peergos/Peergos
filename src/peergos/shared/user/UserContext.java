@@ -1429,7 +1429,7 @@ public class UserContext {
 
     public CompletableFuture<Boolean> sendWriteCapToAll(FileWrapper file,
                                                         FileWrapper parent,
-                                                        Path p,
+                                                        Path pathToFile,
                                                         Set<String> writersToAdd) {
         if (parent.writer().equals(file.writer()))
             return Futures.errored(
@@ -1443,19 +1443,17 @@ public class UserContext {
                 (x, username) -> shareAccessWith(file, username, sharingFunction),
                 (a, b) -> a && b).thenCompose(result -> {
             if (!result) {
-                CompletableFuture<Boolean> res = new CompletableFuture<>();
-                res.complete(false);
-                return res;
+                return Futures.of(false);
             }
-            return updatedSharedWithCache(file, p, writersToAdd, SharedWithCache.Access.WRITE);
+            return updatedSharedWithCache(file, pathToFile, writersToAdd, SharedWithCache.Access.WRITE);
         });
     }
 
     private CompletableFuture<Boolean> updatedSharedWithCache(FileWrapper file,
-                                                              Path p,
+                                                              Path pathToFile,
                                                               Set<String> usersToAdd,
                                                               SharedWithCache.Access access) {
-        sharedWithCache.addSharedWith(access, p, file.getPointer().capability, usersToAdd);
+        sharedWithCache.addSharedWith(access, pathToFile, file.getPointer().capability, usersToAdd);
         return Futures.of(true);
     }
 
