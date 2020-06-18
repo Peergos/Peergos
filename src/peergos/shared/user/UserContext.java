@@ -1048,6 +1048,15 @@ public class UserContext {
     }
 
     @JsMethod
+    public CompletableFuture<Boolean> sendInitialFollowRequests(String[] targetUsernames) {
+        Set<String> usernames = new HashSet<>(Arrays.asList(targetUsernames));
+        return Futures.reduceAll(usernames,
+                true,
+                (b, targetUsername) -> sendFollowRequest(targetUsername, SymmetricKey.random()),
+                (a, b) -> a);
+    }
+
+    @JsMethod
     public CompletableFuture<Boolean> sendReplyFollowRequest(FollowRequestWithCipherText initialRequestAndRaw, boolean accept, boolean reciprocate) {
         FollowRequest initialRequest = initialRequestAndRaw.req;
         String theirUsername = initialRequest.entry.get().ownerName;
@@ -1141,7 +1150,7 @@ public class UserContext {
                         .findAny()
                         .isPresent();
                 if (alreadySentRequest) {
-                    return Futures.errored(new Exception("Follow Request already sent!"));
+                    return Futures.errored(new Exception("Follow Request already sent to user " + targetUsername));
                 }
                 // check for them not reciprocating
                 return getFollowing().thenCompose(following -> {
@@ -1150,11 +1159,11 @@ public class UserContext {
                             .findAny()
                             .isPresent();
                     if (alreadyFollowing) {
-                        return Futures.errored(new Exception("User already a follower!"));
+                        return Futures.errored(new Exception("User " + targetUsername +" is already a follower!"));
                     }
                     return getPublicKeys(targetUsername).thenCompose(targetUserOpt -> {
                         if (! targetUserOpt.isPresent()) {
-                            return Futures.errored(new Exception("User does not exist!"));
+                            return Futures.errored(new Exception("User " + targetUsername + " does not exist!"));
                         }
                         PublicBoxingKey targetUser = targetUserOpt.get().right;
                         return sharing.mkdir(targetUsername, network, null, true, crypto)
@@ -1460,16 +1469,18 @@ public class UserContext {
     @JsMethod
     public CompletableFuture<Boolean> shareReadAccessWith(FileWrapper file,
                                                           String pathToFile,
-                                                          String usernameToGrantReadAccess) {
-        return shareReadAccessWithAll(file, Paths.get(pathToFile), Collections.singleton(usernameToGrantReadAccess));
+                                                          String[] usernamesToGrantReadAccess) {
+        Set<String> usersToGrantReadAccess = new HashSet<>(Arrays.asList(usernamesToGrantReadAccess));
+        return shareReadAccessWithAll(file, Paths.get(pathToFile), usersToGrantReadAccess);
     }
 
     @JsMethod
     public CompletableFuture<Boolean> shareWriteAccessWith(FileWrapper file,
                                                            String pathToFile,
                                                            FileWrapper parent,
-                                                           String usernameToGrantWriteAccess) {
-        return shareWriteAccessWithAll(file, Paths.get(pathToFile), parent, Collections.singleton(usernameToGrantWriteAccess));
+                                                           String[] usernamesToGrantWriteAccess) {
+        Set<String> usersToGrantWriteAccess = new HashSet<>(Arrays.asList(usernamesToGrantWriteAccess));
+        return shareWriteAccessWithAll(file, Paths.get(pathToFile), parent, usersToGrantWriteAccess);
     }
 
     public CompletableFuture<Boolean> shareAccessWith(FileWrapper file, String usernameToGrantAccess,

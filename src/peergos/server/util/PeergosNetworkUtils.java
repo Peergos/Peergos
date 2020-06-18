@@ -395,14 +395,16 @@ public class PeergosNetworkUtils {
 
         Pair<Set<String>, Set<String>> result = sharer.sharedWith(file);
         Assert.assertTrue(result.left.size() == 0 && result.right.size() == 0);
-        sharer.shareReadAccessWith(file, path, sharee.username).join();
+
+
+        sharer.shareReadAccessWith(file, path, Collections.singletonList(sharee.username).toArray(new String[1])).join();
         result = sharer.sharedWith(file);
         Assert.assertTrue(result.left.size() == 1);
 
         file = sharer.getByPath(path).join().get();
         FileWrapper parent = sharer.getUserRoot().get();
 
-        sharer.shareWriteAccessWith(file, path, parent, sharee2.username).join();
+        sharer.shareWriteAccessWith(file, path, parent, Collections.singletonList(sharee2.username).toArray(new String[1])).join();
 
         file = sharer.getByPath(path).join().get();
         result = sharer.sharedWith(file);
@@ -422,14 +424,14 @@ public class PeergosNetworkUtils {
         Assert.assertTrue(result.left.size() == 0 && result.right.size() == 0);
 
         // now try again, but after adding read, write sharees, remove the write sharee
-        sharer.shareReadAccessWith(file, path, sharee.username).join();
+        sharer.shareReadAccessWith(file, path, Collections.singletonList(sharee.username).toArray(new String[1])).join();
         result = sharer.sharedWith(file);
         Assert.assertTrue(result.left.size() == 1);
 
         file = sharer.getByPath(path).join().get();
         parent = sharer.getUserRoot().get();
 
-        sharer.shareWriteAccessWith(file, path, parent, sharee2.username).join();
+        sharer.shareWriteAccessWith(file, path, parent, Collections.singletonList(sharee2.username).toArray(new String[1])).join();
 
         file = sharer.getByPath(path).join().get();
         result = sharer.sharedWith(file);
