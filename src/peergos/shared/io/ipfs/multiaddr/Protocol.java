@@ -24,6 +24,7 @@ public class Protocol {
         UTP(301, 0, "utp"),
         UDT(302, 0, "udt"),
         IPFS(421, LENGTH_PREFIXED_VAR_SIZE, "ipfs"),
+        P2P(421, LENGTH_PREFIXED_VAR_SIZE, "p2p"),
         HTTPS(443, 0, "https"),
         HTTP(480, 0, "http"),
         ONION(444, 80, "onion");
@@ -90,6 +91,7 @@ public class Protocol {
                     if (x > 65535)
                         throw new IllegalStateException("Failed to parse "+type.name+" address "+addr + " (> 65535");
                     return new byte[]{(byte)(x >>8), (byte)x};
+                case P2P:
                 case IPFS:
                     Multihash hash = Cid.decode(addr);
                     ByteArrayOutputStream bout = new ByteArrayOutputStream();
