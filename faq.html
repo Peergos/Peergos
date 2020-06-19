@@ -48,7 +48,7 @@
                         </a>
                     </li>
                         <li>
-                            <a href="https://demo.peergos.net" class="btn">
+                            <a href="https://demo.peergos.net" target="_new" class="btn">
                                                         <span>
                                                                 Try the Demo
                                                         </span>
@@ -101,50 +101,26 @@
     <div class="row">
     <div class="col m3 col s4">
     <div id="full-toc" class="bs-docs-sidebar hidden-print affix-top hidden-xs hidden-sm" role="complementary">
-  <ul class='nav bs-docs-sidenav'><li class='active'><a href='#the_product_' data-scroll data-url>The Product</a></li><li><a href='#the_design_and_technology_' data-scroll data-url>The Design and Technology</a></ul>
+  <ul class='nav bs-docs-sidenav'><li class='active'><a href='#i_have_nothing_to_hide_so_why_should_i_care_about_privacy_' data-scroll data-url>I have nothing to hide, so why should I care about privacy?</a><li><a href='#ok_but_its_not_like_someone_is_watching_everything_i_do_right_' data-scroll data-url>OK, but it's not like someone is watching everything I do right?</a></li><li><a href='#isnt_staying_private_on_the_internet_hard_' data-scroll data-url>Isn't staying private on the internet hard?</a></li><li><a href='#if_privacy_is_a_right_why_do_i_have_to_pay_you_for_it_' data-scroll data-url>If privacy is a right, why do I have to pay you for it?</a></li><li><a href='#why_should_i_trust_peergos_over_my_current_storage_provider_' data-scroll data-url>Why should I trust Peergos over my current storage provider?</a></li><li><a href='#im_definitely_going_to_check_out_your_code_where_can_i_report_a_security_vulnerability_' data-scroll data-url>I'm definitely going to check out your code. Where can I report a security vulnerability?</a></li><li><a href='#can_my_company_use_peergos_' data-scroll data-url>Can my company use Peergos?</a></li></ul>
     </div>
     </div>
     <div class="col m9 col s8" role="main" style="overflow-x:auto; padding-bottom: 10px;">
     <h1 class="page-header main-title">Frequently Asked Questions</h1>
     <div class="bs-docs-section">
-    <h2 id="the_product_">The Product</h2>
-<ul>
-<li>
-<p>What is Peergos?</p>
-<p>Peergos is your private space online. It lets you store and share files safely and securely.</p>
-</li>
-<li>
-<p>Why should I use Peergos?</p>
-<p>You should use Peergos if you care about privacy and not being exploited by the surveillance economy that companies like Google and Facebook depend on. </p>
-</li>
-<li>
-<p>Where can I report a security vulnerability?</p>
+    <h3 id="i_have_nothing_to_hide_so_why_should_i_care_about_privacy_">I have nothing to hide, so why should I care about privacy?</h3>
+<p>Sure, but you probably don't have anything you particularly want to show off either. Here's the thing, privacy is pretty important - it's a right enshrined in the Universal Declaration of Human Rights. We believe that the same rights you are granted in the physical world should extend to the online world. </p>
+<h3 id="ok_but_its_not_like_someone_is_watching_everything_i_do_right_">OK, but it's not like someone is watching everything I do right?</h3>
+<p>In 2013, Edward Snowden leaked evidence showing that the intelligence agencies of several governments are engaged in the bulk collection of internet and telephone activity. Since then, there's been a deluge of incidents involving governments and tech companies that has demonstrated that the internet is under constant surveillance. It's even built into the business models of certain social networks, search engines and email providers - ever seen an ad online and felt it was a little eerie how relevant it was?  These services track your activity and sell this data to advertisers who then target you with ads. </p>
+<h3 id="isnt_staying_private_on_the_internet_hard_">Isn't staying private on the internet hard?</h3>
+<p>It depends on what you're worried about. There are lots of tools out there that will provide privacy for different use cases and threat models. Some of them are easy to use and others are aimed at people who have a lot of technical expertise. With Peergos, we've made it so you can easily store files with us and be sure that they can only seen by you and the people who choose to share them with.</p>
+<h3 id="if_privacy_is_a_right_why_do_i_have_to_pay_you_for_it_">If privacy is a right, why do I have to pay you for it?</h3>
+<p>Unlike some other service providers, we don't rely on monetising data collected about our users. We prefer to keep it simple - we provide a private drive with some awesome features, and you pay us so that we can cover our running costs and spend our time making Peergos even better. No hidden caveats. Alternatively, all our code is open-source so you can download it and run your own Peergos server if you want.</p>
+<h3 id="why_should_i_trust_peergos_over_my_current_storage_provider_">Why should I trust Peergos over my current storage provider?</h3>
+<p>We'll never sell data about you because we can't! By design, Peergos can't collect data about you, your files and who you share them with. We're an open-source project so all of our code is available for people to check for security flaws and bugs.</p>
+<h3 id="im_definitely_going_to_check_out_your_code_where_can_i_report_a_security_vulnerability_">I'm definitely going to check out your code. Where can I report a security vulnerability?</h3>
 <p>You can either send us details within Peergos itself to the "peergos" user, or email us at security@peergos.org</p>
-</li>
-<li>
-<p>Can my company use Peergos?</p>
+<h3 id="can_my_company_use_peergos_">Can my company use Peergos?</h3>
 <p>Definitely! Please contact us for suggestions on how to use Peergos in a corporate setting, or about setting up a corporate account, corporate@peergos.org.</p>
-</li>
-</ul>
-<h2 id="the_design_and_technology_">The Design and Technology</h2>
-<ul>
-<li>
-<p>Which platforms are supported?</p>
-<p>At the moment we have a web interface that can be used on any major desktop or mobile platform. We will be building a progressive web app, and native apps once we have the resources. </p>
-</li>
-<li>
-<p>How is Peergos secure?</p>
-<p>Peergos is designed from the ground up to use strong encryption and not to depend on DNS, or TLS certificate authorities for its operation. </p>
-</li>
-<li>
-<p>What encryption does Peergos use?</p>
-<p>Peergos uses TweetNaCl, sha256 and scrypt. As soon as clear post-quantum asymmetric algorithms arrive we will migrate sharing and signing to use them. Unshared files are already safe from being exposed by a large quantum computer. </p>
-</li>
-<li>
-<p>How do permissions work?</p>
-<p>You have fine grained control over who can see or edit your files. You can grant other Peergos users read or write acess to individual files or folders, or generate a secret link that you can share with anyone. For more details see <a href="https://book.peergos.org/security/cryptree.html">Access Control</a>.</p>
-</li>
-</ul>
     </div>
     <span class="pull-right">
                                         <a class="btn btn-default" role="button"
@@ -166,6 +142,7 @@
             <div class="col l3 m4 s12">
                 <h5 class="white-text">About Us</h5>
                 <ul>
+                    <li><a href="https://book.peergos.org/" target="_new">Tech book</a></li>
                     <li><a href="/about" >About</a></li>
                     <li><a href="/contact" >Contact</a></li>
                     <li><a href="/faq" >FAQ</a></li>
