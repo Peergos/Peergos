@@ -148,6 +148,7 @@ public class Protocol {
             case DCCP:
             case SCTP:
                 return Integer.toString((in.read() << 8) | (in.read()));
+            case P2P:
             case IPFS:
                 buf = new byte[sizeForAddress];
                 in.read(buf);
@@ -158,7 +159,7 @@ public class Protocol {
                 String port = Integer.toString((in.read() << 8) | (in.read()));
                 return new String(new Base32().encode(host))+":"+port;
         }
-        throw new IllegalStateException("Unimplemented protocl type: "+type.name);
+        throw new IllegalStateException("Unimplemented protocol type: "+type.name);
     }
 
     public int sizeForAddress(InputStream in) throws IOException {
