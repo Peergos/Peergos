@@ -94,9 +94,7 @@ public interface AccessControl {
                 case WRITE:
                     return writers.getAllowed(path);
                 case READ:
-                    List<String> allowed = readers.getAllowed(path);
-                    List<String> allowed2 = writers.getAllowed(path);
-                    return new ArrayList<>(Stream.of(allowed, allowed2).flatMap(e -> e.stream()).collect(Collectors.toSet()));
+                    return readers.getAllowed(path);
                 default:
                     throw new IllegalStateException("Unimplemented");
             }

@@ -1,5 +1,6 @@
 package peergos.server.simulation;
 
+import peergos.server.util.PeergosNetworkUtils;
 import peergos.shared.social.FollowRequestWithCipherText;
 import peergos.shared.user.UserContext;
 import peergos.shared.user.fs.*;
@@ -19,10 +20,14 @@ import java.util.stream.Stream;
 
 public class PeergosFileSystemImpl implements FileSystem {
 
-    private final UserContext userContext;
+    private UserContext userContext;
 
     public PeergosFileSystemImpl(UserContext userContext) {
         this.userContext = userContext;
+    }
+
+    public UserContext getUserContext() {
+        return userContext;
     }
 
     @Override
@@ -79,10 +84,14 @@ public class PeergosFileSystemImpl implements FileSystem {
         Set<String> userSet = Stream.of(user).collect(Collectors.toSet());
         switch (permission) {
             case READ:
-                userContext.shareReadAccessWith(path, userSet).join();
+                if(! userContext.shareReadAccessWith(path, userSet).join()){
+                    throw new Error("unable to grant read access");
+                }
                 return;
             case WRITE:
-                userContext.shareWriteAccessWith(path, userSet).join();
+                if(! userContext.shareWriteAccessWith(path, userSet).join()){
+                    throw new Error("unable to grant write access");
+                }
                 return;
         }
         throw new IllegalStateException();

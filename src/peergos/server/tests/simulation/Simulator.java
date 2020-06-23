@@ -235,6 +235,26 @@ public class Simulator implements Runnable {
         }
 
         public PeergosFileSystemImpl getTestFileSystem(String user) {
+            return getTestFileSystem(user, false);
+        }
+
+        public PeergosFileSystemImpl getTestFileSystem(String user, boolean reload) {
+            if (reload) {
+                List<Pair<FileSystem, FileSystem>> pairs = peergosAndNativeFileSystemPair.stream()
+                        .filter(e -> e.right.user().equals(user)).collect(Collectors.toList());
+                if(pairs.size() != 1) {
+                    throw new Error("Unexpected Filesystem matches");
+                }
+                Pair<FileSystem, FileSystem> currentPair = pairs.get(0);
+                peergosAndNativeFileSystemPair.remove(currentPair);
+                PeergosFileSystemImpl peergosFS = (PeergosFileSystemImpl) currentPair.left;
+                UserContext context = peergosFS.getUserContext();
+                System.out.println("reloading user:" + context.username);
+                UserContext copy = PeergosNetworkUtils.ensureSignedUp(peergosFS.user(), usernameToPassword(peergosFS.user()),
+                        context.network, context.crypto);
+                FileSystem newPeergosFS = new PeergosFileSystemImpl(copy);
+                peergosAndNativeFileSystemPair.add(new Pair<>(newPeergosFS, currentPair.right));
+            }
             return peergosAndNativeFileSystemPair.stream()
                     .filter(e -> e.right.user().equals(user))
                     .map(e -> (PeergosFileSystemImpl) e.left)
@@ -422,6 +442,15 @@ public class Simulator implements Runnable {
                 String fileGrantee = otherUser.get();
                 log(user, simulation, grantFilePath, "with grantee "+ fileGrantee);
                 grantPermission(user, fileGrantee, grantFilePath, simulation.permission());
+                try {
+                    boolean isVerified = verify();
+                    if (!isVerified) {
+                        System.currentTimeMillis();
+                        boolean test = verify();
+                    }
+                }catch(Exception e){
+                    System.currentTimeMillis();
+                }
                 break;
             case GRANT_READ_DIR:
             case GRANT_WRITE_DIR:
@@ -458,6 +487,7 @@ public class Simulator implements Runnable {
         init();
 
         for (int iOp = 2; iOp < opCount; iOp++) {
+            System.out.println("iOp=" + iOp);
             Simulation simulation = getNextSimulation.get();
             run(simulation);
         }
@@ -474,7 +504,7 @@ public class Simulator implements Runnable {
      * @return
      */
     private boolean verifySharingPermissions(String user, Path path) {
-        FileSystem peergosFileSystem = fileSystems.getTestFileSystem(user);
+        FileSystem peergosFileSystem = fileSystems.getTestFileSystem(user, false);
         FileSystem nativeFileSystem = fileSystems.getReferenceFileSystem(user);
 
         boolean isVerified = true;
@@ -491,11 +521,11 @@ public class Simulator implements Runnable {
             for (String sharee : shareesInPeergos) {
 
                 byte[] read = null;
-                PeergosFileSystemImpl fs = fileSystems.getTestFileSystem(sharee);
                 switch (permission) {
                     case READ:
                         try {
                             //can read?
+                            PeergosFileSystemImpl fs = fileSystems.getTestFileSystem(sharee);
                             read = fs.read(path);
                         } catch (Exception ex) {
                             LOG.log(Level.WARNING, "User "+ sharee +" could not read shared-path "+ path +"!", ex);
@@ -503,11 +533,22 @@ public class Simulator implements Runnable {
                         }
                         break;
                     case WRITE:
+                        PeergosFileSystemImpl fs = fileSystems.getTestFileSystem(sharee, true);
                         try {
-                            // can overwrite?
-                            fs.write(path, new byte[]{0});
+                            //can read?
+                            read = fs.read(path);
                         } catch (Exception ex) {
-                            LOG.log(Level.WARNING, "User "+ sharee +" could not write  shared-path "+ path +"!", ex);
+                            LOG.log(Level.WARNING, "User "+ sharee +" could not read shared-path "+ path +"!", ex);
+                            isVerified = false;
+                        }
+                        if (isVerified) {
+                            try {
+                                // can overwrite?
+                                fs.write(path, new byte[]{read[0]});
+                            } catch (Exception ex) {
+                                LOG.log(Level.WARNING, "User " + sharee + " could not write  shared-path " + path + "!", ex);
+                                isVerified = false;
+                            }
                         }
                         break;
                     default:
@@ -583,9 +624,15 @@ public class Simulator implements Runnable {
             // contents
             for (Path path : expectedFilesForUser) {
                 boolean verifyContents = verifyContents(user, path);
-                boolean sharingPermissionsAreVerified = verifySharingPermissions(user, path);
                 isUserVerified &= verifyContents;
+                if (! isUserVerified) {
+                    System.currentTimeMillis();
+                }
+                boolean sharingPermissionsAreVerified = verifySharingPermissions(user, path);
                 isUserVerified &= sharingPermissionsAreVerified;
+                if (! isUserVerified) {
+                    System.currentTimeMillis();
+                }
             }
             if (!isUserVerified) {
                 LOG.info("User " + user + " is not verified!");
@@ -597,6 +644,9 @@ public class Simulator implements Runnable {
         return isGlobalVerified;
     }
 
+    private static String usernameToPassword(String username) {
+        return username + "_password";
+    }
 
     public static void main(String[] a) throws Exception {
         Crypto crypto = Main.initCrypto();
@@ -616,7 +666,7 @@ public class Simulator implements Runnable {
                 MutableTree mutableTree = new MutableTreeImpl(service.mutable, service.storage, crypto.hasher, synchronizer);
                 NetworkAccess networkAccess = new NetworkAccess(service.coreNode, service.social, service.storage,
                         service.mutable, mutableTree, synchronizer, service.controller, service.usage, Arrays.asList("peergos"), false);
-                UserContext userContext = PeergosNetworkUtils.ensureSignedUp(username, username + "_password", networkAccess, crypto);
+                UserContext userContext = PeergosNetworkUtils.ensureSignedUp(username, usernameToPassword(username), networkAccess, crypto);
                 PeergosFileSystemImpl peergosFileSystem = new PeergosFileSystemImpl(userContext);
                 Path root = Files.createTempDirectory("test_filesystem-" + username);
                 AccessControl accessControl = new AccessControl.MemoryImpl();
@@ -639,7 +689,7 @@ public class Simulator implements Runnable {
                 new Pair<>(Simulation.MKDIR, 0.1),
                 new Pair<>(Simulation.RMDIR, 0.0),
                 new Pair<>(Simulation.GRANT_READ_FILE, 0.2),
-//                new Pair<>(Simulation.GRANT_WRITE_FILE, 0.1),
+                new Pair<>(Simulation.GRANT_WRITE_FILE, 0.1),
                 new Pair<>(Simulation.GRANT_READ_DIR, 0.05),
                 new Pair<>(Simulation.GRANT_WRITE_DIR, 0.05),
                 new Pair<>(Simulation.REVOKE_READ, 0.05),
@@ -696,7 +746,7 @@ public class Simulator implements Runnable {
         int seed = simulatorArgs.getInt("random-seed", 1);
         int nUsers = simulatorArgs.getInt("n-users", 3);
         int meanFileLength  = simulatorArgs.getInt("mean-file-length", 256);
-        boolean randomizeFriendNetwork = simulatorArgs.getBoolean("randomize-friend-network", true);
+        boolean randomizeFriendNetwork = simulatorArgs.getBoolean("randomize-friend-network", false);
         final Random random = new Random(seed);
 
         Supplier<Simulation> getNextSimulation = new SimulationSupplier(probabilities, random);

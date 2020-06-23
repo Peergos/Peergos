@@ -67,6 +67,11 @@ public class TrieNodeImpl implements TrieNode {
     private CompletableFuture<Set<FileWrapper>> indirectlyRetrieveChildren(Hasher hasher, NetworkAccess network) {
         Set<CompletableFuture<Optional<FileWrapper>>> kids = children.values().stream()
                 .map(t -> t.getByPath("", hasher, network)).collect(Collectors.toSet());
+        for(CompletableFuture<Optional<FileWrapper>> ofw : kids){
+            if(! ofw.isDone()){
+                System.currentTimeMillis();
+            }
+        }
         return Futures.combineAll(kids)
                 .thenApply(set -> set.stream()
                         .filter(opt -> opt.isPresent())
