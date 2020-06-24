@@ -1,6 +1,5 @@
 package peergos.server.simulation;
 
-import peergos.server.util.PeergosNetworkUtils;
 import peergos.shared.social.FollowRequestWithCipherText;
 import peergos.shared.user.UserContext;
 import peergos.shared.user.fs.*;
@@ -20,14 +19,10 @@ import java.util.stream.Stream;
 
 public class PeergosFileSystemImpl implements FileSystem {
 
-    private UserContext userContext;
+    private final UserContext userContext;
 
     public PeergosFileSystemImpl(UserContext userContext) {
         this.userContext = userContext;
-    }
-
-    public UserContext getUserContext() {
-        return userContext;
     }
 
     @Override

@@ -235,26 +235,6 @@ public class Simulator implements Runnable {
         }
 
         public PeergosFileSystemImpl getTestFileSystem(String user) {
-            return getTestFileSystem(user, false);
-        }
-
-        public PeergosFileSystemImpl getTestFileSystem(String user, boolean reload) {
-            if (reload) {
-                List<Pair<FileSystem, FileSystem>> pairs = peergosAndNativeFileSystemPair.stream()
-                        .filter(e -> e.right.user().equals(user)).collect(Collectors.toList());
-                if(pairs.size() != 1) {
-                    throw new Error("Unexpected Filesystem matches");
-                }
-                Pair<FileSystem, FileSystem> currentPair = pairs.get(0);
-                peergosAndNativeFileSystemPair.remove(currentPair);
-                PeergosFileSystemImpl peergosFS = (PeergosFileSystemImpl) currentPair.left;
-                UserContext context = peergosFS.getUserContext();
-                System.out.println("reloading user:" + context.username);
-                UserContext copy = PeergosNetworkUtils.ensureSignedUp(peergosFS.user(), usernameToPassword(peergosFS.user()),
-                        context.network, context.crypto);
-                FileSystem newPeergosFS = new PeergosFileSystemImpl(copy);
-                peergosAndNativeFileSystemPair.add(new Pair<>(newPeergosFS, currentPair.right));
-            }
             return peergosAndNativeFileSystemPair.stream()
                     .filter(e -> e.right.user().equals(user))
                     .map(e -> (PeergosFileSystemImpl) e.left)
@@ -442,15 +422,6 @@ public class Simulator implements Runnable {
                 String fileGrantee = otherUser.get();
                 log(user, simulation, grantFilePath, "with grantee "+ fileGrantee);
                 grantPermission(user, fileGrantee, grantFilePath, simulation.permission());
-                try {
-                    boolean isVerified = verify();
-                    if (!isVerified) {
-                        System.currentTimeMillis();
-                        boolean test = verify();
-                    }
-                }catch(Exception e){
-                    System.currentTimeMillis();
-                }
                 break;
             case GRANT_READ_DIR:
             case GRANT_WRITE_DIR:
@@ -528,17 +499,17 @@ public class Simulator implements Runnable {
                             PeergosFileSystemImpl fs = fileSystems.getTestFileSystem(sharee);
                             read = fs.read(path);
                         } catch (Exception ex) {
-                            LOG.log(Level.WARNING, "User "+ sharee +" could not read shared-path "+ path +"!", ex);
+                            LOG.log(Level.SEVERE, "User "+ sharee +" could not read shared-path "+ path +"!", ex);
                             isVerified = false;
                         }
                         break;
                     case WRITE:
-                        PeergosFileSystemImpl fs = fileSystems.getTestFileSystem(sharee, false);
+                        PeergosFileSystemImpl fs = fileSystems.getTestFileSystem(sharee);
                         try {
                             //can read?
                             read = fs.read(path);
                         } catch (Exception ex) {
-                            LOG.log(Level.WARNING, "User "+ sharee +" could not read shared-path "+ path +"!", ex);
+                            LOG.log(Level.SEVERE, "User "+ sharee +" could not read shared-path "+ path +"!", ex);
                             isVerified = false;
                         }
                         if (isVerified) {
@@ -546,7 +517,7 @@ public class Simulator implements Runnable {
                                 // can overwrite?
                                 fs.write(path, new byte[]{read[0]});
                             } catch (Exception ex) {
-                                LOG.log(Level.WARNING, "User " + sharee + " could not write  shared-path " + path + "!", ex);
+                                LOG.log(Level.SEVERE, "User " + sharee + " could not write  shared-path " + path + "!", ex);
                                 isVerified = false;
                             }
                         }
@@ -625,14 +596,8 @@ public class Simulator implements Runnable {
             for (Path path : expectedFilesForUser) {
                 boolean verifyContents = verifyContents(user, path);
                 isUserVerified &= verifyContents;
-                if (! isUserVerified) {
-                    System.currentTimeMillis();
-                }
                 boolean sharingPermissionsAreVerified = verifySharingPermissions(user, path);
                 isUserVerified &= sharingPermissionsAreVerified;
-                if (! isUserVerified) {
-                    System.currentTimeMillis();
-                }
             }
             if (!isUserVerified) {
                 LOG.info("User " + user + " is not verified!");
