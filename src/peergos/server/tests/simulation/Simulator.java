@@ -504,7 +504,7 @@ public class Simulator implements Runnable {
      * @return
      */
     private boolean verifySharingPermissions(String user, Path path) {
-        FileSystem peergosFileSystem = fileSystems.getTestFileSystem(user, false);
+        FileSystem peergosFileSystem = fileSystems.getTestFileSystem(user);
         FileSystem nativeFileSystem = fileSystems.getReferenceFileSystem(user);
 
         boolean isVerified = true;
@@ -533,7 +533,7 @@ public class Simulator implements Runnable {
                         }
                         break;
                     case WRITE:
-                        PeergosFileSystemImpl fs = fileSystems.getTestFileSystem(sharee, true);
+                        PeergosFileSystemImpl fs = fileSystems.getTestFileSystem(sharee, false);
                         try {
                             //can read?
                             read = fs.read(path);
