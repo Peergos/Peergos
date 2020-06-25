@@ -1488,7 +1488,7 @@ public class UserContext {
         return getByPath("/" + username + "/shared/" + usernameToGrantAccess)
                 .thenCompose(shared -> {
                     if (!shared.isPresent())
-                        return CompletableFuture.completedFuture(true);
+                        return CompletableFuture.completedFuture(false);
                     FileWrapper sharedDir = shared.get();
                     return sharingFunction.apply(sharedDir, file);
                 });

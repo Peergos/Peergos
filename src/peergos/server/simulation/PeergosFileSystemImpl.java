@@ -79,10 +79,14 @@ public class PeergosFileSystemImpl implements FileSystem {
         Set<String> userSet = Stream.of(user).collect(Collectors.toSet());
         switch (permission) {
             case READ:
-                userContext.shareReadAccessWith(path, userSet).join();
+                if(! userContext.shareReadAccessWith(path, userSet).join()){
+                    throw new Error("unable to grant read access");
+                }
                 return;
             case WRITE:
-                userContext.shareWriteAccessWith(path, userSet).join();
+                if(! userContext.shareWriteAccessWith(path, userSet).join()){
+                    throw new Error("unable to grant write access");
+                }
                 return;
         }
         throw new IllegalStateException();

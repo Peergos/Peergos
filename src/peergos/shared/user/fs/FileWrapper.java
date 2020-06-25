@@ -450,9 +450,9 @@ public class FileWrapper {
             return pointer.fileAccess.cleanAndCommit(current, committer, currentCap, currentCap, props.streamSecret,
                     Optional.empty(), signingPair(), SymmetricKey.random(),
                     parentOrLinkLocation, parentOrLinkParentKey, network, crypto)
-                    .thenApply(cwd -> {
+                    .thenCompose(cwd -> {
                         setModified();
-                        return new Pair<>(parent, cwd);
+                        return getUpdated(cwd, network).thenApply(updated -> new Pair<>(updated, cwd));
                     });
         }
     }
@@ -1001,13 +1001,10 @@ public class FileWrapper {
         LOG.info("Overwriting section [" + Long.toHexString(inputStartIndex) + ", " + Long.toHexString(endIndex) + "] of child with name: " + filename);
 
         return current.withWriter(existingChild.owner(), existingChild.writer(), network)
-                .thenCompose(state -> (existingChild.isDirty() ?
+                .thenCompose(state ->
                         existingChild.clean(state, committer, network, crypto, parent)
-                                .thenCompose(pair -> pair.left.getChild(pair.right, filename, crypto.hasher, network)
-                                        .thenApply(cleanedChild -> cleanedChild.get())) :
-                        CompletableFuture.completedFuture(existingChild))
-                ).thenCompose(updatedChild -> updatedChild.overwriteSection(updatedChild.version, committer, fileData,
-                        inputStartIndex, endIndex, network, crypto, monitor));
+                                .thenCompose(pair -> pair.left.overwriteSection(pair.right, committer, fileData,
+                        inputStartIndex, endIndex, network, crypto, monitor)));
     }
 
     static boolean isLegalName(String name) {
