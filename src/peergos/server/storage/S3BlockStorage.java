@@ -250,6 +250,10 @@ public class S3BlockStorage implements ContentAddressedStorage {
 
     @Override
     public CompletableFuture<Optional<Integer>> getSize(Multihash hash) {
+        return getSize(hash, 3, 100);
+    }
+
+    private CompletableFuture<Optional<Integer>> getSize(Multihash hash, int retries, long sleepMillis) {
         if (hash.isIdentity()) // Identity hashes are not actually stored explicitly
             return Futures.of(Optional.of(0));
         Histogram.Timer readTimer = readTimerLog.labels("size").startTimer();
@@ -260,8 +264,16 @@ public class S3BlockStorage implements ContentAddressedStorage {
             long size = Long.parseLong(headRes.get("Content-Length").get(0));
             return Futures.of(Optional.of((int)size));
         } catch (Exception e) {
-            LOG.log(Level.SEVERE, e.getMessage(), e);
-            return Futures.of(Optional.empty());
+            if (e.getMessage().contains("HTTP 503")) {
+                LOG.info("Sleeping for "+sleepMillis+" because of http 503 from S3 (you are being rate limited) getting size of " + hash + " ...");
+                try {Thread.sleep(sleepMillis);} catch (InterruptedException f) {}
+                if (retries <= 0)
+                    throw new RuntimeException(e);
+                return getSize(hash, retries - 1, sleepMillis * 2);
+            } else {
+                LOG.log(Level.SEVERE, e.getMessage(), e);
+                return Futures.of(Optional.empty());
+            }
         } finally {
             readTimer.observeDuration();
         }
