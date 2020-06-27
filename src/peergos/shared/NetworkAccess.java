@@ -244,12 +244,9 @@ public class NetworkAccess {
 
     public static CompletableFuture<NetworkAccess> buildNonCachingJava(URL target, boolean isPublicServer) {
         JavaPoster poster = new JavaPoster(target, isPublicServer);
-        CoreNode direct = buildDirectCorenode(poster);
-        return direct.getChain("peergos").thenCompose(peergos -> {
-            Multihash pkiNodeId = peergos.get(peergos.size() - 1).claim.storageProviders.get(0);
-            ContentAddressedStorage localDht = buildLocalDht(poster, true);
-            return build(poster, poster, pkiNodeId, localDht, new ScryptJava(), false);
-        });
+        Multihash pkiNodeId = null; // This is not required when talking to a Peergos server
+        ContentAddressedStorage localDht = buildLocalDht(poster, true);
+        return build(poster, poster, pkiNodeId, localDht, new ScryptJava(), false);
     }
 
     public static CompletableFuture<NetworkAccess> buildJava(int targetPort) {
