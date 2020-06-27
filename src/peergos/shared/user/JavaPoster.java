@@ -12,9 +12,11 @@ import java.util.zip.*;
 public class JavaPoster implements HttpPoster {
 
     private final URL dht;
+    private final boolean useGet;
 
-    public JavaPoster(URL dht) {
+    public JavaPoster(URL dht, boolean isPublicServer) {
         this.dht = dht;
+        this.useGet = isPublicServer;
     }
 
     public URL buildURL(String method) throws IOException {
@@ -105,6 +107,44 @@ public class JavaPoster implements HttpPoster {
                 }
             } else
                 res.completeExceptionally(e);
+            return res;
+        } finally {
+            if (conn != null)
+                conn.disconnect();
+        }
+    }
+
+    @Override
+    public CompletableFuture<byte[]> get(String url) {
+        if (useGet) {
+            return publicGet(url);
+        } else {
+            // This changes to a POST with an empty body
+            // The reason for this is browsers allow any website to do a get request to localhost
+            // but they block POST requests. So this prevents random websites from calling APIs on localhost
+            return postUnzip(url, new byte[0]);
+        }
+    }
+
+    private CompletableFuture<byte[]> publicGet(String url) {
+        HttpURLConnection conn = null;
+        try
+        {
+            conn = (HttpURLConnection) buildURL(url).openConnection();
+            conn.setReadTimeout(15000);
+            conn.setDoInput(true);
+
+            String contentEncoding = conn.getContentEncoding();
+            boolean isGzipped = "gzip".equals(contentEncoding);
+            DataInputStream din = new DataInputStream(isGzipped ? new GZIPInputStream(conn.getInputStream()) : conn.getInputStream());
+            return CompletableFuture.completedFuture(Serialize.readFully(din));
+        } catch (SocketTimeoutException e) {
+            CompletableFuture<byte[]> res = new CompletableFuture<>();
+            res.completeExceptionally(new RuntimeException("Timeout retrieving: " + url, e));
+            return res;
+        } catch (IOException e) {
+            CompletableFuture<byte[]> res = new CompletableFuture<>();
+            res.completeExceptionally(e);
             return res;
         } finally {
             if (conn != null)

@@ -62,7 +62,7 @@ public class P2pStreamNetworkTests {
     }
 
     private static NetworkAccess buildApi(Args args) throws Exception {
-        return NetworkAccess.buildJava(new URL("http://localhost:" + args.getInt("port"))).get();
+        return NetworkAccess.buildJava(new URL("http://localhost:" + args.getInt("port")), false).get();
     }
 
     private static NetworkAccess buildProxiedApi(int ipfsApiPort, int ipfsGatewayPort, Multihash pkinodeId) throws Exception {

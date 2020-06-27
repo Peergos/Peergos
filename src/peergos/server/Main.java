@@ -201,7 +201,7 @@ public class Main {
                             Files.readAllBytes(args.fromPeergosDir("pki.public.key.path")));
             PublicKeyHash pkiPublicHash = ContentAddressedStorage.hashKey(pkiPublic);
             int webPort = args.getInt("port");
-            NetworkAccess network = NetworkAccess.buildJava(new URL("http://localhost:" + webPort)).get();
+            NetworkAccess network = NetworkAccess.buildJava(new URL("http://localhost:" + webPort), false).get();
             String pkiFilePassword = args.getArg("pki.keyfile.password");
             SecretSigningKey pkiSecret =
                     SecretSigningKey.fromCbor(CborObject.fromByteArray(PasswordProtected.decryptWithPassword(
@@ -452,8 +452,8 @@ public class Main {
 
             int dhtCacheEntries = 1000;
             int maxValueSizeToCache = 50 * 1024;
-            JavaPoster ipfsApi = new JavaPoster(ipfsApiAddress);
-            JavaPoster ipfsGateway = new JavaPoster(ipfsGatewayAddress);
+            JavaPoster ipfsApi = new JavaPoster(ipfsApiAddress, false);
+            JavaPoster ipfsGateway = new JavaPoster(ipfsGatewayAddress, true);
 
             boolean usePostgres = a.getBoolean("use-postgres", false);
             SqlSupplier sqlCommands = usePostgres ?
@@ -519,7 +519,7 @@ public class Main {
                 JdbcSpaceRequests spaceRequests = JdbcSpaceRequests.build(spaceDb, sqlCommands);
                 userQuotas = new UserQuotas(quotaFilePath, defaultQuota, maxUsers, spaceRequests, localDht, core);
             } else {
-                JavaPoster poster = new JavaPoster(AddressUtil.getAddress(new MultiAddress(a.getArg("quota-admin-address"))));
+                JavaPoster poster = new JavaPoster(AddressUtil.getAddress(new MultiAddress(a.getArg("quota-admin-address"))), true);
                 userQuotas = new HttpQuotaAdmin(poster);
             }
             CoreNode signupFilter = new SignUpFilter(core, userQuotas, nodeId);
