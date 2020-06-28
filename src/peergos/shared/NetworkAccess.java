@@ -148,7 +148,7 @@ public class NetworkAccess {
 
     public static CompletableFuture<NetworkAccess> buildJava(URL apiAddress, URL proxyAddress, String pkiNodeId) {
         Multihash pkiServerNodeId = Cid.decode(pkiNodeId);
-        JavaPoster p2pPoster = new JavaPoster(proxyAddress, true);
+        JavaPoster p2pPoster = new JavaPoster(proxyAddress, false);
         JavaPoster apiPoster = new JavaPoster(apiAddress, false);
         return build(apiPoster, p2pPoster, pkiServerNodeId, buildLocalDht(apiPoster, true), new ScryptJava(), false);
     }
