@@ -174,6 +174,11 @@ public class NetworkAccess {
                             });
                 })
                 .exceptionally(t -> {
+                    if (pkiServerNodeId == null) {
+                        result.completeExceptionally(new NullPointerException());
+                        return null;
+                    }
+
                     // We are not on a Peergos server, hopefully an IPFS gateway
                     ContentAddressedStorage localIpfs = buildLocalDht(apiPoster, false);
                     CoreNode core = buildProxyingCorenode(p2pPoster, pkiServerNodeId);
