@@ -453,7 +453,7 @@ public class Main {
             int dhtCacheEntries = 1000;
             int maxValueSizeToCache = 50 * 1024;
             JavaPoster ipfsApi = new JavaPoster(ipfsApiAddress, false);
-            JavaPoster ipfsGateway = new JavaPoster(ipfsGatewayAddress, true);
+            JavaPoster ipfsGateway = new JavaPoster(ipfsGatewayAddress, false);
 
             boolean usePostgres = a.getBoolean("use-postgres", false);
             SqlSupplier sqlCommands = usePostgres ?
