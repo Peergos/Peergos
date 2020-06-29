@@ -10,6 +10,7 @@ import peergos.shared.io.ipfs.multiaddr.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.ContentAddressedStorage;
+import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
@@ -33,9 +34,12 @@ public class PinningMutablePointers implements MutablePointers {
             byte[] message = signer.get().unsignMessage(sharingKeySignedBtreeRootHashes);
             HashCasPair cas = HashCasPair.fromCbor(CborObject.fromByteArray(message));
             long t1 = System.currentTimeMillis();
-            return (cas.original.isPresent() ? storage.pinUpdate(owner, cas.original.get(), cas.updated.get()) :
+            return (cas.original.isPresent() ?
+                    (cas.updated.isPresent() ?
+                            storage.pinUpdate(owner, cas.original.get(), cas.updated.get()) :
+                            Futures.of(Collections.emptyList())) :
                     storage.recursivePin(owner, cas.updated.get())).thenCompose(pins -> {
-                if (!pins.contains(cas.updated.get())) {
+                if (cas.updated.isPresent() && !pins.contains(cas.updated.get())) {
                     CompletableFuture<Boolean> err = new CompletableFuture<>();
                     err.completeExceptionally(new IllegalStateException("Couldn't pin new hash: " + cas.updated.get()));
                     return err;
