@@ -559,6 +559,7 @@ public class CLI implements Runnable {
                         "https://",
                         "https://demo.peergos.net",
                         "https://alpha.peergos.net",
+                        "https://beta.peergos.net",
                         "http://localhost"))
                 .build();
 
@@ -580,7 +581,7 @@ public class CLI implements Runnable {
         writer.println("Enter password for '" + username + "'");
         String password = reader.readLine(PROMPT, PASSWORD_MASK);
 
-        NetworkAccess networkAccess = NetworkAccess.buildJava(serverURL).join();
+        NetworkAccess networkAccess = NetworkAccess.buildJava(serverURL, serverURL.getHost().equals("localhost")).join();
         Consumer<String> progressConsumer =  msg -> {
             writer.println(msg);
             writer.flush();

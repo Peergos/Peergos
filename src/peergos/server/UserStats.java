@@ -17,7 +17,7 @@ public class UserStats {
 
     public static void main(String[] args) throws Exception {
         Crypto crypto = Main.initCrypto();
-        NetworkAccess network = NetworkAccess.buildJava(new URL("https://alpha.peergos.net")).get();
+        NetworkAccess network = NetworkAccess.buildJava(new URL("https://alpha.peergos.net"), true).get();
         List<String> usernames = network.coreNode.getUsernames("").get();
         List<Summary> summaries = usernames.stream().parallel().flatMap(username -> {
             try {

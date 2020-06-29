@@ -148,8 +148,8 @@ public class NetworkAccess {
 
     public static CompletableFuture<NetworkAccess> buildJava(URL apiAddress, URL proxyAddress, String pkiNodeId) {
         Multihash pkiServerNodeId = Cid.decode(pkiNodeId);
-        JavaPoster p2pPoster = new JavaPoster(proxyAddress);
-        JavaPoster apiPoster = new JavaPoster(apiAddress);
+        JavaPoster p2pPoster = new JavaPoster(proxyAddress, false);
+        JavaPoster apiPoster = new JavaPoster(apiAddress, false);
         return build(apiPoster, p2pPoster, pkiServerNodeId, buildLocalDht(apiPoster, true), new ScryptJava(), false);
     }
 
@@ -174,6 +174,11 @@ public class NetworkAccess {
                             });
                 })
                 .exceptionally(t -> {
+                    if (pkiServerNodeId == null) {
+                        result.completeExceptionally(new NullPointerException());
+                        return null;
+                    }
+
                     // We are not on a Peergos server, hopefully an IPFS gateway
                     ContentAddressedStorage localIpfs = buildLocalDht(apiPoster, false);
                     CoreNode core = buildProxyingCorenode(p2pPoster, pkiServerNodeId);
@@ -237,27 +242,21 @@ public class NetworkAccess {
         return new NetworkAccess(coreNode, social, dht, mutable, btree, synchronizer, instanceAdmin, usage, usernames, isJavascript);
     }
 
-    public static CompletableFuture<NetworkAccess> buildJava(URL target) {
-        return buildNonCachingJava(target)
+    public static CompletableFuture<NetworkAccess> buildJava(URL target, boolean isPublicServer) {
+        return buildNonCachingJava(target, isPublicServer)
                 .thenApply(e -> e.withMutablePointerCache(7_000));
     }
 
-    public static CompletableFuture<NetworkAccess> buildNonCachingJava(URL target) {
-        JavaPoster poster = new JavaPoster(target);
-        CoreNode direct = buildDirectCorenode(poster);
-        try {
-            List<String> usernames = direct.getUsernames("").get();
-            boolean isPeergosServer = true;
-            ContentAddressedStorage localDht = buildLocalDht(poster, isPeergosServer);
-            return build(direct, localDht, poster, poster, usernames, isPeergosServer, false);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+    public static CompletableFuture<NetworkAccess> buildNonCachingJava(URL target, boolean isPublicServer) {
+        JavaPoster poster = new JavaPoster(target, isPublicServer);
+        Multihash pkiNodeId = null; // This is not required when talking to a Peergos server
+        ContentAddressedStorage localDht = buildLocalDht(poster, true);
+        return build(poster, poster, pkiNodeId, localDht, new ScryptJava(), false);
     }
 
     public static CompletableFuture<NetworkAccess> buildJava(int targetPort) {
         try {
-            return buildJava(new URL("http://localhost:" + targetPort + "/"));
+            return buildJava(new URL("http://localhost:" + targetPort + "/"), false);
         } catch (MalformedURLException e) {
             throw new RuntimeException(e);
         }

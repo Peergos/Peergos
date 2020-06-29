@@ -18,7 +18,7 @@ public class RenewUsernameClaim {
 
     public static void main(String[] args) throws Exception {
         Crypto crypto = Main.initCrypto();
-        NetworkAccess network = NetworkAccess.buildJava(new URL("https://demo.peergos.net")).get();
+        NetworkAccess network = NetworkAccess.buildJava(new URL("https://demo.peergos.net"), true).get();
         String username = args[0];
         Console console = System.console();
         String password = new String(console.readPassword("Enter password for " + username + ":"));

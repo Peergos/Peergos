@@ -16,7 +16,7 @@ public class Downloader {
 
     public static void main(String[] args) throws Exception {
         Crypto crypto = Main.initCrypto();
-        NetworkAccess network = NetworkAccess.buildJava(new URL("https://demo.peergos.net")).get();
+        NetworkAccess network = NetworkAccess.buildJava(new URL("https://demo.peergos.net"), true).get();
         String username = args[0];
         String fromPath = args[1];
         String toPath = args[2];

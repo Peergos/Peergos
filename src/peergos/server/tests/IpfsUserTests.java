@@ -29,7 +29,7 @@ public class IpfsUserTests extends UserTests {
     public static Collection<Object[]> parameters() throws Exception {
         Main.PKI_INIT.main(args);
         return Arrays.asList(new Object[][] {
-                {NetworkAccess.buildJava(new URL("http://localhost:" + args.getInt("port"))).get()}
+                {NetworkAccess.buildJava(new URL("http://localhost:" + args.getInt("port")), false).get()}
         });
     }
 

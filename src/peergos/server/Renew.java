@@ -11,7 +11,7 @@ public class Renew {
 
     public static void main(String[] args) throws Exception {
         Crypto crypto = Main.initCrypto();
-        NetworkAccess network = NetworkAccess.buildJava(new URL("https://demo.peergos.net")).get();
+        NetworkAccess network = NetworkAccess.buildJava(new URL("https://demo.peergos.net"), true).get();
         String username = args[0];
         LocalDate expiry = LocalDate.parse(args[1]);
         Console console = System.console();
