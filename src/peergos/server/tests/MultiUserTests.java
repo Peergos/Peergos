@@ -910,6 +910,24 @@ public class MultiUserTests {
     }
 
     @Test
+    public void friendDeletesAccount() {
+        String username1 = random();
+        String password1 = random();
+        UserContext u1 = PeergosNetworkUtils.ensureSignedUp(username1, password1, network, crypto);
+        String username2 = random();
+        String password2 = random();
+        UserContext u2 = PeergosNetworkUtils.ensureSignedUp(username2, password2, network, crypto);
+        PeergosNetworkUtils.friendBetweenGroups(Arrays.asList(u1), Arrays.asList(u2));
+        // Add file bigger than the 1MiB final quota
+        u1.getUserRoot().join().uploadOrOverwriteFile("afile.bin", AsyncReader.build(new byte[2*1024*1024]),
+                2*1024*1024, u1.network, crypto, x -> {}, crypto.random.randomBytes(32)).join();
+        u1.deleteAccount(password1).join();
+
+        // Check u2 can still log in
+        UserContext u2Refresh = PeergosNetworkUtils.ensureSignedUp(username2, password2, network, crypto);
+    }
+
+    @Test
     public void acceptAndReciprocateFollowRequest() throws Exception {
         String username1 = random();
         String password1 = random();

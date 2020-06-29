@@ -109,6 +109,10 @@ public class FileWrapper {
         return new FileWrapper(capTrie, pointer, linkPointer, entryWriter, ownername, version);
     }
 
+    public CommittedWriterData getVersionRoot() {
+        return version.get(writer());
+    }
+
     @JsMethod
     public CompletableFuture<FileWrapper> getLatest(NetworkAccess network) {
         return network.synchronizer.getValue(owner(), writer())

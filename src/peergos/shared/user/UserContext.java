@@ -907,6 +907,29 @@ public class UserContext {
                 .thenApply(v -> v.get(signer));
     }
 
+    public CompletableFuture<Boolean> deleteAccount(String password) {
+        return signIn(username, password, network, crypto)
+                .thenCompose(user -> {
+                    // set mutable pointer of root dir writer and owner to EMPTY
+                    SigningPrivateKeyAndPublicHash identity = user.signer;
+                    PublicKeyHash owner = identity.publicKeyHash;
+                    return user.getUserRoot().thenCompose(root -> {
+                        SigningPrivateKeyAndPublicHash pair = root.signingPair();
+                        CommittedWriterData current = root.getVersionRoot();
+                        HashCasPair cas = new HashCasPair(current.hash, MaybeMultihash.empty());
+                        byte[] signed = pair.secret.signMessage(cas.serialize());
+                        return network.mutable.setPointer(this.signer.publicKeyHash, pair.publicKeyHash, signed);
+                    }).thenCompose(x -> network.spaceUsage.requestQuota(username, identity, 1024*1024))
+                            .thenCompose(x -> network.mutable.getPointerTarget(owner, owner, network.dhtClient)
+                                    .thenCompose(current -> {
+                                        HashCasPair cas = new HashCasPair(current, MaybeMultihash.empty());
+                                        byte[] signed = identity.secret.signMessage(cas.serialize());
+                                        return network.mutable.setPointer(owner, owner, signed);
+                                    })
+                            );
+                });
+    }
+
     public CompletableFuture<CommittedWriterData> makePublic(FileWrapper file) {
         if (! file.getOwnerName().equals(username))
             return Futures.errored(new IllegalStateException("Only the owner of a file can make it public!"));

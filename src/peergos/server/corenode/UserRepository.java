@@ -67,14 +67,17 @@ public class UserRepository implements SocialNetwork, MutablePointers {
                                 byte[] bothHashes = writerKey.unsignMessage(writerSignedBtreeRootHash);
                                 HashCasPair cas = HashCasPair.fromCbor(CborObject.fromByteArray(bothHashes));
                                 MaybeMultihash claimedCurrentHash = cas.original;
-                                Multihash newHash = cas.updated.get();
+
                                 if (! MutablePointers.isValidUpdate(writerKey, current, claimedCurrentHash))
                                     return Futures.of(false);
 
-                                // check the new target is valid for this writer
-                                CommittedWriterData newWriterData = WriterData.getWriterData(newHash, ipfs).join();
-                                if (! newWriterData.props.controller.equals(writer))
-                                    return Futures.of(false);
+                                // check the new target is valid for this writer (or a deletion)
+                                if (cas.updated.isPresent()) {
+                                    Multihash newHash = cas.updated.get();
+                                    CommittedWriterData newWriterData = WriterData.getWriterData(newHash, ipfs).join();
+                                    if (!newWriterData.props.controller.equals(writer))
+                                        return Futures.of(false);
+                                }
 
                                 return store.setPointer(writer, current, writerSignedBtreeRootHash);
                             } catch (TweetNaCl.InvalidSignatureException e) {
