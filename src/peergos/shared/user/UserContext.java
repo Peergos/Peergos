@@ -907,6 +907,7 @@ public class UserContext {
                 .thenApply(v -> v.get(signer));
     }
 
+    @JsMethod
     public CompletableFuture<Boolean> deleteAccount(String password) {
         return signIn(username, password, network, crypto)
                 .thenCompose(user -> {
