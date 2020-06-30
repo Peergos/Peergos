@@ -79,9 +79,6 @@ public class NativeFileSystemImpl implements FileSystem {
         Path nativePath = virtualToNative(path);
         ensureCan(path.getParent(), Permission.READ);
         ensureCan(path, Permission.WRITE);
-        if (nativePath.toFile().isDirectory()) {
-            return;
-        }
         try {
             Files.write(nativePath, data);
         } catch (IOException ioe) {
