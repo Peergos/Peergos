@@ -56,6 +56,9 @@ public class PeergosFileSystemImpl implements FileSystem {
         FileWrapper directory = getDirectory(path);
         Optional<FileWrapper> existingFile = userContext.getByPath(path).join();
         if (existingFile.isPresent() && existingFile.get().getFileProperties().isDirectory) {
+            if(! existingFile.get().isWritable()) {
+                throw new Error("expecting file to be writable");
+            }
             return;
         }
         AsyncReader resetableFileInputStream = new AsyncReader.ArrayBacked(data);

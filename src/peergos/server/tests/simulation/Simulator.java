@@ -14,7 +14,6 @@ import peergos.shared.user.*;
 import peergos.shared.user.fs.cryptree.CryptreeNode;
 import peergos.shared.util.Pair;
 
-import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -29,7 +28,6 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import static peergos.server.tests.UserTests.buildArgs;
-import static peergos.server.tests.UserTests.randomString;
 
 /**
  * Run some I/O and then check the file-system is as expected.
@@ -235,27 +233,6 @@ public class Simulator implements Runnable {
         }
 
         public PeergosFileSystemImpl getTestFileSystem(String user) {
-            return getTestFileSystem(user, false);
-        }
-
-        public PeergosFileSystemImpl getTestFileSystem(String user, boolean reload) {
-            if (reload) {
-                List<Pair<FileSystem, FileSystem>> pairs = peergosAndNativeFileSystemPair.stream()
-                        .filter(e -> e.right.user().equals(user)).collect(Collectors.toList());
-                if (pairs.size() != 1) {
-                    throw new Error("Unexpected Filesystem matches");
-                }
-                Pair<FileSystem, FileSystem> currentPair = pairs.get(0);
-                peergosAndNativeFileSystemPair.remove(currentPair);
-                PeergosFileSystemImpl peergosFS = (PeergosFileSystemImpl) currentPair.left;
-                UserContext context = peergosFS.getUserContext();
-                System.out.println("reloading user:" + context.username);
-                UserContext copy = PeergosNetworkUtils.ensureSignedUp(peergosFS.user(), usernameToPassword(peergosFS.user()),
-                        context.network, context.crypto);
-                FileSystem newPeergosFS = new PeergosFileSystemImpl(copy);
-                peergosAndNativeFileSystemPair.add(new Pair<>(newPeergosFS, currentPair.right));
-            }
-
             return peergosAndNativeFileSystemPair.stream()
                     .filter(e -> e.right.user().equals(user))
                     .map(e -> (PeergosFileSystemImpl) e.left)
@@ -321,6 +298,26 @@ public class Simulator implements Runnable {
 
         FileSystem testFileSystem = fileSystems.getTestFileSystem(granter);
         FileSystem referenceFileSystem = fileSystems.getReferenceFileSystem(granter);
+
+        List<String> testExistingWriters = testFileSystem.getSharees(path, FileSystem.Permission.WRITE);
+        List<String> refExistingWriters = referenceFileSystem.getSharees(path, FileSystem.Permission.WRITE);
+        if (! testExistingWriters.equals(refExistingWriters)) {
+            throw new IllegalStateException("WRITE sharing mismatch. test:" + testExistingWriters + " ref:" + refExistingWriters);
+        }
+        if(testExistingWriters.contains(grantee)) {
+            LOG.info("First revoke WRITE permission: user:" + granter + " grantee:" + grantee);
+            revokePermission(granter, grantee, path, FileSystem.Permission.WRITE);
+        }
+
+        List<String> testExistingReaders = testFileSystem.getSharees(path, FileSystem.Permission.READ);
+        List<String> refExistingReaders = referenceFileSystem.getSharees(path, FileSystem.Permission.READ);
+        if (! testExistingReaders.equals(refExistingReaders)) {
+            throw new IllegalStateException("READ sharing mismatch. test:" + testExistingReaders + " ref:" + refExistingReaders);
+        }
+        if(testExistingReaders.contains(grantee)) {
+            LOG.info("First revoke READ permission: user:" + granter + " grantee:" + grantee);
+            revokePermission(granter, grantee, path, FileSystem.Permission.READ);
+        }
 
         testFileSystem.grant(path, grantee, permission);
         referenceFileSystem.grant(path, grantee, permission);
@@ -459,13 +456,7 @@ public class Simulator implements Runnable {
                     return;
                 Path revokePath = revokeOpt.get();
                 log(user, simulation, revokePath);
-                try {
-                    revokePermission(user, revokee,
-                            revokePath, simulation.permission());
-                } catch (Exception ex) {
-                    System.out.println();
-                    throw ex;
-                }
+                revokePermission(user, revokee, revokePath, simulation.permission());
                 break;
             default:
                 throw new IllegalStateException("Unexpected simulation " + simulation);
@@ -545,15 +536,8 @@ public class Simulator implements Runnable {
                                 // can overwrite?
                                 fs.write(path, read == null ? null : new byte[]{read[0]});
                             } catch (Throwable ex) {
-                                //reload user and try again
-                                fs = fileSystems.getTestFileSystem(sharee, true);
-                                try {
-                                    fs.write(path, read == null ? null : new byte[]{read[0]});
-                                    isVerified = true;
-                                } catch (Exception ex2) {
                                     LOG.log(Level.SEVERE, "User " + sharee + " could not write  shared-path " + path + "!", ex);
                                     isVerified = false;
-                                }
                             }
                         }
                         break;
