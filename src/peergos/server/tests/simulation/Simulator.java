@@ -313,9 +313,9 @@ public class Simulator implements Runnable {
         FileSystem testFileSystem = fileSystems.getTestFileSystem(granter);
         FileSystem referenceFileSystem = fileSystems.getReferenceFileSystem(granter);
 
-        List<String> testExistingWriters = testFileSystem.getSharees(path, FileSystem.Permission.WRITE);
-        List<String> refExistingWriters = referenceFileSystem.getSharees(path, FileSystem.Permission.WRITE);
-        if (! testExistingWriters.equals(refExistingWriters)) {
+        Set<String> testExistingWriters = new TreeSet<>(testFileSystem.getSharees(path, FileSystem.Permission.WRITE));
+        Set<String> refExistingWriters = new TreeSet<>(referenceFileSystem.getSharees(path, FileSystem.Permission.WRITE));
+        if (! testExistingWriters.toString().equals(refExistingWriters.toString())) {
             throw new IllegalStateException("WRITE sharing mismatch. test:" + testExistingWriters + " ref:" + refExistingWriters);
         }
         if(testExistingWriters.contains(grantee)) {
@@ -323,9 +323,9 @@ public class Simulator implements Runnable {
             revokePermission(granter, grantee, path, FileSystem.Permission.WRITE);
         }
 
-        List<String> testExistingReaders = testFileSystem.getSharees(path, FileSystem.Permission.READ);
-        List<String> refExistingReaders = referenceFileSystem.getSharees(path, FileSystem.Permission.READ);
-        if (! testExistingReaders.equals(refExistingReaders)) {
+        Set<String> testExistingReaders = new TreeSet<>(testFileSystem.getSharees(path, FileSystem.Permission.READ));
+        Set<String> refExistingReaders = new TreeSet<>(referenceFileSystem.getSharees(path, FileSystem.Permission.READ));
+        if (! testExistingReaders.toString().equals(refExistingReaders.toString())) {
             throw new IllegalStateException("READ sharing mismatch. test:" + testExistingReaders + " ref:" + refExistingReaders);
         }
         if(testExistingReaders.contains(grantee)) {
