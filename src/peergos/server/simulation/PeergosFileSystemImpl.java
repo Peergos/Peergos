@@ -8,10 +8,7 @@ import peergos.shared.util.ProgressConsumer;
 import peergos.shared.util.Serialize;
 
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Random;
-import java.util.Set;
+import java.util.*;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -23,6 +20,10 @@ public class PeergosFileSystemImpl implements FileSystem {
 
     public PeergosFileSystemImpl(UserContext userContext) {
         this.userContext = userContext;
+    }
+
+    public UserContext getUserContext() {
+        return userContext;
     }
 
     @Override
@@ -42,6 +43,9 @@ public class PeergosFileSystemImpl implements FileSystem {
     public byte[] read(Path path, BiConsumer<Long, Long> progressConsumer) {
         FileWrapper wrapper = getPath(path);
         long size = wrapper.getFileProperties().size;
+        if (wrapper.getFileProperties().isDirectory) {
+            return null;
+        }
         ProgressConsumer<Long> monitor = (readBytes) -> progressConsumer.accept(readBytes, size);
         AsyncReader in = wrapper.getInputStream(userContext.network, userContext.crypto, size, monitor).join();
         return Serialize.readFully(in, size).join();
@@ -50,6 +54,10 @@ public class PeergosFileSystemImpl implements FileSystem {
     @Override
     public void write(Path path, byte[] data, Consumer<Long> progressConsumer) {
         FileWrapper directory = getDirectory(path);
+        Optional<FileWrapper> existingFile = userContext.getByPath(path).join();
+        if (existingFile.isPresent() && existingFile.get().getFileProperties().isDirectory) {
+            return;
+        }
         AsyncReader resetableFileInputStream = new AsyncReader.ArrayBacked(data);
         String fileName = path.getFileName().toString();
         ProgressConsumer<Long> pc  = l -> progressConsumer.accept(l);

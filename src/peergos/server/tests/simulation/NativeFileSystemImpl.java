@@ -70,7 +70,9 @@ public class NativeFileSystemImpl implements FileSystem {
     public byte[] read(Path path, BiConsumer<Long, Long> pc) {
         Path nativePath = virtualToNative(path);
         ensureCan(path, Permission.READ);
-
+        if (nativePath.toFile().isDirectory()) {
+           return null;
+        }
         try {
             return Files.readAllBytes(nativePath);
         } catch (IOException ioe) {
@@ -84,7 +86,9 @@ public class NativeFileSystemImpl implements FileSystem {
         Path nativePath = virtualToNative(path);
         ensureCan(path.getParent(), Permission.READ);
         ensureCan(path, Permission.WRITE);
-
+        if (nativePath.toFile().isDirectory()) {
+            return;
+        }
         try {
             Files.write(nativePath, data);
         } catch (IOException ioe) {

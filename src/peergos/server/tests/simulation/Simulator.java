@@ -93,8 +93,8 @@ public class Simulator implements Runnable {
     enum Simulation {
         READ_OWN_FILE,
         WRITE_OWN_FILE,
-        READ_SHARED_FILE,
-        WRITE_SHARED_FILE,
+        READ_SHARED_FILE_OR_DIRECTORY,
+        WRITE_SHARED_FILE_OR_DIRECTORY,
         MKDIR,
         RM,
         RMDIR,
@@ -110,13 +110,13 @@ public class Simulator implements Runnable {
                 case GRANT_READ_FILE:
                 case GRANT_READ_DIR:
                 case REVOKE_READ:
-                case READ_SHARED_FILE:
+                case READ_SHARED_FILE_OR_DIRECTORY:
                     return FileSystem.Permission.READ;
 
                 case GRANT_WRITE_DIR:
                 case GRANT_WRITE_FILE:
                 case REVOKE_WRITE:
-                case WRITE_SHARED_FILE:
+                case WRITE_SHARED_FILE_OR_DIRECTORY:
                     return FileSystem.Permission.WRITE;
             }
             return null;
@@ -235,6 +235,27 @@ public class Simulator implements Runnable {
         }
 
         public PeergosFileSystemImpl getTestFileSystem(String user) {
+            return getTestFileSystem(user, false);
+        }
+
+        public PeergosFileSystemImpl getTestFileSystem(String user, boolean reload) {
+            if (reload) {
+                List<Pair<FileSystem, FileSystem>> pairs = peergosAndNativeFileSystemPair.stream()
+                        .filter(e -> e.right.user().equals(user)).collect(Collectors.toList());
+                if (pairs.size() != 1) {
+                    throw new Error("Unexpected Filesystem matches");
+                }
+                Pair<FileSystem, FileSystem> currentPair = pairs.get(0);
+                peergosAndNativeFileSystemPair.remove(currentPair);
+                PeergosFileSystemImpl peergosFS = (PeergosFileSystemImpl) currentPair.left;
+                UserContext context = peergosFS.getUserContext();
+                System.out.println("reloading user:" + context.username);
+                UserContext copy = PeergosNetworkUtils.ensureSignedUp(peergosFS.user(), usernameToPassword(peergosFS.user()),
+                        context.network, context.crypto);
+                FileSystem newPeergosFS = new PeergosFileSystemImpl(copy);
+                peergosAndNativeFileSystemPair.add(new Pair<>(newPeergosFS, currentPair.right));
+            }
+
             return peergosAndNativeFileSystemPair.stream()
                     .filter(e -> e.right.user().equals(user))
                     .map(e -> (PeergosFileSystemImpl) e.left)
@@ -384,12 +405,12 @@ public class Simulator implements Runnable {
                 log(user, simulation, readPath);
                 read(user, readPath);
                 break;
-            case READ_SHARED_FILE:
-                Optional<Path> sharedOpt = randomSharedPath.apply(otherUser.get(), user);
+            case READ_SHARED_FILE_OR_DIRECTORY:
+                Optional<Path> sharedOpt = randomSharedPath.apply(user, otherUser.get());
                 if (! sharedOpt.isPresent())
                     return;
                 Path sharedPathToRead = sharedOpt.get();
-                log(user, Simulation.READ_SHARED_FILE, sharedPathToRead);
+                log(user, Simulation.READ_SHARED_FILE_OR_DIRECTORY, sharedPathToRead);
                 read(user, sharedPathToRead);
                 break;
             case WRITE_OWN_FILE:
@@ -397,12 +418,12 @@ public class Simulator implements Runnable {
                 log(user, Simulation.WRITE_OWN_FILE, path);
                 write(user, path);
                 break;
-            case WRITE_SHARED_FILE:
-                Optional<Path> sharedOpt2 = randomSharedPath.apply(otherUser.get(), user);
+            case WRITE_SHARED_FILE_OR_DIRECTORY:
+                Optional<Path> sharedOpt2 = randomSharedPath.apply(user, otherUser.get());
                 if (! sharedOpt2.isPresent())
                     return;
                 Path  sharedPathToWrite = sharedOpt2.get();
-                log(user, Simulation.WRITE_SHARED_FILE, sharedPathToWrite);
+                log(user, Simulation.WRITE_SHARED_FILE_OR_DIRECTORY, sharedPathToWrite);
                 write(user, sharedPathToWrite);
                 break;
             case MKDIR:
@@ -461,11 +482,17 @@ public class Simulator implements Runnable {
             System.out.println("iOp=" + iOp);
             Simulation simulation = getNextSimulation.get();
             run(simulation);
+            boolean isVerified = verify();
+            if (! isVerified) {
+                isVerified = verify();
+                throw new Error("FAILED VERIFICATION!");
+            }
         }
-
+        /*
         LOG.info("Running file-system verification");
         boolean isVerified = verify();
         LOG.info("System verified =  " + isVerified);
+         */
     }
 
     /**
@@ -486,6 +513,7 @@ public class Simulator implements Runnable {
                 LOG.info("User " + peergosFileSystem.user() + " path " + path + " has peergos-fs " + permission.name() + "ers " +
                         shareesInPeergos + " and local-fs " + permission.name() + "ers " + shareesInLocal);
                 isVerified = false;
+                break;
             }
 
             //check they can actually read
@@ -515,15 +543,25 @@ public class Simulator implements Runnable {
                         if (isVerified) {
                             try {
                                 // can overwrite?
-                                fs.write(path, new byte[]{read[0]});
-                            } catch (Exception ex) {
-                                LOG.log(Level.SEVERE, "User " + sharee + " could not write  shared-path " + path + "!", ex);
-                                isVerified = false;
+                                fs.write(path, read == null ? null : new byte[]{read[0]});
+                            } catch (Throwable ex) {
+                                //reload user and try again
+                                fs = fileSystems.getTestFileSystem(sharee, true);
+                                try {
+                                    fs.write(path, read == null ? null : new byte[]{read[0]});
+                                    isVerified = true;
+                                } catch (Exception ex2) {
+                                    LOG.log(Level.SEVERE, "User " + sharee + " could not write  shared-path " + path + "!", ex);
+                                    isVerified = false;
+                                }
                             }
                         }
                         break;
                     default:
                         throw new IllegalStateException();
+                }
+                if (! isVerified) {
+                    break;
                 }
             }
 
@@ -599,9 +637,10 @@ public class Simulator implements Runnable {
                 boolean sharingPermissionsAreVerified = verifySharingPermissions(user, path);
                 isUserVerified &= sharingPermissionsAreVerified;
             }
-            if (!isUserVerified) {
+            if (! isUserVerified) {
                 LOG.info("User " + user + " is not verified!");
                 isGlobalVerified = false;
+                break;
             }
 
 
@@ -647,9 +686,9 @@ public class Simulator implements Runnable {
 
         Map<Simulation, Double> probabilities = Stream.of(
                 new Pair<>(Simulation.READ_OWN_FILE, 0.0),
-//                new Pair<>(Simulation.READ_SHARED_FILE, 0.1),
+                new Pair<>(Simulation.READ_SHARED_FILE_OR_DIRECTORY, 0.1),
                 new Pair<>(Simulation.WRITE_OWN_FILE, 0.4),
-//                new Pair<>(Simulation.WRITE_SHARED_FILE, 0.1),
+                new Pair<>(Simulation.WRITE_SHARED_FILE_OR_DIRECTORY, 0.1),
                 new Pair<>(Simulation.RM, 0.0),
                 new Pair<>(Simulation.MKDIR, 0.1),
                 new Pair<>(Simulation.RMDIR, 0.0),
