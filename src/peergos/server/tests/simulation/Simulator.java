@@ -4,6 +4,7 @@ import peergos.server.*;
 import peergos.server.simulation.AccessControl;
 import peergos.server.simulation.FileSystem;
 import peergos.server.simulation.PeergosFileSystemImpl;
+import peergos.server.simulation.Stat;
 import peergos.server.storage.IpfsWrapper;
 import peergos.server.util.Args;
 import peergos.server.util.Logging;
@@ -13,6 +14,7 @@ import peergos.shared.NetworkAccess;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.cryptree.CryptreeNode;
 import peergos.shared.util.Pair;
+import peergos.shared.util.TriFunction;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -91,8 +93,10 @@ public class Simulator implements Runnable {
     enum Simulation {
         READ_OWN_FILE,
         WRITE_OWN_FILE,
-        READ_SHARED_FILE_OR_DIRECTORY,
-        WRITE_SHARED_FILE_OR_DIRECTORY,
+        READ_SHARED_FILE,
+        READ_SHARED_DIRECTORY,
+        WRITE_SHARED_FILE,
+        WRITE_SHARED_DIRECTORY,
         MKDIR,
         RM,
         RMDIR,
@@ -108,13 +112,15 @@ public class Simulator implements Runnable {
                 case GRANT_READ_FILE:
                 case GRANT_READ_DIR:
                 case REVOKE_READ:
-                case READ_SHARED_FILE_OR_DIRECTORY:
+                case READ_SHARED_FILE:
+                case READ_SHARED_DIRECTORY:
                     return FileSystem.Permission.READ;
 
                 case GRANT_WRITE_DIR:
                 case GRANT_WRITE_FILE:
                 case REVOKE_WRITE:
-                case WRITE_SHARED_FILE_OR_DIRECTORY:
+                case WRITE_SHARED_FILE:
+                case WRITE_SHARED_DIRECTORY:
                     return FileSystem.Permission.WRITE;
             }
             return null;
@@ -166,8 +172,11 @@ public class Simulator implements Runnable {
 
     private Path mkdir(String user) {
         String dirBaseName = getNextName();
-
         Path path = index.getRandomExistingDirectory(user, false).resolve(dirBaseName);
+        return mkdir(user, path);
+    }
+
+    private Path mkdir(String user, Path path) {
         index.getDirToFiles(user).putIfAbsent(path, new ArrayList<>());
         log(user, Simulation.MKDIR, path);
 
@@ -261,13 +270,18 @@ public class Simulator implements Runnable {
         this.index = new FileSystemIndex(random);
     }
 
-    private boolean read(String user, Path path) {
+    private void readFile(String user, Path path) {
         FileSystem testFileSystem = fileSystems.getTestFileSystem(user);
         FileSystem referenceFileSystem = fileSystems.getReferenceFileSystem(user);
+        referenceFileSystem.read(path);
+        testFileSystem.read(path);
+    }
 
-        byte[] refBytes = referenceFileSystem.read(path);
-        byte[] testBytes = testFileSystem.read(path);
-        return Arrays.equals(refBytes, testBytes);
+    private void readDirectory(String user, Path path) {
+        FileSystem testFileSystem = fileSystems.getTestFileSystem(user);
+        FileSystem referenceFileSystem = fileSystems.getReferenceFileSystem(user);
+        referenceFileSystem.ls(path);
+        testFileSystem.ls(path);
     }
 
     private void log(String user, Simulation simulation, Path path, String... extra) {
@@ -394,34 +408,71 @@ public class Simulator implements Runnable {
                 return Optional.empty();
             }
         };
+        TriFunction<String, String, Boolean, Optional<Path>> randomSharedPathWithRetries = (owner, sharee, isDirectory) -> {
+            int keepTrying = 0;
+            while (keepTrying < 3) {
+                Optional<Path> path = randomSharedPath.apply(owner, sharee);
+                if (path.isPresent()) {
+                    Stat stat = fileSystems.getReferenceFileSystem(owner).stat(path.get());
+                    if (isDirectory && stat.fileProperties().isDirectory) {
+                        return path;
+                    } else if (! isDirectory && ! stat.fileProperties().isDirectory) {
+                        return path;
+                    }
+                }
+                keepTrying++;
+            }
+            return Optional.empty();
+        };
+        BiFunction<String, String, Optional<Path>> randomSharedDirectoryPath = (owner, sharee) ->
+             randomSharedPathWithRetries.apply(owner, sharee, true);
+
+        BiFunction<String, String, Optional<Path>> randomSharedFilePath = (owner, sharee) ->
+             randomSharedPathWithRetries.apply(owner, sharee, false);
 
 
         switch (simulation) {
             case READ_OWN_FILE:
                 Path readPath = randomFilePathForUser.get();
                 log(user, simulation, readPath);
-                read(user, readPath);
+                readFile(user, readPath);
                 break;
-            case READ_SHARED_FILE_OR_DIRECTORY:
-                Optional<Path> sharedOpt = randomSharedPath.apply(user, otherUser.get());
+            case READ_SHARED_FILE:
+                Optional<Path> sharedOpt = randomSharedFilePath.apply(user, otherUser.get());
                 if (! sharedOpt.isPresent())
                     return;
                 Path sharedPathToRead = sharedOpt.get();
-                log(user, Simulation.READ_SHARED_FILE_OR_DIRECTORY, sharedPathToRead);
-                read(user, sharedPathToRead);
+                log(user, Simulation.READ_SHARED_FILE, sharedPathToRead);
+                readFile(user, sharedPathToRead);
+                break;
+            case READ_SHARED_DIRECTORY:
+                Optional<Path> sharedDirOpt = randomSharedDirectoryPath.apply(user, otherUser.get());
+                if (! sharedDirOpt.isPresent())
+                    return;
+                Path sharedDirPathToRead = sharedDirOpt.get();
+                log(user, Simulation.READ_SHARED_DIRECTORY, sharedDirPathToRead);
+                readDirectory(user, sharedDirPathToRead);
                 break;
             case WRITE_OWN_FILE:
                 Path path = getAvailableFilePath(user);
                 log(user, Simulation.WRITE_OWN_FILE, path);
                 write(user, path);
                 break;
-            case WRITE_SHARED_FILE_OR_DIRECTORY:
-                Optional<Path> sharedOpt2 = randomSharedPath.apply(user, otherUser.get());
+            case WRITE_SHARED_FILE:
+                Optional<Path> sharedOpt2 = randomSharedFilePath.apply(user, otherUser.get());
                 if (! sharedOpt2.isPresent())
                     return;
                 Path  sharedPathToWrite = sharedOpt2.get();
-                log(user, Simulation.WRITE_SHARED_FILE_OR_DIRECTORY, sharedPathToWrite);
+                log(user, Simulation.WRITE_SHARED_FILE, sharedPathToWrite);
                 write(user, sharedPathToWrite);
+                break;
+            case WRITE_SHARED_DIRECTORY:
+                Optional<Path> sharedOpt3 = randomSharedDirectoryPath.apply(user, otherUser.get());
+                if (! sharedOpt3.isPresent())
+                    return;
+                Path  sharedDirectoryPathToWrite = sharedOpt3.get();
+                log(user, Simulation.WRITE_SHARED_DIRECTORY, sharedDirectoryPathToWrite);
+                mkdir(user, sharedDirectoryPathToWrite.resolve(getNextName()));
                 break;
             case MKDIR:
                 mkdir(user);
@@ -495,6 +546,8 @@ public class Simulator implements Runnable {
     private boolean verifySharingPermissions(String user, Path path) {
         FileSystem peergosFileSystem = fileSystems.getTestFileSystem(user);
         FileSystem nativeFileSystem = fileSystems.getReferenceFileSystem(user);
+        Stat stat = fileSystems.getReferenceFileSystem(user).stat(path);
+        boolean isDir = stat.fileProperties().isDirectory;
 
         boolean isVerified = true;
         for (FileSystem.Permission permission : FileSystem.Permission.values()) {
@@ -509,40 +562,71 @@ public class Simulator implements Runnable {
 
             //check they can actually read
             for (String sharee : shareesInPeergos) {
-
                 byte[] read = null;
-                switch (permission) {
-                    case READ:
-                        try {
-                            //can read?
-                            PeergosFileSystemImpl fs = fileSystems.getTestFileSystem(sharee);
-                            read = fs.read(path);
-                        } catch (Exception ex) {
-                            LOG.log(Level.SEVERE, "User "+ sharee +" could not read shared-path "+ path +"!", ex);
-                            isVerified = false;
-                        }
-                        break;
-                    case WRITE:
-                        PeergosFileSystemImpl fs = fileSystems.getTestFileSystem(sharee);
-                        try {
-                            //can read?
-                            read = fs.read(path);
-                        } catch (Exception ex) {
-                            LOG.log(Level.SEVERE, "User "+ sharee +" could not read shared-path "+ path +"!", ex);
-                            isVerified = false;
-                        }
-                        if (isVerified) {
+                PeergosFileSystemImpl fs = fileSystems.getTestFileSystem(sharee);
+                if (isDir) {
+                    switch (permission) {
+                        case READ:
                             try {
-                                // can overwrite?
-                                fs.write(path, read == null ? null : new byte[]{read[0]});
-                            } catch (Throwable ex) {
+                                //can read?
+                                fs.ls(path);
+                            } catch (Exception ex) {
+                                LOG.log(Level.SEVERE, "User " + sharee + " could not read shared-path " + path + "!", ex);
+                                isVerified = false;
+                            }
+                            break;
+                        case WRITE:
+                            try {
+                                //can read?
+                                fs.ls(path);
+                            } catch (Exception ex) {
+                                LOG.log(Level.SEVERE, "User " + sharee + " could not read shared-path " + path + "!", ex);
+                                isVerified = false;
+                            }
+                            if (isVerified) {
+                                try {
+                                    mkdir(user, path.resolve(getNextName()));
+                                } catch (Exception ex) {
                                     LOG.log(Level.SEVERE, "User " + sharee + " could not write  shared-path " + path + "!", ex);
                                     isVerified = false;
+                                }
                             }
-                        }
-                        break;
-                    default:
-                        throw new IllegalStateException();
+                            break;
+                        default:
+                            throw new IllegalStateException();
+                    }
+                } else {
+                    switch (permission) {
+                        case READ:
+                            try {
+                                //can read?
+                                read = fs.read(path);
+                            } catch (Exception ex) {
+                                LOG.log(Level.SEVERE, "User " + sharee + " could not read shared-path " + path + "!", ex);
+                                isVerified = false;
+                            }
+                            break;
+                        case WRITE:
+                            try {
+                                //can read?
+                                read = fs.read(path);
+                            } catch (Exception ex) {
+                                LOG.log(Level.SEVERE, "User " + sharee + " could not read shared-path " + path + "!", ex);
+                                isVerified = false;
+                            }
+                            if (isVerified) {
+                                try {
+                                    // can overwrite?
+                                    fs.write(path, new byte[]{read[0]});
+                                } catch (Exception ex) {
+                                    LOG.log(Level.SEVERE, "User " + sharee + " could not write  shared-path " + path + "!", ex);
+                                    isVerified = false;
+                                }
+                            }
+                            break;
+                        default:
+                            throw new IllegalStateException();
+                    }
                 }
                 if (! isVerified) {
                     break;
@@ -557,13 +641,23 @@ public class Simulator implements Runnable {
     private boolean verifyContents(String user, Path path) {
         FileSystem peergosFileSystem = fileSystems.getTestFileSystem(user);
         FileSystem nativeFileSystem = fileSystems.getReferenceFileSystem(user);
-
+        Stat stat = fileSystems.getReferenceFileSystem(user).stat(path);
+        boolean isDir = stat.fileProperties().isDirectory;
         try {
-            byte[] testData = peergosFileSystem.read(path);
-            byte[] refData = nativeFileSystem.read(path);
-            if (!Arrays.equals(testData, refData)) {
-                LOG.info("Path " + path + " has different contents between the file-systems");
-                return false;
+            if (isDir) {
+                Set<Path> refDirectoryListing = new TreeSet<>(nativeFileSystem.ls(path, true));
+                Set<Path> testDirectoryListing = new TreeSet<>(peergosFileSystem.ls(path, false));
+                if (!refDirectoryListing.toString().equalsIgnoreCase(testDirectoryListing.toString())) {
+                    LOG.info("Path " + path + " has different directory contents between the file-systems");
+                    return false;
+                }
+            } else {
+                byte[] testData = peergosFileSystem.read(path);
+                byte[] refData = nativeFileSystem.read(path);
+                if (!Arrays.equals(testData, refData)) {
+                    LOG.info("Path " + path + " has different contents between the file-systems");
+                    return false;
+                }
             }
         } catch (Exception ex) {
             LOG.info("Failed to read path + " + path);
@@ -615,7 +709,9 @@ public class Simulator implements Runnable {
             }
 
             // contents
-            for (Path path : expectedFilesForUser) {
+            Set<Path> allFilesAndFolders = new HashSet<>(expectedFilesForUser);
+            allFilesAndFolders.addAll(dirToFiles.keySet());
+            for (Path path : allFilesAndFolders) {
                 boolean verifyContents = verifyContents(user, path);
                 isUserVerified &= verifyContents;
                 boolean sharingPermissionsAreVerified = verifySharingPermissions(user, path);
@@ -670,9 +766,11 @@ public class Simulator implements Runnable {
 
         Map<Simulation, Double> probabilities = Stream.of(
                 new Pair<>(Simulation.READ_OWN_FILE, 0.0),
-                new Pair<>(Simulation.READ_SHARED_FILE_OR_DIRECTORY, 0.1),
+                new Pair<>(Simulation.READ_SHARED_FILE, 0.1),
+                new Pair<>(Simulation.READ_SHARED_DIRECTORY, 0.1),
                 new Pair<>(Simulation.WRITE_OWN_FILE, 0.4),
-                new Pair<>(Simulation.WRITE_SHARED_FILE_OR_DIRECTORY, 0.1),
+                new Pair<>(Simulation.WRITE_SHARED_FILE, 0.1),
+                new Pair<>(Simulation.WRITE_SHARED_DIRECTORY, 0.1),
                 new Pair<>(Simulation.RM, 0.0),
                 new Pair<>(Simulation.MKDIR, 0.1),
                 new Pair<>(Simulation.RMDIR, 0.0),

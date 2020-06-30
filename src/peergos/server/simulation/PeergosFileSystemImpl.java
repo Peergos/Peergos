@@ -43,9 +43,6 @@ public class PeergosFileSystemImpl implements FileSystem {
     public byte[] read(Path path, BiConsumer<Long, Long> progressConsumer) {
         FileWrapper wrapper = getPath(path);
         long size = wrapper.getFileProperties().size;
-        if (wrapper.getFileProperties().isDirectory) {
-            return null;
-        }
         ProgressConsumer<Long> monitor = (readBytes) -> progressConsumer.accept(readBytes, size);
         AsyncReader in = wrapper.getInputStream(userContext.network, userContext.crypto, size, monitor).join();
         return Serialize.readFully(in, size).join();

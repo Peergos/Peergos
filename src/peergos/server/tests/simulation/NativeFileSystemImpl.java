@@ -66,9 +66,6 @@ public class NativeFileSystemImpl implements FileSystem {
     public byte[] read(Path path, BiConsumer<Long, Long> pc) {
         Path nativePath = virtualToNative(path);
         ensureCan(path, Permission.READ);
-        if (nativePath.toFile().isDirectory()) {
-           return null;
-        }
         try {
             return Files.readAllBytes(nativePath);
         } catch (IOException ioe) {
@@ -194,6 +191,7 @@ public class NativeFileSystemImpl implements FileSystem {
 
     @Override
     public List<Path> ls(Path path, boolean showHidden) {
+        ensureCan(path, Permission.READ);
         if (! showHidden)
             throw new IllegalStateException();
 
