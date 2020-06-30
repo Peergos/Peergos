@@ -22,10 +22,6 @@ public class PeergosFileSystemImpl implements FileSystem {
         this.userContext = userContext;
     }
 
-    public UserContext getUserContext() {
-        return userContext;
-    }
-
     @Override
     public String user() {
         return userContext.username;
@@ -51,13 +47,6 @@ public class PeergosFileSystemImpl implements FileSystem {
     @Override
     public void write(Path path, byte[] data, Consumer<Long> progressConsumer) {
         FileWrapper directory = getDirectory(path);
-        Optional<FileWrapper> existingFile = userContext.getByPath(path).join();
-        if (existingFile.isPresent() && existingFile.get().getFileProperties().isDirectory) {
-            if(! existingFile.get().isWritable()) {
-                throw new Error("expecting file to be writable");
-            }
-            return;
-        }
         AsyncReader resetableFileInputStream = new AsyncReader.ArrayBacked(data);
         String fileName = path.getFileName().toString();
         ProgressConsumer<Long> pc  = l -> progressConsumer.accept(l);
