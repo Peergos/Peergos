@@ -299,8 +299,10 @@ public class Simulator implements Runnable {
         Path dirName = path.getParent();
         String fileName = path.getFileName().toString();
         Map<Path, List<String>> dirsToFiles = index.getDirToFiles(user);
-        dirsToFiles.get(dirName).add(fileName);
-
+        List<String> existingFiles = dirsToFiles.get(dirName);
+        if (! existingFiles.contains(fileName)) {
+            existingFiles.add(fileName);
+        }
         FileSystem testFileSystem = fileSystems.getTestFileSystem(user);
         FileSystem referenceFileSystem = fileSystems.getReferenceFileSystem(user);
 
@@ -531,11 +533,9 @@ public class Simulator implements Runnable {
                 throw new Error("FAILED VERIFICATION!");
             }*/
         }
-
         LOG.info("Running file-system verification");
         boolean isVerified = verify();
         LOG.info("System verified =  " + isVerified);
-
     }
 
     /**
