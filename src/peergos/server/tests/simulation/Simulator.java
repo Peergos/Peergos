@@ -524,17 +524,18 @@ public class Simulator implements Runnable {
             System.out.println("iOp=" + iOp);
             Simulation simulation = getNextSimulation.get();
             run(simulation);
+            /*
             boolean isVerified = verify();
             if (! isVerified) {
                 isVerified = verify();
                 throw new Error("FAILED VERIFICATION!");
-            }
+            }*/
         }
-        /*
+
         LOG.info("Running file-system verification");
         boolean isVerified = verify();
         LOG.info("System verified =  " + isVerified);
-         */
+
     }
 
     /**
