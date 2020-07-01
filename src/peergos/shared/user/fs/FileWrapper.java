@@ -481,6 +481,8 @@ public class FileWrapper {
     }
 
     public CompletableFuture<Snapshot> truncate(Snapshot initialVersion, Committer committer, long newSize, NetworkAccess network, Crypto crypto) {
+        if (isDirectory())
+            return Futures.errored(new IllegalStateException("You cannot truncate a directory!"));
         FileProperties props = getFileProperties();
         if (props.size < newSize)
             return CompletableFuture.completedFuture(initialVersion);
@@ -562,15 +564,17 @@ public class FileWrapper {
                 ).thenCompose(finished -> getUpdated(finished, network));
     }
 
-    public CompletableFuture<FileWrapper> uploadOrOverwriteFile(String filename,
-                                                                AsyncReader fileData,
-                                                                long length,
-                                                                NetworkAccess network,
-                                                                Crypto crypto,
-                                                                ProgressConsumer<Long> monitor,
-                                                                byte[] firstChunkMapKey) {
+    public CompletableFuture<FileWrapper> uploadOrReplaceFile(String filename,
+                                                              AsyncReader fileData,
+                                                              long length,
+                                                              NetworkAccess network,
+                                                              Crypto crypto,
+                                                              ProgressConsumer<Long> monitor,
+                                                              byte[] firstChunkMapKey) {
         return uploadFileSection(filename, fileData, false, 0, length, Optional.empty(),
-                true, network, crypto, monitor, firstChunkMapKey);
+                true, network, crypto, monitor, firstChunkMapKey)
+                .thenCompose(f -> f.getChild(filename, crypto.hasher, network)
+                        .thenCompose(childOpt -> childOpt.get().truncate(length, network, crypto)));
     }
 
     @JsMethod
@@ -774,7 +778,7 @@ public class FileWrapper {
         if (isWritable())
             return network.synchronizer.applyComplexUpdate(owner(), signingPair(), (current, committer) ->
                     uploadFileSection(current, committer, filename, fileData, isHidden, startIndex, endIndex,
-                            baseKey, overwriteExisting, true, network, crypto, monitor, firstChunkMapKey))
+                            baseKey, overwriteExisting, false, network, crypto, monitor, firstChunkMapKey))
                     .thenCompose(finalBase -> getUpdated(finalBase, network));
 
         if (! overwriteExisting)

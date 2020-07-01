@@ -343,7 +343,7 @@ public abstract class UserTests {
         Path filePath = Paths.get(username, filename);
         // write empty file
         byte[] data = new byte[120*1024];
-        userRoot.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
+        userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
                 context.crypto, l -> {}, context.crypto.random.randomBytes(32)).get();
         checkFileContents(data, context.getByPath(filePath).join().get(), context);
 
@@ -380,7 +380,7 @@ public abstract class UserTests {
         String filename = "somedata.txt";
         // write empty file
         byte[] data = new byte[0];
-        userRoot.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
+        userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
                 context.crypto, l -> {}, context.crypto.random.randomBytes(32)).get();
         checkFileContents(data, context.getUserRoot().get().getDescendentByPath(filename, crypto.hasher, context.network).get().get(), context);
 
@@ -469,7 +469,7 @@ public abstract class UserTests {
         String filename = "somedata.txt";
         // write empty file
         byte[] data = new byte[0];
-        userRoot.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
+        userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
                 context.crypto, l -> {}, context.crypto.random.randomBytes(32)).get();
         checkFileContents(data, context.getUserRoot().get().getDescendentByPath(filename, crypto.hasher, context.network).get().get(), context);
 
@@ -514,7 +514,7 @@ public abstract class UserTests {
 
         String filename = "somedir";
         byte[] data = new byte[200*1024];
-        userRoot.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
+        userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
                 context.crypto, l -> {}, context.crypto.random.randomBytes(32)).join();
 
         FileWrapper file = context.getByPath("/" + username + "/" + filename).join().get();
@@ -540,7 +540,7 @@ public abstract class UserTests {
                     byte[] data = randomData(fileSize);
                     String filename = i + ".bin";
                     FileWrapper userRoot = context.getUserRoot().join();
-                    FileWrapper result = userRoot.uploadOrOverwriteFile(filename,
+                    FileWrapper result = userRoot.uploadOrReplaceFile(filename,
                             new AsyncReader.ArrayBacked(data),
                             data.length, context.network, context.crypto, l -> {}, context.crypto.random.randomBytes(32)).join();
                     Optional<FileWrapper> childOpt = result.getChild(filename, crypto.hasher, network).join();
@@ -572,7 +572,7 @@ public abstract class UserTests {
                     byte[] data = randomData(fileSize);
                     String filename = "folder" + i;
                         FileWrapper userRoot = context.getUserRoot().join();
-                        FileWrapper result = userRoot.uploadOrOverwriteFile(filename,
+                        FileWrapper result = userRoot.uploadOrReplaceFile(filename,
                                 new AsyncReader.ArrayBacked(data), data.length, context.network, context.crypto, l -> {},
                                 context.crypto.random.randomBytes(32)).join();
                         return true;
@@ -598,7 +598,7 @@ public abstract class UserTests {
         int fileSize = concurrency * CHUNK_SIZE;
         String filename = "afile.bin";
         FileWrapper userRoot = context.getUserRoot().get();
-        FileWrapper newRoot = userRoot.uploadOrOverwriteFile(filename,
+        FileWrapper newRoot = userRoot.uploadOrReplaceFile(filename,
                 new AsyncReader.ArrayBacked(randomData(fileSize)),
                 fileSize, context.network, context.crypto, l -> {},
                 context.crypto.random.randomBytes(32)).get();
@@ -641,7 +641,7 @@ public abstract class UserTests {
         String filename = "small.txt";
         byte[] data = "G'day mate".getBytes();
         AtomicLong writeCount = new AtomicLong(0);
-        userRoot.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
+        userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
                 context.crypto, writeCount::addAndGet, context.crypto.random.randomBytes(32)).get();
         FileWrapper file = context.getByPath(Paths.get(username, filename).toString()).get().get();
         String mimeType = file.getFileProperties().mimeType;
@@ -724,7 +724,7 @@ public abstract class UserTests {
         context.network.synchronizer.applyComplexUpdate(userRoot.owner(), transactions.getSigner(),
                 (s, committer) -> transactions.open(s, committer, transaction)).join();
         try {
-            userRoot.uploadOrOverwriteFile(filename, throwingReader, data.length, context.network,
+            userRoot.uploadOrReplaceFile(filename, throwingReader, data.length, context.network,
                     context.crypto, l -> {}, transaction.getLocations().get(0).getMapKey()).get();
         } catch (Exception e) {}
         int during = context.getTotalSpaceUsed(context.signer.publicKeyHash, context.signer.publicKeyHash).get().intValue();
@@ -770,7 +770,7 @@ public abstract class UserTests {
 
         String filename = "small.png";
         byte[] data = Files.readAllBytes(Paths.get("assets", "logo.png"));
-        userRoot.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
+        userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
                 context.crypto, l -> {}, context.crypto.random.randomBytes(32)).get();
         FileWrapper file = context.getByPath(Paths.get(username, filename).toString()).get().get();
         String thumbnail = file.getBase64Thumbnail();
@@ -787,7 +787,7 @@ public abstract class UserTests {
 
         String filename = "trailer.mp4";
         byte[] data = Files.readAllBytes(Paths.get("assets", filename));
-        userRoot.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
+        userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
                 context.crypto, l -> {}, context.crypto.random.randomBytes(32)).get();
         FileWrapper file = context.getByPath(Paths.get(username, filename).toString()).get().get();
         String thumbnail = file.getBase64Thumbnail();
@@ -803,7 +803,7 @@ public abstract class UserTests {
 
         String filename = "mediumfile.bin";
         byte[] data = new byte[0];
-        FileWrapper userRoot2 = userRoot.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length,
+        FileWrapper userRoot2 = userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length,
                 context.network, context.crypto, l -> {}, context.crypto.random.randomBytes(32)).get();
 
         //overwrite with 2 chunk file
@@ -840,7 +840,7 @@ public abstract class UserTests {
         String filename = "mediumfile.bin";
         byte[] data = new byte[15*1024*1024];
         random.nextBytes(data);
-        FileWrapper userRoot2 = userRoot.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length,
+        FileWrapper userRoot2 = userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length,
                 context.network, context.crypto, l -> {}, context.crypto.random.randomBytes(32)).join();
 
         FileWrapper original = context.getByPath(Paths.get(username, filename)).join().get();
@@ -915,7 +915,7 @@ public abstract class UserTests {
 
         String filename = "mediumfile.bin";
         byte[] data = new byte[0];
-        FileWrapper updatedRoot = userRoot.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length,
+        FileWrapper updatedRoot = userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length,
                 context.network, context.crypto, l -> {}, context.crypto.random.randomBytes(32)).get();
 
         //overwrite with 2 chunk file
@@ -1169,7 +1169,7 @@ public abstract class UserTests {
         byte[] data = randomData(10*1024*1024); // 2 chunks to test block chaining
 
         AsyncReader resetableFileInputStream = new AsyncReader.ArrayBacked(data);
-        FileWrapper updatedRoot = userRoot.uploadOrOverwriteFile(name, resetableFileInputStream, data.length,
+        FileWrapper updatedRoot = userRoot.uploadOrReplaceFile(name, resetableFileInputStream, data.length,
                 context.network, context.crypto, l -> {}, context.crypto.random.randomBytes(32)).get();
 
         Optional<FileWrapper> opt = updatedRoot.getChildren(crypto.hasher, context.network).get()
@@ -1201,11 +1201,11 @@ public abstract class UserTests {
 
         AsyncReader fileData = new AsyncReader.ArrayBacked(data);
 
-        FileWrapper updatedRoot = userRoot.uploadOrOverwriteFile(name, fileData, data.length,
+        FileWrapper updatedRoot = userRoot.uploadOrReplaceFile(name, fileData, data.length,
                 context.network, context.crypto, l -> {}, context.crypto.random.randomBytes(32)).get();
         String otherName = name + ".other";
 
-        FileWrapper updatedRoot2 = updatedRoot.uploadOrOverwriteFile(otherName, fileData.reset().join(),
+        FileWrapper updatedRoot2 = updatedRoot.uploadOrReplaceFile(otherName, fileData.reset().join(),
                 data.length, context.network, context.crypto, l -> {}, context.crypto.random.randomBytes(32)).get();
 
         Optional<FileWrapper> opt = updatedRoot2.getChildren(crypto.hasher, context.network).get()
@@ -1265,7 +1265,7 @@ public abstract class UserTests {
         String filename = "initialfile.bin";
         byte[] data = randomData(10*1024*1024); // 2 chunks to test block chaining
 
-        FileWrapper updatedUserRoot = userRoot.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data),
+        FileWrapper updatedUserRoot = userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data),
                 data.length, context.network, crypto, x -> {}, context.crypto.random.randomBytes(32)).join();
 
         // copy the file
@@ -1300,7 +1300,7 @@ public abstract class UserTests {
 
 
         FileWrapper subfolder = context.getByPath(home.resolve(foldername)).join().get();
-        subfolder = subfolder.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data),
+        subfolder = subfolder.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data),
                 data.length, context.network, crypto, x -> {}, context.crypto.random.randomBytes(32)).join();
 
         subfolder.copyTo(folder2, context).join();
@@ -1413,7 +1413,7 @@ public abstract class UserTests {
         String filename = "somedata.txt";
         Path filePath = Paths.get(username, filename);
         byte[] data = randomData(6);
-        userRoot.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
+        userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
                 context.crypto, l -> {}, context.crypto.random.randomBytes(32)).get();
         checkFileContents(data, context.getByPath(filePath).join().get(), context);
 
@@ -1443,7 +1443,7 @@ public abstract class UserTests {
                 data[i] = 1;
             }
         }
-        userRoot.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
+        userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
                 context.crypto, l -> {}, context.crypto.random.randomBytes(32)).get();
         checkFileContents(data, context.getByPath(filePath).join().get(), context);
 

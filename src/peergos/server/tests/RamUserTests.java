@@ -56,7 +56,7 @@ public class RamUserTests extends UserTests {
         byte[] fileData = new byte[14621544];
         random.nextBytes(fileData);
 
-        FileWrapper userRoot2 = userRoot.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(fileData), fileData.length,
+        FileWrapper userRoot2 = userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(fileData), fileData.length,
                 context.network, context.crypto, l -> {}, context.crypto.random.randomBytes(32)).join();
 
         FileWrapper file = context.getByPath(Paths.get(username, filename)).join().get();
@@ -103,7 +103,7 @@ public class RamUserTests extends UserTests {
         Random random = new Random(666);
         byte[] fileData = new byte[14621544];
         random.nextBytes(fileData);
-        FileWrapper userRoot2 = userRoot.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(fileData), fileData.length,
+        FileWrapper userRoot2 = userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(fileData), fileData.length,
                 context.network, context.crypto, l -> {
                 }, context.crypto.random.randomBytes(32)).join();
 
@@ -145,7 +145,7 @@ public class RamUserTests extends UserTests {
         byte[] fileData = new byte[14621544];
         random.nextBytes(fileData);
 
-        FileWrapper userRoot2 = userRoot.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(fileData), fileData.length,
+        FileWrapper userRoot2 = userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(fileData), fileData.length,
                 context.network, context.crypto, l -> {
                 }, context.crypto.random.randomBytes(32)).join();
 
@@ -250,7 +250,7 @@ public class RamUserTests extends UserTests {
         // write empty file
         byte[] data = new byte[0];
         user1.getByPath(Paths.get(username1, folder1, folder11)).join().get()
-                .uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length, user1.network,
+                .uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length, user1.network,
                 crypto, l -> {}, crypto.random.randomBytes(32)).get();
 
         // create 2nd user and friend user1
