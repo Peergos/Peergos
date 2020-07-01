@@ -484,7 +484,7 @@ public class FileWrapper {
         if (isDirectory())
             return Futures.errored(new IllegalStateException("You cannot truncate a directory!"));
         FileProperties props = getFileProperties();
-        if (props.size < newSize)
+        if (props.size <= newSize)
             return CompletableFuture.completedFuture(initialVersion);
 
         return initialVersion.withWriter(owner(), writer(), network)
