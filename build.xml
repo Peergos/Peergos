@@ -124,7 +124,7 @@
 	</fileset>
 	<pathelement location="${build}" />
       </classpath>
-      <formatter type="plain" usefile="false"/>
+      <formatter type="brief" usefile="false"/>
       <formatter type="xml" />
       <batchtest todir="${test.reports}" skipNonTests="true">
 	<fileset dir="${test.sources}">
