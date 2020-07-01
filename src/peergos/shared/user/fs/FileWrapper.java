@@ -575,7 +575,7 @@ public class FileWrapper {
                 true, network, crypto, monitor, firstChunkMapKey)
                 .thenCompose(f -> f.getChild(filename, crypto.hasher, network)
                         .thenCompose(childOpt -> childOpt.get().truncate(length, network, crypto))
-                        .thenCompose(c -> f.getUpdated(c.version, network)));
+                        .thenCompose(c -> f.getUpdated(f.version.mergeAndOverwriteWith(c.version), network)));
     }
 
     @JsMethod
