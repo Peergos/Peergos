@@ -574,7 +574,8 @@ public class FileWrapper {
         return uploadFileSection(filename, fileData, false, 0, length, Optional.empty(),
                 true, network, crypto, monitor, firstChunkMapKey)
                 .thenCompose(f -> f.getChild(filename, crypto.hasher, network)
-                        .thenCompose(childOpt -> childOpt.get().truncate(length, network, crypto)));
+                        .thenCompose(childOpt -> childOpt.get().truncate(length, network, crypto))
+                        .thenCompose(c -> f.getUpdated(c.version, network)));
     }
 
     @JsMethod
