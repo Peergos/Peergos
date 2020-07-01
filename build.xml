@@ -103,6 +103,8 @@
   </target>
 
   <target name="test" depends="parallel_test">
+    <exec executable="./print_test_errors.sh">
+    </exec>
   </target> 
 
   <target name="execute.test">
