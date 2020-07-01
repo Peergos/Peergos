@@ -18,7 +18,6 @@ public class CborObjects {
 
     @Test
     public void dosCborObject() throws Throwable {
-        if(true)throw new RuntimeException();
         // make a header for a byte[] that is 2^50 long
         byte[] raw = ArrayOps.hexToBytes("5b0004000000000000");
         try {

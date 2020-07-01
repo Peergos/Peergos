@@ -114,7 +114,7 @@
       <map from="${test.sources}/" to="" />
     </pathconvert>
     <!-- run one particular test -->
-    <junit fork="true" printsummary="true" haltonfailure="yes">
+    <junit fork="true" printsummary="true" haltonfailure="no">
       <jvmarg value="-Xmx2g"/>
       <jvmarg value="-Djava.library.path=native-lib"/>
       <classpath>
