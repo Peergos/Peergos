@@ -1856,7 +1856,7 @@ public class UserContext {
             .thenCompose(feedbackWrapper -> {
                 LOG.info("Posting the feedback!");
                 byte[] feedbackBytes = feedback.getBytes();
-                return feedbackWrapper.uploadOrOverwriteFile(filename, AsyncReader.build(feedbackBytes), feedbackBytes.length,
+                return feedbackWrapper.uploadOrReplaceFile(filename, AsyncReader.build(feedbackBytes), feedbackBytes.length,
                         network, crypto, x -> {}, crypto.random.randomBytes(32));
             }
             )

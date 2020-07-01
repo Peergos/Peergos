@@ -3,7 +3,6 @@ package peergos.shared.user.fs;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.crypto.random.SafeRandom;
 import peergos.shared.user.EntryPoint;
 import peergos.shared.util.*;
 
@@ -353,7 +352,7 @@ public class CapabilityStore {
         byte[] data = capabilitiesFromUser.serialize();
         AsyncReader.ArrayBacked dataReader = new AsyncReader.ArrayBacked(data);
         return getCapabilityCacheDir(homeDirSupplier, network, crypto)
-                .thenCompose(cacheDir -> cacheDir.uploadOrOverwriteFile(friendName + capabilityType, dataReader,
+                .thenCompose(cacheDir -> cacheDir.uploadOrReplaceFile(friendName + capabilityType, dataReader,
                         (long) data.length, network, crypto, x-> {},
                         crypto.random.randomBytes(32))
                         .thenApply(x -> capabilitiesFromUser));

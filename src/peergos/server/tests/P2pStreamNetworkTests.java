@@ -78,7 +78,7 @@ public class P2pStreamNetworkTests {
         byte[] data = "G'day mate!".getBytes();
         String filename = "hey.txt";
         FileWrapper root = u1.getUserRoot().get();
-        FileWrapper upload = root.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length,
+        FileWrapper upload = root.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length,
                 nodes.get(1), crypto, x -> { }, crypto.random.randomBytes(32)).get();
         Thread.sleep(7000);
         Optional<FileWrapper> file = ensureSignedUp(username1, password1, nodes.get(0), crypto)

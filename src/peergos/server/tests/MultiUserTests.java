@@ -19,7 +19,6 @@ import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.*;
 
 import java.io.*;
-import java.net.*;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -106,9 +105,13 @@ public class MultiUserTests {
 
     @Test
     public void sharedwithPermutations() throws Exception {
-        PeergosNetworkUtils.sharedwithPermutations(network);
+        PeergosNetworkUtils.sharedwithPermutations(network, random);
     }
 
+    @Test
+    public void sharedWriteableAndTruncate() throws Exception {
+        PeergosNetworkUtils.sharedWriteableAndTruncate(network, random);
+    }
 
     @Test
     public void grantAndRevokeFileWriteAccess() throws Exception {
@@ -184,7 +187,7 @@ public class MultiUserTests {
         String filename = "somefile.txt";
         byte[] data = UserTests.randomData(10*1024*1024);
 
-        FileWrapper uploaded = u1Root.uploadOrOverwriteFile(filename, new AsyncReader.ArrayBacked(data), data.length,
+        FileWrapper uploaded = u1Root.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length,
                 u1.network, crypto, l -> {}, crypto.random.randomBytes(32)).get();
 
         // share the file from u1 to each of the others
@@ -225,7 +228,7 @@ public class MultiUserTests {
         u1.getUserRoot().join().mkdir("subdir", u1.network, false, crypto).join();
         byte[] fileData = "file data".getBytes();
         AsyncReader reader = AsyncReader.build(fileData);
-        u1.getByPath(Paths.get(u1.username, "subdir")).join().get().uploadOrOverwriteFile("file.txt",
+        u1.getByPath(Paths.get(u1.username, "subdir")).join().get().uploadOrReplaceFile("file.txt",
                 reader, fileData.length, u1.network, crypto, x -> {}, u1.crypto.random.randomBytes(32)).join();
         Path filePath = Paths.get(u1.username, "subdir", "file.txt");
         FileWrapper file = u1.getByPath(filePath).join().get();
@@ -273,7 +276,7 @@ public class MultiUserTests {
         String filename = "somefile.txt";
         byte[] data1 = "Hello Peergos friend!".getBytes();
         AsyncReader file1Reader = new AsyncReader.ArrayBacked(data1);
-        FileWrapper uploaded = u1Root.uploadOrOverwriteFile(filename, file1Reader, data1.length,
+        FileWrapper uploaded = u1Root.uploadOrReplaceFile(filename, file1Reader, data1.length,
                 u1.network, u1.crypto, l -> {}, crypto.random.randomBytes(32)).get();
 
         // upload a different file with the same name in a sub folder
@@ -281,7 +284,7 @@ public class MultiUserTests {
         FileWrapper subdir = u1.getByPath("/" + u1.username + "/subdir").get().get();
         byte[] data2 = "Goodbye Peergos friend!".getBytes();
         AsyncReader file2Reader = new AsyncReader.ArrayBacked(data2);
-        subdir.uploadOrOverwriteFile(filename, file2Reader, data2.length,
+        subdir.uploadOrReplaceFile(filename, file2Reader, data2.length,
                 u1.network, u1.crypto, l -> {}, crypto.random.randomBytes(32)).get();
 
         // share the file from "a" to each of the others
@@ -339,7 +342,7 @@ public class MultiUserTests {
         u1Root.mkdir(subdirName, u1.network, false, crypto).get();
         Path subdirPath = Paths.get(u1.username, subdirName);
         FileWrapper subdir = u1.getByPath(subdirPath).get().get();
-        FileWrapper uploaded = subdir.uploadOrOverwriteFile(filename, file1Reader, data1.length,
+        FileWrapper uploaded = subdir.uploadOrReplaceFile(filename, file1Reader, data1.length,
                 u1.network, u1.crypto, l -> {}, crypto.random.randomBytes(32)).get();
 
         Path filePath = Paths.get(u1.username, subdirName, filename);
@@ -428,7 +431,7 @@ public class MultiUserTests {
         u1Root.mkdir(subdirName, u1.network, false, crypto).get();
         Path subdirPath = Paths.get(u1.username, subdirName);
         FileWrapper subdir = u1.getByPath(subdirPath).get().get();
-        FileWrapper uploaded = subdir.uploadOrOverwriteFile(filename, file1Reader, data1.length,
+        FileWrapper uploaded = subdir.uploadOrReplaceFile(filename, file1Reader, data1.length,
                 u1.network, u1.crypto, l -> {}, crypto.random.randomBytes(32)).get();
 
         Path filePath = Paths.get(u1.username, subdirName, filename);
@@ -553,7 +556,7 @@ public class MultiUserTests {
         u1.getUserRoot().get().mkdir(destinationSubdirName, u1.network, false, crypto).get();
         Path subdirPath = Paths.get(u1.username, subdirName);
         FileWrapper subdir = u1.getByPath(subdirPath).get().get();
-        FileWrapper uploaded = subdir.uploadOrOverwriteFile(filename, file1Reader, data1.length,
+        FileWrapper uploaded = subdir.uploadOrReplaceFile(filename, file1Reader, data1.length,
                 u1.network, u1.crypto, l -> {}, crypto.random.randomBytes(32)).get();
 
         Path filePath = Paths.get(u1.username, subdirName, filename);
@@ -681,7 +684,7 @@ public class MultiUserTests {
         u1.getUserRoot().get().mkdir(destinationSubdirName, u1.network, false, crypto).get();
         Path subdirPath = Paths.get(u1.username, subdirName);
         FileWrapper subdir = u1.getByPath(subdirPath).get().get();
-        FileWrapper uploaded = subdir.uploadOrOverwriteFile(filename, file1Reader, data1.length,
+        FileWrapper uploaded = subdir.uploadOrReplaceFile(filename, file1Reader, data1.length,
                 u1.network, u1.crypto, l -> {}, crypto.random.randomBytes(32)).get();
 
         Path filePath = Paths.get(u1.username, subdirName, filename);
@@ -797,7 +800,7 @@ public class MultiUserTests {
         byte[] originalFileContents = "Hello Peergos friend!".getBytes();
         Files.write(f.toPath(), originalFileContents);
         ResetableFileInputStream resetableFileInputStream = new ResetableFileInputStream(f);
-        FileWrapper uploaded = u1Root.uploadOrOverwriteFile(filename, resetableFileInputStream, f.length(),
+        FileWrapper uploaded = u1Root.uploadOrReplaceFile(filename, resetableFileInputStream, f.length(),
                 u1.network, u1.crypto, l -> {}, crypto.random.randomBytes(32)).get();
 
         // share the file from "a" to each of the others
@@ -919,7 +922,7 @@ public class MultiUserTests {
         UserContext u2 = PeergosNetworkUtils.ensureSignedUp(username2, password2, network, crypto);
         PeergosNetworkUtils.friendBetweenGroups(Arrays.asList(u1), Arrays.asList(u2));
         // Add file bigger than the 1MiB final quota
-        u1.getUserRoot().join().uploadOrOverwriteFile("afile.bin", AsyncReader.build(new byte[2*1024*1024]),
+        u1.getUserRoot().join().uploadOrReplaceFile("afile.bin", AsyncReader.build(new byte[2*1024*1024]),
                 2*1024*1024, u1.network, crypto, x -> {}, crypto.random.randomBytes(32)).join();
         u1.deleteAccount(password1).join();
 

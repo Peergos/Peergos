@@ -2,8 +2,6 @@ package peergos.server;
 
 import peergos.server.storage.*;
 import peergos.shared.*;
-import peergos.shared.crypto.hash.*;
-import peergos.shared.crypto.random.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 
@@ -110,7 +108,7 @@ public class Uploader {
             try {
                 ResetableFileInputStream fileData = new ResetableFileInputStream(file);
                 FileWrapper parent = context.getByPath(targetParent.toString()).join().get();
-                parent.uploadOrOverwriteFile(file.getName(), fileData, file.length(),
+                parent.uploadOrReplaceFile(file.getName(), fileData, file.length(),
                         context.network, context.crypto, l -> {},
                         context.crypto.random.randomBytes(32)).get();
             } catch (Exception e) {
