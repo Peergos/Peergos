@@ -105,12 +105,12 @@ public class MultiUserTests {
 
     @Test
     public void sharedwithPermutations() throws Exception {
-        PeergosNetworkUtils.sharedwithPermutations(network);
+        PeergosNetworkUtils.sharedwithPermutations(network, random);
     }
 
     @Test
     public void sharedWriteableAndTruncate() throws Exception {
-        PeergosNetworkUtils.sharedWriteableAndTruncate(network);
+        PeergosNetworkUtils.sharedWriteableAndTruncate(network, random);
     }
 
     @Test

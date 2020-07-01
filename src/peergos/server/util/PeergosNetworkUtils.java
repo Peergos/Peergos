@@ -48,6 +48,11 @@ public class PeergosNetworkUtils {
         return data;
     }
 
+    public static String randomUsername(String prefix, Random rnd) {
+        byte[] suffix = new byte[(30 - prefix.length()) / 2];
+        return prefix + ArrayOps.bytesToHex(suffix);
+    }
+
     public static void checkFileContents(byte[] expected, FileWrapper f, UserContext context) {
         long size = f.getFileProperties().size;
         byte[] retrievedData = Serialize.readFully(f.getInputStream(context.network, context.crypto,
@@ -365,17 +370,17 @@ public class PeergosNetworkUtils {
         Assert.assertEquals(friendChildren.size(), 1);
     }
 
-    public static void sharedwithPermutations(NetworkAccess sharerNode) throws Exception {
+    public static void sharedwithPermutations(NetworkAccess sharerNode, Random rnd) throws Exception {
 
-        String sharerUsername = "sharer";
+        String sharerUsername = randomUsername("sharer", rnd);
         String sharerPassword = "sharer1";
         UserContext sharer = PeergosNetworkUtils.ensureSignedUp(sharerUsername, sharerPassword, sharerNode, crypto);
 
-        String shareeUsername = "sharee";
+        String shareeUsername = randomUsername("sharee", rnd);
         String shareePassword = "sharee1";
         UserContext sharee = PeergosNetworkUtils.ensureSignedUp(shareeUsername, shareePassword, sharerNode, crypto);
 
-        String shareeUsername2 = "sharee2";
+        String shareeUsername2 = randomUsername("sharee2", rnd);
         String shareePassword2 = "sharee21";
         UserContext sharee2 = PeergosNetworkUtils.ensureSignedUp(shareeUsername2, shareePassword2, sharerNode, crypto);
 
@@ -447,13 +452,13 @@ public class PeergosNetworkUtils {
     }
 
 
-    public static void sharedWriteableAndTruncate(NetworkAccess sharerNode) throws Exception {
+    public static void sharedWriteableAndTruncate(NetworkAccess sharerNode, Random rnd) throws Exception {
 
-        String sharerUsername = "sharer";
+        String sharerUsername = randomUsername("sharer", rnd);
         String sharerPassword = "sharer1";
         UserContext sharer = PeergosNetworkUtils.ensureSignedUp(sharerUsername, sharerPassword, sharerNode, crypto);
 
-        String shareeUsername = "sharee";
+        String shareeUsername = randomUsername("sharee", rnd);
         String shareePassword = "sharee1";
         UserContext sharee = PeergosNetworkUtils.ensureSignedUp(shareeUsername, shareePassword, sharerNode, crypto);
 
