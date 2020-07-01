@@ -447,6 +447,56 @@ public class PeergosNetworkUtils {
     }
 
 
+    public static void sharedWriteableAndTruncate(NetworkAccess sharerNode) throws Exception {
+
+        String sharerUsername = "sharer";
+        String sharerPassword = "sharer1";
+        UserContext sharer = PeergosNetworkUtils.ensureSignedUp(sharerUsername, sharerPassword, sharerNode, crypto);
+
+        String shareeUsername = "sharee";
+        String shareePassword = "sharee1";
+        UserContext sharee = PeergosNetworkUtils.ensureSignedUp(shareeUsername, shareePassword, sharerNode, crypto);
+
+        // friend sharer with others
+        friendBetweenGroups(Arrays.asList(sharer), Arrays.asList(sharee));
+
+        // friends are now connected
+        // share a file from u1 to the others
+        FileWrapper u1Root = sharer.getUserRoot().get();
+        String dirName = "afolder";
+        u1Root.mkdir(dirName, sharer.network, SymmetricKey.random(), false, crypto).get();
+
+        Path dirPath = Paths.get(sharerUsername, dirName);
+        FileWrapper dir = sharer.getByPath(dirPath).join().get();
+        String filename = "somefile.txt";
+        byte[] originalFileContents = sharer.crypto.random.randomBytes(409);
+        AsyncReader resetableFileInputStream = AsyncReader.build(originalFileContents);
+        FileWrapper uploaded = dir.uploadOrOverwriteFile(filename, resetableFileInputStream, originalFileContents.length,
+                sharer.network, crypto, l -> {}, crypto.random.randomBytes(32)).join();
+
+        Path filePath = Paths.get(sharerUsername, dirName, filename);
+        FileWrapper file = sharer.getByPath(filePath).join().get();
+        long originalfileSize = file.getFileProperties().size;
+        System.out.println("filesize=" + originalfileSize);
+        FileWrapper parent = sharer.getByPath(dirPath).join().get();
+
+        sharer.shareWriteAccessWith(file, filePath.toString(), parent, Collections.singletonList(sharee.username).toArray(new String[1])).join();
+
+        dir = sharer.getByPath(dirPath).join().get();
+        byte[] updatedFileContents = sharer.crypto.random.randomBytes(255);
+        resetableFileInputStream = AsyncReader.build(updatedFileContents);
+
+        uploaded = dir.uploadOrOverwriteFile(filename, resetableFileInputStream, updatedFileContents.length,
+                sharer.network, crypto, l -> {}, crypto.random.randomBytes(32)).join();
+        file = sharer.getByPath(filePath).join().get();
+        long newFileSize = file.getFileProperties().size;
+        System.out.println("filesize=" + newFileSize);
+        Assert.assertTrue(newFileSize == 255);
+
+        System.currentTimeMillis();
+    }
+
+
     public static void grantAndRevokeDirReadAccess(NetworkAccess sharerNode, NetworkAccess shareeNode, int shareeCount, Random random) throws Exception {
         Assert.assertTrue(0 < shareeCount);
         CryptreeNode.setMaxChildLinkPerBlob(10);

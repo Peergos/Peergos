@@ -768,7 +768,7 @@ public class FileWrapper {
         if (isWritable())
             return network.synchronizer.applyComplexUpdate(owner(), signingPair(), (current, committer) ->
                     uploadFileSection(current, committer, filename, fileData, isHidden, startIndex, endIndex,
-                            baseKey, overwriteExisting, network, crypto, monitor, firstChunkMapKey))
+                            baseKey, overwriteExisting, true, network, crypto, monitor, firstChunkMapKey))
                     .thenCompose(finalBase -> getUpdated(finalBase, network));
 
         if (! overwriteExisting)

@@ -109,6 +109,10 @@ public class MultiUserTests {
         PeergosNetworkUtils.sharedwithPermutations(network);
     }
 
+    @Test
+    public void sharedWriteableAndTruncate() throws Exception {
+        PeergosNetworkUtils.sharedWriteableAndTruncate(network);
+    }
 
     @Test
     public void grantAndRevokeFileWriteAccess() throws Exception {
