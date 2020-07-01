@@ -50,6 +50,7 @@ public class PeergosNetworkUtils {
 
     public static String randomUsername(String prefix, Random rnd) {
         byte[] suffix = new byte[(30 - prefix.length()) / 2];
+        rnd.nextBytes(suffix);
         return prefix + ArrayOps.bytesToHex(suffix);
     }
 
