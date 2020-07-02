@@ -1654,9 +1654,7 @@ public class FileWrapper {
                                     fut.complete(generateThumbnail(mp3CoverImage.imageData));
                                 }
                             }
-                        } catch(Mp3CoverImage.NoSuchTagException |
-                                Mp3CoverImage.UnsupportedTagException |
-                                Mp3CoverImage.InvalidDataException e) {
+                        } catch(Exception ex) {
                             fut.complete(Optional.empty());
                         }
                     });
