@@ -1843,36 +1843,53 @@ public class UserContext {
         entrie = TrieNodeImpl.empty();
     }
 
+    private List<Message> messages = new ArrayList<>();
     @JsMethod
-    public CompletableFuture<Boolean> submitFeedback(String feedback) {
-        LOG.info("Checking if feedback directory exists before posting...");
-
-        String timestamp = LocalDateTime.now().toString();
-        String filename = "feedback_" + timestamp + ".txt";
-        Path path = Paths.get(username, FEEDBACK_DIR_NAME);
-
-        return getByPath(path)
-            .thenCompose(feedbackWrapper -> {
-                if (feedbackWrapper.isPresent()) {
-                    LOG.info("Feedback directory already exists... nothing to do here!");
-                    return CompletableFuture.completedFuture(feedbackWrapper.get());
-                } else {
-                    LOG.info("Creating a directory for feedback!");
-                    return getUserRoot()
-                        .thenCompose(root -> root.mkdir(FEEDBACK_DIR_NAME, network, false, crypto))
-                        .thenCompose(dir -> getByPath(path))
-                        .thenApply(Optional::get);
-                }
+    public CompletableFuture<List<Message>> getNewMessages() {
+        //get all messages not dismissed
+        if (messages.isEmpty()) {
+            messages.add(new Message("11111",
+                    LocalDateTime.of(LocalDate.of(2020,1,1)
+                    , LocalTime.of(12,1,1))
+                    , "Welcome message!", false));
+            messages.add(new Message("22222",
+                    LocalDateTime.of(LocalDate.of(2020,2,1)
+                    , LocalTime.of(20,5,5))
+                    , "Second message", false));
+            messages.add(new Message("3333",
+                    LocalDateTime.of(LocalDate.of(2020,3,1)
+                    , LocalTime.of(8,15,15))
+                    , "Third message", false));
+        }
+        List<Message> resultSet = new ArrayList<>();
+        //assume they are in some order
+        for (Message message : messages) {
+            if (message.acknowledged) {
+                resultSet.add(message);
             }
-            )
-            .thenCompose(feedbackWrapper -> {
-                LOG.info("Posting the feedback!");
-                byte[] feedbackBytes = feedback.getBytes();
-                return feedbackWrapper.uploadOrReplaceFile(filename, AsyncReader.build(feedbackBytes), feedbackBytes.length,
-                        network, crypto, x -> {}, crypto.random.randomBytes(32));
+        }
+        return Futures.of(messages);
+    }
+
+    @JsMethod
+    public CompletableFuture<Boolean> dismissMessage(String messageId) {
+        for (Message message : messages) {
+            if (message.Id.equals(messageId)) {
+                message.acknowledged = true;
             }
-            )
-            .thenCompose(x -> shareReadAccessWith(path.resolve(filename), Collections.singleton(PEERGOS_USERNAME)));
+        }
+        return Futures.of(true);
+    }
+
+    @JsMethod
+    public CompletableFuture<Boolean> sendMessage(String messageId, String message) {
+        LocalDateTime now = LocalDateTime.now();
+        if(messageId == null) {
+            LOG.info("NEW MESSAGE:" + message);
+        } else {
+            LOG.info("REPLYING TO " + messageId + " WITH:" + message);
+        }
+        return Futures.of(true);
     }
 
     public static <V> CompletableFuture<V> time(Supplier<CompletableFuture<V>> f, String name) {

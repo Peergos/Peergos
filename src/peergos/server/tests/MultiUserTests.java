@@ -1009,39 +1009,6 @@ public class MultiUserTests {
     }
 
     @Test
-    public void sendFeedbackToPeergos() throws Exception {
-        UserContext peergos = PeergosNetworkUtils.ensureSignedUp("peergos", "testpassword", network, crypto);
-        UserContext newUser = PeergosNetworkUtils.ensureSignedUp("new-user", "newUserPassword", network, crypto);
-
-        // Check that new user can send feedback to the user peergos.
-        String feedback = "Here's some constructive feedback!";
-        CompletableFuture<Boolean> testFeedbackSubmission = newUser.submitFeedback(feedback);
-        assertTrue("Feedback submission was successful!", testFeedbackSubmission.get() == true);
-
-        // Can peergos read the feedback file?
-        List<FollowRequestWithCipherText> peergosRequests = peergos.processFollowRequests().get();
-        for (FollowRequestWithCipherText request : peergosRequests) {
-            peergos.sendReplyFollowRequest(request, true, true).get();
-        }
-
-        Optional<FileWrapper> newUserToPeergos = peergos.getByPath("/" + newUser.username + "/feedback").get();
-        Set<FileWrapper> feedbackDirectoryContents = newUserToPeergos.get().getChildren(crypto.hasher, newUser.network).get();
-        assertTrue("Feedback directory is non-empty", !feedbackDirectoryContents.isEmpty());
-
-        for (FileWrapper feedbackFile : feedbackDirectoryContents) {
-            assertTrue("Feedback file is readable", feedbackFile.isReadable());
-
-            AsyncReader inputStream = feedbackFile
-                        .getInputStream(peergos.network, peergos.crypto, l -> {})
-                        .get();
-
-            byte[] fileContents = Serialize.readFully(inputStream, feedbackFile.getFileProperties().size).get();
-            String reportedFeedback = new String(fileContents);
-            assertTrue("Feedback file contents correct", Objects.equals(feedback, reportedFeedback));
-        }
-    }
-
-    @Test
     public void acceptButNotReciprocateFollowRequest() throws Exception {
         UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), random(), network, crypto);
         UserContext u2 = PeergosNetworkUtils.ensureSignedUp(random(), random(), network, crypto);
