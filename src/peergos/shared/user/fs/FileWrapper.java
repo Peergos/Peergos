@@ -1661,6 +1661,10 @@ public class FileWrapper {
                 } else {
                     fut.complete(Optional.empty());
                 }
+            }).exceptionally(e -> {
+                e.printStackTrace();
+                fut.complete(Optional.empty());
+                return null;
             });
         } else {
             fut.complete(Optional.empty());
