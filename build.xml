@@ -103,6 +103,8 @@
   </target>
 
   <target name="test" depends="parallel_test">
+    <exec executable="./print_test_errors.sh">
+    </exec>
   </target> 
 
   <target name="execute.test">
@@ -112,7 +114,7 @@
       <map from="${test.sources}/" to="" />
     </pathconvert>
     <!-- run one particular test -->
-    <junit fork="true" printsummary="true" haltonfailure="yes">
+    <junit fork="true" printsummary="true" haltonfailure="no">
       <jvmarg value="-Xmx2g"/>
       <jvmarg value="-Djava.library.path=native-lib"/>
       <classpath>
