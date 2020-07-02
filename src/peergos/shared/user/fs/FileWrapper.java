@@ -1640,15 +1640,19 @@ public class FileWrapper {
                     fileData.readIntoArray(mp3Data, 0, fileSize).thenAccept(read -> {
                         try {
                             Mp3CoverImage mp3CoverImage = Mp3CoverImage.extractCoverArt(mp3Data);
-                            if (network.isJavascript()) {
-                                AsyncReader.ArrayBacked imageBlob = new AsyncReader.ArrayBacked(mp3CoverImage.imageData);
-                                thumbnail.generateThumbnail(imageBlob, mp3CoverImage.imageData.length, filename)
-                                        .thenAccept(base64Str -> {
-                                            byte[] bytesOfData = Base64.getDecoder().decode(base64Str);
-                                            fut.complete(Optional.of(bytesOfData));
-                                        });
+                            if (mp3CoverImage.imageData == null) {
+                                fut.complete(Optional.empty());
                             } else {
-                                fut.complete(generateThumbnail(mp3CoverImage.imageData));
+                                if (network.isJavascript()) {
+                                    AsyncReader.ArrayBacked imageBlob = new AsyncReader.ArrayBacked(mp3CoverImage.imageData);
+                                    thumbnail.generateThumbnail(imageBlob, mp3CoverImage.imageData.length, filename)
+                                            .thenAccept(base64Str -> {
+                                                byte[] bytesOfData = Base64.getDecoder().decode(base64Str);
+                                                fut.complete(Optional.of(bytesOfData));
+                                            });
+                                } else {
+                                    fut.complete(generateThumbnail(mp3CoverImage.imageData));
+                                }
                             }
                         } catch(Mp3CoverImage.NoSuchTagException |
                                 Mp3CoverImage.UnsupportedTagException |
