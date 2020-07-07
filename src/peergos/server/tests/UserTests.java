@@ -1361,6 +1361,10 @@ public abstract class UserTests {
         ServerMessage fromUser = messages.get(1);
         Assert.assertTrue(fromUser.contents.equals(msgBody));
         Assert.assertTrue(fromUser.type == ServerMessage.Type.FromUser);
+
+        context.dismissMessage(fromServer).join();
+        List<ServerMessage> updatedMessages = context.getNewMessages().join();
+        Assert.assertTrue(updatedMessages.size() == 1);
     }
 
     public static SymmetricKey getDataKey(FileWrapper file) {
