@@ -1849,6 +1849,28 @@ public class UserContext {
     }
 
     @JsMethod
+    public CompletableFuture<List<ServerConversation>> getServerConversations() {
+        return network.serverMessager.getMessages(username, signer.secret).thenApply(all -> {
+            Map<Long, List<ServerMessage>> lookup = new HashMap<>();
+            List<ServerConversation> res = new ArrayList<>();
+            for (ServerMessage msg : all) {
+                List<ServerMessage> conv;
+                if (msg.replyToId.isPresent()) {
+                    lookup.putIfAbsent(msg.replyToId.get(), new ArrayList<>());
+                    conv = lookup.get(msg.replyToId.get());
+                    lookup.put(msg.id, conv);
+                } else {
+                    conv = lookup.computeIfAbsent(msg.id, x -> new ArrayList<>());
+                }
+                conv.add(msg);
+            }
+            new HashSet<>(lookup.values()).forEach(c -> res.add(new ServerConversation(c)));
+            Collections.sort(res);
+            return res;
+        });
+    }
+
+    @JsMethod
     public CompletableFuture<Boolean> dismissMessage(ServerMessage message) {
         ServerMessage dismiss = new ServerMessage(message.id, ServerMessage.Type.Dismiss, System.currentTimeMillis(), "", Optional.empty());
         return network.serverMessager.sendMessage(username, dismiss, signer.secret);
