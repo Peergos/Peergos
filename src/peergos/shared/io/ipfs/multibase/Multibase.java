@@ -1,6 +1,7 @@
 package peergos.shared.io.ipfs.multibase;
 
 import peergos.shared.io.ipfs.multibase.binary.*;
+import peergos.shared.io.ipfs.multibase.binary.Base64;
 
 import java.util.*;
 
@@ -16,8 +17,11 @@ public class Multibase {
         Base32Upper('B'),
         Base32Hex('v'),
         Base32HexUpper('V'),
+        Base36('k'),
         Base58Flickr('Z'),
-        Base58BTC('z');
+        Base58BTC('z'),
+        Base64('m'),
+        Base64Pad('M');
 
         public char prefix;
 
@@ -52,6 +56,12 @@ public class Multibase {
                 return b.prefix + new String(new Base32(true).encode(data)).toLowerCase().replaceAll("=", "");
             case Base32HexUpper:
                 return b.prefix + new String(new Base32(true).encode(data)).replaceAll("=", "");
+            case Base36:
+                return b.prefix + Base36.encode(data);
+            case Base64:
+                return b.prefix + Base64.encodeBase64String(data).replaceAll("=", "");
+            case Base64Pad:
+                return b.prefix + Base64.encodeBase64String(data);
             default:
                 throw new IllegalStateException("Unsupported base encoding: " + b.name());
         }
@@ -77,6 +87,11 @@ public class Multibase {
                 return new Base32(true).decode(rest);
             case Base32HexUpper:
                 return new Base32(true).decode(rest.toLowerCase());
+            case Base36:
+                return Base36.decode(rest);
+            case Base64Pad:
+            case Base64:
+                return Base64.decodeBase64(rest);
             default:
                 throw new IllegalStateException("Unsupported base encoding: " + b.name());
         }
