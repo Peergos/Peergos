@@ -1347,7 +1347,7 @@ public abstract class UserTests {
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
 
         String serverMsgBody = "Welcome to the world of Peergos!";
-        service.serverMessages.addMessage(username, new ServerMessage(1, ServerMessage.Type.FromServer, System.currentTimeMillis(), serverMsgBody));
+        service.serverMessages.addMessage(username, new ServerMessage(1, ServerMessage.Type.FromServer, System.currentTimeMillis(), serverMsgBody, Optional.empty()));
 
         String msgBody = "Peergos is amazing! I love it!";
         context.sendFeedback(msgBody).join();
