@@ -24,7 +24,7 @@ import java.util.stream.*;
 public class ServerMessageHandler implements HttpHandler {
     private static final Logger LOG = Logging.LOG();
 
-    private final ServerMessager store;
+    private final ServerMessageStore store;
     private final CoreNode pki;
     private final ContentAddressedStorage ipfs;
     private final boolean isPublicServer;

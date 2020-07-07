@@ -19,8 +19,8 @@ import java.util.concurrent.*;
 public class RamUserTests extends UserTests {
     private static Args args = buildArgs().with("useIPFS", "false");
 
-    public RamUserTests(NetworkAccess network) {
-        super(network);
+    public RamUserTests(NetworkAccess network, UserService service) {
+        super(network, service);
     }
 
     @Parameterized.Parameters()
@@ -32,7 +32,7 @@ public class RamUserTests extends UserTests {
                 service.mutable, mutableTree, synchronizer, service.controller, service.usage, service.serverMessages,
                 Arrays.asList("peergos"), false);
         return Arrays.asList(new Object[][] {
-                {network}
+                {network, service}
         });
     }
 

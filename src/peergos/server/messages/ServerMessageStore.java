@@ -34,6 +34,7 @@ public class ServerMessageStore implements ServerMessager {
         this.commands = commands;
         this.pki = pki;
         this.ipfs = ipfs;
+        init(commands);
     }
 
     private Connection getConnection() {
@@ -74,10 +75,10 @@ public class ServerMessageStore implements ServerMessager {
         ServerMessage message = ServerMessage.fromCbor(cbor);
         switch (message.type) {
             case FromUser:
-                add(username, message);
+                addMessage(username, message);
                 break;
             case Dismiss:
-                dismiss(username, message);
+                dismissMessage(username, message);
                 break;
             default:
                 throw new IllegalStateException("Invalid message type sent from user: " + message.type.name());
@@ -102,7 +103,7 @@ public class ServerMessageStore implements ServerMessager {
         }
     }
 
-    public void add(String username, ServerMessage message) {
+    public void addMessage(String username, ServerMessage message) {
         try (Connection conn = getConnection();
              PreparedStatement insert = conn.prepareStatement(ADD)) {
             insert.clearParameters();
@@ -110,13 +111,14 @@ public class ServerMessageStore implements ServerMessager {
             insert.setLong(2, message.sentEpochMillis);
             insert.setLong(3, message.type.value);
             insert.setString(4, message.contents);
-            ResultSet res = insert.executeQuery();
+            insert.executeUpdate();
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new IllegalStateException(sqe);
         }
     }
 
-    public void dismiss(String username, ServerMessage message) {
+    public void dismissMessage(String username, ServerMessage message) {
         try (Connection conn = getConnection();
              PreparedStatement delete = conn.prepareStatement(DISMISS)) {
             delete.clearParameters();
@@ -125,6 +127,7 @@ public class ServerMessageStore implements ServerMessager {
             delete.executeUpdate();
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new IllegalStateException(sqe);
         }
     }
 

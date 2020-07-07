@@ -38,8 +38,8 @@ public class PostgresUserTests extends UserTests {
             .with("postgres.username", "testuser")
             .with("postgres.password", "testpassword");
 
-    public PostgresUserTests(NetworkAccess network) {
-        super(network);
+    public PostgresUserTests(NetworkAccess network, UserService service) {
+        super(network, service);
     }
 
     @Parameterized.Parameters()
@@ -50,7 +50,7 @@ public class PostgresUserTests extends UserTests {
         NetworkAccess network = new NetworkAccess(service.coreNode, service.social, service.storage,
                 service.mutable, mutableTree, synchronizer, service.controller, service.usage, service.serverMessages, Arrays.asList("peergos"), false);
         return Arrays.asList(new Object[][] {
-                {network}
+                {network, service}
         });
     }
 

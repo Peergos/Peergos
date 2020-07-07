@@ -33,9 +33,10 @@ public interface SqlSupplier {
     default String createServerMessageTableCommand() {
         return "CREATE TABLE IF NOT EXISTS messages (" +
                 "id " + getSerialIdType() + " PRIMARY KEY NOT NULL," +
+                "username VARCHAR(32) NOT NULL," +
                 "type " + sqlInteger() + " NOT NULL," +
                 "sent " + sqlInteger() + " NOT NULL," +
-                "body text NOT NULL," +
+                "body text NOT NULL" +
                 ");";
     }
 

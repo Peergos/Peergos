@@ -21,15 +21,18 @@ public class IpfsUserTests extends UserTests {
 //            .with("gc.period.millis", "10000")
             .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, ""); // no bootstrapping
 
-    public IpfsUserTests(NetworkAccess network) {
-        super(network);
+    public IpfsUserTests(NetworkAccess network, UserService service) {
+        super(network, service);
     }
 
     @Parameterized.Parameters()
     public static Collection<Object[]> parameters() throws Exception {
-        Main.PKI_INIT.main(args);
+        UserService service = Main.PKI_INIT.main(args);
         return Arrays.asList(new Object[][] {
-                {NetworkAccess.buildJava(new URL("http://localhost:" + args.getInt("port")), false).get()}
+                {
+                        NetworkAccess.buildJava(new URL("http://localhost:" + args.getInt("port")), false).get(),
+                        service
+                }
         });
     }
 

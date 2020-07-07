@@ -38,12 +38,14 @@ public abstract class UserTests {
 
     public static int RANDOM_SEED = 666;
     protected final NetworkAccess network;
+    protected final UserService service;
     protected static final Crypto crypto = Main.initCrypto();
 
     private static Random random = new Random(RANDOM_SEED);
 
-    public UserTests(NetworkAccess network) {
+    public UserTests(NetworkAccess network, UserService service) {
         this.network = network;
+        this.service = service;
     }
 
     public static Args buildArgs() {
@@ -1343,9 +1345,22 @@ public abstract class UserTests {
         String username = generateUsername();
         String password = "password";
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
-        context.sendFeedback("Peergos is amazing! I love it!").join();
 
+        String serverMsgBody = "Welcome to the world of Peergos!";
+        service.serverMessages.addMessage(username, new ServerMessage(1, ServerMessage.Type.FromServer, System.currentTimeMillis(), serverMsgBody));
 
+        String msgBody = "Peergos is amazing! I love it!";
+        context.sendFeedback(msgBody).join();
+        List<ServerMessage> messages = context.getNewMessages().join();
+        Assert.assertTrue(messages.size() == 2);
+
+        ServerMessage fromServer = messages.get(0);
+        Assert.assertTrue(fromServer.contents.equals(serverMsgBody));
+        Assert.assertTrue(fromServer.type == ServerMessage.Type.FromServer);
+
+        ServerMessage fromUser = messages.get(1);
+        Assert.assertTrue(fromUser.contents.equals(msgBody));
+        Assert.assertTrue(fromUser.type == ServerMessage.Type.FromUser);
     }
 
     public static SymmetricKey getDataKey(FileWrapper file) {
