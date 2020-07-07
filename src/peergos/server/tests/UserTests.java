@@ -1338,6 +1338,16 @@ public abstract class UserTests {
         Assert.assertTrue("Quota updated", updatedQuota == 2 * quota);
     }
 
+    @Test
+    public void serverMessaging() {
+        String username = generateUsername();
+        String password = "password";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        context.sendFeedback("Peergos is amazing! I love it!").join();
+
+
+    }
+
     public static SymmetricKey getDataKey(FileWrapper file) {
         return file.getPointer().fileAccess.getDataKey(file.getPointer().capability.rBaseKey);
     }

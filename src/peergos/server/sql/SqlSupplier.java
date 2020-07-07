@@ -14,6 +14,8 @@ public interface SqlSupplier {
 
     String getSerialIdType();
 
+    String sqlInteger();
+
     default String createMutablePointersTableCommand() {
         return "CREATE TABLE IF NOT EXISTS metadatablobs (writingkey text primary key not null, hash text not null); " +
                 "CREATE UNIQUE INDEX IF NOT EXISTS index_name ON metadatablobs (writingkey);";
@@ -26,6 +28,15 @@ public interface SqlSupplier {
     default String createTransactionsTableCommand() {
         return "CREATE TABLE IF NOT EXISTS transactions (" +
                 "tid varchar(64) not null, owner varchar(64) not null, hash varchar(64) not null);";
+    }
+
+    default String createServerMessageTableCommand() {
+        return "CREATE TABLE IF NOT EXISTS messages (" +
+                "id " + getSerialIdType() + " PRIMARY KEY NOT NULL," +
+                "type " + sqlInteger() + " NOT NULL," +
+                "sent " + sqlInteger() + " NOT NULL," +
+                "body text NOT NULL," +
+                ");";
     }
 
     String insertOrIgnoreCommand(String prefix, String suffix);

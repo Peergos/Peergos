@@ -42,7 +42,6 @@ public class UserContext {
     public static final String SHARED_DIR_NAME = "shared";
     public static final String TRANSACTIONS_DIR_NAME = ".transactions";
     public static final String FRIEND_ANNOTATIONS_FILE_NAME = ".annotations";
-    public static final String FEEDBACK_DIR_NAME = "feedback";
 
     public static final String ENTRY_POINTS_FROM_FRIENDS_FILENAME = ".from-friends.cborstream";
     public static final String ENTRY_POINTS_FROM_US_FILENAME = ".from-us.cborstream";
@@ -1843,53 +1842,28 @@ public class UserContext {
         entrie = TrieNodeImpl.empty();
     }
 
-    private List<Message> messages = new ArrayList<>();
     @JsMethod
-    public CompletableFuture<List<Message>> getNewMessages() {
+    public CompletableFuture<List<ServerMessage>> getNewMessages() {
         //get all messages not dismissed
-        if (messages.isEmpty()) {
-            messages.add(new Message("11111",
-                    LocalDateTime.of(LocalDate.of(2020,1,1)
-                    , LocalTime.of(12,1,1))
-                    , "Welcome message!", false));
-            messages.add(new Message("22222",
-                    LocalDateTime.of(LocalDate.of(2020,2,1)
-                    , LocalTime.of(20,5,5))
-                    , "Second message", false));
-            messages.add(new Message("3333",
-                    LocalDateTime.of(LocalDate.of(2020,3,1)
-                    , LocalTime.of(8,15,15))
-                    , "Third message", false));
-        }
-        List<Message> resultSet = new ArrayList<>();
-        //assume they are in some order
-        for (Message message : messages) {
-            if (message.acknowledged) {
-                resultSet.add(message);
-            }
-        }
-        return Futures.of(messages);
+        return network.serverMessager.getMessages(username, signer.secret);
     }
 
     @JsMethod
-    public CompletableFuture<Boolean> dismissMessage(String messageId) {
-        for (Message message : messages) {
-            if (message.Id.equals(messageId)) {
-                message.acknowledged = true;
-            }
-        }
-        return Futures.of(true);
+    public CompletableFuture<Boolean> dismissMessage(ServerMessage message) {
+        ServerMessage dismiss = new ServerMessage(message.id, ServerMessage.Type.Dismiss, System.currentTimeMillis(), "");
+        return network.serverMessager.sendMessage(username, dismiss, signer.secret);
     }
 
     @JsMethod
-    public CompletableFuture<Boolean> sendMessage(String messageId, String message) {
-        LocalDateTime now = LocalDateTime.now();
-        if(messageId == null) {
-            LOG.info("NEW MESSAGE:" + message);
-        } else {
-            LOG.info("REPLYING TO " + messageId + " WITH:" + message);
-        }
-        return Futures.of(true);
+    public CompletableFuture<Boolean> sendReply(ServerMessage prior, String message) {
+        ServerMessage msg = new ServerMessage(prior.id, ServerMessage.Type.FromUser, System.currentTimeMillis(), message);
+        return network.serverMessager.sendMessage(username, msg, signer.secret);
+    }
+
+    @JsMethod
+    public CompletableFuture<Boolean> sendFeedback(String message) {
+        ServerMessage msg = ServerMessage.buildUserMessage(message);
+        return network.serverMessager.sendMessage(username, msg, signer.secret);
     }
 
     public static <V> CompletableFuture<V> time(Supplier<CompletableFuture<V>> f, String name) {

@@ -26,7 +26,7 @@ public class NonWriteThroughNetwork extends NetworkAccess {
                                      SpaceUsage spaceUsage,
                                      List<String> usernames,
                                      boolean isJavascript) {
-        super(coreNode, social, ipfs, mutable, tree, synchronizer, instanceAdmin, spaceUsage, usernames, isJavascript);
+        super(coreNode, social, ipfs, mutable, tree, synchronizer, instanceAdmin, spaceUsage, null, usernames, isJavascript);
     }
 
     public static NetworkAccess build(NetworkAccess source) {

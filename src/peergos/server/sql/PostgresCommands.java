@@ -33,4 +33,9 @@ public class PostgresCommands implements SqlSupplier {
     public String getSerialIdType() {
         return "SERIAL";
     }
+
+    @Override
+    public String sqlInteger() {
+        return "BIGINT";
+    }
 }

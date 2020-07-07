@@ -3,6 +3,7 @@ package peergos.server;
 import com.zaxxer.hikari.*;
 import peergos.server.cli.CLI;
 import peergos.server.crypto.*;
+import peergos.server.messages.*;
 import peergos.server.space.*;
 import peergos.server.sql.*;
 import peergos.server.storage.admin.*;
@@ -123,6 +124,7 @@ public class Main {
                     new Command.Arg("social-sql-file", "The filename for the follow requests datastore", true, "social.sql"),
                     new Command.Arg("space-requests-sql-file", "The filename for the space requests datastore", true, "space-requests.sql"),
                     new Command.Arg("space-usage-sql-file", "The filename for the space usage datastore", true, "space-usage.sql"),
+                    new Command.Arg("server-messages-sql-file", "The filename for the server messages datastore", true, "server-messages.sql"),
                     new Command.Arg("transactions-sql-file", "The filename for the transactions datastore", false, "transactions.sql"),
                     new Command.Arg("webroot", "the path to the directory to serve as the web root", false),
                     new Command.Arg("default-quota", "default maximum storage per user", false, Long.toString(1024L * 1024 * 1024)),
@@ -567,7 +569,8 @@ public class Main {
             HttpSpaceUsage httpSpaceUsage = new HttpSpaceUsage(ipfsGateway, ipfsGateway);
             ProxyingSpaceUsage p2pSpaceUsage = new ProxyingSpaceUsage(nodeId, corePropagator, spaceChecker, httpSpaceUsage);
             UserService peergos = new UserService(p2pDht, crypto, corePropagator, p2pSocial, p2mMutable, storageAdmin,
-                    p2pSpaceUsage, gc);
+                    p2pSpaceUsage, new ServerMessageStore(getDBConnector(a, "server-messages-sql-file"),
+                    sqlCommands, core, p2pDht), gc);
             InetSocketAddress localAddress = new InetSocketAddress("localhost", userAPIAddress.getPort());
             Optional<Path> webroot = a.hasArg("webroot") ?
                     Optional.of(Paths.get(a.getArg("webroot"))) :

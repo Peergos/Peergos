@@ -751,7 +751,7 @@ public class Simulator implements Runnable {
                 WriteSynchronizer synchronizer = new WriteSynchronizer(service.mutable, service.storage, crypto.hasher);
                 MutableTree mutableTree = new MutableTreeImpl(service.mutable, service.storage, crypto.hasher, synchronizer);
                 NetworkAccess networkAccess = new NetworkAccess(service.coreNode, service.social, service.storage,
-                        service.mutable, mutableTree, synchronizer, service.controller, service.usage, Arrays.asList("peergos"), false);
+                        service.mutable, mutableTree, synchronizer, service.controller, service.usage, service.serverMessages, Arrays.asList("peergos"), false);
                 UserContext userContext = PeergosNetworkUtils.ensureSignedUp(username, usernameToPassword(username), networkAccess, crypto);
                 PeergosFileSystemImpl peergosFileSystem = new PeergosFileSystemImpl(userContext);
                 Path root = Files.createTempDirectory("test_filesystem-" + username);
