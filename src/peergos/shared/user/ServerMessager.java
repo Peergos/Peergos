@@ -16,7 +16,7 @@ public interface ServerMessager {
 
     default CompletableFuture<List<ServerMessage>> getMessages(String username, SecretSigningKey signer) {
         TimeLimitedClient.SignedRequest req =
-                new TimeLimitedClient.SignedRequest(Constants.SERVER_MESSAGE_URL, System.currentTimeMillis());
+                new TimeLimitedClient.SignedRequest(Constants.SERVER_MESSAGE_URL + "retrieve", System.currentTimeMillis());
         byte[] auth = req.sign(signer);
         return getMessages(username, auth);
     }

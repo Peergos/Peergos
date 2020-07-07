@@ -11,6 +11,7 @@ import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
+import java.net.*;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
@@ -24,12 +25,15 @@ public class RamUserTests extends UserTests {
     }
 
     @Parameterized.Parameters()
-    public static Collection<Object[]> parameters() {
+    public static Collection<Object[]> parameters() throws Exception {
         UserService service = Main.PKI_INIT.main(args);
         WriteSynchronizer synchronizer = new WriteSynchronizer(service.mutable, service.storage, crypto.hasher);
         MutableTree mutableTree = new MutableTreeImpl(service.mutable, service.storage, crypto.hasher, synchronizer);
+        // use actual http messager
+        ServerMessager.HTTP serverMessager = new ServerMessager.HTTP(new JavaPoster(new URI("http://localhost:" + args.getArg("port")).toURL(), false));
         NetworkAccess network = new NetworkAccess(service.coreNode, service.social, service.storage,
-                service.mutable, mutableTree, synchronizer, service.controller, service.usage, service.serverMessages,
+                service.mutable, mutableTree, synchronizer, service.controller, service.usage,
+                serverMessager,
                 Arrays.asList("peergos"), false);
         return Arrays.asList(new Object[][] {
                 {network, service}
