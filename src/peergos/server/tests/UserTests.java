@@ -1362,9 +1362,16 @@ public abstract class UserTests {
         Assert.assertTrue(fromUser.contents.equals(msgBody));
         Assert.assertTrue(fromUser.type == ServerMessage.Type.FromUser);
 
+        String replyBody = "Thanks for making Peergos awesome!";
+        context.sendReply(fromServer, replyBody).join();
+        List<ServerMessage> withReply = context.getNewMessages().join();
+        Assert.assertTrue(withReply.size() == 3);
+        ServerMessage reply = withReply.get(2);
+        Assert.assertTrue(reply.contents.equals(replyBody));
+
         context.dismissMessage(fromServer).join();
         List<ServerMessage> updatedMessages = context.getNewMessages().join();
-        Assert.assertTrue(updatedMessages.size() == 1);
+        Assert.assertTrue(updatedMessages.size() == 2);
     }
 
     public static SymmetricKey getDataKey(FileWrapper file) {
