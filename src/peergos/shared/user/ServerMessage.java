@@ -46,6 +46,12 @@ public class ServerMessage implements Comparable<ServerMessage>, Cborable {
         this.replyToId = replyToId;
     }
 
+
+    @JsMethod
+    public String getAuthor() {
+        return type.name();
+    }
+
     @JsMethod
     public String id() {
         return Long.toString(id);
