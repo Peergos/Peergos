@@ -52,6 +52,11 @@ public class ServerMessage implements Comparable<ServerMessage>, Cborable {
     }
 
     @JsMethod
+    public String getContents() {
+        return contents;
+    }
+
+    @JsMethod
     public LocalDateTime getSendTime() {
         return LocalDateTime.ofEpochSecond(sentEpochMillis/1000, (int)(sentEpochMillis % 1000)*1000, ZoneOffset.UTC);
     }
