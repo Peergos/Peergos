@@ -267,28 +267,7 @@ public class UserContext {
                                                 TRANSACTIONS_DIR_NAME, network, crypto))
                                         .thenCompose(y -> signIn(username, userWithRoot, network, crypto, progressCallback));
                             }));
-                }).thenCompose(context -> network.coreNode.getUsernames(PEERGOS_USERNAME)
-                        .thenCompose(usernames -> usernames.contains(PEERGOS_USERNAME) && ! username.equals(PEERGOS_USERNAME) ?
-                                context.sendInitialFollowRequest(PEERGOS_USERNAME) :
-                                CompletableFuture.completedFuture(true))
-                        .thenApply(b -> context))
-                .exceptionally(Futures::logAndThrow);
-    }
-
-    @JsMethod
-    public CompletableFuture<Boolean> ensureFollowingPeergos() {
-        return getSocialState()
-                .thenCompose(state -> {
-                    Set<FileWrapper> followerRoots = state.followingRoots;
-                    Set<String> following = followerRoots.stream()
-                            .map(FileWrapper::getOwnerName)
-                            .collect(Collectors.toSet());
-                    Set<String> pendingRoots = state.pendingOutgoingFollowRequests.keySet();
-                    if (!following.contains(PEERGOS_USERNAME) & !pendingRoots.contains(PEERGOS_USERNAME))
-                        return sendInitialFollowRequest(PEERGOS_USERNAME);
-                    else
-                        return CompletableFuture.completedFuture(true);
-                });
+                }).exceptionally(Futures::logAndThrow);
     }
 
     private static CompletableFuture<TrieNode> createSpecialDirectory(TrieNode globalRoot,
