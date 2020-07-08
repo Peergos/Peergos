@@ -361,6 +361,61 @@ public class Main {
             Collections.emptyList()
     );
 
+    public static final Command<Boolean> SHOW = new Command<>("show",
+            "Show messages with a user of this server",
+            a -> {
+                boolean usePostgres = a.getBoolean("use-postgres", false);
+                SqlSupplier sqlCommands = usePostgres ?
+                        new PostgresCommands() :
+                        new SqliteCommands();
+                ServerMessageStore store = new ServerMessageStore(getDBConnector(a, "server-messages-sql-file"),
+                        sqlCommands, null, null);
+                List<ServerMessage> messages = store.getMessages(a.getArg("username"));
+                for (ServerMessage msg : messages) {
+                    System.out.println(String.format("### $d: $s $s", msg.id, msg.type.name(),
+                            msg.getSendTime().toString()) + (msg.replyToId.map(id -> " <==" + id).orElse("")));
+                    System.out.println(msg.contents);
+                }
+                return true;
+            },
+            Arrays.asList(
+                    new Command.Arg("username", "Peergos username", true),
+                    new Command.Arg("server-messages-sql-file", "The filename for the server messages datastore", true, "server-messages.sql")
+            )
+    );
+
+    public static final Command<Boolean> SEND = new Command<>("send",
+            "Send a message to a user of this server",
+            a -> {
+                boolean usePostgres = a.getBoolean("use-postgres", false);
+                SqlSupplier sqlCommands = usePostgres ?
+                        new PostgresCommands() :
+                        new SqliteCommands();
+                ServerMessageStore store = new ServerMessageStore(getDBConnector(a, "server-messages-sql-file"),
+                        sqlCommands, null, null);
+                ServerMessage msg = new ServerMessage(-1, ServerMessage.Type.FromServer, System.currentTimeMillis(),
+                        a.getArg("msg"), a.getOptionalArg("reply-to").map(Long::parseLong));
+                store.addMessage(a.getArg("username"), msg);
+                System.out.println("Message sent!");
+                return true;
+            },
+            Arrays.asList(
+                    new Command.Arg("username", "Peergos username", true),
+                    new Command.Arg("reply-to", "Message id to reply to", false),
+                    new Command.Arg("msg", "Message to send", true),
+                    new Command.Arg("server-messages-sql-file", "The filename for the server messages datastore", true, "server-messages.sql")
+            )
+    );
+
+    public static final Command<Boolean> SERVER_MESSAGES = new Command<>("server-msg",
+            "Send and receive messages to/from users of this server",
+            args -> {
+                System.out.println("Run with -help to show options");
+                return null;
+            },
+            Collections.emptyList(),
+            Arrays.asList(SHOW, SEND)
+    );
     public static Crypto initCrypto() {
         try {
             JniTweetNacl nativeNacl = JniTweetNacl.build();
@@ -738,6 +793,7 @@ public class Main {
                     PEERGOS,
                     SHELL,
                     FUSE,
+                    SERVER_MESSAGES,
                     INSTALL_AND_RUN_IPFS,
                     PKI,
                     PKI_INIT
