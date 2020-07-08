@@ -37,7 +37,8 @@ public interface SqlSupplier {
                 "type " + sqlInteger() + " NOT NULL," +
                 "sent " + sqlInteger() + " NOT NULL," +
                 "body text NOT NULL," +
-                "priorid " + sqlInteger() +
+                "priorid " + sqlInteger() + "," +
+                "dismissed boolean" +
                 ");";
     }
 

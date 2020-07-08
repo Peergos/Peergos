@@ -19,9 +19,9 @@ import java.util.logging.*;
 public class ServerMessageStore implements ServerMessager {
     private static final Logger LOG = Logging.LOG();
 
-    private static final String SELECT = "SELECT id, type, sent, body, priorid FROM messages WHERE username = ?;";
+    private static final String SELECT = "SELECT id, type, sent, body, priorid, dismissed FROM messages WHERE username = ?;";
     private static final String ADD = "INSERT INTO messages (username, sent, type, body, priorid) VALUES(?, ?, ?, ?, ?);";
-    private static final String DISMISS = "DELETE FROM messages WHERE id = ? AND username = ?;";
+    private static final String DISMISS = "UPDATE messages SET dismissed = true WHERE id = ? AND username = ?;";
 
     private final Supplier<Connection> conn;
     private final SqlSupplier commands;
@@ -94,10 +94,13 @@ public class ServerMessageStore implements ServerMessager {
             List<ServerMessage> msgs = new ArrayList<>();
             ResultSet res = insert.executeQuery();
             while (res.next()) {
-                long priorIdRaw = res.getLong(5);
-                Optional<Long> priorId = priorIdRaw == -1L ? Optional.empty() : Optional.of(priorIdRaw);
-                msgs.add(new ServerMessage(res.getLong(1), ServerMessage.Type.byValue(res.getInt(2)),
-                        res.getLong(3), res.getString(4), priorId));
+                boolean dismissed = res.getBoolean(6);
+                if (! dismissed) {
+                    long priorIdRaw = res.getLong(5);
+                    Optional<Long> priorId = priorIdRaw == -1L ? Optional.empty() : Optional.of(priorIdRaw);
+                    msgs.add(new ServerMessage(res.getLong(1), ServerMessage.Type.byValue(res.getInt(2)),
+                            res.getLong(3), res.getString(4), priorId));
+                }
             }
             return msgs;
         } catch (SQLException sqe) {
