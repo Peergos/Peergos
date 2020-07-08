@@ -372,7 +372,7 @@ public class Main {
                         sqlCommands, null, null);
                 List<ServerMessage> messages = store.getMessages(a.getArg("username"));
                 for (ServerMessage msg : messages) {
-                    System.out.println(String.format("### $d: $s $s", msg.id, msg.type.name(),
+                    System.out.println(String.format("### %d: %s %s", msg.id, msg.type.name(),
                             msg.getSendTime().toString()) + (msg.replyToId.map(id -> " <==" + id).orElse("")));
                     System.out.println(msg.contents);
                 }
