@@ -52,6 +52,11 @@ public class ServerMessage implements Comparable<ServerMessage>, Cborable {
     }
 
     @JsMethod
+    public String getPreviousMessageId() {
+        return replyToId.isPresent() ? replyToId.get().toString() : null;
+    }
+
+    @JsMethod
     public String getContents() {
         return contents;
     }
