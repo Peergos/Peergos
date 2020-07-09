@@ -579,7 +579,7 @@ public class Simulator implements Runnable {
                                 //can read?
                                 fs.ls(path);
                             } catch (Exception ex) {
-                                LOG.log(Level.SEVERE, "User " + sharee + " could not read shared-path " + path + "!", ex);
+                                LOG.log(Level.SEVERE, "User " + sharee + " could not read a writable shared-path " + path + "!", ex);
                                 isVerified = false;
                             }
                             if (isVerified) {
