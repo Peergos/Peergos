@@ -49,7 +49,7 @@ public class Simulator implements Runnable {
     public static class FileSystemIndex {
         //user -> [dir -> file-name]
         private final Random random;
-        private final Map<String, Map<Path, List<String>>> index = new HashMap<>();
+        private final Map<String, Map<Path, Set<String>>> index = new HashMap<>();
 
         public FileSystemIndex(Random random) {
             this.random = random;
@@ -68,7 +68,7 @@ public class Simulator implements Runnable {
         private Path getRandomExistingFile(String user) {
 
             Path dir = getRandomExistingDirectory(user, false);
-            List<String> fileNames = index.get(user).get(dir);
+            List<String> fileNames = new ArrayList<>(index.get(user).get(dir));
 
             if (fileNames.isEmpty())
                 return getRandomExistingFile(user);
@@ -81,7 +81,7 @@ public class Simulator implements Runnable {
             index.put(user, new HashMap<>());
         }
 
-        public Map<Path, List<String>> getDirToFiles(String user) {
+        public Map<Path, Set<String>> getDirToFiles(String user) {
             return index.get(user);
         }
     }
@@ -157,7 +157,7 @@ public class Simulator implements Runnable {
         Path path = index.getRandomExistingDirectory(user, false);
         log(user, Simulation.RMDIR, path);
 
-        Map<Path, List<String>> dirsToFiles = index.getDirToFiles(user);
+        Map<Path, Set<String>> dirsToFiles = index.getDirToFiles(user);
         for (Path p : new ArrayList<>(dirsToFiles.keySet())) {
             if (p.startsWith(path))
                 dirsToFiles.remove(p);
@@ -177,7 +177,7 @@ public class Simulator implements Runnable {
     }
 
     private Path mkdir(String user, Path path) {
-        index.getDirToFiles(user).putIfAbsent(path, new ArrayList<>());
+        index.getDirToFiles(user).putIfAbsent(path, new HashSet<>());
         log(user, Simulation.MKDIR, path);
 
         FileSystem testFileSystem = fileSystems.getTestFileSystem(user);
@@ -298,11 +298,9 @@ public class Simulator implements Runnable {
 
         Path dirName = path.getParent();
         String fileName = path.getFileName().toString();
-        Map<Path, List<String>> dirsToFiles = index.getDirToFiles(user);
-        List<String> existingFiles = dirsToFiles.get(dirName);
-        if (! existingFiles.contains(fileName)) {
-            existingFiles.add(fileName);
-        }
+        Map<Path, Set<String>> dirsToFiles = index.getDirToFiles(user);
+        Set<String> existingFiles = dirsToFiles.get(dirName);
+        existingFiles.add(fileName);
         FileSystem testFileSystem = fileSystems.getTestFileSystem(user);
         FileSystem referenceFileSystem = fileSystems.getReferenceFileSystem(user);
 
@@ -357,7 +355,7 @@ public class Simulator implements Runnable {
 
         for (String leftUser : users) {
             index.addUser(leftUser);
-            index.getDirToFiles(leftUser).put(Paths.get("/" + leftUser), new ArrayList<>());
+            index.getDirToFiles(leftUser).put(Paths.get("/" + leftUser), new HashSet<>());
             // seed the file-system
             run(Simulation.MKDIR, leftUser);
             run(Simulation.WRITE_OWN_FILE, leftUser);
@@ -673,7 +671,7 @@ public class Simulator implements Runnable {
 
         for (String user : fileSystems.getUsers()) {
 
-            Map<Path, List<String>> dirToFiles = index.getDirToFiles(user);
+            Map<Path, Set<String>> dirToFiles = index.getDirToFiles(user);
             Set<Path> expectedFilesForUser = dirToFiles.entrySet().stream()
                     .flatMap(ee -> ee.getValue().stream()
                             .map(file -> ee.getKey().resolve(file)))
