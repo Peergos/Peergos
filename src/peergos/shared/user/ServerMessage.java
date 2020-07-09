@@ -37,13 +37,15 @@ public class ServerMessage implements Comparable<ServerMessage>, Cborable {
     public final long sentEpochMillis;
     public final String contents;
     public final Optional<Long> replyToId;
+    public final boolean isDismissed;
 
-    public ServerMessage(long id, Type type, long sentEpochMillis, String contents, Optional<Long> replyToId) {
+    public ServerMessage(long id, Type type, long sentEpochMillis, String contents, Optional<Long> replyToId, boolean isDismissed) {
         this.id = id;
         this.type = type;
         this.sentEpochMillis = sentEpochMillis;
         this.contents = contents;
         this.replyToId = replyToId;
+        this.isDismissed = isDismissed;
     }
 
 
@@ -78,7 +80,7 @@ public class ServerMessage implements Comparable<ServerMessage>, Cborable {
     }
 
     public static ServerMessage buildUserMessage(String body) {
-        return new ServerMessage(-1, Type.FromUser, System.currentTimeMillis(), body, Optional.empty());
+        return new ServerMessage(-1, Type.FromUser, System.currentTimeMillis(), body, Optional.empty(), false);
     }
 
     @Override
@@ -88,6 +90,7 @@ public class ServerMessage implements Comparable<ServerMessage>, Cborable {
         state.put("s", new CborObject.CborLong(sentEpochMillis));
         state.put("t", new CborObject.CborLong(type.value));
         state.put("b", new CborObject.CborString(contents));
+        state.put("d", new CborObject.CborBoolean(isDismissed));
         replyToId.ifPresent(rid -> state.put("r", new CborObject.CborLong(rid)));
         return CborObject.CborMap.build(state);
     }
@@ -100,7 +103,8 @@ public class ServerMessage implements Comparable<ServerMessage>, Cborable {
         long sentMillis = m.getLong("s");
         Type type = Type.byValue((int)m.getLong("t"));
         String contents = m.getString("b");
+        boolean isDismissed = m.getBoolean("d");
         Optional<Long> replyToId = m.getOptionalLong("r");
-        return new ServerMessage(id, type, sentMillis, contents, replyToId);
+        return new ServerMessage(id, type, sentMillis, contents, replyToId, isDismissed);
     }
 }

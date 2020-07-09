@@ -95,12 +95,10 @@ public class ServerMessageStore implements ServerMessager {
             ResultSet res = insert.executeQuery();
             while (res.next()) {
                 boolean dismissed = res.getBoolean(6);
-                if (! dismissed) {
-                    long priorIdRaw = res.getLong(5);
-                    Optional<Long> priorId = priorIdRaw == -1L ? Optional.empty() : Optional.of(priorIdRaw);
-                    msgs.add(new ServerMessage(res.getLong(1), ServerMessage.Type.byValue(res.getInt(2)),
-                            res.getLong(3), res.getString(4), priorId));
-                }
+                long priorIdRaw = res.getLong(5);
+                Optional<Long> priorId = priorIdRaw == -1L ? Optional.empty() : Optional.of(priorIdRaw);
+                msgs.add(new ServerMessage(res.getLong(1), ServerMessage.Type.byValue(res.getInt(2)),
+                        res.getLong(3), res.getString(4), priorId, dismissed));
             }
             return msgs;
         } catch (SQLException sqe) {
@@ -127,11 +125,11 @@ public class ServerMessageStore implements ServerMessager {
 
     public void dismissMessage(String username, ServerMessage message) {
         try (Connection conn = getConnection();
-             PreparedStatement delete = conn.prepareStatement(DISMISS)) {
-            delete.clearParameters();
-            delete.setLong(1, message.id);
-            delete.setString(2, username);
-            delete.executeUpdate();
+             PreparedStatement dismiss = conn.prepareStatement(DISMISS)) {
+            dismiss.clearParameters();
+            dismiss.setLong(1, message.id);
+            dismiss.setString(2, username);
+            dismiss.executeUpdate();
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new IllegalStateException(sqe);

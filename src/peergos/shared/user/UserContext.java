@@ -1851,13 +1851,13 @@ public class UserContext {
 
     @JsMethod
     public CompletableFuture<Boolean> dismissMessage(ServerMessage message) {
-        ServerMessage dismiss = new ServerMessage(message.id, ServerMessage.Type.Dismiss, System.currentTimeMillis(), "", Optional.empty());
+        ServerMessage dismiss = new ServerMessage(message.id, ServerMessage.Type.Dismiss, System.currentTimeMillis(), "", Optional.empty(), true);
         return network.serverMessager.sendMessage(username, dismiss, signer.secret);
     }
 
     @JsMethod
     public CompletableFuture<Boolean> sendReply(ServerMessage prior, String message) {
-        ServerMessage msg = new ServerMessage(prior.id, ServerMessage.Type.FromUser, System.currentTimeMillis(), message, Optional.of(prior.id));
+        ServerMessage msg = new ServerMessage(prior.id, ServerMessage.Type.FromUser, System.currentTimeMillis(), message, Optional.of(prior.id), true);
         return network.serverMessager.sendMessage(username, msg, signer.secret);
     }
 

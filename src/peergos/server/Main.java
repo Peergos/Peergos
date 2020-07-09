@@ -372,8 +372,8 @@ public class Main {
                         sqlCommands, null, null);
                 List<ServerMessage> messages = store.getMessages(a.getArg("username"));
                 for (ServerMessage msg : messages) {
-                    System.out.println(String.format("### %d: %s %s", msg.id, msg.type.name(),
-                            msg.getSendTime().toString()) + (msg.replyToId.map(id -> " <==" + id).orElse("")));
+                    System.out.println(String.format("### %d: %s %s dismissed:%s", msg.id, msg.type.name(),
+                            msg.getSendTime().toString(), msg.isDismissed) + (msg.replyToId.map(id -> " <==" + id).orElse("")));
                     System.out.println(msg.contents);
                 }
                 return true;
@@ -394,7 +394,7 @@ public class Main {
                 ServerMessageStore store = new ServerMessageStore(getDBConnector(a, "server-messages-sql-file"),
                         sqlCommands, null, null);
                 ServerMessage msg = new ServerMessage(-1, ServerMessage.Type.FromServer, System.currentTimeMillis(),
-                        a.getArg("msg"), a.getOptionalArg("reply-to").map(Long::parseLong));
+                        a.getArg("msg"), a.getOptionalArg("reply-to").map(Long::parseLong), false);
                 store.addMessage(a.getArg("username"), msg);
                 System.out.println("Message sent!");
                 return true;
