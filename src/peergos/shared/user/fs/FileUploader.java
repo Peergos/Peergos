@@ -146,7 +146,7 @@ public class FileUploader implements AutoCloseable {
                     CryptreeNode metadata = file.left.withWriterLink(baseKey, writerLink);
 
                     List<Fragment> fragments = file.right.stream()
-                            .filter(f -> !f.hash.isIdentity())
+                            .filter(f -> !f.isInlined())
                             .map(f -> f.fragment)
                             .collect(Collectors.toList());
 

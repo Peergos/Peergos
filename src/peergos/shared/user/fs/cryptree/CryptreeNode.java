@@ -188,7 +188,7 @@ public class CryptreeNode implements Cborable {
                                                                       NetworkAccess network,
                                                                       TransactionId tid) {
             List<Fragment> frags = childData.stream()
-                    .filter(f -> ! f.hash.isIdentity())
+                    .filter(f -> ! f.isInlined())
                     .map(f -> f.fragment)
                     .collect(Collectors.toList());
             return network.uploadFragments(frags, us.owner, signer, l -> {}, tid);

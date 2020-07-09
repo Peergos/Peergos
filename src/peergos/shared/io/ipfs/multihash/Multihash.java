@@ -50,6 +50,7 @@ public class Multihash implements Comparable<Multihash> {
     public Multihash(Type type, byte[] hash) {
         if (hash.length > 127 && type != Type.id)
             throw new IllegalStateException("Unsupported hash size: "+hash.length);
+        // This check can be changed to non legacy value once all existing data has been migrated
         if (hash.length > LEGACY_MAX_IDENTITY_HASH_SIZE)
             throw new IllegalStateException("Unsupported hash size: "+hash.length);
         if (hash.length != type.length && type != Type.id)
