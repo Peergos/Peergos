@@ -8,6 +8,7 @@ import java.util.*;
 
 @JsType
 public class ServerMessage implements Comparable<ServerMessage>, Cborable {
+    public static final int MAX_CONTENT_SIZE = 4096;
     private static final Map<Integer, Type> byValue = new HashMap<>();
     public enum Type {
         FromServer(1),
@@ -40,6 +41,8 @@ public class ServerMessage implements Comparable<ServerMessage>, Cborable {
     public final boolean isDismissed;
 
     public ServerMessage(long id, Type type, long sentEpochMillis, String contents, Optional<Long> replyToId, boolean isDismissed) {
+        if (contents.length() > MAX_CONTENT_SIZE)
+            throw new IllegalStateException("Message body is longer than maximum allowed size of " + MAX_CONTENT_SIZE + " characters!");
         this.id = id;
         this.type = type;
         this.sentEpochMillis = sentEpochMillis;
