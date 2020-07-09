@@ -325,7 +325,7 @@ public class Simulator implements Runnable {
 
         Set<String> testExistingReaders = new TreeSet<>(testFileSystem.getSharees(path, FileSystem.Permission.READ));
         Set<String> refExistingReaders = new TreeSet<>(referenceFileSystem.getSharees(path, FileSystem.Permission.READ));
-        if (! testExistingReaders.toString().equals(refExistingReaders.toString())) {
+        if (! testExistingReaders.equals(refExistingReaders)) {
             throw new IllegalStateException("READ sharing mismatch. test:" + testExistingReaders + " ref:" + refExistingReaders);
         }
         if(testExistingReaders.contains(grantee)) {
