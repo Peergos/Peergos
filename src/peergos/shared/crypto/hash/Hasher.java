@@ -20,6 +20,8 @@ public interface Hasher {
     }
 
     default Multihash identityHash(byte[] input, boolean isRaw) {
+        if (input.length > Multihash.MAX_IDENTITY_HASH_SIZE)
+            throw new IllegalStateException("Exceed maximum size foridentity multihashes!");
         return Cid.buildCidV1(isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor, Multihash.Type.id, input);
     }
 }
