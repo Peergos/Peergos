@@ -4,6 +4,7 @@ import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
@@ -31,10 +32,18 @@ public class FragmentedPaddedCipherText implements Cborable {
     public CborObject toCbor() {
         SortedMap<String, Cborable> state = new TreeMap<>();
         state.put("n", new CborObject.CborByteArray(nonce));
-        state.put("f", new CborObject.CborList(cipherTextFragments
-                        .stream()
-                        .map(CborObject.CborMerkleLink::new)
-                        .collect(Collectors.toList())));
+        // The following change is because of a breaking change in ipfs to limit identity multihash size
+        if (cipherTextFragments.size() == 1 && cipherTextFragments.get(0).isIdentity()) {
+            state.put("f", new CborObject.CborList(cipherTextFragments
+                    .stream()
+                    .map(h -> new CborObject.CborByteArray(h.toBytes()))
+                    .collect(Collectors.toList())));
+        } else {
+            state.put("f", new CborObject.CborList(cipherTextFragments
+                    .stream()
+                    .map(CborObject.CborMerkleLink::new)
+                    .collect(Collectors.toList())));
+        }
         return CborObject.CborMap.build(state);
     }
 
@@ -47,7 +56,9 @@ public class FragmentedPaddedCipherText implements Cborable {
         byte[] nonce =  m.getByteArray("n");
         List<Multihash> fragmentHashes = m.getList("f").value
                 .stream()
-                .map(c -> ((CborObject.CborMerkleLink)c).target)
+                .map(c -> c instanceof CborObject.CborMerkleLink ?
+                        ((CborObject.CborMerkleLink)c).target :
+                        Cid.cast(((CborObject.CborByteArray) c).value))
                 .collect(Collectors.toList());
         return new FragmentedPaddedCipherText(nonce, fragmentHashes);
     }

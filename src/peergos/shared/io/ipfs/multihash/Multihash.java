@@ -10,6 +10,9 @@ import java.util.*;
 
 @JsType
 public class Multihash implements Comparable<Multihash> {
+    public static final int LEGACY_MAX_IDENTITY_HASH_SIZE = 4112;
+    public static final int MAX_IDENTITY_HASH_SIZE = 64;
+
     @JsType
     public enum Type {
         id(0, -1),
@@ -47,7 +50,7 @@ public class Multihash implements Comparable<Multihash> {
     public Multihash(Type type, byte[] hash) {
         if (hash.length > 127 && type != Type.id)
             throw new IllegalStateException("Unsupported hash size: "+hash.length);
-        if (hash.length > 1024*1024)
+        if (hash.length > LEGACY_MAX_IDENTITY_HASH_SIZE)
             throw new IllegalStateException("Unsupported hash size: "+hash.length);
         if (hash.length != type.length && type != Type.id)
             throw new IllegalStateException("Incorrect hash length: " + hash.length + " != "+type.length);
