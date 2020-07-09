@@ -15,6 +15,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
 import java.util.logging.*;
+import java.util.stream.*;
 
 public class ServerMessageStore implements ServerMessager {
     private static final Logger LOG = Logging.LOG();
@@ -61,7 +62,14 @@ public class ServerMessageStore implements ServerMessager {
 
     @Override
     public CompletableFuture<List<ServerMessage>> getMessages(String username, byte[] auth) {
-        return Futures.of(getMessages(username));
+        List<ServerMessage> all = getMessages(username);
+        List<ServerConversation> allConvs = ServerConversation.combine(all);
+        List<ServerMessage> live = allConvs.stream()
+                .filter(c -> !c.isDismissed)
+                .flatMap(c -> c.messages.stream())
+                .sorted()
+                .collect(Collectors.toList());
+        return Futures.of(live);
     }
 
     @Override
