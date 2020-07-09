@@ -81,7 +81,7 @@ public class FragmentedPaddedCipherText implements Cborable {
         byte[] cipherText = from.encrypt(pad(secret.serialize(), paddingBlockSize), nonce);
 
         if (cipherText.length <= 4096 + TweetNaCl.SECRETBOX_OVERHEAD_BYTES) {
-            // use inline identity hash for small amount of data (small files or directories)
+            // use inline small amounts of data (small files or directories)
             FragmentWithHash frag = new FragmentWithHash(new Fragment(cipherText), hasher.identityHash(cipherText, true));
             return Futures.of(new Pair<>(new FragmentedPaddedCipherText(nonce, Collections.singletonList(frag.hash)), Collections.singletonList(frag)));
         }
