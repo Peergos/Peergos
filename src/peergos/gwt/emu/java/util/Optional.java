@@ -50,6 +50,10 @@ public final class Optional<T> {
         return ref != null;
     }
     @JsMethod
+    public boolean isEmpty() {
+        return ref == null;
+    }
+    @JsMethod
     public T get() {
         checkCriticalElement(isPresent());
         return ref;
