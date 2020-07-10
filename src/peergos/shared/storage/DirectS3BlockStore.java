@@ -194,7 +194,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                                             monitor.accept((long)b.length);
                                             Pair<Integer, Multihash> hashAndIndex = nonIdentity.get(i);
                                             return new Pair<>(hashAndIndex.left,
-                                                    new FragmentWithHash(new Fragment(b), hashAndIndex.right));
+                                                    new FragmentWithHash(new Fragment(b), Optional.of(hashAndIndex.right)));
                                         }))
                                 .collect(Collectors.toList()))
                 ).thenApply(retrieved -> {
@@ -202,12 +202,13 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                     for (Pair<Integer, FragmentWithHash> p : retrieved) {
                         res[p.left] = p.right;
                     }
+                    // This section is only relevant for legacy data that uses identity multihashes to inline fragments
                     for (int i=0; i < hashes.size(); i++)
                         if (res[i] == null) {
                             Multihash identity = hashes.get(i);
                             if (! identity.isIdentity())
                                 throw new IllegalStateException("Hash should be identity!");
-                            res[i] = new FragmentWithHash(new Fragment(identity.getHash()), identity);
+                            res[i] = new FragmentWithHash(new Fragment(identity.getHash()), Optional.empty());
                         }
                     return Arrays.asList(res);
                 });

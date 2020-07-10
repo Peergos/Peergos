@@ -225,7 +225,10 @@ public interface ContentAddressedStorage {
                                                           byte[] signature,
                                                           PublicBoxingKey key,
                                                           TransactionId tid) {
-        return put(controller, controller, signature, key.toCbor().toByteArray(), tid)
+        byte[] rawKey = key.toCbor().toByteArray();
+        if (rawKey.length <= Multihash.MAX_IDENTITY_HASH_SIZE)
+            return Futures.of(new PublicKeyHash(Cid.buildCidV1(Cid.Codec.DagCbor, Multihash.Type.id, rawKey)));
+        return put(controller, controller, signature, rawKey, tid)
                 .thenApply(PublicKeyHash::new);
     }
 

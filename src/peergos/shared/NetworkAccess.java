@@ -531,7 +531,7 @@ public class NetworkAccess {
                         .thenApply(dataOpt -> {
                             Optional<byte[]> bytes = dataOpt;
                             bytes.ifPresent(arr -> monitor.accept((long)(arr.length / spaceIncreaseFactor)));
-                            return bytes.map(data -> new FragmentWithHash(new Fragment(data), h));
+                            return bytes.map(data -> new FragmentWithHash(new Fragment(data), h.isIdentity() ? Optional.empty() : Optional.of(h)));
                         }))
                 .collect(Collectors.toList());
 

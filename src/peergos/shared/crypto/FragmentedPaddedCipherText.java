@@ -4,6 +4,7 @@ import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
@@ -21,20 +22,36 @@ public class FragmentedPaddedCipherText implements Cborable {
 
     private final byte[] nonce;
     private final List<Multihash> cipherTextFragments;
+    private final Optional<byte[]> inlinedCipherText;
 
-    public FragmentedPaddedCipherText(byte[] nonce, List<Multihash> cipherTextFragments) {
+    public FragmentedPaddedCipherText(byte[] nonce, List<Multihash> cipherTextFragments, Optional<byte[]> inlinedCipherText) {
         this.nonce = nonce;
         this.cipherTextFragments = cipherTextFragments;
+        this.inlinedCipherText = inlinedCipherText;
+        if (inlinedCipherText.isPresent() && ! cipherTextFragments.isEmpty())
+            throw new IllegalStateException("Cannot have an inlined block and merkle linked blocks!");
     }
 
     @Override
     public CborObject toCbor() {
         SortedMap<String, Cborable> state = new TreeMap<>();
         state.put("n", new CborObject.CborByteArray(nonce));
-        state.put("f", new CborObject.CborList(cipherTextFragments
-                        .stream()
-                        .map(CborObject.CborMerkleLink::new)
-                        .collect(Collectors.toList())));
+        // The following change is because of a breaking change in ipfs to limit identity multihash size
+        if (cipherTextFragments.size() == 1 && cipherTextFragments.get(0).isIdentity() || inlinedCipherText.isPresent()) {
+            List<CborObject.CborByteArray> legacy = cipherTextFragments
+                    .stream()
+                    .map(h -> new CborObject.CborByteArray(h.toBytes()))
+                    .collect(Collectors.toList());
+            List<CborObject.CborByteArray> value = inlinedCipherText
+                    .map(arr -> Collections.singletonList(new CborObject.CborByteArray(arr)))
+                    .orElse(legacy);
+            state.put("f", new CborObject.CborList(value));
+        } else {
+            state.put("f", new CborObject.CborList(cipherTextFragments
+                    .stream()
+                    .map(CborObject.CborMerkleLink::new)
+                    .collect(Collectors.toList())));
+        }
         return CborObject.CborMap.build(state);
     }
 
@@ -47,9 +64,15 @@ public class FragmentedPaddedCipherText implements Cborable {
         byte[] nonce =  m.getByteArray("n");
         List<Multihash> fragmentHashes = m.getList("f").value
                 .stream()
+                .filter(c -> c instanceof CborObject.CborMerkleLink)
                 .map(c -> ((CborObject.CborMerkleLink)c).target)
                 .collect(Collectors.toList());
-        return new FragmentedPaddedCipherText(nonce, fragmentHashes);
+        Optional<byte[]> inlinedCipherText = m.getList("f").value
+                .stream()
+                .filter(c -> c instanceof CborObject.CborByteArray)
+                .map(c -> ((CborObject.CborByteArray)c).value)
+                .findFirst();
+        return new FragmentedPaddedCipherText(nonce, fragmentHashes, inlinedCipherText);
     }
 
     protected static byte[] pad(byte[] input, int blockSize) {
@@ -70,21 +93,21 @@ public class FragmentedPaddedCipherText implements Cborable {
         byte[] cipherText = from.encrypt(pad(secret.serialize(), paddingBlockSize), nonce);
 
         if (cipherText.length <= 4096 + TweetNaCl.SECRETBOX_OVERHEAD_BYTES) {
-            // use inline identity hash for small amount of data (small files or directories)
-            FragmentWithHash frag = new FragmentWithHash(new Fragment(cipherText), hasher.identityHash(cipherText, true));
-            return Futures.of(new Pair<>(new FragmentedPaddedCipherText(nonce, Collections.singletonList(frag.hash)), Collections.singletonList(frag)));
+            // inline small amounts of data (small files or directories)
+            FragmentWithHash frag = new FragmentWithHash(new Fragment(cipherText), Optional.empty());
+            return Futures.of(new Pair<>(new FragmentedPaddedCipherText(nonce, Collections.emptyList(), Optional.of(cipherText)), Collections.singletonList(frag)));
         }
 
         byte[][] split = split(cipherText, maxFragmentSize, allowArrayCache);
 
         return Futures.combineAllInOrder(Arrays.stream(split)
-                .map(d -> hasher.hash(d, true).thenApply(h -> new FragmentWithHash(new Fragment(d), h)))
+                .map(d -> hasher.hash(d, true).thenApply(h -> new FragmentWithHash(new Fragment(d), Optional.of(h))))
                 .collect(Collectors.toList()))
                 .thenApply(frags -> {
                     List<Multihash> hashes = frags.stream()
-                            .map(f -> f.hash)
+                            .map(f -> f.hash.get())
                             .collect(Collectors.toList());
-                    return new Pair<>(new FragmentedPaddedCipherText(nonce, hashes), frags);
+                    return new Pair<>(new FragmentedPaddedCipherText(nonce, hashes, Optional.empty()), frags);
                 });
     }
 
@@ -92,6 +115,8 @@ public class FragmentedPaddedCipherText implements Cborable {
                                                   Function<CborObject, T> fromCbor,
                                                   NetworkAccess network,
                                                   ProgressConsumer<Long> monitor) {
+        if (inlinedCipherText.isPresent())
+            return Futures.of(new CipherText(nonce, inlinedCipherText.get()).decrypt(from, fromCbor));
         return network.dhtClient.downloadFragments(cipherTextFragments, monitor, 1.0)
                 .thenApply(fargs -> new CipherText(nonce, recombine(fargs)).decrypt(from, fromCbor));
     }
@@ -132,7 +157,7 @@ public class FragmentedPaddedCipherText implements Cborable {
         return split;
     }
 
-    public byte[] recombine(List<FragmentWithHash> encoded) {
+    public static byte[] recombine(List<FragmentWithHash> encoded) {
         int length = 0;
 
         for (int i=0; i < encoded.size(); i++)
