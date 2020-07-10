@@ -40,7 +40,7 @@ public class FragmentedPaddedCipherText implements Cborable {
         if (cipherTextFragments.size() == 1 && cipherTextFragments.get(0).isIdentity() || inlinedCipherText.isPresent()) {
             List<CborObject.CborByteArray> legacy = cipherTextFragments
                     .stream()
-                    .map(h -> new CborObject.CborByteArray(h.toBytes()))
+                    .map(h -> new CborObject.CborByteArray(h.getHash()))
                     .collect(Collectors.toList());
             List<CborObject.CborByteArray> value = inlinedCipherText
                     .map(arr -> Collections.singletonList(new CborObject.CborByteArray(arr)))
