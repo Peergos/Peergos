@@ -12,7 +12,6 @@ import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Function;
 import java.util.function.Supplier;
 
 public class RetryStorage implements ContentAddressedStorage {
@@ -48,6 +47,8 @@ public class RetryStorage implements ContentAddressedStorage {
                     .thenAccept(res::complete)
                     .exceptionally(e -> {
                         if (retriesLeft == 1) {
+                            res.completeExceptionally(e);
+                        } else if (e instanceof HttpFileNotFoundException) {
                             res.completeExceptionally(e);
                         } else {
                             retryAfter(() -> recurse(retriesLeft - 1, f)
