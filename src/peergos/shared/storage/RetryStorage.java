@@ -42,28 +42,28 @@ public class RetryStorage implements ContentAddressedStorage {
     }
 
     private <V> CompletableFuture<V> recurse(int retriesLeft, Supplier<CompletableFuture<V>> f) {
-        Function<Integer, CompletableFuture<V>> compose =
-                i-> {
-                    CompletableFuture<V> res = new CompletableFuture<>();
-                    f.get()
-                            .thenAccept(res::complete)
-                            .exceptionally(e ->  {
-                                if (i == 1) {
-                                    res.completeExceptionally(e);
-                                } else {
-                                    retryAfter(() -> recurse(i - 1, f)
+        CompletableFuture<V> res = new CompletableFuture<>();
+        try {
+            f.get()
+                    .thenAccept(res::complete)
+                    .exceptionally(e -> {
+                        if (retriesLeft == 1) {
+                            res.completeExceptionally(e);
+                        } else {
+                            retryAfter(() -> recurse(retriesLeft - 1, f)
                                             .thenAccept(res::complete)
                                             .exceptionally(t -> {
                                                 res.completeExceptionally(t);
                                                 return null;
                                             }),
-                                            jitter((maxAttempts + 1 - i) * 1000, 500));
-                                }
-                                return null;
-                            });
-                    return res;
-                };
-        return compose.apply(retriesLeft);
+                                    jitter((maxAttempts + 1 - retriesLeft) * 1000, 500));
+                        }
+                        return null;
+                    });
+        } catch (Throwable t) {
+            res.completeExceptionally(t);
+        }
+        return res;
     }
     @Override
     public CompletableFuture<BlockStoreProperties> blockStoreProperties() {
