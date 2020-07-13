@@ -276,12 +276,16 @@ public class Simulator implements Runnable {
         referenceFileSystem.read(path);
         testFileSystem.read(path);
     }
-
-    private void readDirectory(String user, Path path) {
+    private void readSharedFile(String user, Path path) {
         FileSystem testFileSystem = fileSystems.getTestFileSystem(user);
-        FileSystem referenceFileSystem = fileSystems.getReferenceFileSystem(user);
-        referenceFileSystem.ls(path);
-        testFileSystem.ls(path);
+        testFileSystem.read(path);
+    }
+    private void readSharedDirectory(String user, Path path) {
+        FileSystem testFileSystem = fileSystems.getTestFileSystem(user);
+        List<Path> paths = testFileSystem.ls(path.getParent());
+        if(paths.isEmpty()) {
+            throw new IllegalStateException("Unable to read shared directory. user:" + user + " directory:" + path);
+        }
     }
 
     private void log(String user, Simulation simulation, Path path, String... extra) {
@@ -438,20 +442,20 @@ public class Simulator implements Runnable {
                 readFile(user, readPath);
                 break;
             case READ_SHARED_FILE:
-                Optional<Path> sharedOpt = randomSharedFilePath.apply(user, otherUser.get());
+                Optional<Path> sharedOpt = randomSharedFilePath.apply(otherUser.get(), user);
                 if (! sharedOpt.isPresent())
                     return;
                 Path sharedPathToRead = sharedOpt.get();
                 log(user, Simulation.READ_SHARED_FILE, sharedPathToRead);
-                readFile(user, sharedPathToRead);
+                readSharedFile(user, sharedPathToRead);
                 break;
             case READ_SHARED_DIRECTORY:
-                Optional<Path> sharedDirOpt = randomSharedDirectoryPath.apply(user, otherUser.get());
+                Optional<Path> sharedDirOpt = randomSharedDirectoryPath.apply(otherUser.get(), user);
                 if (! sharedDirOpt.isPresent())
                     return;
                 Path sharedDirPathToRead = sharedDirOpt.get();
                 log(user, Simulation.READ_SHARED_DIRECTORY, sharedDirPathToRead);
-                readDirectory(user, sharedDirPathToRead);
+                readSharedDirectory(user, sharedDirPathToRead);
                 break;
             case WRITE_OWN_FILE:
                 Path path = getAvailableFilePath(user);
@@ -556,7 +560,6 @@ public class Simulator implements Runnable {
                 LOG.info("User " + peergosFileSystem.user() + " path " + path + " has peergos-fs " + permission.name() + "ers " +
                         shareesInPeergos + " and local-fs " + permission.name() + "ers " + shareesInLocal);
                 isVerified = false;
-                break;
             }
 
             //check they can actually read
@@ -761,7 +764,7 @@ public class Simulator implements Runnable {
         };
 
 
-        int opCount = 100;
+        int opCount = 200;
 
         Map<Simulation, Double> probabilities = Stream.of(
                 new Pair<>(Simulation.READ_OWN_FILE, 0.0),
