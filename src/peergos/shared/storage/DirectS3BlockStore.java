@@ -185,7 +185,8 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
         CompletableFuture<List<PresignedUrl>> auths = nonIdentity.isEmpty() ?
                 Futures.of(Collections.emptyList()) :
                 fallback.authReads(nonIdentity.stream().map(p -> p.right).collect(Collectors.toList()));
-        return auths
+        CompletableFuture<List<FragmentWithHash>> allResults = new CompletableFuture();
+        auths
                 .thenCompose(preAuthedGets ->
                         Futures.combineAllInOrder(IntStream.range(0, preAuthedGets.size())
                                 .parallel()
@@ -196,8 +197,8 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                                             return new Pair<>(hashAndIndex.left,
                                                     new FragmentWithHash(new Fragment(b), Optional.of(hashAndIndex.right)));
                                         }))
-                                .collect(Collectors.toList()))
-                ).thenApply(retrieved -> {
+                                .collect(Collectors.toList())))
+                .thenApply(retrieved -> {
                     FragmentWithHash[] res = new FragmentWithHash[hashes.size()];
                     for (Pair<Integer, FragmentWithHash> p : retrieved) {
                         res[p.left] = p.right;
@@ -211,7 +212,17 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                             res[i] = new FragmentWithHash(new Fragment(identity.getHash()), Optional.empty());
                         }
                     return Arrays.asList(res);
+                }).thenAccept(allResults::complete)
+                .exceptionally(t -> {
+                    NetworkAccess.downloadFragments(hashes, this, monitor, spaceIncreaseFactor)
+                            .thenAccept(allResults::complete)
+                            .exceptionally(e -> {
+                                allResults.completeExceptionally(e);
+                                return null;
+                            });
+                    return null;
                 });
+        return allResults;
     }
 
     @Override
