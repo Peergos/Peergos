@@ -104,7 +104,7 @@ public class HttpMutablePointers implements MutablePointersProxy {
         } finally {
             long t2 = System.currentTimeMillis();
             if (LOGGING)
-                LOG.info("HttpMutablePointers.get took " + (t2 -t1) + "mS");
+                LOG.info("HttpMutablePointers.get took " + (t2 -t1) + "mS for (" + owner + ", " + writer + ")");
         }
     }
 }
