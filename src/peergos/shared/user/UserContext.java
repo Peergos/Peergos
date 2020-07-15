@@ -471,14 +471,14 @@ public class UserContext {
     private CompletableFuture<UserContext> init(Consumer<String> progressCallback) {
         progressCallback.accept("Retrieving Friends");
         return writeSynchronizer.getValue(signer.publicKeyHash, signer.publicKeyHash)
-                .thenCompose(wd -> createFileTree(entrie, username, network, crypto)
+                .thenCompose(wd -> time(() -> createFileTree(entrie, username, network, crypto), "Creating filetree")
                         .thenCompose(root -> {
                             this.entrie = root;
                             return getByPath("/" + username + "/" + "shared")
                                     .thenCompose(sharedOpt -> {
                                         if (!sharedOpt.isPresent())
                                             throw new IllegalStateException("Couldn't find shared folder!");
-                                        return buildSharedWithCache(sharedOpt.get(), this::getUserRoot);
+                                        return time(() -> buildSharedWithCache(sharedOpt.get(), this::getUserRoot), "Building sharedWith cache");
                                     });
                         })
                 ).thenApply(res -> this);
@@ -1863,4 +1863,12 @@ public class UserContext {
             .thenCompose(x -> shareReadAccessWith(path.resolve(filename), Collections.singleton(PEERGOS_USERNAME)));
     }
 
+    public static <V> CompletableFuture<V> time(Supplier<CompletableFuture<V>> f, String name) {
+        long t0 = System.currentTimeMillis();
+        return f.get().thenApply(x -> {
+            long t1 = System.currentTimeMillis();
+            LOG.log(Level.INFO, name + " took " + (t1 - t0) + "ms");
+            return x;
+        });
+    }
 }
