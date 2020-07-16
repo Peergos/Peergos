@@ -10,7 +10,7 @@ import java.util.function.*;
 
 public class FriendSourcedTrieNode implements TrieNode {
 
-    private final String ownerName;
+    public final String ownerName;
     private final Supplier<CompletableFuture<FileWrapper>> homeDirSupplier;
     private final EntryPoint sharedDir;
     private final Crypto crypto;

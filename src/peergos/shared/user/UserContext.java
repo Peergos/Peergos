@@ -1702,12 +1702,24 @@ public class UserContext {
                                                        NetworkAccess network,
                                                        Crypto crypto) {
         // need to to retrieve all the entry points of our friends
-        return getFriendsEntryPoints()
-                .thenCompose(friendEntries -> Futures.reduceAll(friendEntries, ourRoot,
-                        (t, e) -> addRetrievedEntryPointToTrie(ourName, t, e,
-                                "/" + e.ownerName + "/" + SHARED_DIR_NAME + "/" + ourName, false, network, crypto)
-                                .exceptionally(ex -> t),
-                        (a, b) -> a))
+        return time(() -> getFriendsEntryPoints(), "Get friend's entry points")
+                .thenCompose(friendEntries -> {
+                    List<EntryPoint> friendsOnly = friendEntries.stream()
+                            .filter(e -> !e.ownerName.equals(ourName))
+                            .collect(Collectors.toList());
+                    Supplier<CompletableFuture<FileWrapper>> cacheDirSupplier =
+                            () -> ourRoot.getByPath(Paths.get(ourName).toString(), crypto.hasher, network)
+                                    .thenApply(opt -> opt.get());
+
+                    List<CompletableFuture<Optional<FriendSourcedTrieNode>>> friendNodes = friendsOnly.stream()
+                            .parallel()
+                            .map(e -> FriendSourcedTrieNode.build(cacheDirSupplier, e, network, crypto))
+                            .collect(Collectors.toList());
+                    return Futures.reduceAll(friendNodes, ourRoot,
+                            (t, e) -> e.thenApply(fromUser -> fromUser.map(userEntrie -> t.putNode(userEntrie.ownerName, userEntrie))
+                                    .orElse(t)).exceptionally(ex -> t),
+                            (a, b) -> a);
+                })
                 .exceptionally(Futures::logAndThrow);
     }
 
