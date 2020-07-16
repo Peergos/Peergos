@@ -9,7 +9,7 @@ public class ServerConversation implements Comparable<ServerConversation> {
     public final long latestEpochMillis;
     @JsProperty
     public final List<ServerMessage> messages;
-    public final boolean isDismissed;
+    public final boolean isDisplayable;
 
     public ServerConversation(List<ServerMessage> messages) {
         this.messages = messages;
@@ -19,7 +19,7 @@ public class ServerConversation implements Comparable<ServerConversation> {
                 latest = message.sentEpochMillis;
         }
         ServerMessage lastMessage = messages.get(messages.size() - 1);
-        this.isDismissed = lastMessage.isDismissed || lastMessage.type == ServerMessage.Type.FromUser;
+        this.isDisplayable = !lastMessage.isDismissed && lastMessage.type != ServerMessage.Type.FromUser;
         this.latestEpochMillis = latest;
     }
 
