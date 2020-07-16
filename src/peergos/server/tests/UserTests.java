@@ -1350,32 +1350,29 @@ public abstract class UserTests {
         service.serverMessages.addMessage(username, new ServerMessage(1, ServerMessage.Type.FromServer,
                 System.currentTimeMillis(), serverMsgBody, Optional.empty(), false));
 
-        String msgBody = "Peergos is amazing! I love it!";
+        String replyBody = "Thanks for making Peergos awesome!";
+        context.sendReply(context.getNewMessages().join().get(0), replyBody).join();
+        List<ServerMessage> afterReply = context.getNewMessages().join();
+        Assert.assertTrue(afterReply.size() == 0);
+
+        String msgBody = "Peergos really is amazing! I love it!";
         context.sendFeedback(msgBody).join();
         List<ServerMessage> messages = context.getNewMessages().join();
-        Assert.assertTrue(messages.size() == 2);
+        Assert.assertTrue(messages.size() == 0);
 
-        ServerMessage fromServer = messages.get(0);
-        Assert.assertTrue(fromServer.contents.equals(serverMsgBody));
-        Assert.assertTrue(fromServer.type == ServerMessage.Type.FromServer);
-
-        ServerMessage fromUser = messages.get(1);
-        Assert.assertTrue(fromUser.contents.equals(msgBody));
-        Assert.assertTrue(fromUser.type == ServerMessage.Type.FromUser);
-
-        String replyBody = "Thanks for making Peergos awesome!";
-        context.sendReply(fromServer, replyBody).join();
-        List<ServerMessage> withReply = context.getNewMessages().join();
-        Assert.assertTrue(withReply.size() == 3);
-        ServerMessage reply = withReply.get(2);
-        Assert.assertTrue(reply.contents.equals(replyBody));
+        List<ServerMessage> onServer = service.serverMessages.getMessages(username);
+        Assert.assertTrue(onServer.size() == 3);
+        ServerMessage reply = onServer.get(2);
+        Assert.assertTrue(reply.contents.equals(msgBody));
 
         List<ServerConversation> convs = context.getServerConversations().join();
-        Assert.assertTrue(convs.size() == 2);
+        Assert.assertTrue(convs.size() == 0);
 
-        context.dismissMessage(fromServer).join();
+        service.serverMessages.addMessage(username, new ServerMessage(1, ServerMessage.Type.FromServer,
+                System.currentTimeMillis(), "Thank you for supporting Peergos.", Optional.empty(), false));
+        context.dismissMessage(context.getNewMessages().join().get(0)).join();
         List<ServerMessage> updatedMessages = context.getNewMessages().join();
-        Assert.assertTrue(updatedMessages.size() == 2);
+        Assert.assertTrue(updatedMessages.size() == 0);
     }
 
     public static SymmetricKey getDataKey(FileWrapper file) {
