@@ -68,7 +68,7 @@ public class ServerMessageStore implements ServerMessager {
         List<ServerMessage> all = getMessages(username);
         List<ServerConversation> allConvs = ServerConversation.combine(all);
         List<ServerMessage> live = allConvs.stream()
-                .filter(c -> !c.isDismissed)
+                .filter(c -> c.isDisplayable)
                 .flatMap(c -> c.messages.stream())
                 .sorted()
                 .collect(Collectors.toList());
