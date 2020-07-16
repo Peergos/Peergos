@@ -23,6 +23,9 @@ public class ServerMessageStore implements ServerMessager {
     private static final String SELECT = "SELECT id, type, sent, body, priorid, dismissed FROM messages WHERE username = ?;";
     private static final String ADD = "INSERT INTO messages (username, sent, type, body, priorid) VALUES(?, ?, ?, ?, ?);";
     private static final String DISMISS = "UPDATE messages SET dismissed = true WHERE id = ? AND username = ?;";
+    private static final String COUNT = "SELECT COUNT (username) FROM messages where username = ? AND sent > ?;";
+
+    private static final int HOUR_MILLIS = 3_600_000;
 
     private final Supplier<Connection> conn;
     private final SqlSupplier commands;
@@ -83,6 +86,11 @@ public class ServerMessageStore implements ServerMessager {
         ServerMessage message = ServerMessage.fromCbor(cbor);
         switch (message.type) {
             case FromUser:
+                if (Math.abs(message.sentEpochMillis - System.currentTimeMillis()) > HOUR_MILLIS)
+                    return Futures.errored(new IllegalStateException("Invalid send time on message!"));
+                long count = recentMessages(username);
+                if (count > 20)
+                    return Futures.errored(new IllegalStateException("Please wait before sending more messages!"));
                 addMessage(username, message);
                 break;
             case Dismiss:
@@ -109,6 +117,21 @@ public class ServerMessageStore implements ServerMessager {
                         res.getLong(3), res.getString(4), priorId, dismissed));
             }
             return msgs;
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new IllegalStateException(sqe);
+        }
+    }
+
+    public long recentMessages(String username) {
+        try (Connection conn = getConnection();
+             PreparedStatement count = conn.prepareStatement(COUNT)) {
+            count.clearParameters();
+            count.setString(1, username);
+            count.setLong(2, System.currentTimeMillis() - HOUR_MILLIS);
+            ResultSet res = count.executeQuery();
+            res.next();
+            return res.getLong(1);
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new IllegalStateException(sqe);

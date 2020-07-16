@@ -1373,6 +1373,12 @@ public abstract class UserTests {
         context.dismissMessage(context.getNewMessages().join().get(0)).join();
         List<ServerMessage> updatedMessages = context.getNewMessages().join();
         Assert.assertTrue(updatedMessages.size() == 0);
+        // Test that we get rate limited
+        try {
+            for (int i = 0; i < 20; i++)
+                context.sendFeedback("SPAM " + i).join();
+            Assert.fail();
+        } catch (RuntimeException e) {}
     }
 
     public static SymmetricKey getDataKey(FileWrapper file) {

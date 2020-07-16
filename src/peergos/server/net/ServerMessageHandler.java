@@ -68,7 +68,7 @@ public class ServerMessageHandler implements HttpHandler {
                 }
                 case "send": {
                     byte[] signedReq = Serialize.readFully(exchange.getRequestBody(), 10*1024);
-                    store.sendMessage(username, signedReq);
+                    store.sendMessage(username, signedReq).join();
                     result = new CborObject.CborBoolean(true);
                     break;
                 }
