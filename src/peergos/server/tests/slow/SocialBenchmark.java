@@ -9,28 +9,35 @@ import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.social.*;
 import peergos.shared.user.*;
+import peergos.shared.user.fs.*;
+import peergos.shared.util.*;
 
 import java.net.*;
+import java.nio.file.*;
 import java.util.*;
+import java.util.function.*;
 import java.util.stream.*;
 
 @RunWith(Parameterized.class)
 public class SocialBenchmark {
 
     private static int RANDOM_SEED = 666;
+    private final UserService service;
     private final NetworkAccess network;
     private final Crypto crypto = Main.initCrypto();
 
     private static Random random = new Random(RANDOM_SEED);
 
     public SocialBenchmark(String useIPFS, Random r) throws Exception {
-        this.network = buildHttpNetworkAccess(useIPFS.equals("IPFS"), r);
+        Pair<UserService, NetworkAccess> pair = buildHttpNetworkAccess(useIPFS.equals("IPFS"), r);
+        this.service = pair.left;
+        this.network = pair.right;
     }
 
-    private static NetworkAccess buildHttpNetworkAccess(boolean useIpfs, Random r) throws Exception {
+    private static Pair<UserService, NetworkAccess> buildHttpNetworkAccess(boolean useIpfs, Random r) throws Exception {
         Args args = UserTests.buildArgs().with("useIPFS", "" + useIpfs);
-        Main.PKI_INIT.main(args);
-        return NetworkAccess.buildJava(new URL("http://localhost:" + args.getInt("port")), false).get();
+        UserService service = Main.PKI_INIT.main(args);
+        return new Pair<>(service, NetworkAccess.buildJava(new URL("http://localhost:" + args.getInt("port")), false).get());
     }
 
     @Parameterized.Parameters()
@@ -95,11 +102,69 @@ public class SocialBenchmark {
         }
     }
 
+    @Test
+    public void manyFriendsAndShares() {
+        String username = generateUsername();
+        String password = "password";
+        Pair<UserContext, Long> initial = time(() -> ensureSignedUp(username, password, network, crypto));
+        long initialTime = initial.right;
+        UserContext us = initial.left;
+        Assert.assertTrue(initialTime < 30_000);
+
+        int nFriends = 20;
+        List<Pair<String, String>> otherUsers = IntStream.range(0, nFriends)
+                .mapToObj(x -> new Pair<>(generateUsername(), password))
+                .collect(Collectors.toList());
+        List<UserContext> friends = otherUsers.stream()
+                .map(p -> ensureSignedUp(p.left, p.right, network, crypto))
+                .collect(Collectors.toList());
+
+        PeergosNetworkUtils.friendBetweenGroups(Arrays.asList(us), friends);
+        long withFriends = time(() -> ensureSignedUp(username, password, network.clear(), crypto)).right;
+        Assert.assertTrue(withFriends < 3_000);
+
+        // Add n files, each shared read only with a random friend
+        int nFiles = 40;
+        for (int i=0; i < nFiles; i++) {
+            byte[] fileData = "dataaaa".getBytes();
+            String filename = "File" + i;
+            us.getUserRoot().join().uploadOrReplaceFile(filename, AsyncReader.build(fileData),
+                    fileData.length, network, crypto, x -> {}, crypto.random.randomBytes(32)).join();
+            us.getByPath(Paths.get(username, filename)).join().get();
+            String sharee = otherUsers.get(random.nextInt(otherUsers.size())).left;
+            us.shareReadAccessWith(Paths.get(username, filename), Collections.singleton(sharee)).join();
+        }
+
+        long withReadSharing = time(() -> ensureSignedUp(username, password, network.clear(), crypto)).right;
+        Assert.assertTrue(withReadSharing < 4_000);
+
+        int nFriendsLeaving = 5;
+        for (int i=0; i < nFriendsLeaving; i++) {
+            int index = random.nextInt(friends.size());
+            UserContext friend = friends.get(index);
+            friend.deleteAccount(otherUsers.get(index).right).join();
+            friends.remove(friend);
+        }
+
+        long afterLeaving = time(() -> ensureSignedUp(username, password, network.clear(), crypto)).right;
+        Assert.assertTrue(afterLeaving < 4_000);
+
+        // Time login after a GC
+
+    }
+
     private String generateUsername() {
         return "test" + (random.nextInt() % 10000);
     }
 
     public static UserContext ensureSignedUp(String username, String password, NetworkAccess network, Crypto crypto) {
         return UserContext.ensureSignedUp(username, password, network, crypto).join();
+    }
+
+    public static <V> Pair<V, Long> time(Supplier<V> work) {
+        long t0 = System.currentTimeMillis();
+        V res = work.get();
+        long t1 = System.currentTimeMillis();
+        return new Pair<>(res, t1 - t0);
     }
 }
