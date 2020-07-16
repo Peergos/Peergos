@@ -2,7 +2,6 @@ package peergos.server.tests.simulation;
 
 import peergos.server.simulation.AccessControl;
 import peergos.server.simulation.FileSystem;
-import peergos.server.simulation.PeergosFileSystemImpl;
 import peergos.server.simulation.Stat;
 import peergos.shared.user.fs.FileProperties;
 
@@ -14,10 +13,7 @@ import java.nio.file.Paths;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Optional;
-import java.util.Random;
+import java.util.*;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -70,7 +66,6 @@ public class NativeFileSystemImpl implements FileSystem {
     public byte[] read(Path path, BiConsumer<Long, Long> pc) {
         Path nativePath = virtualToNative(path);
         ensureCan(path, Permission.READ);
-
         try {
             return Files.readAllBytes(nativePath);
         } catch (IOException ioe) {
@@ -84,7 +79,6 @@ public class NativeFileSystemImpl implements FileSystem {
         Path nativePath = virtualToNative(path);
         ensureCan(path.getParent(), Permission.READ);
         ensureCan(path, Permission.WRITE);
-
         try {
             Files.write(nativePath, data);
         } catch (IOException ioe) {
@@ -194,6 +188,7 @@ public class NativeFileSystemImpl implements FileSystem {
 
     @Override
     public List<Path> ls(Path path, boolean showHidden) {
+        ensureCan(path, Permission.READ);
         if (! showHidden)
             throw new IllegalStateException();
 
