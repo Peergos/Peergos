@@ -365,14 +365,19 @@ public class NetworkAccess {
                         return Futures.of(Optional.empty());
                     CryptreeNode fa = faOpt.get();
                     RetrievedCapability rc = new RetrievedCapability(cap, fa);
-                    FileProperties props = rc.getProperties();
-                    if (! props.isLink)
-                        return Futures.of(Optional.of(new FileWrapper(Optional.empty(),
-                                rc,
-                                Optional.empty(),
-                                cap.wBaseKey.map(wBase -> fa.getSigner(cap.rBaseKey, wBase, entryWriter)), ownerName, version)));
-                    return getFileFromLink(cap.owner, rc, entryWriter, ownerName, this, version)
-                            .thenApply(f -> Optional.of(f));
+                    try {
+                        FileProperties props = rc.getProperties();
+                        if (!props.isLink)
+                            return Futures.of(Optional.of(new FileWrapper(Optional.empty(),
+                                    rc,
+                                    Optional.empty(),
+                                    cap.wBaseKey.map(wBase -> fa.getSigner(cap.rBaseKey, wBase, entryWriter)), ownerName, version)));
+                        return getFileFromLink(cap.owner, rc, entryWriter, ownerName, this, version)
+                                .thenApply(f -> Optional.of(f));
+                    } catch (TweetNaCl.InvalidCipherTextException e) {
+                        LOG.info("Couldn't decrypt file from friend: " + ownerName);
+                        return Futures.of(Optional.empty());
+                    }
                 });
     }
 
