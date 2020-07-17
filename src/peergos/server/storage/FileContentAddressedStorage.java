@@ -18,10 +18,10 @@ import java.util.function.*;
 import java.util.logging.*;
 import java.util.stream.*;
 
-/** A local directory implementation of ContentAddressedStorage.
+/** A local directory implementation of ContentAddressedStorage. Only used for testing.
  *
  */
-public class FileContentAddressedStorage implements ContentAddressedStorage {
+public class FileContentAddressedStorage implements DeletableContentAddressedStorage {
     private static final Logger LOG = Logging.LOG();
     private static final int CID_V1 = 1;
     private static final int DIRECTORY_DEPTH = 5;
@@ -216,10 +216,17 @@ public class FileContentAddressedStorage implements ContentAddressedStorage {
         return CompletableFuture.completedFuture(file.exists() ? Optional.of((int) file.length()) : Optional.empty());
     }
 
-    protected boolean delete(Multihash h) {
+    @Override
+    public Stream<Multihash> getAllFiles() {
+        return getFiles().stream();
+    }
+
+    @Override
+    public void delete(Multihash h) {
         Path path = getFilePath(h);
         File file = root.resolve(path).toFile();
-        return file.exists() && file.delete();
+        if (file.exists())
+            file.delete();
     }
 
     public Optional<Long> getLastAccessTimeMillis(Multihash h) {
