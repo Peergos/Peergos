@@ -63,6 +63,11 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     }
 
     @Override
+    public List<Multihash> getOpenTransactionBlocks() {
+        return transactions.getOpenTransactionBlocks();
+    }
+
+    @Override
     public CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
                                                   PublicKeyHash writer,
                                                   List<byte[]> signedHashes,

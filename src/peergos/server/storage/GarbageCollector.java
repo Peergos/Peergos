@@ -24,7 +24,6 @@ public class GarbageCollector {
      */
     public static void collect(DeletableContentAddressedStorage storage,
                                JdbcIpnsAndSocial pointers,
-                               TransactionStore transactions,
                                Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver) {
         // TODO: do this more efficiently with a bloom filter, and actual streaming and multithreading
         long t0 = System.nanoTime();
@@ -32,7 +31,7 @@ public class GarbageCollector {
         long t1 = System.nanoTime();
         System.out.println("Listing block store took " + (t1-t0)/1_000_000_000 + "s");
 
-        List<Multihash> pending = transactions.getOpenTransactionBlocks();
+        List<Multihash> pending = storage.getOpenTransactionBlocks();
         long t2 = System.nanoTime();
         System.out.println("Listing pending blocks took " + (t2-t1)/1_000_000_000 + "s");
 

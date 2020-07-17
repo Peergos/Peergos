@@ -175,8 +175,13 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         return Futures.errored(new IllegalStateException("S3 doesn't implement GC!"));
     }
 
+    @Override
+    public List<Multihash> getOpenTransactionBlocks() {
+        return transactions.getOpenTransactionBlocks();
+    }
+
     private void collectGarbage(JdbcIpnsAndSocial pointers) {
-        GarbageCollector.collect(this, pointers, transactions, this::savePointerSnapshot);
+        GarbageCollector.collect(this, pointers, this::savePointerSnapshot);
     }
 
     private CompletableFuture<Boolean> savePointerSnapshot(Stream<Map.Entry<PublicKeyHash, byte[]>> pointers) {

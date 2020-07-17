@@ -3,6 +3,7 @@ package peergos.server.storage;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
 
+import java.util.*;
 import java.util.stream.*;
 
 public interface DeletableContentAddressedStorage extends ContentAddressedStorage {
@@ -10,4 +11,6 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
     Stream<Multihash> getAllFiles();
 
     void delete(Multihash hash);
+
+    List<Multihash> getOpenTransactionBlocks();
 }
