@@ -17,7 +17,7 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     private static final int CID_V1 = 1;
 
     private Map<Multihash, byte[]> storage = new EfficientHashMap<>();
-    private Map<TransactionId, List<Multihash>> openTransactions = new HashMap<>();
+    private Map<TransactionId, List<Multihash>> openTransactions = new ConcurrentHashMap<>();
     private final Set<Multihash> pinnedRoots = new HashSet<>();
 
     @Override
