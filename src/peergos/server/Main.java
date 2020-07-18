@@ -28,6 +28,7 @@ import peergos.shared.social.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
+import peergos.shared.util.*;
 
 import java.io.*;
 import java.net.*;
@@ -458,22 +459,27 @@ public class Main {
                     new PostgresCommands() :
                     new SqliteCommands();
 
+            Supplier<Connection> database = getDBConnector(a, "mutable-pointers-file");
+            JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(database, sqlCommands);
+
+            Supplier<Connection> transactionsDb = getDBConnector(a, "transactions-sql-file");
+            TransactionStore transactions = JdbcTransactionStore.build(transactionsDb, sqlCommands);
+
             DeletableContentAddressedStorage localDht;
+            boolean enableGC = a.getBoolean("enable-gc", false);
             if (useIPFS) {
-                boolean enableGC = a.getBoolean("enable-gc", false);
                 DeletableContentAddressedStorage.HTTP ipfs = new DeletableContentAddressedStorage.HTTP(ipfsApi, false);
                 if (enableGC) {
-                    IpfsGarbageCollector gced = new IpfsGarbageCollector(ipfs, a.getInt("gc.period.millis", 60 * 60 * 1000));
-                    gced.start();
-                    localDht = gced;
+                    TransactionalIpfs ipfsWithTransactions = new TransactionalIpfs(ipfs, transactions);
+                    GarbageCollector gc = new GarbageCollector(ipfsWithTransactions, rawPointers);
+                    gc.start(a.getInt("gc.period.millis", 60 * 60 * 1000), s -> Futures.of(true));
+                    localDht = ipfsWithTransactions;
                 } else
                     localDht = ipfs;
             } else {
-                boolean enableGC = a.getBoolean("enable-gc", false);
                 if (enableGC)
                     throw new IllegalStateException("GC has not been implemented when not using IPFS!");
-                Supplier<Connection> transactionsDb = getDBConnector(a, "transactions-sql-file");
-                        TransactionStore transactions = JdbcTransactionStore.build(transactionsDb, sqlCommands);
+
                 // In S3 mode of operation we require the ipfs id to be supplied as we don't have a local ipfs running
                 if (S3Config.useS3(a)) {
                     ContentAddressedStorage.HTTP ipfs = new ContentAddressedStorage.HTTP(ipfsApi, false);
@@ -488,12 +494,9 @@ public class Main {
                     localDht = new FileContentAddressedStorage(blockstorePath(a), transactions);
             }
 
-
             String hostname = a.getArg("domain");
             Multihash nodeId = localDht.id().get();
 
-            Supplier<Connection> database = getDBConnector(a, "mutable-pointers-file");
-            JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(database, sqlCommands);
             MutablePointers localPointers = UserRepository.build(localDht, rawPointers);
             MutablePointersProxy proxingMutable = new HttpMutablePointers(ipfsGateway, pkiServerNodeId);
 

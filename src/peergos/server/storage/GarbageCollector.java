@@ -12,9 +12,11 @@ import peergos.shared.storage.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
+import java.util.logging.*;
 import java.util.stream.*;
 
 public class GarbageCollector {
+    private static final Logger LOG = Logger.getGlobal();
 
     private final DeletableContentAddressedStorage storage;
     private final JdbcIpnsAndSocial pointers;
@@ -26,6 +28,19 @@ public class GarbageCollector {
 
     public synchronized void collect(Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver) {
         collect(storage, pointers, snapshotSaver);
+    }
+
+    public void start(long periodMillis, Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver) {
+        new Thread(() -> {
+            while (true) {
+                try {
+                    collect(snapshotSaver);
+                    Thread.sleep(periodMillis);
+                } catch (Exception e) {
+                    LOG.log(Level.SEVERE, e, e::getMessage);
+                }
+            }
+        }, "Garbage Collector").start();
     }
 
     /** The result of this method is a snapshot of the mutable pointers that is consistent with the blocks store

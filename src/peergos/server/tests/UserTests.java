@@ -61,6 +61,8 @@ public abstract class UserTests {
                     "-ipfs-swarm-port", Integer.toString(ipfsSwarmPort),
                     "-admin-usernames", "peergos",
                     "-logToConsole", "true",
+                    "-enable-gc", "true",
+                    "-gc.period.millis", "60000",
                     "max-users", "10000",
                     Main.PEERGOS_PATH, peergosDir.toString(),
                     "peergos.password", "testpassword",
