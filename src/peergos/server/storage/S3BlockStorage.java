@@ -264,22 +264,20 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                                                   List<byte[]> signedHashes,
                                                   List<byte[]> blocks,
                                                   TransactionId tid) {
-        return put(owner, writer, signedHashes, blocks, false, tid);
+        return put(owner, blocks, false, tid);
     }
 
     @Override
     public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner,
                                                      PublicKeyHash writer,
-                                                     List<byte[]> signatures,
+                                                     List<byte[]> signedHashes,
                                                      List<byte[]> blocks,
                                                      TransactionId tid,
                                                      ProgressConsumer<Long> progressConsumer) {
-        return put(owner, writer, signatures, blocks, true, tid);
+        return put(owner, blocks, true, tid);
     }
 
     private CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
-                                                   PublicKeyHash writer,
-                                                   List<byte[]> signatures,
                                                    List<byte[]> blocks,
                                                    boolean isRaw,
                                                    TransactionId tid) {
