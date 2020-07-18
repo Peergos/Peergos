@@ -491,8 +491,10 @@ public class Main {
                             props, transactions, ipfs);
                 } else {
                     localDht = new FileContentAddressedStorage(blockstorePath(a), transactions);
-                    GarbageCollector gc = new GarbageCollector(localDht, rawPointers);
-                    gc.start(a.getInt("gc.period.millis", 60 * 60 * 1000), s -> Futures.of(true));
+                    if (enableGC) {
+                        GarbageCollector gc = new GarbageCollector(localDht, rawPointers);
+                        gc.start(a.getInt("gc.period.millis", 60 * 60 * 1000), s -> Futures.of(true));
+                    }
                 }
             }
 
