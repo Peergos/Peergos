@@ -477,11 +477,10 @@ public class Main {
                 } else
                     localDht = ipfs;
             } else {
-                if (enableGC)
-                    throw new IllegalStateException("GC has not been implemented when not using IPFS!");
-
                 // In S3 mode of operation we require the ipfs id to be supplied as we don't have a local ipfs running
                 if (S3Config.useS3(a)) {
+                    if (enableGC)
+                        throw new IllegalStateException("GC should be run separately when using S3!");
                     ContentAddressedStorage.HTTP ipfs = new ContentAddressedStorage.HTTP(ipfsApi, false);
                     Optional<String> publicReadUrl = Optional.ofNullable(a.getArg("blockstore-url", null));
                     boolean directWrites = a.getBoolean("direct-s3-writes", false);
@@ -490,8 +489,11 @@ public class Main {
                     BlockStoreProperties props = new BlockStoreProperties(directWrites, publicReads, authedReads, publicReadUrl);
                     localDht = new S3BlockStorage(S3Config.build(a), Cid.decode(a.getArg("ipfs.id")),
                             props, transactions, ipfs);
-                } else
+                } else {
                     localDht = new FileContentAddressedStorage(blockstorePath(a), transactions);
+                    GarbageCollector gc = new GarbageCollector(localDht, rawPointers);
+                    gc.start(a.getInt("gc.period.millis", 60 * 60 * 1000), s -> Futures.of(true));
+                }
             }
 
             String hostname = a.getArg("domain");
