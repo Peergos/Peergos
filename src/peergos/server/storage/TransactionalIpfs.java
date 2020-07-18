@@ -58,7 +58,7 @@ public class TransactionalIpfs extends DelegatingStorage implements DeletableCon
             Cid cid = new Cid(1, Cid.Codec.Raw, hash.type, hash.getHash());
             transactions.addBlock(cid, tid, owner);
         }
-        return putRaw(owner, writer, signedHashes, blocks, tid, progressConsumer);
+        return target.putRaw(owner, writer, signedHashes, blocks, tid, progressConsumer);
     }
 
     @Override
