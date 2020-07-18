@@ -309,7 +309,7 @@ public interface ContentAddressedStorage {
     class HTTP implements ContentAddressedStorage {
 
         private final HttpPoster poster;
-        private static final String apiPrefix = "api/v0/";
+        public static final String apiPrefix = "api/v0/";
         public static final String ID = "id";
         public static final String BLOCKSTORE_PROPERTIES = "blockstore/props";
         public static final String AUTH_READS = "blockstore/auth-reads";
@@ -319,11 +319,13 @@ public interface ContentAddressedStorage {
         public static final String GC = "repo/gc";
         public static final String BLOCK_PUT = "block/put";
         public static final String BLOCK_GET = "block/get";
+        public static final String BLOCK_RM = "block/rm";
         public static final String BLOCK_STAT = "block/stat";
         public static final String PIN_ADD = "pin/add";
         public static final String PIN_RM = "pin/rm";
         public static final String PIN_UPDATE = "pin/update";
         public static final String REFS = "refs";
+        public static final String REFS_LOCAL = "refs/local";
 
         private final boolean isPeergosServer;
         private final Random r = new Random();
@@ -407,7 +409,7 @@ public interface ContentAddressedStorage {
 
         @Override
         public CompletableFuture<TransactionId> startTransaction(PublicKeyHash owner) {
-            if (! isPeergosServer) // TODO remove once IPFS implements the transaction api
+            if (! isPeergosServer)
                 return CompletableFuture.completedFuture(new TransactionId(Long.toString(r.nextInt(Integer.MAX_VALUE))));
             return poster.get(apiPrefix + TRANSACTION_START + "?owner=" + encode(owner.toString()))
                     .thenApply(raw -> new TransactionId(new String(raw)));
@@ -415,7 +417,7 @@ public interface ContentAddressedStorage {
 
         @Override
         public CompletableFuture<Boolean> closeTransaction(PublicKeyHash owner, TransactionId tid) {
-            if (! isPeergosServer) // TODO remove once IPFS implements the transaction api
+            if (! isPeergosServer)
                 return CompletableFuture.completedFuture(true);
             return poster.get(apiPrefix + TRANSACTION_CLOSE + "?arg=" + tid.toString() + "&owner=" + encode(owner.toString()))
                     .thenApply(raw -> new String(raw).equals("1"));

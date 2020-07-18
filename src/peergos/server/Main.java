@@ -450,8 +450,6 @@ public class Main {
             String domain = a.getArg("domain");
             InetSocketAddress userAPIAddress = new InetSocketAddress(domain, webPort);
 
-            int dhtCacheEntries = 1000;
-            int maxValueSizeToCache = 50 * 1024;
             JavaPoster ipfsApi = new JavaPoster(ipfsApiAddress, false);
             JavaPoster ipfsGateway = new JavaPoster(ipfsGatewayAddress, false);
 
@@ -460,16 +458,16 @@ public class Main {
                     new PostgresCommands() :
                     new SqliteCommands();
 
-            ContentAddressedStorage localDht;
+            DeletableContentAddressedStorage localDht;
             if (useIPFS) {
                 boolean enableGC = a.getBoolean("enable-gc", false);
-                ContentAddressedStorage.HTTP ipfs = new ContentAddressedStorage.HTTP(ipfsApi, false);
+                DeletableContentAddressedStorage.HTTP ipfs = new DeletableContentAddressedStorage.HTTP(ipfsApi, false);
                 if (enableGC) {
                     IpfsGarbageCollector gced = new IpfsGarbageCollector(ipfs, a.getInt("gc.period.millis", 60 * 60 * 1000));
                     gced.start();
-                    localDht = new CachingStorage(gced, dhtCacheEntries, maxValueSizeToCache);
+                    localDht = gced;
                 } else
-                    localDht = new CachingStorage(ipfs, dhtCacheEntries, maxValueSizeToCache);
+                    localDht = ipfs;
             } else {
                 boolean enableGC = a.getBoolean("enable-gc", false);
                 if (enableGC)
@@ -559,7 +557,9 @@ public class Main {
             Admin storageAdmin = new Admin(adminUsernames, userQuotas, core, localDht, enableWaitlist);
             HttpSpaceUsage httpSpaceUsage = new HttpSpaceUsage(ipfsGateway, ipfsGateway);
             ProxyingSpaceUsage p2pSpaceUsage = new ProxyingSpaceUsage(nodeId, corePropagator, spaceChecker, httpSpaceUsage);
-            UserService peergos = new UserService(p2pDht, crypto, corePropagator, p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage);
+            GarbageCollector gc = new GarbageCollector(localDht, rawPointers);
+            UserService peergos = new UserService(p2pDht, crypto, corePropagator, p2pSocial, p2mMutable, storageAdmin,
+                    p2pSpaceUsage, gc);
             InetSocketAddress localAddress = new InetSocketAddress("localhost", userAPIAddress.getPort());
             Optional<Path> webroot = a.hasArg("webroot") ?
                     Optional.of(Paths.get(a.getArg("webroot"))) :

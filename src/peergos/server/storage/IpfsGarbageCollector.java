@@ -12,21 +12,22 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 import java.util.logging.*;
+import java.util.stream.*;
 
 /** This class is only need whilst ipfs hasn't implemented transactions
  *
  */
-public class IpfsGarbageCollector implements ContentAddressedStorage {
+public class IpfsGarbageCollector implements DeletableContentAddressedStorage {
 
     private static final long MAX_WAIT_FOR_TRANSACTION_MILLIS = 10_000;
 
-    private final ContentAddressedStorage target;
+    private final DeletableContentAddressedStorage target;
     private final long gcPeriodMillis;
     // This lock is used to make new transactions block until a pending GC completes
     private final Object gcLock = new Object();
     private final ConcurrentHashMap<PublicKeyHash, AtomicInteger> openTransactions = new ConcurrentHashMap<>();
 
-    public IpfsGarbageCollector(ContentAddressedStorage target, long gcPeriodMillis) {
+    public IpfsGarbageCollector(DeletableContentAddressedStorage target, long gcPeriodMillis) {
         this.target = target;
         this.gcPeriodMillis = gcPeriodMillis;
     }
@@ -90,6 +91,21 @@ public class IpfsGarbageCollector implements ContentAddressedStorage {
         if (openTransactionsForUser != null)
             openTransactionsForUser.decrementAndGet();
         return target.closeTransaction(owner, tid);
+    }
+
+    @Override
+    public Stream<Multihash> getAllFiles() {
+        return target.getAllFiles();
+    }
+
+    @Override
+    public void delete(Multihash hash) {
+        target.delete(hash);
+    }
+
+    @Override
+    public List<Multihash> getOpenTransactionBlocks() {
+        throw new IllegalStateException("Unimplemented!");
     }
 
     @Override

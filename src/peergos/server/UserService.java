@@ -3,6 +3,7 @@ import java.util.*;
 import java.util.function.*;
 import java.util.logging.Logger;
 
+import peergos.server.storage.*;
 import peergos.server.storage.admin.*;
 import peergos.server.util.Logging;
 import java.util.logging.Level;
@@ -81,6 +82,7 @@ public class UserService {
     public final MutablePointers mutable;
     public final InstanceAdmin controller;
     public final SpaceUsage usage;
+    public final GarbageCollector gc; // not exposed
 
     public UserService(ContentAddressedStorage storage,
                        Crypto crypto,
@@ -88,14 +90,16 @@ public class UserService {
                        SocialNetwork social,
                        MutablePointers mutable,
                        InstanceAdmin controller,
-                       SpaceUsage usage) {
-        this.storage = storage;
+                       SpaceUsage usage,
+                       GarbageCollector gc) {
+        this.storage = new CachingStorage(storage, 1000, 50 * 1024);
         this.crypto = crypto;
         this.coreNode = coreNode;
         this.social = social;
         this.mutable = mutable;
         this.controller = controller;
         this.usage = usage;
+        this.gc = gc;
     }
 
     public static class TlsProperties {

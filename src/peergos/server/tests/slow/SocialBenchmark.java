@@ -150,7 +150,9 @@ public class SocialBenchmark {
         Assert.assertTrue(afterLeaving < 4_000);
 
         // Time login after a GC
-
+        service.gc.collect(s -> Futures.of(true));
+        long afterGc = time(() -> ensureSignedUp(username, password, network.clear(), crypto)).right;
+        Assert.assertTrue(afterGc < 4_000);
     }
 
     private String generateUsername() {

@@ -16,15 +16,30 @@ import java.util.stream.*;
 
 public class GarbageCollector {
 
+    private final DeletableContentAddressedStorage storage;
+    private final JdbcIpnsAndSocial pointers;
+
+    public GarbageCollector(DeletableContentAddressedStorage storage, JdbcIpnsAndSocial pointers) {
+        this.storage = storage;
+        this.pointers = pointers;
+    }
+
+    public synchronized void collect(Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver) {
+        collect(storage, pointers, snapshotSaver);
+    }
+
     /** The result of this method is a snapshot of the mutable pointers that is consistent with the blocks store
      * after GC has completed (saved to a file which can be independently backed up).
      *
+     * @param storage
      * @param pointers
+     * @param snapshotSaver
      * @return
      */
     public static void collect(DeletableContentAddressedStorage storage,
                                JdbcIpnsAndSocial pointers,
                                Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver) {
+        System.out.println("Starting blockstore garbage collection...");
         // TODO: do this more efficiently with a bloom filter, and actual streaming and multithreading
         long t0 = System.nanoTime();
         List<Multihash> present = storage.getAllFiles().collect(Collectors.toList());
