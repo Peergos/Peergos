@@ -34,6 +34,7 @@ public class MultiNodeNetworkTests {
 
     private static Random random = new Random(0);
     private static List<NetworkAccess> nodes = new ArrayList<>();
+    private static List<UserService> services = new ArrayList<>();
 
     private final Crypto crypto = Main.initCrypto();
 
@@ -83,11 +84,12 @@ public class MultiNodeNetworkTests {
     @BeforeClass
     public static void init() throws Exception {
         // start pki node
-        Main.PKI_INIT.main(args);
+        UserService pki = Main.PKI_INIT.main(args);
         NetworkAccess toPki = buildApi(args);
         Multihash pkiNodeId = toPki.dhtClient.id().get();
         PublicKeyHash peergosId = PublicKeyHash.fromString(args.getArg("peergos.identity.hash"));
         nodes.add(toPki);
+        services.add(pki);
         int bootstrapSwarmPort = args.getInt("ipfs-swarm-port");
 
         // create two other nodes that use the first as a PKI-node
@@ -108,7 +110,8 @@ public class MultiNodeNetworkTests {
                     .with("proxy-target", Main.getLocalMultiAddress(peergosPort).toString())
                     .with("ipfs-api-address", Main.getLocalMultiAddress(ipfsApiPort).toString());
             argsToCleanUp.add(normalNode);
-            Main.PEERGOS.main(normalNode);
+            UserService service = Main.PEERGOS.main(normalNode);
+            services.add(service);
 
             IPFS ipfs = new IPFS(Main.getLocalMultiAddress(ipfsApiPort));
             ipfs.swarm.connect(Main.getLocalBootstrapAddress(bootstrapSwarmPort, pkiNodeId).toString());
@@ -118,6 +121,13 @@ public class MultiNodeNetworkTests {
 
     private static NetworkAccess buildApi(Args args) throws Exception {
         return NetworkAccess.buildNonCachingJava(new URL("http://localhost:" + args.getInt("port")), false).get();
+    }
+
+    @Before
+    public void gc() {
+        for (UserService service : services) {
+            service.gc.collect(s -> Futures.of(true));
+        }
     }
 
     @Test
