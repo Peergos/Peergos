@@ -54,7 +54,7 @@ public class GarbageCollector {
     public static void collect(DeletableContentAddressedStorage storage,
                                JdbcIpnsAndSocial pointers,
                                Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver) {
-        System.out.println("Starting blockstore garbage collection...");
+        System.out.println("Starting blockstore garbage collection on node " + storage.id().join() + "...");
         // TODO: do this more efficiently with a bloom filter, and actual streaming and multithreading
         long t0 = System.nanoTime();
         List<Multihash> present = storage.getAllFiles().collect(Collectors.toList());
@@ -101,7 +101,7 @@ public class GarbageCollector {
                 deletedSize += size;
                 storage.delete(hash);
             } catch (Exception e) {
-                System.out.println("Unable to read " + hash);
+                LOG.info("GC Unable to read " + hash + " during delete phase, ignoring block and continuing.");
             }
         }
         long t5 = System.nanoTime();

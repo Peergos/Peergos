@@ -56,7 +56,8 @@ public class JavaPoster implements HttpPoster {
         } catch (IOException e) {
             if (conn != null){
                 String trailer = conn.getHeaderField("Trailer");
-                System.err.println("Trailer:" + trailer);
+                if (trailer != null)
+                    System.err.println("Trailer:" + trailer);
                 res.completeExceptionally(trailer == null ? e : new RuntimeException(trailer));
             } else
                 res.completeExceptionally(e);
