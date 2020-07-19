@@ -9,9 +9,13 @@ import peergos.shared.user.*;
 import java.util.*;
 import java.util.stream.*;
 
+/** This interface is only used locally on a server and never exposed.
+ *  These methods allow garbage collection to be implemented.
+ *
+ */
 public interface DeletableContentAddressedStorage extends ContentAddressedStorage {
 
-    Stream<Multihash> getAllFiles();
+    Stream<Multihash> getAllBlockHashes();
 
     void delete(Multihash hash);
 
@@ -27,7 +31,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         }
 
         @Override
-        public Stream<Multihash> getAllFiles() {
+        public Stream<Multihash> getAllBlockHashes() {
             String jsonStream = new String(poster.get(apiPrefix + REFS_LOCAL).join());
             return JSONParser.parseStream(jsonStream).stream()
                     .map(m -> (String) (((Map) m).get("Ref")))

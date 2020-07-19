@@ -62,8 +62,8 @@ public class TransactionalIpfs extends DelegatingStorage implements DeletableCon
     }
 
     @Override
-    public Stream<Multihash> getAllFiles() {
-        return target.getAllFiles();
+    public Stream<Multihash> getAllBlockHashes() {
+        return target.getAllBlockHashes();
     }
 
     @Override

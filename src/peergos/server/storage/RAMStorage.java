@@ -44,7 +44,7 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public Stream<Multihash> getAllFiles() {
+    public Stream<Multihash> getAllBlockHashes() {
         return storage.keySet().stream();
     }
 

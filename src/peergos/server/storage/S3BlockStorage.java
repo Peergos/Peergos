@@ -314,7 +314,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         }
     }
 
-    public Stream<Multihash> getAllFiles() {
+    public Stream<Multihash> getAllBlockHashes() {
         // todo make this actually streaming
         return getFiles(Long.MAX_VALUE).stream();
     }

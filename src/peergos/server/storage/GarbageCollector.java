@@ -57,7 +57,7 @@ public class GarbageCollector {
         System.out.println("Starting blockstore garbage collection on node " + storage.id().join() + "...");
         // TODO: do this more efficiently with a bloom filter, and actual streaming and multithreading
         long t0 = System.nanoTime();
-        List<Multihash> present = storage.getAllFiles().collect(Collectors.toList());
+        List<Multihash> present = storage.getAllBlockHashes().collect(Collectors.toList());
         long t1 = System.nanoTime();
         System.out.println("Listing block store took " + (t1-t0)/1_000_000_000 + "s");
 

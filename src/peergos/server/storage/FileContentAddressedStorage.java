@@ -222,7 +222,7 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     }
 
     @Override
-    public Stream<Multihash> getAllFiles() {
+    public Stream<Multihash> getAllBlockHashes() {
         return getFiles().stream();
     }
 
