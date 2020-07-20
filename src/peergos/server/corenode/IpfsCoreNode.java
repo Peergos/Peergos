@@ -64,7 +64,7 @@ public class IpfsCoreNode implements CoreNode {
         this.currentRoot = newRoot;
     }
 
-    private static MaybeMultihash getTreeRoot(MaybeMultihash pointerTarget, ContentAddressedStorage ipfs) {
+    public static MaybeMultihash getTreeRoot(MaybeMultihash pointerTarget, ContentAddressedStorage ipfs) {
         if (! pointerTarget.isPresent())
             return MaybeMultihash.empty();
         CommittedWriterData current = WriterData.getWriterData(pointerTarget.get(), ipfs).join();

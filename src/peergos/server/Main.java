@@ -467,11 +467,12 @@ public class Main {
 
             DeletableContentAddressedStorage localDht;
             boolean enableGC = a.getBoolean("enable-gc", false);
+            GarbageCollector gc = null;
             if (useIPFS) {
                 DeletableContentAddressedStorage.HTTP ipfs = new DeletableContentAddressedStorage.HTTP(ipfsApi, false);
                 if (enableGC) {
                     TransactionalIpfs ipfsWithTransactions = new TransactionalIpfs(ipfs, transactions);
-                    GarbageCollector gc = new GarbageCollector(ipfsWithTransactions, rawPointers);
+                    gc = new GarbageCollector(ipfsWithTransactions, rawPointers);
                     gc.start(a.getInt("gc.period.millis", 60 * 60 * 1000), s -> Futures.of(true));
                     localDht = ipfsWithTransactions;
                 } else
@@ -492,7 +493,7 @@ public class Main {
                 } else {
                     localDht = new FileContentAddressedStorage(blockstorePath(a), transactions);
                     if (enableGC) {
-                        GarbageCollector gc = new GarbageCollector(localDht, rawPointers);
+                        gc = new GarbageCollector(localDht, rawPointers);
                         gc.start(a.getInt("gc.period.millis", 60 * 60 * 1000), s -> Futures.of(true));
                     }
                 }
@@ -510,7 +511,8 @@ public class Main {
             CoreNode core = isPkiNode ?
                     buildPkiCorenode(new PinningMutablePointers(localPointers, localDht), localDht, a) :
                     new MirrorCoreNode(new HTTPCoreNode(ipfsGateway, pkiServerNodeId), proxingMutable, localDht,
-                            peergosId, a.fromPeergosDir("pki-mirror-state-path","pki-state.cbor"));
+                            rawPointers, transactions, peergosId,
+                            a.fromPeergosDir("pki-mirror-state-path","pki-state.cbor"));
 
             long defaultQuota = a.getLong("default-quota");
             long maxUsers = a.getLong("max-users");
@@ -564,7 +566,6 @@ public class Main {
             Admin storageAdmin = new Admin(adminUsernames, userQuotas, core, localDht, enableWaitlist);
             HttpSpaceUsage httpSpaceUsage = new HttpSpaceUsage(ipfsGateway, ipfsGateway);
             ProxyingSpaceUsage p2pSpaceUsage = new ProxyingSpaceUsage(nodeId, corePropagator, spaceChecker, httpSpaceUsage);
-            GarbageCollector gc = new GarbageCollector(localDht, rawPointers);
             UserService peergos = new UserService(p2pDht, crypto, corePropagator, p2pSocial, p2mMutable, storageAdmin,
                     p2pSpaceUsage, gc);
             InetSocketAddress localAddress = new InetSocketAddress("localhost", userAPIAddress.getPort());
