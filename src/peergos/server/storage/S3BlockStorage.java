@@ -26,7 +26,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.*;
 
-public class S3BlockStorage implements ContentAddressedStorage {
+public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     private static final Logger LOG = Logger.getGlobal();
 
@@ -175,77 +175,29 @@ public class S3BlockStorage implements ContentAddressedStorage {
         return Futures.errored(new IllegalStateException("S3 doesn't implement GC!"));
     }
 
-    /** The result of this method is a snapshot of the mutable pointers that is consistent with the blocks store
-     * after GC has completed (saved to a file which can be independently backed up).
-     *
-     * @param pointers
-     * @return
-     */
-    private void collectGarbage(JdbcIpnsAndSocial pointers) throws IOException {
-        // TODO: do this more efficiently with a bloom filter, and streaming
-        long t0 = System.nanoTime();
-        List<Multihash> present = getFiles(Integer.MAX_VALUE);
-        long t1 = System.nanoTime();
-        System.out.println("Listing block store took " + (t1-t0)/1_000_000_000 + "s");
-
-        List<Multihash> pending = transactions.getOpenTransactionBlocks();
-        long t2 = System.nanoTime();
-        System.out.println("Listing pending blocks took " + (t2-t1)/1_000_000_000 + "s");
-
-        // This pointers call must happen AFTER the previous two for correctness
-        Map<PublicKeyHash, byte[]> allPointers = pointers.getAllEntries();
-        long t3 = System.nanoTime();
-        System.out.println("Listing pointers took " + (t3-t2)/1_000_000_000 + "s");
-
-        BitSet reachable = new BitSet(present.size());
-        for (PublicKeyHash writerHash : allPointers.keySet()) {
-            byte[] signedRawCas = allPointers.get(writerHash);
-            PublicSigningKey writer = getSigningKey(writerHash).join().get();
-            byte[] bothHashes = writer.unsignMessage(signedRawCas);
-            HashCasPair cas = HashCasPair.fromCbor(CborObject.fromByteArray(bothHashes));
-            MaybeMultihash updated = cas.updated;
-            if (updated.isPresent())
-                markReachable(updated.get(), present, reachable);
-        }
-        for (Multihash additional : pending) {
-            int index = present.indexOf(additional);
-            if (index >= 0)
-                reachable.set(index);
-        }
-        long t4 = System.nanoTime();
-        System.out.println("Marking reachable took " + (t4-t3)/1_000_000_000 + "s");
-        // Save pointers snapshot to file
-        Path pointerSnapshotFile = Paths.get("pointers-snapshot-" + LocalDateTime.now() + ".txt");
-        for (Map.Entry<PublicKeyHash, byte[]> entry : allPointers.entrySet()) {
-            Files.write(pointerSnapshotFile, (entry.getKey() + ":" +
-                    ArrayOps.bytesToHex(entry.getValue()) + "\n").getBytes(), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
-        }
-        long deletedBlocks = 0;
-        long deletedSize = 0;
-        for (int i = reachable.nextClearBit(0); i >= 0 && i < present.size(); i = reachable.nextClearBit(i + 1)) {
-            Multihash hash = present.get(i);
-            try {
-                int size = getSize(hash).join().get();
-                deletedBlocks++;
-                deletedSize += size;
-                delete(hash);
-            } catch (Exception e) {
-                System.out.println("Unable to read " + hash);
-            }
-        }
-        long t5 = System.nanoTime();
-        System.out.println("Deleting blocks took " + (t5-t4)/1_000_000_000 + "s");
-        System.out.println("GC complete. Freed " + deletedBlocks + " blocks totalling " + deletedSize + " bytes");
+    @Override
+    public List<Multihash> getOpenTransactionBlocks() {
+        return transactions.getOpenTransactionBlocks();
     }
 
-    private void markReachable(Multihash root, List<Multihash> present, BitSet reachable) {
-        int index = present.indexOf(root);
-        if (index >= 0)
-            reachable.set(index);
-        List<Multihash> links = getLinks(root).join();
-        for (Multihash link : links) {
-            markReachable(link, present, reachable);
-        }
+    private void collectGarbage(JdbcIpnsAndSocial pointers) {
+        GarbageCollector.collect(this, pointers, this::savePointerSnapshot);
+    }
+
+    private CompletableFuture<Boolean> savePointerSnapshot(Stream<Map.Entry<PublicKeyHash, byte[]>> pointers) {
+        CompletableFuture<Boolean> res = new CompletableFuture<>();
+        // Save pointers snapshot to file
+        Path pointerSnapshotFile = Paths.get("pointers-snapshot-" + LocalDateTime.now() + ".txt");
+        pointers.forEach(entry -> {
+            try {
+                Files.write(pointerSnapshotFile, (entry.getKey() + ":" +
+                        ArrayOps.bytesToHex(entry.getValue()) + "\n").getBytes(), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            } catch (IOException e) {
+                res.completeExceptionally(e);
+                throw new RuntimeException(e);
+            }
+        });
+        return res;
     }
 
     @Override
@@ -312,22 +264,20 @@ public class S3BlockStorage implements ContentAddressedStorage {
                                                   List<byte[]> signedHashes,
                                                   List<byte[]> blocks,
                                                   TransactionId tid) {
-        return put(owner, writer, signedHashes, blocks, false, tid);
+        return put(owner, blocks, false, tid);
     }
 
     @Override
     public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner,
                                                      PublicKeyHash writer,
-                                                     List<byte[]> signatures,
+                                                     List<byte[]> signedHashes,
                                                      List<byte[]> blocks,
                                                      TransactionId tid,
                                                      ProgressConsumer<Long> progressConsumer) {
-        return put(owner, writer, signatures, blocks, true, tid);
+        return put(owner, blocks, true, tid);
     }
 
     private CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
-                                                   PublicKeyHash writer,
-                                                   List<byte[]> signatures,
                                                    List<byte[]> blocks,
                                                    boolean isRaw,
                                                    TransactionId tid) {
@@ -362,6 +312,11 @@ public class S3BlockStorage implements ContentAddressedStorage {
         } finally {
             writeTimer.observeDuration();
         }
+    }
+
+    public Stream<Multihash> getAllBlockHashes() {
+        // todo make this actually streaming
+        return getFiles(Long.MAX_VALUE).stream();
     }
 
     private List<Multihash> getFiles(long maxReturned) {

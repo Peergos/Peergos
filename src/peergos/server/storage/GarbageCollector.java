@@ -1,159 +1,121 @@
 package peergos.server.storage;
 
-import peergos.server.AggregatedMetrics;
-import peergos.server.util.*;
+import peergos.server.corenode.*;
+import peergos.shared.*;
 import peergos.shared.cbor.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
-import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.*;
+import java.util.function.*;
 import java.util.logging.*;
+import java.util.stream.*;
 
-public class GarbageCollector implements ContentAddressedStorage {
+public class GarbageCollector {
+    private static final Logger LOG = Logger.getGlobal();
 
-    private static final long MAX_WAIT_FOR_TRANSACTION_MILLIS = 10_000;
+    private final DeletableContentAddressedStorage storage;
+    private final JdbcIpnsAndSocial pointers;
 
-    private final ContentAddressedStorage target;
-    private final long gcPeriodMillis;
-    // This lock is used to make new transactions block until a pending GC completes
-    private final Object gcLock = new Object();
-    private final ConcurrentHashMap<PublicKeyHash, AtomicInteger> openTransactions = new ConcurrentHashMap<>();
-
-    public GarbageCollector(ContentAddressedStorage target, long gcPeriodMillis) {
-        this.target = target;
-        this.gcPeriodMillis = gcPeriodMillis;
+    public GarbageCollector(DeletableContentAddressedStorage storage, JdbcIpnsAndSocial pointers) {
+        this.storage = storage;
+        this.pointers = pointers;
     }
 
-    public void start() {
-        new Thread(this::run).start();
+    public synchronized void collect(Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver) {
+        collect(storage, pointers, snapshotSaver);
     }
 
-    private int openTransactions() {
-        int res = 0;
-        for (AtomicInteger open : openTransactions.values()) {
-            res += Math.max(0, open.get());
-        }
-        return res;
-    }
-
-    public void run() {
-        while (true) {
-            try {
-                synchronized (gcLock) {
-                    long start = System.nanoTime();
-                    while (openTransactions() > 0) {
-                        if ((System.nanoTime() - start) / 1_000_000 > MAX_WAIT_FOR_TRANSACTION_MILLIS) {
-                            System.out.println("Aborting in flight transactions!");
-                            openTransactions.clear();
-                        }
-                        System.out.println("GC sleeping waiting for " + openTransactions() + " open transactions..");
-                        Thread.sleep(100);
-                    }
-                    Logging.LOG().info("Starting GC...");
-                    long ready = System.nanoTime();
-                    target.gc().join();
-                    long done = System.nanoTime();
-                    long gcWaitingToStart = (ready - start) / 1_000_000;
-                    long gcDuration = (done - ready) / 1_000_0000;
-                    Logging.LOG().info(String.format("GC took: %d ms waiting to start, %d ms in actual GC",
-                            gcWaitingToStart, gcDuration));
-
-                    AggregatedMetrics.IPFS_PRE_GC_DURATION.observe(gcWaitingToStart);
-                    AggregatedMetrics.IPFS_GC_DURATION.observe(gcDuration);
+    public void start(long periodMillis, Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver) {
+        new Thread(() -> {
+            while (true) {
+                try {
+                    collect(snapshotSaver);
+                    Thread.sleep(periodMillis);
+                } catch (Exception e) {
+                    LOG.log(Level.SEVERE, e, e::getMessage);
                 }
-                Thread.sleep(gcPeriodMillis);
-            } catch (Throwable t) {
-                Logging.LOG().log(Level.WARNING, t.getMessage(), t);
             }
-        }
+        }, "Garbage Collector").start();
     }
 
-    @Override
-    public CompletableFuture<TransactionId> startTransaction(PublicKeyHash owner) {
-        synchronized (gcLock) {
-            openTransactions.putIfAbsent(owner, new AtomicInteger(0));
-            openTransactions.get(owner).incrementAndGet();
-        }
-        return target.startTransaction(owner);
-    }
-
-    @Override
-    public CompletableFuture<Boolean> closeTransaction(PublicKeyHash owner, TransactionId tid) {
-        AtomicInteger openTransactionsForUser = openTransactions.get(owner);
-        if (openTransactionsForUser != null)
-            openTransactionsForUser.decrementAndGet();
-        return target.closeTransaction(owner, tid);
-    }
-
-    @Override
-    public CompletableFuture<Multihash> id() {
-        return target.id();
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
-                                                  PublicKeyHash writer,
-                                                  List<byte[]> signedHashes,
-                                                  List<byte[]> blocks,
-                                                  TransactionId tid) {
-        return target.put(owner, writer, signedHashes, blocks, tid);
-    }
-
-    @Override
-    public CompletableFuture<Optional<CborObject>> get(Multihash hash) {
-        return target.get(hash);
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner,
-                                                     PublicKeyHash writer,
-                                                     List<byte[]> signatures,
-                                                     List<byte[]> blocks,
-                                                     TransactionId tid,
-                                                     ProgressConsumer<Long> progressConsumer) {
-        return target.putRaw(owner, writer, signatures, blocks, tid, progressConsumer);
-    }
-
-    @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash) {
-        return target.getRaw(hash);
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> pinUpdate(PublicKeyHash owner, Multihash existing, Multihash updated) {
-        return target.pinUpdate(owner, existing, updated);
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> recursivePin(PublicKeyHash owner, Multihash hash) {
-        return target.recursivePin(owner, hash);
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> recursiveUnpin(PublicKeyHash owner, Multihash hash) {
-        return target.recursiveUnpin(owner, hash);
-    }
-
-    /** This method is ignored because we decide when we are calling gc
+    /** The result of this method is a snapshot of the mutable pointers that is consistent with the blocks store
+     * after GC has completed (saved to a file which can be independently backed up).
      *
+     * @param storage
+     * @param pointers
+     * @param snapshotSaver
      * @return
      */
-    @Override
-    public CompletableFuture<Boolean> gc() {
-        return CompletableFuture.completedFuture(true);
+    public static void collect(DeletableContentAddressedStorage storage,
+                               JdbcIpnsAndSocial pointers,
+                               Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver) {
+        System.out.println("Starting blockstore garbage collection on node " + storage.id().join() + "...");
+        // TODO: do this more efficiently with a bloom filter, and actual streaming and multithreading
+        long t0 = System.nanoTime();
+        List<Multihash> present = storage.getAllBlockHashes().collect(Collectors.toList());
+        long t1 = System.nanoTime();
+        System.out.println("Listing block store took " + (t1-t0)/1_000_000_000 + "s");
+
+        List<Multihash> pending = storage.getOpenTransactionBlocks();
+        long t2 = System.nanoTime();
+        System.out.println("Listing pending blocks took " + (t2-t1)/1_000_000_000 + "s");
+
+        // This pointers call must happen AFTER the previous two for correctness
+        Map<PublicKeyHash, byte[]> allPointers = pointers.getAllEntries();
+        long t3 = System.nanoTime();
+        System.out.println("Listing pointers took " + (t3-t2)/1_000_000_000 + "s");
+
+        BitSet reachable = new BitSet(present.size());
+        for (PublicKeyHash writerHash : allPointers.keySet()) {
+            byte[] signedRawCas = allPointers.get(writerHash);
+            PublicSigningKey writer = storage.getSigningKey(writerHash).join().get();
+            byte[] bothHashes = writer.unsignMessage(signedRawCas);
+            HashCasPair cas = HashCasPair.fromCbor(CborObject.fromByteArray(bothHashes));
+            MaybeMultihash updated = cas.updated;
+            if (updated.isPresent())
+                markReachable(storage, updated.get(), present, reachable);
+        }
+        for (Multihash additional : pending) {
+            int index = present.indexOf(additional);
+            if (index >= 0)
+                reachable.set(index);
+        }
+        long t4 = System.nanoTime();
+        System.out.println("Marking reachable took " + (t4-t3)/1_000_000_000 + "s");
+
+        // Save pointers snapshot
+        snapshotSaver.apply(allPointers.entrySet().stream()).join();
+
+        long deletedBlocks = 0;
+        long deletedSize = 0;
+        for (int i = reachable.nextClearBit(0); i >= 0 && i < present.size(); i = reachable.nextClearBit(i + 1)) {
+            Multihash hash = present.get(i);
+            try {
+                int size = storage.getSize(hash).join().get();
+                deletedBlocks++;
+                deletedSize += size;
+                storage.delete(hash);
+            } catch (Exception e) {
+                LOG.info("GC Unable to read " + hash + " during delete phase, ignoring block and continuing.");
+            }
+        }
+        long t5 = System.nanoTime();
+        System.out.println("Deleting blocks took " + (t5-t4)/1_000_000_000 + "s");
+        System.out.println("GC complete. Freed " + deletedBlocks + " blocks totalling " + deletedSize + " bytes");
     }
 
-    @Override
-    public CompletableFuture<List<Multihash>> getLinks(Multihash root) {
-        return target.getLinks(root);
-    }
-
-    @Override
-    public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
-        return target.getSize(block);
+    private static void markReachable(ContentAddressedStorage storage, Multihash root, List<Multihash> present, BitSet reachable) {
+        int index = present.indexOf(root);
+        if (index >= 0)
+            reachable.set(index);
+        List<Multihash> links = storage.getLinks(root).join();
+        for (Multihash link : links) {
+            markReachable(storage, link, present, reachable);
+        }
     }
 }

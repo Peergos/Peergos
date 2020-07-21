@@ -199,6 +199,10 @@ public class IPFS {
             return retrieve("block/get?stream-channels=true&arg=" + hash);
         }
 
+        public byte[] rm(Multihash hash) throws IOException {
+            return retrieve("block/rm?stream-channels=true&arg=" + hash);
+        }
+
         public List<MerkleNode> put(List<byte[]> data) throws IOException {
             return put(data, Optional.empty());
         }

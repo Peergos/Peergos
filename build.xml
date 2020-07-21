@@ -103,7 +103,7 @@
   </target>
 
   <target name="test" depends="parallel_test">
-    <exec executable="./print_test_errors.sh">
+    <exec executable="./print_test_errors.sh" failonerror="true">
     </exec>
   </target> 
 

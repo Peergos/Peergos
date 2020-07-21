@@ -22,12 +22,12 @@ public class WriterDataTests {
     public void tolerateLoopsInOwnedKeys() {
         Crypto crypto = Main.initCrypto();
         Hasher hasher = crypto.hasher;
-        TransactionId test = new TransactionId("dummy");
         ContentAddressedStorage dht = new RAMStorage();
         MutablePointers mutable = UserRepository.build(dht, new JdbcIpnsAndSocial(Main.buildEphemeralSqlite(), new SqliteCommands()));
 
         SigningKeyPair pairA = SigningKeyPair.insecureRandom();
         PublicKeyHash pubA = ContentAddressedStorage.hashKey(pairA.publicSigningKey);
+        TransactionId test = dht.startTransaction(pubA).join();
         SigningPrivateKeyAndPublicHash signerA = new SigningPrivateKeyAndPublicHash(pubA, pairA.secretSigningKey);
 
         SigningKeyPair pairB = SigningKeyPair.insecureRandom();

@@ -13,11 +13,11 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.*;
 
-public class RAMStorage implements ContentAddressedStorage {
+public class RAMStorage implements DeletableContentAddressedStorage {
     private static final int CID_V1 = 1;
 
     private Map<Multihash, byte[]> storage = new EfficientHashMap<>();
-
+    private Map<TransactionId, List<Multihash>> openTransactions = new ConcurrentHashMap<>();
     private final Set<Multihash> pinnedRoots = new HashSet<>();
 
     @Override
@@ -27,11 +27,14 @@ public class RAMStorage implements ContentAddressedStorage {
 
     @Override
     public CompletableFuture<TransactionId> startTransaction(PublicKeyHash owner) {
-        return CompletableFuture.completedFuture(new TransactionId(Long.toString(System.currentTimeMillis())));
+        TransactionId tid = new TransactionId(Long.toString(System.currentTimeMillis()));
+        openTransactions.put(tid, new ArrayList<>());
+        return CompletableFuture.completedFuture(tid);
     }
 
     @Override
     public CompletableFuture<Boolean> closeTransaction(PublicKeyHash owner, TransactionId tid) {
+        openTransactions.remove(tid);
         return CompletableFuture.completedFuture(true);
     }
 
@@ -41,12 +44,30 @@ public class RAMStorage implements ContentAddressedStorage {
     }
 
     @Override
+    public Stream<Multihash> getAllBlockHashes() {
+        return storage.keySet().stream();
+    }
+
+    @Override
+    public void delete(Multihash hash) {
+        storage.remove(hash);
+    }
+
+    @Override
+    public List<Multihash> getOpenTransactionBlocks() {
+        return openTransactions.values()
+                .stream()
+                .flatMap(List::stream)
+                .collect(Collectors.toList());
+    }
+
+    @Override
     public CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
                                                   PublicKeyHash writer,
                                                   List<byte[]> signedHashes,
                                                   List<byte[]> blocks,
                                                   TransactionId tid) {
-        return put(writer, blocks, false);
+        return put(writer, blocks, false, tid);
     }
 
     @Override
@@ -56,14 +77,15 @@ public class RAMStorage implements ContentAddressedStorage {
                                                      List<byte[]> blocks,
                                                      TransactionId tid,
                                                      ProgressConsumer<Long> progressConsumer) {
-        return put(writer, blocks, true);
+        return put(writer, blocks, true, tid);
     }
 
-    private CompletableFuture<List<Multihash>> put(PublicKeyHash writer, List<byte[]> blocks, boolean isRaw) {
+    private CompletableFuture<List<Multihash>> put(PublicKeyHash writer, List<byte[]> blocks, boolean isRaw, TransactionId tid) {
         return CompletableFuture.completedFuture(blocks.stream()
                 .map(b -> {
                     Cid cid = hashToCid(b, isRaw);
                     put(cid, b);
+                    openTransactions.get(tid).add(cid);
                     return cid;
                 }).collect(Collectors.toList()));
     }
