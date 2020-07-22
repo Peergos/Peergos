@@ -619,7 +619,7 @@ public class Simulator implements Runnable {
                             if (isVerified) {
                                 try {
                                     // can overwrite?
-                                    fs.write(path, new byte[]{read[0]});
+                                    fs.modify(path, read);
                                 } catch (Exception ex) {
                                     LOG.log(Level.SEVERE, "User " + sharee + " could not write  shared-path " + path + "!", ex);
                                     isVerified = false;

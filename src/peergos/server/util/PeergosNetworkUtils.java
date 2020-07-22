@@ -499,7 +499,13 @@ public class PeergosNetworkUtils {
         System.out.println("filesize=" + newFileSize);
         Assert.assertTrue(newFileSize == 255);
 
-        System.currentTimeMillis();
+        //sharee now attempts to modify file
+        FileWrapper sharedFile = sharee.getByPath(filePath).join().get();
+        byte[] modifiedFileContents = sharer.crypto.random.randomBytes(255);
+        sharedFile.overwriteFileJS(AsyncReader.build(modifiedFileContents), 0, modifiedFileContents.length,
+                sharee.network, sharee.crypto, len -> {}).join();
+        FileWrapper sharedFileUpdated = sharee.getByPath(filePath).join().get();
+        checkFileContents(modifiedFileContents, sharedFileUpdated, sharee);
     }
 
 

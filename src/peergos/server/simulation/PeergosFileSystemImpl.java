@@ -56,6 +56,14 @@ public class PeergosFileSystemImpl implements FileSystem {
     }
 
     @Override
+    public void modify(Path path, byte[] data, Consumer<Long> progressConsumer) {
+        FileWrapper file = getPath(path);
+        ProgressConsumer<Long> pc  = l -> progressConsumer.accept(l);
+        file.overwriteFileJS(AsyncReader.build(data), 0, data.length,
+                userContext.network, userContext.crypto, pc).join();
+    }
+
+    @Override
     public void delete(Path path) {
         FileWrapper directory = getDirectory(path);
         FileWrapper updatedParent = getPath(path).remove(directory, userContext).join();
