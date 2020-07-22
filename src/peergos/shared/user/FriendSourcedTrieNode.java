@@ -66,10 +66,10 @@ public class FriendSourcedTrieNode implements TrieNode {
                     if (!sharedDirOpt.isPresent())
                         return CompletableFuture.completedFuture(Optional.empty());
                     return CapabilityStore.loadReadOnlyLinks(homeDirSupplier, sharedDirOpt.get(), e.ownerName,
-                            network, crypto, true)
+                            network, crypto, true, true)
                             .thenCompose(readCaps -> {
                                 return CapabilityStore.loadWriteableLinks(homeDirSupplier, sharedDirOpt.get(), e.ownerName,
-                                        network, crypto, true)
+                                        network, crypto, true, true)
                                         .thenApply(writeCaps -> {
                                             List<CapabilityWithPath> allCaps = new ArrayList<>();
                                             allCaps.addAll(readCaps.getRetrievedCapabilities());
@@ -97,7 +97,7 @@ public class FriendSourcedTrieNode implements TrieNode {
                                     return addEditableCapabilities(Optional.of(sharedDir.file), crypto, network);
                                 } else {
                                     return CapabilityStore.loadReadAccessSharingLinksFromIndex(homeDirSupplier, sharedDir.file,
-                                            ownerName, network, crypto, byteOffsetReadOnly, true)
+                                            ownerName, network, crypto, byteOffsetReadOnly, true, true)
                                             .thenCompose(newReadCaps -> {
                                                 byteOffsetReadOnly += newReadCaps.getBytesRead();
                                                 root = newReadCaps.getRetrievedCapabilities().stream()
@@ -119,7 +119,7 @@ public class FriendSourcedTrieNode implements TrieNode {
                     if (editFilesize == byteOffsetWrite)
                         return CompletableFuture.completedFuture(true);
                     return CapabilityStore.loadWriteAccessSharingLinksFromIndex(homeDirSupplier, sharedDirOpt.get(),
-                            ownerName, network, crypto, byteOffsetWrite, true)
+                            ownerName, network, crypto, byteOffsetWrite, true, true)
                             .thenApply(newWriteCaps -> {
                                 byteOffsetWrite += newWriteCaps.getBytesRead();
                                 root = newWriteCaps.getRetrievedCapabilities().stream()

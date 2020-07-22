@@ -106,7 +106,7 @@ public class GarbageCollector {
         }
         long t5 = System.nanoTime();
         System.out.println("Deleting blocks took " + (t5-t4)/1_000_000_000 + "s");
-        System.out.println("GC complete. Freed " + deletedBlocks + " blocks totalling " + deletedSize + " bytes");
+        System.out.println("GC complete. Freed " + deletedBlocks + " blocks totalling " + deletedSize + " bytes in " + (t5-t0)/1_000_000_000 + "s");
     }
 
     private static void markReachable(ContentAddressedStorage storage, Multihash root, List<Multihash> present, BitSet reachable) {

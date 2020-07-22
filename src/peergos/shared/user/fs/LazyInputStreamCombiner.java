@@ -182,7 +182,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
         long seek = ((long) (hi32) << 32) | (low32 & 0xFFFFFFFFL);
 
         if (totalLength < seek)
-            throw new IllegalStateException("Cannot seek to position "+ seek);
+            throw new IllegalStateException("Cannot seek to position "+ seek + " in file of length " + totalLength);
         long globalOffset = globalIndex + index;
         if (seek > globalOffset)
             return copy().skip(seek - globalOffset);

@@ -814,6 +814,13 @@ public class FileWrapper {
                 overwriteExisting, truncateExisting, network, crypto, monitor, firstChunkMapKey);
     }
 
+    private CompletableFuture<Snapshot> updateSize(Committer committer,
+                                                   long newSize,
+                                                   NetworkAccess network) {
+        FileProperties newProps = getFileProperties().withSize(newSize);
+        return updateProperties(version, committer, newProps, network);
+    }
+
     public CompletableFuture<Snapshot> uploadFileSection(Snapshot intialVersion,
                                                          Committer committer,
                                                          String filename,
@@ -848,15 +855,19 @@ public class FileWrapper {
                                                 FileWrapper child = childOpt.get();
                                                 FileProperties childProps = child.getFileProperties();
 
-                                                TriFunction<FileWrapper, Snapshot, AsyncReader, CompletableFuture<Snapshot>> recalculateThumbnailIfNecessary =
-                                                        (updatedChild, latestSnapshot, is) -> {
-                                                    if(startIndex != 0) {
-                                                        return Futures.of(latestSnapshot);
+                                                TriFunction<FileWrapper, Snapshot, Long, CompletableFuture<Snapshot>> updatePropsIfNecessary =
+                                                        (updatedChild, latestSnapshot, writeEnd) -> {
+                                                    if (childProps.thumbnail.isEmpty()) {
+                                                        if (writeEnd <= childProps.size)
+                                                            return Futures.of(latestSnapshot);
+                                                        // update size only
+                                                        return updatedChild.updateSize(committer, writeEnd, network);
                                                     }
-                                                    return updatedChild.recalculateThumbnail(
+                                                    return updatedChild.getInputStream(latestSnapshot.get(updatedChild.writer()).props, network, crypto, l -> {})
+                                                            .thenCompose(is -> updatedChild.recalculateThumbnail(
                                                                 latestSnapshot, committer, filename, is, isHidden,
                                                                 updatedChild.getSize(), network, (WritableAbsoluteCapability)updatedChild.pointer.capability,
-                                                                updatedChild.getFileProperties().streamSecret);
+                                                                updatedChild.getFileProperties().streamSecret));
                                                 };
 
                                                 if (truncateExisting && endIndex < childProps.size) {
@@ -865,14 +876,13 @@ public class FileWrapper {
                                                                 child.getUpdated(updatedSnapshot, network).thenCompose( updatedChild ->
                                                                     updateExistingChild(updatedSnapshot, committer, updatedChild, fileData,
                                                                         startIndex, endIndex, network, crypto, monitor)
-                                                                            .thenCompose(latestSnapshot -> updatedChild.getInputStream(updatedSnapshot.get(updatedChild.writer()).props, network, crypto, l -> {})
-                                                                                    .thenCompose( is -> recalculateThumbnailIfNecessary.apply(updatedChild, latestSnapshot, is))))));
+                                                                            .thenCompose(latestSnapshot ->  updatePropsIfNecessary.apply(updatedChild, latestSnapshot, endIndex)))));
                                                 } else {
                                                     return updateExistingChild(current, committer, child, fileData,
                                                             startIndex, endIndex, network, crypto, monitor)
-                                                            .thenCompose( updatedSnapshot -> child.getUpdated(updatedSnapshot, network).thenCompose( updatedChild ->
-                                                                    updatedChild.getInputStream(updatedSnapshot.get(updatedChild.writer()).props, network, crypto, l -> {})
-                                                                            .thenCompose( is -> recalculateThumbnailIfNecessary.apply(updatedChild, updatedSnapshot, is))));
+                                                            .thenCompose( updatedSnapshot -> child.getUpdated(updatedSnapshot, network)
+                                                                    .thenCompose(updatedChild ->
+                                                                            updatePropsIfNecessary.apply(updatedChild, updatedSnapshot, endIndex)));
                                                 }
                                             }
                                             if (startIndex > 0) {
@@ -945,10 +955,16 @@ public class FileWrapper {
                             updatedDateTime, isHidden, thumbData, streamSecret);
 
                     return network.getFile(base, cap, getChildsEntryWriter(), ownername)
-                            .thenCompose(child -> child.get()
-                                    .getPointer().fileAccess.updateProperties(base, committer, cap,
-                                            getChildsEntryWriter(), fileProps, network));
+                            .thenCompose(child -> child.get().updateProperties(base, committer, fileProps, network));
                 });
+    }
+
+    private CompletableFuture<Snapshot> updateProperties(Snapshot base,
+                                                         Committer committer,
+                                                         FileProperties newProps,
+                                                         NetworkAccess network) {
+        return getPointer().fileAccess.updateProperties(base, committer, writableFilePointer(),
+                getChildsEntryWriter(), newProps, network);
     }
 
     private CompletableFuture<Snapshot> addChildPointer(Snapshot current,

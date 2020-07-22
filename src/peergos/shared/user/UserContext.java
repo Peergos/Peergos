@@ -491,14 +491,14 @@ public class UserContext {
                                 true,
                                 (x, friendDirectory) -> {
                                     return CapabilityStore.loadReadOnlyLinks(homeDirSupplier, friendDirectory,
-                                            this.username, network, crypto, false)
+                                            friendDirectory.getName(), network, crypto, true, false)
                                             .thenCompose(readCaps -> {
                                                 readCaps.getRetrievedCapabilities().stream().forEach(rc -> {
                                                     sharedWithCache.addSharedWith(SharedWithCache.Access.READ,
                                                         rc.path, rc.cap, friendDirectory.getName());
                                                 });
                                                 return CapabilityStore.loadWriteableLinks(homeDirSupplier, friendDirectory,
-                                                        this.username, network, crypto, false)
+                                                        friendDirectory.getName(), network, crypto, true, false)
                                                         .thenApply(writeCaps -> {
                                                             writeCaps.getRetrievedCapabilities().stream().forEach(rc -> {
                                                                 sharedWithCache.addSharedWith(SharedWithCache.Access.WRITE,
@@ -507,7 +507,7 @@ public class UserContext {
                                                             return true;
                                                         });
                                             });
-                                }, (a, b) -> a && b).thenApply(done -> done));
+                                }, (a, b) -> a && b));
     }
 
     public CompletableFuture<FileWrapper> getSharingFolder() {
