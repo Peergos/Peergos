@@ -588,12 +588,12 @@ public class FileWrapper {
         long size = getSize();
         long newSize = LongUtil.intsToLong(endHigh, endLow);
         return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
-                (s, committer) -> overwriteSection(s, committer, fileData,
-                        0L, newSize, network, crypto, monitor)
-                        .thenCompose(v -> newSize >= size ? Futures.of(v) :
-                                getUpdated(v, network)
-                                        .thenCompose(f -> f.truncate(v, committer, newSize, network, crypto))))
-                .thenCompose(v -> getUpdated(v, network));
+                (s, committer) -> clean(s, committer, network, crypto)
+                    .thenCompose(u -> u.left.overwriteSection(u.right, committer, fileData,
+                            0L, newSize, network, crypto, monitor))
+                    .thenCompose(v -> newSize >= size ? Futures.of(v) :
+                        getUpdated(v, network).thenCompose(f -> f.truncate(v, committer, newSize, network, crypto)))
+        ).thenCompose(v -> getUpdated(v, network));
     }
 
     @JsMethod

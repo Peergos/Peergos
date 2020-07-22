@@ -87,6 +87,17 @@ public class NativeFileSystemImpl implements FileSystem {
     }
 
     @Override
+    public void modify(Path path, byte[] data, Consumer<Long> progressConsumer) {
+        Path nativePath = virtualToNative(path);
+        ensureCan(path, Permission.WRITE);
+        try {
+            Files.write(nativePath, data);
+        } catch (IOException ioe) {
+            throw new IllegalStateException(ioe);
+        }
+    }
+
+    @Override
     public void delete(Path path) {
         ensureCan(path, Permission.WRITE);
 

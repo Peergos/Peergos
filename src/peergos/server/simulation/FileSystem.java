@@ -33,10 +33,15 @@ public interface FileSystem {
 
     void write(Path path, byte[] data, Consumer<Long> progressConsumer);
 
+    void modify(Path path, byte[] data, Consumer<Long> progressConsumer);
+
     default void write(Path path, byte[] data) {
         write(path, data, l -> {});
     }
 
+    default void modify(Path path, byte[] data) {
+        modify(path, data, l -> {});
+    }
     void delete(Path path);
 
     void grant(Path path, String user, Permission permission);
