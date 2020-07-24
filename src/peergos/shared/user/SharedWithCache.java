@@ -58,6 +58,32 @@ public class SharedWithCache {
                 );
     }
 
+    public CompletableFuture<Boolean> buildSharedWithCache() {
+        Supplier<CompletableFuture<FileWrapper>> homeDirSupplier =
+                () -> retriever.apply(Paths.get("/" + ourname))
+                        .thenApply(Optional::get);
+        return retriever.apply(Paths.get("/" + ourname + "/" + UserContext.SHARED_DIR_NAME))
+                .thenCompose(shared -> shared.get().getChildren(crypto.hasher, network))
+                .thenCompose(children ->
+                        Futures.reduceAll(children,
+                                true,
+                                (x, friendDirectory) -> {
+                                    return CapabilityStore.loadReadOnlyLinks(homeDirSupplier, friendDirectory,
+                                            ourname, network, crypto, false, false)
+                                            .thenCompose(readCaps -> {
+                                                readCaps.getRetrievedCapabilities().stream()
+                                                        .forEach(rc -> addSharedWith(Access.READ, Paths.get(rc.path), Collections.singleton(friendDirectory.getName())));
+                                                return CapabilityStore.loadWriteableLinks(homeDirSupplier, friendDirectory,
+                                                        ourname, network, crypto, false, false)
+                                                        .thenApply(writeCaps -> {
+                                                            writeCaps.getRetrievedCapabilities().stream()
+                                                                    .forEach(rc -> addSharedWith(Access.WRITE, Paths.get(rc.path), Collections.singleton(friendDirectory.getName())));
+                                                            return true;
+                                                        });
+                                            });
+                                }, (a, b) -> a && b));
+    }
+
     /**
      *
      * @return root of cache
@@ -65,7 +91,9 @@ public class SharedWithCache {
     private CompletableFuture<FileWrapper> initializeCache() {
         return retriever.apply(Paths.get(ourname))
                 .thenCompose(userRoot -> getOrMkdir(userRoot.get(), CapabilityStore.CAPABILITY_CACHE_DIR))
-                .thenCompose(cacheRoot -> getOrMkdir(cacheRoot, CACHE_BASE_NAME)); //TODO build from outbound cap files
+                .thenCompose(cacheRoot -> cacheRoot.mkdir(CACHE_BASE_NAME, network, true, crypto))
+                .thenCompose(x -> buildSharedWithCache()) // build from outbound cap files
+                .thenCompose(x -> retriever.apply(cacheBase).thenApply(Optional::get));
     }
 
     private CompletableFuture<FileWrapper> getOrMkdir(FileWrapper parent, String dirName) {
