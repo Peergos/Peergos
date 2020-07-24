@@ -40,12 +40,16 @@ public class SharedWithCache {
         return p.isAbsolute() ? p : Paths.get("/").resolve(p);
     }
 
+    private static Path toRelative(Path p) {
+        return p.isAbsolute() ? Paths.get(p.toString().substring(1)) : p;
+    }
+
     private CompletableFuture<Optional<SharedWithState>> retrieve(Path dir) {
         return retrieveWithFile(dir).thenApply(opt -> opt.map(p -> p.right));
     }
 
     private CompletableFuture<Optional<Pair<FileWrapper, SharedWithState>>> retrieveWithFile(Path dir) {
-        return retriever.apply(cacheBase.resolve(dir).resolve(DIR_CACHE_FILENAME))
+        return retriever.apply(cacheBase.resolve(toRelative(dir)).resolve(DIR_CACHE_FILENAME))
                 .thenCompose(opt -> opt.isEmpty() ?
                         Futures.of(Optional.empty()) :
                         parseCacheFile(opt.get())
@@ -112,7 +116,7 @@ public class SharedWithCache {
     }
 
     public CompletableFuture<Map<Path, SharedWithState>> getAllDescendantShares(Path start) {
-        return retriever.apply(cacheBase.resolve(start.getParent()))
+        return retriever.apply(cacheBase.resolve(toRelative(start.getParent())))
                 .thenCompose(opt -> {
                     if (opt.isEmpty())
                         return Futures.of(Collections.emptyMap());
