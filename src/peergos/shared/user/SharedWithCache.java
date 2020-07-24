@@ -30,7 +30,7 @@ public class SharedWithCache {
                            NetworkAccess network,
                            Crypto crypto) {
         this.retriever = retriever;
-        this.cacheBase = Paths.get(ourname).resolve(CACHE_BASE);
+        this.cacheBase = Paths.get("/" + ourname).resolve(CACHE_BASE);
         this.ourname = ourname;
         this.network = network;
         this.crypto = crypto;
