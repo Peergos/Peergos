@@ -1108,6 +1108,7 @@ public class FileWrapper {
     @JsMethod
     public CompletableFuture<FileWrapper> rename(String newFilename,
                                                  FileWrapper parent,
+                                                 Path ourPath,
                                                  UserContext userContext) {
         if (! isLegalName(newFilename))
             return CompletableFuture.completedFuture(parent);
@@ -1140,7 +1141,9 @@ public class FileWrapper {
                             (s, committer) -> nodeToUpdate.updateProperties(s, committer, us,
                                     entryWriter, newProps, userContext.network))
                             .thenApply(newVersion -> parent.withVersion(newVersion));
-                });
+                }).thenCompose(f -> userContext.sharedWithCache
+                        .rename(ourPath, ourPath.getParent().resolve(newFilename))
+                        .thenApply(b -> f));
     }
 
     public CompletableFuture<Boolean> setProperties(FileProperties updatedProperties,

@@ -430,7 +430,7 @@ public abstract class UserTests {
         //rename
         String newname = "newname.txt";
         FileWrapper updatedRoot5 = updatedRoot4.getDescendentByPath(otherName, crypto.hasher, context.network).get().get()
-                .rename(newname, updatedRoot4, context).get();
+                .rename(newname, updatedRoot4, Paths.get(username, otherName), context).get();
         checkFileContents(data3, updatedRoot5.getDescendentByPath(newname, crypto.hasher, context.network).get().get(), context);
         // check from the root as well
         checkFileContents(data3, context.getByPath(username + "/" + newname).get().get(), context);
@@ -478,9 +478,9 @@ public abstract class UserTests {
         //rename
         String newname = "newname.txt";
         FileWrapper parent = context.getUserRoot().get();
-        FileWrapper file = context.getByPath(parent.getName() + "/" + filename).get().get();
+        FileWrapper file = context.getByPath(username + "/" + filename).get().get();
 
-        file.rename(newname, parent, context).get();
+        file.rename(newname, parent, Paths.get(username, filename), context).get();
 
         FileWrapper updatedRoot = context.getUserRoot().get();
         FileWrapper updatedFile = context.getByPath(updatedRoot.getName() + "/" + newname).get().get();
@@ -1091,7 +1091,7 @@ public abstract class UserTests {
         String path = "/" + username + "/" + dirName;
         FileWrapper theDir = context.getByPath(path).get().get();
         FileWrapper userRoot2 = context.getByPath("/" + username).get().get();
-        FileWrapper renamed = theDir.rename("subdir2", userRoot2, context).get();
+        FileWrapper renamed = theDir.rename("subdir2", userRoot2, Paths.get(username, dirName), context).get();
     }
 
     // This one takes a while, so disable most of the time

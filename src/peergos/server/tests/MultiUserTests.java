@@ -445,7 +445,7 @@ public class MultiUserTests {
         Assert.assertTrue("file shared", ! sharedAccessWithBefore.isEmpty());
 
         String newFilename = "newfilename.txt";
-        theFile.rename(newFilename, parentFolder, u1).get();
+        theFile.rename(newFilename, parentFolder, filePath, u1).get();
 
         filePath = Paths.get(u1.username, subdirName, newFilename);
 
@@ -500,7 +500,7 @@ public class MultiUserTests {
         Assert.assertTrue("directory shared", ! sharedAccessWithBefore.isEmpty());
 
         String newDirectoryName = "newDir";
-        theDir.rename(newDirectoryName, parentFolder, u1).get();
+        theDir.rename(newDirectoryName, parentFolder, filePath, u1).get();
 
         filePath = Paths.get(u1.username, newDirectoryName);
 
@@ -819,7 +819,7 @@ public class MultiUserTests {
 
         String newname = "newname.txt";
         FileWrapper updatedParent = u1.getByPath(originalPath).get().get()
-                .rename(newname, u1.getUserRoot().get(), u1).get();
+                .rename(newname, u1.getUserRoot().get(), Paths.get(originalPath), u1).get();
         Path newPath = Paths.get(u1.username, newname);
         AbsoluteCapability newCap = u1.getByPath(newPath).join().get().getPointer().capability;
 

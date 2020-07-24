@@ -221,6 +221,18 @@ public class SharedWithCache {
         });
     }
 
+    public CompletableFuture<Boolean> rename(Path initial, Path after) {
+        if (! initial.getParent().equals(after.getParent()))
+            throw new IllegalStateException("Not a valid rename!");
+        String initialFilename = initial.toFile().getName();
+        String newFilename = after.toFile().getName();
+        return getSharedWith(initial)
+                .thenCompose(sharees -> applyAndCommit(after, current ->
+                        current.add(Access.READ, newFilename, sharees.readAccess)
+                                .add(Access.WRITE, newFilename, sharees.writeAccess)
+                                .clear(initialFilename)));
+    }
+
     public CompletableFuture<Boolean> addSharedWith(Access access, Path p, Set<String> names) {
         return applyAndCommit(p, current -> current.add(access, p.toFile().getName(), names));
     }

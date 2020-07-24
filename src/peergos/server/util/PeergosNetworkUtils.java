@@ -217,7 +217,8 @@ public class PeergosNetworkUtils {
             checkFileContents(originalFileContents, sharedFile.get(), userContext);
             // check the other user can't rename the file
             FileWrapper parent = userContext.getByPath(sharerUser.username).get().get();
-            CompletableFuture<FileWrapper> rename = sharedFile.get().rename("Somenew name.dat", parent, userContext);
+            CompletableFuture<FileWrapper> rename = sharedFile.get()
+                    .rename("Somenew name.dat", parent, Paths.get(filePath), userContext);
             assertTrue("Cannot rename", rename.isCompletedExceptionally());
         }
 
