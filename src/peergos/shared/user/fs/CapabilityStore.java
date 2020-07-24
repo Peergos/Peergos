@@ -24,7 +24,7 @@ import java.util.stream.*;
  * Each of these cache files is just a serialized CapabilitiesFromUser
  */
 public class CapabilityStore {
-    private static final String CAPABILITY_CACHE_DIR = ".capabilitycache";
+    public static final String CAPABILITY_CACHE_DIR = ".capabilitycache";
     private static final String READ_SHARING_FILE_NAME = "sharing.r";
     private static final String EDIT_SHARING_FILE_NAME = "sharing.w";
 

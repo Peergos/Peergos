@@ -418,11 +418,6 @@ public class FileWrapper {
         return linkPointer.isPresent();
     }
 
-    @JsMethod
-    public boolean isShared(UserContext context) {
-        return context.sharedWithCache.isShared(pointer.capability);
-    }
-
     public boolean isDirty() {
         ensureUnmodified();
         return pointer.fileAccess.isDirty(pointer.capability.rBaseKey);
@@ -585,8 +580,16 @@ public class FileWrapper {
                                                           NetworkAccess network,
                                                           Crypto crypto,
                                                           ProgressConsumer<Long> monitor) {
-        long size = getSize();
         long newSize = LongUtil.intsToLong(endHigh, endLow);
+        return overwriteFile(fileData, newSize, network, crypto, monitor);
+    }
+
+    public CompletableFuture<FileWrapper> overwriteFile(AsyncReader fileData,
+                                                        long newSize,
+                                                        NetworkAccess network,
+                                                        Crypto crypto,
+                                                        ProgressConsumer<Long> monitor) {
+        long size = getSize();
         return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
                 (s, committer) -> clean(s, committer, network, crypto)
                     .thenCompose(u -> u.left.overwriteSection(u.right, committer, fileData,
@@ -1096,23 +1099,15 @@ public class FileWrapper {
         });
     }
 
-    @JsMethod
-    public CompletableFuture<FileWrapper> rename(String newFilename,
-                                                 FileWrapper parent,
-                                                 UserContext context) {
-        return rename(newFilename, parent, false, context);
-    }
-
     /**
      * @param newFilename
      * @param parent
-     * @param overwrite
      * @param userContext
      * @return the updated parent
      */
+    @JsMethod
     public CompletableFuture<FileWrapper> rename(String newFilename,
                                                  FileWrapper parent,
-                                                 boolean overwrite,
                                                  UserContext userContext) {
         if (! isLegalName(newFilename))
             return CompletableFuture.completedFuture(parent);
@@ -1126,31 +1121,25 @@ public class FileWrapper {
         setModified();
         return childExists
                 .thenCompose(existing -> {
-                    if (existing.isPresent() && !overwrite)
+                    if (existing.isPresent())
                         throw new IllegalStateException("Cannot rename, child already exists with name: " + newFilename);
 
-                    return ((overwrite && existing.isPresent()) ?
-                            existing.get().remove(parent, userContext) :
-                            CompletableFuture.completedFuture(parent)
-                    ).thenCompose(res -> {
+                    //get current props
+                    RetrievedCapability ourPointer = linkPointer.orElse(pointer);
+                    WritableAbsoluteCapability us = (WritableAbsoluteCapability) ourPointer.capability;
+                    CryptreeNode nodeToUpdate = ourPointer.fileAccess;
 
-                        //get current props
-                        RetrievedCapability ourPointer = linkPointer.orElse(pointer);
-                        WritableAbsoluteCapability us = (WritableAbsoluteCapability) ourPointer.capability;
-                        CryptreeNode nodeToUpdate = ourPointer.fileAccess;
-
-                        boolean isDir = this.isDirectory();
-                        boolean isLink = ourPointer.getProperties().isLink;
-                        FileProperties newProps = new FileProperties(newFilename, isDir, isLink,
-                                currentProps.mimeType, currentProps.size,
-                                currentProps.modified, currentProps.isHidden,
-                                currentProps.thumbnail, currentProps.streamSecret);
-                        SigningPrivateKeyAndPublicHash signer = isLink ? parent.signingPair() : signingPair();
-                        return userContext.network.synchronizer.applyComplexUpdate(owner(), signer,
-                                (s, committer) -> nodeToUpdate.updateProperties(s, committer, us,
-                                            entryWriter, newProps, userContext.network))
-                                .thenApply(newVersion -> res.withVersion(newVersion));
-                    });
+                    boolean isDir = this.isDirectory();
+                    boolean isLink = ourPointer.getProperties().isLink;
+                    FileProperties newProps = new FileProperties(newFilename, isDir, isLink,
+                            currentProps.mimeType, currentProps.size,
+                            currentProps.modified, currentProps.isHidden,
+                            currentProps.thumbnail, currentProps.streamSecret);
+                    SigningPrivateKeyAndPublicHash signer = isLink ? parent.signingPair() : signingPair();
+                    return userContext.network.synchronizer.applyComplexUpdate(owner(), signer,
+                            (s, committer) -> nodeToUpdate.updateProperties(s, committer, us,
+                                    entryWriter, newProps, userContext.network))
+                            .thenApply(newVersion -> parent.withVersion(newVersion));
                 });
     }
 
@@ -1212,9 +1201,9 @@ public class FileWrapper {
     }
 
     @JsMethod
-    public CompletableFuture<Boolean> moveTo(FileWrapper target, FileWrapper parent, UserContext context) {
+    public CompletableFuture<Boolean> moveTo(FileWrapper target, FileWrapper parent, Path ourPath, UserContext context) {
         return copyTo(target, context)
-                .thenCompose(fw -> remove(parent, context))
+                .thenCompose(fw -> remove(parent, ourPath, context))
                 .thenApply(newAccess -> true);
     }
 
@@ -1428,7 +1417,7 @@ public class FileWrapper {
      * @return updated parent
      */
     @JsMethod
-    public CompletableFuture<FileWrapper> remove(FileWrapper parent, UserContext userContext) {
+    public CompletableFuture<FileWrapper> remove(FileWrapper parent, Path ourPath, UserContext userContext) {
         NetworkAccess network = userContext.network;
         Hasher hasher = userContext.crypto.hasher;
         ensureUnmodified();
@@ -1446,10 +1435,9 @@ public class FileWrapper {
                                         writableParent ?
                                                 parent.signingPair() :
                                                 signingPair(), tid, hasher, network, version, committer), network.dhtClient))
-                        .thenApply(b -> {
-                            userContext.sharedWithCache.clearSharedWith(pointer.capability);
-                            return updatedParent;
-                        }));
+                                .thenCompose(b -> userContext.sharedWithCache.clearSharedWith(ourPath))
+                                .thenApply(b -> updatedParent)
+                );
     }
 
     public static CompletableFuture<Snapshot> removeSigningKey(PublicKeyHash signerToRemove,

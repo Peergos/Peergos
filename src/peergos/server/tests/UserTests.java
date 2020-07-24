@@ -1064,9 +1064,10 @@ public abstract class UserTests {
 
         String subfoldername = "subfolder";
         folder = folder.mkdir(subfoldername, context.network, false, crypto).join();
-        FileWrapper subfolder = context.getByPath(home.resolve(foldername).resolve(subfoldername)).join().get();
+        Path subfolderPath = Paths.get(username, foldername, subfoldername);
+        FileWrapper subfolder = context.getByPath(subfolderPath).join().get();
 
-        folder.remove(context.getUserRoot().join(), context).join();
+        folder.remove(context.getUserRoot().join(), subfolderPath, context).join();
 
         AbsoluteCapability pointer = subfolder.getPointer().capability;
         CommittedWriterData cwd = network.synchronizer.getValue(pointer.owner, pointer.writer).join().get(pointer.writer);
@@ -1227,7 +1228,7 @@ public abstract class UserTests {
         assertTrue("retrieved same data", dataEquals);
 
         //delete the file
-        fileWrapper.remove(updatedRoot2, context).get();
+        fileWrapper.remove(updatedRoot2, Paths.get(username, name), context).get();
 
         //re-create user-context
         UserContext context2 = PeergosNetworkUtils.ensureSignedUp(username, password, network.clear(), crypto);
@@ -1383,7 +1384,7 @@ public abstract class UserTests {
                 ! toParent.writer.isPresent());
 
         //remove the directory
-        directory.remove(updatedUserRoot, context).get();
+        directory.remove(updatedUserRoot, Paths.get(username, folderName), context).get();
 
         //ensure folder directory not  present
         boolean isPresent = context.getUserRoot().get().getChildren(crypto.hasher, context.network)
