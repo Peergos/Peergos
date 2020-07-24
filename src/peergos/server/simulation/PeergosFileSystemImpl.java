@@ -3,7 +3,6 @@ package peergos.server.simulation;
 import peergos.shared.social.FollowRequestWithCipherText;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
-import peergos.shared.util.Pair;
 import peergos.shared.util.ProgressConsumer;
 import peergos.shared.util.Serialize;
 
@@ -166,7 +165,7 @@ public class PeergosFileSystemImpl implements FileSystem {
 
     @Override
     public List<String> getSharees(Path path, Permission permission) {
-        SharedWithCache.FileSharedWithState sharing = userContext.sharedWith(path, getPath(path)).join();
+        FileSharedWithState sharing = userContext.sharedWith(path, getPath(path)).join();
         switch (permission) {
             case READ:
                 return new ArrayList<>(sharing.readAccess);

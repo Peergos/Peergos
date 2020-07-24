@@ -13,7 +13,6 @@ import peergos.shared.user.fs.*;
 import peergos.shared.user.fs.FileWrapper;
 import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.ArrayOps;
-import peergos.shared.util.Pair;
 import peergos.shared.util.Serialize;
 
 import java.io.File;
@@ -400,7 +399,7 @@ public class PeergosNetworkUtils {
         System.out.println("PATH "+ path);
         FileWrapper file = sharer.getByPath(path).join().get();
 
-        SharedWithCache.FileSharedWithState result = sharer.sharedWith(p, file).join();
+        FileSharedWithState result = sharer.sharedWith(p, file).join();
         Assert.assertTrue(result.readAccess.size() == 0 && result.writeAccess.size() == 0);
 
 

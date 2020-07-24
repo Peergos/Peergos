@@ -1,6 +1,5 @@
 package peergos.shared.user;
 
-import jsinterop.annotations.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.user.fs.*;
@@ -20,158 +19,8 @@ public class SharedWithCache {
     private static final String CACHE_BASE_NAME = "outbound";
     private static final Path CACHE_BASE = Paths.get(CapabilityStore.CAPABILITY_CACHE_DIR, CACHE_BASE_NAME);
 
-    public static class FileSharedWithState {
-        public static final FileSharedWithState EMPTY = new FileSharedWithState(Collections.emptySet(), Collections.emptySet());
-        public final Set<String> readAccess, writeAccess;
-
-        public FileSharedWithState(Set<String> readAccess, Set<String> writeAccess) {
-            this.readAccess = readAccess;
-            this.writeAccess = writeAccess;
-        }
-
-        public Set<String> get(Access type) {
-            if (type == Access.READ)
-                return readAccess;
-            return writeAccess;
-        }
-    }
-
-    /** Holds the sharing state for all the children of a directory
-     *
-     */
-    public static class SharedWithState implements Cborable {
-        public static final SharedWithState EMPTY = new SharedWithState(Collections.emptyMap(), Collections.emptyMap());
-        private final Map<String, Set<String>> readShares;
-        private final Map<String, Set<String>> writeShares;
-
-        public SharedWithState(Map<String, Set<String>> readShares, Map<String, Set<String>> writeShares) {
-            this.readShares = readShares;
-            this.writeShares = writeShares;
-        }
-
-        public static SharedWithState empty() {
-            return new SharedWithState(new HashMap<>(), new HashMap<>());
-        }
-
-        public FileSharedWithState get(String filename) {
-            return new FileSharedWithState(
-                    readShares.getOrDefault(filename, Collections.emptySet()),
-                    writeShares.getOrDefault(filename, Collections.emptySet()));
-        }
-
-        public Optional<SharedWithState> filter(String childName) {
-            if (! readShares.containsKey(childName) && ! writeShares.containsKey(childName))
-                return Optional.empty();
-            Map<String, Set<String>> newReads = new HashMap<>();
-            for (Map.Entry<String, Set<String>> e : readShares.entrySet()) {
-                if (e.getKey().equals(childName))
-                    newReads.put(e.getKey(), new HashSet<>(e.getValue()));
-            }
-            Map<String, Set<String>> newWrites = new HashMap<>();
-            for (Map.Entry<String, Set<String>> e : writeShares.entrySet()) {
-                if (e.getKey().equals(childName))
-                    newWrites.put(e.getKey(), new HashSet<>(e.getValue()));
-            }
-
-            return Optional.of(new SharedWithState(newReads, newWrites));
-        }
-
-        public SharedWithState add(Access access, String filename, Set<String> names) {
-            Map<String, Set<String>> newReads = new HashMap<>();
-            for (Map.Entry<String, Set<String>> e : readShares.entrySet()) {
-                newReads.put(e.getKey(), new HashSet<>(e.getValue()));
-            }
-            Map<String, Set<String>> newWrites = new HashMap<>();
-            for (Map.Entry<String, Set<String>> e : writeShares.entrySet()) {
-                newWrites.put(e.getKey(), new HashSet<>(e.getValue()));
-            }
-
-            if (access == Access.READ) {
-                newReads.putIfAbsent(filename, new HashSet<>());
-                newReads.get(filename).addAll(names);
-            } else if (access == Access.WRITE) {
-                newWrites.putIfAbsent(filename, new HashSet<>());
-                newWrites.get(filename).addAll(names);
-            }
-
-            return new SharedWithState(newReads, newWrites);
-        }
-
-        public SharedWithState remove(Access access, String filename, Set<String> names) {
-            Map<String, Set<String>> newReads = new HashMap<>();
-            for (Map.Entry<String, Set<String>> e : readShares.entrySet()) {
-                newReads.put(e.getKey(), new HashSet<>(e.getValue()));
-            }
-            Map<String, Set<String>> newWrites = new HashMap<>();
-            for (Map.Entry<String, Set<String>> e : writeShares.entrySet()) {
-                newWrites.put(e.getKey(), new HashSet<>(e.getValue()));
-            }
-
-            Set<String> val = access == Access.READ ? newReads.get(filename) : newWrites.get(filename);
-            if (val != null)
-                val.removeAll(names);
-
-            return new SharedWithState(newReads, newWrites);
-        }
-
-        public SharedWithState clear(String filename) {
-            Map<String, Set<String>> newReads = new HashMap<>();
-            for (Map.Entry<String, Set<String>> e : readShares.entrySet()) {
-                newReads.put(e.getKey(), new HashSet<>(e.getValue()));
-            }
-            Map<String, Set<String>> newWrites = new HashMap<>();
-            for (Map.Entry<String, Set<String>> e : writeShares.entrySet()) {
-                newWrites.put(e.getKey(), new HashSet<>(e.getValue()));
-            }
-
-            newReads.remove(filename);
-            newWrites.remove(filename);
-
-            return new SharedWithState(newReads, newWrites);
-        }
-
-        @JsMethod
-        public boolean isShared(String filename) {
-            return readShares.containsKey(filename) || writeShares.containsKey(filename);
-        }
-
-        @Override
-        public CborObject toCbor() {
-            SortedMap<String, Cborable> state = new TreeMap<>();
-            SortedMap<String, Cborable> readState = new TreeMap<>();
-            for (Map.Entry<String, Set<String>> e : readShares.entrySet()) {
-                readState.put(e.getKey(), new CborObject.CborList(e.getValue().stream().map(CborObject.CborString::new).collect(Collectors.toList())));
-            }
-            SortedMap<String, Cborable> writeState = new TreeMap<>();
-            for (Map.Entry<String, Set<String>> e : writeShares.entrySet()) {
-                writeState.put(e.getKey(), new CborObject.CborList(e.getValue().stream().map(CborObject.CborString::new).collect(Collectors.toList())));
-            }
-
-            state.put("r", CborObject.CborMap.build(readState));
-            state.put("w", CborObject.CborMap.build(writeState));
-            return CborObject.CborMap.build(state);
-        }
-
-        public static SharedWithState fromCbor(Cborable cbor) {
-            if (! (cbor instanceof CborObject.CborMap))
-                throw new IllegalStateException("Invalid cbor for SharedWithState!");
-            CborObject.CborMap m = (CborObject.CborMap) cbor;
-            CborObject.CborMap r = m.get("r", c -> (CborObject.CborMap) c);
-            Function<Cborable, String> getString = c -> ((CborObject.CborString) c).value;
-            Map<String, Set<String>> readShares = r.getMap(
-                    getString,
-                    c -> new HashSet<>(((CborObject.CborList)c).map(getString)));
-
-            CborObject.CborMap w = m.get("w", c -> (CborObject.CborMap) c);
-            Map<String, Set<String>> writehares = w.getMap(
-                    getString,
-                    c -> new HashSet<>(((CborObject.CborList)c).map(getString)));
-
-            return new SharedWithState(readShares, writehares);
-        }
-    }
-
     private final Function<Path, CompletableFuture<Optional<FileWrapper>>> retriever;
+    private final Path cacheBase;
     private final String ourname;
     private final NetworkAccess network;
     private final Crypto crypto;
@@ -181,6 +30,7 @@ public class SharedWithCache {
                            NetworkAccess network,
                            Crypto crypto) {
         this.retriever = retriever;
+        this.cacheBase = Paths.get(ourname).resolve(CACHE_BASE);
         this.ourname = ourname;
         this.network = network;
         this.crypto = crypto;
@@ -195,7 +45,7 @@ public class SharedWithCache {
     }
 
     private CompletableFuture<Optional<Pair<FileWrapper, SharedWithState>>> retrieveWithFile(Path dir) {
-        return retriever.apply(CACHE_BASE.resolve(dir).resolve(DIR_CACHE_FILENAME))
+        return retriever.apply(cacheBase.resolve(dir).resolve(DIR_CACHE_FILENAME))
                 .thenCompose(opt -> opt.isEmpty() ?
                         Futures.of(Optional.empty()) :
                         parseCacheFile(opt.get())
@@ -231,7 +81,7 @@ public class SharedWithCache {
     }
 
     private CompletableFuture<Pair<FileWrapper, SharedWithState>> retrieveWithFileOrCreate(Path dir) {
-        return retriever.apply(CACHE_BASE)
+        return retriever.apply(cacheBase)
                 .thenCompose(opt -> opt.isEmpty() ?
                         initializeCache() :
                         Futures.of(opt.get())
@@ -262,7 +112,7 @@ public class SharedWithCache {
     }
 
     public CompletableFuture<Map<Path, SharedWithState>> getAllDescendantShares(Path start) {
-        return retriever.apply(CACHE_BASE.resolve(start.getParent()))
+        return retriever.apply(cacheBase.resolve(start.getParent()))
                 .thenCompose(opt -> {
                     if (opt.isEmpty())
                         return Futures.of(Collections.emptyMap());
@@ -308,7 +158,7 @@ public class SharedWithCache {
     public CompletableFuture<Map<Path, Set<String>>> getAllReadShares(Path start) {
         return getAllDescendantShares(start)
                 .thenApply(m -> m.entrySet().stream()
-                        .flatMap(e -> e.getValue().readShares.entrySet()
+                        .flatMap(e -> e.getValue().readShares().entrySet()
                                 .stream()
                                 .map(e2 -> new Pair<>(e.getKey().resolve(e2.getKey()), e2.getValue())))
                         .collect(Collectors.toMap(p -> p.left, p -> p.right)));
@@ -317,7 +167,7 @@ public class SharedWithCache {
     public CompletableFuture<Map<Path, Set<String>>> getAllWriteShares(Path start) {
         return getAllDescendantShares(start)
                 .thenApply(m -> m.entrySet().stream()
-                        .flatMap(e -> e.getValue().writeShares.entrySet()
+                        .flatMap(e -> e.getValue().writeShares().entrySet()
                                 .stream()
                                 .map(e2 -> new Pair<>(e.getKey().resolve(e2.getKey()), e2.getValue())))
                         .collect(Collectors.toMap(p -> p.left, p -> p.right)));
