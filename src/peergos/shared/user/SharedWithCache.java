@@ -180,7 +180,7 @@ public class SharedWithCache {
         }
         return f.getChildren(crypto.hasher, network)
                 .thenCompose(children -> Futures.combineAll(children.stream()
-                        .map(c -> getAllDescendantSharesRecurse(c, toUs))
+                        .map(c -> getAllDescendantSharesRecurse(c, toUs.resolve(c.getName())))
                         .collect(Collectors.toList())))
                 .thenApply(s -> s.stream()
                         .flatMap(m -> m.entrySet().stream())

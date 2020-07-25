@@ -1200,7 +1200,6 @@ public class UserContext {
             return getByPath(path.getParent().toString())
                     .thenCompose(parentOpt -> {
                         FileWrapper parent = parentOpt.get();
-                        AbsoluteCapability originalCap = toUnshare.getPointer().capability;
                         return rotateAllKeys(toUnshare, parent, true)
                                 .thenCompose(x ->
                                         sharedWithCache.removeSharedWith(SharedWithCache.Access.WRITE,
@@ -1304,7 +1303,7 @@ public class UserContext {
             return getByPath(path.getParent().toString())
                     .thenCompose(parent -> rotateAllKeys(toUnshare, parent.get(), false)
                             .thenCompose(markedDirty -> {
-                                AbsoluteCapability originalCap = toUnshare.getPointer().capability;
+                                AbsoluteCapability originalCap = toUnshare.getPointer().capability;//todo delete
                                 return sharedWithCache.removeSharedWith(SharedWithCache.Access.READ, path, readersToRemove)
                                         .thenCompose(b -> reSendAllWriteAccessRecursive(path))
                                         .thenCompose(b -> reSendAllReadAccessRecursive(path));
