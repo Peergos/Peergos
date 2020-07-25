@@ -1303,7 +1303,6 @@ public class UserContext {
             return getByPath(path.getParent().toString())
                     .thenCompose(parent -> rotateAllKeys(toUnshare, parent.get(), false)
                             .thenCompose(markedDirty -> {
-                                AbsoluteCapability originalCap = toUnshare.getPointer().capability;//todo delete
                                 return sharedWithCache.removeSharedWith(SharedWithCache.Access.READ, path, readersToRemove)
                                         .thenCompose(b -> reSendAllWriteAccessRecursive(path))
                                         .thenCompose(b -> reSendAllReadAccessRecursive(path));
