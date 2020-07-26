@@ -1311,7 +1311,7 @@ public class UserContext {
     }
 
     @JsMethod
-    public CompletableFuture<FileSharedWithState> sharedWith(Path p, FileWrapper file) {
+    public CompletableFuture<FileSharedWithState> sharedWith(Path p) {
         return sharedWithCache.getSharedWith(p);
     }
 

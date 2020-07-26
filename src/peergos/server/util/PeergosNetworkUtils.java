@@ -392,45 +392,39 @@ public class PeergosNetworkUtils {
         String folderName = "afolder";
         u1Root.mkdir(folderName, sharer.network, SymmetricKey.random(), false, crypto).get();
         Path p = Paths.get(sharerUsername, folderName);
-        FileWrapper file = sharer.getByPath(p).join().get();
 
-        FileSharedWithState result = sharer.sharedWith(p, file).join();
+        FileSharedWithState result = sharer.sharedWith(p).join();
         Assert.assertTrue(result.readAccess.size() == 0 && result.writeAccess.size() == 0);
 
         sharer.shareReadAccessWith(p, Collections.singleton(sharee.username)).join();
-        result = sharer.sharedWith(p, file).join();
+        result = sharer.sharedWith(p).join();
         Assert.assertTrue(result.readAccess.size() == 1);
 
         sharer.shareWriteAccessWith(p, Collections.singleton(sharee2.username)).join();
 
-        file = sharer.getByPath(p).join().get();
-        result = sharer.sharedWith(p, file).join();
+        result = sharer.sharedWith(p).join();
         Assert.assertTrue(result.readAccess.size() == 1 && result.writeAccess.size() == 1);
 
         sharer.unShareReadAccess(p, Set.of(sharee.username)).join();
-        file = sharer.getByPath(p).join().get();
-        result = sharer.sharedWith(p, file).join();
+        result = sharer.sharedWith(p).join();
         Assert.assertTrue(result.readAccess.size() == 0 && result.writeAccess.size() == 1);
 
         sharer.unShareWriteAccess(p, Set.of(sharee2.username)).join();
-        file = sharer.getByPath(p).join().get();
-        result = sharer.sharedWith(p, file).join();
+        result = sharer.sharedWith(p).join();
         Assert.assertTrue(result.readAccess.size() == 0 && result.writeAccess.size() == 0);
 
         // now try again, but after adding read, write sharees, remove the write sharee
         sharer.shareReadAccessWith(p, Collections.singleton(sharee.username)).join();
-        result = sharer.sharedWith(p, file).join();
+        result = sharer.sharedWith(p).join();
         Assert.assertTrue(result.readAccess.size() == 1);
 
         sharer.shareWriteAccessWith(p, Collections.singleton(sharee2.username)).join();
 
-        file = sharer.getByPath(p).join().get();
-        result = sharer.sharedWith(p, file).join();
+        result = sharer.sharedWith(p).join();
         Assert.assertTrue(result.readAccess.size() == 1 && result.writeAccess.size() == 1);
 
         sharer.unShareWriteAccess(p, Set.of(sharee2.username)).join();
-        file = sharer.getByPath(p).join().get();
-        result = sharer.sharedWith(p, file).join();
+        result = sharer.sharedWith(p).join();
         Assert.assertTrue(result.readAccess.size() == 1 && result.writeAccess.size() == 0);
 
     }

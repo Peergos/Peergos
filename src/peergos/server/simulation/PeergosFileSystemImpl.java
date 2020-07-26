@@ -165,7 +165,7 @@ public class PeergosFileSystemImpl implements FileSystem {
 
     @Override
     public List<String> getSharees(Path path, Permission permission) {
-        FileSharedWithState sharing = userContext.sharedWith(path, getPath(path)).join();
+        FileSharedWithState sharing = userContext.sharedWith(path).join();
         switch (permission) {
             case READ:
                 return new ArrayList<>(sharing.readAccess);
