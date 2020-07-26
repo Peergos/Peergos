@@ -484,7 +484,7 @@ public class FileWrapper {
 
         return initialVersion.withWriter(owner(), writer(), network)
                 .thenCompose(snapshot -> getMapKey(newSize, network, crypto).thenCompose(endMapKey ->
-                        getInputStream(version.get(writer()).props, network, crypto, props.size, x -> {}).thenCompose(originalReader -> {
+                        getInputStream(snapshot.get(writer()).props, network, crypto, props.size, x -> {}).thenCompose(originalReader -> {
                             long startOfLastChunk = newSize - (newSize % Chunk.MAX_SIZE);
                             return originalReader.seek(startOfLastChunk).thenCompose(seekedOriginal -> {
                                 byte[] lastChunk = new byte[(int)(newSize % Chunk.MAX_SIZE)];
@@ -592,10 +592,12 @@ public class FileWrapper {
         long size = getSize();
         return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
                 (s, committer) -> clean(s, committer, network, crypto)
-                    .thenCompose(u -> u.left.overwriteSection(u.right, committer, fileData,
-                            0L, newSize, network, crypto, monitor))
-                    .thenCompose(v -> newSize >= size ? Futures.of(v) :
-                        getUpdated(v, network).thenCompose(f -> f.truncate(v, committer, newSize, network, crypto)))
+                        .thenCompose(u -> u.left.overwriteSection(u.right, committer, fileData,
+                                0L, newSize, network, crypto, monitor))
+                        .thenCompose(v -> newSize >= size ?
+                                Futures.of(v) :
+                                getUpdated(v, network)
+                                        .thenCompose(f -> f.truncate(v, committer, newSize, network, crypto)))
         ).thenCompose(v -> getUpdated(v, network));
     }
 
