@@ -1428,7 +1428,7 @@ public class UserContext {
                                                         Set<String> writersToAdd) {
         if (parent.writer().equals(file.writer()))
             return Futures.errored(
-                    new IllegalStateException("A file must have different writer than it's parent to grant write access!"));
+                    new IllegalStateException("A file must have different writer than its parent to grant write access!"));
         BiFunction<FileWrapper, FileWrapper, CompletableFuture<Boolean>> sharingFunction =
                 (sharedDir, fileToShare) -> CapabilityStore.addEditSharingLinkTo(sharedDir,
                         file.writableFilePointer(), network, crypto)
