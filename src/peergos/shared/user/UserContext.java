@@ -266,6 +266,8 @@ public class UserContext {
                                         })
                                         .thenCompose(globalRoot -> createSpecialDirectory(globalRoot, username,
                                                 TRANSACTIONS_DIR_NAME, network, crypto))
+                                        .thenCompose(globalRoot -> createSpecialDirectory(globalRoot, username,
+                                                CapabilityStore.CAPABILITY_CACHE_DIR, network, crypto))
                                         .thenCompose(y -> signIn(username, userWithRoot, network, crypto, progressCallback));
                             }));
                 }).thenCompose(context -> network.coreNode.getUsernames(PEERGOS_USERNAME)
@@ -1668,25 +1670,24 @@ public class UserContext {
                                                        String ourName,
                                                        NetworkAccess network,
                                                        Crypto crypto) {
+        String cacheDirPath = Paths.get(ourName, CapabilityStore.CAPABILITY_CACHE_DIR).toString();
         // need to to retrieve all the entry points of our friends
         return time(() -> getFriendsEntryPoints(), "Get friend's entry points")
-                .thenCompose(friendEntries -> {
-                    List<EntryPoint> friendsOnly = friendEntries.stream()
-                            .filter(e -> !e.ownerName.equals(ourName))
-                            .collect(Collectors.toList());
-                    Supplier<CompletableFuture<FileWrapper>> cacheDirSupplier =
-                            () -> ourRoot.getByPath(Paths.get(ourName).toString(), crypto.hasher, network)
-                                    .thenApply(opt -> opt.get());
+                .thenCompose(friendEntries -> ourRoot.getByPath(cacheDirPath, crypto.hasher, network)
+                        .thenCompose(copt -> {
+                            List<EntryPoint> friendsOnly = friendEntries.stream()
+                                    .filter(e -> !e.ownerName.equals(ourName))
+                                    .collect(Collectors.toList());
 
-                    List<CompletableFuture<Optional<FriendSourcedTrieNode>>> friendNodes = friendsOnly.stream()
-                            .parallel()
-                            .map(e -> FriendSourcedTrieNode.build(cacheDirSupplier, e, network, crypto))
-                            .collect(Collectors.toList());
-                    return Futures.reduceAll(friendNodes, ourRoot,
-                            (t, e) -> e.thenApply(fromUser -> fromUser.map(userEntrie -> t.putNode(userEntrie.ownerName, userEntrie))
-                                    .orElse(t)).exceptionally(ex -> t),
-                            (a, b) -> a);
-                })
+                            List<CompletableFuture<Optional<FriendSourcedTrieNode>>> friendNodes = friendsOnly.stream()
+                                    .parallel()
+                                    .map(e -> FriendSourcedTrieNode.build(copt.get(), e, network, crypto))
+                                    .collect(Collectors.toList());
+                            return Futures.reduceAll(friendNodes, ourRoot,
+                                    (t, e) -> e.thenApply(fromUser -> fromUser.map(userEntrie -> t.putNode(userEntrie.ownerName, userEntrie))
+                                            .orElse(t)).exceptionally(ex -> t),
+                                    (a, b) -> a);
+                        }))
                 .exceptionally(Futures::logAndThrow);
     }
 
@@ -1744,9 +1745,9 @@ public class UserContext {
             if (username.endsWith(ourName)) // This is a sharing directory of ours for a friend
                 return CompletableFuture.completedFuture(root);
             // This is a friend's sharing directory, create a wrapper to read the capabilities lazily from it
-            Supplier<CompletableFuture<FileWrapper>> cacheDirSupplier =
-                    () -> root.getByPath(Paths.get(ourName).toString(), crypto.hasher, network).thenApply(opt -> opt.get());
-            return FriendSourcedTrieNode.build(cacheDirSupplier, fileCap, network, crypto)
+            return root.getByPath(Paths.get(ourName, CapabilityStore.CAPABILITY_CACHE_DIR).toString(), crypto.hasher, network)
+                    .thenApply(opt -> opt.get())
+                    .thenCompose(cacheDir -> FriendSourcedTrieNode.build(cacheDir, fileCap, network, crypto))
                     .thenApply(fromUser -> fromUser.map(userEntrie -> root.putNode(username, userEntrie)).orElse(root));
         });
     }

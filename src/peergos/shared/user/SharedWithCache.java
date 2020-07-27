@@ -62,26 +62,27 @@ public class SharedWithCache {
         Supplier<CompletableFuture<FileWrapper>> homeDirSupplier =
                 () -> retriever.apply(Paths.get("/" + ourname))
                         .thenApply(Optional::get);
-        return retriever.apply(Paths.get("/" + ourname + "/" + UserContext.SHARED_DIR_NAME))
-                .thenCompose(shared -> shared.get().getChildren(crypto.hasher, network))
-                .thenCompose(children ->
-                        Futures.reduceAll(children,
-                                true,
-                                (x, friendDirectory) -> {
-                                    return CapabilityStore.loadReadOnlyLinks(homeDirSupplier, friendDirectory,
-                                            ourname, network, crypto, false, false)
-                                            .thenCompose(readCaps -> {
-                                                readCaps.getRetrievedCapabilities().stream()
-                                                        .forEach(rc -> addSharedWith(Access.READ, Paths.get(rc.path), Collections.singleton(friendDirectory.getName())));
-                                                return CapabilityStore.loadWriteableLinks(homeDirSupplier, friendDirectory,
-                                                        ourname, network, crypto, false, false)
-                                                        .thenApply(writeCaps -> {
-                                                            writeCaps.getRetrievedCapabilities().stream()
-                                                                    .forEach(rc -> addSharedWith(Access.WRITE, Paths.get(rc.path), Collections.singleton(friendDirectory.getName())));
-                                                            return true;
-                                                        });
-                                            });
-                                }, (a, b) -> a && b));
+        return retriever.apply(Paths.get(ourname, CapabilityStore.CAPABILITY_CACHE_DIR))
+                .thenCompose(cacheDirOpt -> retriever.apply(Paths.get("/" + ourname + "/" + UserContext.SHARED_DIR_NAME))
+                        .thenCompose(shared -> shared.get().getChildren(crypto.hasher, network))
+                        .thenCompose(children ->
+                                Futures.reduceAll(children,
+                                        true,
+                                        (x, friendDirectory) -> {
+                                            return CapabilityStore.loadReadOnlyLinks(cacheDirOpt.get(), friendDirectory,
+                                                    ourname, network, crypto, false, false)
+                                                    .thenCompose(readCaps -> {
+                                                        readCaps.getRetrievedCapabilities().stream()
+                                                                .forEach(rc -> addSharedWith(Access.READ, Paths.get(rc.path), Set.of(friendDirectory.getName())));
+                                                        return CapabilityStore.loadWriteableLinks(cacheDirOpt.get(), friendDirectory,
+                                                                ourname, network, crypto, false, false)
+                                                                .thenApply(writeCaps -> {
+                                                                    writeCaps.getRetrievedCapabilities().stream()
+                                                                            .forEach(rc -> addSharedWith(Access.WRITE, Paths.get(rc.path), Set.of(friendDirectory.getName())));
+                                                                    return true;
+                                                                });
+                                                    });
+                                        }, (a, b) -> a && b)));
     }
 
     /**
