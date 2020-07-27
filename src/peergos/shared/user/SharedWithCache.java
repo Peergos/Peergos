@@ -73,12 +73,12 @@ public class SharedWithCache {
                                                     ourname, network, crypto, false, false)
                                                     .thenCompose(readCaps -> {
                                                         readCaps.getRetrievedCapabilities().stream()
-                                                                .forEach(rc -> addSharedWith(Access.READ, Paths.get(rc.path), Set.of(friendDirectory.getName())));
+                                                                .forEach(rc -> addSharedWith(Access.READ, Paths.get(rc.path), Collections.singleton(friendDirectory.getName())));
                                                         return CapabilityStore.loadWriteableLinks(cacheDirOpt.get(), friendDirectory,
                                                                 ourname, network, crypto, false, false)
                                                                 .thenApply(writeCaps -> {
                                                                     writeCaps.getRetrievedCapabilities().stream()
-                                                                            .forEach(rc -> addSharedWith(Access.WRITE, Paths.get(rc.path), Set.of(friendDirectory.getName())));
+                                                                            .forEach(rc -> addSharedWith(Access.WRITE, Paths.get(rc.path), Collections.singleton(friendDirectory.getName())));
                                                                     return true;
                                                                 });
                                                     });
