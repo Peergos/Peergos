@@ -152,13 +152,17 @@ public class SharedWithCache {
                 .thenApply(SharedWithState::fromCbor);
     }
 
+    private static String getFilename(Path p) {
+        return p.getName(p.getNameCount() - 1).toString();
+    }
+
     public CompletableFuture<Map<Path, SharedWithState>> getAllDescendantShares(Path start) {
         return retriever.apply(cacheBase.resolve(toRelative(start.getParent())))
                 .thenCompose(opt -> {
                     if (opt.isEmpty())
                         return Futures.of(Collections.emptyMap());
                     FileWrapper parent = opt.get();
-                    String filename = start.toFile().getName();
+                    String filename = getFilename(start);
                     return parent.getChild(DIR_CACHE_FILENAME, crypto.hasher, network)
                             .thenCompose(fopt -> fopt.isEmpty() ?
                                     Futures.of(Collections.<Path, SharedWithState>emptyMap()) :
@@ -216,7 +220,7 @@ public class SharedWithCache {
 
     public CompletableFuture<FileSharedWithState> getSharedWith(Path p) {
         return retrieve(p.getParent())
-                .thenApply(opt -> opt.map(s -> s.get(p.toFile().getName())).orElse(FileSharedWithState.EMPTY));
+                .thenApply(opt -> opt.map(s -> s.get(getFilename(p))).orElse(FileSharedWithState.EMPTY));
     }
 
     public CompletableFuture<Boolean> applyAndCommit(Path toFile, Function<SharedWithState, SharedWithState> transform) {
@@ -233,8 +237,8 @@ public class SharedWithCache {
     public CompletableFuture<Boolean> rename(Path initial, Path after) {
         if (! initial.getParent().equals(after.getParent()))
             throw new IllegalStateException("Not a valid rename!");
-        String initialFilename = initial.toFile().getName();
-        String newFilename = after.toFile().getName();
+        String initialFilename = getFilename(initial);
+        String newFilename = getFilename(after);
         return getSharedWith(initial)
                 .thenCompose(sharees -> applyAndCommit(after, current ->
                         current.add(Access.READ, newFilename, sharees.readAccess)
@@ -243,14 +247,14 @@ public class SharedWithCache {
     }
 
     public CompletableFuture<Boolean> addSharedWith(Access access, Path p, Set<String> names) {
-        return applyAndCommit(p, current -> current.add(access, p.toFile().getName(), names));
+        return applyAndCommit(p, current -> current.add(access, getFilename(p), names));
     }
 
     public CompletableFuture<Boolean> clearSharedWith(Path p) {
-        return applyAndCommit(p, current -> current.clear(p.toFile().getName()));
+        return applyAndCommit(p, current -> current.clear(getFilename(p)));
     }
 
     public CompletableFuture<Boolean> removeSharedWith(Access access, Path p, Set<String> names) {
-        return applyAndCommit(p, current -> current.remove(access, p.toFile().getName(), names));
+        return applyAndCommit(p, current -> current.remove(access, getFilename(p), names));
     }
 }
