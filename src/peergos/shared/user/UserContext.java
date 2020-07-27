@@ -1316,8 +1316,8 @@ public class UserContext {
     }
 
     @JsMethod
-    public CompletableFuture<Boolean> isShared(Path p) {
-        return sharedWithCache.getSharedWith(p).thenApply(s -> ! s.readAccess.isEmpty() || ! s.writeAccess.isEmpty());
+    public CompletableFuture<SharedWithState> getDirectorySharingState(Path dir) {
+        return sharedWithCache.getDirSharingState(dir);
     }
 
     public CompletableFuture<Boolean> shareReadAccessWith(Path path, Set<String> readersToAdd) {

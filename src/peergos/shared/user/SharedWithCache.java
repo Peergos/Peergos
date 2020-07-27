@@ -112,6 +112,15 @@ public class SharedWithCache {
                 .thenCompose(child -> getOrMkdirs(child, remaining.subList(1, remaining.size())));
     }
 
+    public CompletableFuture<SharedWithState> getDirSharingState(Path dir) {
+        return retriever.apply(cacheBase)
+                .thenCompose(opt -> opt.isEmpty() ?
+                        initializeCache() :
+                        Futures.of(opt.get())
+                ).thenCompose(cacheRoot -> retriever.apply(cacheBase.resolve(dir).resolve(DIR_CACHE_FILENAME)))
+                .thenCompose(fopt -> fopt.map(this::parseCacheFile).orElse(Futures.of(SharedWithState.empty())));
+    }
+
     private CompletableFuture<Pair<FileWrapper, SharedWithState>> retrieveWithFileOrCreate(Path dir) {
         return retriever.apply(cacheBase)
                 .thenCompose(opt -> opt.isEmpty() ?
