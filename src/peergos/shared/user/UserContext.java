@@ -1315,6 +1315,11 @@ public class UserContext {
         return sharedWithCache.getSharedWith(p);
     }
 
+    @JsMethod
+    public CompletableFuture<Boolean> isShared(Path p) {
+        return sharedWithCache.getSharedWith(p).thenApply(s -> ! s.readAccess.isEmpty() || ! s.writeAccess.isEmpty());
+    }
+
     public CompletableFuture<Boolean> shareReadAccessWith(Path path, Set<String> readersToAdd) {
         return getByPath(path.toString())
                 .thenCompose(file -> shareReadAccessWithAll(file.orElseThrow(() ->
