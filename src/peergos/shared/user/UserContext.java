@@ -98,8 +98,10 @@ public class UserContext {
                                                                                  String username,
                                                                                  NetworkAccess network,
                                                                                  Crypto crypto) {
-        return root.getByPath(Paths.get(username, TRANSACTIONS_DIR_NAME).toString(), crypto.hasher, network)
+        return root.getByPath(username, crypto.hasher, network)
                 .thenApply(Optional::get)
+                .thenCompose(home -> home.getChildrenWithSameWriter(crypto.hasher, network))
+                .thenApply(children -> children.stream().filter(f -> f.getName().equals(TRANSACTIONS_DIR_NAME)).findFirst().get())
                 .thenApply(txnDir -> new TransactionServiceImpl(network, crypto, txnDir));
     }
 
@@ -166,20 +168,18 @@ public class UserContext {
             WriterData userData = WriterData.fromCbor(pair.right);
             return createOurFileTreeOnly(username, userWithRoot.getRoot(), userData, network, crypto)
                     .thenCompose(root -> TofuCoreNode.load(username, root, network, crypto)
-                            .thenCompose(keystore -> {
-                                TofuCoreNode tofu = new TofuCoreNode(network.coreNode, keystore);
+                            .thenCompose(tofuCorenode -> {
                                 SigningPrivateKeyAndPublicHash signer = new SigningPrivateKeyAndPublicHash(userData.controller, userWithRoot.getUser().secretSigningKey);
                                 return buildTransactionService(root, username, network, crypto).thenCompose(transactions -> {
                                     UserContext result = new UserContext(username,
                                             signer,
                                             userWithRoot.getBoxingPair(),
                                             userWithRoot.getRoot(),
-                                            network.withCorenode(tofu),
+                                            network.withCorenode(tofuCorenode),
                                             crypto,
                                             new CommittedWriterData(MaybeMultihash.of(pair.left), userData),
                                             root,
                                             transactions);
-                                    tofu.setContext(result);
                                     return result.getUsernameClaimExpiry()
                                             .thenCompose(expiry -> expiry.isBefore(LocalDate.now().plusMonths(1)) ?
                                                     result.renewUsernameClaim(LocalDate.now().plusMonths(2)) :
@@ -1670,24 +1670,26 @@ public class UserContext {
                                                        String ourName,
                                                        NetworkAccess network,
                                                        Crypto crypto) {
-        String cacheDirPath = Paths.get(ourName, CapabilityStore.CAPABILITY_CACHE_DIR).toString();
         // need to to retrieve all the entry points of our friends
-        return time(() -> getFriendsEntryPoints(), "Get friend's entry points")
-                .thenCompose(friendEntries -> ourRoot.getByPath(cacheDirPath, crypto.hasher, network)
-                        .thenCompose(copt -> {
-                            List<EntryPoint> friendsOnly = friendEntries.stream()
-                                    .filter(e -> !e.ownerName.equals(ourName))
-                                    .collect(Collectors.toList());
+        return ourRoot.getByPath(ourName, crypto.hasher, network)
+                        .thenApply(Optional::get)
+                .thenCompose(homeDir -> time(() -> getFriendsEntryPoints(homeDir), "Get friend's entry points")
+                        .thenCompose(friendEntries -> homeDir.getChildrenWithSameWriter(crypto.hasher, network)
+                                .thenApply(children -> children.stream().filter(c -> c.getName().equals(CapabilityStore.CAPABILITY_CACHE_DIR)).findFirst())
+                                .thenCompose(copt -> {
+                                    List<EntryPoint> friendsOnly = friendEntries.stream()
+                                            .filter(e -> !e.ownerName.equals(ourName))
+                                            .collect(Collectors.toList());
 
-                            List<CompletableFuture<Optional<FriendSourcedTrieNode>>> friendNodes = friendsOnly.stream()
-                                    .parallel()
-                                    .map(e -> FriendSourcedTrieNode.build(copt.get(), e, network, crypto))
-                                    .collect(Collectors.toList());
-                            return Futures.reduceAll(friendNodes, ourRoot,
-                                    (t, e) -> e.thenApply(fromUser -> fromUser.map(userEntrie -> t.putNode(userEntrie.ownerName, userEntrie))
-                                            .orElse(t)).exceptionally(ex -> t),
-                                    (a, b) -> a);
-                        }))
+                                    List<CompletableFuture<Optional<FriendSourcedTrieNode>>> friendNodes = friendsOnly.stream()
+                                            .parallel()
+                                            .map(e -> FriendSourcedTrieNode.build(copt.get(), e, network, crypto))
+                                            .collect(Collectors.toList());
+                                    return Futures.reduceAll(friendNodes, ourRoot,
+                                            (t, e) -> e.thenApply(fromUser -> fromUser.map(userEntrie -> t.putNode(userEntrie.ownerName, userEntrie))
+                                                    .orElse(t)).exceptionally(ex -> t),
+                                            (a, b) -> a);
+                                })))
                 .exceptionally(Futures::logAndThrow);
     }
 
@@ -1696,28 +1698,35 @@ public class UserContext {
                 .thenCompose(r -> addRetrievedEntryPointToTrie(username, root, r.entry, r.getPath(), false, network, crypto));
     }
 
-    private CompletableFuture<List<EntryPoint>> getFriendsEntryPoints() {
-        return getByPath(Paths.get(username, ENTRY_POINTS_FROM_FRIENDS_FILENAME))
-                .thenCompose(fopt -> fopt
-                        .map(f -> {
-                            List<EntryPoint> res = new ArrayList<>();
-                            return f.getInputStream(network, crypto, x -> {})
-                                    .thenCompose(reader -> reader.parseStream(EntryPoint::fromCbor, res::add, f.getSize())
-                                            .thenApply(x -> res));
-                        }).orElse(CompletableFuture.completedFuture(Collections.emptyList())))
-                .thenCompose(fromFriends -> {
-                    // filter out blocked friends
-                    return getByPath(Paths.get(username, BLOCKED_USERNAMES_FILE))
-                            .thenCompose(fopt -> fopt
-                                    .map(f -> f.getInputStream(network, crypto, x -> {})
-                                            .thenCompose(in -> Serialize.readFully(in, f.getSize()))
-                                            .thenApply(data -> new HashSet<>(Arrays.asList(new String(data).split("\n")))
-                                                    .stream()
-                                                    .collect(Collectors.toSet())))
-                                    .orElse(CompletableFuture.completedFuture(Collections.emptySet())))
-                            .thenApply(toRemove -> fromFriends.stream()
-                                    .filter(e -> ! toRemove.contains(e.ownerName))
-                                    .collect(Collectors.toList()));
+    private static Optional<FileWrapper> getChild(Set<FileWrapper> in, String name) {
+        return in.stream()
+                .filter(f -> f.getName().equals(name))
+                .findFirst();
+    }
+
+    private CompletableFuture<List<EntryPoint>> getFriendsEntryPoints(FileWrapper homeDir) {
+        return homeDir.getChildrenWithSameWriter(crypto.hasher, network)
+                .thenCompose(children -> {
+                    Optional<FileWrapper> fopt = getChild(children, ENTRY_POINTS_FROM_FRIENDS_FILENAME);
+                    return fopt.map(f -> {
+                        List<EntryPoint> res = new ArrayList<>();
+                        return f.getInputStream(network, crypto, x -> {})
+                                .thenCompose(reader -> reader.parseStream(EntryPoint::fromCbor, res::add, f.getSize())
+                                        .thenApply(x -> res));
+                    }).orElse(CompletableFuture.completedFuture(Collections.emptyList()))
+                            .thenCompose(fromFriends -> {
+                                // filter out blocked friends
+                                Optional<FileWrapper> bopt = getChild(children, BLOCKED_USERNAMES_FILE);
+                                return bopt.map(f -> f.getInputStream(network, crypto, x -> {})
+                                        .thenCompose(in -> Serialize.readFully(in, f.getSize()))
+                                        .thenApply(data -> new HashSet<>(Arrays.asList(new String(data).split("\n")))
+                                                .stream()
+                                                .collect(Collectors.toSet())))
+                                        .orElse(CompletableFuture.completedFuture(Collections.emptySet()))
+                                        .thenApply(toRemove -> fromFriends.stream()
+                                                .filter(e -> ! toRemove.contains(e.ownerName))
+                                                .collect(Collectors.toList()));
+                            });
                 }).thenApply(entries -> {
                     // Only take the most recent version of each entry
                     Map<PublicKeyHash, EntryPoint> latest = new LinkedHashMap<>();
