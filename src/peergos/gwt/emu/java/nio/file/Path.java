@@ -77,7 +77,9 @@ public class Path {
         if (pathString.length() == 0) {
             return 1;
         }
-        return pathString.length() - pathString.replace(SEPARATOR, "").length();
+        String withoutLeadingSlash = pathString.startsWith(SEPARATOR) ? pathString.substring(1)
+                : pathString;
+        return 1 + withoutLeadingSlash.length() - withoutLeadingSlash.replace(SEPARATOR, "").length();
     }
 
     public Path subpath(int from, int to) {
