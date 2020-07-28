@@ -608,9 +608,10 @@ public class FileWrapper {
     public CompletableFuture<FileWrapper> uploadAndReturnFile(String filename,
                                                               AsyncReader fileData,
                                                               long length,
+                                                              boolean isHidden,
                                                               NetworkAccess network,
                                                               Crypto crypto) {
-        return uploadFileSection(filename, fileData, false, 0, length, Optional.empty(),
+        return uploadFileSection(filename, fileData, isHidden, 0, length, Optional.empty(),
                 true, network, crypto, x -> {}, crypto.random.randomBytes(32))
                 .thenCompose(f -> f.getChild(filename, crypto.hasher, network)
                         .thenCompose(childOpt -> childOpt.get().truncate(length, network, crypto)));

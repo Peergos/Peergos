@@ -53,7 +53,7 @@ public class TofuCoreNode implements CoreNode {
                                 TofuKeyStore store = new TofuKeyStore();
                                 byte[] raw = store.serialize();
                                 return homeDir.uploadAndReturnFile(KEY_STORE_NAME, AsyncReader.build(raw), raw.length,
-                                        network, crypto)
+                                        true, network, crypto)
                                         .thenApply(f -> new TofuCoreNode(network.coreNode, store, f, network, crypto));
                             }
 
