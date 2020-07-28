@@ -23,7 +23,8 @@ public class TofuCoreNode implements CoreNode {
     private FileWrapper backingFile;
 
     public TofuCoreNode(CoreNode source, TofuKeyStore tofu, FileWrapper backingFile, NetworkAccess network, Crypto crypto) {
-        this.source = source;
+        // make sure we don't nest tofu core nodes, or their commits will clash
+        this.source = source instanceof TofuCoreNode ? ((TofuCoreNode) source).source : source;
         this.tofu = tofu;
         this.backingFile = backingFile;
         this.network = network;
