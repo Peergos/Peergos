@@ -35,7 +35,12 @@ public class Path {
     }
 
     public Path getFileName() {
-        throw new IllegalArgumentException("Not implemented!");
+        int idx = pathString.lastIndexOf(SEPARATOR);
+        if (idx == -1) {
+            return new Path(pathString);
+        }
+        String filename = pathString.substring(idx+1);
+        return new Path(filename);
     }
 
     public Path resolve(String other) {
