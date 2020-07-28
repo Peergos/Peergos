@@ -22,7 +22,7 @@ public class Path {
 
         int index = pathString.lastIndexOf(SEPARATOR);
         if (index == -1) {
-            throw new IllegalArgumentException("Illegal path");
+            return null;
         } else if (index == 0) {
             String name = pathString.substring(index);
             if(name.equals(SEPARATOR)) {
@@ -57,15 +57,27 @@ public class Path {
     }
 
     public File toFile() {
-        throw new IllegalArgumentException("Not implemented!");
+        return new File(toString());
     }
 
     public Path getName(int index) {
-        throw new IllegalArgumentException("Not implemented!");
+        if (index < 0) {
+            throw new IllegalArgumentException();
+        }
+        String withoutLeadingSlash = pathString.startsWith(SEPARATOR) ? pathString.substring(1)
+                : pathString;
+        String[] parts = withoutLeadingSlash.split(SEPARATOR);
+        if (index >= parts.length) {
+            throw new IllegalArgumentException();
+        }
+        return new Path(parts[index]);
     }
 
     public int getNameCount() {
-        throw new IllegalArgumentException("Not implemented!");
+        if (pathString.length() == 0) {
+            return 1;
+        }
+        return pathString.length() - pathString.replace(SEPARATOR, "").length();
     }
 
     public Path subpath(int from, int to) {

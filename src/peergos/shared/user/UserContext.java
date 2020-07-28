@@ -1321,7 +1321,19 @@ public class UserContext {
     public CompletableFuture<SharedWithState> getDirectorySharingState(Path dir) {
         return sharedWithCache.getDirSharingState(dir);
     }
-
+    @JsMethod
+    public static Path toPath(String[] parts, String filename) {
+        if (parts == null || parts.length == 0 || filename == null) {
+            throw new IllegalArgumentException("Invalid params");
+        }else if (parts.length == 1) {
+            return Paths.get(parts[0], filename);
+        } else {
+            List<String> pathFragments = Stream.of(parts).skip(1).collect(Collectors.toList());
+            pathFragments.add(filename);
+            String[] remainder = pathFragments.toArray(new String[1]);
+            return Paths.get(parts[0], remainder);
+        }
+    }
     public CompletableFuture<Boolean> shareReadAccessWith(Path path, Set<String> readersToAdd) {
         return getByPath(path.toString())
                 .thenCompose(file -> shareReadAccessWithAll(file.orElseThrow(() ->

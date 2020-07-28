@@ -31,6 +31,7 @@ public class SharedWithState implements Cborable {
         return writeShares;
     }
 
+    @JsMethod
     public FileSharedWithState get(String filename) {
         return new FileSharedWithState(
                 readShares.getOrDefault(filename, Collections.emptySet()),
