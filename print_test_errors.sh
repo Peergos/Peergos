@@ -7,4 +7,4 @@
 #
 # Usage "./print_test_errors.sh <test-report-path>
 #
-awk '/<error/,/\/error/ {print prev; has_err=1} {prev=$0} END {exit has_err}'  ${1:-test.reports/*}
+awk '/<(failure|error)/,/\/(failure|error)/ {print prev; has_err=1} {prev=$0} END {exit has_err}'  ${1:-test.reports/*}
