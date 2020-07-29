@@ -143,7 +143,7 @@ public class SharedWithCache {
     }
 
     private List<String> toList(Path p) {
-        return Arrays.asList(p.toString().split("/"));
+        return Arrays.asList(toRelative(p).toString().split("/"));
     }
 
     private CompletableFuture<SharedWithState> parseCacheFile(FileWrapper cache) {
