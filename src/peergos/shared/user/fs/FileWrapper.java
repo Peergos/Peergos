@@ -1086,7 +1086,7 @@ public class FileWrapper {
     }
 
     static boolean isLegalName(String name) {
-        return !name.contains("/") && ! name.equals(".") && ! name.equals("..");
+        return !name.contains("/") && ! name.equals(".") && ! name.equals("..") && ! name.isEmpty();
     }
 
     /**
