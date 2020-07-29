@@ -44,6 +44,9 @@ public class Path {
     }
 
     public Path resolve(String other) {
+        if(other.startsWith(SEPARATOR)) {
+            return new Path(other);
+        }
         if (pathString.endsWith(SEPARATOR))
             return new Path(pathString + other);
         return new Path(pathString + "/" + other);
@@ -88,7 +91,23 @@ public class Path {
     }
 
     public Path subpath(int from, int to) {
-        throw new IllegalArgumentException("Not implemented!");
+        if (from < 0) {
+            throw new IllegalArgumentException();
+        }
+        String withoutLeadingSlash = pathString.startsWith(SEPARATOR) ? pathString.substring(1)
+                : pathString;
+        String[] parts = withoutLeadingSlash.split(SEPARATOR);
+        if (to > parts.length) {
+            throw new IllegalArgumentException();
+        }
+        StringBuilder sb = new StringBuilder();
+        for(int i = from; i < to; i++) {
+            sb.append(parts[i]);
+            if(i < to -1){
+                sb.append(SEPARATOR);
+            }
+        }
+        return new Path(sb.toString());
     }
 
 
