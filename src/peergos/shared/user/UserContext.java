@@ -1320,7 +1320,7 @@ public class UserContext {
     @JsMethod
     public CompletableFuture<SharedWithState> getDirectorySharingState(Path dir) {
         // The global root and home folders cannot be shared
-        if (dir.getNameCount() <= 1)
+        if (dir.getNameCount() == 0)
             return Futures.of(SharedWithState.empty());
         return sharedWithCache.getDirSharingState(dir);
     }
