@@ -13,7 +13,6 @@ import peergos.shared.user.fs.*;
 import peergos.shared.user.fs.FileWrapper;
 import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.ArrayOps;
-import peergos.shared.util.Pair;
 import peergos.shared.util.Serialize;
 
 import java.io.File;
@@ -218,7 +217,8 @@ public class PeergosNetworkUtils {
             checkFileContents(originalFileContents, sharedFile.get(), userContext);
             // check the other user can't rename the file
             FileWrapper parent = userContext.getByPath(sharerUser.username).get().get();
-            CompletableFuture<FileWrapper> rename = sharedFile.get().rename("Somenew name.dat", parent, userContext);
+            CompletableFuture<FileWrapper> rename = sharedFile.get()
+                    .rename("Somenew name.dat", parent, Paths.get(filePath), userContext);
             assertTrue("Cannot rename", rename.isCompletedExceptionally());
         }
 
@@ -372,19 +372,15 @@ public class PeergosNetworkUtils {
     }
 
     public static void sharedwithPermutations(NetworkAccess sharerNode, Random rnd) throws Exception {
+        String sharerUsername = randomUsername("sharer-", rnd);
+        String password = "terriblepassword";
+        UserContext sharer = PeergosNetworkUtils.ensureSignedUp(sharerUsername, password, sharerNode, crypto);
 
-        String sharerUsername = randomUsername("sharer", rnd);
-        String sharerPassword = "sharer1";
-        UserContext sharer = PeergosNetworkUtils.ensureSignedUp(sharerUsername, sharerPassword, sharerNode, crypto);
+        String shareeUsername = randomUsername("sharee-", rnd);
+        UserContext sharee = PeergosNetworkUtils.ensureSignedUp(shareeUsername, password, sharerNode, crypto);
 
-        String shareeUsername = randomUsername("sharee", rnd);
-        String shareePassword = "sharee1";
-        UserContext sharee = PeergosNetworkUtils.ensureSignedUp(shareeUsername, shareePassword, sharerNode, crypto);
-
-        String shareeUsername2 = randomUsername("sharee2", rnd);
-        String shareePassword2 = "sharee21";
-        UserContext sharee2 = PeergosNetworkUtils.ensureSignedUp(shareeUsername2, shareePassword2, sharerNode, crypto);
-
+        String shareeUsername2 = randomUsername("sharee2-", rnd);
+        UserContext sharee2 = PeergosNetworkUtils.ensureSignedUp(shareeUsername2, password, sharerNode, crypto);
 
         // friend sharer with others
         friendBetweenGroups(Arrays.asList(sharer), Arrays.asList(sharee));
@@ -395,60 +391,41 @@ public class PeergosNetworkUtils {
         FileWrapper u1Root = sharer.getUserRoot().get();
         String folderName = "afolder";
         u1Root.mkdir(folderName, sharer.network, SymmetricKey.random(), false, crypto).get();
-        String path = Paths.get(sharerUsername, folderName).toString();
-        System.out.println("PATH "+ path);
-        FileWrapper file = sharer.getByPath(path).join().get();
+        Path p = Paths.get(sharerUsername, folderName);
 
-        Pair<Set<String>, Set<String>> result = sharer.sharedWith(file);
-        Assert.assertTrue(result.left.size() == 0 && result.right.size() == 0);
+        FileSharedWithState result = sharer.sharedWith(p).join();
+        Assert.assertTrue(result.readAccess.size() == 0 && result.writeAccess.size() == 0);
 
+        sharer.shareReadAccessWith(p, Collections.singleton(sharee.username)).join();
+        result = sharer.sharedWith(p).join();
+        Assert.assertTrue(result.readAccess.size() == 1);
 
-        sharer.shareReadAccessWith(file, path, Collections.singletonList(sharee.username).toArray(new String[1])).join();
-        result = sharer.sharedWith(file);
-        Assert.assertTrue(result.left.size() == 1);
+        sharer.shareWriteAccessWith(p, Collections.singleton(sharee2.username)).join();
 
-        file = sharer.getByPath(path).join().get();
-        FileWrapper parent = sharer.getUserRoot().get();
+        result = sharer.sharedWith(p).join();
+        Assert.assertTrue(result.readAccess.size() == 1 && result.writeAccess.size() == 1);
 
-        sharer.shareWriteAccessWith(file, path, parent, Collections.singletonList(sharee2.username).toArray(new String[1])).join();
+        sharer.unShareReadAccess(p, Set.of(sharee.username)).join();
+        result = sharer.sharedWith(p).join();
+        Assert.assertTrue(result.readAccess.size() == 0 && result.writeAccess.size() == 1);
 
-        file = sharer.getByPath(path).join().get();
-        result = sharer.sharedWith(file);
-        Assert.assertTrue(result.left.size() == 1 && result.right.size() == 1);
-
-        file = sharer.getByPath(path).join().get();
-        String[] names = new String[] {sharee.username };
-        sharer.unShareReadAccess(file, names).join();
-        file = sharer.getByPath(path).join().get();
-        result = sharer.sharedWith(file);
-        Assert.assertTrue(result.left.size() == 0 && result.right.size() == 1);
-
-        names = new String[] {sharee2.username };
-        sharer.unShareWriteAccess(file, names).join();
-        file = sharer.getByPath(path).join().get();
-        result = sharer.sharedWith(file);
-        Assert.assertTrue(result.left.size() == 0 && result.right.size() == 0);
+        sharer.unShareWriteAccess(p, Set.of(sharee2.username)).join();
+        result = sharer.sharedWith(p).join();
+        Assert.assertTrue(result.readAccess.size() == 0 && result.writeAccess.size() == 0);
 
         // now try again, but after adding read, write sharees, remove the write sharee
-        sharer.shareReadAccessWith(file, path, Collections.singletonList(sharee.username).toArray(new String[1])).join();
-        result = sharer.sharedWith(file);
-        Assert.assertTrue(result.left.size() == 1);
+        sharer.shareReadAccessWith(p, Collections.singleton(sharee.username)).join();
+        result = sharer.sharedWith(p).join();
+        Assert.assertTrue(result.readAccess.size() == 1);
 
-        file = sharer.getByPath(path).join().get();
-        parent = sharer.getUserRoot().get();
+        sharer.shareWriteAccessWith(p, Collections.singleton(sharee2.username)).join();
 
-        sharer.shareWriteAccessWith(file, path, parent, Collections.singletonList(sharee2.username).toArray(new String[1])).join();
+        result = sharer.sharedWith(p).join();
+        Assert.assertTrue(result.readAccess.size() == 1 && result.writeAccess.size() == 1);
 
-        file = sharer.getByPath(path).join().get();
-        result = sharer.sharedWith(file);
-        Assert.assertTrue(result.left.size() == 1 && result.right.size() == 1);
-
-        file = sharer.getByPath(path).join().get();
-        names = new String[] {sharee2.username };
-        sharer.unShareWriteAccess(file, names).join();
-        file = sharer.getByPath(path).join().get();
-        result = sharer.sharedWith(file);
-        Assert.assertTrue(result.left.size() == 1 && result.right.size() == 0);
+        sharer.unShareWriteAccess(p, Set.of(sharee2.username)).join();
+        result = sharer.sharedWith(p).join();
+        Assert.assertTrue(result.readAccess.size() == 1 && result.writeAccess.size() == 0);
 
     }
 
@@ -508,6 +485,36 @@ public class PeergosNetworkUtils {
         checkFileContents(modifiedFileContents, sharedFileUpdated, sharee);
     }
 
+    public static void renameSharedwithFolder(NetworkAccess sharerNode, Random rnd) throws Exception {
+        String sharerUsername = randomUsername("sharer-", rnd);
+        String password = "terriblepassword";
+        UserContext sharer = PeergosNetworkUtils.ensureSignedUp(sharerUsername, password, sharerNode, crypto);
+
+        String shareeUsername = randomUsername("sharee-", rnd);
+        UserContext sharee = PeergosNetworkUtils.ensureSignedUp(shareeUsername, password, sharerNode, crypto);
+
+        friendBetweenGroups(Arrays.asList(sharer), Arrays.asList(sharee));
+
+        FileWrapper u1Root = sharer.getUserRoot().get();
+        String folderName = "afolder";
+        u1Root.mkdir(folderName, sharer.network, SymmetricKey.random(), false, crypto).get();
+        Path p = Paths.get(sharerUsername, folderName);
+
+        sharer.shareReadAccessWith(p, Set.of(shareeUsername)).join();
+        FileSharedWithState result = sharer.sharedWith(p).join();
+        Assert.assertTrue(result.readAccess.size() == 1);
+
+        u1Root = sharer.getUserRoot().get();
+        FileWrapper file = sharer.getByPath(p).join().get();
+        String renamedFolderName= "renamed";
+        file.rename(renamedFolderName, u1Root, p, sharer).join();
+        p = Paths.get(sharerUsername, renamedFolderName);
+
+        sharer.unShareReadAccess(p, Set.of(sharee.username)).join();
+        result = sharer.sharedWith(p).join();
+        Assert.assertTrue(result.readAccess.size() == 0 && result.writeAccess.size() == 0);
+
+    }
 
     public static void grantAndRevokeDirReadAccess(NetworkAccess sharerNode, NetworkAccess shareeNode, int shareeCount, Random random) throws Exception {
         Assert.assertTrue(0 < shareeCount);

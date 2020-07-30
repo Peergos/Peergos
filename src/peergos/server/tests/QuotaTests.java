@@ -80,8 +80,9 @@ public class QuotaTests {
             String filename = "file-1";
             home = home.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length,
                     network, crypto, x -> {}, crypto.random.randomBytes(32)).get();
-            FileWrapper file = context.getByPath("/" + username + "/" + filename).get().get();
-            home = file.remove(home, context).get();
+            Path filePath = Paths.get(username, filename);
+            FileWrapper file = context.getByPath(filePath).get().get();
+            home = file.remove(home, filePath, context).get();
         }
     }
 
@@ -99,8 +100,9 @@ public class QuotaTests {
         String filename = "file-1";
         home = home.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length,
                 network, crypto, x -> {}, crypto.random.randomBytes(32)).get();
-        FileWrapper file = context.getByPath("/" + username + "/" + filename).get().get();
-        file.remove(home, context).get();
+        Path filePath = Paths.get(username, filename);
+        FileWrapper file = context.getByPath(filePath).get().get();
+        file.remove(home, filePath, context).get();
     }
 
     @Test
@@ -117,12 +119,13 @@ public class QuotaTests {
         String filename = "file-1";
         home = home.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length,
                 network, crypto, x -> {}, crypto.random.randomBytes(32)).get();
-        FileWrapper file = context.getByPath("/" + username + "/" + filename).get().get();
+        Path filePath = Paths.get(username, filename);
+        FileWrapper file = context.getByPath(filePath).get().get();
         try {
             home = home.uploadOrReplaceFile("file-2", new AsyncReader.ArrayBacked(data), data.length,
                     network, crypto, x -> {}, crypto.random.randomBytes(32)).get();
             Assert.fail();
         } catch (Exception e) {}
-        file.remove(home, context).get();
+        file.remove(home, filePath, context).get();
     }
 }

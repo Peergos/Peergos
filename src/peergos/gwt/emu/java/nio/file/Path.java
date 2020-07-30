@@ -22,7 +22,7 @@ public class Path {
 
         int index = pathString.lastIndexOf(SEPARATOR);
         if (index == -1) {
-            throw new IllegalArgumentException("Illegal path");
+            return null;
         } else if (index == 0) {
             String name = pathString.substring(index);
             if(name.equals(SEPARATOR)) {
@@ -35,10 +35,18 @@ public class Path {
     }
 
     public Path getFileName() {
-        throw new IllegalArgumentException("Not implemented!");
+        int idx = pathString.lastIndexOf(SEPARATOR);
+        if (idx == -1) {
+            return new Path(pathString);
+        }
+        String filename = pathString.substring(idx+1);
+        return new Path(filename);
     }
 
     public Path resolve(String other) {
+        if(other.startsWith(SEPARATOR)) {
+            return new Path(other);
+        }
         if (pathString.endsWith(SEPARATOR))
             return new Path(pathString + other);
         return new Path(pathString + "/" + other);
@@ -57,19 +65,49 @@ public class Path {
     }
 
     public File toFile() {
-        throw new IllegalArgumentException("Not implemented!");
+        return new File(toString());
     }
 
     public Path getName(int index) {
-        throw new IllegalArgumentException("Not implemented!");
+        if (index < 0) {
+            throw new IllegalArgumentException();
+        }
+        String withoutLeadingSlash = pathString.startsWith(SEPARATOR) ? pathString.substring(1)
+                : pathString;
+        String[] parts = withoutLeadingSlash.split(SEPARATOR);
+        if (index >= parts.length) {
+            throw new IllegalArgumentException();
+        }
+        return new Path(parts[index]);
     }
 
     public int getNameCount() {
-        throw new IllegalArgumentException("Not implemented!");
+        if (pathString.length() == 0) {
+            return 1;
+        }
+        String withoutLeadingSlash = pathString.startsWith(SEPARATOR) ? pathString.substring(1)
+                : pathString;
+        return 1 + withoutLeadingSlash.length() - withoutLeadingSlash.replace(SEPARATOR, "").length();
     }
 
     public Path subpath(int from, int to) {
-        throw new IllegalArgumentException("Not implemented!");
+        if (from < 0) {
+            throw new IllegalArgumentException();
+        }
+        String withoutLeadingSlash = pathString.startsWith(SEPARATOR) ? pathString.substring(1)
+                : pathString;
+        String[] parts = withoutLeadingSlash.split(SEPARATOR);
+        if (to > parts.length) {
+            throw new IllegalArgumentException();
+        }
+        StringBuilder sb = new StringBuilder();
+        for(int i = from; i < to; i++) {
+            sb.append(parts[i]);
+            if(i < to -1){
+                sb.append(SEPARATOR);
+            }
+        }
+        return new Path(sb.toString());
     }
 
 

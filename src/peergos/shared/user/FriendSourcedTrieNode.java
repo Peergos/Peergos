@@ -11,21 +11,21 @@ import java.util.function.*;
 public class FriendSourcedTrieNode implements TrieNode {
 
     public final String ownerName;
-    private final Supplier<CompletableFuture<FileWrapper>> homeDirSupplier;
+    private final FileWrapper cacheDir;
     private final EntryPoint sharedDir;
     private final Crypto crypto;
     private TrieNode root;
     private long byteOffsetReadOnly;
     private long byteOffsetWrite;
 
-    public FriendSourcedTrieNode(Supplier<CompletableFuture<FileWrapper>> homeDirSupplier,
+    public FriendSourcedTrieNode(FileWrapper cacheDir,
                                  String ownerName,
                                  EntryPoint sharedDir,
                                  TrieNode root,
                                  long byteOffsetReadOnly,
                                  long byteOffsetWrite,
                                  Crypto crypto) {
-        this.homeDirSupplier = homeDirSupplier;
+        this.cacheDir = cacheDir;
         this.ownerName = ownerName;
         this.sharedDir = sharedDir;
         this.root = root;
@@ -34,18 +34,18 @@ public class FriendSourcedTrieNode implements TrieNode {
         this.crypto = crypto;
     }
 
-    public static CompletableFuture<Optional<FriendSourcedTrieNode>> build(Supplier<CompletableFuture<FileWrapper>> homeDirSupplier,
+    public static CompletableFuture<Optional<FriendSourcedTrieNode>> build(FileWrapper cacheDir,
                                                                            EntryPoint e,
                                                                            NetworkAccess network,
                                                                            Crypto crypto) {
-        return CapabilityStore.loadCachedReadOnlyLinks(homeDirSupplier, e.ownerName, network, crypto)
+        return CapabilityStore.loadCachedReadOnlyLinks(cacheDir, e.ownerName, network, crypto)
                 .thenCompose(readCaps -> {
-                    return CapabilityStore.loadCachedWriteableLinks(homeDirSupplier, e.ownerName, network, crypto)
+                    return CapabilityStore.loadCachedWriteableLinks(cacheDir, e.ownerName, network, crypto)
                             .thenApply(writeCaps -> {
                                 List<CapabilityWithPath> allCaps = new ArrayList<>();
                                 allCaps.addAll(readCaps.getRetrievedCapabilities());
                                 allCaps.addAll(writeCaps.getRetrievedCapabilities());
-                                return Optional.of(new FriendSourcedTrieNode(homeDirSupplier,
+                                return Optional.of(new FriendSourcedTrieNode(cacheDir,
                                         e.ownerName,
                                         e,
                                         allCaps.stream()
@@ -57,24 +57,24 @@ public class FriendSourcedTrieNode implements TrieNode {
                 });
     }
 
-    public static CompletableFuture<Optional<FriendSourcedTrieNode>> buildAndUpdate(Supplier<CompletableFuture<FileWrapper>> homeDirSupplier,
-                                                                           EntryPoint e,
-                                                                           NetworkAccess network,
-                                                                           Crypto crypto) {
+    public static CompletableFuture<Optional<FriendSourcedTrieNode>> buildAndUpdate(FileWrapper cacheDir,
+                                                                                    EntryPoint e,
+                                                                                    NetworkAccess network,
+                                                                                    Crypto crypto) {
         return network.retrieveEntryPoint(e)
                 .thenCompose(sharedDirOpt -> {
                     if (!sharedDirOpt.isPresent())
                         return CompletableFuture.completedFuture(Optional.empty());
-                    return CapabilityStore.loadReadOnlyLinks(homeDirSupplier, sharedDirOpt.get(), e.ownerName,
-                            network, crypto, true)
+                    return CapabilityStore.loadReadOnlyLinks(cacheDir, sharedDirOpt.get(), e.ownerName,
+                            network, crypto, true, true)
                             .thenCompose(readCaps -> {
-                                return CapabilityStore.loadWriteableLinks(homeDirSupplier, sharedDirOpt.get(), e.ownerName,
-                                        network, crypto, true)
+                                return CapabilityStore.loadWriteableLinks(cacheDir, sharedDirOpt.get(), e.ownerName,
+                                        network, crypto, true, true)
                                         .thenApply(writeCaps -> {
                                             List<CapabilityWithPath> allCaps = new ArrayList<>();
                                             allCaps.addAll(readCaps.getRetrievedCapabilities());
                                             allCaps.addAll(writeCaps.getRetrievedCapabilities());
-                                            return Optional.of(new FriendSourcedTrieNode(homeDirSupplier,
+                                            return Optional.of(new FriendSourcedTrieNode(cacheDir,
                                                     e.ownerName,
                                                     e,
                                                     allCaps.stream()
@@ -96,8 +96,8 @@ public class FriendSourcedTrieNode implements TrieNode {
                                 if (bytes == byteOffsetReadOnly) {
                                     return addEditableCapabilities(Optional.of(sharedDir.file), crypto, network);
                                 } else {
-                                    return CapabilityStore.loadReadAccessSharingLinksFromIndex(homeDirSupplier, sharedDir.file,
-                                            ownerName, network, crypto, byteOffsetReadOnly, true)
+                                    return CapabilityStore.loadReadAccessSharingLinksFromIndex(cacheDir, sharedDir.file,
+                                            ownerName, network, crypto, byteOffsetReadOnly, true, true)
                                             .thenCompose(newReadCaps -> {
                                                 byteOffsetReadOnly += newReadCaps.getBytesRead();
                                                 root = newReadCaps.getRetrievedCapabilities().stream()
@@ -118,8 +118,8 @@ public class FriendSourcedTrieNode implements TrieNode {
                 .thenCompose(editFilesize -> {
                     if (editFilesize == byteOffsetWrite)
                         return CompletableFuture.completedFuture(true);
-                    return CapabilityStore.loadWriteAccessSharingLinksFromIndex(homeDirSupplier, sharedDirOpt.get(),
-                            ownerName, network, crypto, byteOffsetWrite, true)
+                    return CapabilityStore.loadWriteAccessSharingLinksFromIndex(cacheDir, sharedDirOpt.get(),
+                            ownerName, network, crypto, byteOffsetWrite, true, true)
                             .thenApply(newWriteCaps -> {
                                 byteOffsetWrite += newWriteCaps.getBytesRead();
                                 root = newWriteCaps.getRetrievedCapabilities().stream()

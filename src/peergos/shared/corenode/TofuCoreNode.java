@@ -3,7 +3,6 @@ package peergos.shared.corenode;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.crypto.random.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 
@@ -11,57 +10,77 @@ import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
 
+/** The TOFU core node stores a local copy of all identity key mappings retrieved from the pki ina TOFU manner.
+ *  The store is at /$username/.keystore in the user's Peergos space.
+ */
 public class TofuCoreNode implements CoreNode {
 
     public static final String KEY_STORE_NAME = ".keystore";
     private final CoreNode source;
     private final TofuKeyStore tofu;
-    private UserContext context;
+    private final NetworkAccess network;
+    private final Crypto crypto;
+    private FileWrapper backingFile;
 
-    public TofuCoreNode(CoreNode source, TofuKeyStore tofu) {
-        this.source = source;
+    public TofuCoreNode(CoreNode source, TofuKeyStore tofu, FileWrapper backingFile, NetworkAccess network, Crypto crypto) {
+        // make sure we don't nest tofu core nodes, or their commits will clash
+        this.source = source instanceof TofuCoreNode ? ((TofuCoreNode) source).source : source;
         this.tofu = tofu;
+        this.backingFile = backingFile;
+        this.network = network;
+        this.crypto = crypto;
     }
 
-    public void setContext(UserContext context) {
-        this.context = context;
-    }
-
-    private static String getStorePath(String username) {
-        return "/" + username + "/" + KEY_STORE_NAME;
-    }
-
-    public static CompletableFuture<TofuKeyStore> load(String username, TrieNode root, NetworkAccess network, Crypto crypto) {
+    /**
+     *
+     * @param username
+     * @param root
+     * @param network
+     * @param crypto
+     * @return The TOFU core node for this user
+     */
+    public static CompletableFuture<TofuCoreNode> load(String username, TrieNode root, NetworkAccess network, Crypto crypto) {
         if (username == null)
-            return CompletableFuture.completedFuture(new TofuKeyStore());
+            throw new IllegalStateException("Cannot build a tofu keystore if not logged in!");
 
-        return root.getByPath(getStorePath(username), crypto.hasher, network).thenCompose(fileOpt -> {
-            if (! fileOpt.isPresent())
-                return CompletableFuture.completedFuture(new TofuKeyStore());
+        return root.getByPath(username, crypto.hasher, network)
+                .thenApply(Optional::get)
+                .thenCompose(homeDir -> homeDir.getChildrenWithSameWriter(crypto.hasher, network)
+                        .thenCompose(children -> {
+                            Optional<FileWrapper> keystoreOpt = children.stream().filter(c -> c.getName().equals(KEY_STORE_NAME)).findFirst();
+                            if (keystoreOpt.isEmpty()) {
+                                // initialize empty keystore
+                                TofuKeyStore store = new TofuKeyStore();
+                                byte[] raw = store.serialize();
+                                return homeDir.uploadAndReturnFile(KEY_STORE_NAME, AsyncReader.build(raw), raw.length,
+                                        true, network, crypto)
+                                        .thenApply(f -> new TofuCoreNode(network.coreNode, store, f, network, crypto));
+                            }
 
-            return fileOpt.get().getInputStream(network, crypto, x -> {}).thenCompose(reader -> {
-                byte[] storeData = new byte[(int) fileOpt.get().getSize()];
-                return reader.readIntoArray(storeData, 0, storeData.length)
-                        .thenApply(x -> TofuKeyStore.fromCbor(CborObject.fromByteArray(storeData)));
-            });
-        });
+                            return keystoreOpt.get().getInputStream(network, crypto, x -> {}).thenCompose(reader -> {
+                                byte[] storeData = new byte[(int) keystoreOpt.get().getSize()];
+                                return reader.readIntoArray(storeData, 0, storeData.length)
+                                        .thenApply(x -> new TofuCoreNode(network.coreNode,
+                                                TofuKeyStore.fromCbor(CborObject.fromByteArray(storeData)),
+                                                keystoreOpt.get(), network, crypto));
+                            });
+                        }));
     }
 
-    private CompletableFuture<Boolean> commit() {
-        return context.getUserRoot()
-                .thenCompose(home -> {
-                    byte[] data = tofu.serialize();
-                    AsyncReader.ArrayBacked dataReader = new AsyncReader.ArrayBacked(data);
-                    return home.uploadFileSection(KEY_STORE_NAME, dataReader, true, 0, (long) data.length,
-                            Optional.empty(), true, context.network, context.crypto, x -> {},
-                            context.crypto.random.randomBytes(32));
-                }).thenApply(x -> true);
+    private synchronized CompletableFuture<Boolean> commit() {
+        byte[] data = tofu.serialize();
+        AsyncReader.ArrayBacked dataReader = new AsyncReader.ArrayBacked(data);
+        return backingFile.overwriteFile(dataReader, data.length, network, crypto, x -> {})
+                .thenApply(f -> {
+                    this.backingFile = f;
+                    return true;
+                });
     }
 
     @Override
     public CompletableFuture<Boolean> updateUser(String username) {
         return source.getChain(username)
-                .thenCompose(chain -> tofu.updateChain(username, chain, context.network.dhtClient)
+                .thenCompose(chain -> tofu.updateChain(username, chain, network.dhtClient)
                         .thenCompose(x -> commit()));
     }
 
@@ -75,7 +94,7 @@ public class TofuCoreNode implements CoreNode {
                         if(chain.isEmpty()) {
                             return CompletableFuture.completedFuture(false);
                         } else {
-                            return tofu.updateChain(username, chain, context.network.dhtClient)
+                            return tofu.updateChain(username, chain, network.dhtClient)
                                     .thenCompose(x -> commit());
                         }
                     }
@@ -89,7 +108,7 @@ public class TofuCoreNode implements CoreNode {
             return CompletableFuture.completedFuture(local.get());
         return source.getUsername(key)
                 .thenCompose(username -> source.getChain(username)
-                        .thenCompose(chain -> tofu.updateChain(username, chain, context.network.dhtClient)
+                        .thenCompose(chain -> tofu.updateChain(username, chain, network.dhtClient)
                                 .thenCompose(x -> commit())
                                 .thenApply(x -> username)));
     }
@@ -100,14 +119,14 @@ public class TofuCoreNode implements CoreNode {
         if (! localChain.isEmpty())
             return CompletableFuture.completedFuture(localChain);
         return source.getChain(username)
-                .thenCompose(chain -> tofu.updateChain(username, chain, context.network.dhtClient)
+                .thenCompose(chain -> tofu.updateChain(username, chain, network.dhtClient)
                         .thenCompose(x -> commit())
                         .thenApply(x -> tofu.getChain(username)));
     }
 
     @Override
     public CompletableFuture<Boolean> updateChain(String username, List<UserPublicKeyLink> chain) {
-        return tofu.updateChain(username, chain, context.network.dhtClient)
+        return tofu.updateChain(username, chain, network.dhtClient)
                 .thenCompose(x -> commit())
                 .thenCompose(x -> source.updateChain(username, chain));
     }

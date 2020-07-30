@@ -142,11 +142,11 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
             if (!file.isPresent())
                 return -ErrorCodes.ENOENT();
 
-            Optional<FileWrapper> parent = context.getByPath(requested.getParent().toString()).get();;
+            Optional<FileWrapper> parent = context.getByPath(requested.getParent()).get();;
             if (!parent.isPresent())
                 return -ErrorCodes.ENOENT();
 
-            FileWrapper updatedParent = file.get().remove(parent.get(), context).get();
+            FileWrapper updatedParent = file.get().remove(parent.get(), requested, context).get();
             return 0;
         } catch (Exception ioe) {
             LOG.log(Level.WARNING, ioe.getMessage(), ioe);
@@ -158,7 +158,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
     public int rmdir(String s) {
         ensureNotClosed();
         Path dir = Paths.get(s);
-        return applyIfPresent(s, (stat) -> applyIfPresent(dir.getParent().toString(), parentStat -> rmdir(stat, parentStat)));
+        return applyIfPresent(s, (stat) -> applyIfPresent(dir.getParent().toString(), parentStat -> rmdir(stat, dir, parentStat)));
     }
 
     @Override
@@ -176,15 +176,15 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
                 return -ErrorCodes.ENOENT();
 
             FileWrapper parent = sourceParent.treeNode;
-            FileWrapper updatedParent = source.treeNode.rename(targetFilename, parent, context).get();
+            FileWrapper updatedParent = source.treeNode.rename(targetFilename, parent, Paths.get(sourcePath), context).get();
             // TODO clean up on error conditions
             if (! parent.equals(newParent.get())) {
                 Path renamedInPlacePath = Paths.get(sourcePath).getParent().resolve(requested.getFileName().toString());
-                Optional<FileWrapper> renamedOriginal = context.getByPath(renamedInPlacePath.toString()).get();
+                Optional<FileWrapper> renamedOriginal = context.getByPath(renamedInPlacePath).get();
                 if (! renamedOriginal.isPresent())
                     return -ErrorCodes.ENOENT();
                 renamedOriginal.get().copyTo(newParent.get(), context).get();
-                FileWrapper updatedParent2 = renamedOriginal.get().remove(parent, context).get();
+                FileWrapper updatedParent2 = renamedOriginal.get().remove(parent, renamedInPlacePath, context).get();
             }
             return 0;
         } catch (Exception ioe) {
@@ -485,10 +485,10 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
         return applyIfPresent(parentPath, parentStat -> applyIfPresent(filePath, fileStat -> func.apply(parentStat, fileStat)), aDefault);
     }
 
-    private int rmdir(PeergosStat stat, PeergosStat parentStat) {
+    private int rmdir(PeergosStat stat, Path dir, PeergosStat parentStat) {
         FileWrapper treeNode = stat.treeNode;
         try {
-            FileWrapper updatedParent = treeNode.remove(parentStat.treeNode, context).get();
+            FileWrapper updatedParent = treeNode.remove(parentStat.treeNode, dir, context).get();
             return 0;
         } catch (Exception ioe) {
             LOG.log(Level.WARNING, ioe.getMessage(), ioe);

@@ -1,9 +1,8 @@
 package peergos.server.simulation;
 
 import peergos.shared.social.FollowRequestWithCipherText;
-import peergos.shared.user.UserContext;
+import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
-import peergos.shared.util.Pair;
 import peergos.shared.util.ProgressConsumer;
 import peergos.shared.util.Serialize;
 
@@ -65,7 +64,7 @@ public class PeergosFileSystemImpl implements FileSystem {
     @Override
     public void delete(Path path) {
         FileWrapper directory = getDirectory(path);
-        FileWrapper updatedParent = getPath(path).remove(directory, userContext).join();
+        FileWrapper updatedParent = getPath(path).remove(directory, path, userContext).join();
     }
 
     @Override
@@ -166,12 +165,12 @@ public class PeergosFileSystemImpl implements FileSystem {
 
     @Override
     public List<String> getSharees(Path path, Permission permission) {
-        Pair<Set<String>, Set<String>> readersAndWriters = userContext.sharedWith(getPath(path));
+        FileSharedWithState sharing = userContext.sharedWith(path).join();
         switch (permission) {
             case READ:
-                return new ArrayList<>(readersAndWriters.left);
+                return new ArrayList<>(sharing.readAccess);
             case WRITE:
-                return new ArrayList<>(readersAndWriters.right);
+                return new ArrayList<>(sharing.writeAccess);
             default:
                 throw new IllegalStateException();
         }
