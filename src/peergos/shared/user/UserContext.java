@@ -1427,6 +1427,9 @@ public class UserContext {
     }
 
     public CompletableFuture<Boolean> sendWriteCapToAll(Path toFile, Set<String> writersToAdd) {
+        if (writersToAdd.isEmpty())
+            return Futures.of(true);
+
         System.out.println("Resharing WRITE cap to " + toFile + " with " + writersToAdd);
         return getByPath(toFile.getParent())
                 .thenCompose(parent -> getByPath(toFile)
