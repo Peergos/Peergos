@@ -114,6 +114,11 @@ public class MultiUserTests {
     }
 
     @Test
+    public void renameSharedwithFolder() throws Exception {
+        PeergosNetworkUtils.renameSharedwithFolder(network, random);
+    }
+
+    @Test
     public void grantAndRevokeFileWriteAccess() throws Exception {
         PeergosNetworkUtils.grantAndRevokeFileWriteAccess(network, network, userCount, random);
     }

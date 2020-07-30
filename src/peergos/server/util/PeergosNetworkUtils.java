@@ -485,6 +485,36 @@ public class PeergosNetworkUtils {
         checkFileContents(modifiedFileContents, sharedFileUpdated, sharee);
     }
 
+    public static void renameSharedwithFolder(NetworkAccess sharerNode, Random rnd) throws Exception {
+        String sharerUsername = randomUsername("sharer-", rnd);
+        String password = "terriblepassword";
+        UserContext sharer = PeergosNetworkUtils.ensureSignedUp(sharerUsername, password, sharerNode, crypto);
+
+        String shareeUsername = randomUsername("sharee-", rnd);
+        UserContext sharee = PeergosNetworkUtils.ensureSignedUp(shareeUsername, password, sharerNode, crypto);
+
+        friendBetweenGroups(Arrays.asList(sharer), Arrays.asList(sharee));
+
+        FileWrapper u1Root = sharer.getUserRoot().get();
+        String folderName = "afolder";
+        u1Root.mkdir(folderName, sharer.network, SymmetricKey.random(), false, crypto).get();
+        Path p = Paths.get(sharerUsername, folderName);
+
+        sharer.shareReadAccessWith(p, Set.of(shareeUsername)).join();
+        FileSharedWithState result = sharer.sharedWith(p).join();
+        Assert.assertTrue(result.readAccess.size() == 1);
+
+        u1Root = sharer.getUserRoot().get();
+        FileWrapper file = sharer.getByPath(p).join().get();
+        String renamedFolderName= "renamed";
+        file.rename(renamedFolderName, u1Root, p, sharer).join();
+        p = Paths.get(sharerUsername, renamedFolderName);
+
+        sharer.unShareReadAccess(p, Set.of(sharee.username)).join();
+        result = sharer.sharedWith(p).join();
+        Assert.assertTrue(result.readAccess.size() == 0 && result.writeAccess.size() == 0);
+
+    }
 
     public static void grantAndRevokeDirReadAccess(NetworkAccess sharerNode, NetworkAccess shareeNode, int shareeCount, Random random) throws Exception {
         Assert.assertTrue(0 < shareeCount);
