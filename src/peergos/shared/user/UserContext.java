@@ -1335,12 +1335,18 @@ public class UserContext {
         }
     }
     public CompletableFuture<Boolean> shareReadAccessWith(Path path, Set<String> readersToAdd) {
+        if (readersToAdd.isEmpty())
+            return Futures.of(true);
+
         return getByPath(path.toString())
                 .thenCompose(file -> shareReadAccessWithAll(file.orElseThrow(() ->
                         new IllegalStateException("Could not find path " + path.toString())), path, readersToAdd));
     }
 
     public CompletableFuture<Boolean> shareWriteAccessWith(Path fileToShare, Set<String> writersToAdd) {
+        if (writersToAdd.isEmpty())
+            return Futures.of(true);
+
         return getByPath(fileToShare.getParent().toString())
                 .thenCompose(parent -> {
                     if (! parent.isPresent())

@@ -56,6 +56,8 @@ public class SharedWithState implements Cborable {
     }
 
     public SharedWithState add(SharedWithCache.Access access, String filename, Set<String> names) {
+        if (names.isEmpty())
+            return this;
         Map<String, Set<String>> newReads = new HashMap<>();
         for (Map.Entry<String, Set<String>> e : readShares.entrySet()) {
             newReads.put(e.getKey(), new HashSet<>(e.getValue()));
