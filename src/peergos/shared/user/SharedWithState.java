@@ -89,8 +89,16 @@ public class SharedWithState implements Cborable {
         }
 
         Set<String> val = access == SharedWithCache.Access.READ ? newReads.get(filename) : newWrites.get(filename);
-        if (val != null)
+        if (val != null) {
             val.removeAll(names);
+            if (val.isEmpty()) {
+                if (access == SharedWithCache.Access.READ) {
+                    newReads.remove(filename);
+                } else {
+                    newWrites.remove(filename);
+                }
+            }
+        }
 
         return new SharedWithState(newReads, newWrites);
     }
