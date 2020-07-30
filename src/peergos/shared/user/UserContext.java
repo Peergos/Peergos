@@ -1335,9 +1335,6 @@ public class UserContext {
     }
 
     public CompletableFuture<Boolean> shareWriteAccessWith(Path fileToShare, Set<String> writersToAdd) {
-        if (writersToAdd.isEmpty())
-            return Futures.of(true);
-
         return getByPath(fileToShare.getParent().toString())
                 .thenCompose(parent -> {
                     if (! parent.isPresent())
