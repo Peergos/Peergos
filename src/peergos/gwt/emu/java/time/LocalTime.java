@@ -88,6 +88,14 @@ public class LocalTime implements Comparable<LocalTime>{
         return new LocalTime(hour, minute, second, nanoOfSecond);
     }
 
+    public static LocalTime of(int hour, int minute) {
+        return create(hour, minute, 0, 0);
+    }
+
+    public static LocalTime of(int hour, int minute, int second) {
+        return create(hour, minute, second, 0);
+    }
+
     @Override
     public int compareTo(LocalTime other) {
         int cmp = Integer.compare(hour, other.hour);

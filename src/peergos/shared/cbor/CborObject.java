@@ -173,6 +173,10 @@ public interface CborObject extends Cborable {
             return Optional.ofNullable(get(key)).map(fromCbor);
         }
 
+        public Optional<Long> getOptionalLong(String key) {
+            return Optional.ofNullable((CborLong) get(key)).map(c -> c.value);
+        }
+
         public <T> List<T> getList(String key, Function<Cborable, T> fromCbor) {
             CborList cborList = (CborList) get(key);
             return cborList.value

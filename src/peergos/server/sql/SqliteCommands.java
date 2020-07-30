@@ -32,4 +32,9 @@ public class SqliteCommands implements SqlSupplier {
     public String getSerialIdType() {
         return "INTEGER";
     }
+
+    @Override
+    public String sqlInteger() {
+        return "INTEGER";
+    }
 }

@@ -35,6 +35,10 @@ public class Args {
         return params.get(param);
     }
 
+    public Optional<String> getOptionalArg(String param) {
+        return Optional.ofNullable(params.get(param));
+    }
+
     public String setArg(String param, String value) {
         return params.put(param, value);
     }

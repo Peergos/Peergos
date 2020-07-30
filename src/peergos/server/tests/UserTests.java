@@ -38,12 +38,14 @@ public abstract class UserTests {
 
     public static int RANDOM_SEED = 666;
     protected final NetworkAccess network;
+    protected final UserService service;
     protected static final Crypto crypto = Main.initCrypto();
 
     private static Random random = new Random(RANDOM_SEED);
 
-    public UserTests(NetworkAccess network) {
+    public UserTests(NetworkAccess network, UserService service) {
         this.network = network;
+        this.service = service;
     }
 
     public static Args buildArgs() {
@@ -1337,6 +1339,47 @@ public abstract class UserTests {
 
         long updatedQuota = context.getQuota().join();
         Assert.assertTrue("Quota updated", updatedQuota == 2 * quota);
+    }
+
+    @Test
+    public void serverMessaging() {
+        String username = generateUsername();
+        String password = "password";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+
+        String serverMsgBody = "Welcome to the world of Peergos!";
+        service.serverMessages.addMessage(username, new ServerMessage(1, ServerMessage.Type.FromServer,
+                System.currentTimeMillis(), serverMsgBody, Optional.empty(), false));
+
+        String replyBody = "Thanks for making Peergos awesome!";
+        context.sendReply(context.getNewMessages().join().get(0), replyBody).join();
+        List<ServerMessage> afterReply = context.getNewMessages().join();
+        Assert.assertTrue(afterReply.size() == 0);
+
+        String msgBody = "Peergos really is amazing! I love it!";
+        context.sendFeedback(msgBody).join();
+        List<ServerMessage> messages = context.getNewMessages().join();
+        Assert.assertTrue(messages.size() == 0);
+
+        List<ServerMessage> onServer = service.serverMessages.getMessages(username);
+        Assert.assertTrue(onServer.size() == 3);
+        ServerMessage reply = onServer.get(2);
+        Assert.assertTrue(reply.contents.equals(msgBody));
+
+        List<ServerConversation> convs = context.getServerConversations().join();
+        Assert.assertTrue(convs.size() == 0);
+
+        service.serverMessages.addMessage(username, new ServerMessage(1, ServerMessage.Type.FromServer,
+                System.currentTimeMillis(), "Thank you for supporting Peergos.", Optional.empty(), false));
+        context.dismissMessage(context.getNewMessages().join().get(0)).join();
+        List<ServerMessage> updatedMessages = context.getNewMessages().join();
+        Assert.assertTrue(updatedMessages.size() == 0);
+        // Test that we get rate limited
+        try {
+            for (int i = 0; i < 20; i++)
+                context.sendFeedback("SPAM " + i).join();
+            Assert.fail();
+        } catch (RuntimeException e) {}
     }
 
     public static SymmetricKey getDataKey(FileWrapper file) {

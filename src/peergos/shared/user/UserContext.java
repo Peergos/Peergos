@@ -42,7 +42,6 @@ public class UserContext {
     public static final String SHARED_DIR_NAME = "shared";
     public static final String TRANSACTIONS_DIR_NAME = ".transactions";
     public static final String FRIEND_ANNOTATIONS_FILE_NAME = ".annotations";
-    public static final String FEEDBACK_DIR_NAME = "feedback";
 
     public static final String ENTRY_POINTS_FROM_FRIENDS_FILENAME = ".from-friends.cborstream";
     public static final String ENTRY_POINTS_FROM_US_FILENAME = ".from-us.cborstream";
@@ -270,28 +269,7 @@ public class UserContext {
                                                 CapabilityStore.CAPABILITY_CACHE_DIR, network, crypto))
                                         .thenCompose(y -> signIn(username, userWithRoot, network, crypto, progressCallback));
                             }));
-                }).thenCompose(context -> network.coreNode.getUsernames(PEERGOS_USERNAME)
-                        .thenCompose(usernames -> usernames.contains(PEERGOS_USERNAME) && ! username.equals(PEERGOS_USERNAME) ?
-                                context.sendInitialFollowRequest(PEERGOS_USERNAME) :
-                                CompletableFuture.completedFuture(true))
-                        .thenApply(b -> context))
-                .exceptionally(Futures::logAndThrow);
-    }
-
-    @JsMethod
-    public CompletableFuture<Boolean> ensureFollowingPeergos() {
-        return getSocialState()
-                .thenCompose(state -> {
-                    Set<FileWrapper> followerRoots = state.followingRoots;
-                    Set<String> following = followerRoots.stream()
-                            .map(FileWrapper::getOwnerName)
-                            .collect(Collectors.toSet());
-                    Set<String> pendingRoots = state.pendingOutgoingFollowRequests.keySet();
-                    if (!following.contains(PEERGOS_USERNAME) & !pendingRoots.contains(PEERGOS_USERNAME))
-                        return sendInitialFollowRequest(PEERGOS_USERNAME);
-                    else
-                        return CompletableFuture.completedFuture(true);
-                });
+                }).exceptionally(Futures::logAndThrow);
     }
 
     private static CompletableFuture<TrieNode> createSpecialDirectory(TrieNode globalRoot,
@@ -1831,35 +1809,32 @@ public class UserContext {
     }
 
     @JsMethod
-    public CompletableFuture<Boolean> submitFeedback(String feedback) {
-        LOG.info("Checking if feedback directory exists before posting...");
+    public CompletableFuture<List<ServerMessage>> getNewMessages() {
+        //get all messages not dismissed
+        return network.serverMessager.getMessages(username, signer.secret);
+    }
 
-        String timestamp = LocalDateTime.now().toString();
-        String filename = "feedback_" + timestamp + ".txt";
-        Path path = Paths.get(username, FEEDBACK_DIR_NAME);
+    @JsMethod
+    public CompletableFuture<List<ServerConversation>> getServerConversations() {
+        return network.serverMessager.getMessages(username, signer.secret).thenApply(ServerConversation::combine);
+    }
 
-        return getByPath(path)
-            .thenCompose(feedbackWrapper -> {
-                if (feedbackWrapper.isPresent()) {
-                    LOG.info("Feedback directory already exists... nothing to do here!");
-                    return CompletableFuture.completedFuture(feedbackWrapper.get());
-                } else {
-                    LOG.info("Creating a directory for feedback!");
-                    return getUserRoot()
-                        .thenCompose(root -> root.mkdir(FEEDBACK_DIR_NAME, network, false, crypto))
-                        .thenCompose(dir -> getByPath(path))
-                        .thenApply(Optional::get);
-                }
-            }
-            )
-            .thenCompose(feedbackWrapper -> {
-                LOG.info("Posting the feedback!");
-                byte[] feedbackBytes = feedback.getBytes();
-                return feedbackWrapper.uploadOrReplaceFile(filename, AsyncReader.build(feedbackBytes), feedbackBytes.length,
-                        network, crypto, x -> {}, crypto.random.randomBytes(32));
-            }
-            )
-            .thenCompose(x -> shareReadAccessWith(path.resolve(filename), Collections.singleton(PEERGOS_USERNAME)));
+    @JsMethod
+    public CompletableFuture<Boolean> dismissMessage(ServerMessage message) {
+        ServerMessage dismiss = new ServerMessage(message.id, ServerMessage.Type.Dismiss, System.currentTimeMillis(), "", Optional.empty(), true);
+        return network.serverMessager.sendMessage(username, dismiss, signer.secret);
+    }
+
+    @JsMethod
+    public CompletableFuture<Boolean> sendReply(ServerMessage prior, String message) {
+        ServerMessage msg = new ServerMessage(prior.id, ServerMessage.Type.FromUser, System.currentTimeMillis(), message, Optional.of(prior.id), true);
+        return network.serverMessager.sendMessage(username, msg, signer.secret);
+    }
+
+    @JsMethod
+    public CompletableFuture<Boolean> sendFeedback(String message) {
+        ServerMessage msg = ServerMessage.buildUserMessage(message);
+        return network.serverMessager.sendMessage(username, msg, signer.secret);
     }
 
     public static <V> CompletableFuture<V> time(Supplier<CompletableFuture<V>> f, String name) {
