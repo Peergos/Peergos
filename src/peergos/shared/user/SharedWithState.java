@@ -19,6 +19,10 @@ public class SharedWithState implements Cborable {
         this.writeShares = writeShares;
     }
 
+    public boolean isEmpty() {
+        return readShares.isEmpty() && writeShares.isEmpty();
+    }
+
     public static SharedWithState empty() {
         return new SharedWithState(new HashMap<>(), new HashMap<>());
     }

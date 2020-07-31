@@ -1010,6 +1010,9 @@ public abstract class UserTests {
 
         Optional<FileWrapper> fileThroughLink = linkContext.getByPath(path + "/" + filename).get();
         Assert.assertTrue("File present through link", fileThroughLink.isPresent());
+
+        SharedWithState sharing = context.getDirectorySharingState(Paths.get(path)).join();
+        Assert.assertTrue("Can retrieve (empty) sharing state in secret link", sharing.isEmpty());
     }
 
     @Test
