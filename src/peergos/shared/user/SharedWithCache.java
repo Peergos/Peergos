@@ -114,6 +114,9 @@ public class SharedWithCache {
     }
 
     public CompletableFuture<SharedWithState> getDirSharingState(Path dir) {
+        if (this.ourname == null) {
+            return Futures.of(SharedWithState.empty());
+        }
         return retriever.apply(cacheBase)
                 .thenCompose(opt -> opt.isEmpty() ?
                         initializeCache() :
