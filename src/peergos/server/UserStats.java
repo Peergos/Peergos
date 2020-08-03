@@ -20,7 +20,8 @@ public class UserStats {
         Crypto crypto = Main.initCrypto();
         NetworkAccess network = NetworkAccess.buildJava(new URL("https://alpha.peergos.net"), true).get();
         List<String> usernames = network.coreNode.getUsernames("").get();
-        List<Summary> summaries = new ForkJoinPool(50).submit(() -> usernames.stream().parallel().flatMap(username -> {
+        ForkJoinPool pool = new ForkJoinPool(50);
+        List<Summary> summaries = pool.submit(() -> usernames.stream().parallel().flatMap(username -> {
             try {
                 List<UserPublicKeyLink> chain = network.coreNode.getChain(username).get();
                 UserPublicKeyLink last = chain.get(chain.size() - 1);
@@ -58,6 +59,7 @@ public class UserStats {
                 .findFirst()
                 .map(Object::toString)
                 .orElse("")), "host.txt");
+        pool.shutdown();
     }
 
     private static void sortAndPrint(List<Summary> stats,
