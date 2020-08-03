@@ -11,6 +11,7 @@ import java.net.*;
 import java.nio.file.*;
 import java.time.*;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.stream.*;
 
 public class UserStats {
@@ -19,7 +20,7 @@ public class UserStats {
         Crypto crypto = Main.initCrypto();
         NetworkAccess network = NetworkAccess.buildJava(new URL("https://alpha.peergos.net"), true).get();
         List<String> usernames = network.coreNode.getUsernames("").get();
-        List<Summary> summaries = usernames.stream().parallel().flatMap(username -> {
+        List<Summary> summaries = new ForkJoinPool(50).submit(() -> usernames.stream().parallel().flatMap(username -> {
             try {
                 List<UserPublicKeyLink> chain = network.coreNode.getChain(username).get();
                 UserPublicKeyLink last = chain.get(chain.size() - 1);
@@ -44,7 +45,7 @@ public class UserStats {
                 e.printStackTrace();
                 return Stream.empty();
             }
-        }).collect(Collectors.toList());
+        }).collect(Collectors.toList())).join();
 
         // Sort by usage
         sortAndPrint(summaries, (a, b) -> (int) (b.usage - a.usage), "usage.txt");
