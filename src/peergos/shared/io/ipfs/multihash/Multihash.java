@@ -157,7 +157,8 @@ public class Multihash implements Comparable<Multihash> {
             if (b < 0x80) {
                 if (i == 9 && b > 1) {
                     throw new IllegalStateException("Overflow reading varint!");
-                }
+                } else if (b == 0 && s > 0) // We should never finish on a zero byte if there is more than 1 byte
+                    throw new IllegalStateException("Non minimal varint encoding!");
                 return x | (((long)b) << s);
             }
             x |= ((long)b & 0x7f) << s;
