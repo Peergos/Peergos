@@ -404,8 +404,9 @@ public class Main {
                     message = a.getArg("msg");
                 ServerMessage msg = new ServerMessage(-1, ServerMessage.Type.FromServer, System.currentTimeMillis(),
                         message, a.getOptionalArg("reply-to").map(Long::parseLong), false);
-                store.addMessage(a.getArg("username"), msg);
-                System.out.println("Message sent!");
+                String username = a.getArg("username");
+                store.addMessage(username, msg);
+                System.out.println("Message sent to " + username);
                 return true;
             },
             Arrays.asList(
