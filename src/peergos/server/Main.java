@@ -393,8 +393,17 @@ public class Main {
                         new SqliteCommands();
                 ServerMessageStore store = new ServerMessageStore(getDBConnector(a, "server-messages-sql-file"),
                         sqlCommands, null, null);
+                String message;
+                if (a.hasArg("msg-file")) {
+                    try {
+                        message = Files.readString(Paths.get(a.getArg("msg-file")));
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                } else
+                    message = a.getArg("msg");
                 ServerMessage msg = new ServerMessage(-1, ServerMessage.Type.FromServer, System.currentTimeMillis(),
-                        a.getArg("msg"), a.getOptionalArg("reply-to").map(Long::parseLong), false);
+                        message, a.getOptionalArg("reply-to").map(Long::parseLong), false);
                 store.addMessage(a.getArg("username"), msg);
                 System.out.println("Message sent!");
                 return true;
@@ -402,7 +411,8 @@ public class Main {
             Arrays.asList(
                     new Command.Arg("username", "Peergos username", true),
                     new Command.Arg("reply-to", "Message id to reply to", false),
-                    new Command.Arg("msg", "Message to send", true),
+                    new Command.Arg("msg", "Message to send", false),
+                    new Command.Arg("msg-file", "File containing message to send", false),
                     new Command.Arg("server-messages-sql-file", "The filename for the server messages datastore", true, "server-messages.sql")
             )
     );
