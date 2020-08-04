@@ -8,8 +8,8 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black">
     <link rel="shortcut icon" href="/theme/vendor/peergos-styles/dist/img/icons/favicon.ico"/>
-    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
-            <link href="https://fonts.googleapis.com/css?family=Montserrat:400,300,700,900,500" rel="stylesheet" type="text/css">
+    <link rel="stylesheet" href="/theme/css/material-icons.css">
+    <link rel="stylesheet" href="/theme/css/montserrat.css" type="text/css">
     <link rel="stylesheet" href="/theme/vendor/materialize/css/materialize.min.css" type="text/css"/>
     <link rel="stylesheet" href="/theme/css/peergos.css" type="text/css"/>
 
@@ -48,9 +48,9 @@
                         </a>
                     </li>
                         <li>
-                            <a href="https://demo.peergos.net" target="_new" class="btn">
+                            <a href="https://alpha.peergos.net/?signup=true" target="_new" class="btn">
                                                         <span>
-                                                                Try the Demo
+                                                               SIGN UP 
                                                         </span>
                             </a>
                         </li>
@@ -120,7 +120,7 @@
 <h2 id="multiple_device_login_">Multiple device login</h2>
 <p>Using your password you can log in on any device securely. Any files will be downloaded from the network and decrypted on demand locally. </p>
 <h2 id="metadata_protection_">Metadata protection</h2>
-<p>We go to great lengths to protect your metadata. Filenames, sizes, directory structure, modification times, file types, and your friend list are not exposed to the server. Directories are indistinguishable from small files. We also protect your friend list so that only you can see it. </p>
+<p>We go to great lengths to protect your metadata. Filenames, sizes, directory structure, modification times, file types, and your friend list are not exposed to the server. Directories are indistinguishable from small files. We blind follow requests so the server cannot deduce your friendship graph. </p>
 <h2 id="decentralized_">Decentralized</h2>
 <p>Peergos is built on top of <a href="https://ipfs.io">IPFS</a>. You can run Peergos on your own machine and still access your files through any other Peergos server. Alternatively you can pay another provider to store your data (they won't be able to read your files). Currently, we have a small central server which stores usernames and public keys, but we will probably be moving this to a blockchain eventually. Read more about our <a href="/technology">technology</a>.</p>
 <h2 id="open_source_">Open source</h2>
@@ -157,9 +157,15 @@
                 <h5 class="white-text">Community</h5>
                 <ul>
                     <!--<li><a href="http://blog.peergos.org" target="_new">Blog</a></li>-->
-                    <li><a href="https://github.com/peergos" target="_new">GitHub</a></li>
-                    <li><a href="https://twitter.com/peergos" target="_new">Twitter</a></li>
-                    <li><a href="https://reddit.com/r/peergos" target="_new">Reddit</a></li>
+                    <a href="https://github.com/peergos/peergos" target="_new">
+                      <img src="/theme/img/contact/github.svg" width="100">
+                    </a>
+                    <a href="https://twitter.com/peergos" target="_new">
+                    <img src="/theme/img/contact/twitter.svg" width="100">
+                    </a>
+                    <a href="https://reddit.com/r/peergos" target="_new">
+                    <img src="/theme/img/contact/reddit.png" width="100">
+                    </a>
                 </ul>
             </div>
         </div>

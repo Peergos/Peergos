@@ -8,8 +8,8 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black">
     <link rel="shortcut icon" href="/theme/vendor/peergos-styles/dist/img/icons/favicon.ico"/>
-    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
-            <link href="https://fonts.googleapis.com/css?family=Montserrat:400,300,700,900,500" rel="stylesheet" type="text/css">
+    <link rel="stylesheet" href="/theme/css/material-icons.css">
+    <link rel="stylesheet" href="/theme/css/montserrat.css" type="text/css">
     <link rel="stylesheet" href="/theme/vendor/materialize/css/materialize.min.css" type="text/css"/>
     <link rel="stylesheet" href="/theme/css/peergos.css" type="text/css"/>
 
@@ -48,9 +48,9 @@
                         </a>
                     </li>
                         <li>
-                            <a href="https://demo.peergos.net" target="_new" class="btn">
+                            <a href="https://alpha.peergos.net/?signup=true" target="_new" class="btn">
                                                         <span>
-                                                                Try the Demo
+                                                               SIGN UP 
                                                         </span>
                             </a>
                         </li>
@@ -101,26 +101,18 @@
     <div class="row">
     <div class="col m3 col s4">
     <div id="full-toc" class="bs-docs-sidebar hidden-print affix-top hidden-xs hidden-sm" role="complementary">
-  <ul class='nav bs-docs-sidenav'><li class='active'><a href='#overview_' data-scroll data-url>Overview</a></li><li><a href='#encryption_' data-scroll data-url>Encryption</a></li><li><a href='#metadata_' data-scroll data-url>Metadata</a></li><li><a href='#trustless_servers_' data-scroll data-url>Trustless Servers</a></li><li><a href='#trustless_storage_' data-scroll data-url>Trustless Storage</a></li><li><a href='#independent_audits_' data-scroll data-url>Independent audits</a></li><li><a href='#quantumresistant_cryptography_' data-scroll data-url>Quantum-resistant Cryptography</a></li><li><a href='#threat_models_' data-scroll data-url>Threat Models</a></li><li><a href='#the_casual_user_' data-scroll data-url>The casual user</a></li><li><a href='#the_cautious_user_' data-scroll data-url>The cautious user</a></li><li><a href='#the_local_only_user_' data-scroll data-url>The local only user</a></ul>
+  <ul class='nav bs-docs-sidenav'><li class='active'><a href='#overview_' data-scroll data-url>Overview</a></li><li><a href='#quantum_cryptography_' data-scroll data-url>Quantum Cryptography?</a></li><li><a href='#threat_models_' data-scroll data-url>Threat Models</a></li><li><a href='#the_casual_user_' data-scroll data-url>The casual user</a></li><li><a href='#the_cautious_user_' data-scroll data-url>The cautious user</a></li><li><a href='#the_local_only_user_' data-scroll data-url>The local only user</a></ul>
     </div>
     </div>
     <div class="col m9 col s8" role="main" style="overflow-x:auto; padding-bottom: 10px;">
     <h1 class="page-header main-title">Security</h1>
     <div class="bs-docs-section">
     <h2 id="overview_">Overview</h2>
-<p>Peergos encrypts files locally on your device and your keys never leave your device. To log in, your username and password are (locally) hashed through <a href="https://en.wikipedia.org/wiki/Scrypt">scrypt</a> to derive your root key-pair and root symmetric key. This key-pair is never written to disk, and is only used to decrypt follow requests sent to you. The symmetric key is used to decrypt your entry points into your filesystem. This design allows you to log in from any device. You can read more technical information in our <a href="https://book.peergos.org">book</a>.</p>
-<h2 id="encryption_">Encryption</h2>
-<p>The underlying encryption uses <a href="http://tweetnacl.cr.yp.to/">Tweetnacl</a> for both symmetric and asymmetric encryption. This means files are encrypted with xsalsa20-poly1305, data is signed with Ed25529, and shared keys are exchanged using Curve25519. </p>
-<h2 id="metadata_">Metadata</h2>
-<p>Peergos protects your metadata as well as your data. Everything from file and directory names, sizes and other properties are encrypted or obfuscated. Unlike other products out there Peergos protects your social graph as well. Your contact list is not visible to the server and is stored encrypted in your own space. Furthermore, if a user shares a file with another user, the server can't deduce this relationship. A Peergos server doesn't store any sensitive data or metadata. We take your privacy seriously!</p>
-<h2 id="trustless_servers_">Trustless Servers</h2>
-<p>Your Peergos server doesn't store or have access to any unencrypted sensistive information. This means that even if the server is breached, the attacker cannot read your data without a further active attack on users by delivering a malicious web client to those using the web interface.</p>
-<h2 id="trustless_storage_">Trustless Storage</h2>
-<p>There is further trustfree separation between the server and the actual data storage, which could be local disk, or a remote S3 compatible service. This means that a servers can use S3 compatible storage as a data backend without exposing any sensitive information to S3. You can even mirror your data safely on an untrusted server. </p>
-<h2 id="independent_audits_">Independent audits</h2>
-<p>We have been audited by the world leeading security firm, <a href="https://cure53.de/">Cure53</a>. Read more <a href="https://peergos.org/posts/security-audit">here</a>.</p>
-<h2 id="quantumresistant_cryptography_">Quantum-resistant Cryptography</h2>
-<p>Your entire file system in Peergos is encrypted with symmetric cryptography and the initial keys are derived using cryptographic hashing. Both of these are believed to be resistant to quantum computer attacks (You at best get a factor of 2 speedup from Grover's algorithm). We will be switching the asymmetric cryptography, which is used to share files, to a post-quantum algorithm as soon as a clear candidate arrives. </p>
+<p>Peergos encrypts files locally on your device and your keys never leave your device. To log in, your username and password are (locally) hashed through <a href="https://en.wikipedia.org/wiki/Scrypt">scrypt</a> to derive your root key-pair and root symmetric key. This key-pair is never written to disk, and is only used to decrypt follow requests sent to you. The symmetric key is used to decrypt your entry points into your filesystem. This design allows you to log in from any device. Read more about our <a href="/technology">technology</a>.</p>
+<p>The underlying encryption uses <a href="http://tweetnacl.cr.yp.to/">Tweetnacl</a> for both symmetric and asymmetric encryption. </p>
+<p>Peergos hides the contents of files, but also the friendship graph. If a user shares a file with another user, the network shouldn't be able to deduce this relationship. A Peergos server doesn't store any sensitive data or metadata. </p>
+<h2 id="quantum_cryptography_">Quantum Cryptography?</h2>
+<p>Your entire file system in Peergos is encrypted with symmetric cryptography and the initial keys are derived using cryptographic hashing. Both of these are believed to be resistant to quantum computer attacks. We will be switching the asymmetric cryptography, which is used to share files, to a post-quantum algorithm as soon as a clear candidate arrives. </p>
 <h2 id="threat_models_">Threat Models</h2>
 <p>Peergos is designed to be secure against passive network adversaries, even ones with state level computational resources, who are able to store all data on the Peergos network indefinitely. Despite all the encrypted data being publicly accessible, no one but the intended recipients can deduce any data or friendship graphs. </p>
 <p>Peergos does not defend against a compromised user's machine. Currently, Peergos doesn't protect files shared between users from an adversary with a large quantum computer. </p>
@@ -135,6 +127,7 @@
 <p><strong>Uses</strong></p>
 <ol>
 <li>Can use our public server's web interface over https</li>
+<li>Can use our mobile app, created using Electron to bundle the web interface</li>
 </ol>
 <h2 id="the_cautious_user_">The cautious user</h2>
 <p><strong>Trusts</strong></p>
@@ -144,7 +137,7 @@
 </ol>
 <p><strong>Uses</strong></p>
 <ol>
-<li>Download and run Peergos locally, and use the web interface over localhost in their browser of choice, or the command line interface</li>
+<li>Download and run Peergos locally, and use the web interface over localhost in their browser of choice, or the native interface created using Electron</li>
 </ol>
 <h2 id="the_local_only_user_">The local only user</h2>
 <p><strong>Trusts</strong></p>
@@ -153,7 +146,7 @@
 </ol>
 <p><strong>Uses</strong></p>
 <ol>
-<li>Can download and run Peergos locally as an effective local encrypted file store, without the social aspects. They can access through the web interface on localhost, through the native filesystem with a FUSE mount of Peergos, or using the CLI. </li>
+<li>Can download and run Peergos locally as an effective local encrypted file store, without the social aspects. They can access through the web interface on localhost, through the native filesystem with a FUSE mount of Peergos, or using the Java api directly. </li>
 </ol>
     </div>
     <span class="pull-right">
@@ -187,9 +180,15 @@
                 <h5 class="white-text">Community</h5>
                 <ul>
                     <!--<li><a href="http://blog.peergos.org" target="_new">Blog</a></li>-->
-                    <li><a href="https://github.com/peergos" target="_new">GitHub</a></li>
-                    <li><a href="https://twitter.com/peergos" target="_new">Twitter</a></li>
-                    <li><a href="https://reddit.com/r/peergos" target="_new">Reddit</a></li>
+                    <a href="https://github.com/peergos/peergos" target="_new">
+                      <img src="/theme/img/contact/github.svg" width="100">
+                    </a>
+                    <a href="https://twitter.com/peergos" target="_new">
+                    <img src="/theme/img/contact/twitter.svg" width="100">
+                    </a>
+                    <a href="https://reddit.com/r/peergos" target="_new">
+                    <img src="/theme/img/contact/reddit.png" width="100">
+                    </a>
                 </ul>
             </div>
         </div>
