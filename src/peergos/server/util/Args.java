@@ -260,7 +260,7 @@ public class Args {
                 .flatMap(e -> e.stream())
                 .forEach(e -> args.params.putIfAbsent(e.getKey(), e.getValue()));
 
-        args.saveToFile(args.fromPeergosDir(CONFIG_FILENAME));
+        args.saveToFile(args.fromPeergosDir(CONFIG_FILENAME, CONFIG_FILENAME));
         return args;
     }
 
