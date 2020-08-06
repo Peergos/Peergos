@@ -4,14 +4,13 @@ import peergos.server.*;
 import peergos.shared.util.Pair;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.nio.file.*;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class Args {
+    private static final String CONFIG_FILENAME = "config";
 
     private final Map<String, String> params = paramMap();//insertion order
 
@@ -182,6 +181,13 @@ public class Args {
         return map;
     }
 
+    private static Map<String, String> parseFile(Map<String, String> args, Map<String, String> env) {
+        Path toFile = (args.containsKey(Main.PEERGOS_PATH) ?
+                Paths.get(args.get(Main.PEERGOS_PATH)) :
+                Main.DEFAULT_PEERGOS_DIR_PATH).resolve(CONFIG_FILENAME);
+        return parseFile(toFile);
+    }
+
     private static Map<String, String> parseFile(Path path) {
         try {
             List<String> lines = Files.readAllLines(path);
@@ -199,7 +205,17 @@ public class Args {
         } catch (IOException ioe) {
             throw new IllegalStateException(ioe.getMessage(), ioe);
         }
+    }
 
+    private void saveToFile(Path file) {
+        String text = params.entrySet().stream()
+                .map(e -> e.getKey() + " = " + e.getValue())
+                .collect(Collectors.joining("\n"));
+        try {
+            Files.write(file, text.getBytes(), StandardOpenOption.CREATE);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private static Map<String, String> parseParams(String[] args) {
@@ -226,9 +242,11 @@ public class Args {
      * @return
      */
     public static Args parse(String[] params, Optional<Path> configFile, boolean includeEnv) {
-        Map<String, String> fromParams = parseParams(params);
-        Map<String, String> fromConfig = configFile.isPresent() ? parseFile(configFile.get()) : Collections.emptyMap();
         Map<String, String> fromEnv = includeEnv ? parseEnv() : Collections.emptyMap();
+        Map<String, String> fromParams = parseParams(params);
+        Map<String, String> fromConfig = configFile.isPresent() ?
+                parseFile(configFile.get()) :
+                parseFile(fromParams, fromEnv);
 
         Args args = new Args();
 
@@ -240,7 +258,7 @@ public class Args {
                 .flatMap(e -> e.stream())
                 .forEach(e -> args.params.putIfAbsent(e.getKey(), e.getValue()));
 
-
+        args.saveToFile(args.fromPeergosDir(CONFIG_FILENAME));
         return args;
     }
 
