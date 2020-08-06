@@ -190,6 +190,8 @@ public class Args {
 
     private static Map<String, String> parseFile(Path path) {
         try {
+            if (! path.toFile().exists())
+                return Collections.emptyMap();
             List<String> lines = Files.readAllLines(path);
 
             return lines.stream()
