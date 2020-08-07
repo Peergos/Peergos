@@ -73,7 +73,7 @@ public class Main {
             Arrays.asList(
                     new Command.Arg("ipfs-exe-path", "Desired path to IPFS executable. Defaults to $PEERGOS_PATH/ipfs", false),
                     new Command.Arg("ipfs-plugins", "comma separated list of ipfs plugins to install, currently only go-ds-s3 is supported", false),
-                    new Command.Arg("s3.path", "Path of data store in S3", false, "blocks"),
+                    new Command.Arg("s3.path", "Path of data store in S3", false),
                     new Command.Arg("s3.bucket", "S3 bucket name", false),
                     new Command.Arg("s3.region", "S3 region", false),
                     new Command.Arg("s3.accessKey", "S3 access key", false),
