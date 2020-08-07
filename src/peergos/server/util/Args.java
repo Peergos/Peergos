@@ -209,6 +209,10 @@ public class Args {
         }
     }
 
+    public void saveToFile() {
+        saveToFile(fromPeergosDir(CONFIG_FILENAME, CONFIG_FILENAME));
+    }
+
     private void saveToFile(Path file) {
         String text = params.entrySet().stream()
                 .map(e -> e.getKey() + " = " + e.getValue())
@@ -260,7 +264,6 @@ public class Args {
                 .flatMap(e -> e.stream())
                 .forEach(e -> args.params.putIfAbsent(e.getKey(), e.getValue()));
 
-        args.saveToFile(args.fromPeergosDir(CONFIG_FILENAME, CONFIG_FILENAME));
         return args;
     }
 
