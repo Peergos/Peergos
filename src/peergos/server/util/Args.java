@@ -140,8 +140,10 @@ public class Args {
                 .findFirst();
     }
 
-    public void setIfAbsent(String key, String value) {
-        params.putIfAbsent(key, value);
+    public Args setIfAbsent(String key, String value) {
+        if (params.containsKey(key))
+            return this;
+        return setArg(key, value);
     }
 
     public Args with(String key, String value) {
