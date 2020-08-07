@@ -12,7 +12,12 @@ import java.util.stream.Stream;
 public class Args {
     private static final String CONFIG_FILENAME = "config";
 
-    private final Map<String, String> params = paramMap();//insertion order
+    private final Map<String, String> params, envOnly;//insertion order
+
+    public Args(Map<String, String> params, Map<String, String> envOnly) {
+        this.params = params;
+        this.envOnly = envOnly;
+    }
 
     public List<String> getAllArgs() {
         Map<String, String> env = System.getenv();
@@ -38,20 +43,22 @@ public class Args {
         return Optional.ofNullable(params.get(param));
     }
 
-    public String setArg(String param, String value) {
-        return params.put(param, value);
+    public Args setArg(String param, String value) {
+        Map<String, String> newParams = paramMap();
+        newParams.putAll(params);
+        newParams.put(param, value);
+        return new Args(newParams, envOnly);
     }
 
-    public String setParameter(String param) {
-        return params.put(param, "true");
+    public Args setParameter(String param) {
+        return setArg(param, "true");
     }
 
-    public String removeParameter(String param) {
-        return params.remove(param);
-    }
-
-    public String removeArg(String param) {
-        return params.remove(param);
+    public Args removeArg(String param) {
+        Map<String, String> newParams = paramMap();
+        newParams.putAll(params);
+        newParams.remove(param);
+        return new Args(newParams, envOnly);
     }
 
     public boolean hasArg(String arg) {
@@ -110,16 +117,15 @@ public class Args {
     }
 
     public Args tail() {
-        Args tail = new Args();
         boolean isFirst = true;
-
+        Map<String, String> newParams = paramMap();
         for (Iterator<Map.Entry<String, String>> it = params.entrySet().iterator(); it.hasNext(); ) {
             Map.Entry<String, String> next = it.next();
             if (!isFirst)
-                tail.params.put(next.getKey(), next.getValue());
+                newParams.put(next.getKey(), next.getValue());
             isFirst = false;
         }
-        return tail;
+        return new Args(newParams, envOnly);
     }
 
     public Optional<String> head() {
@@ -136,18 +142,14 @@ public class Args {
         Map<String, String> map = paramMap();
         map.putAll(params);
         map.put(key, value);
-        Args args = new Args();
-        args.params.putAll(map);
-        return args;
+        return new Args(map, envOnly);
     }
 
     public Args with(Args overrides) {
         Map<String, String> map = paramMap();
         map.putAll(params);
         map.putAll(overrides.params);
-        Args args = new Args();
-        args.params.putAll(map);
-        return args;
+        return new Args(map, envOnly);
     }
 
     public Path fromPeergosDir(String fileName) {
@@ -209,12 +211,16 @@ public class Args {
         }
     }
 
+    /** Save all parameters to a config file, excluding environment vars
+     *
+     */
     public void saveToFile() {
         saveToFile(fromPeergosDir(CONFIG_FILENAME, CONFIG_FILENAME));
     }
 
     private void saveToFile(Path file) {
-        String text = params.entrySet().stream()
+        String text = new TreeMap<>(params).entrySet().stream()
+                .filter(e -> ! envOnly.containsKey(e.getKey()))
                 .map(e -> e.getKey() + " = " + e.getValue())
                 .collect(Collectors.joining("\n"));
         try {
@@ -250,21 +256,21 @@ public class Args {
     public static Args parse(String[] params, Optional<Path> configFile, boolean includeEnv) {
         Map<String, String> fromEnv = includeEnv ? parseEnv() : Collections.emptyMap();
         Map<String, String> fromParams = parseParams(params);
-        Map<String, String> fromConfig = configFile.isPresent() ?
+        Map<String, String> fromFile = configFile.isPresent() ?
                 parseFile(configFile.get()) :
                 parseFile(fromParams, fromEnv);
 
-        Args args = new Args();
+        Map<String, String> combined = paramMap();
 
         Stream.of(
                 fromParams.entrySet(),
-                fromConfig.entrySet(),
+                fromFile.entrySet(),
                 fromEnv.entrySet()
         )
                 .flatMap(e -> e.stream())
-                .forEach(e -> args.params.putIfAbsent(e.getKey(), e.getValue()));
+                .forEach(e -> combined.putIfAbsent(e.getKey(), e.getValue()));
 
-        return args;
+        return new Args(combined, fromEnv);
     }
 
     public static Args parse(String[] args) {
