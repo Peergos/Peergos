@@ -12,11 +12,17 @@ import java.util.stream.Stream;
 public class Args {
     private static final String CONFIG_FILENAME = "config";
 
+    private final List<String> commands;
     private final Map<String, String> params, envOnly;//insertion order
 
-    public Args(Map<String, String> params, Map<String, String> envOnly) {
+    public Args(List<String> commands, Map<String, String> params, Map<String, String> envOnly) {
+        this.commands = commands;
         this.params = params;
         this.envOnly = envOnly;
+    }
+
+    public List<String> commands() {
+        return new ArrayList<>(commands);
     }
 
     public List<String> getAllArgs() {
@@ -47,7 +53,7 @@ public class Args {
         Map<String, String> newParams = paramMap();
         newParams.putAll(params);
         newParams.put(param, value);
-        return new Args(newParams, envOnly);
+        return new Args(commands, newParams, envOnly);
     }
 
     public Args setParameter(String param) {
@@ -58,7 +64,7 @@ public class Args {
         Map<String, String> newParams = paramMap();
         newParams.putAll(params);
         newParams.remove(param);
-        return new Args(newParams, envOnly);
+        return new Args(commands, newParams, envOnly);
     }
 
     public boolean hasArg(String arg) {
@@ -125,7 +131,7 @@ public class Args {
                 newParams.put(next.getKey(), next.getValue());
             isFirst = false;
         }
-        return new Args(newParams, envOnly);
+        return new Args(commands.subList(1, commands.size()), newParams, envOnly);
     }
 
     public Optional<String> head() {
@@ -142,14 +148,14 @@ public class Args {
         Map<String, String> map = paramMap();
         map.putAll(params);
         map.put(key, value);
-        return new Args(map, envOnly);
+        return new Args(commands, map, envOnly);
     }
 
     public Args with(Args overrides) {
         Map<String, String> map = paramMap();
         map.putAll(params);
         map.putAll(overrides.params);
-        return new Args(map, envOnly);
+        return new Args(commands, map, envOnly);
     }
 
     public Path fromPeergosDir(String fileName) {
@@ -245,6 +251,15 @@ public class Args {
         return map;
     }
 
+    private static List<String> parseCommands(String[] args) {
+        List<String> commands = new ArrayList<>();
+        for (String arg: args)
+            if (! arg.startsWith("-"))
+                commands.add(arg);
+            else break;
+        return commands;
+    }
+
     /**
      * params overrides configFile overrides env
      *
@@ -254,6 +269,7 @@ public class Args {
      * @return
      */
     public static Args parse(String[] params, Optional<Path> configFile, boolean includeEnv) {
+        List<String> commands = parseCommands(params);
         Map<String, String> fromEnv = includeEnv ? parseEnv() : Collections.emptyMap();
         Map<String, String> fromParams = parseParams(params);
         Map<String, String> fromFile = configFile.isPresent() ?
@@ -270,7 +286,7 @@ public class Args {
                 .flatMap(e -> e.stream())
                 .forEach(e -> combined.putIfAbsent(e.getKey(), e.getValue()));
 
-        return new Args(combined, fromEnv);
+        return new Args(commands, combined, fromEnv);
     }
 
     public static Args parse(String[] args) {
