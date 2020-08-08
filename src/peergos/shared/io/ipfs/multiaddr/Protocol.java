@@ -171,7 +171,7 @@ public class Protocol {
                     // using an Encrypted Leaseset v2. all other base32 addresses will always be
                     // exactly 52 characters
                     if (addr.length() < 55 && addr.length() != 52 || addr.contains(":")) {
-                        throw new IllegalStateException(String.format("Invalid garlic addr: %s not a i2p base32 address. len: %d", addr, addr.length()));
+                        throw new IllegalStateException("Invalid garlic addr: " + addr + " not a i2p base32 address. len: " + addr.length());
                     }
 
                     while (addr.length() % 8 != 0) {
@@ -188,7 +188,7 @@ public class Protocol {
                 } case GARLIC64: {
                     // i2p base64 address will be between 516 and 616 characters long, depending on certificate type
                     if (addr.length() < 516 || addr.length() > 616 || addr.contains(":")) {
-                        throw new IllegalStateException(String.format("Invalid garlic addr: %s not a i2p base64 address. len: %d", addr, addr.length()));
+                        throw new IllegalStateException("Invalid garlic addr: " + addr + " not a i2p base64 address. len: " + addr.length());
                     }
 
                     ByteArrayOutputStream bout = new ByteArrayOutputStream();
