@@ -1,11 +1,8 @@
 package peergos.shared.io.ipfs.multiaddr;
 
-
 import peergos.shared.io.ipfs.multibase.*;
-import peergos.shared.io.ipfs.multibase.binary.*;
-import peergos.shared.io.ipfs.multihash.*;
-import peergos.shared.io.ipfs.cid.*;
-
+import peergos.shared.io.ipfs.multihash.Multihash;
+import peergos.shared.io.ipfs.cid.Cid;
 import java.io.*;
 import java.net.*;
 import java.util.*;
@@ -17,17 +14,29 @@ public class Protocol {
     enum Type {
         IP4(4, 32, "ip4"),
         TCP(6, 16, "tcp"),
-        UDP(17, 16, "udp"),
         DCCP(33, 16, "dccp"),
         IP6(41, 128, "ip6"),
+        DNS(53, LENGTH_PREFIXED_VAR_SIZE, "dns"),
+        DNS4(54, LENGTH_PREFIXED_VAR_SIZE, "dns4"),
+        DNS6(55, LENGTH_PREFIXED_VAR_SIZE, "dns6"),
+        DNSADDR(56, LENGTH_PREFIXED_VAR_SIZE, "dnsaddr"),
         SCTP(132, 16, "sctp"),
+        UDP(273, 16, "udp"),
         UTP(301, 0, "utp"),
         UDT(302, 0, "udt"),
-        IPFS(421, LENGTH_PREFIXED_VAR_SIZE, "ipfs"),
+        UNIX(400, LENGTH_PREFIXED_VAR_SIZE, "unix"),
         P2P(421, LENGTH_PREFIXED_VAR_SIZE, "p2p"),
+        IPFS(421, LENGTH_PREFIXED_VAR_SIZE, "ipfs"),
         HTTPS(443, 0, "https"),
-        HTTP(480, 0, "http"),
-        ONION(444, 80, "onion");
+        ONION(444, 80, "onion"),
+        ONION3(445, 296, "onion3"),
+        GARLIC64(446, LENGTH_PREFIXED_VAR_SIZE, "garlic64"),
+        GARLIC32(447, LENGTH_PREFIXED_VAR_SIZE, "garlic32"),
+        QUIC(460, 0, "quic"),
+        WS(477, 0, "ws"),
+        WSS(478, 0, "wss"),
+        P2PCIRCUIT(290, 0, "p2p-circuit"),
+        HTTP(480, 0, "http");
 
         public final int code, size;
         public final String name;
@@ -55,6 +64,10 @@ public class Protocol {
 
     public void appendCode(OutputStream out) throws IOException {
         out.write(type.encoded);
+    }
+
+    public boolean isTerminal() {
+        return type == Type.UNIX;
     }
 
     public int size() {
@@ -92,31 +105,34 @@ public class Protocol {
                         throw new IllegalStateException("Failed to parse "+type.name+" address "+addr + " (> 65535");
                     return new byte[]{(byte)(x >>8), (byte)x};
                 case P2P:
-                case IPFS:
+                case IPFS: {
                     Multihash hash = Cid.decode(addr);
                     ByteArrayOutputStream bout = new ByteArrayOutputStream();
                     byte[] hashBytes = hash.toBytes();
-                    byte[] varint = new byte[(32 - Integer.numberOfLeadingZeros(hashBytes.length)+6)/7];
+                    byte[] varint = new byte[(32 - Integer.numberOfLeadingZeros(hashBytes.length) + 6) / 7];
                     putUvarint(varint, hashBytes.length);
                     bout.write(varint);
                     bout.write(hashBytes);
                     return bout.toByteArray();
-                case ONION:
+                }
+                case ONION: {
                     String[] split = addr.split(":");
                     if (split.length != 2)
-                        throw new IllegalStateException("Onion address needs a port: "+addr);
+                        throw new IllegalStateException("Onion address needs a port: " + addr);
 
                     // onion address without the ".onion" substring
                     if (split[0].length() != 16)
-                        throw new IllegalStateException("failed to parse "+name()+" addr: "+addr+" not a Tor onion address.");
+                        throw new IllegalStateException("failed to parse " + name() + " addr: " + addr + " not a Tor onion address.");
 
-                    byte[] onionHostBytes = new Base32().decode(split[0].toUpperCase());
+                    byte[] onionHostBytes = Multibase.decode(Multibase.Base.Base32.prefix + split[0]);
+                    if (onionHostBytes.length != 10)
+                        throw new IllegalStateException("Invalid onion address host: " + split[0]);
                     int port = Integer.parseInt(split[1]);
                     if (port > 65535)
-                        throw new IllegalStateException("Port is > 65535: "+port);
+                        throw new IllegalStateException("Port is > 65535: " + port);
 
                     if (port < 1)
-                        throw new IllegalStateException("Port is < 1: "+port);
+                        throw new IllegalStateException("Port is < 1: " + port);
 
                     ByteArrayOutputStream b = new ByteArrayOutputStream();
                     DataOutputStream dout = new DataOutputStream(b);
@@ -124,11 +140,94 @@ public class Protocol {
                     dout.writeShort(port);
                     dout.flush();
                     return b.toByteArray();
+                }
+                case ONION3: {
+                    String[] split = addr.split(":");
+                    if (split.length != 2)
+                        throw new IllegalStateException("Onion3 address needs a port: " + addr);
+
+                    // onion3 address without the ".onion" substring
+                    if (split[0].length() != 56)
+                        throw new IllegalStateException("failed to parse " + name() + " addr: " + addr + " not a Tor onion3 address.");
+
+                    byte[] onionHostBytes = Multibase.decode(Multibase.Base.Base32.prefix + split[0]);
+                    if (onionHostBytes.length != 35)
+                        throw new IllegalStateException("Invalid onion3 address host: " + split[0]);
+                    int port = Integer.parseInt(split[1]);
+                    if (port > 65535)
+                        throw new IllegalStateException("Port is > 65535: " + port);
+
+                    if (port < 1)
+                        throw new IllegalStateException("Port is < 1: " + port);
+
+                    ByteArrayOutputStream b = new ByteArrayOutputStream();
+                    DataOutputStream dout = new DataOutputStream(b);
+                    dout.write(onionHostBytes);
+                    dout.writeShort(port);
+                    dout.flush();
+                    return b.toByteArray();
+                } case GARLIC32: {
+                    // an i2p base32 address with a length of greater than 55 characters is
+                    // using an Encrypted Leaseset v2. all other base32 addresses will always be
+                    // exactly 52 characters
+                    if (addr.length() < 55 && addr.length() != 52 || addr.contains(":")) {
+                        throw new IllegalStateException("Invalid garlic addr: " + addr + " not a i2p base32 address. len: " + addr.length());
+                    }
+
+                    while (addr.length() % 8 != 0) {
+                        addr += "=";
+                    }
+
+                    ByteArrayOutputStream bout = new ByteArrayOutputStream();
+                    byte[] hashBytes =  Multibase.decode(Multibase.Base.Base32.prefix + addr);
+                    byte[] varint = new byte[(32 - Integer.numberOfLeadingZeros(hashBytes.length) + 6) / 7];
+                    putUvarint(varint, hashBytes.length);
+                    bout.write(varint);
+                    bout.write(hashBytes);
+                    return bout.toByteArray();
+                } case GARLIC64: {
+                    // i2p base64 address will be between 516 and 616 characters long, depending on certificate type
+                    if (addr.length() < 516 || addr.length() > 616 || addr.contains(":")) {
+                        throw new IllegalStateException("Invalid garlic addr: " + addr + " not a i2p base64 address. len: " + addr.length());
+                    }
+
+                    ByteArrayOutputStream bout = new ByteArrayOutputStream();
+                    byte[] hashBytes =  Multibase.decode(Multibase.Base.Base64.prefix + addr.replaceAll("-", "+").replaceAll("~", "/"));
+                    byte[] varint = new byte[(32 - Integer.numberOfLeadingZeros(hashBytes.length) + 6) / 7];
+                    putUvarint(varint, hashBytes.length);
+                    bout.write(varint);
+                    bout.write(hashBytes);
+                    return bout.toByteArray();
+                } case UNIX: {
+                    if (addr.startsWith("/"))
+                        addr = addr.substring(1);
+                    byte[] path = addr.getBytes();
+                    ByteArrayOutputStream b = new ByteArrayOutputStream();
+                    DataOutputStream dout = new DataOutputStream(b);
+                    byte[] length = new byte[(32 - Integer.numberOfLeadingZeros(path.length)+6)/7];
+                    putUvarint(length, path.length);
+                    dout.write(length);
+                    dout.write(path);
+                    dout.flush();
+                    return b.toByteArray();
+                }
+                case DNS4:
+                case DNS6:
+                case DNSADDR: {
+                    ByteArrayOutputStream bout = new ByteArrayOutputStream();
+                    byte[] hashBytes = addr.getBytes();
+                    byte[] varint = new byte[(32 - Integer.numberOfLeadingZeros(hashBytes.length) + 6) / 7];
+                    putUvarint(varint, hashBytes.length);
+                    bout.write(varint);
+                    bout.write(hashBytes);
+                    return bout.toByteArray();
+                }
+                default:
+                    throw new IllegalStateException("Unknown multiaddr type: " + type);
             }
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-        throw new IllegalStateException("Failed to parse address: "+addr);
     }
 
     public String readAddress(InputStream in) throws IOException {
@@ -137,29 +236,73 @@ public class Protocol {
         switch (type) {
             case IP4:
                 buf = new byte[sizeForAddress];
-                in.read(buf);
+                read(in, buf);
                 return Inet4Address.getByAddress(buf).toString().substring(1);
             case IP6:
                 buf = new byte[sizeForAddress];
-                in.read(buf);
+                read(in, buf);
                 return Inet6Address.getByAddress(buf).toString().substring(1);
             case TCP:
             case UDP:
             case DCCP:
             case SCTP:
                 return Integer.toString((in.read() << 8) | (in.read()));
-            case P2P:
             case IPFS:
                 buf = new byte[sizeForAddress];
-                in.read(buf);
+                read(in, buf);
                 return Cid.cast(buf).toString();
-            case ONION:
+            case ONION: {
                 byte[] host = new byte[10];
-                in.read(host);
+                read(in, host);
                 String port = Integer.toString((in.read() << 8) | (in.read()));
-                return new String(new Base32().encode(host))+":"+port;
+                return Multibase.encode(Multibase.Base.Base32, host).substring(1) + ":" + port;
+            } case ONION3: {
+                byte[] host = new byte[35];
+                read(in, host);
+                String port = Integer.toString((in.read() << 8) | (in.read()));
+                return Multibase.encode(Multibase.Base.Base32, host).substring(1) + ":" + port;
+            } case GARLIC32: {
+                buf = new byte[sizeForAddress];
+                read(in, buf);
+                // an i2p base32 for an Encrypted Leaseset v2 will be at least 35 bytes
+                // long other than that, they will be exactly 32 bytes
+                if (buf.length < 35 && buf.length != 32) {
+                    throw new IllegalStateException("Invalid garlic addr length: " + buf.length);
+                }
+                return Multibase.encode(Multibase.Base.Base32, buf).substring(1);
+            } case GARLIC64: {
+                buf = new byte[sizeForAddress];
+                read(in, buf);
+                // A garlic64 address will always be greater than 386 bytes
+                if (buf.length < 386) {
+                    throw new IllegalStateException("Invalid garlic64 addr length: " + buf.length);
+                }
+                return Multibase.encode(Multibase.Base.Base64, buf).substring(1).replaceAll("\\+", "-").replaceAll("/", "~");
+            } case UNIX:
+                buf = new byte[sizeForAddress];
+                read(in, buf);
+                return new String(buf);
+            case DNS4:
+            case DNS6:
+            case DNSADDR:
+                buf = new byte[sizeForAddress];
+                read(in, buf);
+                return new String(buf);
         }
         throw new IllegalStateException("Unimplemented protocol type: "+type.name);
+    }
+
+    private static void read(InputStream in, byte[] b) throws IOException {
+        read(in, b, 0, b.length);
+    }
+
+    private static void read(InputStream in, byte[] b, int offset, int len) throws IOException {
+        int total=0, r=0;
+        while (total < len && r != -1) {
+            r = in.read(b, offset + total, len - total);
+            if (r >=0)
+                total += r;
+        }
     }
 
     public int sizeForAddress(InputStream in) throws IOException {
@@ -199,7 +342,7 @@ public class Protocol {
         }
         throw new IllegalStateException("Varint too long!");
     }
-    
+
     private static Map<String, Protocol> byName = new HashMap<>();
     private static Map<Integer, Protocol> byCode = new HashMap<>();
 
