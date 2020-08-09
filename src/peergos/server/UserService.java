@@ -34,7 +34,7 @@ public class UserService {
     public static final Version CURRENT_VERSION = Version.parse("0.0.0");
     public static final String UI_URL = "/";
 
-    static {
+    private static void initTLS() {
         // disable weak algorithms
         LOG.info("\nInitial security properties:");
         printSecurityProperties();
@@ -129,6 +129,7 @@ public class UserService {
                 httpServer.createContext("/", new RedirectHandler("https://" + tlsProps.get().hostname + ":443/"));
                 httpServer.bind(new InetSocketAddress(allInterfaces, 80), connectionBacklog);
                 httpServer.start();
+                initTLS();
             } catch (Exception e) {
                 LOG.log(Level.WARNING, e.getMessage(), e);
                 LOG.info("Couldn't start http redirect to https for user server!");
