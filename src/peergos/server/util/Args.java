@@ -219,6 +219,15 @@ public class Args {
         }
     }
 
+    /** Save all parameters to a config file if it doesn't exist already
+     *
+     */
+    public void saveToFileIfAbsent() {
+        Path config = fromPeergosDir(CONFIG_FILENAME, CONFIG_FILENAME);
+        if (! config.toFile().exists())
+            saveToFile(config);
+    }
+
     /** Save all parameters to a config file, excluding environment vars
      *
      */

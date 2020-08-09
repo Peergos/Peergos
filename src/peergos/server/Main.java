@@ -693,7 +693,7 @@ public class Main {
                     }
                 }).start();
             }
-            a.saveToFile();
+            a.saveToFileIfAbsent();
             return peergos;
         } catch (Exception e) {
             throw new RuntimeException(e);
