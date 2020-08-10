@@ -4,16 +4,26 @@ import peergos.server.*;
 import peergos.shared.util.Pair;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.nio.file.*;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class Args {
+    private static final String CONFIG_FILENAME = "config";
 
-    private final Map<String, String> params = paramMap();//insertion order
+    private final List<String> commands;
+    private final Map<String, String> params, envOnly;//insertion order
+
+    public Args(List<String> commands, Map<String, String> params, Map<String, String> envOnly) {
+        this.commands = commands;
+        this.params = params;
+        this.envOnly = envOnly;
+    }
+
+    public List<String> commands() {
+        return new ArrayList<>(commands);
+    }
 
     public List<String> getAllArgs() {
         Map<String, String> env = System.getenv();
@@ -39,20 +49,22 @@ public class Args {
         return Optional.ofNullable(params.get(param));
     }
 
-    public String setArg(String param, String value) {
-        return params.put(param, value);
+    public Args setArg(String param, String value) {
+        Map<String, String> newParams = paramMap();
+        newParams.putAll(params);
+        newParams.put(param, value);
+        return new Args(commands, newParams, envOnly);
     }
 
-    public String setParameter(String param) {
-        return params.put(param, "true");
+    public Args setParameter(String param) {
+        return setArg(param, "true");
     }
 
-    public String removeParameter(String param) {
-        return params.remove(param);
-    }
-
-    public String removeArg(String param) {
-        return params.remove(param);
+    public Args removeArg(String param) {
+        Map<String, String> newParams = paramMap();
+        newParams.putAll(params);
+        newParams.remove(param);
+        return new Args(commands, newParams, envOnly);
     }
 
     public boolean hasArg(String arg) {
@@ -111,16 +123,15 @@ public class Args {
     }
 
     public Args tail() {
-        Args tail = new Args();
         boolean isFirst = true;
-
+        Map<String, String> newParams = paramMap();
         for (Iterator<Map.Entry<String, String>> it = params.entrySet().iterator(); it.hasNext(); ) {
             Map.Entry<String, String> next = it.next();
             if (!isFirst)
-                tail.params.put(next.getKey(), next.getValue());
+                newParams.put(next.getKey(), next.getValue());
             isFirst = false;
         }
-        return tail;
+        return new Args(commands.subList(1, commands.size()), newParams, envOnly);
     }
 
     public Optional<String> head() {
@@ -129,26 +140,24 @@ public class Args {
                 .findFirst();
     }
 
-    public void setIfAbsent(String key, String value) {
-        params.putIfAbsent(key, value);
+    public Args setIfAbsent(String key, String value) {
+        if (params.containsKey(key))
+            return this;
+        return setArg(key, value);
     }
 
     public Args with(String key, String value) {
         Map<String, String> map = paramMap();
         map.putAll(params);
         map.put(key, value);
-        Args args = new Args();
-        args.params.putAll(map);
-        return args;
+        return new Args(commands, map, envOnly);
     }
 
     public Args with(Args overrides) {
         Map<String, String> map = paramMap();
         map.putAll(params);
         map.putAll(overrides.params);
-        Args args = new Args();
-        args.params.putAll(map);
-        return args;
+        return new Args(commands, map, envOnly);
     }
 
     public Path fromPeergosDir(String fileName) {
@@ -182,8 +191,17 @@ public class Args {
         return map;
     }
 
+    private static Map<String, String> parseFile(Map<String, String> args, Map<String, String> env) {
+        Path toFile = (args.containsKey(Main.PEERGOS_PATH) ?
+                Paths.get(args.get(Main.PEERGOS_PATH)) :
+                Main.DEFAULT_PEERGOS_DIR_PATH).resolve(CONFIG_FILENAME);
+        return parseFile(toFile);
+    }
+
     private static Map<String, String> parseFile(Path path) {
         try {
+            if (! path.toFile().exists())
+                return Collections.emptyMap();
             List<String> lines = Files.readAllLines(path);
 
             return lines.stream()
@@ -199,7 +217,34 @@ public class Args {
         } catch (IOException ioe) {
             throw new IllegalStateException(ioe.getMessage(), ioe);
         }
+    }
 
+    /** Save all parameters to a config file if it doesn't exist already
+     *
+     */
+    public void saveToFileIfAbsent() {
+        Path config = fromPeergosDir(CONFIG_FILENAME, CONFIG_FILENAME);
+        if (! config.toFile().exists())
+            saveToFile(config);
+    }
+
+    /** Save all parameters to a config file, excluding environment vars
+     *
+     */
+    public void saveToFile() {
+        saveToFile(fromPeergosDir(CONFIG_FILENAME, CONFIG_FILENAME));
+    }
+
+    private void saveToFile(Path file) {
+        String text = new TreeMap<>(params).entrySet().stream()
+                .filter(e -> ! envOnly.containsKey(e.getKey()))
+                .map(e -> e.getKey() + " = " + e.getValue())
+                .collect(Collectors.joining("\n"));
+        try {
+            Files.write(file, text.getBytes(), StandardOpenOption.CREATE);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private static Map<String, String> parseParams(String[] args) {
@@ -217,6 +262,15 @@ public class Args {
         return map;
     }
 
+    private static List<String> parseCommands(String[] args) {
+        List<String> commands = new ArrayList<>();
+        for (String arg: args)
+            if (! arg.startsWith("-"))
+                commands.add(arg);
+            else break;
+        return commands;
+    }
+
     /**
      * params overrides configFile overrides env
      *
@@ -226,22 +280,24 @@ public class Args {
      * @return
      */
     public static Args parse(String[] params, Optional<Path> configFile, boolean includeEnv) {
-        Map<String, String> fromParams = parseParams(params);
-        Map<String, String> fromConfig = configFile.isPresent() ? parseFile(configFile.get()) : Collections.emptyMap();
+        List<String> commands = parseCommands(params);
         Map<String, String> fromEnv = includeEnv ? parseEnv() : Collections.emptyMap();
+        Map<String, String> fromParams = parseParams(params);
+        Map<String, String> fromFile = configFile.isPresent() ?
+                parseFile(configFile.get()) :
+                parseFile(fromParams, fromEnv);
 
-        Args args = new Args();
+        Map<String, String> combined = paramMap();
 
         Stream.of(
                 fromParams.entrySet(),
-                fromConfig.entrySet(),
+                fromFile.entrySet(),
                 fromEnv.entrySet()
         )
                 .flatMap(e -> e.stream())
-                .forEach(e -> args.params.putIfAbsent(e.getKey(), e.getValue()));
+                .forEach(e -> combined.putIfAbsent(e.getKey(), e.getValue()));
 
-
-        return args;
+        return new Args(commands, combined, fromEnv);
     }
 
     public static Args parse(String[] args) {

@@ -52,7 +52,8 @@ public class Command<V> {
 
     public V main(Args args) {
         for (Arg param : params) {
-            param.defaultValue.ifPresent(def -> args.setIfAbsent(param.name, def));
+            if (param.defaultValue.isPresent())
+                args = args.setIfAbsent(param.name, param.defaultValue.get());
         }
         Optional<String> headOpt = args.head();
 

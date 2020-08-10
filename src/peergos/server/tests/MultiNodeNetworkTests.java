@@ -85,9 +85,10 @@ public class MultiNodeNetworkTests {
     public static void init() throws Exception {
         // start pki node
         UserService pki = Main.PKI_INIT.main(args);
+        PublicKeyHash peergosId = pki.coreNode.getPublicKeyHash("peergos").join().get();
+        args = args.setArg("peergos.identity.hash", peergosId.toBase58());
         NetworkAccess toPki = buildApi(args);
         Multihash pkiNodeId = toPki.dhtClient.id().get();
-        PublicKeyHash peergosId = PublicKeyHash.fromString(args.getArg("peergos.identity.hash"));
         nodes.add(toPki);
         services.add(pki);
         int bootstrapSwarmPort = args.getInt("ipfs-swarm-port");

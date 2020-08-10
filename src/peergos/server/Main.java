@@ -73,11 +73,11 @@ public class Main {
             Arrays.asList(
                     new Command.Arg("ipfs-exe-path", "Desired path to IPFS executable. Defaults to $PEERGOS_PATH/ipfs", false),
                     new Command.Arg("ipfs-plugins", "comma separated list of ipfs plugins to install, currently only go-ds-s3 is supported", false),
-                    new Command.Arg("s3.path", "Path of data store in S3", false, "blocks"),
+                    new Command.Arg("s3.path", "Path of data store in S3", false),
                     new Command.Arg("s3.bucket", "S3 bucket name", false),
-                    new Command.Arg("s3.region", "S3 region", false, "us-east-1"),
-                    new Command.Arg("s3.accessKey", "S3 access key", false, ""),
-                    new Command.Arg("s3.secretKey", "S3 secret key", false, ""),
+                    new Command.Arg("s3.region", "S3 region", false),
+                    new Command.Arg("s3.accessKey", "S3 access key", false),
+                    new Command.Arg("s3.secretKey", "S3 secret key", false),
                     new Command.Arg("s3.region.endpoint", "Base url for S3 service", false)
             )
     );
@@ -137,7 +137,7 @@ public class Main {
             ).collect(Collectors.toList())
     );
 
-    private static final void bootstrap(Args args) {
+    private static Args bootstrap(Args args) {
         try {
             // This means creating a pki keypair and publishing the public key
             Crypto crypto = initCrypto();
@@ -177,12 +177,10 @@ public class Main {
                     crypto.random);
             Files.write(args.fromPeergosDir("pki.secret.key.path"), cipherTextCbor.serialize());
             Files.write(args.fromPeergosDir("pki.public.key.path"), pkiKeys.publicSigningKey.toCbor().toByteArray());
-            args.setIfAbsent("peergos.identity.hash", peergosPublicHash.toString());
             System.out.println("Peergos user identity hash: " + peergosPublicHash);
-
+            return args.setIfAbsent("peergos.identity.hash", peergosPublicHash.toString());
         } catch (Exception e) {
-            e.printStackTrace();
-            System.exit(1);
+            throw new RuntimeException(e);
         }
     }
 
@@ -244,7 +242,7 @@ public class Main {
             args -> {
                 try {
                     int peergosPort = args.getInt("port");
-                    args.setIfAbsent("proxy-target", getLocalMultiAddress(peergosPort).toString());
+                    args = args.setIfAbsent("proxy-target", getLocalMultiAddress(peergosPort).toString());
                     MultiAddress ipfsApi = new MultiAddress(args.getArg("ipfs-api-address"));
 
                     IpfsWrapper ipfs = null;
@@ -254,7 +252,7 @@ public class Main {
                         ipfs = startIpfs(args);
                     }
 
-                    bootstrap(args);
+                    args = bootstrap(args);
 
                     Multihash pkiIpfsNodeId = useIPFS ?
                             new IpfsDHT(ipfsApi).id().get() :
@@ -263,12 +261,12 @@ public class Main {
 
                     if (ipfs != null)
                         ipfs.stop();
-                    args.setIfAbsent("pki-node-id", pkiIpfsNodeId.toBase58());
+                    args = args.setIfAbsent("pki-node-id", pkiIpfsNodeId.toBase58());
                     UserService daemon = PEERGOS.main(args);
                     poststrap(args);
                     return daemon;
                 } catch (Exception e) {
-                    throw new RuntimeException(e.getMessage(), e);
+                    throw new RuntimeException(e);
                 }
             },
             Arrays.asList(
@@ -296,7 +294,7 @@ public class Main {
             args -> {
                 try {
                     int peergosPort = args.getInt("port");
-                    args.setIfAbsent("proxy-target", getLocalMultiAddress(peergosPort).toString());
+                    args = args.setIfAbsent("proxy-target", getLocalMultiAddress(peergosPort).toString());
 
                     IpfsWrapper ipfs = null;
                     boolean useIPFS = args.getBoolean("useIPFS");
@@ -320,7 +318,7 @@ public class Main {
 
                     if (ipfs != null)
                         ipfs.stop();
-                    args.setIfAbsent("pki-node-id", pkiIpfsNodeId.toBase58());
+                    args = args.setIfAbsent("pki-node-id", pkiIpfsNodeId.toBase58());
                     return PEERGOS.main(args);
                 } catch (Exception e) {
                     throw new RuntimeException(e.getMessage(), e);
@@ -695,6 +693,7 @@ public class Main {
                     }
                 }).start();
             }
+            a.saveToFileIfAbsent();
             return peergos;
         } catch (Exception e) {
             throw new RuntimeException(e);
