@@ -76,8 +76,9 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         try {
             List<String> usernames = quotaAdmin.getLocalUsernames();
             Logging.LOG().info("Calculating space usage for " + usernames.size() + " local users...");
+            long done = 0;
             for (String username : usernames) {
-                Logging.LOG().info("Calculating space usage of " + username);
+                Logging.LOG().info("Calculating space usage of " + username + " (" + done++ + "/" + usernames.size() + ")");
                 try {
                     Optional<PublicKeyHash> identity = core.getPublicKeyHash(username).get();
                     if (identity.isPresent()) {
