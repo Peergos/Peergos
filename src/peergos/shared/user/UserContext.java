@@ -1816,6 +1816,9 @@ public class UserContext {
 
     @JsMethod
     public CompletableFuture<List<ServerConversation>> getServerConversations() {
+        if (this.username == null) {
+            return Futures.of(Collections.emptyList());
+        }
         return network.serverMessager.getMessages(username, signer.secret).thenApply(ServerConversation::combine);
     }
 
