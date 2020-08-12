@@ -82,8 +82,11 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 try {
                     Optional<PublicKeyHash> identity = core.getPublicKeyHash(username).get();
                     if (identity.isPresent()) {
+                        long prior = usageStore.getUsage(username).totalUsage();
                         processCorenodeEvent(username, identity.get());
-                        LOG.info("Updated space usage of user: " + username + " to " + usageStore.getUsage(username).totalUsage());
+                        long after = usageStore.getUsage(username).totalUsage();
+                        if (after != prior)
+                            LOG.info("Updated space usage of user: " + username + " to " + after);
                     } else
                         LOG.info("Identity key absent in pki for user: " + username);
                 } catch (Exception e) {
