@@ -201,6 +201,7 @@ public abstract class UserTests {
         LocalDate expiry = context.getUsernameClaimExpiry().join();
         Assert.assertTrue(expiry.isBefore(LocalDate.now()));
 
+        context.ensureUsernameClaimRenewed().join();
         UserContext context2 = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         LocalDate expiry2 = context2.getUsernameClaimExpiry().join();
         Assert.assertTrue(expiry2.isAfter(LocalDate.now()));
@@ -220,6 +221,7 @@ public abstract class UserTests {
         LocalDate expiry = context.getUsernameClaimExpiry().join();
         Assert.assertTrue(expiry.isBefore(LocalDate.now()));
 
+        context.ensureUsernameClaimRenewed().join();
         UserContext context2 = PeergosNetworkUtils.ensureSignedUp(username, newPassword, network, crypto);
         LocalDate expiry2 = context2.getUsernameClaimExpiry().join();
         Assert.assertTrue(expiry2.isAfter(LocalDate.now()));
