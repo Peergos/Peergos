@@ -4,18 +4,17 @@ import peergos.server.*;
 import peergos.server.corenode.*;
 import peergos.server.sql.*;
 import peergos.server.util.*;
-import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
-import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.io.ipfs.multihash.*;
 import io.prometheus.client.Histogram;
 import peergos.shared.util.*;
 
 import java.io.*;
+import java.net.*;
 import java.nio.file.*;
 import java.sql.*;
 import java.time.*;
@@ -143,12 +142,20 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash) {
-        PresignedUrl getUrl = S3Request.preSignGet(folder + hashToKey(hash), Optional.of(600),
+        String path = folder + hashToKey(hash);
+        PresignedUrl getUrl = S3Request.preSignGet(path, Optional.of(600),
                 ZonedDateTime.now(), host, region, accessKeyId, secretKey);
         Histogram.Timer readTimer = readTimerLog.labels("read").startTimer();
         try {
             return Futures.of(Optional.of(HttpUtil.get(getUrl)));
         } catch (IOException e) {
+            String msg = e.getMessage();
+            boolean notFound = msg.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>NoSuchKey</Code>");
+            if (! notFound) {
+                LOG.warning("S3 error reading " + path);
+                LOG.log(Level.WARNING, msg, e);
+            }
+
             return p2pFallback.getRaw(hash);
         } finally {
             readTimer.observeDuration();
