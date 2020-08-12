@@ -268,6 +268,7 @@ public class UserContext {
                 }).exceptionally(Futures::logAndThrow);
     }
 
+    @JsMethod
     public CompletableFuture<Boolean> ensureUsernameClaimRenewed() {
         return getUsernameClaimExpiry()
                 .thenCompose(expiry -> expiry.isBefore(LocalDate.now().plusMonths(1)) ?
