@@ -123,20 +123,11 @@ public class Args {
     }
 
     public Args tail() {
-        boolean isFirst = true;
-        Map<String, String> newParams = paramMap();
-        for (Iterator<Map.Entry<String, String>> it = params.entrySet().iterator(); it.hasNext(); ) {
-            Map.Entry<String, String> next = it.next();
-            if (!isFirst)
-                newParams.put(next.getKey(), next.getValue());
-            isFirst = false;
-        }
-        return new Args(commands.subList(1, commands.size()), newParams, envOnly);
+        return new Args(commands.subList(1, commands.size()), params, envOnly);
     }
 
     public Optional<String> head() {
-        return params.keySet()
-                .stream()
+        return commands.stream()
                 .findFirst();
     }
 
