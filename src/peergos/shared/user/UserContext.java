@@ -179,14 +179,10 @@ public class UserContext {
                                             new CommittedWriterData(MaybeMultihash.of(pair.left), userData),
                                             root,
                                             transactions);
-                                    return result.getUsernameClaimExpiry()
-                                            .thenCompose(expiry -> expiry.isBefore(LocalDate.now().plusMonths(1)) ?
-                                                    result.renewUsernameClaim(LocalDate.now().plusMonths(2)) :
-                                                    CompletableFuture.completedFuture(true))
-                                            .thenCompose(x -> {
-                                                System.out.println("Initializing context..");
-                                                return result.init(progressCallback);
-                                            }).exceptionally(Futures::logAndThrow);
+
+                                    System.out.println("Initializing context..");
+                                    return result.init(progressCallback)
+                                            .exceptionally(Futures::logAndThrow);
                                 });
                             }));
         } catch (Throwable t) {
@@ -270,6 +266,13 @@ public class UserContext {
                                         .thenCompose(y -> signIn(username, userWithRoot, network, crypto, progressCallback));
                             }));
                 }).exceptionally(Futures::logAndThrow);
+    }
+
+    public CompletableFuture<Boolean> ensureUsernameClaimRenewed() {
+        return getUsernameClaimExpiry()
+                .thenCompose(expiry -> expiry.isBefore(LocalDate.now().plusMonths(1)) ?
+                        renewUsernameClaim(LocalDate.now().plusMonths(2)) :
+                        CompletableFuture.completedFuture(true));
     }
 
     private static CompletableFuture<TrieNode> createSpecialDirectory(TrieNode globalRoot,
