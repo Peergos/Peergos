@@ -23,6 +23,10 @@ public class ServerConversation implements Comparable<ServerConversation> {
         this.latestEpochMillis = latest;
     }
 
+    public ServerMessage lastMessage() {
+        return messages.get(messages.size() - 1);
+    }
+
     @Override
     public int compareTo(ServerConversation other) {
         return Long.compare(latestEpochMillis, other.latestEpochMillis);

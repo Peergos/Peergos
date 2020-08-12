@@ -402,16 +402,65 @@ public class Main {
                     message = a.getArg("msg");
                 ServerMessage msg = new ServerMessage(-1, ServerMessage.Type.FromServer, System.currentTimeMillis(),
                         message, a.getOptionalArg("reply-to").map(Long::parseLong), false);
-                String username = a.getArg("username");
-                store.addMessage(username, msg);
-                System.out.println("Message sent to " + username);
+                if (a.hasArg("usernames")) {
+                    try {
+                        List<String> usernames = Files.readAllLines(Paths.get(a.getArg("usernames")));
+                        for (String username : usernames) {
+                            store.addMessage(username, msg);
+                            System.out.println("Message sent to " + username);
+                        }
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                } else {
+                    String username = a.getArg("username");
+                    store.addMessage(username, msg);
+                    System.out.println("Message sent to " + username);
+                }
                 return true;
             },
             Arrays.asList(
-                    new Command.Arg("username", "Peergos username", true),
+                    new Command.Arg("usernames", "Path to file containing usernames, one per line", false),
+                    new Command.Arg("username", "Peergos username", false),
                     new Command.Arg("reply-to", "Message id to reply to", false),
                     new Command.Arg("msg", "Message to send", false),
                     new Command.Arg("msg-file", "File containing message to send", false),
+                    new Command.Arg("server-messages-sql-file", "The filename for the server messages datastore", true, "server-messages.sql")
+            )
+    );
+
+        public static final Command<Boolean> NEW = new Command<>("new",
+            "Show new messages from users of this server",
+            a -> {
+                boolean usePostgres = a.getBoolean("use-postgres", false);
+                SqlSupplier sqlCommands = usePostgres ?
+                        new PostgresCommands() :
+                        new SqliteCommands();
+                ServerMessageStore store = new ServerMessageStore(getDBConnector(a, "server-messages-sql-file"),
+                        sqlCommands, null, null);
+
+                try {
+                    List<String> usernames = Files.readAllLines(Paths.get(a.getArg("usernames")));
+                    for (String username : usernames) {
+                        List<ServerMessage> all = store.getMessages(username);
+                        List<ServerConversation> allConvs = ServerConversation.combine(all);
+                        List<ServerConversation> withReply = allConvs.stream()
+                                .filter(c -> c.lastMessage().type == ServerMessage.Type.FromUser)
+                                .collect(Collectors.toList());
+                        System.out.println("Replies from " + username);
+                        for (ServerConversation conv : withReply) {
+                            ServerMessage last = conv.lastMessage();
+                            System.out.println(last.summary());
+                            System.out.println(last.contents);
+                        }
+                    }
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+                return true;
+            },
+            Arrays.asList(
+                    new Command.Arg("usernames", "Path to file containing usernames, one per line", false),
                     new Command.Arg("server-messages-sql-file", "The filename for the server messages datastore", true, "server-messages.sql")
             )
     );
@@ -423,7 +472,7 @@ public class Main {
                 return null;
             },
             Collections.emptyList(),
-            Arrays.asList(SHOW, SEND)
+            Arrays.asList(SHOW, SEND, NEW)
     );
     public static Crypto initCrypto() {
         try {
