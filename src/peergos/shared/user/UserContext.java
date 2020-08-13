@@ -141,6 +141,8 @@ public class UserContext {
                 e ->  {
                     if (e.getMessage().contains("hash not present"))
                         return Futures.errored(new IllegalStateException("User has been deleted. Did you mean a different username?"));
+                    else if (e.getMessage().contains("No public-key for user"))
+                        return Futures.errored(new IllegalStateException("Unknown username. Did you enter it correctly?"));
                     else
                         return Futures.errored(e);
                 }).thenCompose(pair -> {
