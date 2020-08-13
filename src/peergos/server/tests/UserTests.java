@@ -190,6 +190,21 @@ public abstract class UserTests {
     }
 
     @Test
+    public void errorLoggingInToDeletedAccont() {
+        String username = generateUsername();
+        String password = "password";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        context.deleteAccount(password).join();
+
+        try {
+            PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        } catch (Exception e) {
+            if (! e.getMessage().contains("User has been deleted"))
+                throw new RuntimeException("Incorrect error message");
+        }
+    }
+
+    @Test
     public void expiredSignin() {
         String username = generateUsername();
         String password = "password";

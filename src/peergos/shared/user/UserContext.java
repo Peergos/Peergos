@@ -137,16 +137,21 @@ public class UserContext {
     @JsMethod
     public static CompletableFuture<UserContext> signIn(String username, String password, NetworkAccess network,
                                                         Crypto crypto, Consumer<String> progressCallback) {
-        return getWriterDataCbor(network, username)
-                .thenCompose(pair -> {
-                    SecretGenerationAlgorithm algorithm = WriterData.fromCbor(pair.right).generationAlgorithm
-                            .orElseThrow(() -> new IllegalStateException("No login algorithm specified in user data!"));
-                    progressCallback.accept("Generating keys");
-                    return UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider,
-                            crypto.random, crypto.signer, crypto.boxer, algorithm)
-                            .thenCompose(userWithRoot ->
-                                    login(username, userWithRoot, pair, network, crypto, progressCallback));
-                }).exceptionally(Futures::logAndThrow);
+        return Futures.asyncExceptionally(() -> getWriterDataCbor(network, username),
+                e ->  {
+                    if (e.getMessage().contains("hash not present"))
+                        return Futures.errored(new IllegalStateException("User has been deleted. Did you mean a different username?"));
+                    else
+                        return Futures.errored(e);
+                }).thenCompose(pair -> {
+            SecretGenerationAlgorithm algorithm = WriterData.fromCbor(pair.right).generationAlgorithm
+                    .orElseThrow(() -> new IllegalStateException("No login algorithm specified in user data!"));
+            progressCallback.accept("Generating keys");
+            return UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider,
+                    crypto.random, crypto.signer, crypto.boxer, algorithm)
+                    .thenCompose(userWithRoot ->
+                            login(username, userWithRoot, pair, network, crypto, progressCallback));
+        }).exceptionally(Futures::logAndThrow);
     }
 
     public static CompletableFuture<UserContext> signIn(String username, UserWithRoot userWithRoot, NetworkAccess network
