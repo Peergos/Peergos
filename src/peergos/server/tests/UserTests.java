@@ -190,6 +190,21 @@ public abstract class UserTests {
     }
 
     @Test
+    public void errorLoggingInToDeletedAccont() {
+        String username = generateUsername();
+        String password = "password";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        context.deleteAccount(password).join();
+
+        try {
+            PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        } catch (Exception e) {
+            if (! e.getMessage().contains("User has been deleted"))
+                throw new RuntimeException("Incorrect error message");
+        }
+    }
+
+    @Test
     public void expiredSignin() {
         String username = generateUsername();
         String password = "password";
@@ -1340,10 +1355,11 @@ public abstract class UserTests {
         UserContext admin = PeergosNetworkUtils.ensureSignedUp("peergos", "testpassword", network, crypto);
         List<SpaceUsage.LabelledSignedSpaceRequest> spaceReqs = admin.getPendingSpaceRequests().join();
         List<DecodedSpaceRequest> parsed = admin.decodeSpaceRequests(spaceReqs).join();
-        admin.approveSpaceRequest(parsed.get(0)).join();
+        DecodedSpaceRequest req = parsed.stream().filter(r -> r.getUsername().equals(username)).findFirst().get();
+        admin.approveSpaceRequest(req).join();
 
         long updatedQuota = context.getQuota().join();
-        Assert.assertTrue("Quota updated", updatedQuota == 2 * quota);
+        Assert.assertTrue("Quota updated " + updatedQuota + " != 2 * " + quota, updatedQuota == 2 * quota);
     }
 
     @Test

@@ -447,7 +447,8 @@ public class Main {
                         List<ServerConversation> withReply = allConvs.stream()
                                 .filter(c -> c.lastMessage().type == ServerMessage.Type.FromUser)
                                 .collect(Collectors.toList());
-                        System.out.println("Replies from " + username);
+                        if (! withReply.isEmpty())
+                            System.out.println("Replies from " + username);
                         for (ServerConversation conv : withReply) {
                             ServerMessage last = conv.lastMessage();
                             System.out.println(last.summary());
