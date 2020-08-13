@@ -1355,7 +1355,8 @@ public abstract class UserTests {
         UserContext admin = PeergosNetworkUtils.ensureSignedUp("peergos", "testpassword", network, crypto);
         List<SpaceUsage.LabelledSignedSpaceRequest> spaceReqs = admin.getPendingSpaceRequests().join();
         List<DecodedSpaceRequest> parsed = admin.decodeSpaceRequests(spaceReqs).join();
-        admin.approveSpaceRequest(parsed.get(0)).join();
+        DecodedSpaceRequest req = parsed.stream().filter(r -> r.getUsername().equals(username)).findFirst().get();
+        admin.approveSpaceRequest(req).join();
 
         long updatedQuota = context.getQuota().join();
         Assert.assertTrue("Quota updated " + updatedQuota + " != 2 * " + quota, updatedQuota == 2 * quota);
