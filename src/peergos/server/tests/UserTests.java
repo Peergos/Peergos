@@ -1358,7 +1358,7 @@ public abstract class UserTests {
         admin.approveSpaceRequest(parsed.get(0)).join();
 
         long updatedQuota = context.getQuota().join();
-        Assert.assertTrue("Quota updated", updatedQuota == 2 * quota);
+        Assert.assertTrue("Quota updated " + updatedQuota + " != 2 * " + quota, updatedQuota == 2 * quota);
     }
 
     @Test
