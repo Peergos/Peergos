@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <head>
-    <title>Blog</title>
+    <title>Direct S3 access</title>
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta charset="utf-8">
     <meta name="viewport"
@@ -24,25 +24,25 @@
         <a href="#" data-activates="mobile" class="button-collapse"><i class="material-icons">menu</i></a>
             <ul class="right hide-on-med-and-down">
                     <li >
-                        <a href="./features"
+                        <a href="../features"
 >
                             Features
                         </a>
                     </li>
                     <li >
-                        <a href="./security"
+                        <a href="../security"
 >
                             Security
                         </a>
                     </li>
                     <li class="active">
-                        <a href="./blog"
+                        <a href="../blog"
 >
                             Blog
                         </a>
                     </li>
                     <li >
-                        <a href="./about"
+                        <a href="../about"
 >
                             About
                         </a>
@@ -63,19 +63,19 @@
                 <a href="/" class="brand-logo"><img src="/theme/img/peergos/logo-tower-only-green.svg" width="180"/></a>
             </li>
                 <li >
-                    <a href="./features"
+                    <a href="../features"
 >
                         Features
                     </a>
                 </li>
                 <li >
-                    <a href="./security"
+                    <a href="../security"
 >
                         Security
                     </a>
                 </li>
                 <li class="active">
-                    <a href="./blog"
+                    <a href="../blog"
 >
                         Blog
                     </a>
@@ -88,7 +88,7 @@
                         </a>
                     </li>
                 <li >
-                    <a href="./about"
+                    <a href="../about"
 >
                         About
                     </a>
@@ -100,51 +100,70 @@
     <div class="container bs-docs-container">
     <div class="row">
     <div class="col m3 col s4">
-    <div id="full-toc" class="bs-docs-sidebar hidden-print affix-top hidden-xs hidden-sm" role="complementary">
-  
-    </div>
     </div>
     <div class="col m9 col s8" role="main" style="overflow-x:auto; padding-bottom: 10px;">
-    <h1 class="page-header main-title">Blog</h1>
+    <h1 class="page-header main-title">Direct S3 access</h1>
     <div class="bs-docs-section">
-    
+    <p>Peergos uses IPFS to store its data and IPFS supports several kinds of blockstores, from various kinds of local disk based storage to an S3 based store. The S3 store is useful because it automatically provides redundancy and availability, and can also hold much more data than any disk. There are also many providers of S3 compatible storage now. For a while now, we've supported using the S3 based blockstore in Peergos. However this wasn't visible to end users, it was only a server side thing. This means that when uploading or downloading data it all had to go through the Peergos server.</p>
+<p><center>
+<img alt="Old data flow with S3" class="class" id="id" src="/theme/img/blog/proxied-s3-dataflow.png" width="50%" />
+<br/>
+The flow of data in previous S3 usage, which proxied through the Peergos server
+</center></p>
+<p>We have now implemented direct S3 access for reads and writes from the browser/client. Clients can read and write directly to an S3 bucket after authorization from the Peergos server. This new feature makes the Peergos server much more scalable and reliable. The typical bandwidth required of the Peergos server is reduced by ~100x.</p>
+<p>There are two modes of read operation; public and authorised. In public mode, all encrypted blocks can be read directly from S3 without any permission. This is the fastest, but may not suit your pricing model for S3. In authorised mode every read request has to first get permission from the peergos server, which signs a url that is temporarily authorised to read that object from S3. The client then directly downloads the block from S3. This is illustrated below. </p>
+<p><center>
+<img alt="Direct S3 reads" class="class" id="id" src="/theme/img/blog/direct-s3-reads.png" width="50%" />
+<br/>
+Direct S3 reads
+</center></p>
+<p>This is all very well, but what about writes? What if there are many users on the same server? This is where it starts to get beautiful... All users on the same Peergos server share the same S3 bucket, and yet there is no possibility for conflict! This is because the blocks in S3 are content addressed! When a client wants to upload a block they first pre-authorise the block hash with the peergos server which returns a signed url the client can use to upload directly to S3. Upon upload, S3 automatically checks the sha256 hash and size of the block with what was signed. The data flow is shown below.</p>
+<p><center>
+<img alt="Direct S3 writes" class="class" id="id" src="/theme/img/blog/direct-s3-writes.png" width="50%" />
+<br/>
+Direct S3 writes
+</center></p>
+<p>It should be clear how this takes most of the load off of the Peergos server, thus allowing a single server to handle many more users. </p>
+<p>The kind of functionality required for this isn't actually exposed by the official S3 SDK. So to get this working we had to implement our own version of the S3 client. It's remarkably simple and only took us a single class, without any dependencies except an hmac-sha256 implementation. The added benefit of this is that we've been able to remove the amazon S3 sdk entirely from our codebase, which was 60mb of dependencies! Compare this with the rest of Peergos including all dependencies, which add up to only 16mb. </p>
+<p>Want to try it out? Head on over to <a href="https://alpha.peergos.net">our alpha</a> and check it out!</p>
+<p>Or you can try streaming a movie right now using direct S3 reads <a href="https://alpha.peergos.net/#%7B%22secretLink%22:true%2c%22link%22:%22#6MDZhRRPT4ugkJuUfceM6bPnpQKEj5dB2NqLxD1RxFn3oA3CusXayN8RReauEh/6MDZhRRPT4ugkJuUfcRzRbPpFimcBNJx2N9TJDnL4W3ETYhwdsWdvgCkXkwipF/FTkiZ5Bj1c1dWVYqwSBDv6ErBvK3ds46gKqnpVcsKYh5/5Pf7Suxg5r8nqvytY9bbAnVbAe3S3qTVzhEGuJajynhq8ntYwVV%22%7D">here</a>.</p>
 <h4>RECENT POSTS</h4>
 <ul id="recent-posts">
     <li>
-      <a href="./posts/direct-s3">Direct S3 access</a>
+      <a href="../posts/direct-s3">Direct S3 access</a>
     </li>
     <li>
-      <a href="./posts/release-v0.3.0">Peergos release v0.3.0</a>
+      <a href="../posts/release-v0.3.0">Peergos release v0.3.0</a>
     </li>
     <li>
-      <a href="./posts/keybase-left-building">Keybase has left the building</a>
+      <a href="../posts/keybase-left-building">Keybase has left the building</a>
     </li>
     <li>
-      <a href="./posts/perfect-social-network">The perfect social network</a>
+      <a href="../posts/perfect-social-network">The perfect social network</a>
     </li>
     <li>
-      <a href="./posts/atomic-access-control">Atomic access control</a>
+      <a href="../posts/atomic-access-control">Atomic access control</a>
     </li>
     <li>
-      <a href="./posts/release-v0.1.3">Peergos release v0.1.3</a>
+      <a href="../posts/release-v0.1.3">Peergos release v0.1.3</a>
     </li>
     <li>
-      <a href="./posts/applications">Applications on Peergos</a>
+      <a href="../posts/applications">Applications on Peergos</a>
     </li>
     <li>
-      <a href="./posts/fast-seeking">Fast seeking and encrypted history</a>
+      <a href="../posts/fast-seeking">Fast seeking and encrypted history</a>
     </li>
     <li>
-      <a href="./posts/ipfs-camp">IPFS Camp, new features</a>
+      <a href="../posts/ipfs-camp">IPFS Camp, new features</a>
     </li>
     <li>
-      <a href="./posts/alpha-release">Alpha Release</a>
+      <a href="../posts/alpha-release">Alpha Release</a>
     </li>
     <li>
-      <a href="./posts/security-audit">Security Audit</a>
+      <a href="../posts/security-audit">Security Audit</a>
     </li>
     <li>
-      <a href="./posts/dev-update">Development update</a>
+      <a href="../posts/dev-update">Development update</a>
     </li>
 </ul>    </div>
     <span class="pull-right">
