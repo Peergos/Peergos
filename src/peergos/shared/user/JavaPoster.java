@@ -124,14 +124,7 @@ public class JavaPoster implements HttpPoster {
 
     @Override
     public CompletableFuture<byte[]> get(String url) {
-        if (useGet) {
-            return publicGet(url, Collections.emptyMap());
-        } else {
-            // This changes to a POST with an empty body
-            // The reason for this is browsers allow any website to do a get request to localhost
-            // but they block POST requests. So this prevents random websites from calling APIs on localhost
-            return postUnzip(url, new byte[0]);
-        }
+        return get(url, Collections.emptyMap());
     }
 
     @Override
