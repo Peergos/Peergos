@@ -34,6 +34,10 @@ public class JavaPoster implements HttpPoster {
 
     @Override
     public CompletableFuture<byte[]> post(String url, byte[] payload, boolean unzip) {
+        return post(url, payload, unzip, Collections.emptyMap());
+    }
+
+    private CompletableFuture<byte[]> post(String url, byte[] payload, boolean unzip, Map<String, String> headers) {
         HttpURLConnection conn = null;
         CompletableFuture<byte[]> res = new CompletableFuture<>();
         try
@@ -42,6 +46,9 @@ public class JavaPoster implements HttpPoster {
             conn.setReadTimeout(15000);
             conn.setDoInput(true);
             conn.setDoOutput(true);
+            for (Map.Entry<String, String> e : headers.entrySet()) {
+                conn.setRequestProperty(e.getKey(), e.getValue());
+            }
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
             dout.write(payload);
@@ -117,8 +124,13 @@ public class JavaPoster implements HttpPoster {
 
     @Override
     public CompletableFuture<byte[]> get(String url) {
+        return get(url, Collections.emptyMap());
+    }
+
+    @Override
+    public CompletableFuture<byte[]> get(String url, Map<String, String> headers) {
         if (useGet) {
-            return publicGet(url);
+            return publicGet(url, headers);
         } else {
             // This changes to a POST with an empty body
             // The reason for this is browsers allow any website to do a get request to localhost
@@ -127,13 +139,16 @@ public class JavaPoster implements HttpPoster {
         }
     }
 
-    private CompletableFuture<byte[]> publicGet(String url) {
+    private CompletableFuture<byte[]> publicGet(String url, Map<String, String> headers) {
         HttpURLConnection conn = null;
         try
         {
             conn = (HttpURLConnection) buildURL(url).openConnection();
             conn.setReadTimeout(15000);
             conn.setDoInput(true);
+            for (Map.Entry<String, String> e : headers.entrySet()) {
+                conn.setRequestProperty(e.getKey(), e.getValue());
+            }
 
             String contentEncoding = conn.getContentEncoding();
             boolean isGzipped = "gzip".equals(contentEncoding);

@@ -49,8 +49,20 @@ public class JavaScriptPoster implements HttpPoster {
 
     @Override
     public CompletableFuture<byte[]> get(String url) {
-        if (isAbsolute || useGet) // Still do a get if we are served from an IPFS gateway
-            return http.get(url);
+        return get(url, Collections.emptyMap());
+    }
+
+    @Override
+    public CompletableFuture<byte[]> get(String url, Map<String, String> headers) {
+        if (isAbsolute || useGet) {// Still do a get if we are served from an IPFS gateway
+            String[] headersArray = new String[headers.size() * 2];
+            int index = 0;
+            for (Map.Entry<String, String> e : headers.entrySet()) {
+                headersArray[index++] = e.getKey();
+                headersArray[index++] = e.getValue();
+            }
+            return http.getWithHeaders(url, headersArray);
+        }
         return postUnzip(url, new byte[0]);
     }
 

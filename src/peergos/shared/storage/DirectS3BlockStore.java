@@ -260,7 +260,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
         if (authedReads) {
             CompletableFuture<Optional<byte[]>> res = new CompletableFuture<>();
             fallback.authReads(Arrays.asList(hash))
-                    .thenCompose(preAuthedGet -> direct.get(preAuthedGet.get(0).base))
+                    .thenCompose(preAuthedGet -> direct.get(preAuthedGet.get(0).base, preAuthedGet.get(0).fields))
                     .thenApply(Optional::of)
                     .thenAccept(res::complete)
                     .exceptionally(t -> {
