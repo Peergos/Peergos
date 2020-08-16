@@ -190,7 +190,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                 .thenCompose(preAuthedGets ->
                         Futures.combineAllInOrder(IntStream.range(0, preAuthedGets.size())
                                 .parallel()
-                                .mapToObj(i -> direct.get(preAuthedGets.get(i).base)
+                                .mapToObj(i -> direct.get(preAuthedGets.get(i).base, preAuthedGets.get(i).fields)
                                         .thenApply(b -> {
                                             monitor.accept((long)b.length);
                                             Pair<Integer, Multihash> hashAndIndex = nonIdentity.get(i);
