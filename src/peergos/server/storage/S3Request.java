@@ -1,6 +1,7 @@
 package peergos.server.storage;
 
 import org.w3c.dom.*;
+import peergos.server.util.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
@@ -305,7 +306,7 @@ public class S3Request {
                                                    String region,
                                                    String accessKeyId,
                                                    String s3SecretKey) {
-        S3Request policy = new S3Request(verb, host, key, UNSIGNED, expiresSeconds, false, false,
+        S3Request policy = new S3Request(verb, host, key, UNSIGNED, expiresSeconds, false, true,
                 Collections.emptyMap(), Collections.emptyMap(), accessKeyId, region, now);
         return preSignRequest(policy, key, host, s3SecretKey);
     }

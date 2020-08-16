@@ -13,6 +13,8 @@ public interface HttpPoster {
 
     CompletableFuture<byte[]> put(String url, byte[] payload, Map<String, String> headers);
 
+    CompletableFuture<byte[]> get(String url, Map<String, String> headers);
+
     default CompletableFuture<byte[]> get(String url) {
         // This changes to a POST with an empty body
         // The reason for this is browsers allow any website to do a get request to localhost
