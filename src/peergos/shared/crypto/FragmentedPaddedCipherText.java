@@ -109,7 +109,6 @@ public class FragmentedPaddedCipherText implements Cborable {
             // inline small amounts of data (small files or directories)
             FragmentedPaddedCipherText chunk = new FragmentedPaddedCipherText(nonce, Optional.empty(),
                     Collections.emptyList(), Optional.of(cipherText));
-//            chunk.getAndDecrypt(from, c -> ((CborObject.CborByteArray)c).value, null, x -> {});
             return Futures.of(new Pair<>(chunk, Collections.emptyList()));
         }
 
