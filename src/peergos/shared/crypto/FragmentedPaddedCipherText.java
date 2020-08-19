@@ -21,7 +21,7 @@ import java.util.stream.*;
 public class FragmentedPaddedCipherText implements Cborable {
 
     private final byte[] nonce;
-    private final Optional<byte[]> header; // Present on all but legacy chunks, contains secretbox auth and cbor padding
+    private final Optional<byte[]> header; // Present on all but legacy or inlined chunks, contains secretbox auth and cbor padding
     private final List<Multihash> cipherTextFragments;
     private final Optional<byte[]> inlinedCipherText;
 
