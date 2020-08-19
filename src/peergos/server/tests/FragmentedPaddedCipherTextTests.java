@@ -56,5 +56,32 @@ public class FragmentedPaddedCipherTextTests {
                 CryptreeNode.ChildrenLinks.empty(), paddingBlockSize, Fragment.MAX_LENGTH, crypto.hasher, false).join();
 
         Assert.assertTrue("cbor length", file.left.serialize().length == dir.left.serialize().length);
+        CborObject fileCbor = file.left.toCbor();
+        CborObject dirCbor = dir.left.toCbor();
+        Assert.assertTrue("cbor stuctural equality", structurallyEqual(fileCbor, dirCbor));
+    }
+
+    private static boolean structurallyEqual(Cborable a, Cborable b) {
+        if (!a.getClass().equals(b.getClass()))
+            return false;
+        if (a instanceof CborObject.CborByteArray)
+            return ((CborObject.CborByteArray)b).value.length == ((CborObject.CborByteArray) a).value.length;
+        if (a instanceof CborObject.CborList){
+            List<? extends Cborable> aVals = ((CborObject.CborList) a).value;
+            for (int i=0; i < aVals.size(); i++)
+                if (! structurallyEqual(aVals.get(i), ((CborObject.CborList)b).value.get(i)))
+                    return false;
+            return true;
+        }
+        if (a instanceof CborObject.CborMap) {
+            SortedMap<CborObject, ? extends Cborable> aMap = ((CborObject.CborMap) a).values;
+            SortedMap<CborObject, ? extends Cborable> bMap = ((CborObject.CborMap) b).values;
+            for (CborObject key : aMap.keySet()) {
+                if (! structurallyEqual(aMap.get(key), bMap.get(key)))
+                    return false;
+            }
+            return true;
+        }
+        return true;
     }
 }
