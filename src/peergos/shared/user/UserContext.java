@@ -227,11 +227,9 @@ public class UserContext {
                     PublicKeyHash signerHash = ContentAddressedStorage.hashKey(publicSigningKey);
                     SigningPrivateKeyAndPublicHash signer = new SigningPrivateKeyAndPublicHash(signerHash, secretSigningKey);
 
-                    LOG.info("Registering username " + username);
                     progressCallback.accept("Registering username");
-                    return UserContext.register(username, signer, network).thenApply(registered -> {
+                    return UserContext.register(username, signer, crypto.hasher, network, progressCallback).thenApply(registered -> {
                         if (!registered) {
-                            LOG.info("Couldn't register username");
                             throw new IllegalStateException("Couldn't register username: " + username);
                         }
                         return true;
@@ -595,16 +593,11 @@ public class UserContext {
                 .thenApply(publicKey -> !publicKey.isPresent());
     }
 
-    @JsMethod
-    public CompletableFuture<Boolean> register() {
-        return isRegistered().thenCompose(exists -> {
-            if (exists)
-                throw new IllegalStateException("Account already exists with username: " + username);
-            return register(this.username, signer, network);
-        });
-    }
-
-    public static CompletableFuture<Boolean> register(String username, SigningPrivateKeyAndPublicHash signer, NetworkAccess network) {
+    public static CompletableFuture<Boolean> register(String username,
+                                                      SigningPrivateKeyAndPublicHash signer,
+                                                      Hasher hasher,
+                                                      NetworkAccess network,
+                                                      Consumer<String> progressCallback) {
         LocalDate now = LocalDate.now();
         // set claim expiry to two months from now
         LocalDate expiry = now.plusMonths(2);
@@ -615,7 +608,9 @@ public class UserContext {
                     return network.coreNode.getChain(username).thenCompose(existing -> {
                         if (existing.size() > 0)
                             throw new IllegalStateException("User already exists!");
-                        return network.coreNode.updateChain(username, claimChain);
+                        byte[] data = new CborObject.CborList(claimChain).serialize();
+                        return hasher.generateProofOfWork(ProofOfWork.DEFAULT_DIFFICULTY, data)
+                                .thenCompose(proof -> network.coreNode.updateChain(username, claimChain, proof));
                     });
                 });
     }
@@ -631,12 +626,13 @@ public class UserContext {
     }
 
     public CompletableFuture<Boolean> renewUsernameClaim(LocalDate expiry) {
-        return renewUsernameClaim(username, signer, expiry, network);
+        return renewUsernameClaim(username, signer, expiry, crypto.hasher, network);
     }
 
     public static CompletableFuture<Boolean> renewUsernameClaim(String username,
                                                                 SigningPrivateKeyAndPublicHash signer,
                                                                 LocalDate expiry,
+                                                                Hasher hasher,
                                                                 NetworkAccess network) {
         LOG.info("renewing username: " + username + " with expiry " + expiry);
         return network.coreNode.getChain(username).thenCompose(existing -> {
@@ -645,7 +641,9 @@ public class UserContext {
             UserPublicKeyLink.Claim newClaim = UserPublicKeyLink.Claim.build(username, signer.secret, expiry, storage);
             List<UserPublicKeyLink> updated = new ArrayList<>(existing.subList(0, existing.size() - 1));
             updated.add(new UserPublicKeyLink(signer.publicKeyHash, newClaim, Optional.empty()));
-            return network.coreNode.updateChain(username, updated);
+            byte[] data = new CborObject.CborList(updated).serialize();
+            return hasher.generateProofOfWork(ProofOfWork.DEFAULT_DIFFICULTY, data)
+                    .thenCompose(proof -> network.coreNode.updateChain(username, updated, proof));
         });
     }
 
@@ -742,7 +740,9 @@ public class UserContext {
                                                     return network.coreNode.getChain(username).thenCompose(existing -> {
                                                         List<Multihash> storage = existing.get(existing.size() - 1).claim.storageProviders;
                                                         List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createChain(signer, newUser, username, expiry, storage);
-                                                        return network.coreNode.updateChain(username, claimChain)
+                                                        byte[] data = new CborObject.CborList(claimChain).serialize();
+                                                        return crypto.hasher.generateProofOfWork(ProofOfWork.DEFAULT_DIFFICULTY, data)
+                                                                .thenCompose(proofOfWork -> network.coreNode.updateChain(username, claimChain, proofOfWork))
                                                                 .thenCompose(updatedChain -> {
                                                                     if (!updatedChain)
                                                                         throw new IllegalStateException("Couldn't register new public keys during password change!");

@@ -19,7 +19,7 @@ public class ProofOfWorkTests {
             ProofOfWork work = crypto.hasher.generateProofOfWork(d, data).join();
             long t1 = System.currentTimeMillis();
             System.out.println("Difficulty: " + d + " took " + (t1 - t0) + "ms");
-            byte[] hash = crypto.hasher.sha256(ArrayOps.concat(work.prefix, work.data)).join();
+            byte[] hash = crypto.hasher.sha256(ArrayOps.concat(work.prefix, data)).join();
             Assert.assertTrue(ProofOfWork.satisfiesDifficulty(d, hash));
         }
     }

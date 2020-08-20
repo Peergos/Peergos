@@ -2,6 +2,7 @@ package peergos.shared.corenode;
 
 import peergos.shared.*;
 import peergos.shared.cbor.*;
+import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
@@ -125,10 +126,10 @@ public class TofuCoreNode implements CoreNode {
     }
 
     @Override
-    public CompletableFuture<Boolean> updateChain(String username, List<UserPublicKeyLink> chain) {
+    public CompletableFuture<Boolean> updateChain(String username, List<UserPublicKeyLink> chain, ProofOfWork proof) {
         return tofu.updateChain(username, chain, network.dhtClient)
                 .thenCompose(x -> commit())
-                .thenCompose(x -> source.updateChain(username, chain));
+                .thenCompose(x -> source.updateChain(username, chain, proof));
     }
 
     @Override

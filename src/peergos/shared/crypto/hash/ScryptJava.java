@@ -50,7 +50,7 @@ public class ScryptJava implements Hasher {
             byte[] hash = Hash.sha256(combined);
             if (ProofOfWork.satisfiesDifficulty(difficulty, hash)) {
                 byte[] prefix = Arrays.copyOfRange(combined, 0, ProofOfWork.PREFIX_BYTES);
-                return Futures.of(new ProofOfWork(prefix, data, Multihash.Type.sha2_256));
+                return Futures.of(new ProofOfWork(prefix, Multihash.Type.sha2_256));
             }
             counter++;
             combined[0] = (byte) counter;

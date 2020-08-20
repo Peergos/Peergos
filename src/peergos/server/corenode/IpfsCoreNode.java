@@ -1,4 +1,5 @@
 package peergos.server.corenode;
+import java.util.concurrent.atomic.*;
 import java.util.logging.*;
 
 import peergos.server.util.Logging;
@@ -30,6 +31,7 @@ public class IpfsCoreNode implements CoreNode {
     private final MutablePointers mutable;
     private final SigningPrivateKeyAndPublicHash signer;
 
+    private final AtomicInteger difficulty = new AtomicInteger(11);
     private final Map<String, List<UserPublicKeyLink>> chains = new ConcurrentHashMap<>();
     private final Map<PublicKeyHash, String> reverseLookup = new ConcurrentHashMap<>();
     private final List<String> usernames = new ArrayList<>();
@@ -144,10 +146,17 @@ public class IpfsCoreNode implements CoreNode {
      * @return
      */
     @Override
-    public synchronized CompletableFuture<Boolean> updateChain(String username, List<UserPublicKeyLink> updatedChain) {
+    public synchronized CompletableFuture<Boolean> updateChain(String username,
+                                                               List<UserPublicKeyLink> updatedChain,
+                                                               ProofOfWork proof) {
         if (! UsernameValidator.isValidUsername(username))
             throw new IllegalStateException("Invalid username");
 
+
+        // Check proof is sufficient
+        byte[] hash = hasher.sha256(ArrayOps.concat(proof.prefix, new CborObject.CborList(updatedChain).serialize())).join();
+        if (! ProofOfWork.satisfiesDifficulty(difficulty.get(), hash))
+            return Futures.errored(new IllegalStateException("Invalid difficulty for proof of work! " + ArrayOps.bytesToHex(hash)));
         try {
             CommittedWriterData current = WriterData.getWriterData(currentRoot.get(), ipfs).get();
             MaybeMultihash currentTree = current.props.tree.map(MaybeMultihash::of).orElseGet(MaybeMultihash::empty);

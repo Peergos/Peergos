@@ -1,6 +1,7 @@
 package peergos.server.corenode;
 
 import peergos.shared.corenode.*;
+import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.storage.*;
 
@@ -62,7 +63,7 @@ public class NonWriteThroughCoreNode implements CoreNode {
     }
 
     @Override
-    public CompletableFuture<Boolean> updateChain(String username, List<UserPublicKeyLink> updated) {
+    public CompletableFuture<Boolean> updateChain(String username, List<UserPublicKeyLink> updated, ProofOfWork proof) {
         try {
             List<UserPublicKeyLink> modified = tempChains.get(username);
             if (modified != null)

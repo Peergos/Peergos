@@ -5,6 +5,7 @@ import peergos.server.*;
 import peergos.server.util.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
+import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.api.*;
 import peergos.shared.util.*;
@@ -99,12 +100,10 @@ public class CoreNodeHandler implements HttpHandler
     void updateChain(DataInputStream din, DataOutputStream dout) throws Exception
     {
         String username = CoreNodeUtils.deserializeString(din);
-        int count = din.readInt();
-        List<UserPublicKeyLink> res = new ArrayList<>();
-        for (int i=0; i < count; i++) {
-            res.add(UserPublicKeyLink.fromCbor(CborObject.fromByteArray(Serialize.deserializeByteArray(din, UserPublicKeyLink.MAX_SIZE))));
-        }
-        boolean isAdded = coreNode.updateChain(username, res).get();
+        byte[] raw = Serialize.deserializeByteArray(din, 2 * UserPublicKeyLink.MAX_SIZE);
+        List<UserPublicKeyLink> res = ((CborObject.CborList)CborObject.fromByteArray(raw)).map(UserPublicKeyLink::fromCbor);
+        ProofOfWork proof = ProofOfWork.fromCbor(CborObject.fromByteArray(Serialize.deserializeByteArray(din, 100)));
+        boolean isAdded = coreNode.updateChain(username, res, proof).get();
 
         dout.writeBoolean(isAdded);
     }

@@ -1,19 +1,43 @@
 package peergos.shared.crypto;
 
 import jsinterop.annotations.*;
+import peergos.shared.cbor.*;
 import peergos.shared.io.ipfs.multihash.*;
 
-public class ProofOfWork {
+import java.util.*;
+
+public class ProofOfWork implements Cborable {
     public final static int PREFIX_BYTES = 8;
+    public final static int DEFAULT_DIFFICULTY = 11;
 
     public final byte[] prefix;
-    public final byte[] data;
     public final Multihash.Type type;
 
-    public ProofOfWork(byte[] prefix, byte[] data, Multihash.Type type) {
+    public ProofOfWork(byte[] prefix, Multihash.Type type) {
         this.prefix = prefix;
-        this.data = data;
         this.type = type;
+    }
+
+    @Override
+    public CborObject toCbor() {
+        Map<String, CborObject> values = new TreeMap<>();
+        values.put("prefix", new CborObject.CborByteArray(prefix));
+        values.put("type", new CborObject.CborLong(type.index));
+        return CborObject.CborMap.build(values);
+    }
+
+    public static ProofOfWork fromCbor(Cborable cbor) {
+        if (! (cbor instanceof CborObject.CborMap))
+            throw new IllegalStateException("Invalid cbor for ProofOfWork: " + cbor);
+        CborObject.CborMap map = (CborObject.CborMap) cbor;
+        byte[] prefix = map.getByteArray("prefix");
+        int index = (int) map.getLong("type");
+        return new ProofOfWork(prefix, Multihash.Type.lookup(index));
+    }
+
+    @JsMethod
+    public static ProofOfWork buildSha256(byte[] prefix, byte[] data) {
+        return new ProofOfWork(prefix, Multihash.Type.sha2_256);
     }
 
     @JsMethod

@@ -1,7 +1,7 @@
 package peergos.shared.corenode;
 
+import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.social.*;
 
 import java.io.*;
 import java.util.*;
@@ -23,7 +23,7 @@ public interface CoreNode {
      * @param chain The changed links of the chain
      * @return True if successfully updated
      */
-    CompletableFuture<Boolean> updateChain(String username, List<UserPublicKeyLink> chain);
+    CompletableFuture<Boolean> updateChain(String username, List<UserPublicKeyLink> chain, ProofOfWork proof);
 
     /**
      *
