@@ -150,7 +150,7 @@ public class FileUploader implements AutoCloseable {
                             .map(f -> f.fragment)
                             .collect(Collectors.toList());
 
-                    if (fragments.size() < file.right.size())
+                    if (fragments.size() < file.right.size() || fragments.isEmpty())
                         progress.accept((long) chunk.chunk.length());
                     LOG.info("Uploading chunk with " + fragments.size() + " fragments\n");
                     return IpfsTransaction.call(chunk.location.owner,

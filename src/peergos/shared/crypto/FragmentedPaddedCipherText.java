@@ -21,11 +21,16 @@ import java.util.stream.*;
 public class FragmentedPaddedCipherText implements Cborable {
 
     private final byte[] nonce;
+    private final Optional<byte[]> header; // Present on all but legacy or inlined chunks, contains secretbox auth and cbor padding
     private final List<Multihash> cipherTextFragments;
     private final Optional<byte[]> inlinedCipherText;
 
-    public FragmentedPaddedCipherText(byte[] nonce, List<Multihash> cipherTextFragments, Optional<byte[]> inlinedCipherText) {
+    public FragmentedPaddedCipherText(byte[] nonce,
+                                      Optional<byte[]> header,
+                                      List<Multihash> cipherTextFragments,
+                                      Optional<byte[]> inlinedCipherText) {
         this.nonce = nonce;
+        this.header = header;
         this.cipherTextFragments = cipherTextFragments;
         this.inlinedCipherText = inlinedCipherText;
         if (inlinedCipherText.isPresent() && ! cipherTextFragments.isEmpty())
@@ -36,6 +41,7 @@ public class FragmentedPaddedCipherText implements Cborable {
     public CborObject toCbor() {
         SortedMap<String, Cborable> state = new TreeMap<>();
         state.put("n", new CborObject.CborByteArray(nonce));
+        header.ifPresent(h -> state.put("h", new CborObject.CborByteArray(h)));
         // The following change is because of a breaking change in ipfs to limit identity multihash size
         if (cipherTextFragments.size() == 1 && cipherTextFragments.get(0).isIdentity() || inlinedCipherText.isPresent()) {
             List<CborObject.CborByteArray> legacy = cipherTextFragments
@@ -62,6 +68,7 @@ public class FragmentedPaddedCipherText implements Cborable {
         CborObject.CborMap m = (CborObject.CborMap) cbor;
 
         byte[] nonce =  m.getByteArray("n");
+        Optional<byte[]> header = m.getOptionalByteArray("h");
         List<Multihash> fragmentHashes = m.getList("f").value
                 .stream()
                 .filter(c -> c instanceof CborObject.CborMerkleLink)
@@ -72,12 +79,12 @@ public class FragmentedPaddedCipherText implements Cborable {
                 .filter(c -> c instanceof CborObject.CborByteArray)
                 .map(c -> ((CborObject.CborByteArray)c).value)
                 .findFirst();
-        return new FragmentedPaddedCipherText(nonce, fragmentHashes, inlinedCipherText);
+        return new FragmentedPaddedCipherText(nonce, header, fragmentHashes, inlinedCipherText);
     }
 
-    protected static byte[] pad(byte[] input, int blockSize) {
-        int nBlocks = (input.length + blockSize - 1) / blockSize;
-        return Arrays.copyOfRange(input, 0, nBlocks * blockSize);
+    protected static byte[] pad(byte[] input, int excluded, int blockSize) {
+        int nBlocks = (input.length - excluded + blockSize - 1) / blockSize;
+        return Arrays.copyOfRange(input, 0, nBlocks * blockSize + excluded);
     }
 
     public static <T extends Cborable>
@@ -90,15 +97,24 @@ public class FragmentedPaddedCipherText implements Cborable {
         if (paddingBlockSize < 1)
             throw new IllegalStateException("Invalid padding block size: " + paddingBlockSize);
         byte[] nonce = from.createNonce();
-        byte[] cipherText = from.encrypt(pad(secret.serialize(), paddingBlockSize), nonce);
+        byte[] plainText = secret.serialize();
+        // input chunk size: 0,    5,    4090, 4096, 4097
+        // padded to:        4096, 4096, 4096, 4096, 8192
+        int maxCborOverhead = 6;
+        int serializationOverhead = plainText.length <= paddingBlockSize ? 0 : maxCborOverhead;
+        byte[] padded = pad(plainText, serializationOverhead, paddingBlockSize);
+        byte[] cipherText = from.encrypt(padded, nonce);
 
-        if (cipherText.length <= 4096 + TweetNaCl.SECRETBOX_OVERHEAD_BYTES) {
+        if (padded.length <= 4096 + maxCborOverhead) {
             // inline small amounts of data (small files or directories)
-            FragmentWithHash frag = new FragmentWithHash(new Fragment(cipherText), Optional.empty());
-            return Futures.of(new Pair<>(new FragmentedPaddedCipherText(nonce, Collections.emptyList(), Optional.of(cipherText)), Collections.singletonList(frag)));
+            FragmentedPaddedCipherText chunk = new FragmentedPaddedCipherText(nonce, Optional.empty(),
+                    Collections.emptyList(), Optional.of(cipherText));
+            return Futures.of(new Pair<>(chunk, Collections.emptyList()));
         }
 
-        byte[][] split = split(cipherText, maxFragmentSize, allowArrayCache);
+        int headerSize = cipherText.length % paddingBlockSize;
+        Optional<byte[]> header = Optional.of(Arrays.copyOfRange(cipherText, 0, headerSize));
+        byte[][] split = split(cipherText, headerSize, maxFragmentSize, allowArrayCache);
 
         return Futures.combineAllInOrder(Arrays.stream(split)
                 .map(d -> hasher.hash(d, true).thenApply(h -> new FragmentWithHash(new Fragment(d), Optional.of(h))))
@@ -107,7 +123,7 @@ public class FragmentedPaddedCipherText implements Cborable {
                     List<Multihash> hashes = frags.stream()
                             .map(f -> f.hash.get())
                             .collect(Collectors.toList());
-                    return new Pair<>(new FragmentedPaddedCipherText(nonce, hashes, Optional.empty()), frags);
+                    return new Pair<>(new FragmentedPaddedCipherText(nonce, header, hashes, Optional.empty()), frags);
                 });
     }
 
@@ -115,10 +131,13 @@ public class FragmentedPaddedCipherText implements Cborable {
                                                   Function<CborObject, T> fromCbor,
                                                   NetworkAccess network,
                                                   ProgressConsumer<Long> monitor) {
-        if (inlinedCipherText.isPresent())
+        if (inlinedCipherText.isPresent()) {
+            if (header.isPresent())
+                return Futures.of(new CipherText(nonce, ArrayOps.concat(header.get(), inlinedCipherText.get())).decrypt(from, fromCbor));
             return Futures.of(new CipherText(nonce, inlinedCipherText.get()).decrypt(from, fromCbor));
+        }
         return network.dhtClient.downloadFragments(cipherTextFragments, monitor, 1.0)
-                .thenApply(fargs -> new CipherText(nonce, recombine(fargs)).decrypt(from, fromCbor));
+                .thenApply(fargs -> new CipherText(nonce, recombine(header, fargs)).decrypt(from, fromCbor));
     }
 
     private static byte[][] generateCache() {
@@ -127,14 +146,14 @@ public class FragmentedPaddedCipherText implements Cborable {
 
     private static ThreadLocal<byte[][]> arrayCache = ThreadLocal.withInitial(FragmentedPaddedCipherText::generateCache);
 
-    public static byte[][] split(byte[] input, int maxFragmentSize, boolean allowCache) {
+    private static byte[][] split(byte[] input, int inputStartIndex, int maxFragmentSize, boolean allowCache) {
         //calculate padding length to align to 256 bytes
         int padding = 0;
-        int mod = input.length % 256;
-        if (mod != 0 || input.length == 0)
+        int mod = (input.length - inputStartIndex) % 256;
+        if (mod != 0 || (input.length - inputStartIndex) == 0)
             padding = 256 - mod;
         //align to 256 bytes
-        int len = input.length + padding;
+        int len = input.length - inputStartIndex + padding;
 
         //calculate the number  of fragments
         int nFragments =  len / maxFragmentSize;
@@ -145,8 +164,8 @@ public class FragmentedPaddedCipherText implements Cborable {
 
         byte[][] cache = arrayCache.get();
         int cacheIndex = 0;
-        for(int i= 0; i< nFragments; ++i) {
-            int start = maxFragmentSize * i;
+        for (int i= 0; i< nFragments; ++i) {
+            int start = inputStartIndex + maxFragmentSize * i;
             int end = Math.min(input.length, start + maxFragmentSize);
             int length = end - start;
             boolean useCache = allowCache && length == Fragment.MAX_LENGTH;
@@ -157,14 +176,16 @@ public class FragmentedPaddedCipherText implements Cborable {
         return split;
     }
 
-    public static byte[] recombine(List<FragmentWithHash> encoded) {
+    private static byte[] recombine(Optional<byte[]> header, List<FragmentWithHash> encoded) {
         int length = 0;
 
         for (int i=0; i < encoded.size(); i++)
             length += encoded.get(i).fragment.data.length;
 
-        byte[] output = new byte[length];
-        int pos =  0;
+        int headerSize = header.map(h -> h.length).orElse(0);
+        byte[] output = new byte[headerSize + length];
+        header.ifPresent(h -> System.arraycopy(h, 0, output, 0, headerSize));
+        int pos = headerSize;
         for (int i=0; i < encoded.size(); i++) {
             byte[] b = encoded.get(i).fragment.data;
             System.arraycopy(b, 0, output, pos, b.length);
