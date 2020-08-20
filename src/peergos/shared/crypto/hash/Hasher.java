@@ -1,5 +1,6 @@
 package peergos.shared.crypto.hash;
 
+import peergos.shared.crypto.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.user.*;
@@ -9,6 +10,8 @@ import java.util.concurrent.CompletableFuture;
 public interface Hasher {
 
     CompletableFuture<byte[]> hashToKeyBytes(String username, String password, SecretGenerationAlgorithm algorithm);
+
+    CompletableFuture<ProofOfWork> generateProofOfWork(int difficulty, byte[] data);
 
     CompletableFuture<byte[]> sha256(byte[] input);
 
