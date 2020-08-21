@@ -26,10 +26,10 @@ public class CorenodeEventPropagator implements CoreNode {
     }
 
     @Override
-    public CompletableFuture<Boolean> updateChain(String username, List<UserPublicKeyLink> chain, ProofOfWork proof) {
+    public CompletableFuture<Optional<RequiredDifficulty>> updateChain(String username, List<UserPublicKeyLink> chain, ProofOfWork proof) {
         return target.updateChain(username, chain, proof)
                 .thenApply(res -> {
-                    if (res) {
+                    if (res.isEmpty()) {
                         CorenodeEvent event = new CorenodeEvent(username, chain.get(chain.size() - 1).owner);
                         for (Consumer<? super CorenodeEvent> listener : listeners) {
                             listener.accept(event);

@@ -28,7 +28,7 @@ public class SignUpFilter implements CoreNode {
     }
 
     @Override
-    public CompletableFuture<Boolean> updateChain(String username, List<UserPublicKeyLink> chain, ProofOfWork proof) {
+    public CompletableFuture<Optional<RequiredDifficulty>> updateChain(String username, List<UserPublicKeyLink> chain, ProofOfWork proof) {
         boolean forUs = chain.get(chain.size() - 1).claim.storageProviders.contains(ourNodeId);
         if (! forUs)
             return target.updateChain(username, chain, proof);

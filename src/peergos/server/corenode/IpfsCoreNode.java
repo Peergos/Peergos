@@ -31,7 +31,7 @@ public class IpfsCoreNode implements CoreNode {
     private final MutablePointers mutable;
     private final SigningPrivateKeyAndPublicHash signer;
 
-    private final AtomicInteger difficulty = new AtomicInteger(11);
+    private final AtomicInteger difficulty = new AtomicInteger(15);
     private final Map<String, List<UserPublicKeyLink>> chains = new ConcurrentHashMap<>();
     private final Map<PublicKeyHash, String> reverseLookup = new ConcurrentHashMap<>();
     private final List<String> usernames = new ArrayList<>();
@@ -146,17 +146,18 @@ public class IpfsCoreNode implements CoreNode {
      * @return
      */
     @Override
-    public synchronized CompletableFuture<Boolean> updateChain(String username,
+    public synchronized CompletableFuture<Optional<RequiredDifficulty>> updateChain(String username,
                                                                List<UserPublicKeyLink> updatedChain,
                                                                ProofOfWork proof) {
         if (! UsernameValidator.isValidUsername(username))
             throw new IllegalStateException("Invalid username");
 
-
         // Check proof is sufficient
         byte[] hash = hasher.sha256(ArrayOps.concat(proof.prefix, new CborObject.CborList(updatedChain).serialize())).join();
         if (! ProofOfWork.satisfiesDifficulty(difficulty.get(), hash))
-            return Futures.errored(new IllegalStateException("Invalid difficulty for proof of work! " + ArrayOps.bytesToHex(hash)));
+            return Futures.of(Optional.of(new RequiredDifficulty(difficulty.get())));
+        // update rate monitor and difficulty
+
         try {
             CommittedWriterData current = WriterData.getWriterData(currentRoot.get(), ipfs).get();
             MaybeMultihash currentTree = current.props.tree.map(MaybeMultihash::of).orElseGet(MaybeMultihash::empty);
@@ -172,7 +173,7 @@ public class IpfsCoreNode implements CoreNode {
                     Optional.empty();
             if (! cborOpt.isPresent() && existing.isPresent()) {
                 LOG.severe("Couldn't retrieve existing claim chain from " + existing + " for " + username);
-                return CompletableFuture.completedFuture(true);
+                return Futures.of(Optional.empty());
             }
             List<UserPublicKeyLink> existingChain = cborOpt.map(cbor -> ((CborObject.CborList) cbor).value.stream()
                     .map(UserPublicKeyLink::fromCbor)
@@ -199,7 +200,7 @@ public class IpfsCoreNode implements CoreNode {
                     reverseLookup.put(owner, username);
                     chains.put(username, mergedChain);
                     currentRoot = committed.get(signer).hash;
-                    return true;
+                    return Optional.empty();
                 });
             }
         } catch (Exception e) {

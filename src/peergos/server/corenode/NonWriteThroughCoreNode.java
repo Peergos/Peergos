@@ -63,7 +63,7 @@ public class NonWriteThroughCoreNode implements CoreNode {
     }
 
     @Override
-    public CompletableFuture<Boolean> updateChain(String username, List<UserPublicKeyLink> updated, ProofOfWork proof) {
+    public CompletableFuture<Optional<RequiredDifficulty>> updateChain(String username, List<UserPublicKeyLink> updated, ProofOfWork proof) {
         try {
             List<UserPublicKeyLink> modified = tempChains.get(username);
             if (modified != null)
@@ -72,7 +72,7 @@ public class NonWriteThroughCoreNode implements CoreNode {
             tempChains.put(username, mergedChain);
             UserPublicKeyLink last = mergedChain.get(mergedChain.size() - 1);
             tempOwnerToUsername.put(last.owner, username);
-            return CompletableFuture.completedFuture(true);
+            return CompletableFuture.completedFuture(Optional.empty());
         } catch (Exception e) {
             throw new RuntimeException(e.getMessage(), e);
         }

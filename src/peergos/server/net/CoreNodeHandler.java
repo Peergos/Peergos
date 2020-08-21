@@ -2,6 +2,7 @@ package peergos.server.net;
 
 import com.sun.net.httpserver.*;
 import peergos.server.*;
+import peergos.server.util.Logging;
 import peergos.server.util.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
@@ -103,9 +104,10 @@ public class CoreNodeHandler implements HttpHandler
         byte[] raw = Serialize.deserializeByteArray(din, 2 * UserPublicKeyLink.MAX_SIZE);
         List<UserPublicKeyLink> res = ((CborObject.CborList)CborObject.fromByteArray(raw)).map(UserPublicKeyLink::fromCbor);
         ProofOfWork proof = ProofOfWork.fromCbor(CborObject.fromByteArray(Serialize.deserializeByteArray(din, 100)));
-        boolean isAdded = coreNode.updateChain(username, res, proof).get();
-
-        dout.writeBoolean(isAdded);
+        Optional<RequiredDifficulty> err = coreNode.updateChain(username, res, proof).get();
+        dout.writeBoolean(err.isEmpty());
+        if (err.isPresent())
+            dout.writeInt(err.get().requiredDifficulty);
     }
 
     void getPublicKey(DataInputStream din, DataOutputStream dout) throws Exception

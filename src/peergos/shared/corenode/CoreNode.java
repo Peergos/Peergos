@@ -21,9 +21,11 @@ public interface CoreNode {
      *
      * @param username
      * @param chain The changed links of the chain
-     * @return True if successfully updated
+     * @return Optional.empty() if successfully updated, otherwise the required difficulty
      */
-    CompletableFuture<Boolean> updateChain(String username, List<UserPublicKeyLink> chain, ProofOfWork proof);
+    CompletableFuture<Optional<RequiredDifficulty>> updateChain(String username,
+                                                                List<UserPublicKeyLink> chain,
+                                                                ProofOfWork proof);
 
     /**
      *

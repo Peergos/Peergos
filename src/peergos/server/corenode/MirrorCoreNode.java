@@ -264,8 +264,12 @@ public class MirrorCoreNode implements CoreNode {
     }
 
     @Override
-    public CompletableFuture<Boolean> updateChain(String username, List<UserPublicKeyLink> chain, ProofOfWork proof) {
-        return writeTarget.updateChain(username, chain, proof).thenApply(x -> this.update());
+    public CompletableFuture<Optional<RequiredDifficulty>> updateChain(String username, List<UserPublicKeyLink> chain, ProofOfWork proof) {
+        return writeTarget.updateChain(username, chain, proof)
+                .thenApply(x -> {
+                    this.update();
+                    return x;
+                });
     }
 
     @Override
