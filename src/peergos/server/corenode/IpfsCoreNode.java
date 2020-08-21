@@ -2,7 +2,7 @@ package peergos.server.corenode;
 import java.util.concurrent.atomic.*;
 import java.util.logging.*;
 
-import peergos.server.util.Logging;
+import peergos.server.util.*;
 
 import peergos.shared.*;
 import peergos.shared.cbor.*;
@@ -31,12 +31,14 @@ public class IpfsCoreNode implements CoreNode {
     private final MutablePointers mutable;
     private final SigningPrivateKeyAndPublicHash signer;
 
-    private final AtomicInteger difficulty = new AtomicInteger(15);
+    private final AtomicInteger difficulty = new AtomicInteger(ProofOfWork.DEFAULT_DIFFICULTY);
     private final Map<String, List<UserPublicKeyLink>> chains = new ConcurrentHashMap<>();
     private final Map<PublicKeyHash, String> reverseLookup = new ConcurrentHashMap<>();
     private final List<String> usernames = new ArrayList<>();
+    private final RateMonitor queryRate;
 
     private MaybeMultihash currentRoot;
+    private long timeOfLastUpdateMillis = System.currentTimeMillis();
 
     public IpfsCoreNode(SigningPrivateKeyAndPublicHash pkiSigner,
                         MaybeMultihash currentRoot,
@@ -51,6 +53,8 @@ public class IpfsCoreNode implements CoreNode {
         this.peergosIdentity = peergosIdentity;
         this.signer = pkiSigner;
         this.update(currentRoot);
+        // This covers a days worth of queries if the time unit is 0.1 seconds (2^20 > 864000)
+        this.queryRate = new RateMonitor(20);
     }
 
     public static byte[] keyHash(ByteArrayWrapper username) {
@@ -156,7 +160,14 @@ public class IpfsCoreNode implements CoreNode {
         byte[] hash = hasher.sha256(ArrayOps.concat(proof.prefix, new CborObject.CborList(updatedChain).serialize())).join();
         if (! ProofOfWork.satisfiesDifficulty(difficulty.get(), hash))
             return Futures.of(Optional.of(new RequiredDifficulty(difficulty.get())));
-        // update rate monitor and difficulty
+        // update rate monitor
+        long time = System.currentTimeMillis();
+        long timeStepsSinceLastUpdate = (time - timeOfLastUpdateMillis) / 10; // assumes 0.1s time step
+        if (timeStepsSinceLastUpdate > 0) {
+            queryRate.timeSteps(timeStepsSinceLastUpdate);
+            timeOfLastUpdateMillis = time;
+        }
+        queryRate.addEvent();
 
         try {
             CommittedWriterData current = WriterData.getWriterData(currentRoot.get(), ipfs).get();
