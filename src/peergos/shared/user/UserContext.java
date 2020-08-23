@@ -633,7 +633,7 @@ public class UserContext {
                                                                    NetworkAccess network,
                                                                    Consumer<String> progressCallback) {
         byte[] data = new CborObject.CborList(claimChain).serialize();
-        return time(() -> hasher.generateProofOfWork(ProofOfWork.DEFAULT_DIFFICULTY, data), "Proof of work")
+        return time(() -> hasher.generateProofOfWork(ProofOfWork.MIN_DIFFICULTY, data), "Proof of work")
                 .thenCompose(proof -> network.coreNode.updateChain(username, claimChain, proof))
                 .thenCompose(diff -> {
                     if (diff.isPresent()) {
