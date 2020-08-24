@@ -2,6 +2,13 @@ package peergos.server.util;
 
 import peergos.shared.crypto.*;
 
+/** DifficultyGenerator is used to monitor a particular event and choose a difficulty level for a proof of work to
+ *  rate limit it.
+ *
+ *  It is created with the desired maximum number of events per day to calibrate the difficulty.
+ *
+ *  The main assumption is that the proof of work scales exponentially with the difficulty.
+ */
 public class DifficultyGenerator {
 
     private final RateMonitor queryRate;
