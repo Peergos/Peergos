@@ -41,6 +41,12 @@ public class ProofOfWork implements Cborable {
         return new ProofOfWork(prefix, Multihash.Type.sha2_256);
     }
 
+    /** This tests whether the calculated hash has at least *difficulty* leading zero bits
+     *
+     * @param difficulty
+     * @param hash
+     * @return
+     */
     @JsMethod
     public static boolean satisfiesDifficulty(int difficulty, byte[] hash) {
         for (int i=0; i < difficulty; i+= 8) {
