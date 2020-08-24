@@ -17,7 +17,11 @@ public class DifficultyGenerator {
         double maxPerTimeStep = ((double)maxPerDay) / 864000;
         this.maxPerBucket = new double[nBuckets];
         for (int i=0; i < nBuckets; i++)
-            maxPerBucket[i] = maxPerTimeStep * ((1L << (i + 1)) - (1L << i));
+            maxPerBucket[i] = maxPerTimeStep * timeStepsForBucket(i);
+    }
+
+    private static long timeStepsForBucket(int bucket) {
+        return (1L << (bucket + 1)) - (1L << bucket);
     }
 
     private static long millisToTimeSteps(long millis) {
@@ -47,13 +51,19 @@ public class DifficultyGenerator {
     }
 
     private static int calculateDifficulty(long[] rates, double[] maxPerBucket) {
-        double newDifficulty = ProofOfWork.MIN_DIFFICULTY;
+        double newDifficulty = 0.0;
+        int includedBuckets = 0;
         for (int i=0; i < rates.length; i++) {
             double maxForIndex = maxPerBucket[i];
             if (rates[i] > maxForIndex) {
-                newDifficulty += Math.min(6.0, rates[i]/maxForIndex);
+                double log = Math.log((double) rates[i] / maxForIndex);
+                newDifficulty += log * log;
+                includedBuckets++;
             }
         }
-        return (int) newDifficulty;
+        if (includedBuckets == 0)
+            return ProofOfWork.MIN_DIFFICULTY;
+        int result = 3 * (int) Math.sqrt(newDifficulty);
+        return Math.min(Math.max(ProofOfWork.MIN_DIFFICULTY, result), ProofOfWork.MAX_DIFFICULTY);
     }
 }

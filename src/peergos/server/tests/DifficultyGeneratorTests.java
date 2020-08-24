@@ -13,12 +13,11 @@ public class DifficultyGeneratorTests {
         long currentTime = startTime;
         DifficultyGenerator gen = new DifficultyGenerator(currentTime, maxPerDay);
         int events = 100;
-        int toSleep = 0;
         for (int i = 0; i < events; i++) {
             gen.addEvent();
             int diff = gen.currentDifficulty();
             System.out.println("Difficulty " + diff);
-            toSleep = 10 << (diff - 11);
+            long toSleep = 1L << diff;
             currentTime += toSleep;
             gen.updateTime(currentTime);
         }
