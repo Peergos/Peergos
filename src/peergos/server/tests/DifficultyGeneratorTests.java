@@ -18,7 +18,7 @@ public class DifficultyGeneratorTests {
             gen.addEvent();
             int diff = gen.currentDifficulty();
             System.out.println("Difficulty " + diff);
-            toSleep = 1 << (diff - 11);
+            toSleep = 10 << (diff - 11);
             currentTime += toSleep;
             gen.updateTime(currentTime);
         }

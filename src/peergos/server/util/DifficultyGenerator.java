@@ -7,7 +7,7 @@ public class DifficultyGenerator {
     private final RateMonitor queryRate;
     private int difficulty = ProofOfWork.MIN_DIFFICULTY;
     private long timeOfLastUpdateMillis;
-    private final long[] maxPerBucket;
+    private final double[] maxPerBucket;
 
     public DifficultyGenerator(long startTimeMillis, int maxPerDay) {
         this.timeOfLastUpdateMillis = startTimeMillis;
@@ -15,9 +15,9 @@ public class DifficultyGenerator {
         int nBuckets = 20;
         this.queryRate = new RateMonitor(nBuckets);
         double maxPerTimeStep = ((double)maxPerDay) / 864000;
-        this.maxPerBucket = new long[nBuckets];
+        this.maxPerBucket = new double[nBuckets];
         for (int i=0; i < nBuckets; i++)
-            maxPerBucket[i] = (long) (maxPerTimeStep * ((1L << (i + 1)) - (1L << i)));
+            maxPerBucket[i] = maxPerTimeStep * ((1L << (i + 1)) - (1L << i));
     }
 
     private static long millisToTimeSteps(long millis) {
@@ -43,14 +43,17 @@ public class DifficultyGenerator {
     }
 
     private synchronized void updateDifficulty() {
-        long[] rates = queryRate.getRates();
-        int newDifficulty = ProofOfWork.MIN_DIFFICULTY;
+        difficulty = calculateDifficulty(queryRate.getRates(), maxPerBucket);
+    }
+
+    private static int calculateDifficulty(long[] rates, double[] maxPerBucket) {
+        double newDifficulty = ProofOfWork.MIN_DIFFICULTY;
         for (int i=0; i < rates.length; i++) {
-            long maxForIndex = maxPerBucket[i];
+            double maxForIndex = maxPerBucket[i];
             if (rates[i] > maxForIndex) {
-                newDifficulty += (i + 1);
+                newDifficulty += Math.min(6.0, rates[i]/maxForIndex);
             }
         }
-        difficulty = newDifficulty;
+        return (int) newDifficulty;
     }
 }
