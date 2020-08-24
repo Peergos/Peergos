@@ -157,8 +157,11 @@ public class IpfsCoreNode implements CoreNode {
         byte[] hash = hasher.sha256(ArrayOps.concat(proof.prefix, new CborObject.CborList(updatedChain).serialize())).join();
         difficultyGenerator.updateTime(System.currentTimeMillis());
         int requiredDifficulty = difficultyGenerator.currentDifficulty();
-        if (! ProofOfWork.satisfiesDifficulty(requiredDifficulty, hash))
+        if (! ProofOfWork.satisfiesDifficulty(requiredDifficulty, hash)) {
+            LOG.log(Level.INFO, "Rejected request with insufficient proof of work for difficulty: " +
+                    requiredDifficulty + " and username " + username);
             return Futures.of(Optional.of(new RequiredDifficulty(requiredDifficulty)));
+        }
 
         difficultyGenerator.addEvent();
         try {
