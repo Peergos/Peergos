@@ -6,6 +6,7 @@ import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
+import peergos.shared.util.*;
 
 import java.io.*;
 import java.util.*;
@@ -127,9 +128,13 @@ public class TofuCoreNode implements CoreNode {
 
     @Override
     public CompletableFuture<Optional<RequiredDifficulty>> updateChain(String username, List<UserPublicKeyLink> chain, ProofOfWork proof) {
-        return tofu.updateChain(username, chain, network.dhtClient)
-                .thenCompose(x -> commit())
-                .thenCompose(x -> source.updateChain(username, chain, proof));
+        return source.updateChain(username, chain, proof).thenCompose(res -> {
+            if (res.isPresent())
+                return Futures.of(res);
+            return tofu.updateChain(username, chain, network.dhtClient)
+                    .thenCompose(x -> commit())
+                    .thenApply(x -> res);
+        });
     }
 
     @Override
