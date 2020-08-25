@@ -267,7 +267,8 @@ public class MirrorCoreNode implements CoreNode {
     public CompletableFuture<Optional<RequiredDifficulty>> updateChain(String username, List<UserPublicKeyLink> chain, ProofOfWork proof) {
         return writeTarget.updateChain(username, chain, proof)
                 .thenApply(x -> {
-                    this.update();
+                    if (x.isEmpty())
+                        this.update();
                     return x;
                 });
     }
