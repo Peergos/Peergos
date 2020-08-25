@@ -63,14 +63,14 @@ public class DifficultyGenerator {
         for (int i=0; i < rates.length; i++) {
             double maxForIndex = maxPerBucket[i];
             if (rates[i] > maxForIndex) {
-                double log = Math.log((double) rates[i] / maxForIndex);
-                newDifficulty += log * log;
+                double log = Math.log((double) rates[i] * 2 / maxForIndex);
+                newDifficulty += log;
                 includedBuckets++;
             }
         }
         if (includedBuckets == 0)
             return ProofOfWork.MIN_DIFFICULTY;
-        int result = 3 * (int) Math.sqrt(newDifficulty);
+        int result = (int) (2 * newDifficulty + ProofOfWork.DEFAULT_DIFFICULTY);
         return Math.min(Math.max(ProofOfWork.MIN_DIFFICULTY, result), ProofOfWork.MAX_DIFFICULTY);
     }
 }

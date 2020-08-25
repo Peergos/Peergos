@@ -39,6 +39,7 @@ public class IpfsCoreNode implements CoreNode {
     private MaybeMultihash currentRoot;
 
     public IpfsCoreNode(SigningPrivateKeyAndPublicHash pkiSigner,
+                        int maxSignupsPerDay,
                         MaybeMultihash currentRoot,
                         ContentAddressedStorage ipfs,
                         Hasher hasher,
@@ -51,7 +52,7 @@ public class IpfsCoreNode implements CoreNode {
         this.peergosIdentity = peergosIdentity;
         this.signer = pkiSigner;
         this.update(currentRoot);
-        this.difficultyGenerator = new DifficultyGenerator(System.currentTimeMillis(), 1000);
+        this.difficultyGenerator = new DifficultyGenerator(System.currentTimeMillis(), maxSignupsPerDay);
     }
 
     public static byte[] keyHash(ByteArrayWrapper username) {

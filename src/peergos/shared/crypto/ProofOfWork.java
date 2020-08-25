@@ -9,6 +9,7 @@ import java.util.*;
 public class ProofOfWork implements Cborable {
     public final static int PREFIX_BYTES = 8;
     public final static int MIN_DIFFICULTY = 0;
+    public final static int DEFAULT_DIFFICULTY = 11;
     public final static int MAX_DIFFICULTY = 256;
 
     public final byte[] prefix;
