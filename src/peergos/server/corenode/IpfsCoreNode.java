@@ -1,7 +1,8 @@
 package peergos.server.corenode;
+import java.util.concurrent.atomic.*;
 import java.util.logging.*;
 
-import peergos.server.util.Logging;
+import peergos.server.util.*;
 
 import peergos.shared.*;
 import peergos.shared.cbor.*;
@@ -33,10 +34,12 @@ public class IpfsCoreNode implements CoreNode {
     private final Map<String, List<UserPublicKeyLink>> chains = new ConcurrentHashMap<>();
     private final Map<PublicKeyHash, String> reverseLookup = new ConcurrentHashMap<>();
     private final List<String> usernames = new ArrayList<>();
+    private final DifficultyGenerator difficultyGenerator;
 
     private MaybeMultihash currentRoot;
 
     public IpfsCoreNode(SigningPrivateKeyAndPublicHash pkiSigner,
+                        int maxSignupsPerDay,
                         MaybeMultihash currentRoot,
                         ContentAddressedStorage ipfs,
                         Hasher hasher,
@@ -49,6 +52,7 @@ public class IpfsCoreNode implements CoreNode {
         this.peergosIdentity = peergosIdentity;
         this.signer = pkiSigner;
         this.update(currentRoot);
+        this.difficultyGenerator = new DifficultyGenerator(System.currentTimeMillis(), maxSignupsPerDay);
     }
 
     public static byte[] keyHash(ByteArrayWrapper username) {
@@ -144,10 +148,23 @@ public class IpfsCoreNode implements CoreNode {
      * @return
      */
     @Override
-    public synchronized CompletableFuture<Boolean> updateChain(String username, List<UserPublicKeyLink> updatedChain) {
+    public synchronized CompletableFuture<Optional<RequiredDifficulty>> updateChain(String username,
+                                                               List<UserPublicKeyLink> updatedChain,
+                                                               ProofOfWork proof) {
         if (! UsernameValidator.isValidUsername(username))
             throw new IllegalStateException("Invalid username");
 
+        // Check proof is sufficient
+        byte[] hash = hasher.sha256(ArrayOps.concat(proof.prefix, new CborObject.CborList(updatedChain).serialize())).join();
+        difficultyGenerator.updateTime(System.currentTimeMillis());
+        int requiredDifficulty = difficultyGenerator.currentDifficulty();
+        if (! ProofOfWork.satisfiesDifficulty(requiredDifficulty, hash)) {
+            LOG.log(Level.INFO, "Rejected request with insufficient proof of work for difficulty: " +
+                    requiredDifficulty + " and username " + username);
+            return Futures.of(Optional.of(new RequiredDifficulty(requiredDifficulty)));
+        }
+
+        difficultyGenerator.addEvent();
         try {
             CommittedWriterData current = WriterData.getWriterData(currentRoot.get(), ipfs).get();
             MaybeMultihash currentTree = current.props.tree.map(MaybeMultihash::of).orElseGet(MaybeMultihash::empty);
@@ -163,7 +180,7 @@ public class IpfsCoreNode implements CoreNode {
                     Optional.empty();
             if (! cborOpt.isPresent() && existing.isPresent()) {
                 LOG.severe("Couldn't retrieve existing claim chain from " + existing + " for " + username);
-                return CompletableFuture.completedFuture(true);
+                return Futures.of(Optional.empty());
             }
             List<UserPublicKeyLink> existingChain = cborOpt.map(cbor -> ((CborObject.CborList) cbor).value.stream()
                     .map(UserPublicKeyLink::fromCbor)
@@ -190,7 +207,7 @@ public class IpfsCoreNode implements CoreNode {
                     reverseLookup.put(owner, username);
                     chains.put(username, mergedChain);
                     currentRoot = committed.get(signer).hash;
-                    return true;
+                    return Optional.empty();
                 });
             }
         } catch (Exception e) {

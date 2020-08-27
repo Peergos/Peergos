@@ -8,6 +8,9 @@ import peergos.shared.io.ipfs.multibase.*;
 import java.io.*;
 import java.util.*;
 
+/** Note we don't support the full range of Multihash types, because some of them are insecure
+ *
+ */
 @JsType
 public class Multihash implements Comparable<Multihash> {
     public static final int LEGACY_MAX_IDENTITY_HASH_SIZE = 4112;
@@ -16,7 +19,6 @@ public class Multihash implements Comparable<Multihash> {
     @JsType
     public enum Type {
         id(0, -1),
-        sha1(0x11, 20),
         sha2_256(0x12, 32),
         sha2_512(0x13, 64),
         sha3(0x14, 64),

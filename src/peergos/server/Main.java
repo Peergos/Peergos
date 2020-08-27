@@ -836,7 +836,7 @@ public class Main {
                                 .commit(peergosIdentity, pkiSigner, MaybeMultihash.empty(), mutable, dht, crypto.hasher, tid)
                                 .thenApply(version -> version.get(pkiSigner).hash), dht).join();
 
-            return new IpfsCoreNode(pkiSigner, currentPkiRoot, dht, crypto.hasher, mutable, peergosIdentity);
+            return new IpfsCoreNode(pkiSigner, a.getInt("max-daily-signups"), currentPkiRoot, dht, crypto.hasher, mutable, peergosIdentity);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

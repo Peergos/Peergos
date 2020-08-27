@@ -5,6 +5,7 @@ import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
+import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.hamt.*;
 import peergos.shared.mutable.*;
@@ -263,8 +264,13 @@ public class MirrorCoreNode implements CoreNode {
     }
 
     @Override
-    public CompletableFuture<Boolean> updateChain(String username, List<UserPublicKeyLink> chain) {
-        return writeTarget.updateChain(username, chain).thenApply(x -> this.update());
+    public CompletableFuture<Optional<RequiredDifficulty>> updateChain(String username, List<UserPublicKeyLink> chain, ProofOfWork proof) {
+        return writeTarget.updateChain(username, chain, proof)
+                .thenApply(x -> {
+                    if (x.isEmpty())
+                        this.update();
+                    return x;
+                });
     }
 
     @Override

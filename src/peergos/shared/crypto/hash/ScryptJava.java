@@ -1,11 +1,15 @@
 package peergos.shared.crypto.hash;
+import java.util.*;
 import java.util.logging.*;
 
 import java.security.*;
 import java.util.concurrent.CompletableFuture;
 
+import peergos.shared.crypto.*;
+import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.scrypt.com.lambdaworks.crypto.SCrypt;
 import peergos.shared.user.*;
+import peergos.shared.util.*;
 
 public class ScryptJava implements Hasher {
 	private static final Logger LOG = Logger.getGlobal();
@@ -35,6 +39,29 @@ public class ScryptJava implements Hasher {
             return res;
         }
         throw new IllegalStateException("Unknown user generation algorithm: " + algorithm);
+    }
+
+    @Override
+    public CompletableFuture<ProofOfWork> generateProofOfWork(int difficulty, byte[] data) {
+        byte[] combined = new byte[data.length + ProofOfWork.PREFIX_BYTES];
+        System.arraycopy(data, 0, combined, ProofOfWork.PREFIX_BYTES, data.length);
+        long counter = 0;
+        while (true) {
+            byte[] hash = Hash.sha256(combined);
+            if (ProofOfWork.satisfiesDifficulty(difficulty, hash)) {
+                byte[] prefix = Arrays.copyOfRange(combined, 0, ProofOfWork.PREFIX_BYTES);
+                return Futures.of(new ProofOfWork(prefix, Multihash.Type.sha2_256));
+            }
+            counter++;
+            combined[0] = (byte) counter;
+            combined[1] = (byte) (counter >> 8);
+            combined[2] = (byte) (counter >> 16);
+            combined[3] = (byte) (counter >> 24);
+            combined[4] = (byte) (counter >> 32);
+            combined[5] = (byte) (counter >> 40);
+            combined[6] = (byte) (counter >> 48);
+            combined[7] = (byte) (counter >> 56);
+        }
     }
 
     @Override

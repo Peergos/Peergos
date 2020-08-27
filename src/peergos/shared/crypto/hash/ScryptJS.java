@@ -1,5 +1,6 @@
 package peergos.shared.crypto.hash;
 
+import peergos.shared.crypto.*;
 import peergos.shared.user.*;
 
 import java.util.concurrent.CompletableFuture;
@@ -13,6 +14,10 @@ public class ScryptJS implements Hasher {
         return scriptJS.hashToKeyBytes(username, password, algorithm);
     }
 
+    @Override
+    public CompletableFuture<ProofOfWork> generateProofOfWork(int difficulty, byte[] data) {
+        return scriptJS.generateProofOfWork(difficulty, data);
+    }
 
     @Override
     public CompletableFuture<byte[]> sha256(byte[] input) {

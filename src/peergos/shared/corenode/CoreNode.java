@@ -1,7 +1,7 @@
 package peergos.shared.corenode;
 
+import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.social.*;
 
 import java.io.*;
 import java.util.*;
@@ -9,7 +9,6 @@ import java.util.concurrent.*;
 
 public interface CoreNode {
     int MAX_USERNAME_SIZE = 64;
-    int MAX_USERNAME_COUNT = 1024;
 
     /**
      *
@@ -22,9 +21,11 @@ public interface CoreNode {
      *
      * @param username
      * @param chain The changed links of the chain
-     * @return True if successfully updated
+     * @return Optional.empty() if successfully updated, otherwise the required difficulty
      */
-    CompletableFuture<Boolean> updateChain(String username, List<UserPublicKeyLink> chain);
+    CompletableFuture<Optional<RequiredDifficulty>> updateChain(String username,
+                                                                List<UserPublicKeyLink> chain,
+                                                                ProofOfWork proof);
 
     /**
      *

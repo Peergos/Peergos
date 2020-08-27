@@ -3,6 +3,7 @@ package peergos.shared.corenode;
 import java.util.logging.*;
 
 import peergos.shared.cbor.*;
+import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.api.*;
 import peergos.shared.io.ipfs.multihash.*;
@@ -120,30 +121,31 @@ public class HTTPCoreNode implements CoreNode {
     }
 
     @Override
-    public CompletableFuture<Boolean> updateChain(String username, List<UserPublicKeyLink> chain) {
-        try
-        {
+    public CompletableFuture<Optional<RequiredDifficulty>> updateChain(String username, List<UserPublicKeyLink> chain, ProofOfWork proof) {
+        try {
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
             DataOutputStream dout = new DataOutputStream(bout);
 
             Serialize.serialize(username, dout);
-            dout.writeInt(chain.size());
-            for (UserPublicKeyLink link : chain) {
-                Serialize.serialize(link.serialize(), dout);
-            }
+            Serialize.serialize(new CborObject.CborList(chain).serialize(), dout);
+            Serialize.serialize(proof.serialize(), dout);
             dout.flush();
 
-            return poster.postUnzip(urlPrefix + Constants.CORE_URL + "updateChain", bout.toByteArray()).thenApply(res -> {
-                DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
-                try {
-                    return din.readBoolean();
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
-                }
-            });
+            return poster.postUnzip(urlPrefix + Constants.CORE_URL + "updateChain", bout.toByteArray())
+                    .thenApply(res -> {
+                        DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
+                        try {
+                            boolean success = din.readBoolean();
+                            if (success)
+                                return Optional.empty();
+                            return Optional.of(new RequiredDifficulty(din.readInt()));
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
+                    });
         } catch (IOException ioe) {
             LOG.log(Level.WARNING, ioe.getMessage(), ioe);
-            return CompletableFuture.completedFuture(false);
+            return Futures.errored(ioe);
         }
     }
 

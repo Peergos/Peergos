@@ -1,6 +1,7 @@
 package peergos.server.corenode;
 
 import peergos.shared.corenode.*;
+import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 
 import java.io.*;
@@ -25,10 +26,10 @@ public class CorenodeEventPropagator implements CoreNode {
     }
 
     @Override
-    public CompletableFuture<Boolean> updateChain(String username, List<UserPublicKeyLink> chain) {
-        return target.updateChain(username, chain)
+    public CompletableFuture<Optional<RequiredDifficulty>> updateChain(String username, List<UserPublicKeyLink> chain, ProofOfWork proof) {
+        return target.updateChain(username, chain, proof)
                 .thenApply(res -> {
-                    if (res) {
+                    if (res.isEmpty()) {
                         CorenodeEvent event = new CorenodeEvent(username, chain.get(chain.size() - 1).owner);
                         for (Consumer<? super CorenodeEvent> listener : listeners) {
                             listener.accept(event);

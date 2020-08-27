@@ -1,6 +1,7 @@
 package peergos.shared.crypto.hash;
 
 import jsinterop.annotations.*;
+import peergos.shared.crypto.*;
 import peergos.shared.user.*;
 
 import java.util.concurrent.*;
@@ -9,6 +10,8 @@ import java.util.concurrent.*;
 public class NativeScryptJS {
 
     public native CompletableFuture<byte[]> hashToKeyBytes(String username, String password, SecretGenerationAlgorithm algorithm);
+
+    public native CompletableFuture<ProofOfWork> generateProofOfWork(int difficulty, byte[] data);
 
     public native CompletableFuture<byte[]> sha256(byte[] input);
 
