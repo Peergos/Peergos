@@ -1,5 +1,6 @@
 package peergos.server.storage;
 
+import io.prometheus.client.*;
 import peergos.server.*;
 import peergos.server.corenode.*;
 import peergos.server.sql.*;
@@ -10,7 +11,6 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.storage.*;
 import peergos.shared.io.ipfs.multihash.*;
-import io.prometheus.client.Histogram;
 import peergos.shared.util.*;
 
 import java.io.*;
@@ -40,6 +40,11 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             .name("s3_block_write_seconds")
             .help("Time to write a block to immutable storage")
             .exponentialBuckets(0.01, 2, 16)
+            .register();
+    private static final Counter nonLocalGets = Counter.build()
+            .labelNames("p2p_gets")
+            .name("p2p_block_gets")
+            .help("Number of block gets which fell back to p2p retrieval")
             .register();
 
     private final Multihash id;
@@ -156,6 +161,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 LOG.log(Level.WARNING, msg, e);
             }
 
+            nonLocalGets.inc();
             return p2pFallback.getRaw(hash);
         } finally {
             readTimer.observeDuration();
