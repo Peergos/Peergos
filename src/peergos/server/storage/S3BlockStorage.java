@@ -42,7 +42,6 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             .exponentialBuckets(0.01, 2, 16)
             .register();
     private static final Counter nonLocalGets = Counter.build()
-            .labelNames("p2p_gets")
             .name("p2p_block_gets")
             .help("Number of block gets which fell back to p2p retrieval")
             .register();
