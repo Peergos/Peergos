@@ -1,5 +1,4 @@
 package peergos.server.corenode;
-import java.util.concurrent.atomic.*;
 import java.util.logging.*;
 
 import peergos.server.util.*;
@@ -24,6 +23,7 @@ import java.util.stream.*;
 
 public class IpfsCoreNode implements CoreNode {
 	private static final Logger LOG = Logging.LOG();
+	public static final int MAX_FREE_PASSWORD_CHANGES = 10;
 
     private final PublicKeyHash peergosIdentity;
     private final ContentAddressedStorage ipfs;
@@ -154,17 +154,6 @@ public class IpfsCoreNode implements CoreNode {
         if (! UsernameValidator.isValidUsername(username))
             throw new IllegalStateException("Invalid username");
 
-        // Check proof is sufficient
-        byte[] hash = hasher.sha256(ArrayOps.concat(proof.prefix, new CborObject.CborList(updatedChain).serialize())).join();
-        difficultyGenerator.updateTime(System.currentTimeMillis());
-        int requiredDifficulty = difficultyGenerator.currentDifficulty();
-        if (! ProofOfWork.satisfiesDifficulty(requiredDifficulty, hash)) {
-            LOG.log(Level.INFO, "Rejected request with insufficient proof of work for difficulty: " +
-                    requiredDifficulty + " and username " + username);
-            return Futures.of(Optional.of(new RequiredDifficulty(requiredDifficulty)));
-        }
-
-        difficultyGenerator.addEvent();
         try {
             CommittedWriterData current = WriterData.getWriterData(currentRoot.get(), ipfs).get();
             MaybeMultihash currentTree = current.props.tree.map(MaybeMultihash::of).orElseGet(MaybeMultihash::empty);
@@ -186,6 +175,20 @@ public class IpfsCoreNode implements CoreNode {
                     .map(UserPublicKeyLink::fromCbor)
                     .collect(Collectors.toList()))
                     .orElse(Collections.emptyList());
+
+            // Check proof of work is sufficient, unless it is a password change
+            byte[] hash = hasher.sha256(ArrayOps.concat(proof.prefix, new CborObject.CborList(updatedChain).serialize())).join();
+            difficultyGenerator.updateTime(System.currentTimeMillis());
+            int requiredDifficulty = difficultyGenerator.currentDifficulty();
+            if (existingChain.isEmpty() || existingChain.size() > MAX_FREE_PASSWORD_CHANGES) {
+                if (!ProofOfWork.satisfiesDifficulty(requiredDifficulty, hash)) {
+                    LOG.log(Level.INFO, "Rejected request with insufficient proof of work for difficulty: " +
+                            requiredDifficulty + " and username " + username);
+                    return Futures.of(Optional.of(new RequiredDifficulty(requiredDifficulty)));
+                }
+            }
+
+            difficultyGenerator.addEvent();
 
             List<UserPublicKeyLink> mergedChain = UserPublicKeyLink.merge(existingChain, updatedChain, ipfs).get();
             CborObject.CborList mergedChainCbor = new CborObject.CborList(mergedChain.stream()
