@@ -17,10 +17,12 @@ Alpha
 ----
 Our alpha is live at https://alpha.peergos.net/. There are a limited number of accounts available. 
 
-More info
+Tech book
 ---------
-You can read more detail about our features and architecture in our [book](https://book.peergos.org).
+You can read more detail about our features and architecture in our [tech book](https://book.peergos.org).
 
+Media
+---------
 The slides of a talk introducing Peergos are [here](https://speakerdeck.com/ianopolous/peergos-architecture) 
 
 Architecture talk at IPFS Lab Day:
@@ -70,8 +72,8 @@ Architecture
 ------------
 1.0 Layers of architecture
  - 1: Peer-to-peer and data layer - [IPFS](https://ipfs.io) provides the data storage, routing and retrieval. A User must have at least one peergos instance storing their data for it to be available. 
- - 2: Authorization Layer - a key pair (IPNS) controls who is able to modify parts of the file system (every write is signed)
- - 3: Data storage - under a given IPNS key there is a [merkle-champ](https://en.wikipedia.org/wiki/Hash_array_mapped_trie) of encrypted chunks under random labels, without any cross links visible to the network (the network can't deduce the size of files)
+ - 2: Authorization Layer - a key pair controls who is able to modify parts of the file system (every write is signed)
+ - 3: Data storage - controlled by a given public key there is a [merkle-champ](https://en.wikipedia.org/wiki/Hash_array_mapped_trie) of encrypted chunks under random labels, without any cross links visible to the network (the network can't deduce the size of files)
  - 4: Encryption - Strong encryption is done on the user's machine using [TweetNaCl](http://tweetnacl.cr.yp.to/), with each 5MiB chunk of a file being encrypted independently. 
  - 5: Social layer implementing the concept of following or being friends with another user, without exposing the friend network to anyone.
  - 5: Sharing - Secure cryptographic sharing of files with friends.
@@ -79,7 +81,8 @@ Architecture
 2.0 Language
  - The IPFS layer is currently coded in Go
  - The server is coded to run on JVM to get portability and speed, predominantly Java
- - The web interface is mostly coded in Java and cross compiled to Javascript, with the exception of the tweetnacl and scrypt  libraries, and a small amount of GUI code in JS for Vue.js. 
+ - The web interface is mostly coded in Java and cross compiled to Javascript, with the exception of the tweetnacl and scrypt libraries, and a small amount of GUI code in JS for Vue.js. 
+ - Apps are written in HTML5
 
 3.0 Nodes
  - There is a pki node which ensures unique usernames using a strucutre similar to certificate transparency. This data is mirrored on every peergos server. Eventually we might put this small amount of data in a blockchain for full decentralization.
@@ -89,27 +92,29 @@ Architecture
  - New versions of the software will be delivered through Peergos itself. (Able to be turned off by the user if desired)
  - A user who trusts a public Peergos server (and the SSL Certificate authority chain) can use the web interface over TLS
  - A less trusting user can run a Peergos server on their own machine and use the web interface over localhost
- - A more paranoid user can run a Peergos server on their own machine and use the native GUI, or the CLI or the fuse binding
+ - A more paranoid user can run a Peergos server on their own machine and use the CLI or the fuse binding
+ - Servers are trustless - your data and metadata cannot be exposed even if your server is compromised (assuming your client is not compromised)
+ - IPFS itself is not trusted and all data stored or retrieved from it is verified externally. 
+ - The data store (which may not be ipfs directly, but S3 compatible service for example) is also not trusted
 
 4.0 Logging in
- - A user's username is salted with the hash of their password and then run through scrypt (with parameters 17, 8, 1, 96, though users can choose harder parameters if desired) to generate a symmetric key, an encrypting keypair and a signing keypair. This means that a user can log in from any machine without transfering any keys, and also that their keys are protected from a brute force attack (see slides above for cost estimate).
+ - A user's username is used along with a random salt and the hash of their password and run through scrypt (with parameters 17, 8, 1, 96, though users can choose harder parameters if desired) to generate a symmetric key, an encrypting keypair and a signing keypair. This means that a user can log in from any machine without transfering any keys, and also that their keys are protected from a brute force attack (see slides above for cost estimate).
 
 5.0 Encryption
- - private keys never leave client node, a random key is generated for every file (explicitly not convergent encryption, which leaks information)
+ - private keys never leave client node, a random symmetric key is generated for every file (explicitly not convergent encryption, which leaks information)
 
 5.1 Post-quantum encryption
  - Files that haven't been shared with another user are already resistant to quantum computer based attacks. This is because the operations to decrypt them from logging in, to seeing plain-text, include only hashing and symmetric encryption, both of which are currently believed to not be significantly weakened with a quantum computer. 
  - Files that have been shared between users are, currently, vulnerable to a large enough quantum computer if an attacker is able to log the initial follow requests sent between the users (before the user retrieves and deletes them). This will be replaced with a post-quantum asymmetric algorithm as soon as a clear candidate arrives.  
 
 6.0 Friend network
- - Anyone can send anyone else a "friend request". This amounts to "following" someone and is a one way protocol. This is stored in the target user's server, but the server cannot see who is sending the friend request (it is cryptographically blinded). 
+ - Anyone can send anyone else a "follow request". This amounts to "following" someone and is a one way protocol. This is stored in the target user's server, but the server cannot see who is sending the friend request (it is cryptographically blinded). 
  - The target user can respond to friend requests with their own friend request to make it bi-directional (the usual concept of a friend). 
- - Once tor is integrated, there will be no way for an attacker (or us) to deduce the friendship graph (who is friends with who). 
+ - Once onion routing is integrated, there will be no way for an attacker (or us) to deduce the friendship graph (who is friends with who). 
  
 7.0 Sharing of a file (with another user, through a secret link, or publicly)
  - Once user A is being followed by user B, then A can share files with user B (B can revoke their following at any time)
  - File access control is based on [cryptree](https://raw.githubusercontent.com/ianopolous/Peergos/master/papers/wuala-cryptree.pdf) system used by Wuala
- - sharing of a text file with another user could constitute a secure email
  - a link can be generated to a file or a folder which can be shared with anyone through any medium. A link is of the form https://demo.peergos.net/#KEY_MATERIAL which has the property that even the link doesn't leak the file contents to the network, as the key material after the # is not sent to the server, but interpreted locally in the browser.
  - a user can publish a capability to a file or folder they control which makes it publicly visible
 
@@ -134,7 +139,7 @@ You need to have ant-optional installed:
 ```shell
 sudo apt-get install ant-optional
 ```
-Running tests will install the correct version of IPFS automatically, run the daemon, and terminate it afterwards. 
+Running tests will install and configure the correct version of IPFS automatically, run the daemon, and terminate it afterwards. 
 ```shell
 ant test
 ```
@@ -144,10 +149,6 @@ Usage
 Instructions for self hosting will be updated once it is supported. 
 
 In the meantime you can experiment (BEWARE: we occasionally need to delete the data on this test network, so don't use it as your only copy of anything) with running your own Peergos server in our demo network by downloading a release from https://alpha.peergos.net/public/peergos/releases
-
-or
-
-https://alpha.peergos.net/public/peergos/releases
 
 You will need Java >= 11 installed. 
 
