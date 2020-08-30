@@ -78,6 +78,7 @@ public interface AsyncReader extends AutoCloseable {
                 });
     }
 
+    @JsType
     class ArrayBacked implements AsyncReader {
         private final byte[] data;
         private int index = 0;
