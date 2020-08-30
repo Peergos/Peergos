@@ -59,7 +59,7 @@ Peergos aims
  - To allow secure sharing of files with other users of the network without visible meta-data (who shares with who)
  - To have a beautiful user interface that any computer or mobile user can understand
  - To enable a new secure form of email
- - To be independent of the central SSL CA trust architecture
+ - To be independent of the central TLS Certificate Authority trust architecture
  - Self hostable - A user should be able to easily run Peergos on a machine in their home and get their own Peergos storage space, and social communication platform from it. 
  - A secure web interface
  - To enable secure real time chat
@@ -87,7 +87,7 @@ Architecture
  - Apps are written in HTML5
 
 3.0 Nodes
- - There is a pki node which ensures unique usernames using a strucutre similar to certificate transparency. This data is mirrored on every peergos server. Eventually we might put this small amount of data in a blockchain for full decentralization.
+ - There is a pki node which ensures unique usernames using a structure similar to certificate transparency. This data is mirrored on every peergos server. Eventually we might put this small amount of data in a blockchain for full decentralization.
  - A new node contacts any public Peergos server to join the network
 
 4.0 Trust
@@ -129,6 +129,7 @@ sudo apt-get install ant
 sudo apt-get install openjdk-11-jdk
 ```
 ### Build
+Note that this doesn't include any web ui, for the full build including the web interface build https://github.com/peergos/web-ui
 ```shell
 ant dist
 ```
