@@ -369,10 +369,14 @@ public class Main {
                 ServerMessageStore store = new ServerMessageStore(getDBConnector(a, "server-messages-sql-file"),
                         sqlCommands, null, null);
                 List<ServerMessage> messages = store.getMessages(a.getArg("username"));
-                for (ServerMessage msg : messages) {
-                    System.out.println(String.format("### %d: %s %s dismissed:%s", msg.id, msg.type.name(),
-                            msg.getSendTime().toString(), msg.isDismissed) + (msg.replyToId.map(id -> " <==" + id).orElse("")));
-                    System.out.println(msg.contents);
+                List<ServerConversation> conversations = ServerConversation.combine(messages);
+                for (ServerConversation conv : conversations) {
+                    for (ServerMessage msg : conv.messages) {
+                        System.out.println(String.format("### %d: %s %s dismissed:%s", msg.id, msg.type.name(),
+                                msg.getSendTime().toString(), msg.isDismissed) + (msg.replyToId.map(id -> " <==" + id).orElse("")));
+                        System.out.println(msg.contents);
+                    }
+                    System.out.println();
                 }
                 return true;
             },
