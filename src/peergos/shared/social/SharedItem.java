@@ -1,10 +1,12 @@
 package peergos.shared.social;
 
+import jsinterop.annotations.*;
 import peergos.shared.cbor.*;
 import peergos.shared.user.fs.*;
 
 import java.util.*;
 
+@JsType
 public class SharedItem implements Cborable {
     public final AbsoluteCapability cap;
     public final String owner, sharer, path;
@@ -14,6 +16,22 @@ public class SharedItem implements Cborable {
         this.owner = owner;
         this.sharer = sharer;
         this.path = path;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        SharedItem that = (SharedItem) o;
+        return Objects.equals(cap, that.cap) &&
+                Objects.equals(owner, that.owner) &&
+                Objects.equals(sharer, that.sharer) &&
+                Objects.equals(path, that.path);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(cap, owner, sharer, path);
     }
 
     @Override

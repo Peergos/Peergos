@@ -184,13 +184,16 @@ public class SocialFeed {
     public static CompletableFuture<SocialFeed> create(UserContext c) {
         return c.getUserRoot()
                 .thenCompose(home -> home.mkdir(UserContext.FEED_DIR_NAME, c.network, true, c.crypto))
-                .thenCompose(feedDir -> {
+                .thenCompose(newHome -> {
                     FeedState empty = new FeedState(0, 0, 0L, Collections.emptyMap());
                     byte[] rawEmpty = empty.serialize();
-                    return feedDir.uploadAndReturnFile(FEED_STATE, AsyncReader.build(rawEmpty), rawEmpty.length,
-                            false, c.network, c.crypto)
-                            .thenApply(stateFile -> new SocialFeed(feedDir, stateFile, empty, c))
-                            .thenCompose(SocialFeed::update);
+                    return newHome.getChild(UserContext.FEED_DIR_NAME, c.crypto.hasher, c.network)
+                            .thenApply(Optional::get)
+                            .thenCompose(feedDir ->
+                                    feedDir.uploadAndReturnFile(FEED_STATE, AsyncReader.build(rawEmpty), rawEmpty.length,
+                                            false, c.network, c.crypto)
+                                            .thenApply(stateFile -> new SocialFeed(feedDir, stateFile, empty, c))
+                                            .thenCompose(SocialFeed::update));
                 });
     }
 
@@ -270,7 +273,8 @@ public class SocialFeed {
             int lastSeenIndex = (int) m.getLong("s");
             int feedSizeRecords = (int) m.getLong("r");
             long feedSizeBytes = m.getLong("b");
-            Map<String, UserState> processedBytes = m.getMap(c -> ((CborObject.CborString) c).value, UserState::fromCbor);
+            Map<String, UserState> processedBytes = ((CborObject.CborMap)m.get("p"))
+                    .getMap(c -> ((CborObject.CborString) c).value, UserState::fromCbor);
             return new FeedState(lastSeenIndex, feedSizeRecords, feedSizeBytes, processedBytes);
         }
     }

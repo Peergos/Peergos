@@ -1225,6 +1225,14 @@ public class PeergosNetworkUtils {
         AbsoluteCapability readCap = sharer.getByPath(fileToShare).join().get().getPointer().capability.readOnly();
         Assert.assertTrue(item.cap.equals(readCap));
         Assert.assertTrue(item.path.equals("/" + fileToShare.toString()));
+
+        // Test the feed after a fresh login
+        UserContext freshA = PeergosNetworkUtils.ensureSignedUp(a.username, password, network, crypto);
+        SocialFeed freshFeed = freshA.getSocialFeed().join();
+        List<SharedItem> freshItems = freshFeed.getShared(0, 1, a.crypto, a.network).join();
+        Assert.assertTrue(freshItems.size() > 0);
+        SharedItem freshItem = freshItems.get(0);
+        Assert.assertTrue(freshItem.equals(item));
     }
 
     public static List<Set<AbsoluteCapability>> getAllChildCapsByChunk(FileWrapper dir, NetworkAccess network) {
