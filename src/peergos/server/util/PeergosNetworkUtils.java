@@ -1208,12 +1208,11 @@ public class PeergosNetworkUtils {
         String filename = "somefile.txt";
         byte[] fileData = sharer.crypto.random.randomBytes(1*1024*1024);
 
-        FileWrapper uploaded = u1Root.uploadOrReplaceFile(filename, AsyncReader.build(fileData), fileData.length,
+        u1Root.uploadOrReplaceFile(filename, AsyncReader.build(fileData), fileData.length,
                 sharer.network, crypto, l -> {}, crypto.random.randomBytes(32)).join();
 
         Path fileToShare = Paths.get(sharer.username, filename);
-        sharer.shareReadAccessWithAll(sharer.getByPath(fileToShare).join().get(), fileToShare,
-                Collections.singleton(a.username)).join();
+        sharer.shareReadAccessWithAll(sharer.getByPath(fileToShare).join().get(), fileToShare, Set.of(a.username)).join();
 
         // check 'a' can see the shared file in their social feed
         SocialFeed feed = a.getSocialFeed().join();
@@ -1233,6 +1232,23 @@ public class PeergosNetworkUtils {
         Assert.assertTrue(freshItems.size() > 0);
         SharedItem freshItem = freshItems.get(0);
         Assert.assertTrue(freshItem.equals(item));
+
+        // Test sharing a new item after construction
+        String filename2 = "second-file.txt";
+        sharer.getUserRoot().join()
+                .uploadOrReplaceFile(filename2, AsyncReader.build(fileData), fileData.length,
+                        sharer.network, crypto, l -> {}, crypto.random.randomBytes(32)).join();
+        Path file2 = Paths.get(sharer.username, filename2);
+        sharer.shareReadAccessWithAll(sharer.getByPath(file2).join().get(), file2, Set.of(a.username)).join();
+
+        SocialFeed updatedFeed = freshFeed.update().join();
+        List<SharedItem> items2 = updatedFeed.getShared(1, 2, a.crypto, a.network).join();
+        Assert.assertTrue(items2.size() > 0);
+        SharedItem item2 = items2.get(0);
+        Assert.assertTrue(item2.owner.equals(sharer.username));
+        Assert.assertTrue(item2.sharer.equals(sharer.username));
+        AbsoluteCapability readCap2 = sharer.getByPath(file2).join().get().getPointer().capability.readOnly();
+        Assert.assertTrue(item2.cap.equals(readCap2));
     }
 
     public static List<Set<AbsoluteCapability>> getAllChildCapsByChunk(FileWrapper dir, NetworkAccess network) {

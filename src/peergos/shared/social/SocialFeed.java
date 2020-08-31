@@ -93,9 +93,11 @@ public class SocialFeed {
      *
      * @return
      */
+    @JsMethod
     public CompletableFuture<SocialFeed> update() {
         return context.getFollowingNodes()
-                .thenCompose(friends -> Futures.reduceAll(friends, this, SocialFeed::updateFriend, (a, b) -> b));
+                .thenCompose(friends -> Futures.reduceAll(friends, this, SocialFeed::updateFriend, (a, b) -> b))
+                .thenCompose(x -> x.commit().thenApply(b -> x));
     }
 
     private synchronized CompletableFuture<SocialFeed> updateFriend(FriendSourcedTrieNode friend) {
@@ -115,12 +117,12 @@ public class SocialFeed {
                     // We need to load the whole lot to catch what we missed
                     return friend.loadCachedCaps(context.network, context.crypto)
                             .thenCompose(all -> {
-                                List<CapabilityWithPath> readCapsToAdd = all.readCaps.getRetrievedCapabilities()
-                                        .stream()
+                                List<CapabilityWithPath> readCapsToAdd = Stream.of(all.readCaps, diff.newCaps.readCaps)
+                                        .flatMap(c -> c.getRetrievedCapabilities().stream())
                                         .skip(current.readCaps)
                                         .collect(Collectors.toList());
-                                List<CapabilityWithPath> writeCapsToAdd = all.writeCaps.getRetrievedCapabilities()
-                                        .stream()
+                                List<CapabilityWithPath> writeCapsToAdd = Stream.of(all.writeCaps, diff.newCaps.writeCaps)
+                                        .flatMap(c -> c.getRetrievedCapabilities().stream())
                                         .skip(current.writeCaps)
                                         .collect(Collectors.toList());
                                 return addToFriend(friend.ownerName, current, readCapsToAdd, all.readCaps.getBytesRead(),
