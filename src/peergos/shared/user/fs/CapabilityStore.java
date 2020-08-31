@@ -97,7 +97,7 @@ public class CapabilityStore {
                                                                                   String friendName,
                                                                                   NetworkAccess network,
                                                                                   Crypto crypto) {
-        return loadSharingLinksCache(cacheDir, friendName, network, crypto, READ_SHARING_FILE_NAME);
+        return loadSharingLinksCache(cacheDir, friendName, network, crypto, cacheFilename(true, READ_SHARING_FILE_NAME));
     }
 
     /**
@@ -135,7 +135,7 @@ public class CapabilityStore {
                                                                                    NetworkAccess network,
                                                                                    Crypto crypto) {
 
-        return loadSharingLinksCache(cacheDir, friendName, network, crypto, EDIT_SHARING_FILE_NAME);
+        return loadSharingLinksCache(cacheDir, friendName, network, crypto, cacheFilename(true, EDIT_SHARING_FILE_NAME));
     }
 
     private static CompletableFuture<CapabilitiesFromUser> loadSharingLinks(FileWrapper cacheDir,
