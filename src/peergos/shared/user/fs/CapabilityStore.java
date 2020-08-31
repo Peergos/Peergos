@@ -16,7 +16,7 @@ import java.util.stream.*;
  * Each unidirectional sharing relationship has a sharing folder /source_user/sharing/recipient_user/
  * In this sharing directory is an append only list of capabilities which the source user has granted to the recipient
  * user. This is implemented as a series of numbered files in the directory with a maximum number of capabilities per
- * file. Knowing the index of the capability in the overall list you can calcualte the file name, and the offset in the
+ * file. Knowing the index of the capability in the overall list you can calculate the file name, and the offset in the
  * file at which the capability is stored. Write and read capabilities form logically separate append only lists.
  *
  * To avoid reparsing the entire capability list at every login, the capabilities and their retrieved paths are stored

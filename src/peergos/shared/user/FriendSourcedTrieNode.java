@@ -6,7 +6,7 @@ import peergos.shared.user.fs.*;
 
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.function.*;
+import java.util.stream.*;
 
 public class FriendSourcedTrieNode implements TrieNode {
 
@@ -38,23 +38,37 @@ public class FriendSourcedTrieNode implements TrieNode {
                                                                            EntryPoint e,
                                                                            NetworkAccess network,
                                                                            Crypto crypto) {
+        return loadCachedCaps(cacheDir, e, network, crypto)
+                .thenApply(res -> Optional.of(new FriendSourcedTrieNode(cacheDir,
+                        e.ownerName,
+                        e,
+                        Stream.of(res.readCaps, res.writeCaps)
+                                .flatMap(c -> c.getRetrievedCapabilities().stream())
+                                .reduce(TrieNodeImpl.empty(),
+                                        (root, cap) -> root.put(trimOwner(cap.path), new EntryPoint(cap.cap, e.ownerName)),
+                                        (a, b) -> a),
+                        res.readCaps.getBytesRead(), res.writeCaps.getBytesRead(), crypto)));
+    }
+
+    public CompletableFuture<ReadAndWriteCaps> loadCachedCaps(NetworkAccess network, Crypto crypto) {
+        return loadCachedCaps(cacheDir, sharedDir, network, crypto);
+    }
+
+    /**
+     *
+     * @param cacheDir
+     * @param e
+     * @param network
+     * @param crypto
+     * @return the read and write caps cached from this user
+     */
+    public static CompletableFuture<ReadAndWriteCaps> loadCachedCaps(FileWrapper cacheDir,
+                                                                     EntryPoint e,
+                                                                     NetworkAccess network,
+                                                                     Crypto crypto) {
         return CapabilityStore.loadCachedReadOnlyLinks(cacheDir, e.ownerName, network, crypto)
-                .thenCompose(readCaps -> {
-                    return CapabilityStore.loadCachedWriteableLinks(cacheDir, e.ownerName, network, crypto)
-                            .thenApply(writeCaps -> {
-                                List<CapabilityWithPath> allCaps = new ArrayList<>();
-                                allCaps.addAll(readCaps.getRetrievedCapabilities());
-                                allCaps.addAll(writeCaps.getRetrievedCapabilities());
-                                return Optional.of(new FriendSourcedTrieNode(cacheDir,
-                                        e.ownerName,
-                                        e,
-                                        allCaps.stream()
-                                                .reduce(TrieNodeImpl.empty(),
-                                                        (root, cap) -> root.put(trimOwner(cap.path), new EntryPoint(cap.cap, e.ownerName)),
-                                                        (a, b) -> a),
-                                        readCaps.getBytesRead(), writeCaps.getBytesRead(), crypto));
-                            });
-                });
+                .thenCompose(readCaps -> CapabilityStore.loadCachedWriteableLinks(cacheDir, e.ownerName, network, crypto)
+                        .thenApply(writeCaps -> new ReadAndWriteCaps(readCaps, writeCaps)));
     }
 
     public static CompletableFuture<Optional<FriendSourcedTrieNode>> buildAndUpdate(FileWrapper cacheDir,
@@ -87,14 +101,22 @@ public class FriendSourcedTrieNode implements TrieNode {
                 });
     }
 
-    private synchronized CompletableFuture<Boolean> ensureUptodate(Crypto crypto, NetworkAccess network) {
+    /**
+     *
+     * @param crypto
+     * @param network
+     * @return Any new capabilities from the friend and the previously processed size of caps in bytes
+     */
+    public synchronized CompletableFuture<CapsDiff> ensureUptodate(Crypto crypto,
+                                                                           NetworkAccess network) {
         // check there are no new capabilities in the friend's shared directory
         return NetworkAccess.getLatestEntryPoint(sharedDir, network)
                 .thenCompose(sharedDir -> {
                     return CapabilityStore.getReadOnlyCapabilityFileSize(sharedDir.file, crypto, network)
                             .thenCompose(bytes -> {
                                 if (bytes == byteOffsetReadOnly) {
-                                    return addEditableCapabilities(Optional.of(sharedDir.file), crypto, network);
+                                    return addEditableCapabilities(Optional.of(sharedDir.file), crypto, network)
+                                            .thenApply(w -> new ReadAndWriteCaps(CapabilitiesFromUser.empty(), w));
                                 } else {
                                     return CapabilityStore.loadReadAccessSharingLinksFromIndex(cacheDir, sharedDir.file,
                                             ownerName, network, crypto, byteOffsetReadOnly, true, true)
@@ -104,20 +126,22 @@ public class FriendSourcedTrieNode implements TrieNode {
                                                         .reduce(root,
                                                                 (root, cap) -> root.put(trimOwner(cap.path), new EntryPoint(cap.cap, ownerName)),
                                                                 (a, b) -> a);
-                                                return addEditableCapabilities(Optional.of(sharedDir.file), crypto, network);
+                                                return addEditableCapabilities(Optional.of(sharedDir.file), crypto, network)
+                                                        .thenApply(writeable -> new ReadAndWriteCaps(newReadCaps, writeable));
                                             });
                                 }
                             });
-                });
+                }).thenApply(newCaps -> new CapsDiff(byteOffsetReadOnly - newCaps.readCaps.getBytesRead(),
+                        byteOffsetWrite - newCaps.writeCaps.getBytesRead(), newCaps));
     }
 
-    private synchronized CompletableFuture<Boolean> addEditableCapabilities(Optional<FileWrapper> sharedDirOpt,
+    private synchronized CompletableFuture<CapabilitiesFromUser> addEditableCapabilities(Optional<FileWrapper> sharedDirOpt,
                                                                             Crypto crypto,
                                                                             NetworkAccess network) {
         return CapabilityStore.getEditableCapabilityFileSize(sharedDirOpt.get(), crypto, network)
                 .thenCompose(editFilesize -> {
                     if (editFilesize == byteOffsetWrite)
-                        return CompletableFuture.completedFuture(true);
+                        return CompletableFuture.completedFuture(CapabilitiesFromUser.empty());
                     return CapabilityStore.loadWriteAccessSharingLinksFromIndex(cacheDir, sharedDirOpt.get(),
                             ownerName, network, crypto, byteOffsetWrite, true, true)
                             .thenApply(newWriteCaps -> {
@@ -126,7 +150,7 @@ public class FriendSourcedTrieNode implements TrieNode {
                                         .reduce(root,
                                                 (root, cap) -> root.put(trimOwner(cap.path), new EntryPoint(cap.cap, ownerName)),
                                                 (a, b) -> a);
-                                return true;
+                                return newWriteCaps;
                             });
                 });
     }
@@ -210,7 +234,48 @@ public class FriendSourcedTrieNode implements TrieNode {
     }
 
     @Override
+    public Collection<TrieNode> getChildNodes() {
+        return root.getChildNodes();
+    }
+
+    @Override
     public boolean isEmpty() {
         return root.isEmpty();
+    }
+
+    public static class CapsDiff {
+        public final long priorReadByteOffset, priorWriteByteOffset;
+        public final ReadAndWriteCaps newCaps;
+
+        public CapsDiff(long priorReadByteOffset, long priorWriteByteOffset, ReadAndWriteCaps newCaps) {
+            this.priorReadByteOffset = priorReadByteOffset;
+            this.priorWriteByteOffset = priorWriteByteOffset;
+            this.newCaps = newCaps;
+        }
+
+        public boolean isEmpty() {
+            return newCaps.readCaps.getBytesRead() == 0 && newCaps.writeCaps.getBytesRead() == 0;
+        }
+
+        public long updatedReadBytes() {
+            return priorReadByteOffset + newCaps.readCaps.getBytesRead();
+        }
+
+        public long updatedWriteBytes() {
+            return priorWriteByteOffset + newCaps.writeCaps.getBytesRead();
+        }
+
+        public long priorBytes() {
+            return priorReadByteOffset + priorWriteByteOffset;
+        }
+    }
+
+    public static class ReadAndWriteCaps {
+        public final CapabilitiesFromUser readCaps, writeCaps;
+
+        public ReadAndWriteCaps(CapabilitiesFromUser readCaps, CapabilitiesFromUser writeCaps) {
+            this.readCaps = readCaps;
+            this.writeCaps = writeCaps;
+        }
     }
 }

@@ -29,6 +29,8 @@ public interface TrieNode {
 
     TrieNode removeEntry(String path);
 
+    Collection<TrieNode> getChildNodes();
+
     boolean isEmpty();
 
     static String canonicalise(String path) {

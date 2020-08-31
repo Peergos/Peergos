@@ -78,6 +78,64 @@ public interface AsyncReader extends AutoCloseable {
                 });
     }
 
+    @JsIgnore
+    default <T> CompletableFuture<Long> parseLimitedStream(Function<Cborable, T> fromCbor,
+                                                           Consumer<T> accumulator,
+                                                           int objectsToSkip,
+                                                           int maxObjectsToRead,
+                                                           long maxBytesToRead) {
+        return parseLimitedStreamRecurse(new byte[0], fromCbor, accumulator, objectsToSkip, maxObjectsToRead, maxBytesToRead);
+    }
+
+    /** Convert reader into a stream of CborObjects
+     *
+     * @param prefix any bytes from a partial object read that will form the prefix of this read
+     * @param fromCbor The cbor converter
+     * @param accumulator The results consumer
+     * @param objectsToSkip The number of objects to skip
+     * @param maxObjectsToRead There must be at least this many objects left in this stream or an EOF will result
+     * @param maxBytesToRead There must be at least this many bytes left in this stream or an EOF will result
+     * @param <T>
+     * @return
+     */
+    @JsIgnore
+    default <T> CompletableFuture<Long> parseLimitedStreamRecurse(byte[] prefix,
+                                                                  Function<Cborable, T> fromCbor,
+                                                                  Consumer<T> accumulator,
+                                                                  int objectsToSkip,
+                                                                  int maxObjectsToRead,
+                                                                  long maxBytesToRead) {
+        if (maxObjectsToRead == 0)
+            return CompletableFuture.completedFuture(0L);
+        byte[] buf = new byte[Chunk.MAX_SIZE];
+        System.arraycopy(prefix, 0, buf, 0, prefix.length);
+        ByteArrayInputStream in = new ByteArrayInputStream(buf);
+        return readIntoArray(buf, prefix.length, (int) Math.min((long)(buf.length - prefix.length), maxBytesToRead))
+                .thenCompose(bytesRead -> {
+                    int toSkip = objectsToSkip;
+                    int objectsToRead = maxObjectsToRead;
+                    for (int localOffset = 0; localOffset < bytesRead;) {
+                        try {
+                            CborObject readObject = CborObject.read(in, bytesRead);
+                            if (toSkip > 0)
+                                toSkip--;
+                            else {
+                                objectsToRead--;
+                                accumulator.accept(fromCbor.apply(readObject));
+                            }
+                            localOffset += readObject.toByteArray().length;
+                        } catch (RuntimeException e) {
+                            int fromThisChunk = localOffset;
+                            return parseLimitedStreamRecurse(Arrays.copyOfRange(buf, localOffset, bytesRead), fromCbor,
+                                    accumulator, toSkip, objectsToRead, maxBytesToRead - bytesRead)
+                                    .thenApply(rest -> rest + fromThisChunk);
+                        }
+                    }
+                    return parseLimitedStream(fromCbor, accumulator, toSkip, objectsToRead, maxBytesToRead - bytesRead)
+                            .thenApply(rest -> rest + bytesRead);
+                });
+    }
+
     @JsType
     class ArrayBacked implements AsyncReader {
         private final byte[] data;

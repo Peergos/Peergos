@@ -236,6 +236,11 @@ public class TrieNodeImpl implements TrieNode {
         return new TrieNodeImpl(newChildren, value);
     }
 
+    @Override
+    public Collection<TrieNode> getChildNodes() {
+        return children.values();
+    }
+
     public static TrieNodeImpl empty() {
         return new TrieNodeImpl(Collections.emptyMap(), Optional.empty());
     }

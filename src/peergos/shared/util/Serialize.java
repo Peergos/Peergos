@@ -1,6 +1,7 @@
 package peergos.shared.util;
 
 import jsinterop.annotations.*;
+import peergos.shared.*;
 import peergos.shared.user.fs.*;
 
 import java.io.*;
@@ -96,6 +97,12 @@ public class Serialize
             offset += nRead;
         }
         return res;
+    }
+
+    public static CompletableFuture<byte[]> readFully(FileWrapper f, Crypto crypto, NetworkAccess network) {
+        long size = f.getSize();
+        return f.getInputStream(network, crypto, x -> {})
+                .thenCompose(stream -> readFully(stream, size));
     }
 
     public static CompletableFuture<byte[]> readFully(AsyncReader in, long size) {

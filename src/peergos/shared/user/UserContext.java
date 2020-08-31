@@ -39,8 +39,8 @@ import jsinterop.annotations.*;
 public class UserContext {
     private static final Logger LOG = Logger.getGlobal();
 
-    public static final String PEERGOS_USERNAME = "peergos";
     public static final String SHARED_DIR_NAME = "shared";
+    public static final String FEED_DIR_NAME = ".feed";
     public static final String TRANSACTIONS_DIR_NAME = ".transactions";
     public static final String FRIEND_ANNOTATIONS_FILE_NAME = ".annotations";
 
@@ -951,6 +951,15 @@ public class UserContext {
                         .collect(Collectors.toMap(e -> e.getFileProperties().name, e -> e)));
     }
 
+    public CompletableFuture<Set<FriendSourcedTrieNode>> getFollowingNodes() {
+        return Futures.of(entrie.getChildNodes()
+                .stream()
+                .filter(n -> n instanceof FriendSourcedTrieNode)
+                .map(n -> (FriendSourcedTrieNode)n)
+                .filter(n -> ! n.ownerName.equals(username))
+                .collect(Collectors.toSet()));
+    }
+
     private CompletableFuture<Set<String>> getFollowers() {
         return getByPath(Paths.get(username, ENTRY_POINTS_FROM_FRIENDS_FILENAME))
                 .thenCompose(fopt -> fopt
@@ -1166,6 +1175,16 @@ public class UserContext {
                 });
             });
         });
+    }
+
+    @JsMethod
+    public CompletableFuture<SocialFeed> getSocialFeed() {
+        return getByPath(Paths.get(username, FEED_DIR_NAME))
+                .thenCompose(feedDirOpt -> {
+                    if (feedDirOpt.isEmpty())
+                        return SocialFeed.create(this);
+                    return SocialFeed.load(feedDirOpt.get(), this);
+                });
     }
 
     public CompletableFuture<Boolean> unShareReadAccess(Path path, String readerToRemove) {

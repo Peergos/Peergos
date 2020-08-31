@@ -1188,6 +1188,45 @@ public class PeergosNetworkUtils {
         MultiUserTests.checkUserValidity(network, sharer.username);
     }
 
+    public static void socialFeed(NetworkAccess network, Random random) {
+        CryptreeNode.setMaxChildLinkPerBlob(10);
+
+        String password = "notagoodone";
+
+        UserContext sharer = PeergosNetworkUtils.ensureSignedUp(generateUsername(random), password, network, crypto);
+
+        List<UserContext> shareeUsers = getUserContextsForNode(network, random, 1, Arrays.asList(password, password));
+        UserContext a = shareeUsers.get(0);
+
+        // friend sharer with others
+        friendBetweenGroups(Arrays.asList(sharer), shareeUsers);
+
+        // friends are now connected
+        // share a file from u1 to u2
+        FileWrapper u1Root = sharer.getUserRoot().join();
+
+        String filename = "somefile.txt";
+        byte[] fileData = sharer.crypto.random.randomBytes(1*1024*1024);
+
+        FileWrapper uploaded = u1Root.uploadOrReplaceFile(filename, AsyncReader.build(fileData), fileData.length,
+                sharer.network, crypto, l -> {}, crypto.random.randomBytes(32)).join();
+
+        Path fileToShare = Paths.get(sharer.username, filename);
+        sharer.shareReadAccessWithAll(sharer.getByPath(fileToShare).join().get(), fileToShare,
+                Collections.singleton(a.username)).join();
+
+        // check 'a' can see the shared file in their social feed
+        SocialFeed feed = a.getSocialFeed().join();
+        List<SharedItem> items = feed.getShared(0, 1, a.crypto, a.network).join();
+        Assert.assertTrue(items.size() > 0);
+        SharedItem item = items.get(0);
+        Assert.assertTrue(item.owner.equals(sharer.username));
+        Assert.assertTrue(item.sharer.equals(sharer.username));
+        AbsoluteCapability readCap = sharer.getByPath(fileToShare).join().get().getPointer().capability.readOnly();
+        Assert.assertTrue(item.cap.equals(readCap));
+        Assert.assertTrue(item.path.equals("/" + fileToShare.toString()));
+    }
+
     public static List<Set<AbsoluteCapability>> getAllChildCapsByChunk(FileWrapper dir, NetworkAccess network) {
         return getAllChildCapsByChunk(dir.getPointer().capability, dir.getPointer().fileAccess, network);
     }
