@@ -46,6 +46,7 @@ public class SocialFeed {
         return lastSeenIndex;
     }
 
+    @JsMethod
     public CompletableFuture<Boolean> setLastSeenIndex(int newLastSeenIndex) {
         this.lastSeenIndex = newLastSeenIndex;
         return commit();
@@ -66,6 +67,7 @@ public class SocialFeed {
                 });
     }
 
+    @JsMethod
     public CompletableFuture<List<SharedItem>> getShared(int from, int to, Crypto crypto, NetworkAccess network) {
         return getPriorByteOffset(from)
                 .thenCompose(start -> dataDir.getChild(FEED_FILE, crypto.hasher, network)
