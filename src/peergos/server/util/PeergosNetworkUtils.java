@@ -1249,6 +1249,13 @@ public class PeergosNetworkUtils {
         Assert.assertTrue(item2.sharer.equals(sharer.username));
         AbsoluteCapability readCap2 = sharer.getByPath(file2).join().get().getPointer().capability.readOnly();
         Assert.assertTrue(item2.cap.equals(readCap2));
+
+        // check accessing the files normally
+        UserContext fresherA = PeergosNetworkUtils.ensureSignedUp(a.username, password, network, crypto);
+        Optional<FileWrapper> directFile1 = fresherA.getByPath(fileToShare).join();
+        Assert.assertTrue(directFile1.isPresent());
+        Optional<FileWrapper> directFile2 = fresherA.getByPath(file2).join();
+        Assert.assertTrue(directFile2.isPresent());
     }
 
     public static List<Set<AbsoluteCapability>> getAllChildCapsByChunk(FileWrapper dir, NetworkAccess network) {
