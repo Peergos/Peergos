@@ -170,7 +170,8 @@ public class UserQuotas implements QuotaAdmin {
         long modified = source.toFile().lastModified();
         long now = System.currentTimeMillis();
         if (modified != lastModified || (now - lastReloaded > RELOAD_PERIOD_MS)) {
-            LOG.info("Updating user quotas...");
+            if (modified != lastModified)
+                LOG.info("Reading modified user quotas...");
             lastModified = modified;
             lastReloaded = now;
             Map<String, Long> readQuotas = readUsernamesFromFile();
