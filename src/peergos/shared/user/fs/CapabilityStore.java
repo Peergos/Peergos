@@ -349,6 +349,9 @@ public class CapabilityStore {
                                                                                        List<CapabilityWithPath> retrievedCapabilities,
                                                                                        String filenameSuffix) {
         CapabilitiesFromUser capabilitiesFromUser = new CapabilitiesFromUser(bytesRead, retrievedCapabilities);
+        //TODO use a inode/name keyed champ here to not load all caps every login!
+        if (true)
+            return Futures.of(capabilitiesFromUser);
         byte[] data = capabilitiesFromUser.serialize();
         AsyncReader.ArrayBacked dataReader = new AsyncReader.ArrayBacked(data);
         return cacheDir.getUpdated(network)
