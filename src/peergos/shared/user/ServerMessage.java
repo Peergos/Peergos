@@ -53,8 +53,7 @@ public class ServerMessage implements Comparable<ServerMessage>, Cborable {
 
     public String summary() {
         return "### " + id + ": " + type.name() + " " + getSendTime().toString() + " dismissed:" + isDismissed +
-                (replyToId.map(id -> " <==" + id).orElse("")) +
-                " body: " + contents.substring(0, Math.min(15, contents.length()));
+                (replyToId.map(id -> " <==" + id).orElse(""));
     }
 
     @JsMethod
