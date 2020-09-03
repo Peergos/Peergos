@@ -442,29 +442,34 @@ public class Main {
                 ServerMessageStore store = new ServerMessageStore(getDBConnector(a, "server-messages-sql-file"),
                         sqlCommands, null, null);
 
-                try {
-                    List<String> usernames = Files.readAllLines(Paths.get(a.getArg("usernames")));
-                    for (String username : usernames) {
-                        List<ServerMessage> all = store.getMessages(username);
-                        List<ServerConversation> allConvs = ServerConversation.combine(all);
-                        List<ServerConversation> withReply = allConvs.stream()
-                                .filter(c -> c.lastMessage().type == ServerMessage.Type.FromUser)
-                                .collect(Collectors.toList());
-                        if (! withReply.isEmpty())
-                            System.out.println("Replies from " + username);
-                        for (ServerConversation conv : withReply) {
-                            ServerMessage last = conv.lastMessage();
-                            System.out.println(last.summary());
-                            System.out.println(last.contents);
-                        }
+                TransactionStore transactions = buildTransactionStore(a);
+                DeletableContentAddressedStorage localStorage = buildLocalStorage(a, transactions);
+                JdbcIpnsAndSocial rawPointers = buildRawPointers(a);
+                MutablePointers localPointers = UserRepository.build(localStorage, rawPointers);
+                MutablePointersProxy proxingMutable = new HttpMutablePointers(buildP2pHttpProxy(a), getPkiServerId(a));
+                CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable);
+                QuotaAdmin quotas = buildSpaceQuotas(a, localStorage, core);
+
+                List<String> usernames = quotas.getLocalUsernames();
+                for (String username : usernames) {
+                    List<ServerMessage> all = store.getMessages(username);
+                    List<ServerConversation> allConvs = ServerConversation.combine(all);
+                    List<ServerConversation> withReply = allConvs.stream()
+                            .filter(c -> c.lastMessage().type == ServerMessage.Type.FromUser)
+                            .collect(Collectors.toList());
+                    if (! withReply.isEmpty()) {
+                        System.out.println("==================================================");
+                        System.out.println("Replies from " + username);
                     }
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
+                    for (ServerConversation conv : withReply) {
+                        ServerMessage last = conv.lastMessage();
+                        System.out.println(last.summary());
+                        System.out.println(last.contents);
+                    }
                 }
                 return true;
             },
             Arrays.asList(
-                    new Command.Arg("usernames", "Path to file containing usernames, one per line", false),
                     new Command.Arg("server-messages-sql-file", "The filename for the server messages datastore", true, "server-messages.sql")
             )
     );
@@ -543,6 +548,105 @@ public class Main {
         }
     }
 
+    private static JavaPoster buildIpfsApi(Args a) {
+        URL ipfsApiAddress = AddressUtil.getAddress(new MultiAddress(a.getArg("ipfs-api-address")));
+        return new JavaPoster(ipfsApiAddress, false);
+    }
+
+    /**
+     *
+     * @param a
+     * @return This returns the P@P HTTP proxy, which is in the IPFS gateway
+     */
+    private static JavaPoster buildP2pHttpProxy(Args a) {
+        URL ipfsGatewayAddress = AddressUtil.getAddress(new MultiAddress(a.getArg("ipfs-gateway-address")));
+        return new JavaPoster(ipfsGatewayAddress, false);
+    }
+
+    private static DeletableContentAddressedStorage buildLocalStorage(Args a,
+                                                                      TransactionStore transactions) {
+        boolean useIPFS = a.getBoolean("useIPFS");
+        boolean enableGC = a.getBoolean("enable-gc", false);
+        JavaPoster ipfsApi = buildIpfsApi(a);
+        if (useIPFS) {
+                DeletableContentAddressedStorage.HTTP ipfs = new DeletableContentAddressedStorage.HTTP(ipfsApi, false);
+                if (enableGC) {
+                    return new TransactionalIpfs(ipfs, transactions);
+                } else
+                    return ipfs;
+            } else {
+                // In S3 mode of operation we require the ipfs id to be supplied as we don't have a local ipfs running
+                if (S3Config.useS3(a)) {
+                    if (enableGC)
+                        throw new IllegalStateException("GC should be run separately when using S3!");
+                    ContentAddressedStorage.HTTP ipfs = new ContentAddressedStorage.HTTP(ipfsApi, false);
+                    Optional<String> publicReadUrl = Optional.ofNullable(a.getArg("blockstore-url", null));
+                    boolean directWrites = a.getBoolean("direct-s3-writes", false);
+                    boolean publicReads = a.getBoolean("public-s3-reads", false);
+                    boolean authedReads = a.getBoolean("authed-s3-reads", false);
+                    BlockStoreProperties props = new BlockStoreProperties(directWrites, publicReads, authedReads, publicReadUrl);
+                    return new S3BlockStorage(S3Config.build(a), Cid.decode(a.getArg("ipfs.id")),
+                            props, transactions, ipfs);
+                } else {
+                    return new FileContentAddressedStorage(blockstorePath(a), transactions);
+                }
+            }
+    }
+
+    private static SqlSupplier getSqlCommands(Args a) {
+        boolean usePostgres = a.getBoolean("use-postgres", false);
+        return usePostgres ? new PostgresCommands() : new SqliteCommands();
+    }
+
+    private static QuotaAdmin buildSpaceQuotas(Args a, DeletableContentAddressedStorage localDht, CoreNode core) {
+        long defaultQuota = a.getLong("default-quota");
+        long maxUsers = a.getLong("max-users");
+        Logging.LOG().info("Using default user space quota of " + defaultQuota);
+        Path quotaFilePath = a.fromPeergosDir("quotas_file","quotas.txt");
+
+        boolean paidStorage = a.hasArg("quota-admin-address");
+        if (! paidStorage) {
+            SqlSupplier sqlCommands = getSqlCommands(a);
+            Supplier<Connection> spaceDb = getDBConnector(a, "space-requests-sql-file");
+            JdbcSpaceRequests spaceRequests = JdbcSpaceRequests.build(spaceDb, sqlCommands);
+            return new UserQuotas(quotaFilePath, defaultQuota, maxUsers, spaceRequests, localDht, core);
+        } else {
+            JavaPoster poster = new JavaPoster(AddressUtil.getAddress(new MultiAddress(a.getArg("quota-admin-address"))), true);
+            return new HttpQuotaAdmin(poster);
+        }
+    }
+
+    private static TransactionStore buildTransactionStore(Args a) {
+        Supplier<Connection> transactionsDb = getDBConnector(a, "transactions-sql-file");
+        return JdbcTransactionStore.build(transactionsDb, getSqlCommands(a));
+    }
+
+    private static Multihash getPkiServerId(Args a) {
+        return Cid.decode(a.getArg("pki-node-id"));
+    }
+
+    private static CoreNode buildCorenode(Args a,
+                                          DeletableContentAddressedStorage localStorage,
+                                          TransactionStore transactions,
+                                          JdbcIpnsAndSocial rawPointers,
+                                          MutablePointers localPointers,
+                                          MutablePointersProxy proxingMutable) {
+        Multihash nodeId = localStorage.id().join();
+        PublicKeyHash peergosId = PublicKeyHash.fromString(a.getArg("peergos.identity.hash"));
+        Multihash pkiServerId = getPkiServerId(a);
+        // build a mirroring proxying corenode, unless we are the pki node
+        boolean isPkiNode = nodeId.equals(pkiServerId);
+        return isPkiNode ?
+                buildPkiCorenode(new PinningMutablePointers(localPointers, localStorage), localStorage, a) :
+                new MirrorCoreNode(new HTTPCoreNode(buildP2pHttpProxy(a), pkiServerId), proxingMutable, localStorage,
+                        rawPointers, transactions, peergosId,
+                        a.fromPeergosDir("pki-mirror-state-path","pki-state.cbor"));
+    }
+
+    private static JdbcIpnsAndSocial buildRawPointers(Args a) {
+        return new JdbcIpnsAndSocial(getDBConnector(a, "mutable-pointers-file"), getSqlCommands(a));
+    }
+
     public static UserService startPeergos(Args a) {
         try {
             Crypto crypto = initCrypto();
@@ -564,105 +668,51 @@ public class Main {
                 AggregatedMetrics.startExporter(exporterAddress, exporterPort);
             }
 
-            Multihash pkiServerNodeId = Cid.decode(a.getArg("pki-node-id"));
-            URL ipfsApiAddress = AddressUtil.getAddress(new MultiAddress(a.getArg("ipfs-api-address")));
-            URL ipfsGatewayAddress = AddressUtil.getAddress(new MultiAddress(a.getArg("ipfs-gateway-address")));
+            Multihash pkiServerNodeId = getPkiServerId(a);
             String domain = a.getArg("domain");
             InetSocketAddress userAPIAddress = new InetSocketAddress(domain, webPort);
 
-            JavaPoster ipfsApi = new JavaPoster(ipfsApiAddress, false);
-            JavaPoster ipfsGateway = new JavaPoster(ipfsGatewayAddress, false);
+            JavaPoster p2pHttpProxy = buildP2pHttpProxy(a);
 
-            boolean usePostgres = a.getBoolean("use-postgres", false);
-            SqlSupplier sqlCommands = usePostgres ?
-                    new PostgresCommands() :
-                    new SqliteCommands();
+            SqlSupplier sqlCommands = getSqlCommands(a);
 
-            Supplier<Connection> database = getDBConnector(a, "mutable-pointers-file");
-            JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(database, sqlCommands);
+            TransactionStore transactions = buildTransactionStore(a);
 
-            Supplier<Connection> transactionsDb = getDBConnector(a, "transactions-sql-file");
-            TransactionStore transactions = JdbcTransactionStore.build(transactionsDb, sqlCommands);
-
-            DeletableContentAddressedStorage localDht;
+            DeletableContentAddressedStorage localStorage = buildLocalStorage(a, transactions);
+            JdbcIpnsAndSocial rawPointers = buildRawPointers(a);
             boolean enableGC = a.getBoolean("enable-gc", false);
             GarbageCollector gc = null;
-            if (useIPFS) {
-                DeletableContentAddressedStorage.HTTP ipfs = new DeletableContentAddressedStorage.HTTP(ipfsApi, false);
-                if (enableGC) {
-                    TransactionalIpfs ipfsWithTransactions = new TransactionalIpfs(ipfs, transactions);
-                    gc = new GarbageCollector(ipfsWithTransactions, rawPointers);
-                    gc.start(a.getInt("gc.period.millis", 60 * 60 * 1000), s -> Futures.of(true));
-                    localDht = ipfsWithTransactions;
-                } else
-                    localDht = ipfs;
-            } else {
-                // In S3 mode of operation we require the ipfs id to be supplied as we don't have a local ipfs running
-                if (S3Config.useS3(a)) {
-                    if (enableGC)
-                        throw new IllegalStateException("GC should be run separately when using S3!");
-                    ContentAddressedStorage.HTTP ipfs = new ContentAddressedStorage.HTTP(ipfsApi, false);
-                    Optional<String> publicReadUrl = Optional.ofNullable(a.getArg("blockstore-url", null));
-                    boolean directWrites = a.getBoolean("direct-s3-writes", false);
-                    boolean publicReads = a.getBoolean("public-s3-reads", false);
-                    boolean authedReads = a.getBoolean("authed-s3-reads", false);
-                    BlockStoreProperties props = new BlockStoreProperties(directWrites, publicReads, authedReads, publicReadUrl);
-                    localDht = new S3BlockStorage(S3Config.build(a), Cid.decode(a.getArg("ipfs.id")),
-                            props, transactions, ipfs);
-                } else {
-                    localDht = new FileContentAddressedStorage(blockstorePath(a), transactions);
-                    if (enableGC) {
-                        gc = new GarbageCollector(localDht, rawPointers);
-                        gc.start(a.getInt("gc.period.millis", 60 * 60 * 1000), s -> Futures.of(true));
-                    }
-                }
+            if (enableGC) {
+                if (S3Config.useS3(a))
+                    throw new IllegalStateException("GC should be run separately when using S3!");
+                gc = new GarbageCollector(localStorage, rawPointers);
+                gc.start(a.getInt("gc.period.millis", 60 * 60 * 1000), s -> Futures.of(true));
             }
 
             String hostname = a.getArg("domain");
-            Multihash nodeId = localDht.id().get();
+            Multihash nodeId = localStorage.id().get();
 
-            MutablePointers localPointers = UserRepository.build(localDht, rawPointers);
-            MutablePointersProxy proxingMutable = new HttpMutablePointers(ipfsGateway, pkiServerNodeId);
+            MutablePointers localPointers = UserRepository.build(localStorage, rawPointers);
+            MutablePointersProxy proxingMutable = new HttpMutablePointers(p2pHttpProxy, pkiServerNodeId);
 
-            PublicKeyHash peergosId = PublicKeyHash.fromString(a.getArg("peergos.identity.hash"));
-            // build a mirroring proxying corenode, unless we are the pki node
-            boolean isPkiNode = nodeId.equals(pkiServerNodeId);
-            CoreNode core = isPkiNode ?
-                    buildPkiCorenode(new PinningMutablePointers(localPointers, localDht), localDht, a) :
-                    new MirrorCoreNode(new HTTPCoreNode(ipfsGateway, pkiServerNodeId), proxingMutable, localDht,
-                            rawPointers, transactions, peergosId,
-                            a.fromPeergosDir("pki-mirror-state-path","pki-state.cbor"));
+            CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable);
 
-            long defaultQuota = a.getLong("default-quota");
-            long maxUsers = a.getLong("max-users");
-            Logging.LOG().info("Using default user space quota of " + defaultQuota);
-            Path quotaFilePath = a.fromPeergosDir("quotas_file","quotas.txt");
-
-            boolean paidStorage = a.hasArg("quota-admin-address");
-            QuotaAdmin userQuotas;
-            if (! paidStorage) {
-                Supplier<Connection> spaceDb = getDBConnector(a, "space-requests-sql-file");
-                JdbcSpaceRequests spaceRequests = JdbcSpaceRequests.build(spaceDb, sqlCommands);
-                userQuotas = new UserQuotas(quotaFilePath, defaultQuota, maxUsers, spaceRequests, localDht, core);
-            } else {
-                JavaPoster poster = new JavaPoster(AddressUtil.getAddress(new MultiAddress(a.getArg("quota-admin-address"))), true);
-                userQuotas = new HttpQuotaAdmin(poster);
-            }
+            QuotaAdmin userQuotas = buildSpaceQuotas(a, localStorage, core);
             CoreNode signupFilter = new SignUpFilter(core, userQuotas, nodeId);
 
             Supplier<Connection> usageDb = getDBConnector(a, "space-usage-sql-file");
             UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
             Hasher hasher = crypto.hasher;
-            SpaceCheckingKeyFilter.update(usageStore, userQuotas, core, localPointers, localDht, hasher);
-            SpaceCheckingKeyFilter spaceChecker = new SpaceCheckingKeyFilter(core, localPointers, localDht,
+            SpaceCheckingKeyFilter.update(usageStore, userQuotas, core, localPointers, localStorage, hasher);
+            SpaceCheckingKeyFilter spaceChecker = new SpaceCheckingKeyFilter(core, localPointers, localStorage,
                     hasher, userQuotas, usageStore);
             CorenodeEventPropagator corePropagator = new CorenodeEventPropagator(signupFilter);
             corePropagator.addListener(spaceChecker::accept);
             MutableEventPropagator localMutable = new MutableEventPropagator(localPointers);
             localMutable.addListener(spaceChecker::accept);
 
-            ContentAddressedStorage filteringDht = new WriteFilter(localDht, spaceChecker::allowWrite);
-            ContentAddressedStorageProxy proxingDht = new ContentAddressedStorageProxy.HTTP(ipfsGateway);
+            ContentAddressedStorage filteringDht = new WriteFilter(localStorage, spaceChecker::allowWrite);
+            ContentAddressedStorageProxy proxingDht = new ContentAddressedStorageProxy.HTTP(p2pHttpProxy);
             ContentAddressedStorage p2pDht = new ContentAddressedStorage.Proxying(filteringDht, proxingDht, nodeId, core);
 
             Path blacklistPath = a.fromPeergosDir("blacklist_file", "blacklist.txt");
@@ -670,7 +720,7 @@ public class Main {
             MutablePointers blockingMutablePointers = new BlockingMutablePointers(new PinningMutablePointers(localMutable, p2pDht), blacklist);
             MutablePointers p2mMutable = new ProxyingMutablePointers(nodeId, core, blockingMutablePointers, proxingMutable);
 
-            SocialNetworkProxy httpSocial = new HttpSocialNetwork(ipfsGateway, ipfsGateway);
+            SocialNetworkProxy httpSocial = new HttpSocialNetwork(p2pHttpProxy, p2pHttpProxy);
 
             Supplier<Connection> socialDatabase = getDBConnector(a, "social-sql-file");
 
@@ -682,8 +732,8 @@ public class Main {
                     .stream()
                     .collect(Collectors.toSet());
             boolean enableWaitlist = a.getBoolean("enable-wait-list", false);
-            Admin storageAdmin = new Admin(adminUsernames, userQuotas, core, localDht, enableWaitlist);
-            HttpSpaceUsage httpSpaceUsage = new HttpSpaceUsage(ipfsGateway, ipfsGateway);
+            Admin storageAdmin = new Admin(adminUsernames, userQuotas, core, localStorage, enableWaitlist);
+            HttpSpaceUsage httpSpaceUsage = new HttpSpaceUsage(p2pHttpProxy, p2pHttpProxy);
             ProxyingSpaceUsage p2pSpaceUsage = new ProxyingSpaceUsage(nodeId, corePropagator, spaceChecker, httpSpaceUsage);
             UserService peergos = new UserService(p2pDht, crypto, corePropagator, p2pSocial, p2mMutable, storageAdmin,
                     p2pSpaceUsage, new ServerMessageStore(getDBConnector(a, "server-messages-sql-file"),
@@ -701,6 +751,7 @@ public class Main {
             boolean isPublicServer = a.getBoolean("public-server", false);
             peergos.initAndStart(localAddress, tlsProps, webroot, useWebAssetCache, isPublicServer, maxConnectionQueue,
                     handlerThreads);
+            boolean isPkiNode = nodeId.equals(pkiServerNodeId);
             if (! isPkiNode && useIPFS) {
                 int pkiNodeSwarmPort = a.getInt("pki.node.swarm.port");
                 InetAddress pkiNodeIpAddress = InetAddress.getByName(a.getArg("pki.node.ipaddress"));
@@ -715,7 +766,7 @@ public class Main {
                 new Thread(() -> {
                     while (true) {
                         try {
-                            Mirror.mirrorNode(nodeToMirrorId, localApi, rawPointers, localDht);
+                            Mirror.mirrorNode(nodeToMirrorId, localApi, rawPointers, localStorage);
                             try {
                                 Thread.sleep(60_000);
                             } catch (InterruptedException f) {}
@@ -733,7 +784,7 @@ public class Main {
                 new Thread(() -> {
                     while (true) {
                         try {
-                            Mirror.mirrorUser(a.getArg("mirror.username"), localApi, rawPointers, localDht);
+                            Mirror.mirrorUser(a.getArg("mirror.username"), localApi, rawPointers, localStorage);
                             try {
                                 Thread.sleep(60_000);
                             } catch (InterruptedException f) {}
