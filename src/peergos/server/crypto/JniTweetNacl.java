@@ -18,6 +18,7 @@ public class JniTweetNacl {
     }
 
     static {
+        String absoluteLibPath = "";
         try {
             new File("native-lib").mkdirs();
             Path libPath = Paths.get("native-lib", "libtweetnacl.so");
@@ -25,12 +26,11 @@ public class JniTweetNacl {
                 byte[] data = Serialize.readFully(JniTweetNacl.class.getResourceAsStream("/" + libPath.toString()));
                 Files.write(libPath, data, StandardOpenOption.CREATE);
             }
-            String absoluteLibPath = libPath.toFile().getAbsolutePath();
-            System.out.println("Trying to load native crypto library at " + absoluteLibPath);
+            absoluteLibPath = libPath.toFile().getAbsolutePath();
             System.loadLibrary("tweetnacl");
         } catch (Throwable t) {
-            System.err.println("Couldn't load native crypto library, using pure Java version...");
-            System.err.println("To use the native linux-x86-64 crypto implementation use option -Djava.library.path=native-lib");
+            System.err.println("Couldn't load native crypto library at " + absoluteLibPath + ", using pure Java version..." +
+                    " To use the native linux-x86-64 crypto implementation use option -Djava.library.path=native-lib");
             throw new RuntimeException(t);
         }
     }
