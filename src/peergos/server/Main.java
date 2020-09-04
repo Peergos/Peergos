@@ -480,7 +480,11 @@ public class Main {
                 System.out.println("Run with -help to show options");
                 return null;
             },
-            Collections.emptyList(),
+            Arrays.asList(
+                    new Command.Arg("print-log-location", "Whether to print the log file location at startup", false, "false"),
+                    new Command.Arg("log-to-file", "Whether to log to a file", false, "false"),
+                    new Command.Arg("log-to-console", "Whether to log to the console", false, "false")
+            ),
             Arrays.asList(SHOW, SEND, NEW)
     );
     public static Crypto initCrypto() {
