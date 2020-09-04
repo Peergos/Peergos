@@ -24,26 +24,35 @@ public class  Logging {
      * @param a
      */
     public static synchronized void init(Args a) {
-        Path logPath = a.fromPeergosDir("logName", "peergos.%g.log");
+        Path logPath = a.fromPeergosDir("log-name", "peergos.%g.log");
         logPath.toFile().getParentFile().mkdirs();
-        int logLimit = a.getInt("logLimit", 1024 * 1024);
-        int logCount = a.getInt("logCount", 10);
-        boolean logAppend = a.getBoolean("logAppend", true);
-        boolean logToConsole = a.getBoolean("logToConsole", false);
-        boolean logToFile = a.getBoolean("logToFile", true);
+        int logLimit = a.getInt("log-limit", 1024 * 1024);
+        int logCount = a.getInt("log-count", 10);
+        boolean logAppend = a.getBoolean("log-append", true);
+        boolean logToConsole = a.getBoolean("log-to-console", false);
+        boolean logToFile = a.getBoolean("log-to-file", true);
+        boolean printLogLocation = a.getBoolean("print-log-location", true);
 
         NULL_LOG.setParent(LOG());
 
-        init(logPath, logLimit, logCount, logAppend, logToConsole, logToFile);
+        init(logPath, logLimit, logCount, logAppend, logToConsole, logToFile, printLogLocation);
     }
 
-    public static synchronized void init(Path logPath, int logLimit, int logCount, boolean logAppend, boolean logToConsole,
-                                         boolean logToFile) {
+    public static synchronized void init(Path logPath,
+                                         int logLimit,
+                                         int logCount,
+                                         boolean logAppend,
+                                         boolean logToConsole,
+                                         boolean logToFile,
+                                         boolean printLocation) {
 
         if (isInitialised)
             return;
 
         try {
+            // also logging to stdout?
+            if (! logToConsole)
+                LOG().setUseParentHandlers(false);
             if (! logToFile)
                 return;
 
@@ -52,7 +61,8 @@ public class  Logging {
             fileHandler.setFormatter(new WithNullFormatter());
 
             // tell console where we're logging to
-            LOG().info("Logging to "+ logPathS.replace("%g", "0"));
+            if (printLocation && logToFile)
+                LOG().info("Logging to "+ logPathS.replace("%g", "0"));
             nullLog().setParent(LOG());
 
             Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
@@ -63,9 +73,6 @@ public class  Logging {
             });
 
             LOG().addHandler(fileHandler);
-            // also logging to stdout?
-            if (! logToConsole)
-                LOG().setUseParentHandlers(false);
         } catch (IOException ioe) {
             throw new IllegalStateException(ioe.getMessage(), ioe);
         } finally {
@@ -118,17 +125,5 @@ public class  Logging {
             if (! "Stream closed".equals(ioe.getMessage()))
                 LOG().log(Level.WARNING, "Failed to read log message from stream", ioe);
         }
-    }
-
-    public static void main(String[] args) {
-        Path path = Paths.get("log.log");
-        init(path, 1024*1024, 1, false, false, true);
-
-        LOG().info("something");
-
-        Logger logger = Logger.getLogger("my-logger");
-        logger.setParent(LOG());
-        logger.warning("else");
-
     }
 }
