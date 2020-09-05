@@ -16,10 +16,10 @@ import java.util.function.*;
 public class OwnedKeyChamp {
 
     public final Multihash root;
-    private final ChampWrapper champ;
+    private final ChampWrapper<CborObject.CborMerkleLink> champ;
     private final ContentAddressedStorage ipfs;
 
-    private OwnedKeyChamp(Multihash root, ChampWrapper champ, ContentAddressedStorage ipfs) {
+    private OwnedKeyChamp(Multihash root, ChampWrapper<CborObject.CborMerkleLink> champ, ContentAddressedStorage ipfs) {
         this.root = root;
         this.champ = champ;
         this.ipfs = ipfs;
@@ -30,14 +30,14 @@ public class OwnedKeyChamp {
                                                            ContentAddressedStorage ipfs,
                                                            Hasher hasher,
                                                            TransactionId tid) {
-        Champ newRoot = Champ.empty();
+        Champ<CborObject.CborMerkleLink> newRoot = Champ.empty(c -> (CborObject.CborMerkleLink)c);
         byte[] raw = newRoot.serialize();
         return hasher.sha256(raw)
                 .thenCompose(hash -> ipfs.put(owner, writer.publicKeyHash, writer.secret.signMessage(hash), raw, tid));
     }
 
     public static CompletableFuture<OwnedKeyChamp> build(Multihash root, ContentAddressedStorage ipfs, Hasher hasher) {
-        return ChampWrapper.create(root, b -> b.data, ipfs, hasher)
+        return ChampWrapper.create(root, b -> b.data, ipfs, hasher, c -> (CborObject.CborMerkleLink)c)
                 .thenApply(c -> new OwnedKeyChamp(root, c, ipfs));
     }
 
@@ -55,7 +55,7 @@ public class OwnedKeyChamp {
     public CompletableFuture<Optional<OwnerProof>> get(PublicKeyHash ownedKey) {
         return champ.get(keyToBytes(ownedKey))
                 .thenCompose(res -> res.isPresent() ?
-                        ipfs.get(res.get()).thenApply(raw -> raw.map(OwnerProof::fromCbor)) :
+                        ipfs.get(res.get().target).thenApply(raw -> raw.map(OwnerProof::fromCbor)) :
                         CompletableFuture.completedFuture(Optional.empty()));
     }
 
@@ -66,7 +66,7 @@ public class OwnedKeyChamp {
                                             TransactionId tid) {
         return ipfs.put(owner, writer, proof.serialize(), hasher, tid)
                 .thenCompose(valueHash ->
-                        champ.put(owner, writer, keyToBytes(proof.ownedKey), MaybeMultihash.empty(), valueHash, tid));
+                        champ.put(owner, writer, keyToBytes(proof.ownedKey), Optional.empty(), new CborObject.CborMerkleLink(valueHash), tid));
     }
 
     public CompletableFuture<Multihash> remove(PublicKeyHash owner,
@@ -80,7 +80,7 @@ public class OwnedKeyChamp {
 
     public CompletableFuture<Boolean> contains(PublicKeyHash ownedKey) {
         return champ.get(keyToBytes(ownedKey))
-                .thenApply(MaybeMultihash::isPresent);
+                .thenApply(Optional::isPresent);
     }
 
     public <T> CompletableFuture<T> applyToAllMappings(T identity,
@@ -88,7 +88,7 @@ public class OwnedKeyChamp {
                                                        ContentAddressedStorage ipfs) {
         return champ.applyToAllMappings(identity,
                 (acc, pair) -> ! pair.right.isPresent() ? CompletableFuture.completedFuture(acc) :
-                        ipfs.get(pair.right.get())
+                        ipfs.get(pair.right.get().target)
                                 .thenApply(raw -> OwnerProof.fromCbor(raw.get()))
                                 .thenCompose(proof -> consumer.apply(acc,
                                         new Pair<>(PublicKeyHash.fromCbor(CborObject.fromByteArray(reverse(pair.left.data))), proof))));

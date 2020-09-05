@@ -2,6 +2,7 @@ package peergos.shared.user;
 import java.util.logging.*;
 
 import peergos.shared.*;
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.hamt.*;
@@ -47,9 +48,9 @@ public class MutableTreeImpl implements MutableTree {
                                              Multihash value,
                                              TransactionId tid) {
         return (base.tree.isPresent() ?
-                ChampWrapper.create(base.tree.get(), hasher, dht, writeHasher) :
-                ChampWrapper.create(owner, writer, x -> x.data, tid, dht, writeHasher)
-        ).thenCompose(tree -> tree.put(owner, writer, mapKey, existing, value, tid))
+                ChampWrapper.create(base.tree.get(), hasher, dht, writeHasher, c -> (CborObject.CborMerkleLink)c) :
+                ChampWrapper.create(owner, writer, x -> x.data, tid, dht, writeHasher, c -> (CborObject.CborMerkleLink)c)
+        ).thenCompose(tree -> tree.put(owner, writer, mapKey, existing.map(CborObject.CborMerkleLink::new), new CborObject.CborMerkleLink(value), tid))
                 .thenApply(newRoot -> LOGGING ? log(newRoot, "TREE.put (" + ArrayOps.bytesToHex(mapKey)
                         + ", " + value + ") => CAS(" + base.tree + ", " + newRoot + ")") : newRoot)
                 .thenApply(base::withChamp);
@@ -59,7 +60,8 @@ public class MutableTreeImpl implements MutableTree {
     public CompletableFuture<MaybeMultihash> get(WriterData base, PublicKeyHash owner, PublicKeyHash writer, byte[] mapKey) {
         if (! base.tree.isPresent())
             throw new IllegalStateException("Tree root not present for " + writer);
-        return ChampWrapper.create(base.tree.get(), hasher, dht, writeHasher).thenCompose(tree -> tree.get(mapKey))
+        return ChampWrapper.create(base.tree.get(), hasher, dht, writeHasher, c -> (CborObject.CborMerkleLink)c).thenCompose(tree -> tree.get(mapKey))
+                .thenApply(c -> c.map(x -> x.target).map(MaybeMultihash::of).orElse(MaybeMultihash.empty()))
                 .thenApply(maybe -> LOGGING ?
                         log(maybe, "TREE.get (" + ArrayOps.bytesToHex(mapKey)
                                 + ", root="+base.tree.get()+" => " + maybe) : maybe);
@@ -74,8 +76,8 @@ public class MutableTreeImpl implements MutableTree {
                                                 TransactionId tid) {
         if (! base.tree.isPresent())
             throw new IllegalStateException("Tree root not present!");
-        return ChampWrapper.create(base.tree.get(), hasher, dht, writeHasher)
-                .thenCompose(tree -> tree.remove(owner, writer, mapKey, existing, tid))
+        return ChampWrapper.create(base.tree.get(), hasher, dht, writeHasher, c -> (CborObject.CborMerkleLink)c)
+                .thenCompose(tree -> tree.remove(owner, writer, mapKey, existing.map(CborObject.CborMerkleLink::new), tid))
                 .thenApply(pair -> LOGGING ? log(pair, "TREE.rm ("
                         + ArrayOps.bytesToHex(mapKey) + "  => " + pair) : pair)
                 .thenApply(newTreeRoot -> base.withChamp(newTreeRoot));

@@ -393,7 +393,7 @@ public class UserContext {
                     throw new IllegalStateException("User " + ownerName + " has not made any files public.");
 
                 Function<ByteArrayWrapper, byte[]> hasher = x -> Hash.sha256(x.data);
-                return ChampWrapper.create(publicData.get(), hasher, network.dhtClient, network.hasher).thenCompose(champ -> {
+                return ChampWrapper.create(publicData.get(), hasher, network.dhtClient, network.hasher, c -> (CborObject.CborMerkleLink)c).thenCompose(champ -> {
                     // The user might have published an ancestor directory of the requested path,
                     // so drop path elements until we either find a capability, or have none left
                     int depth = originalPath.getNameCount();
@@ -401,13 +401,12 @@ public class UserContext {
                             .mapToObj(x -> x)
                             .collect(Collectors.toList());
                     return Futures.findFirst(toDrop,
-                            i -> champ.get(("/" + originalPath.subpath(0, depth - i)).getBytes())
-                                    .thenApply(m -> m.toOptional()))
+                            i -> champ.get(("/" + originalPath.subpath(0, depth - i)).getBytes()))
                             .thenCompose(capHash -> {
                                 if (!capHash.isPresent())
                                     throw new IllegalStateException("User " + ownerName + " has not published a file at " + originalPath);
 
-                                return network.dhtClient.get(capHash.get())
+                                return network.dhtClient.get(capHash.get().target)
                                         .thenApply(cborOpt -> AbsoluteCapability.fromCbor(cborOpt.get()));
                             });
                 });
@@ -916,15 +915,15 @@ public class UserContext {
             Optional<Multihash> publicData = wd.publicData;
 
             Function<ByteArrayWrapper, byte[]> hasher = x -> Hash.sha256(x.data);
-            CompletableFuture<ChampWrapper> champ = publicData.isPresent() ?
-                    ChampWrapper.create(publicData.get(), hasher, network.dhtClient, network.hasher) :
-                    ChampWrapper.create(signer.publicKeyHash, signer, hasher, tid, network.dhtClient, network.hasher);
+            CompletableFuture<ChampWrapper<CborObject.CborMerkleLink>> champ = publicData.isPresent() ?
+                    ChampWrapper.create(publicData.get(), hasher, network.dhtClient, network.hasher, c -> (CborObject.CborMerkleLink)c) :
+                    ChampWrapper.create(signer.publicKeyHash, signer, hasher, tid, network.dhtClient, network.hasher, c -> (CborObject.CborMerkleLink)c);
 
             AbsoluteCapability cap = file.getPointer().capability.readOnly();
             return network.dhtClient.put(signer.publicKeyHash, signer, cap.serialize(), crypto.hasher, tid)
                     .thenCompose(capHash ->
                             champ.thenCompose(c -> c.put(signer.publicKeyHash, signer, path.getBytes(),
-                                    MaybeMultihash.empty(), capHash, tid))
+                                    Optional.empty(), new CborObject.CborMerkleLink(capHash), tid))
                                     .thenApply(newRoot -> wd.withPublicRoot(newRoot)));
         })).thenApply(v -> v.get(signer));
     }

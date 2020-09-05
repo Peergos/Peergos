@@ -224,17 +224,17 @@ public class MirrorCoreNode implements CoreNode {
             TransactionId tid = transactions.startTransaction(peergosKey);
             MaybeMultihash currentTree = IpfsCoreNode.getTreeRoot(current.pkiKeyTarget, ipfs);
             MaybeMultihash updatedTree = IpfsCoreNode.getTreeRoot(currentPkiRoot, ipfs);
-            Consumer<Triple<ByteArrayWrapper, MaybeMultihash, MaybeMultihash>> consumer =
+            Consumer<Triple<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>, Optional<CborObject.CborMerkleLink>>> consumer =
                     t -> {
-                        MaybeMultihash newVal = t.right;
+                        Optional<CborObject.CborMerkleLink> newVal = t.right;
                         if (newVal.isPresent()) {
-                            transactions.addBlock(newVal.get(), tid, peergosKey);
-                            ipfs.get(newVal.get()).join();
+                            transactions.addBlock(newVal.get().target, tid, peergosKey);
+                            ipfs.get(newVal.get().target).join();
                         }
                     };
             Champ.applyToDiff(currentTree, updatedTree, 0, IpfsCoreNode::keyHash,
                     Collections.emptyList(), Collections.emptyList(),
-                    consumer, ChampWrapper.BIT_WIDTH, ipfs).get();
+                    consumer, ChampWrapper.BIT_WIDTH, ipfs, c -> (CborObject.CborMerkleLink)c).get();
 
             // now update the mappings
             IpfsCoreNode.updateAllMappings(pkiKey, current.pkiKeyTarget, currentPkiRoot, ipfs, updated.chains,
