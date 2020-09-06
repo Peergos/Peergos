@@ -1004,6 +1004,19 @@ public class MultiUserTests {
 
         assertTrue("Friend root present after accepted follow request", u1Tou2.isPresent());
         assertTrue("Friend root not present after non reciprocated follow request", !u2Tou1.isPresent());
+
+        // Now test them trying to become full friends
+        u1.unfollow(u2.username).join();
+        u1.sendInitialFollowRequest(u2.username).join();
+        List<FollowRequestWithCipherText> reqs = u2.processFollowRequests().get();
+        u2.sendReplyFollowRequest(reqs.get(0), true, true).join();
+        SocialState u1Social = u1.getSocialState().join();
+        Assert.assertTrue(u1Social.followerRoots.containsKey(u2.username));
+        Assert.assertTrue(u1Social.followingRoots.stream().anyMatch(f -> f.getName().equals(u2.username)));
+
+        SocialState u2Social = u2.getSocialState().join();
+        Assert.assertTrue(u2Social.followerRoots.containsKey(u1.username));
+        Assert.assertTrue(u2Social.followingRoots.stream().anyMatch(f -> f.getName().equals(u1.username)));
     }
 
 

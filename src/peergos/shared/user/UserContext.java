@@ -1146,13 +1146,6 @@ public class UserContext {
     public CompletableFuture<Boolean> sendFollowRequest(String targetUsername, SymmetricKey requestedKey) {
         return getSharingFolder().thenCompose(sharing -> {
             return sharing.getChildren(crypto.hasher, network).thenCompose(children -> {
-                boolean alreadySentRequest = children.stream()
-                        .filter(f -> f.getFileProperties().name.equals(targetUsername))
-                        .findAny()
-                        .isPresent();
-                if (alreadySentRequest) {
-                    return Futures.errored(new Exception("Follow Request already sent to user " + targetUsername));
-                }
                 // check for them not reciprocating
                 return getFollowing().thenCompose(following -> {
                     boolean alreadyFollowing = following.stream()
@@ -1167,19 +1160,22 @@ public class UserContext {
                             return Futures.errored(new Exception("User " + targetUsername + " does not exist!"));
                         }
                         PublicBoxingKey targetUser = targetUserOpt.get().right;
-                        return sharing.mkdir(targetUsername, network, null, true, crypto)
-                                .thenCompose(updatedSharing -> updatedSharing.getChild(targetUsername, crypto.hasher, network))
-                                .thenCompose(friendRootOpt -> {
+                        return sharing.getChild(targetUsername, crypto.hasher, network).thenCompose(dirOpt -> {
+                            if (dirOpt.isPresent())
+                                return Futures.of(dirOpt);
+                            return sharing.mkdir(targetUsername, network, null, true, crypto)
+                                    .thenCompose(updatedSharing -> updatedSharing.getChild(targetUsername, crypto.hasher, network));
+                        }).thenCompose(friendRootOpt -> {
 
-                                    FileWrapper friendRoot = friendRootOpt.get();
-                                    // if they accept the request we will add a note to our static data so we know who we sent the read access to
-                                    EntryPoint entry = new EntryPoint(friendRoot.getPointer().capability.readOnly(), username);
+                            FileWrapper friendRoot = friendRootOpt.get();
+                            // if they accept the request we will add a note to our static data so we know who we sent the read access to
+                            EntryPoint entry = new EntryPoint(friendRoot.getPointer().capability.readOnly(), username);
 
-                                    FollowRequest followReq = new FollowRequest(Optional.of(entry), Optional.ofNullable(requestedKey));
+                            FollowRequest followReq = new FollowRequest(Optional.of(entry), Optional.ofNullable(requestedKey));
 
-                                    PublicKeyHash targetSigner = targetUserOpt.get().left;
-                                    return blindAndSendFollowRequest(targetSigner, targetUser, followReq);
-                                });
+                            PublicKeyHash targetSigner = targetUserOpt.get().left;
+                            return blindAndSendFollowRequest(targetSigner, targetUser, followReq);
+                        });
                     });
                 });
             });
