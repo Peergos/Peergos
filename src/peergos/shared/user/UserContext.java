@@ -1081,23 +1081,25 @@ public class UserContext {
 
         return CompletableFuture.completedFuture(true).thenCompose(b -> {
             if (accept) {
-                return getSharingFolder().thenCompose(sharing -> {
-                    return sharing.mkdir(theirUsername, network, initialRequest.key.get(), true, crypto)
-                            .thenCompose(updatedSharing -> updatedSharing.getChild(theirUsername, crypto.hasher, network))
-                            .thenCompose(friendRootOpt -> {
-                                FileWrapper friendRoot = friendRootOpt.get();
-                                // add a note to our entry point store so we know who we sent the read access to
-                                EntryPoint entry = new EntryPoint(friendRoot.getPointer().capability.readOnly(),
-                                        username);
+                return getSharingFolder().thenCompose(sharing -> sharing.getChild(theirUsername, crypto.hasher, network)
+                        .thenCompose(existingOpt -> {
+                            if (existingOpt.isPresent())
+                                return Futures.of(existingOpt);
+                            return sharing.mkdir(theirUsername, network, initialRequest.key.get(), true, crypto)
+                                    .thenCompose(updatedSharing -> updatedSharing.getChild(theirUsername, crypto.hasher, network));
+                        }).thenCompose(friendRootOpt -> {
+                            FileWrapper friendRoot = friendRootOpt.get();
+                            // add a note to our entry point store so we know who we sent the read access to
+                            EntryPoint entry = new EntryPoint(friendRoot.getPointer().capability.readOnly(),
+                                    username);
 
-                                return addExternalEntryPoint(entry)
-                                        .thenCompose(x -> retrieveAndAddEntryPointToTrie(this.entrie, entry))
-                                        .thenApply(trie -> {
-                                            this.entrie = trie;
-                                            return entry;
-                                        });
-                            });
-                });
+                            return addExternalEntryPoint(entry)
+                                    .thenCompose(x -> retrieveAndAddEntryPointToTrie(this.entrie, entry))
+                                    .thenApply(trie -> {
+                                        this.entrie = trie;
+                                        return entry;
+                                    });
+                        }));
             } else {
                 EntryPoint entry = new EntryPoint(AbsoluteCapability.createNull(), username);
                 return CompletableFuture.completedFuture(entry);
@@ -1597,9 +1599,11 @@ public class UserContext {
                         } else if (freq.entry.get().pointer.isNull()) {
                             // They reciprocated, but didn't accept (they follow us, but we can't follow them)
                             // add entry point to static data to signify their acceptance
+                            // and finally remove the follow request
                             EntryPoint entryWeSentToThem = new EntryPoint(ourDirForThem.getPointer().capability.readOnly(),
                                     username);
                             return addExternalEntryPoint(entryWeSentToThem)
+                                    .thenCompose(x -> network.social.removeFollowRequest(signer.publicKeyHash, signer.secret.signMessage(p.cipher.serialize())))
                                     .thenCompose(x -> retrieveAndAddEntryPointToTrie(trie, entryWeSentToThem));
                         } else {
                             // they accepted and reciprocated

@@ -1101,6 +1101,21 @@ public class MultiUserTests {
 
         Optional<FileWrapper> u2Tou1 = u1.getByPath("/" + u2.username).get();
         assertTrue("Friend root present after reciprocated follow request", u2Tou1.isPresent());
+
+        // Now test them trying to become full friends after u2 removes u1 as a follower
+        u2.removeFollower(u1.username).join();
+        Assert.assertTrue(u2.getSocialState().join().pendingIncoming.isEmpty());
+        u2.sendInitialFollowRequest(u1.username).join();
+        List<FollowRequestWithCipherText> reqs = u1.processFollowRequests().get();
+        u1.sendReplyFollowRequest(reqs.get(0), true, true).join();
+
+        SocialState u2Social = u2.getSocialState().join();
+        Assert.assertTrue(u2Social.followerRoots.containsKey(u1.username));
+        Assert.assertTrue(u2Social.followingRoots.stream().anyMatch(f -> f.getName().equals(u1.username)));
+
+        SocialState u1Social = u1.getSocialState().join();
+        Assert.assertTrue(u1Social.followerRoots.containsKey(u2.username));
+        Assert.assertTrue(u1Social.followingRoots.stream().anyMatch(f -> f.getName().equals(u2.username)));
     }
 
     @Test
