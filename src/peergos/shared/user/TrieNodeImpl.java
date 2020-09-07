@@ -209,7 +209,8 @@ public class TrieNodeImpl implements TrieNode {
         }
         String[] elements = path.split("/");
         TrieNode existing = children.getOrDefault(elements[0], TrieNodeImpl.empty());
-        TrieNode newChild = existing.putNode(path.substring(elements[0].length()), t);
+        String subPath = path.substring(elements[0].length());
+        TrieNode newChild = subPath.isEmpty() ? t : existing.putNode(subPath, t);
 
         HashMap<String, TrieNode> newChildren = new HashMap<>(children);
         newChildren.put(elements[0], newChild);

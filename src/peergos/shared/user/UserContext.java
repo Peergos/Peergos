@@ -1081,23 +1081,25 @@ public class UserContext {
 
         return CompletableFuture.completedFuture(true).thenCompose(b -> {
             if (accept) {
-                return getSharingFolder().thenCompose(sharing -> {
-                    return sharing.mkdir(theirUsername, network, initialRequest.key.get(), true, crypto)
-                            .thenCompose(updatedSharing -> updatedSharing.getChild(theirUsername, crypto.hasher, network))
-                            .thenCompose(friendRootOpt -> {
-                                FileWrapper friendRoot = friendRootOpt.get();
-                                // add a note to our entry point store so we know who we sent the read access to
-                                EntryPoint entry = new EntryPoint(friendRoot.getPointer().capability.readOnly(),
-                                        username);
+                return getSharingFolder().thenCompose(sharing -> sharing.getChild(theirUsername, crypto.hasher, network)
+                        .thenCompose(existingOpt -> {
+                            if (existingOpt.isPresent())
+                                return Futures.of(existingOpt);
+                            return sharing.mkdir(theirUsername, network, initialRequest.key.get(), true, crypto)
+                                    .thenCompose(updatedSharing -> updatedSharing.getChild(theirUsername, crypto.hasher, network));
+                        }).thenCompose(friendRootOpt -> {
+                            FileWrapper friendRoot = friendRootOpt.get();
+                            // add a note to our entry point store so we know who we sent the read access to
+                            EntryPoint entry = new EntryPoint(friendRoot.getPointer().capability.readOnly(),
+                                    username);
 
-                                return addExternalEntryPoint(entry)
-                                        .thenCompose(x -> retrieveAndAddEntryPointToTrie(this.entrie, entry))
-                                        .thenApply(trie -> {
-                                            this.entrie = trie;
-                                            return entry;
-                                        });
-                            });
-                });
+                            return addExternalEntryPoint(entry)
+                                    .thenCompose(x -> retrieveAndAddEntryPointToTrie(this.entrie, entry))
+                                    .thenApply(trie -> {
+                                        this.entrie = trie;
+                                        return entry;
+                                    });
+                        }));
             } else {
                 EntryPoint entry = new EntryPoint(AbsoluteCapability.createNull(), username);
                 return CompletableFuture.completedFuture(entry);
@@ -1146,13 +1148,6 @@ public class UserContext {
     public CompletableFuture<Boolean> sendFollowRequest(String targetUsername, SymmetricKey requestedKey) {
         return getSharingFolder().thenCompose(sharing -> {
             return sharing.getChildren(crypto.hasher, network).thenCompose(children -> {
-                boolean alreadySentRequest = children.stream()
-                        .filter(f -> f.getFileProperties().name.equals(targetUsername))
-                        .findAny()
-                        .isPresent();
-                if (alreadySentRequest) {
-                    return Futures.errored(new Exception("Follow Request already sent to user " + targetUsername));
-                }
                 // check for them not reciprocating
                 return getFollowing().thenCompose(following -> {
                     boolean alreadyFollowing = following.stream()
@@ -1167,19 +1162,22 @@ public class UserContext {
                             return Futures.errored(new Exception("User " + targetUsername + " does not exist!"));
                         }
                         PublicBoxingKey targetUser = targetUserOpt.get().right;
-                        return sharing.mkdir(targetUsername, network, null, true, crypto)
-                                .thenCompose(updatedSharing -> updatedSharing.getChild(targetUsername, crypto.hasher, network))
-                                .thenCompose(friendRootOpt -> {
+                        return sharing.getChild(targetUsername, crypto.hasher, network).thenCompose(dirOpt -> {
+                            if (dirOpt.isPresent())
+                                return Futures.of(dirOpt);
+                            return sharing.mkdir(targetUsername, network, null, true, crypto)
+                                    .thenCompose(updatedSharing -> updatedSharing.getChild(targetUsername, crypto.hasher, network));
+                        }).thenCompose(friendRootOpt -> {
 
-                                    FileWrapper friendRoot = friendRootOpt.get();
-                                    // if they accept the request we will add a note to our static data so we know who we sent the read access to
-                                    EntryPoint entry = new EntryPoint(friendRoot.getPointer().capability.readOnly(), username);
+                            FileWrapper friendRoot = friendRootOpt.get();
+                            // if they accept the request we will add a note to our static data so we know who we sent the read access to
+                            EntryPoint entry = new EntryPoint(friendRoot.getPointer().capability.readOnly(), username);
 
-                                    FollowRequest followReq = new FollowRequest(Optional.of(entry), Optional.ofNullable(requestedKey));
+                            FollowRequest followReq = new FollowRequest(Optional.of(entry), Optional.ofNullable(requestedKey));
 
-                                    PublicKeyHash targetSigner = targetUserOpt.get().left;
-                                    return blindAndSendFollowRequest(targetSigner, targetUser, followReq);
-                                });
+                            PublicKeyHash targetSigner = targetUserOpt.get().left;
+                            return blindAndSendFollowRequest(targetSigner, targetUser, followReq);
+                        });
                     });
                 });
             });
@@ -1601,9 +1599,11 @@ public class UserContext {
                         } else if (freq.entry.get().pointer.isNull()) {
                             // They reciprocated, but didn't accept (they follow us, but we can't follow them)
                             // add entry point to static data to signify their acceptance
+                            // and finally remove the follow request
                             EntryPoint entryWeSentToThem = new EntryPoint(ourDirForThem.getPointer().capability.readOnly(),
                                     username);
                             return addExternalEntryPoint(entryWeSentToThem)
+                                    .thenCompose(x -> network.social.removeFollowRequest(signer.publicKeyHash, signer.secret.signMessage(p.cipher.serialize())))
                                     .thenCompose(x -> retrieveAndAddEntryPointToTrie(trie, entryWeSentToThem));
                         } else {
                             // they accepted and reciprocated
