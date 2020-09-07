@@ -1,18 +1,20 @@
 package peergos.shared.user;
 
 import peergos.shared.*;
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
 
 import java.io.*;
+import java.util.*;
 import java.util.concurrent.*;
 
 /**
  * A content-addressed version of a Map&lt;byte[], Multihash&gt;
  */
-public interface ImmutableTree {
+public interface ImmutableTree<V extends Cborable> {
 
     /**
      *
@@ -20,7 +22,7 @@ public interface ImmutableTree {
      * @return value stored under rawKey
      * @throws IOException
      */
-    CompletableFuture<MaybeMultihash> get(byte[] rawKey);
+    CompletableFuture<Optional<V>> get(byte[] rawKey);
 
     /**
      *
@@ -32,8 +34,8 @@ public interface ImmutableTree {
     CompletableFuture<Multihash> put(PublicKeyHash owner,
                                      SigningPrivateKeyAndPublicHash writer,
                                      byte[] rawKey,
-                                     MaybeMultihash existing,
-                                     Multihash value,
+                                     Optional<V> existing,
+                                     V value,
                                      TransactionId tid);
 
     /**
@@ -45,6 +47,6 @@ public interface ImmutableTree {
     CompletableFuture<Multihash> remove(PublicKeyHash owner,
                                         SigningPrivateKeyAndPublicHash writer,
                                         byte[] rawKey,
-                                        MaybeMultihash existing,
+                                        Optional<V> existing,
                                         TransactionId tid);
 }

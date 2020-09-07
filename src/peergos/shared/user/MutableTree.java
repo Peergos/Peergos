@@ -57,7 +57,7 @@ public interface MutableTree {
 
 
     class CasException extends RuntimeException {
-        public CasException(MaybeMultihash actualExisting, MaybeMultihash claimedExisting) {
+        public CasException(Object actualExisting, Object claimedExisting) {
             super("CAS exception updating cryptree node. existing: " + actualExisting + ", claimed: " + claimedExisting);
         }
     }
