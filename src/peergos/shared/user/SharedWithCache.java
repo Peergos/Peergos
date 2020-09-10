@@ -40,20 +40,13 @@ public class SharedWithCache {
         this.crypto = crypto;
     }
 
-    private static Path canonicalise(Path p) {
-        return p.isAbsolute() ? p : Paths.get("/").resolve(p);
-    }
-
-    private static Path toRelative(Path p) {
-        return p.isAbsolute() ? Paths.get(p.toString().substring(1)) : p;
-    }
 
     private CompletableFuture<Optional<SharedWithState>> retrieve(Path dir) {
         return retrieveWithFile(dir).thenApply(opt -> opt.map(p -> p.right));
     }
 
     private CompletableFuture<Optional<Pair<FileWrapper, SharedWithState>>> retrieveWithFile(Path dir) {
-        return retriever.apply(cacheBase.resolve(toRelative(dir)).resolve(DIR_CACHE_FILENAME))
+        return retriever.apply(cacheBase.resolve(FileUtil.toRelative(dir)).resolve(DIR_CACHE_FILENAME))
                 .thenCompose(opt -> opt.isEmpty() ?
                         Futures.of(Optional.empty()) :
                         parseCacheFile(opt.get())
@@ -92,26 +85,10 @@ public class SharedWithCache {
      */
     private CompletableFuture<FileWrapper> initializeCache() {
         return retriever.apply(Paths.get(ourname))
-                .thenCompose(userRoot -> getOrMkdir(userRoot.get(), CapabilityStore.CAPABILITY_CACHE_DIR))
+                .thenCompose(userRoot -> FileUtil.getOrMkdir(userRoot.get(), CapabilityStore.CAPABILITY_CACHE_DIR, crypto, network))
                 .thenCompose(cacheRoot -> cacheRoot.mkdir(CACHE_BASE_NAME, network, true, crypto))
                 .thenCompose(x -> buildSharedWithCache()) // build from outbound cap files
                 .thenCompose(x -> retriever.apply(cacheBase).thenApply(Optional::get));
-    }
-
-    private CompletableFuture<FileWrapper> getOrMkdir(FileWrapper parent, String dirName) {
-        return parent.getChild(dirName, crypto.hasher, network)
-                .thenCompose(opt -> opt.isPresent() ?
-                        Futures.of(opt.get()) :
-                        parent.mkdir(dirName, network, true, crypto)
-                                .thenCompose(p -> p.getChild(dirName, crypto.hasher, network))
-                                .thenApply(Optional::get));
-    }
-
-    private CompletableFuture<FileWrapper> getOrMkdirs(FileWrapper parent, List<String> remaining) {
-        if (remaining.isEmpty())
-            return Futures.of(parent);
-        return getOrMkdir(parent, remaining.get(0))
-                .thenCompose(child -> getOrMkdirs(child, remaining.subList(1, remaining.size())));
     }
 
     public CompletableFuture<SharedWithState> getDirSharingState(Path dir) {
@@ -131,7 +108,7 @@ public class SharedWithCache {
                 .thenCompose(opt -> opt.isEmpty() ?
                         initializeCache() :
                         Futures.of(opt.get())
-                ).thenCompose(cacheRoot -> getOrMkdirs(cacheRoot, toList(dir)))
+                ).thenCompose(cacheRoot -> FileUtil.getOrMkdirs(cacheRoot, dir, crypto, network))
                 .thenCompose(parent -> parent.getChild(DIR_CACHE_FILENAME, crypto.hasher, network)
                         .thenCompose(fopt -> {
                             if (fopt.isPresent())
@@ -146,10 +123,6 @@ public class SharedWithCache {
                         }));
     }
 
-    private List<String> toList(Path p) {
-        return Arrays.asList(toRelative(p).toString().split("/"));
-    }
-
     private CompletableFuture<SharedWithState> parseCacheFile(FileWrapper cache) {
         return cache.getInputStream(network, crypto, x -> {})
                 .thenCompose(in -> Serialize.readFully(in, cache.getSize()))
@@ -157,17 +130,13 @@ public class SharedWithCache {
                 .thenApply(SharedWithState::fromCbor);
     }
 
-    private static String getFilename(Path p) {
-        return p.getName(p.getNameCount() - 1).toString();
-    }
-
     public CompletableFuture<Map<Path, SharedWithState>> getAllDescendantShares(Path start) {
-        return retriever.apply(cacheBase.resolve(toRelative(start.getParent())))
+        return retriever.apply(cacheBase.resolve(FileUtil.toRelative(start.getParent())))
                 .thenCompose(opt -> {
                     if (opt.isEmpty())
                         return Futures.of(Collections.emptyMap());
                     FileWrapper parent = opt.get();
-                    String filename = getFilename(start);
+                    String filename = FileUtil.getFilename(start);
                     return parent.getChild(DIR_CACHE_FILENAME, crypto.hasher, network)
                             .thenCompose(fopt -> fopt.isEmpty() ?
                                     Futures.of(Collections.<Path, SharedWithState>emptyMap()) :
@@ -225,7 +194,7 @@ public class SharedWithCache {
 
     public CompletableFuture<FileSharedWithState> getSharedWith(Path p) {
         return retrieve(p.getParent())
-                .thenApply(opt -> opt.map(s -> s.get(getFilename(p))).orElse(FileSharedWithState.EMPTY));
+                .thenApply(opt -> opt.map(s -> s.get(FileUtil.getFilename(p))).orElse(FileSharedWithState.EMPTY));
     }
 
     public CompletableFuture<Boolean> applyAndCommit(Path toFile, Function<SharedWithState, SharedWithState> transform) {
@@ -242,8 +211,8 @@ public class SharedWithCache {
     public CompletableFuture<Boolean> rename(Path initial, Path after) {
         if (! initial.getParent().equals(after.getParent()))
             throw new IllegalStateException("Not a valid rename!");
-        String initialFilename = getFilename(initial);
-        String newFilename = getFilename(after);
+        String initialFilename = FileUtil.getFilename(initial);
+        String newFilename = FileUtil.getFilename(after);
         return getSharedWith(initial)
                 .thenCompose(sharees -> applyAndCommit(after, current ->
                         current.add(Access.READ, newFilename, sharees.readAccess)
@@ -252,14 +221,14 @@ public class SharedWithCache {
     }
 
     public CompletableFuture<Boolean> addSharedWith(Access access, Path p, Set<String> names) {
-        return applyAndCommit(p, current -> current.add(access, getFilename(p), names));
+        return applyAndCommit(p, current -> current.add(access, FileUtil.getFilename(p), names));
     }
 
     public CompletableFuture<Boolean> clearSharedWith(Path p) {
-        return applyAndCommit(p, current -> current.clear(getFilename(p)));
+        return applyAndCommit(p, current -> current.clear(FileUtil.getFilename(p)));
     }
 
     public CompletableFuture<Boolean> removeSharedWith(Access access, Path p, Set<String> names) {
-        return applyAndCommit(p, current -> current.remove(access, getFilename(p), names));
+        return applyAndCommit(p, current -> current.remove(access, FileUtil.getFilename(p), names));
     }
 }

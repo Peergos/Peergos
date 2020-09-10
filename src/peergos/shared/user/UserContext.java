@@ -44,6 +44,7 @@ public class UserContext {
     public static final String FRIEND_ANNOTATIONS_FILE_NAME = ".annotations";
 
     public static final String APPS_DIR_NAME = ".apps";
+    public static final String CALENDAR_DIR_NAME = "calendar";
 
     public static final String ENTRY_POINTS_FROM_FRIENDS_FILENAME = ".from-friends.cborstream";
     public static final String ENTRY_POINTS_FROM_US_FILENAME = ".from-us.cborstream";
@@ -133,6 +134,88 @@ public class UserContext {
         );
     }
 
+    private CompletableFuture<CalendarEvent> getEventFile(FileWrapper calendarFile) {
+        int size = calendarFile.getFileProperties().sizeLow();
+        return calendarFile.getInputStream(network, crypto, x -> {})
+                .thenCompose(reader -> {
+                    byte[] data = new byte[size];
+                    return reader.readIntoArray(data, 0, data.length)
+                            .thenApply(x -> CalendarEvent.fromCbor(CborObject.fromByteArray(data)));
+                });
+    }
+
+    private CompletableFuture<List<CalendarEvent>> getEventsForMonth(FileWrapper monthDirectory) {
+        return monthDirectory.getChildren(crypto.hasher, network).thenCompose(eventFiles -> {
+            List<CalendarEvent> events = new ArrayList<>();
+            return Futures.reduceAll(eventFiles,
+                    true,
+                    (x, file) -> getEventFile(file).thenCompose(ce -> {
+                        events.add(ce);
+                        return Futures.of(true);
+                    })
+                    , (a, b) -> a && b).thenApply(res -> events);
+        });
+    }
+    private CompletableFuture<List<CalendarEvent>> getEventsForYear(FileWrapper yearDirectory) {
+        return yearDirectory.getChildren(crypto.hasher, network).thenCompose(monthFolders -> {
+            List<CalendarEvent> events = new ArrayList<>();
+            return Futures.reduceAll(monthFolders,
+                    true,
+                    (x, file) -> getEventsForMonth(file).thenCompose(ce -> {
+                        events.addAll(ce);
+                        return Futures.of(true);
+                    })
+                    , (a, b) -> a && b).thenApply(res -> events);
+        });
+    }
+    private CompletableFuture<List<CalendarEvent>> getAllEvents(FileWrapper calendarDirectory) {
+        return calendarDirectory.getChildren(crypto.hasher, network).thenCompose(yearFolders -> {
+            List<CalendarEvent> events = new ArrayList<>();
+            return Futures.reduceAll(yearFolders,
+                    true,
+                    (x, file) -> getEventsForYear(file).thenCompose(ce -> {
+                        events.addAll(ce);
+                        return Futures.of(true);
+                    })
+                    , (a, b) -> a && b).thenApply(res -> events);
+        });
+    }
+
+    @JsMethod
+    public CompletableFuture<List<CalendarEvent>> getAllCalendarEvents() {
+        Path path = Paths.get(username, CALENDAR_DIR_NAME, username);
+        return getByPath(path).thenCompose(fw -> {
+            if (fw.isPresent()) {
+                return getAllEvents(fw.get());
+            } else {
+                return CompletableFuture.completedFuture(new ArrayList<>());
+            }
+        });
+    }
+
+    @JsMethod
+    public CompletableFuture<Boolean> updateCalendarEvent(int year, int month, CalendarEvent calendarEvent) {
+        Path path = Paths.get(CALENDAR_DIR_NAME, username, "" + year, "" + month);
+        return getUserRoot().thenCompose(root -> FileUtil.getOrMkdirs(root, path, crypto, network))
+           .thenCompose(dir -> {
+                byte[] bytes = calendarEvent.serialize();
+                String eventFilename = calendarEvent.Id + ".txt";
+                return dir.uploadOrReplaceFile(eventFilename, AsyncReader.build(bytes), bytes.length,
+                network, crypto, x -> {}, crypto.random.randomBytes(32)).thenApply(fw -> true);
+            });
+    }
+
+    @JsMethod
+    public CompletableFuture<Boolean> removeCalendarEvent(int year, int month, String id) {
+        Path path = Paths.get(CALENDAR_DIR_NAME, username, "" + year, "" + month);
+        return getUserRoot().thenCompose(root -> FileUtil.getOrMkdirs(root, path, crypto, network))
+                .thenCompose(dir -> {
+                    String filename = id + ".txt";
+                    Path pathToFile = path.resolve(filename);
+                    return dir.getChild(filename, crypto.hasher, network).thenCompose(file ->
+                            file.get().remove(dir, pathToFile, this).thenApply(fw -> true));
+                });
+    }
     @JsMethod
     public CompletableFuture<Boolean> unShareWriteAccess(FileWrapper file, String[] writers) {
         Set<String> writersToUnShare = new HashSet<>(Arrays.asList(writers));

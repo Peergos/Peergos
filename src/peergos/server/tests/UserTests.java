@@ -1155,12 +1155,14 @@ public abstract class UserTests {
         FileWrapper userRoot = context.getUserRoot().join();
         final String TODO_FILE_EXTENSION = ".todo";
         FileWrapper updatedRoot = userRoot.uploadOrReplaceFile(todoBoardName + TODO_FILE_EXTENSION, new AsyncReader.ArrayBacked(data), data.length,
-                context.network, context.crypto, l -> {}, context.crypto.random.randomBytes(32)).get();
+                context.network, context.crypto, l -> {
+                }, context.crypto.random.randomBytes(32)).get();
 
         FileWrapper file = updatedRoot.getChild(todoBoardName + TODO_FILE_EXTENSION, context.crypto.hasher, context.network).join().get();
         long size = file.getSize();
         byte[] retrievedData = Serialize.readFully(file.getInputStream(context.network, context.crypto,
-                size, l-> {}).join(), file.getSize()).join();
+                size, l -> {
+                }).join(), file.getSize()).join();
         updatedBoard = TodoBoard.fromByteArray(retrievedData);
         lists = updatedBoard.getTodoLists();
         assertTrue("lists size", lists.size() == 1);
@@ -1170,6 +1172,25 @@ public abstract class UserTests {
         assertTrue("size", todoItems.size() == 2);
         assertTrue("item[0]", todoItems.get(0).equals(item));
         assertTrue("item[1]", todoItems.get(1).equals(item2));
+    }
+
+    public void calendarEventListTest() throws Exception {
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+
+        List<CalendarEvent> items = context.getAllCalendarEvents().join();
+        assertTrue("size", items.isEmpty());
+        CalendarEvent item = new CalendarEvent( "Id", "categoryId", "title", true, "start",
+                 "end", "location", false, "state", "memo");
+        LocalDate now = LocalDate.now();
+        context.updateCalendarEvent(now.getYear(), now.getMonth().getValue(),item).join();
+        List<CalendarEvent> updatedItems = context.getAllCalendarEvents().join();
+        assertTrue("size", updatedItems.size() == 1);
+
+        context.removeCalendarEvent(now.getYear(), now.getMonth().getValue(), item.Id).join();
+        updatedItems = context.getAllCalendarEvents().join();
+        assertTrue("size", updatedItems.size() == 0);
     }
 
     @Test
