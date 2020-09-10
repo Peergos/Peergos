@@ -635,7 +635,7 @@ public class Champ<V extends Cborable> implements Cborable {
             int depth,
             int bitWidth,
             Function<ByteArrayWrapper, CompletableFuture<byte[]>> hasher) {
-        List<Pair<KeyElement<V>, Integer>> empty = List.of();
+        List<Pair<KeyElement<V>, Integer>> empty = Collections.emptyList();
         return Futures.reduceAll(mappings, empty,
                 (acc, m) -> hasher.apply(m.key)
                         .thenApply(hash -> new Pair<>(m, mask(hash, depth, bitWidth)))
