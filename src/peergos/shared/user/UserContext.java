@@ -392,7 +392,7 @@ public class UserContext {
                 if (!publicData.isPresent())
                     throw new IllegalStateException("User " + ownerName + " has not made any files public.");
 
-                Function<ByteArrayWrapper, byte[]> hasher = x -> Hash.sha256(x.data);
+                Function<ByteArrayWrapper, CompletableFuture<byte[]>> hasher = x -> network.hasher.sha256(x.data);
                 return ChampWrapper.create(publicData.get(), hasher, network.dhtClient, network.hasher, c -> (CborObject.CborMerkleLink)c).thenCompose(champ -> {
                     // The user might have published an ancestor directory of the requested path,
                     // so drop path elements until we either find a capability, or have none left
@@ -914,7 +914,7 @@ public class UserContext {
             ensureAllowedToShare(file, username, false);
             Optional<Multihash> publicData = wd.publicData;
 
-            Function<ByteArrayWrapper, byte[]> hasher = x -> Hash.sha256(x.data);
+            Function<ByteArrayWrapper, CompletableFuture<byte[]>> hasher = x -> network.hasher.sha256(x.data);
             CompletableFuture<ChampWrapper<CborObject.CborMerkleLink>> champ = publicData.isPresent() ?
                     ChampWrapper.create(publicData.get(), hasher, network.dhtClient, network.hasher, c -> (CborObject.CborMerkleLink)c) :
                     ChampWrapper.create(signer.publicKeyHash, signer, hasher, tid, network.dhtClient, network.hasher, c -> (CborObject.CborMerkleLink)c);

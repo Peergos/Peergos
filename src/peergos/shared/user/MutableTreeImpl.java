@@ -21,7 +21,7 @@ public class MutableTreeImpl implements MutableTree {
     private final Hasher writeHasher;
     private static final boolean LOGGING = false;
     private final WriteSynchronizer synchronizer;
-    private final Function<ByteArrayWrapper, byte[]> hasher = x -> x.data;
+    private final Function<ByteArrayWrapper, CompletableFuture<byte[]>> hasher = x -> Futures.of(x.data);
 
     public MutableTreeImpl(MutablePointers mutable,
                            ContentAddressedStorage dht,
@@ -49,7 +49,7 @@ public class MutableTreeImpl implements MutableTree {
                                              TransactionId tid) {
         return (base.tree.isPresent() ?
                 ChampWrapper.create(base.tree.get(), hasher, dht, writeHasher, c -> (CborObject.CborMerkleLink)c) :
-                ChampWrapper.create(owner, writer, x -> x.data, tid, dht, writeHasher, c -> (CborObject.CborMerkleLink)c)
+                ChampWrapper.create(owner, writer, hasher, tid, dht, writeHasher, c -> (CborObject.CborMerkleLink)c)
         ).thenCompose(tree -> tree.put(owner, writer, mapKey, existing.map(CborObject.CborMerkleLink::new), new CborObject.CborMerkleLink(value), tid))
                 .thenApply(newRoot -> LOGGING ? log(newRoot, "TREE.put (" + ArrayOps.bytesToHex(mapKey)
                         + ", " + value + ") => CAS(" + base.tree + ", " + newRoot + ")") : newRoot)

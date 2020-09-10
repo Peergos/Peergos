@@ -55,8 +55,8 @@ public class IpfsCoreNode implements CoreNode {
         this.difficultyGenerator = new DifficultyGenerator(System.currentTimeMillis(), maxSignupsPerDay);
     }
 
-    public static byte[] keyHash(ByteArrayWrapper username) {
-        return Blake2b.Digest.newInstance().digest(username.data);
+    public static CompletableFuture<byte[]> keyHash(ByteArrayWrapper username) {
+        return Futures.of(Blake2b.Digest.newInstance().digest(username.data));
     }
 
     /** Update the existing mappings based on the diff between the current champ and the champ with the supplied root.

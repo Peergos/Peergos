@@ -37,7 +37,7 @@ public class OwnedKeyChamp {
     }
 
     public static CompletableFuture<OwnedKeyChamp> build(Multihash root, ContentAddressedStorage ipfs, Hasher hasher) {
-        return ChampWrapper.create(root, b -> b.data, ipfs, hasher, c -> (CborObject.CborMerkleLink)c)
+        return ChampWrapper.create(root, b -> Futures.of(b.data), ipfs, hasher, c -> (CborObject.CborMerkleLink)c)
                 .thenApply(c -> new OwnedKeyChamp(root, c, ipfs));
     }
 

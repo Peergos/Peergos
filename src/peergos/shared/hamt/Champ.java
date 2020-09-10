@@ -29,6 +29,20 @@ public class Champ<V extends Cborable> implements Cborable {
             this.key = key;
             this.valueHash = valueHash;
         }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            KeyElement<?> that = (KeyElement<?>) o;
+            return key.equals(that.key) &&
+                    valueHash.equals(that.valueHash);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(key, valueHash);
+        }
     }
 
     private static class HashPrefixPayload<V extends Cborable> {
@@ -56,6 +70,22 @@ public class Champ<V extends Cborable> implements Cborable {
 
         public int keyCount() {
             return mappings.length;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            HashPrefixPayload<?> that = (HashPrefixPayload<?>) o;
+            return Arrays.equals(mappings, that.mappings) &&
+                    Objects.equals(link, that.link);
+        }
+
+        @Override
+        public int hashCode() {
+            int result = Objects.hash(link);
+            result = 31 * result + Arrays.hashCode(mappings);
+            return result;
         }
     }
 
@@ -206,7 +236,7 @@ public class Champ<V extends Cborable> implements Cborable {
                                                             Optional<V> value,
                                                             int bitWidth,
                                                             int maxCollisions,
-                                                            Function<ByteArrayWrapper, byte[]> hasher,
+                                                            Function<ByteArrayWrapper, CompletableFuture<byte[]>> hasher,
                                                             TransactionId tid,
                                                             ContentAddressedStorage storage,
                                                             Hasher writeHasher,
@@ -223,6 +253,7 @@ public class Champ<V extends Cborable> implements Cborable {
                 final Optional<V> currentVal = mapping.valueHash;
                 if (currentKey.equals(key)) {
                     if (! currentVal.equals(expected)) {
+                        currentVal.equals(expected);
                         CompletableFuture<Pair<Champ<V>, Multihash>> err = new CompletableFuture<>();
                         err.completeExceptionally(new MutableTree.CasException(currentVal, expected));
                         return err;
@@ -270,7 +301,7 @@ public class Champ<V extends Cborable> implements Cborable {
                                                                                 final int depth,
                                                                                 int bitWidth,
                                                                                 int maxCollisions,
-                                                                                Function<ByteArrayWrapper, byte[]> hasher,
+                                                                                Function<ByteArrayWrapper, CompletableFuture<byte[]>> hasher,
                                                                                 TransactionId tid,
                                                                                 ContentAddressedStorage storage,
                                                                                 Hasher writeHasher) {
@@ -286,8 +317,9 @@ public class Champ<V extends Cborable> implements Cborable {
                 .thenCompose(one -> Futures.reduceAll(
                         Arrays.stream(mappings).collect(Collectors.toList()),
                         one,
-                        (p, e) -> p.left.put(owner, writer, e.key, hasher.apply(e.key), depth, Optional.empty(), e.valueHash,
-                                bitWidth, maxCollisions, hasher, tid, storage, writeHasher, p.right),
+                        (p, e) -> hasher.apply(e.key)
+                                .thenCompose(eHash -> p.left.put(owner, writer, e.key, eHash, depth, Optional.empty(),
+                                        e.valueHash, bitWidth, maxCollisions, hasher, tid, storage, writeHasher, p.right)),
                         (a, b) -> a)
                 );
     }
@@ -598,11 +630,29 @@ public class Champ<V extends Cborable> implements Cborable {
         return Optional.empty();
     }
 
+    private static <V extends Cborable> CompletableFuture<Map<Integer, List<KeyElement<V>>>> hashAndMaskKeys(
+            List<KeyElement<V>> mappings,
+            int depth,
+            int bitWidth,
+            Function<ByteArrayWrapper, CompletableFuture<byte[]>> hasher) {
+        List<Pair<KeyElement<V>, Integer>> empty = List.of();
+        return Futures.reduceAll(mappings, empty,
+                (acc, m) -> hasher.apply(m.key)
+                        .thenApply(hash -> new Pair<>(m, mask(hash, depth, bitWidth)))
+                        .thenApply(p -> Stream.concat(acc.stream(), Stream.of(p)).collect(Collectors.toList())),
+                (a, b) -> Stream.concat(a.stream(), b.stream()).collect(Collectors.toList()))
+                .thenApply(hashed -> hashed.stream().collect(Collectors.groupingBy(p -> p.right)))
+                .thenApply(grouped -> grouped.entrySet().stream()
+                        .map(e -> new Pair<>(e.getKey(), e.getValue().stream().map(p -> p.left).collect(Collectors.toList())))
+                        .collect(Collectors.toMap(p -> p.left, p -> p.right))
+                );
+    }
+
     public static <V extends Cborable> CompletableFuture<Boolean> applyToDiff(
             MaybeMultihash original,
             MaybeMultihash updated,
             int depth,
-            Function<ByteArrayWrapper, byte[]> hasher,
+            Function<ByteArrayWrapper, CompletableFuture<byte[]>> hasher,
             List<KeyElement<V>> higherLeftMappings,
             List<KeyElement<V>> higherRightMappings,
             Consumer<Triple<ByteArrayWrapper, Optional<V>, Optional<V>>> consumer,
@@ -616,15 +666,14 @@ public class Champ<V extends Cborable> implements Cborable {
                 .thenApply(rawOpt -> rawOpt.map(y -> Champ.fromCbor(y, fromCbor)))
                 .thenCompose(left -> updated.map(storage::get).orElseGet(() -> CompletableFuture.completedFuture(Optional.empty()))
                         .thenApply(rawOpt -> rawOpt.map(y -> Champ.fromCbor(y, fromCbor)))
-                        .thenCompose(right -> {
+                        .thenCompose(right -> hashAndMaskKeys(higherLeftMappings, depth, bitWidth, hasher)
+                                .thenCompose(leftHigherMappingsByBit -> hashAndMaskKeys(higherRightMappings, depth, bitWidth, hasher)
+                                        .thenCompose(rightHigherMappingsByBit -> {
+
                             int leftMax = left.map(c -> Math.max(c.dataMap.length(), c.nodeMap.length())).orElse(0);
                             int rightMax = right.map(c -> Math.max(c.dataMap.length(), c.nodeMap.length())).orElse(0);
                             int maxBit = Math.max(leftMax, rightMax);
                             int leftDataIndex = 0, rightDataIndex = 0, leftNodeCount = 0, rightNodeCount = 0;
-                            Map<Integer, List<KeyElement<V>>> leftHigherMappingsByBit = higherLeftMappings.stream()
-                                    .collect(Collectors.groupingBy(m -> mask(hasher.apply(m.key), depth, bitWidth)));
-                            Map<Integer, List<KeyElement<V>>> rightHigherMappingsByBit = higherRightMappings.stream()
-                                    .collect(Collectors.groupingBy(m -> mask(hasher.apply(m.key), depth, bitWidth)));
 
                             List<CompletableFuture<Boolean>> deeperLayers = new ArrayList<>();
 
@@ -693,8 +742,25 @@ public class Champ<V extends Cborable> implements Cborable {
                             }
 
                             return Futures.combineAll(deeperLayers).thenApply(x -> true);
-                        })
+                        })))
         );
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        Champ<?> champ = (Champ<?>) o;
+        return dataMap.equals(champ.dataMap) &&
+                nodeMap.equals(champ.nodeMap) &&
+                Arrays.equals(contents, champ.contents);
+    }
+
+    @Override
+    public int hashCode() {
+        int result = Objects.hash(dataMap, nodeMap);
+        result = 31 * result + Arrays.hashCode(contents);
+        return result;
     }
 
     @Override
