@@ -46,7 +46,7 @@ public class InodeFilesystemTests {
         // build a random tree and keep track of the state
         int nKeys = 1000;
         for (int i = 0; i < nKeys; i++) {
-            String path = randomPath(r);
+            String path = randomPath(r, 3);
             AbsoluteCapability cap = randomCap(user.publicKeyHash, r);
             current = current.addCap(user.publicKeyHash, user, path, cap, tid).join();
             state.put(path, cap);
@@ -67,21 +67,21 @@ public class InodeFilesystemTests {
         return new AbsoluteCapability(owner, owner, mapKey, readKey);
     }
 
-    private static String randomPath(Random r) {
-        int depth = 2 + r.nextInt(6);
+    private static String randomPath(Random r, int maxDepth) {
+        int depth = 2 + r.nextInt(maxDepth - 2);
         return IntStream.range(0, depth)
                 .mapToObj(i -> randomPathElement(r))
                 .collect(Collectors.joining("/"));
     }
 
     private static String randomPathElement(Random r) {
-        int length = r.nextInt(255);
+        int length = 1 + r.nextInt(255);
         return IntStream.range(0, length)
                 .mapToObj(x -> randomChar(r))
                 .collect(Collectors.joining());
     }
 
-    private static String[] chars = IntStream.range(0, 36)
+    private static String[] chars = IntStream.concat(IntStream.range(97, 97 + 26), IntStream.range(48, 58))
             .mapToObj(i -> String.valueOf((char)i))
             .toArray(String[]::new);
     private static String randomChar(Random r) {

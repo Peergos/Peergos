@@ -253,7 +253,6 @@ public class Champ<V extends Cborable> implements Cborable {
                 final Optional<V> currentVal = mapping.valueHash;
                 if (currentKey.equals(key)) {
                     if (! currentVal.equals(expected)) {
-                        currentVal.equals(expected);
                         CompletableFuture<Pair<Champ<V>, Multihash>> err = new CompletableFuture<>();
                         err.completeExceptionally(new MutableTree.CasException(currentVal, expected));
                         return err;
