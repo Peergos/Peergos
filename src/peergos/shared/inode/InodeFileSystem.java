@@ -3,6 +3,7 @@ package peergos.shared.inode;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.hamt.*;
+import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
@@ -18,7 +19,7 @@ import java.util.stream.*;
  */
 public class InodeFileSystem {
 
-    private final long inodeCount;
+    public final long inodeCount;
     private final ChampWrapper<DirectoryInode> champ;
     private final ContentAddressedStorage storage;
 
@@ -66,6 +67,57 @@ public class InodeFileSystem {
         Inode rootKey = new Inode(0, elements[0]);
         return getOrMkdir(owner, writer, Optional.empty(), rootKey, tid)
                 .thenCompose(p -> p.left.addCapRecurse(owner, writer, rootKey, p.right, tail(elements), cap, tid));
+    }
+
+    public CompletableFuture<InodeFileSystem> removeCap(PublicKeyHash owner,
+                                                        SigningPrivateKeyAndPublicHash writer,
+                                                        String path,
+                                                        TransactionId tid) {
+        String canonPath = TrieNode.canonicalise(path);
+        String[] elements = canonPath.split("/");
+        Inode rootKey = new Inode(0, elements[0]);
+        return getValue(rootKey).thenCompose(dirOpt -> {
+            if (dirOpt.isEmpty())
+                return Futures.of(this);
+            return removeCapRecurse(owner, writer, rootKey, dirOpt.get(), tail(elements), tid)
+                    .thenApply(p -> p.left);
+        });
+    }
+
+    /**
+     *
+     * @param owner
+     * @param writer
+     * @param dir
+     * @param remainingPath
+     * @param tid
+     * @return The resulting filesystem, and whether to remove the child form the parent
+     */
+    private CompletableFuture<Pair<InodeFileSystem, Boolean>> removeCapRecurse(PublicKeyHash owner,
+                                                                               SigningPrivateKeyAndPublicHash writer,
+                                                                               Inode dirKey,
+                                                                               DirectoryInode dir,
+                                                                               String[] remainingPath,
+                                                                               TransactionId tid) {
+        if (remainingPath.length == 0) {
+            return Futures.of(new Pair<>(this, true));
+        }
+        return dir.hasMoreThanOneChild()
+                .thenCompose(hasOtherChildren -> dir.getChild(remainingPath[0]).thenCompose(childOpt -> {
+                    if (childOpt.isEmpty() || remainingPath.length == 1)
+                        return Futures.of(new Pair<>(this, ! hasOtherChildren));
+                    return getValue(childOpt.get().inode)
+                            .thenCompose(childDir ->
+                                    childDir.isPresent() ?
+                                            removeCapRecurse(owner, writer, childOpt.get().inode, childDir.get(), tail(remainingPath), tid)
+                                                    .thenCompose(p -> p.right ?
+                                                            dir.removeChild(childOpt.get(), owner, writer, tid)
+                                                                    .thenCompose(updatedDir -> p.left.putValue(owner,
+                                                                            writer, dirKey, Optional.of(dir), updatedDir, tid))
+                                                                    .thenApply(f -> new Pair<>(f, ! hasOtherChildren)) :
+                                                            Futures.of(new Pair<>(p.left, ! hasOtherChildren))) :
+                                            Futures.of(new Pair<>(this, ! hasOtherChildren)));
+                }));
     }
 
     private CompletableFuture<Pair<InodeFileSystem, DirectoryInode>> getOrMkdir(PublicKeyHash owner,
@@ -174,11 +226,15 @@ public class InodeFileSystem {
                 });
     }
 
+    public Multihash getRoot() {
+        return champ.getRoot();
+    }
+
     public static CompletableFuture<InodeFileSystem> createEmpty(PublicKeyHash owner,
-                                                           SigningPrivateKeyAndPublicHash writer,
-                                                           ContentAddressedStorage storage,
-                                                           Hasher hasher,
-                                                           TransactionId tid) {
+                                                                 SigningPrivateKeyAndPublicHash writer,
+                                                                 ContentAddressedStorage storage,
+                                                                 Hasher hasher,
+                                                                 TransactionId tid) {
         Function<ByteArrayWrapper, CompletableFuture<byte[]>> keyHasher = b -> hasher.sha256(b.data);
         return ChampWrapper.create(owner, writer, keyHasher, tid, storage, hasher,
                 c -> DirectoryInode.fromCbor(c, hasher, ChampWrapper.BIT_WIDTH, keyHasher, storage))

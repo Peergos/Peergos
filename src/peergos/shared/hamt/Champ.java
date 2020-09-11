@@ -178,6 +178,10 @@ public class Champ<V extends Cborable> implements Cborable {
         return Futures.reduceAll(indices, keys, (t, index) -> childCounts.get(index).thenApply(c -> c + t), (a, b) -> a + b);
     }
 
+    public boolean hasMultipleMappings() {
+        return keyCount() > 1 || nodeCount() > 0;
+    }
+
     /**
      *
      * @param key The key to get the value for

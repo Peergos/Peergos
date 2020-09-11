@@ -57,6 +57,12 @@ public class DirectoryInode implements Cborable {
         return keyHasher.apply(key).thenCompose(keyHash -> children.b().get(key, keyHash, 0, bitWidth, storage));
     }
 
+    public CompletableFuture<Boolean> hasMoreThanOneChild() {
+        if (children.isA())
+            return Futures.of(children.a().size() > 1);
+        return Futures.of(children.b().hasMultipleMappings());
+    }
+
     public CompletableFuture<List<InodeCap>> getChildren() {
         if (children.isA())
             return Futures.of(children.a());
@@ -73,10 +79,35 @@ public class DirectoryInode implements Cborable {
         if (children.isA() && children.a().size() < MAX_CHILDREN_INLINED)
             return Futures.of(new DirectoryInode(Stream.concat(children.a().stream(), Stream.of(child))
                     .collect(Collectors.toList()), writeHasher, bitWidth, keyHasher, storage));
+
+        ByteArrayWrapper key = toChampKey(child);
+        return keyHasher.apply(key).thenCompose(keyHash ->
+                (children.isA() ?
+                        buildChamp(children.a(), owner, writer, writeHasher, bitWidth, keyHasher, storage, tid)
+                                .thenApply(d -> d.children.b()) :
+                        Futures.of(children.b())
+                ).thenCompose(champ -> champ.put(owner, writer, key, keyHash, 0, Optional.empty(), Optional.of(child), bitWidth,
+                        ChampWrapper.MAX_HASH_COLLISIONS_PER_LEVEL, keyHasher, tid, storage, writeHasher, null)
+                        .thenApply(rootPair -> new DirectoryInode(rootPair.left, writeHasher, bitWidth, keyHasher, storage)))
+        );
+    }
+
+    private static ByteArrayWrapper toChampKey(InodeCap val) {
+        return new ByteArrayWrapper(val.inode.name.name.getBytes());
+    }
+
+    public CompletableFuture<DirectoryInode> removeChild(InodeCap child,
+                                                         PublicKeyHash owner,
+                                                         SigningPrivateKeyAndPublicHash writer,
+                                                         TransactionId tid) {
+        if (children.isA())
+            return Futures.of(new DirectoryInode(children.a().stream()
+                    .filter(c -> ! c.equals(child))
+                    .collect(Collectors.toList()), writeHasher, bitWidth, keyHasher, storage));
         ByteArrayWrapper key = new ByteArrayWrapper(child.inode.name.name.getBytes());
         return keyHasher.apply(key).thenCompose(keyHash ->
-                children.b().put(owner, writer, key, keyHash, 0, Optional.empty(), Optional.of(child), bitWidth,
-                        ChampWrapper.MAX_HASH_COLLISIONS_PER_LEVEL, keyHasher, tid, storage, writeHasher, null)
+                children.b().remove(owner, writer, key, keyHash, 0, Optional.of(child), bitWidth,
+                        ChampWrapper.MAX_HASH_COLLISIONS_PER_LEVEL, tid, storage, writeHasher, null)
                         .thenApply(rootPair -> new DirectoryInode(rootPair.left, writeHasher, bitWidth, keyHasher, storage)));
     }
 
@@ -93,6 +124,23 @@ public class DirectoryInode implements Cborable {
         return Objects.hash(children);
     }
 
+    public static CompletableFuture<DirectoryInode> buildChamp(List<InodeCap> children,
+                                                               PublicKeyHash owner,
+                                                               SigningPrivateKeyAndPublicHash writer,
+                                                               Hasher writeHasher,
+                                                               int bitWidth,
+                                                               Function<ByteArrayWrapper, CompletableFuture<byte[]>> keyHasher,
+                                                               ContentAddressedStorage storage,
+                                                               TransactionId tid) {
+        return Futures.reduceAll(children, Champ.empty(InodeCap::fromCbor),
+                (c, v) -> keyHasher.apply(toChampKey(v)).thenCompose(keyHash ->
+                        c.put(owner, writer, toChampKey(v), keyHash, 0, Optional.empty(), Optional.of(v), bitWidth,
+                                ChampWrapper.MAX_HASH_COLLISIONS_PER_LEVEL, keyHasher, tid, storage, writeHasher, null))
+                        .thenApply(p -> p.left),
+                (a, b) -> b)
+                .thenApply(champ -> new DirectoryInode(champ, writeHasher, bitWidth, keyHasher, storage));
+    }
+
     public static DirectoryInode empty(Hasher writeHasher,
                                        int bitWidth,
                                        Function<ByteArrayWrapper, CompletableFuture<byte[]>> keyHasher,
@@ -102,9 +150,12 @@ public class DirectoryInode implements Cborable {
 
     @Override
     public CborObject toCbor() {
-        if (children.isA())
-            return new CborObject.CborList(children.a().stream().map(InodeCap::toCbor)
-                    .collect(Collectors.toList()));
+        if (children.isA()) {
+            SortedMap<String, Cborable> state = new TreeMap<>();
+            state.put("c", new CborObject.CborList(children.a().stream().map(InodeCap::toCbor)
+                    .collect(Collectors.toList())));
+            return CborObject.CborMap.build(state);
+        }
         return children.b().toCbor();
     }
 
@@ -113,8 +164,8 @@ public class DirectoryInode implements Cborable {
                                           int bitWidth,
                                           Function<ByteArrayWrapper, CompletableFuture<byte[]>> keyHasher,
                                           ContentAddressedStorage storage) {
-        if (cbor instanceof CborObject.CborList)
-            return new DirectoryInode(((CborObject.CborList) cbor).value.stream()
+        if (cbor instanceof CborObject.CborMap)
+            return new DirectoryInode(((CborObject.CborMap) cbor).getList("c").value.stream()
                     .map(InodeCap::fromCbor)
                     .collect(Collectors.toList()), writeHasher, bitWidth, keyHasher, storage);
         return new DirectoryInode(buildChamp(cbor), writeHasher, bitWidth, keyHasher, storage);

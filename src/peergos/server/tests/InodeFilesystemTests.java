@@ -40,19 +40,45 @@ public class InodeFilesystemTests {
 
         Map<String, AbsoluteCapability> state = new HashMap<>();
 
-        TransactionId tid = storage.startTransaction(user.publicKeyHash).get();
-        InodeFileSystem current = InodeFileSystem.createEmpty(user.publicKeyHash, user, storage, crypto.hasher, tid).join();
+        PublicKeyHash owner = user.publicKeyHash;
+        TransactionId tid = storage.startTransaction(owner).get();
+        InodeFileSystem current = InodeFileSystem.createEmpty(owner, user, storage, crypto.hasher, tid).join();
 
         // build a random tree and keep track of the state
         int nKeys = 1000;
         for (int i = 0; i < nKeys; i++) {
             String path = randomPath(r, 3);
-            AbsoluteCapability cap = randomCap(user.publicKeyHash, r);
-            current = current.addCap(user.publicKeyHash, user, path, cap, tid).join();
+            AbsoluteCapability cap = randomCap(owner, r);
+            current = current.addCap(owner, user, path, cap, tid).join();
             state.put(path, cap);
         }
 
-        // check every mapping
+        checkAllMappings(state, current);
+
+        // add and remove a mapping and check result is canonical
+        for (int i = 0; i < 100; i++) {
+            String path = randomPath(r, 3);
+            AbsoluteCapability cap = randomCap(owner, r);
+            InodeFileSystem added = current.addCap(owner, user, path, cap, tid).join();
+            InodeFileSystem removed = added.removeCap(owner, user, path, tid).join();
+            checkAllMappings(state, removed);
+            if (! removed.getRoot().equals(current.getRoot()))
+                throw new IllegalStateException("Non canonical after delete!");
+            if (removed.inodeCount != current.inodeCount + 1)
+                throw new IllegalStateException("Incorrect inode count!");
+        }
+
+        // add a huge directory
+        for (int i = 0; i < 1000; i++) {
+            String path = "user/dir/" + randomPathElement(r);
+            AbsoluteCapability cap = randomCap(owner, r);
+            current = current.addCap(owner, user, path, cap, tid).join();
+            state.put(path, cap);
+        }
+        checkAllMappings(state, current);
+    }
+
+    private static void checkAllMappings(Map<String, AbsoluteCapability> state, InodeFileSystem current) {
         for (Map.Entry<String, AbsoluteCapability> e : state.entrySet()) {
             AbsoluteCapability res = current.getByPath(e.getKey()).join().get().left.cap.get();
             if (! res.equals(e.getValue()))
