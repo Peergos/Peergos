@@ -4,6 +4,7 @@ import java.io.*;
 import java.util.logging.*;
 
 import peergos.shared.fingerprint.*;
+import peergos.shared.inode.*;
 import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.user.fs.transaction.TransactionService;
 import peergos.shared.user.fs.transaction.TransactionServiceImpl;
@@ -389,27 +390,17 @@ public class UserContext {
             PublicKeyHash owner = ownerOpt.get();
             return WriterData.getWriterData(owner, owner, network.mutable, network.dhtClient).thenCompose(userData -> {
                 Optional<Multihash> publicData = userData.props.publicData;
-                if (!publicData.isPresent())
+                if (! publicData.isPresent())
                     throw new IllegalStateException("User " + ownerName + " has not made any files public.");
 
-                Function<ByteArrayWrapper, CompletableFuture<byte[]>> hasher = x -> network.hasher.sha256(x.data);
-                return ChampWrapper.create(publicData.get(), hasher, network.dhtClient, network.hasher, c -> (CborObject.CborMerkleLink)c).thenCompose(champ -> {
-                    // The user might have published an ancestor directory of the requested path,
-                    // so drop path elements until we either find a capability, or have none left
-                    int depth = originalPath.getNameCount();
-                    List<Integer> toDrop = IntStream.range(0, depth)
-                            .mapToObj(x -> x)
-                            .collect(Collectors.toList());
-                    return Futures.findFirst(toDrop,
-                            i -> champ.get(("/" + originalPath.subpath(0, depth - i)).getBytes()))
-                            .thenCompose(capHash -> {
-                                if (!capHash.isPresent())
-                                    throw new IllegalStateException("User " + ownerName + " has not published a file at " + originalPath);
-
-                                return network.dhtClient.get(capHash.get().target)
-                                        .thenApply(cborOpt -> AbsoluteCapability.fromCbor(cborOpt.get()));
-                            });
-                });
+                return network.dhtClient.get(publicData.get())
+                        .thenCompose(rootCbor -> InodeFileSystem.build(rootCbor.get(), network.hasher, network.dhtClient))
+                        .thenCompose(publicCaps -> publicCaps.getByPath(originalPath.toString()))
+                        .thenApply(resOpt -> {
+                            if (resOpt.isEmpty() || resOpt.get().left.cap.isEmpty())
+                                throw new IllegalStateException("User " + ownerName + " has not published a file at " + originalPath);
+                            return resOpt.get().left.cap.get();
+                        });
             });
         });
     }
@@ -914,17 +905,15 @@ public class UserContext {
             ensureAllowedToShare(file, username, false);
             Optional<Multihash> publicData = wd.publicData;
 
-            Function<ByteArrayWrapper, CompletableFuture<byte[]>> hasher = x -> network.hasher.sha256(x.data);
-            CompletableFuture<ChampWrapper<CborObject.CborMerkleLink>> champ = publicData.isPresent() ?
-                    ChampWrapper.create(publicData.get(), hasher, network.dhtClient, network.hasher, c -> (CborObject.CborMerkleLink)c) :
-                    ChampWrapper.create(signer.publicKeyHash, signer, hasher, tid, network.dhtClient, network.hasher, c -> (CborObject.CborMerkleLink)c);
+            CompletableFuture<InodeFileSystem> publicCaps = publicData.isPresent() ?
+                    network.dhtClient.get(publicData.get())
+                            .thenCompose(rootCbor -> InodeFileSystem.build(rootCbor.get(), crypto.hasher, network.dhtClient)) :
+                    InodeFileSystem.createEmpty(signer.publicKeyHash, signer, network.dhtClient, crypto.hasher, tid);
 
             AbsoluteCapability cap = file.getPointer().capability.readOnly();
-            return network.dhtClient.put(signer.publicKeyHash, signer, cap.serialize(), crypto.hasher, tid)
-                    .thenCompose(capHash ->
-                            champ.thenCompose(c -> c.put(signer.publicKeyHash, signer, path.getBytes(),
-                                    Optional.empty(), new CborObject.CborMerkleLink(capHash), tid))
-                                    .thenApply(newRoot -> wd.withPublicRoot(newRoot)));
+            return publicCaps.thenCompose(pubCaps -> pubCaps.addCap(signer.publicKeyHash, signer, path, cap, tid))
+                    .thenCompose(updated -> network.dhtClient.put(signer.publicKeyHash, signer, updated.serialize(), crypto.hasher, tid))
+                    .thenApply(newRoot -> wd.withPublicRoot(newRoot));
         })).thenApply(v -> v.get(signer));
     }
 

@@ -1,5 +1,6 @@
 package peergos.shared.inode;
 
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.hamt.*;
@@ -17,7 +18,7 @@ import java.util.stream.*;
 /** This implements an async Map<Inode, List<InodeCap>>
  *
  */
-public class InodeFileSystem {
+public class InodeFileSystem implements Cborable {
 
     public final long inodeCount;
     private final ChampWrapper<DirectoryInode> champ;
@@ -230,14 +231,38 @@ public class InodeFileSystem {
         return champ.getRoot();
     }
 
+    @Override
+    public CborObject toCbor() {
+        SortedMap<String, Cborable> state = new TreeMap<>();
+        state.put("c", new CborObject.CborLong(inodeCount));
+        state.put("r", new CborObject.CborMerkleLink(champ.getRoot()));
+        return CborObject.CborMap.build(state);
+    }
+
+    public static CompletableFuture<InodeFileSystem> build(Cborable cbor,
+                                                           Hasher hasher,
+                                                           ContentAddressedStorage storage) {
+        if (!(cbor instanceof CborObject.CborMap))
+            throw new IllegalStateException("Invalid cbor!");
+        CborObject.CborMap m = (CborObject.CborMap) cbor;
+        long inodeCount = m.getLong("c");
+        Multihash root = m.getMerkleLink("r");
+        Function<ByteArrayWrapper, CompletableFuture<byte[]>> keyHasher = b -> hasher.sha256(b.data);
+        Function<Cborable, DirectoryInode> fromCbor =
+                c -> DirectoryInode.fromCbor(c, hasher, ChampWrapper.BIT_WIDTH, keyHasher, storage);
+        return ChampWrapper.create(root, keyHasher, storage, hasher, fromCbor)
+                .thenApply(cw -> new InodeFileSystem(inodeCount, cw, storage));
+    }
+
     public static CompletableFuture<InodeFileSystem> createEmpty(PublicKeyHash owner,
                                                                  SigningPrivateKeyAndPublicHash writer,
                                                                  ContentAddressedStorage storage,
                                                                  Hasher hasher,
                                                                  TransactionId tid) {
         Function<ByteArrayWrapper, CompletableFuture<byte[]>> keyHasher = b -> hasher.sha256(b.data);
-        return ChampWrapper.create(owner, writer, keyHasher, tid, storage, hasher,
-                c -> DirectoryInode.fromCbor(c, hasher, ChampWrapper.BIT_WIDTH, keyHasher, storage))
+        Function<Cborable, DirectoryInode> fromCbor =
+                c -> DirectoryInode.fromCbor(c, hasher, ChampWrapper.BIT_WIDTH, keyHasher, storage);
+        return ChampWrapper.create(owner, writer, keyHasher, tid, storage, hasher, fromCbor)
                 .thenApply(cw -> new InodeFileSystem(0, cw, storage));
     }
 

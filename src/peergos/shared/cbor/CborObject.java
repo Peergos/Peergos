@@ -146,6 +146,10 @@ public interface CborObject extends Cborable {
             return ((CborLong) get(key)).value;
         }
 
+        public Multihash getMerkleLink(String key) {
+            return ((CborMerkleLink) get(key)).target;
+        }
+
         public boolean getBoolean(String key) {
             return ((CborBoolean) get(key)).value;
         }
