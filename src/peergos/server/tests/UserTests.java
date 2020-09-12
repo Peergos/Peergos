@@ -1179,18 +1179,19 @@ public abstract class UserTests {
         String password = "test01";
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
 
-        List<CalendarEvent> items = context.getAllCalendarEvents().join();
+        UserContext.App.Calendar calendar = context.getCalendarApp();
+        LocalDate now = LocalDate.now();
+        List<CalendarEvent> items = calendar.getCalendarEventsForMonth(now.getYear(), now.getMonthValue()).join();
         assertTrue("size", items.isEmpty());
         CalendarEvent item = new CalendarEvent( "Id", "categoryId", "title", true, "start",
                  "end", "location", false, "state", "memo");
-        LocalDate now = LocalDate.now();
-        context.updateCalendarEvent(now.getYear(), now.getMonth().getValue(),item).join();
-        List<CalendarEvent> updatedItems = context.getAllCalendarEvents().join();
-        assertTrue("size", updatedItems.size() == 1);
+        calendar.updateCalendarEvent(now.getYear(), now.getMonth().getValue(),item).join();
+        Triple<List<CalendarEvent>,List<CalendarEvent>,List<CalendarEvent>> updatedItems = calendar.getCalendarEventsAroundMonth(now.getYear(), now.getMonthValue()).join();
+        assertTrue("size", updatedItems.middle.size() == 1);
 
-        context.removeCalendarEvent(now.getYear(), now.getMonth().getValue(), item.Id).join();
-        updatedItems = context.getAllCalendarEvents().join();
-        assertTrue("size", updatedItems.size() == 0);
+        calendar.removeCalendarEvent(now.getYear(), now.getMonth().getValue(), item.Id).join();
+        items = calendar.getCalendarEventsForMonth(now.getYear(), now.getMonthValue()).join();
+        assertTrue("size", items.size() == 0);
     }
 
     @Test
