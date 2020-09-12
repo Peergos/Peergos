@@ -196,6 +196,8 @@ public class InodeFileSystem implements Cborable {
                 .thenCompose(dir -> {
                     if (dir.isEmpty())
                         return Futures.of(Collections.emptyList());
+                    if (elements.length == 0)
+                        return dir.get().getChildren();
                     return dir.get().getChild(elements[0])
                             .thenCompose(capOpt -> {
                                 if (capOpt.isEmpty())

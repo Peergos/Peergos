@@ -69,13 +69,20 @@ public class InodeFilesystemTests {
         }
 
         // add a huge directory
+        Set<String> dirContents = new HashSet<>();
         for (int i = 0; i < 1000; i++) {
-            String path = "user/dir/" + randomPathElement(r);
+            String child = randomPathElement(r);
+            dirContents.add(child);
+            String path = "user/dir/" + child;
             AbsoluteCapability cap = randomCap(owner, r);
             current = current.addCap(owner, user, path, cap, tid).join();
             state.put(path, cap);
         }
         checkAllMappings(state, current);
+
+        List<InodeCap> dir = current.listDirectory("user/dir").join();
+        Assert.assertTrue(dir.size() == 1000);
+        Assert.assertTrue(dir.stream().map(i -> i.inode.name.name).collect(Collectors.toSet()).equals(dirContents));
     }
 
     private static void checkAllMappings(Map<String, AbsoluteCapability> state, InodeFileSystem current) {
