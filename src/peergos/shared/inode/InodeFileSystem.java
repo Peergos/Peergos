@@ -65,9 +65,13 @@ public class InodeFileSystem implements Cborable {
         String[] elements = canonPath.split("/");
         if (elements.length == 1)
             throw new IllegalStateException("You cannot publish your root directory!");
-        Inode rootKey = new Inode(0, elements[0]);
+        Inode rootKey = rootKey();
         return getOrMkdir(owner, writer, Optional.empty(), rootKey, tid)
-                .thenCompose(p -> p.left.addCapRecurse(owner, writer, rootKey, p.right, tail(elements), cap, tid));
+                .thenCompose(p -> p.left.addCapRecurse(owner, writer, rootKey, p.right, elements, cap, tid));
+    }
+
+    public static Inode rootKey() {
+        return new Inode(0, "");
     }
 
     public CompletableFuture<InodeFileSystem> removeCap(PublicKeyHash owner,
@@ -76,11 +80,11 @@ public class InodeFileSystem implements Cborable {
                                                         TransactionId tid) {
         String canonPath = TrieNode.canonicalise(path);
         String[] elements = canonPath.split("/");
-        Inode rootKey = new Inode(0, elements[0]);
+        Inode rootKey = rootKey();
         return getValue(rootKey).thenCompose(dirOpt -> {
             if (dirOpt.isEmpty())
                 return Futures.of(this);
-            return removeCapRecurse(owner, writer, rootKey, dirOpt.get(), tail(elements), tid)
+            return removeCapRecurse(owner, writer, rootKey, dirOpt.get(), elements, tid)
                     .thenApply(p -> p.left);
         });
     }
@@ -178,17 +182,15 @@ public class InodeFileSystem implements Cborable {
     public CompletableFuture<Optional<Pair<InodeCap, String>>> getByPath(String path) {
         String canonPath = TrieNode.canonicalise(path);
         String[] elements = canonPath.split("/");
-        Optional<AbsoluteCapability> startCap = Optional.empty(); // the root is never published
-        InodeCap start = new InodeCap(new Inode(0, elements[0]), startCap);
-        return getByPathRecurse(start, tail(elements));
+        InodeCap start = new InodeCap(rootKey(), Optional.empty());
+        return getByPathRecurse(start, elements);
     }
 
     public CompletableFuture<List<InodeCap>> listDirectory(String path) {
         String canonPath = TrieNode.canonicalise(path);
         String[] elements = canonPath.split("/");
-        Optional<AbsoluteCapability> startCap = Optional.empty(); // the root is never published
-        InodeCap start = new InodeCap(new Inode(0, elements[0]), startCap);
-        return listDirectoryRecurse(start, tail(elements));
+        InodeCap start = new InodeCap(rootKey(), Optional.empty());
+        return listDirectoryRecurse(start, elements);
     }
 
     private CompletableFuture<List<InodeCap>> listDirectoryRecurse(InodeCap current, String[] elements) {
