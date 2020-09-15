@@ -34,6 +34,8 @@ public class MimeTypes {
     final static int[] PDF = new int[]{0x25, 'P', 'D', 'F'};
     final static int[] ZIP = new int[]{'P', 'K', 3, 4};
 
+    final static int[] ICS = new int[]{'B','E','G','I','N',':','V','C','A','L','E','N','D','A','R'};
+
     final static int HEADER_BYTES_TO_IDENTIFY_MIME_TYPE = 28;
 
     public static final String calculateMimeType(byte[] start, String filename) {
@@ -114,8 +116,11 @@ public class MimeTypes {
             return "application/zip";
         }
 
-        if (allAscii(start))
+        if (allAscii(start)) {
+            if (filename.endsWith(".ics") && equalArrays(start, ICS))
+                return "text/calendar";
             return "text/plain";
+        }
         return "application/octet-stream";
     }
 
