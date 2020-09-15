@@ -20,6 +20,7 @@ import peergos.shared.util.*;
 import java.nio.file.*;
 import java.sql.*;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.function.*;
 import java.util.stream.*;
 
@@ -28,9 +29,9 @@ public class ChampTests {
 
     private static final Crypto crypto = Main.initCrypto();
     private static final Hasher writeHasher = crypto.hasher;
-    private final Function<ByteArrayWrapper, byte[]> hasher;
+    private final Function<ByteArrayWrapper, CompletableFuture<byte[]>> hasher;
 
-    public ChampTests(Function<ByteArrayWrapper, byte[]> hasher) {
+    public ChampTests(Function<ByteArrayWrapper, CompletableFuture<byte[]>> hasher) {
         this.hasher = hasher;
     }
 
@@ -40,8 +41,8 @@ public class ChampTests {
 
     @Parameterized.Parameters()
     public static Collection<Object[]> parameters() {
-        Function<ByteArrayWrapper, byte[]> identityHash = ChampTests::identityHash;
-        Function<ByteArrayWrapper, byte[]> blake2b = IpfsCoreNode::keyHash;
+        Function<ByteArrayWrapper, CompletableFuture<byte[]>> identityHash = x -> Futures.of(ChampTests.identityHash(x));
+        Function<ByteArrayWrapper, CompletableFuture<byte[]>> blake2b = IpfsCoreNode::keyHash;
         return Arrays.asList(new Object[][] {
                 {identityHash},
                 {blake2b}
@@ -73,9 +74,9 @@ public class ChampTests {
         for (int i = 0; i < nKeys; i++) {
             ByteArrayWrapper key = new ByteArrayWrapper(randomHash.get().toBytes());
             Multihash value = randomHash.get();
-            Pair<Champ<CborObject.CborMerkleLink>, Multihash> updated = current.put(user.publicKeyHash, user, key, hasher.apply(key), 0,
+            Pair<Champ<CborObject.CborMerkleLink>, Multihash> updated = current.put(user.publicKeyHash, user, key, hasher.apply(key).join(), 0,
                     Optional.empty(), Optional.of(new CborObject.CborMerkleLink(value)), bitWidth, maxCollisions, hasher, tid, storage, writeHasher, currentHash).get();
-            Optional<CborObject.CborMerkleLink> result = updated.left.get(key, hasher.apply(key), 0, bitWidth, storage).get();
+            Optional<CborObject.CborMerkleLink> result = updated.left.get(key, hasher.apply(key).join(), 0, bitWidth, storage).get();
             if (! result.equals(Optional.of(new CborObject.CborMerkleLink(value))))
                 throw new IllegalStateException("Incorrect result!");
             current = updated.left;
@@ -85,7 +86,7 @@ public class ChampTests {
 
         // check every mapping
         for (Map.Entry<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>> e : state.entrySet()) {
-            Optional<CborObject.CborMerkleLink> res = current.get(e.getKey(), hasher.apply(e.getKey()), 0, bitWidth, storage).get();
+            Optional<CborObject.CborMerkleLink> res = current.get(e.getKey(), hasher.apply(e.getKey()).join(), 0, bitWidth, storage).get();
             if (! res.equals(e.getValue()))
                 throw new IllegalStateException("Incorrect state!");
         }
@@ -98,10 +99,10 @@ public class ChampTests {
         for (Map.Entry<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>> e : state.entrySet()) {
             ByteArrayWrapper key = e.getKey();
             Multihash value = randomHash.get();
-            Optional<CborObject.CborMerkleLink> currentValue = current.get(e.getKey(), hasher.apply(e.getKey()), 0, bitWidth, storage).get();
-            Pair<Champ<CborObject.CborMerkleLink>, Multihash> updated = current.put(user.publicKeyHash, user, key, hasher.apply(key), 0, currentValue,
+            Optional<CborObject.CborMerkleLink> currentValue = current.get(e.getKey(), hasher.apply(e.getKey()).join(), 0, bitWidth, storage).get();
+            Pair<Champ<CborObject.CborMerkleLink>, Multihash> updated = current.put(user.publicKeyHash, user, key, hasher.apply(key).join(), 0, currentValue,
                     Optional.of(new CborObject.CborMerkleLink(value)), bitWidth, maxCollisions, hasher, tid, storage, writeHasher, currentHash).get();
-            Optional<CborObject.CborMerkleLink> result = updated.left.get(key, hasher.apply(key), 0, bitWidth, storage).get();
+            Optional<CborObject.CborMerkleLink> result = updated.left.get(key, hasher.apply(key).join(), 0, bitWidth, storage).get();
             if (! result.equals(Optional.of(new CborObject.CborMerkleLink(value))))
                 throw new IllegalStateException("Incorrect result!");
             state.put(key, Optional.of(new CborObject.CborMerkleLink(value)));
@@ -112,10 +113,10 @@ public class ChampTests {
         // remove each key and check the mapping is gone
         for (Map.Entry<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>> e : state.entrySet()) {
             ByteArrayWrapper key = e.getKey();
-            Optional<CborObject.CborMerkleLink> currentValue = current.get(e.getKey(), hasher.apply(e.getKey()), 0, bitWidth, storage).get();
-            Pair<Champ<CborObject.CborMerkleLink>, Multihash> updated = current.remove(user.publicKeyHash, user, key, hasher.apply(key), 0, currentValue,
+            Optional<CborObject.CborMerkleLink> currentValue = current.get(e.getKey(), hasher.apply(e.getKey()).join(), 0, bitWidth, storage).get();
+            Pair<Champ<CborObject.CborMerkleLink>, Multihash> updated = current.remove(user.publicKeyHash, user, key, hasher.apply(key).join(), 0, currentValue,
                     bitWidth, maxCollisions, tid, storage, writeHasher, currentHash).get();
-            Optional<CborObject.CborMerkleLink> result = updated.left.get(key, hasher.apply(key), 0, bitWidth, storage).get();
+            Optional<CborObject.CborMerkleLink> result = updated.left.get(key, hasher.apply(key).join(), 0, bitWidth, storage).get();
             if (! result.equals(Optional.empty()))
                 throw new IllegalStateException("Incorrect state!");
         }
@@ -124,9 +125,9 @@ public class ChampTests {
         for (int i = 0; i < 100; i++) {
             ByteArrayWrapper key = new ByteArrayWrapper(randomHash.get().toBytes());
             Multihash value = randomHash.get();
-            Pair<Champ<CborObject.CborMerkleLink>, Multihash> updated = current.put(user.publicKeyHash, user, key, hasher.apply(key), 0, Optional.empty(),
+            Pair<Champ<CborObject.CborMerkleLink>, Multihash> updated = current.put(user.publicKeyHash, user, key, hasher.apply(key).join(), 0, Optional.empty(),
                     Optional.of(new CborObject.CborMerkleLink(value)), bitWidth, maxCollisions, hasher, tid, storage, writeHasher, currentHash).get();
-            Pair<Champ<CborObject.CborMerkleLink>, Multihash> removed = updated.left.remove(user.publicKeyHash, user, key, hasher.apply(key), 0,
+            Pair<Champ<CborObject.CborMerkleLink>, Multihash> removed = updated.left.remove(user.publicKeyHash, user, key, hasher.apply(key).join(), 0,
                     Optional.of(new CborObject.CborMerkleLink(value)), bitWidth, maxCollisions, tid, storage, writeHasher, updated.right).get();
             if (! removed.right.equals(currentHash))
                 throw new IllegalStateException("Non canonical state!");
@@ -152,7 +153,7 @@ public class ChampTests {
             for (int k=0; k < mappings.size(); k++) {
                 ByteArrayWrapper key = mappings.get(k).getKey();
                 Multihash value = mappings.get(k).getValue().get().target;
-                Pair<Champ<CborObject.CborMerkleLink>, Multihash> updated = current.put(user.publicKeyHash, user, key, hasher.apply(key), 0,
+                Pair<Champ<CborObject.CborMerkleLink>, Multihash> updated = current.put(user.publicKeyHash, user, key, hasher.apply(key).join(), 0,
                         Optional.empty(), Optional.of(new CborObject.CborMerkleLink(value)), bitWidth, maxCollisions, hasher, tid, storage,
                         writeHasher, currentHash).join();
                 current = updated.left;
@@ -187,7 +188,7 @@ public class ChampTests {
         for (int i = 0; i < 100; i++) {
             ByteArrayWrapper key = new ByteArrayWrapper(new byte[]{0, (byte)i, 0});
             Multihash value = randomHash.get();
-            Pair<Champ<CborObject.CborMerkleLink>, Multihash> updated = current.put(user.publicKeyHash, user, key, hasher.apply(key), 0,
+            Pair<Champ<CborObject.CborMerkleLink>, Multihash> updated = current.put(user.publicKeyHash, user, key, hasher.apply(key).join(), 0,
                     Optional.empty(), Optional.of(new CborObject.CborMerkleLink(value)), bitWidth, maxCollisions, hasher, tid, storage,
                     writeHasher, currentHash).get();
             current = updated.left;
@@ -201,7 +202,7 @@ public class ChampTests {
             ByteArrayWrapper key = keys.get(r.nextInt(keys.size()));
             Optional<CborObject.CborMerkleLink> currentValue = state.get(key);
             Optional<CborObject.CborMerkleLink> newValue = r.nextBoolean() ? Optional.of(new CborObject.CborMerkleLink(randomHash.get())) : Optional.empty();
-            Pair<Champ<CborObject.CborMerkleLink>, Multihash> updated = current.put(user.publicKeyHash, user, key, hasher.apply(key), 0, currentValue,
+            Pair<Champ<CborObject.CborMerkleLink>, Multihash> updated = current.put(user.publicKeyHash, user, key, hasher.apply(key).join(), 0, currentValue,
                     newValue, bitWidth, maxCollisions, hasher, tid, storage, writeHasher, currentHash).get();
             List<Triple<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>, Optional<CborObject.CborMerkleLink>>> diffs = new ArrayList<>();
             Champ.applyToDiff(MaybeMultihash.of(currentHash), MaybeMultihash.of(updated.right), 0, hasher,
@@ -218,7 +219,7 @@ public class ChampTests {
             Optional<CborObject.CborMerkleLink> currentValue = Optional.ofNullable(state.get(key))
                     .orElse(Optional.empty());
             Optional<CborObject.CborMerkleLink> newValue = Optional.of(new CborObject.CborMerkleLink(randomHash.get()));
-            Pair<Champ<CborObject.CborMerkleLink>, Multihash> updated = current.put(user.publicKeyHash, user, key, hasher.apply(key), 0, currentValue,
+            Pair<Champ<CborObject.CborMerkleLink>, Multihash> updated = current.put(user.publicKeyHash, user, key, hasher.apply(key).join(), 0, currentValue,
                     newValue, bitWidth, maxCollisions, hasher, tid, storage, writeHasher, currentHash).get();
             List<Triple<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>, Optional<CborObject.CborMerkleLink>>> diffs = new ArrayList<>();
 
@@ -236,7 +237,7 @@ public class ChampTests {
             ByteArrayWrapper key = new ByteArrayWrapper(longerKey);
             Optional<CborObject.CborMerkleLink> currentValue = Optional.empty();
             Optional<CborObject.CborMerkleLink> newValue = Optional.of(new CborObject.CborMerkleLink(randomHash.get()));
-            Pair<Champ<CborObject.CborMerkleLink>, Multihash> updated = current.put(user.publicKeyHash, user, key, hasher.apply(key), 0, currentValue,
+            Pair<Champ<CborObject.CborMerkleLink>, Multihash> updated = current.put(user.publicKeyHash, user, key, hasher.apply(key).join(), 0, currentValue,
                     newValue, bitWidth, maxCollisions, hasher, tid, storage, writeHasher, currentHash).get();
             List<Triple<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>, Optional<CborObject.CborMerkleLink>>> diffs = new ArrayList<>();
             Champ.applyToDiff(MaybeMultihash.of(currentHash), MaybeMultihash.of(updated.right), 0, hasher,
@@ -271,10 +272,10 @@ public class ChampTests {
                 r.nextBytes(keyBytes);
                 ByteArrayWrapper key = new ByteArrayWrapper(keyBytes);
                 Multihash value = randomHash.get();
-                Pair<Champ<CborObject.CborMerkleLink>, Multihash> added = root.left.put(user.publicKeyHash, user, key, hasher.apply(key), 0,
+                Pair<Champ<CborObject.CborMerkleLink>, Multihash> added = root.left.put(user.publicKeyHash, user, key, hasher.apply(key).join(), 0,
                         Optional.empty(), Optional.of(new CborObject.CborMerkleLink(value)), bitWidth, maxCollisions, hasher, tid, storage,
                         writeHasher, root.right).get();
-                Pair<Champ<CborObject.CborMerkleLink>, Multihash> removed = added.left.remove(user.publicKeyHash, user, key, hasher.apply(key), 0,
+                Pair<Champ<CborObject.CborMerkleLink>, Multihash> removed = added.left.remove(user.publicKeyHash, user, key, hasher.apply(key).join(), 0,
                         Optional.of(new CborObject.CborMerkleLink(value)), bitWidth, maxCollisions, tid, storage, writeHasher, added.right).get();
                 if (! removed.right.equals(root.right))
                     throw new IllegalStateException("Non canonical delete!");
@@ -305,7 +306,7 @@ public class ChampTests {
         for (int i = 0; i < 3; i++) {
             ByteArrayWrapper key = new ByteArrayWrapper(new byte[]{0, (byte)i, 0});
             Multihash value = randomHash.get();
-            Pair<Champ<CborObject.CborMerkleLink>, Multihash> updated = current.put(user.publicKeyHash, user, key, hasher.apply(key), 0,
+            Pair<Champ<CborObject.CborMerkleLink>, Multihash> updated = current.put(user.publicKeyHash, user, key, hasher.apply(key).join(), 0,
                     Optional.empty(), Optional.of(new CborObject.CborMerkleLink(value)), bitWidth, maxCollisions, hasher, tid, storage,
                     writeHasher, currentHash).get();
             current = updated.left;
@@ -315,7 +316,7 @@ public class ChampTests {
 
         // check every mapping
         for (Map.Entry<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>> e : state.entrySet()) {
-            Optional<CborObject.CborMerkleLink> res = current.get(e.getKey(), hasher.apply(e.getKey()), 0, bitWidth, storage).get();
+            Optional<CborObject.CborMerkleLink> res = current.get(e.getKey(), hasher.apply(e.getKey()).join(), 0, bitWidth, storage).get();
             if (! res.equals(e.getValue()))
                 throw new IllegalStateException("Incorrect state!");
         }
@@ -326,12 +327,12 @@ public class ChampTests {
 
         // delete one entry
         ByteArrayWrapper key = new ByteArrayWrapper(new byte[]{0, 1, 0});
-        Optional<CborObject.CborMerkleLink> currentValue = current.get(key, hasher.apply(key), 0, bitWidth, storage).get();
-        Pair<Champ<CborObject.CborMerkleLink>, Multihash> updated = current.remove(user.publicKeyHash, user, key, hasher.apply(key), 0, currentValue,
+        Optional<CborObject.CborMerkleLink> currentValue = current.get(key, hasher.apply(key).join(), 0, bitWidth, storage).get();
+        Pair<Champ<CborObject.CborMerkleLink>, Multihash> updated = current.remove(user.publicKeyHash, user, key, hasher.apply(key).join(), 0, currentValue,
                 bitWidth, maxCollisions, tid, storage, writeHasher, currentHash).get();
         current = updated.left;
         state.remove(key);
-        Optional<CborObject.CborMerkleLink> result = updated.left.get(key, hasher.apply(key), 0, bitWidth, storage).get();
+        Optional<CborObject.CborMerkleLink> result = updated.left.get(key, hasher.apply(key).join(), 0, bitWidth, storage).get();
         if (! result.equals(Optional.empty()))
             throw new IllegalStateException("Incorrect state!");
 
@@ -341,7 +342,7 @@ public class ChampTests {
 
         // check every mapping
         for (Map.Entry<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>> e : state.entrySet()) {
-            Optional<CborObject.CborMerkleLink> res = current.get(e.getKey(), hasher.apply(e.getKey()), 0, bitWidth, storage).get();
+            Optional<CborObject.CborMerkleLink> res = current.get(e.getKey(), hasher.apply(e.getKey()).join(), 0, bitWidth, storage).get();
             if (! res.equals(e.getValue()))
                 throw new IllegalStateException("Incorrect state!");
         }
@@ -363,7 +364,7 @@ public class ChampTests {
                                                      int nKeys,
                                                      int bitWidth,
                                                      int maxCollisions,
-                                                     Function<ByteArrayWrapper, byte[]> hasher,
+                                                     Function<ByteArrayWrapper, CompletableFuture<byte[]>> hasher,
                                                      Supplier<Multihash> randomHash,
                                                      RAMStorage storage) throws Exception {
         Champ<CborObject.CborMerkleLink> current = Champ.empty(c -> (CborObject.CborMerkleLink)c);
@@ -376,7 +377,7 @@ public class ChampTests {
             ByteArrayWrapper key = new ByteArrayWrapper(randomKey(prefix, suffixLen, r));
             Multihash value = randomHash.get();
             Pair<Champ<CborObject.CborMerkleLink>, Multihash> updated = current.put(user.publicKeyHash, user, key,
-                    hasher.apply(key), 0, Optional.empty(), Optional.of(new CborObject.CborMerkleLink(value)),
+                    hasher.apply(key).join(), 0, Optional.empty(), Optional.of(new CborObject.CborMerkleLink(value)),
                     bitWidth, maxCollisions, hasher, tid, storage, writeHasher, currentHash).get();
             current = updated.left;
             currentHash = updated.right;

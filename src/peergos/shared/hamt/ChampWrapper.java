@@ -1,6 +1,5 @@
 package peergos.shared.hamt;
 
-import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
@@ -20,42 +19,43 @@ public class ChampWrapper<V extends Cborable> implements ImmutableTree<V>
     public static final int MAX_HASH_COLLISIONS_PER_LEVEL = 4;
 
     public final ContentAddressedStorage storage;
-    private final Hasher writeHasher;
+    public final Hasher writeHasher;
     public final int bitWidth;
-    private final Function<ByteArrayWrapper, byte[]> hasher;
+    public final Function<ByteArrayWrapper, CompletableFuture<byte[]>> keyHasher;
     private Pair<Champ<V>, Multihash> root;
-    private final Function<Cborable, V> fromCbor;
 
     public ChampWrapper(Champ<V> root,
                         Multihash rootHash,
-                        Function<ByteArrayWrapper, byte[]> hasher,
+                        Function<ByteArrayWrapper, CompletableFuture<byte[]>> keyHasher,
                         ContentAddressedStorage storage,
                         Hasher writeHasher,
-                        int bitWidth,
-                        Function<Cborable, V> fromCbor) {
+                        int bitWidth) {
         this.storage = storage;
         this.writeHasher = writeHasher;
-        this.hasher = hasher;
+        this.keyHasher = keyHasher;
         this.root = new Pair<>(root, rootHash);
         this.bitWidth = bitWidth;
-        this.fromCbor = fromCbor;
+    }
+
+    public Multihash getRoot() {
+        return root.right;
     }
 
     public static <V extends Cborable> CompletableFuture<ChampWrapper<V>> create(Multihash rootHash,
-                                                                                 Function<ByteArrayWrapper, byte[]> hasher,
+                                                                                 Function<ByteArrayWrapper, CompletableFuture<byte[]>> hasher,
                                                                                  ContentAddressedStorage dht,
                                                                                  Hasher writeHasher,
                                                                                  Function<Cborable, V> fromCbor) {
         return dht.get(rootHash).thenApply(rawOpt -> {
             if (! rawOpt.isPresent())
                 throw new IllegalStateException("Champ root not present: " + rootHash);
-            return new ChampWrapper<V>(Champ.fromCbor(rawOpt.get(), fromCbor), rootHash, hasher, dht, writeHasher, BIT_WIDTH, fromCbor);
+            return new ChampWrapper<>(Champ.fromCbor(rawOpt.get(), fromCbor), rootHash, hasher, dht, writeHasher, BIT_WIDTH);
         });
     }
 
     public static <V extends Cborable> CompletableFuture<ChampWrapper<V>> create(PublicKeyHash owner,
                                                                                  SigningPrivateKeyAndPublicHash writer,
-                                                                                 Function<ByteArrayWrapper, byte[]> hasher,
+                                                                                 Function<ByteArrayWrapper, CompletableFuture<byte[]>> hasher,
                                                                                  TransactionId tid,
                                                                                  ContentAddressedStorage dht,
                                                                                  Hasher writeHasher,
@@ -64,7 +64,7 @@ public class ChampWrapper<V extends Cborable> implements ImmutableTree<V>
         byte[] raw = newRoot.serialize();
         return writeHasher.sha256(raw)
                 .thenCompose(hash -> dht.put(owner, writer.publicKeyHash, writer.secret.signMessage(hash), raw, tid))
-                .thenApply(put -> new ChampWrapper<>(newRoot, put, hasher, dht, writeHasher, BIT_WIDTH, fromCbor));
+                .thenApply(put -> new ChampWrapper<>(newRoot, put, hasher, dht, writeHasher, BIT_WIDTH));
     }
 
     /**
@@ -76,7 +76,8 @@ public class ChampWrapper<V extends Cborable> implements ImmutableTree<V>
     @Override
     public CompletableFuture<Optional<V>> get(byte[] rawKey) {
         ByteArrayWrapper key = new ByteArrayWrapper(rawKey);
-        return root.left.get(key, hasher.apply(key), 0, BIT_WIDTH, storage);
+        return keyHasher.apply(key)
+                .thenCompose(keyHash -> root.left.get(key, keyHash, 0, BIT_WIDTH, storage));
     }
 
     /**
@@ -94,8 +95,9 @@ public class ChampWrapper<V extends Cborable> implements ImmutableTree<V>
                                             V value,
                                             TransactionId tid) {
         ByteArrayWrapper key = new ByteArrayWrapper(rawKey);
-        return root.left.put(owner, writer, key, hasher.apply(key), 0, existing, Optional.of(value),
-                BIT_WIDTH, MAX_HASH_COLLISIONS_PER_LEVEL, hasher, tid, storage, writeHasher, root.right)
+        return keyHasher.apply(key)
+                .thenCompose(keyHash -> root.left.put(owner, writer, key, keyHash, 0, existing, Optional.of(value),
+                        BIT_WIDTH, MAX_HASH_COLLISIONS_PER_LEVEL, keyHasher, tid, storage, writeHasher, root.right))
                 .thenCompose(newRoot -> commit(writer, newRoot));
     }
 
@@ -112,8 +114,9 @@ public class ChampWrapper<V extends Cborable> implements ImmutableTree<V>
                                                Optional<V> existing,
                                                TransactionId tid) {
         ByteArrayWrapper key = new ByteArrayWrapper(rawKey);
-        return root.left.put(owner, writer, key, hasher.apply(key), 0, existing, Optional.empty(),
-                BIT_WIDTH, MAX_HASH_COLLISIONS_PER_LEVEL, hasher, tid, storage, writeHasher, root.right)
+        return keyHasher.apply(key)
+                .thenCompose(keyHash -> root.left.put(owner, writer, key, keyHash, 0, existing, Optional.empty(),
+                BIT_WIDTH, MAX_HASH_COLLISIONS_PER_LEVEL, keyHasher, tid, storage, writeHasher, root.right))
                 .thenCompose(newRoot -> commit(writer, newRoot));
     }
 

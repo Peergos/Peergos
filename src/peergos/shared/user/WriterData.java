@@ -27,7 +27,7 @@ public class WriterData implements Cborable {
 
     // publicly readable and present on owner keys
     public final Optional<SecretGenerationAlgorithm> generationAlgorithm;
-    // This is the root of a champ containing publicly shared files and folders (a lookup from path to capability)
+    // This is the root of an InodeFileSystem containing read only caps to publicly shared files and folders
     public final Optional<Multihash> publicData;
     // The public boxing key to encrypt follow requests to
     public final Optional<PublicKeyHash> followRequestReceiver;

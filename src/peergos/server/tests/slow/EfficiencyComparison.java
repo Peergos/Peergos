@@ -52,7 +52,7 @@ public class EfficiencyComparison {
 
                 for (Map.Entry<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>> e : state.entrySet()) {
                     current = current.left.put(champUser.publicKeyHash, champUser, e.getKey(), e.getKey().data, 0, Optional.empty(),
-                            e.getValue(), bitWidth, maxCollisions, x -> x.data,
+                            e.getValue(), bitWidth, maxCollisions, x -> Futures.of(x.data),
                             champStorage.startTransaction(champUser.publicKeyHash).get(), champStorage, crypto.hasher,
                             current.right).get();
                 }
