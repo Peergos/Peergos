@@ -148,30 +148,30 @@ public class UserContext {
                 this.ctx = ctx;
             }
 
-            private CompletableFuture<CalendarEvent> getEventFile(FileWrapper calendarFile) {
+            private CompletableFuture<String> getEventFile(FileWrapper calendarFile) {
                 int size = calendarFile.getFileProperties().sizeLow();
                 return calendarFile.getInputStream(ctx.network, ctx.crypto, x -> {})
                         .thenCompose(reader -> {
                             byte[] data = new byte[size];
                             return reader.readIntoArray(data, 0, data.length)
-                                    .thenApply(x -> CalendarEvent.fromCbor(CborObject.fromByteArray(data)));
+                                    .thenApply(x -> new String(data));
                         });
             }
 
-            private CompletableFuture<List<CalendarEvent>> getEventsForMonth(FileWrapper monthDirectory) {
+            private CompletableFuture<List<String>> getEventsForMonth(FileWrapper monthDirectory) {
                 return monthDirectory.getChildren(ctx.crypto.hasher, ctx.network).thenCompose(eventFiles -> {
-                    List<CalendarEvent> events = new ArrayList<>();
+                    List<String> events = new ArrayList<>();
                     return Futures.reduceAll(eventFiles,
-                            true,
-                            (x, file) -> getEventFile(file).thenCompose(ce -> {
-                                events.add(ce);
-                                return Futures.of(true);
-                            })
-                            , (a, b) -> a && b).thenApply(res -> events);
+                        true,
+                        (x, file) -> getEventFile(file).thenCompose(ce -> {
+                            events.add(ce);
+                            return Futures.of(true);
+                        })
+                        , (a, b) -> a && b).thenApply(res -> events);
                 });
             }
             @JsMethod
-            public CompletableFuture<List<CalendarEvent>> getCalendarEventsForMonth(int year, int monthIndex) {
+            public CompletableFuture<List<String>> getCalendarEventsForMonth(int year, int monthIndex) {
                 if(monthIndex == 0) {
                     throw new IllegalArgumentException("monthIndex starts at 1 for January!");
                 }
@@ -190,14 +190,15 @@ public class UserContext {
             }
 
             //month either side: -1, 0, +1
-            private CompletableFuture<Triple<List<CalendarEvent>,List<CalendarEvent>,List<CalendarEvent>>> getEventsAroundMonth(FileWrapper yearDirectory, int monthIndex) {
+            private CompletableFuture<Triple<List<String>,List<String>,List<String>>> getEventsAroundMonth(FileWrapper yearDirectory, int monthIndex) {
                 return yearDirectory.getChildren(ctx.crypto.hasher, ctx.network).thenCompose(monthFolders -> {
-                    List<CalendarEvent> left = new ArrayList<>();
-                    List<CalendarEvent> middle = new ArrayList<>();
-                    List<CalendarEvent> right = new ArrayList<>();
+                    List<String> left = new ArrayList<>();
+                    List<String> middle = new ArrayList<>();
+                    List<String> right = new ArrayList<>();
                     Set<String> desiredMonths = IntStream.range(monthIndex -1, monthIndex + 2)
                             .mapToObj(month -> String.valueOf(month)).collect(Collectors.toSet());
-                    Set<FileWrapper> relevantMonths = monthFolders.stream().filter(month -> desiredMonths.contains(month.getName())).collect(Collectors.toSet());
+                    Set<FileWrapper> relevantMonths = monthFolders.stream().filter(month ->
+                            desiredMonths.contains(month.getName())).collect(Collectors.toSet());
                     return Futures.reduceAll(relevantMonths,
                             true,
                             (x, file) -> getEventsForMonth(file).thenCompose(ce -> {
@@ -217,7 +218,7 @@ public class UserContext {
 
             @JsMethod
             //REMEMBER  1 = January
-            public CompletableFuture<Triple<List<CalendarEvent>,List<CalendarEvent>,List<CalendarEvent>>> getCalendarEventsAroundMonth(int year, int monthIndex) {
+            public CompletableFuture<Triple<List<String>,List<String>,List<String>>> getCalendarEventsAroundMonth(int year, int monthIndex) {
                 if(monthIndex == 0) {
                     throw new IllegalArgumentException("monthIndex starts at 1 for January!");
                 }
@@ -236,12 +237,12 @@ public class UserContext {
             }
 
             @JsMethod
-            public CompletableFuture<Boolean> updateCalendarEvent(int year, int month, CalendarEvent calendarEvent) {
+            public CompletableFuture<Boolean> updateCalendarEvent(int year, int month, String eventId, String calendarEvent) {
                 Path path = Paths.get(APPS_DIR_NAME, CALENDAR_DIR_NAME, ctx.username, "" + year, "" + month);
                 return ctx.getUserRoot().thenCompose(root -> FileUtil.getOrMkdirs(root, path, ctx.crypto, ctx.network))
                         .thenCompose(dir -> {
-                            byte[] bytes = calendarEvent.serialize();
-                            String eventFilename = calendarEvent.Id + ".txt";
+                            byte[] bytes = calendarEvent.getBytes();
+                            String eventFilename = eventId + ".ics";
                             return dir.uploadOrReplaceFile(eventFilename, AsyncReader.build(bytes), bytes.length,
                                     ctx.network, ctx.crypto, x -> {
                                     }, ctx.crypto.random.randomBytes(32)).thenApply(fw -> true);
@@ -249,15 +250,15 @@ public class UserContext {
             }
 
             @JsMethod
-            public CompletableFuture<Boolean> removeCalendarEvent(int year, int month, String id) {
+            public CompletableFuture<Boolean> removeCalendarEvent(int year, int month, String eventId) {
                 Path path = Paths.get(APPS_DIR_NAME, CALENDAR_DIR_NAME, ctx.username, "" + year, "" + month);
                 return ctx.getUserRoot().thenCompose(root -> FileUtil.getOrMkdirs(root, path, ctx.crypto, ctx.network))
-                        .thenCompose(dir -> {
-                            String filename = id + ".txt";
-                            Path pathToFile = path.resolve(filename);
-                            return dir.getChild(filename, ctx.crypto.hasher, ctx.network).thenCompose(file ->
-                                    file.get().remove(dir, pathToFile, ctx).thenApply(fw -> true));
-                        });
+                    .thenCompose(dir -> {
+                        String filename = eventId + ".ics";
+                        Path pathToFile = path.resolve(filename);
+                        return dir.getChild(filename, ctx.crypto.hasher, ctx.network).thenCompose(file ->
+                                file.get().remove(dir, pathToFile, ctx).thenApply(fw -> true));
+                    });
             }
         }
     }

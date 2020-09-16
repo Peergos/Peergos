@@ -1181,15 +1181,27 @@ public abstract class UserTests {
 
         UserContext.App.Calendar calendar = context.getCalendarApp();
         LocalDate now = LocalDate.now();
-        List<CalendarEvent> items = calendar.getCalendarEventsForMonth(now.getYear(), now.getMonthValue()).join();
+        List<String> items = calendar.getCalendarEventsForMonth(now.getYear(), now.getMonthValue()).join();
         assertTrue("size", items.isEmpty());
-        CalendarEvent item = new CalendarEvent( "Id", "categoryId", "title", true, "start",
-                 "end", "location", false, "state", "memo");
-        calendar.updateCalendarEvent(now.getYear(), now.getMonth().getValue(),item).join();
-        Triple<List<CalendarEvent>,List<CalendarEvent>,List<CalendarEvent>> updatedItems = calendar.getCalendarEventsAroundMonth(now.getYear(), now.getMonthValue()).join();
+        String Id = "Id";
+        String item ="BEGIN:VCALENDAR\n" +
+                "VERSION:2.0\n" +
+                "PRODID:-//test\n" +
+                "BEGIN:VEVENT\n" +
+                "DTSTAMP:20200914T144300Z\n" +
+                "UID:" + Id + "\n" +
+                "SUMMARY:title\n" +
+                "DESCRIPTION:memo\n" +
+                "DTSTART:20200914T134257Z\n" +
+                "DURATION:PT1H\n" +
+                "LOCATION:location\n" +
+                "END:VEVENT\n" +
+                "END:VCALENDAR";
+        calendar.updateCalendarEvent(now.getYear(), now.getMonth().getValue(), Id, item).join();
+        Triple<List<String>,List<String>,List<String>> updatedItems = calendar.getCalendarEventsAroundMonth(now.getYear(), now.getMonthValue()).join();
         assertTrue("size", updatedItems.middle.size() == 1);
 
-        calendar.removeCalendarEvent(now.getYear(), now.getMonth().getValue(), item.Id).join();
+        calendar.removeCalendarEvent(now.getYear(), now.getMonth().getValue(), Id).join();
         items = calendar.getCalendarEventsForMonth(now.getYear(), now.getMonthValue()).join();
         assertTrue("size", items.size() == 0);
     }
