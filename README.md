@@ -123,10 +123,17 @@ Architecture
 Development
 --------
 ### Dependencies
-Requires jdk11 and ant to build. Use the following to install dependencies on debian:
+Requires jdk11 and ant to build. Use the following to install dependencies:
+#### On debian
 ```shell
 sudo apt-get install ant
 sudo apt-get install openjdk-11-jdk
+```
+#### On macOS
+```shell
+brew install ant # installs openjdk as a dependency
+ant -version
+Apache Ant(TM) version 1.10.8 compiled on May 10 2020
 ```
 ### Build
 Note that this doesn't include any web ui, for the full build including the web interface build https://github.com/peergos/web-ui
@@ -139,9 +146,13 @@ ant gwtc
 ```
 ### Run tests
 You need to have ant-optional installed:
+#### On debian
 ```shell
 sudo apt-get install ant-optional
 ```
+#### On macOS
+Nothing additional is needed to for the ant package on macOS.
+
 Running tests will install and configure the correct version of IPFS automatically, run the daemon, and terminate it afterwards. 
 ```shell
 ant test
