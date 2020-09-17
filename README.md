@@ -151,7 +151,7 @@ You need to have ant-optional installed:
 sudo apt-get install ant-optional
 ```
 #### On macOS
-Nothing additional is needed to for the ant package on macOS.
+Nothing additional is needed for the ant package on macOS.
 
 Running tests will install and configure the correct version of IPFS automatically, run the daemon, and terminate it afterwards. 
 ```shell
