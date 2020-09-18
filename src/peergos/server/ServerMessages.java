@@ -165,7 +165,7 @@ public class ServerMessages extends Builder {
                     List<ServerConversation> allConvs = ServerConversation.combine(all);
                     boolean processed = allConvs.stream()
                             .allMatch(c -> c.lastMessage().type == ServerMessage.Type.FromUser);
-                    if (processed)
+                    if (processed && ! allConvs.isEmpty())
                         System.out.println(username);
                 }
                 return true;
