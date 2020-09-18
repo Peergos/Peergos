@@ -40,7 +40,7 @@ import java.util.function.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-public class Main {
+public class Main extends Builder {
     public static final String PEERGOS_PATH = "PEERGOS_PATH";
     public static final Path DEFAULT_PEERGOS_DIR_PATH =
             Paths.get(System.getProperty("user.home"), ".peergos");
@@ -359,298 +359,6 @@ public class Main {
             Collections.emptyList()
     );
 
-    public static final Command<Boolean> SHOW = new Command<>("show",
-            "Show messages with a user of this server",
-            a -> {
-                boolean usePostgres = a.getBoolean("use-postgres", false);
-                SqlSupplier sqlCommands = usePostgres ?
-                        new PostgresCommands() :
-                        new SqliteCommands();
-                ServerMessageStore store = new ServerMessageStore(getDBConnector(a, "server-messages-sql-file"),
-                        sqlCommands, null, null);
-                List<ServerMessage> messages = store.getMessages(a.getArg("username"));
-                List<ServerConversation> conversations = ServerConversation.combine(messages);
-                for (ServerConversation conv : conversations) {
-                    for (ServerMessage msg : conv.messages) {
-                        System.out.println(msg.summary());
-                        System.out.println(msg.contents);
-                    }
-                    System.out.println();
-                }
-                return true;
-            },
-            Arrays.asList(
-                    new Command.Arg("username", "Peergos username", true),
-                    new Command.Arg("server-messages-sql-file", "The filename for the server messages datastore", true, "server-messages.sql")
-            )
-    );
-
-    public static final Command<Boolean> SEND = new Command<>("send",
-            "Send a message to a user of this server",
-            a -> {
-                boolean usePostgres = a.getBoolean("use-postgres", false);
-                SqlSupplier sqlCommands = usePostgres ?
-                        new PostgresCommands() :
-                        new SqliteCommands();
-                ServerMessageStore store = new ServerMessageStore(getDBConnector(a, "server-messages-sql-file"),
-                        sqlCommands, null, null);
-                String message;
-                if (a.hasArg("msg-file")) {
-                    try {
-                        message = Files.readString(Paths.get(a.getArg("msg-file")));
-                    } catch (IOException e) {
-                        throw new RuntimeException(e);
-                    }
-                } else
-                    message = a.getArg("msg");
-                ServerMessage msg = new ServerMessage(-1, ServerMessage.Type.FromServer, System.currentTimeMillis(),
-                        message, a.getOptionalArg("reply-to").map(Long::parseLong), false);
-                if (a.hasArg("usernames")) {
-                    try {
-                        List<String> usernames = Files.readAllLines(Paths.get(a.getArg("usernames")));
-                        for (String username : usernames) {
-                            store.addMessage(username, msg);
-                            System.out.println("Message sent to " + username);
-                        }
-                    } catch (IOException e) {
-                        throw new RuntimeException(e);
-                    }
-                } else {
-                    String username = a.getArg("username");
-                    store.addMessage(username, msg);
-                    System.out.println("Message sent to " + username);
-                }
-                return true;
-            },
-            Arrays.asList(
-                    new Command.Arg("usernames", "Path to file containing usernames, one per line", false),
-                    new Command.Arg("username", "Peergos username", false),
-                    new Command.Arg("reply-to", "Message id to reply to", false),
-                    new Command.Arg("msg", "Message to send", false),
-                    new Command.Arg("msg-file", "File containing message to send", false),
-                    new Command.Arg("server-messages-sql-file", "The filename for the server messages datastore", true, "server-messages.sql")
-            )
-    );
-
-        public static final Command<Boolean> NEW = new Command<>("new",
-            "Show new messages from users of this server",
-            a -> {
-                boolean usePostgres = a.getBoolean("use-postgres", false);
-                SqlSupplier sqlCommands = usePostgres ?
-                        new PostgresCommands() :
-                        new SqliteCommands();
-                ServerMessageStore store = new ServerMessageStore(getDBConnector(a, "server-messages-sql-file"),
-                        sqlCommands, null, null);
-
-                TransactionStore transactions = buildTransactionStore(a);
-                DeletableContentAddressedStorage localStorage = buildLocalStorage(a, transactions);
-                JdbcIpnsAndSocial rawPointers = buildRawPointers(a);
-                MutablePointers localPointers = UserRepository.build(localStorage, rawPointers);
-                MutablePointersProxy proxingMutable = new HttpMutablePointers(buildP2pHttpProxy(a), getPkiServerId(a));
-                CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable);
-                QuotaAdmin quotas = buildSpaceQuotas(a, localStorage, core);
-
-                List<String> usernames = quotas.getLocalUsernames();
-                for (String username : usernames) {
-                    List<ServerMessage> all = store.getMessages(username);
-                    List<ServerConversation> allConvs = ServerConversation.combine(all);
-                    List<ServerConversation> withReply = allConvs.stream()
-                            .filter(c -> c.lastMessage().type == ServerMessage.Type.FromUser)
-                            .collect(Collectors.toList());
-                    if (! withReply.isEmpty()) {
-                        System.out.println("==================================================");
-                        System.out.println("Replies from " + username);
-                    }
-                    for (ServerConversation conv : withReply) {
-                        ServerMessage last = conv.lastMessage();
-                        System.out.println(last.summary());
-                        System.out.println(last.contents);
-                    }
-                }
-                return true;
-            },
-            Arrays.asList(
-                    new Command.Arg("server-messages-sql-file", "The filename for the server messages datastore", true, "server-messages.sql")
-            )
-    );
-
-    public static final Command<Boolean> SERVER_MESSAGES = new Command<>("server-msg",
-            "Send and receive messages to/from users of this server",
-            args -> {
-                System.out.println("Run with -help to show options");
-                return null;
-            },
-            Arrays.asList(
-                    new Command.Arg("print-log-location", "Whether to print the log file location at startup", false, "false"),
-                    new Command.Arg("log-to-file", "Whether to log to a file", false, "false"),
-                    new Command.Arg("log-to-console", "Whether to log to the console", false, "false")
-            ),
-            Arrays.asList(SHOW, SEND, NEW)
-    );
-    public static Crypto initCrypto() {
-        try {
-            JniTweetNacl nativeNacl = JniTweetNacl.build();
-            Salsa20Poly1305 symmetricProvider = new JniTweetNacl.Symmetric(nativeNacl);
-            Ed25519 signer = new JniTweetNacl.Signer(nativeNacl);
-            Curve25519 boxer = new Curve25519.Java();
-            return Crypto.initNative(symmetricProvider, signer, boxer);
-        } catch (Throwable t) {
-            return Crypto.initJava();
-        }
-    }
-
-    public static Supplier<Connection> getDBConnector(Args a, String dbName) {
-        boolean usePostgres = a.getBoolean("use-postgres", false);
-        HikariConfig config;
-        if (usePostgres) {
-            String postgresHost = a.getArg("postgres.host");
-            int postgresPort = a.getInt("postgres.port", 5432);
-            String databaseName = a.getArg("postgres.database", "peergos");
-            String postgresUsername = a.getArg("postgres.username");
-            String postgresPassword = a.getArg("postgres.password");
-
-            Properties props = new Properties();
-            props.setProperty("dataSourceClassName", "org.postgresql.ds.PGSimpleDataSource");
-            props.setProperty("dataSource.serverName", postgresHost);
-            props.setProperty("dataSource.portNumber", "" + postgresPort);
-            props.setProperty("dataSource.user", postgresUsername);
-            props.setProperty("dataSource.password", postgresPassword);
-            props.setProperty("dataSource.databaseName", databaseName);
-            config = new HikariConfig(props);
-            HikariDataSource ds = new HikariDataSource(config);
-
-            return () -> {
-                try {
-                    return ds.getConnection();
-                } catch (SQLException e) {
-                    throw new RuntimeException(e);
-                }
-            };
-        } else {
-            String sqlFilePath = Sqlite.getDbPath(a, dbName);
-            if (":memory:".equals(sqlFilePath))
-                return buildEphemeralSqlite();
-            try {
-                Connection memory = Sqlite.build(sqlFilePath);
-                // We need a connection that ignores close
-                Connection instance = new Sqlite.UncloseableConnection(memory);
-                return () -> instance;
-            } catch (SQLException e) {
-                throw new RuntimeException(e);
-            }
-        }
-    }
-
-    public static Supplier<Connection> buildEphemeralSqlite() {
-        try {
-            Connection memory = Sqlite.build(":memory:");
-            // We need a connection that ignores close
-            Connection instance = new Sqlite.UncloseableConnection(memory);
-            return () -> instance;
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    private static JavaPoster buildIpfsApi(Args a) {
-        URL ipfsApiAddress = AddressUtil.getAddress(new MultiAddress(a.getArg("ipfs-api-address")));
-        return new JavaPoster(ipfsApiAddress, false);
-    }
-
-    /**
-     *
-     * @param a
-     * @return This returns the P@P HTTP proxy, which is in the IPFS gateway
-     */
-    private static JavaPoster buildP2pHttpProxy(Args a) {
-        URL ipfsGatewayAddress = AddressUtil.getAddress(new MultiAddress(a.getArg("ipfs-gateway-address")));
-        return new JavaPoster(ipfsGatewayAddress, false);
-    }
-
-    private static DeletableContentAddressedStorage buildLocalStorage(Args a,
-                                                                      TransactionStore transactions) {
-        boolean useIPFS = a.getBoolean("useIPFS");
-        boolean enableGC = a.getBoolean("enable-gc", false);
-        JavaPoster ipfsApi = buildIpfsApi(a);
-        if (useIPFS) {
-                DeletableContentAddressedStorage.HTTP ipfs = new DeletableContentAddressedStorage.HTTP(ipfsApi, false);
-                if (enableGC) {
-                    return new TransactionalIpfs(ipfs, transactions);
-                } else
-                    return ipfs;
-            } else {
-                // In S3 mode of operation we require the ipfs id to be supplied as we don't have a local ipfs running
-                if (S3Config.useS3(a)) {
-                    if (enableGC)
-                        throw new IllegalStateException("GC should be run separately when using S3!");
-                    ContentAddressedStorage.HTTP ipfs = new ContentAddressedStorage.HTTP(ipfsApi, false);
-                    Optional<String> publicReadUrl = Optional.ofNullable(a.getArg("blockstore-url", null));
-                    boolean directWrites = a.getBoolean("direct-s3-writes", false);
-                    boolean publicReads = a.getBoolean("public-s3-reads", false);
-                    boolean authedReads = a.getBoolean("authed-s3-reads", false);
-                    BlockStoreProperties props = new BlockStoreProperties(directWrites, publicReads, authedReads, publicReadUrl);
-                    return new S3BlockStorage(S3Config.build(a), Cid.decode(a.getArg("ipfs.id")),
-                            props, transactions, ipfs);
-                } else {
-                    return new FileContentAddressedStorage(blockstorePath(a), transactions);
-                }
-            }
-    }
-
-    private static SqlSupplier getSqlCommands(Args a) {
-        boolean usePostgres = a.getBoolean("use-postgres", false);
-        return usePostgres ? new PostgresCommands() : new SqliteCommands();
-    }
-
-    private static QuotaAdmin buildSpaceQuotas(Args a, DeletableContentAddressedStorage localDht, CoreNode core) {
-        long defaultQuota = a.getLong("default-quota");
-        long maxUsers = a.getLong("max-users");
-        Logging.LOG().info("Using default user space quota of " + defaultQuota);
-        Path quotaFilePath = a.fromPeergosDir("quotas_file","quotas.txt");
-
-        boolean paidStorage = a.hasArg("quota-admin-address");
-        if (! paidStorage) {
-            SqlSupplier sqlCommands = getSqlCommands(a);
-            Supplier<Connection> spaceDb = getDBConnector(a, "space-requests-sql-file");
-            JdbcSpaceRequests spaceRequests = JdbcSpaceRequests.build(spaceDb, sqlCommands);
-            return new UserQuotas(quotaFilePath, defaultQuota, maxUsers, spaceRequests, localDht, core);
-        } else {
-            JavaPoster poster = new JavaPoster(AddressUtil.getAddress(new MultiAddress(a.getArg("quota-admin-address"))), true);
-            return new HttpQuotaAdmin(poster);
-        }
-    }
-
-    private static TransactionStore buildTransactionStore(Args a) {
-        Supplier<Connection> transactionsDb = getDBConnector(a, "transactions-sql-file");
-        return JdbcTransactionStore.build(transactionsDb, getSqlCommands(a));
-    }
-
-    private static Multihash getPkiServerId(Args a) {
-        return Cid.decode(a.getArg("pki-node-id"));
-    }
-
-    private static CoreNode buildCorenode(Args a,
-                                          DeletableContentAddressedStorage localStorage,
-                                          TransactionStore transactions,
-                                          JdbcIpnsAndSocial rawPointers,
-                                          MutablePointers localPointers,
-                                          MutablePointersProxy proxingMutable) {
-        Multihash nodeId = localStorage.id().join();
-        PublicKeyHash peergosId = PublicKeyHash.fromString(a.getArg("peergos.identity.hash"));
-        Multihash pkiServerId = getPkiServerId(a);
-        // build a mirroring proxying corenode, unless we are the pki node
-        boolean isPkiNode = nodeId.equals(pkiServerId);
-        return isPkiNode ?
-                buildPkiCorenode(new PinningMutablePointers(localPointers, localStorage), localStorage, a) :
-                new MirrorCoreNode(new HTTPCoreNode(buildP2pHttpProxy(a), pkiServerId), proxingMutable, localStorage,
-                        rawPointers, transactions, peergosId,
-                        a.fromPeergosDir("pki-mirror-state-path","pki-state.cbor"));
-    }
-
-    private static JdbcIpnsAndSocial buildRawPointers(Args a) {
-        return new JdbcIpnsAndSocial(getDBConnector(a, "mutable-pointers-file"), getSqlCommands(a));
-    }
-
     public static UserService startPeergos(Args a) {
         try {
             Crypto crypto = initCrypto();
@@ -826,7 +534,7 @@ public class Main {
         System.out.println("\n\nPeergos mounted at " + path + "\n\n");
         try {
             NetworkAccess network = NetworkAccess.buildJava(webPort).get();
-            Crypto crypto = Main.initCrypto();
+            Crypto crypto = initCrypto();
             UserContext userContext = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
             PeergosFS peergosFS = new PeergosFS(userContext);
             FuseProcess fuseProcess = new FuseProcess(peergosFS, path);
@@ -865,41 +573,6 @@ public class Main {
         return true;
     }
 
-    private static CoreNode buildPkiCorenode(MutablePointers mutable, ContentAddressedStorage dht, Args a) {
-        try {
-            Crypto crypto = initCrypto();
-            PublicKeyHash peergosIdentity = PublicKeyHash.fromString(a.getArg("peergos.identity.hash"));
-
-            String pkiSecretKeyfilePassword = a.getArg("pki.keyfile.password");
-
-            PublicSigningKey pkiPublic =
-                    PublicSigningKey.fromByteArray(
-                            Files.readAllBytes(a.fromPeergosDir("pki.public.key.path")));
-            SecretSigningKey pkiSecretKey = SecretSigningKey.fromCbor(CborObject.fromByteArray(
-                    PasswordProtected.decryptWithPassword(
-                            CborObject.fromByteArray(Files.readAllBytes(a.fromPeergosDir("pki.secret.key.path"))),
-                            pkiSecretKeyfilePassword,
-                            crypto.hasher,
-                            crypto.symmetricProvider,
-                            crypto.random
-                    )));
-            SigningKeyPair pkiKeys = new SigningKeyPair(pkiPublic, pkiSecretKey);
-            PublicKeyHash pkiPublicHash = ContentAddressedStorage.hashKey(pkiKeys.publicSigningKey);
-
-            MaybeMultihash currentPkiRoot = mutable.getPointerTarget(peergosIdentity, pkiPublicHash, dht).get();
-            SigningPrivateKeyAndPublicHash pkiSigner = new SigningPrivateKeyAndPublicHash(pkiPublicHash, pkiSecretKey);
-            if (! currentPkiRoot.isPresent())
-                currentPkiRoot = IpfsTransaction.call(peergosIdentity,
-                        tid -> WriterData.createEmpty(peergosIdentity, pkiSigner, dht, crypto.hasher, tid).join()
-                                .commit(peergosIdentity, pkiSigner, MaybeMultihash.empty(), mutable, dht, crypto.hasher, tid)
-                                .thenApply(version -> version.get(pkiSigner).hash), dht).join();
-
-            return new IpfsCoreNode(pkiSigner, a.getInt("max-daily-signups"), currentPkiRoot, dht, crypto.hasher, mutable, peergosIdentity);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
-    }
-
     public static final Command<Void> MAIN = new Command<>("Main",
             "Run a Peergos command",
             args -> {
@@ -911,22 +584,12 @@ public class Main {
                     PEERGOS,
                     SHELL,
                     FUSE,
-                    SERVER_MESSAGES,
+                    ServerMessages.SERVER_MESSAGES,
                     INSTALL_AND_RUN_IPFS,
                     PKI,
                     PKI_INIT
             )
     );
-
-    /**
-     * Create path to local blockstore directory from Args.
-     *
-     * @param args
-     * @return
-     */
-    private static Path blockstorePath(Args args) {
-        return args.fromPeergosDir("blockstore_dir", "blockstore");
-    }
 
     public static MultiAddress getLocalMultiAddress(int port) {
         return new MultiAddress("/ip4/127.0.0.1/tcp/" + port);
