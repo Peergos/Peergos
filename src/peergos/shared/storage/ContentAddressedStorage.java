@@ -23,7 +23,7 @@ import java.util.stream.*;
 public interface ContentAddressedStorage {
 
     boolean DEBUG_GC = false;
-    int MAX_BLOCK_SIZE  = 2*1024*1024;
+    int MAX_BLOCK_SIZE  = 1024*1024;
 
     default CompletableFuture<BlockStoreProperties> blockStoreProperties() {
         return Futures.of(BlockStoreProperties.empty());
@@ -123,7 +123,7 @@ public interface ContentAddressedStorage {
      * Write a block of data that is just raw bytes, not ipld structured cbor
      * @param owner
      * @param writer
-     * @param signatures
+     * @param signedHashes
      * @param blocks
      * @param tid
      * @param progressCounter
@@ -131,7 +131,7 @@ public interface ContentAddressedStorage {
      */
     CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner,
                                               PublicKeyHash writer,
-                                              List<byte[]> signatures,
+                                              List<byte[]> signedHashes,
                                               List<byte[]> blocks,
                                               TransactionId tid,
                                               ProgressConsumer<Long> progressCounter);
@@ -195,6 +195,15 @@ public interface ContentAddressedStorage {
      * @return The size in bytes, or Optional.empty() if it cannot be found.
      */
     CompletableFuture<Optional<Integer>> getSize(Multihash block);
+
+    default CompletableFuture<Cid> hashToCid(byte[] input, boolean isRaw, Hasher hasher) {
+        return hasher.sha256(input)
+                .thenApply(hash -> buildCid(hash, isRaw));
+    }
+
+    default Cid buildCid(byte[] sha256, boolean isRaw) {
+        return new Cid(Cid.V1, isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor, Multihash.Type.sha2_256, sha256);
+    }
 
     default CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Multihash> hashes,
                                                                         ProgressConsumer<Long> monitor,

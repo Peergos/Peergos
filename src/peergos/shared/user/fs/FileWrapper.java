@@ -1145,6 +1145,65 @@ public class FileWrapper {
         });
     }
 
+    /** Get or create a descendant directory
+     *
+     * @param subPath
+     * @param network
+     * @param isSystemFolder
+     * @param crypto
+     * @return
+     */
+    public CompletableFuture<FileWrapper> getOrMkdirs(Path subPath,
+                                                      NetworkAccess network,
+                                                      boolean isSystemFolder,
+                                                      Crypto crypto) {
+        String finalPath = TrieNode.canonicalise(subPath.toString());
+        List<String> elements = Arrays.asList(finalPath.split("/"));
+        return network.synchronizer.applyComplexComputation(owner(), signingPair(),
+                (state, committer) -> getOrMkdirs(elements, isSystemFolder, network, crypto, state, committer))
+                .thenApply(p -> p.right);
+    }
+
+    private CompletableFuture<Pair<Snapshot, FileWrapper>> getOrMkdirs(List<String> subPath,
+                                                                      boolean isSystemFolder,
+                                                                      NetworkAccess network,
+                                                                      Crypto crypto,
+                                                                      Snapshot version,
+                                                                      Committer committer) {
+        return Futures.reduceAll(subPath, new Pair<>(version, this), (p, name) -> p.right.getOrMkdir(name,
+                Optional.empty(), Optional.empty(), Optional.empty(), isSystemFolder, network, crypto, p.left, committer),
+                (a, b) -> b);
+    }
+
+    private CompletableFuture<Pair<Snapshot, FileWrapper>> getOrMkdir(String newFolderName,
+                                                                      Optional<SymmetricKey> requestedBaseReadKey,
+                                                                      Optional<SymmetricKey> requestedBaseWriteKey,
+                                                                      Optional<byte[]> desiredMapKey,
+                                                                      boolean isSystemFolder,
+                                                                      NetworkAccess network,
+                                                                      Crypto crypto,
+                                                                      Snapshot version,
+                                                                      Committer committer) {
+
+        if (! this.isDirectory()) {
+            return Futures.errored(new IllegalStateException("Cannot mkdir in a file!"));
+        }
+        if (! isLegalName(newFolderName)) {
+            return Futures.errored(new IllegalStateException("Illegal directory name: " + newFolderName));
+        }
+        return getChild(version, newFolderName, crypto.hasher, network).thenCompose(childOpt -> {
+            if (childOpt.isPresent()) {
+                return Futures.of(new Pair<>(version, childOpt.get()));
+            }
+            return pointer.fileAccess.mkdir(version, committer, newFolderName, network, writableFilePointer(), getChildsEntryWriter(),
+                    requestedBaseReadKey, requestedBaseWriteKey, desiredMapKey, isSystemFolder, crypto).thenCompose(x -> {
+                setModified();
+                return getUpdated(x, network).thenCompose(us -> us.getChild(newFolderName, crypto.hasher, network))
+                        .thenApply(child -> new Pair<>(x, child.get()));
+            });
+        });
+    }
+
     /**
      * @param newFilename
      * @param parent
