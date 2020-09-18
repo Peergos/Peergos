@@ -12,6 +12,7 @@ import peergos.shared.user.*;
 
 import java.io.*;
 import java.nio.file.*;
+import java.time.*;
 import java.util.*;
 import java.util.stream.*;
 
@@ -152,20 +153,23 @@ public class ServerMessages extends Builder {
             )
     );
 
-    public static final Command<Boolean> UPTODATE_USERS = new Command<>("uptodate-users",
-            "Show users of this server that have replied to all our messages",
+    public static final Command<Boolean> ACTIVE_USERS = new Command<>("active-users",
+            "Show users of this server that are active",
             a -> {
                 ServerMessageStore store = new ServerMessageStore(getDBConnector(a, "server-messages-sql-file"),
                         getSqlCommands(a), null, null);
                 QuotaAdmin quotas = buildQuotaStore(a);
 
                 List<String> usernames = quotas.getLocalUsernames();
+                LocalDateTime monthAgo = LocalDateTime.now().minusMonths(1);
                 for (String username : usernames) {
                     List<ServerMessage> all = store.getMessages(username);
                     List<ServerConversation> allConvs = ServerConversation.combine(all);
-                    boolean processed = allConvs.stream()
-                            .allMatch(c -> c.lastMessage().type == ServerMessage.Type.FromUser);
-                    if (processed && ! allConvs.isEmpty())
+                    boolean recent = allConvs.stream()
+                            .anyMatch(c -> c.messages.stream().anyMatch(m ->
+                                    m.type == ServerMessage.Type.FromUser ||
+                                            m.getSendTime().isAfter(monthAgo)));
+                    if (recent)
                         System.out.println(username);
                 }
                 return true;
@@ -186,6 +190,6 @@ public class ServerMessages extends Builder {
                     new Command.Arg("log-to-file", "Whether to log to a file", false, "false"),
                     new Command.Arg("log-to-console", "Whether to log to the console", false, "false")
             ),
-            Arrays.asList(SHOW, SEND, NEW, NEW_USERS, UPTODATE_USERS)
+            Arrays.asList(SHOW, SEND, NEW, NEW_USERS, ACTIVE_USERS)
     );
 }
