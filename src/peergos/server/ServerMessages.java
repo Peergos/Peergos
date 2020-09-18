@@ -5,6 +5,7 @@ import peergos.server.messages.*;
 import peergos.server.sql.*;
 import peergos.server.storage.*;
 import peergos.server.storage.admin.*;
+import peergos.server.util.*;
 import peergos.shared.corenode.*;
 import peergos.shared.mutable.*;
 import peergos.shared.user.*;
@@ -89,23 +90,22 @@ public class ServerMessages extends Builder {
             )
     );
 
+    private static QuotaAdmin buildQuotaStore(Args a) {
+        TransactionStore transactions = buildTransactionStore(a);
+        DeletableContentAddressedStorage localStorage = buildLocalStorage(a, transactions);
+        JdbcIpnsAndSocial rawPointers = buildRawPointers(a);
+        MutablePointers localPointers = UserRepository.build(localStorage, rawPointers);
+        MutablePointersProxy proxingMutable = new HttpMutablePointers(buildP2pHttpProxy(a), getPkiServerId(a));
+        CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable);
+        return buildSpaceQuotas(a, localStorage, core);
+    }
+
     public static final Command<Boolean> NEW = new Command<>("new",
             "Show new messages from users of this server",
             a -> {
-                boolean usePostgres = a.getBoolean("use-postgres", false);
-                SqlSupplier sqlCommands = usePostgres ?
-                        new PostgresCommands() :
-                        new SqliteCommands();
                 ServerMessageStore store = new ServerMessageStore(getDBConnector(a, "server-messages-sql-file"),
-                        sqlCommands, null, null);
-
-                TransactionStore transactions = buildTransactionStore(a);
-                DeletableContentAddressedStorage localStorage = buildLocalStorage(a, transactions);
-                JdbcIpnsAndSocial rawPointers = buildRawPointers(a);
-                MutablePointers localPointers = UserRepository.build(localStorage, rawPointers);
-                MutablePointersProxy proxingMutable = new HttpMutablePointers(buildP2pHttpProxy(a), getPkiServerId(a));
-                CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable);
-                QuotaAdmin quotas = buildSpaceQuotas(a, localStorage, core);
+                        getSqlCommands(a), null, null);
+                QuotaAdmin quotas = buildQuotaStore(a);
 
                 List<String> usernames = quotas.getLocalUsernames();
                 for (String username : usernames) {
@@ -131,6 +131,50 @@ public class ServerMessages extends Builder {
             )
     );
 
+    public static final Command<Boolean> NEW_USERS = new Command<>("new-users",
+            "Show new users of this server (that haven't been sent a welcome message)",
+            a -> {
+                ServerMessageStore store = new ServerMessageStore(getDBConnector(a, "server-messages-sql-file"),
+                        getSqlCommands(a), null, null);
+                QuotaAdmin quotas = buildQuotaStore(a);
+
+                List<String> usernames = quotas.getLocalUsernames();
+                for (String username : usernames) {
+                    List<ServerMessage> all = store.getMessages(username);
+                    if (all.stream().filter(m -> m.type == ServerMessage.Type.FromServer).findAny().isEmpty()) {
+                        System.out.println(username);
+                    }
+                }
+                return true;
+            },
+            Arrays.asList(
+                    new Command.Arg("server-messages-sql-file", "The filename for the server messages datastore", true, "server-messages.sql")
+            )
+    );
+
+    public static final Command<Boolean> UPTODATE_USERS = new Command<>("uptodate-users",
+            "Show users of this server that have replied to all our messages",
+            a -> {
+                ServerMessageStore store = new ServerMessageStore(getDBConnector(a, "server-messages-sql-file"),
+                        getSqlCommands(a), null, null);
+                QuotaAdmin quotas = buildQuotaStore(a);
+
+                List<String> usernames = quotas.getLocalUsernames();
+                for (String username : usernames) {
+                    List<ServerMessage> all = store.getMessages(username);
+                    List<ServerConversation> allConvs = ServerConversation.combine(all);
+                    boolean processed = allConvs.stream()
+                            .allMatch(c -> c.lastMessage().type == ServerMessage.Type.FromUser);
+                    if (processed)
+                        System.out.println(username);
+                }
+                return true;
+            },
+            Arrays.asList(
+                    new Command.Arg("server-messages-sql-file", "The filename for the server messages datastore", true, "server-messages.sql")
+            )
+    );
+
     public static final Command<Boolean> SERVER_MESSAGES = new Command<>("server-msg",
             "Send and receive messages to/from users of this server",
             args -> {
@@ -142,6 +186,6 @@ public class ServerMessages extends Builder {
                     new Command.Arg("log-to-file", "Whether to log to a file", false, "false"),
                     new Command.Arg("log-to-console", "Whether to log to the console", false, "false")
             ),
-            Arrays.asList(SHOW, SEND, NEW)
+            Arrays.asList(SHOW, SEND, NEW, NEW_USERS, UPTODATE_USERS)
     );
 }
