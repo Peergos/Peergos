@@ -106,7 +106,7 @@ public class Builder {
     /**
      *
      * @param a
-     * @return This returns the P@P HTTP proxy, which is in the IPFS gateway
+     * @return This returns the P2P HTTP proxy, which is in the IPFS gateway
      */
     public static JavaPoster buildP2pHttpProxy(Args a) {
         URL ipfsGatewayAddress = AddressUtil.getAddress(new MultiAddress(a.getArg("ipfs-gateway-address")));
