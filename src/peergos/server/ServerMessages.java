@@ -167,7 +167,7 @@ public class ServerMessages extends Builder {
                     List<ServerConversation> allConvs = ServerConversation.combine(all);
                     boolean recent = allConvs.stream()
                             .anyMatch(c -> c.messages.stream().anyMatch(m ->
-                                    m.type == ServerMessage.Type.FromUser ||
+                                    m.type == ServerMessage.Type.FromUser &&
                                             m.getSendTime().isAfter(monthAgo)));
                     if (recent)
                         System.out.println(username);
