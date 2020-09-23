@@ -22,7 +22,7 @@ public class IpfsInstaller {
 
     public enum DownloadTarget {
         S3_LINUX_AMD64("https://github.com/peergos/ipfs-releases/blob/master/v0.7.0/linux-amd64/plugins/s3plugin.so?raw=true",
-                Cid.decode("QmbvrArpVpA3wWGdrVRmEKSJV1zfMnMXFUX4gZ9BmdiAYh")),
+                Cid.decode("QmTK3ZoqAehWYbQWRyVJisCu8f8EiajCxNbYeX6LP7jFhC")),
         DARWIN_386("https://github.com/peergos/ipfs-releases/blob/master/v0.7.0/darwin-386/ipfs?raw=true",
                 Cid.decode("QmdCoWQbVHtp3LnZmqiVunTzJWvaAFaPFM3TmMQrXhr1Vp")),
         DARWIN_AMD64("https://github.com/peergos/ipfs-releases/blob/master/v0.7.0/darwin-amd64/ipfs?raw=true",
