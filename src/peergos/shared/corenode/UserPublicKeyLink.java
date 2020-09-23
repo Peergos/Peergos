@@ -4,6 +4,7 @@ import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
@@ -134,7 +135,7 @@ public class UserPublicKeyLink implements Cborable {
             LocalDate expiry = LocalDate.parse(((CborObject.CborString) contents.get(1)).value);
             List<Multihash> storageProviders = ((CborObject.CborList)contents.get(2))
                     .value.stream()
-                    .map(x -> Multihash.decode(((CborObject.CborByteArray)x).value))
+                    .map(x -> Cid.cast(((CborObject.CborByteArray) x).value))
                     .collect(Collectors.toList());
             byte[] signedContents = ((CborObject.CborByteArray) contents.get(3)).value;
             return new Claim(username, expiry, storageProviders, signedContents);
