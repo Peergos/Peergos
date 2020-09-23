@@ -168,7 +168,7 @@ public class UserPublicKeyLink implements Cborable {
             int nStorageProviders = din.readInt();
             List<Multihash> storageProviders = new ArrayList<>();
             for (int i=0; i < nStorageProviders; i++) {
-                storageProviders.add(Multihash.decode(Serialize.deserializeByteArray(din, 100)));
+                storageProviders.add(Cid.cast(Serialize.deserializeByteArray(din, 100)));
             }
             return new Claim(username, expiry, storageProviders, signedContents);
         }
