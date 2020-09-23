@@ -106,7 +106,7 @@ public class Protocol {
                     return new byte[]{(byte)(x >>8), (byte)x};
                 case P2P:
                 case IPFS: {
-                    Multihash hash = Cid.decode(addr);
+                    Multihash hash = Cid.decodePeerId(addr);
                     ByteArrayOutputStream bout = new ByteArrayOutputStream();
                     byte[] hashBytes = hash.toBytes();
                     byte[] varint = new byte[(32 - Integer.numberOfLeadingZeros(hashBytes.length) + 6) / 7];

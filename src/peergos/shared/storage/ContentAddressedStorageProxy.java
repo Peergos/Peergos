@@ -75,7 +75,7 @@ public interface ContentAddressedStorageProxy {
         }
 
         private static String getProxyUrlPrefix(Multihash targetId) {
-            return "/p2p/" + targetId.toBase58() + P2P_PROXY_PROTOCOL + "/";
+            return "/p2p/" + targetId.toString() + P2P_PROXY_PROTOCOL + "/";
         }
 
         @Override

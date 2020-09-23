@@ -40,12 +40,7 @@ public class IpfsDHT implements ContentAddressedStorage {
         try {
             Map id = ipfs.id();
             String peerId = (String)id.get("ID");
-            if (peerId.startsWith("1")) {
-                // convert base58 encoded identity multihash to cidV1
-                Multihash hash = Multihash.decode(Base58.decode(peerId));
-                res.complete(new Cid(1, Cid.Codec.LibP2pKey, hash.type, hash.getHash()));
-            } else
-                res.complete(Cid.decode(peerId));
+            res.complete(Cid.decodePeerId(peerId));
         } catch (Exception e) {
             res.completeExceptionally(e);
         }

@@ -141,6 +141,15 @@ public class Cid extends Multihash {
         return cast(data);
     }
 
+    public static Cid decodePeerId(String peerId) {
+        if (peerId.startsWith("1")) {
+            // convert base58 encoded identity multihash to cidV1
+            Multihash hash = Multihash.decode(Base58.decode(peerId));
+            return new Cid(1, Cid.Codec.LibP2pKey, hash.type, hash.getHash());
+        }
+        return Cid.decode(peerId);
+    }
+
     public static Cid cast(byte[] data) {
         if (data.length == 34 && data[0] == 18 && data[1] == 32)
             return buildV0(Multihash.decode(data));

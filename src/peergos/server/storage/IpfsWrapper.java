@@ -148,12 +148,7 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
 
     public synchronized Multihash nodeId() {
         String peerId = runIpfsCmdAndGetOutput("config", "Identity.PeerID");
-        if (peerId.startsWith("1")) {
-            // convert base58 encoded identity multihash to cidV1
-            Multihash hash = Multihash.decode(Base58.decode(peerId));
-            return new Cid(1, Cid.Codec.LibP2pKey, hash.type, hash.getHash());
-        }
-        return Cid.decode(peerId);
+        return Cid.decodePeerId(peerId);
     }
 
     public synchronized void setConfig(String key, String val) {
