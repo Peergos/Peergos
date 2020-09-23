@@ -20,6 +20,7 @@ public class Cid extends Multihash {
         Raw(0x55),
         DagProtobuf(0x70),
         DagCbor(0x71),
+        LibP2pKey(0x72),
         EthereumBlock(0x90),
         EthereumTx(0x91),
         BitcoinBlock(0xb0),
