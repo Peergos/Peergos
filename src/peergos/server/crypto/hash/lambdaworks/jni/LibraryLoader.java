@@ -1,6 +1,6 @@
 // Copyright (C) 2011 - Will Glozer.  All rights reserved.
 
-package peergos.shared.scrypt.com.lambdaworks.jni;
+package peergos.server.crypto.hash.lambdaworks.jni;
 
 /**
  * A {@code LibraryLoader} attempts to load the appropriate native library

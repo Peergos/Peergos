@@ -110,10 +110,6 @@ public class UserContext {
         return transactions;
     }
 
-    public boolean isJavascript() {
-        return this.network.isJavascript();
-    }
-
     @JsMethod
     public CompletableFuture<Boolean> unShareReadAccess(FileWrapper file, String[] readers) {
         Set<String> readersToUnShare = new HashSet<>(Arrays.asList(readers));

@@ -1,12 +1,12 @@
 // Copyright (C) 2011 - Will Glozer.  All rights reserved.
 
-package peergos.shared.scrypt.com.lambdaworks.crypto;
+package peergos.server.crypto.hash.lambdaworks.crypto;
 
 import java.io.UnsupportedEncodingException;
 import java.security.GeneralSecurityException;
 import java.security.SecureRandom;
 
-import static peergos.shared.scrypt.com.lambdaworks.codec.Base64.*;
+import static peergos.server.crypto.hash.lambdaworks.codec.Base64.*;
 
 /**
  * Simple {@link SCrypt} interface for hashing passwords using the

@@ -42,7 +42,8 @@ public class MultiUserTests {
         WriteSynchronizer synchronizer = new WriteSynchronizer(service.mutable, service.storage, crypto.hasher);
         MutableTree mutableTree = new MutableTreeImpl(service.mutable, service.storage, crypto.hasher, synchronizer);
         this.network = new NetworkAccess(service.coreNode, service.social, service.storage,
-                service.mutable, mutableTree, synchronizer, service.controller, service.usage, service.serverMessages, Arrays.asList("peergos"), false);
+                service.mutable, mutableTree, synchronizer, service.controller, service.usage, service.serverMessages,
+                crypto.hasher, Arrays.asList("peergos"), false);
     }
 
     @BeforeClass

@@ -17,7 +17,7 @@ public class Uploader {
 
     public static void main(String[] args) throws Exception {
         Crypto crypto = Main.initCrypto();
-        NetworkAccess network = NetworkAccess.buildJava(new URL("https://demo.peergos.net"), true).get();
+        NetworkAccess network = Builder.buildJava(new URL("https://demo.peergos.net"), true).get();
         String username = args[0];
         String fromPath = args[1];
         String toPath = args[2];

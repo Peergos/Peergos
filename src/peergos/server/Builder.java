@@ -3,6 +3,7 @@ package peergos.server;
 import com.zaxxer.hikari.*;
 import peergos.server.corenode.*;
 import peergos.server.crypto.*;
+import peergos.server.crypto.hash.*;
 import peergos.server.mutable.*;
 import peergos.server.space.*;
 import peergos.server.sql.*;
@@ -17,6 +18,7 @@ import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.password.*;
+import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multiaddr.*;
@@ -29,9 +31,23 @@ import java.net.*;
 import java.nio.file.*;
 import java.sql.*;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.function.*;
 
 public class Builder {
+
+    public static Crypto initJava() {
+        SafeRandom.Java random = new SafeRandom.Java();
+        Salsa20Poly1305.Java symmetricProvider = new Salsa20Poly1305.Java();
+        Ed25519.Java signer = new Ed25519.Java();
+        Curve25519 boxer = new Curve25519.Java();
+        return new Crypto(random, new ScryptJava(), symmetricProvider, signer, boxer);
+    }
+
+    public static Crypto initNative(Salsa20Poly1305 symmetric, Ed25519 signer, Curve25519 boxer) {
+        SafeRandom.Java random = new SafeRandom.Java();
+        return new Crypto(random, new ScryptJava(), symmetric, signer, boxer);
+    }
 
     public static Crypto initCrypto() {
         try {
@@ -39,9 +55,9 @@ public class Builder {
             Salsa20Poly1305 symmetricProvider = new JniTweetNacl.Symmetric(nativeNacl);
             Ed25519 signer = new JniTweetNacl.Signer(nativeNacl);
             Curve25519 boxer = new Curve25519.Java();
-            return Crypto.initNative(symmetricProvider, signer, boxer);
+            return initNative(symmetricProvider, signer, boxer);
         } catch (Throwable t) {
-            return Crypto.initJava();
+            return initJava();
         }
     }
 
@@ -243,4 +259,30 @@ public class Builder {
     }
 
 
+    public static CompletableFuture<NetworkAccess> buildJava(URL apiAddress, URL proxyAddress, String pkiNodeId) {
+        Multihash pkiServerNodeId = Cid.decode(pkiNodeId);
+        JavaPoster p2pPoster = new JavaPoster(proxyAddress, false);
+        JavaPoster apiPoster = new JavaPoster(apiAddress, false);
+        return NetworkAccess.build(apiPoster, p2pPoster, pkiServerNodeId, NetworkAccess.buildLocalDht(apiPoster, true), new ScryptJava(), false);
+    }
+
+    public static CompletableFuture<NetworkAccess> buildJava(URL target, boolean isPublicServer) {
+        return buildNonCachingJava(target, isPublicServer)
+                .thenApply(e -> e.withMutablePointerCache(7_000));
+    }
+
+    public static CompletableFuture<NetworkAccess> buildNonCachingJava(URL target, boolean isPublicServer) {
+        JavaPoster poster = new JavaPoster(target, isPublicServer);
+        Multihash pkiNodeId = null; // This is not required when talking to a Peergos server
+        ContentAddressedStorage localDht = NetworkAccess.buildLocalDht(poster, true);
+        return NetworkAccess.build(poster, poster, pkiNodeId, localDht, new ScryptJava(), false);
+    }
+
+    public static CompletableFuture<NetworkAccess> buildJava(int targetPort) {
+        try {
+            return buildJava(new URL("http://localhost:" + targetPort + "/"), false);
+        } catch (MalformedURLException e) {
+            throw new RuntimeException(e);
+        }
+    }
 }

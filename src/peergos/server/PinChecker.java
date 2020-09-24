@@ -23,7 +23,7 @@ public class PinChecker {
         IPFS ipfs = new IPFS("localhost", 5001);
         Set<Multihash> allPins = ipfs.pin.ls(IPFS.PinType.recursive).keySet();
 
-        NetworkAccess network = NetworkAccess.buildJava(new URL("http://localhost:8000"), false).get();
+        NetworkAccess network = Builder.buildJava(new URL("http://localhost:8000"), false).get();
         List<String> usernames = network.coreNode.getUsernames("").join();
         Multihash id = network.dhtClient.id().join();
         for (String username : usernames) {

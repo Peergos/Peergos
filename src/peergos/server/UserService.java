@@ -77,7 +77,7 @@ public class UserService {
     }
 
     public final ContentAddressedStorage storage;
-    private final Crypto crypto;
+    public final Crypto crypto;
     public final CoreNode coreNode;
     public final SocialNetwork social;
     public final MutablePointers mutable;

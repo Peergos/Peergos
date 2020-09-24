@@ -1,24 +1,17 @@
 package peergos.server;
 
 import peergos.shared.*;
-import peergos.shared.crypto.*;
-import peergos.shared.crypto.random.*;
 import peergos.shared.user.*;
-import peergos.shared.user.fs.*;
 
 import java.io.*;
 import java.net.*;
-import java.nio.file.*;
 import java.time.*;
-import java.util.*;
-import java.util.concurrent.*;
-import java.util.function.*;
 
 public class RenewUsernameClaim {
 
     public static void main(String[] args) throws Exception {
         Crypto crypto = Main.initCrypto();
-        NetworkAccess network = NetworkAccess.buildJava(new URL("https://demo.peergos.net"), true).get();
+        NetworkAccess network = Builder.buildJava(new URL("https://demo.peergos.net"), true).get();
         String username = args[0];
         Console console = System.console();
         String password = new String(console.readPassword("Enter password for " + username + ":"));

@@ -37,7 +37,7 @@ public class SocialBenchmark {
     private static Pair<UserService, NetworkAccess> buildHttpNetworkAccess(boolean useIpfs, Random r) throws Exception {
         Args args = UserTests.buildArgs().with("useIPFS", "" + useIpfs);
         UserService service = Main.PKI_INIT.main(args);
-        return new Pair<>(service, NetworkAccess.buildJava(new URL("http://localhost:" + args.getInt("port")), false).get());
+        return new Pair<>(service, Builder.buildJava(new URL("http://localhost:" + args.getInt("port")), false).get());
     }
 
     @Parameterized.Parameters()

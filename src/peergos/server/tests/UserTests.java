@@ -3,6 +3,7 @@ import java.time.*;
 import java.util.concurrent.atomic.*;
 import java.util.logging.*;
 
+import peergos.server.crypto.hash.*;
 import peergos.server.util.*;
 
 import org.junit.*;

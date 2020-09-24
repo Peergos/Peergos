@@ -1,6 +1,7 @@
 package peergos.server.tests;
 
 import org.junit.*;
+import peergos.server.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
@@ -14,7 +15,7 @@ import java.util.concurrent.*;
 
 public class FragmentedPaddedCipherTextTests {
 
-    private static final Crypto crypto = Crypto.initJava();
+    private static final Crypto crypto = Builder.initJava();
 
     @Test
     public void legacyFormatWithinlinedIdentityMultihash() {

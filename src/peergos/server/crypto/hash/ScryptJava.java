@@ -1,4 +1,4 @@
-package peergos.shared.crypto.hash;
+package peergos.server.crypto.hash;
 import java.util.*;
 import java.util.logging.*;
 
@@ -6,8 +6,9 @@ import java.security.*;
 import java.util.concurrent.CompletableFuture;
 
 import peergos.shared.crypto.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
-import peergos.shared.scrypt.com.lambdaworks.crypto.SCrypt;
+import peergos.server.crypto.hash.lambdaworks.crypto.SCrypt;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 

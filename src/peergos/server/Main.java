@@ -1,8 +1,6 @@
 package peergos.server;
 
-import com.zaxxer.hikari.*;
 import peergos.server.cli.CLI;
-import peergos.server.crypto.*;
 import peergos.server.messages.*;
 import peergos.server.space.*;
 import peergos.server.sql.*;
@@ -17,10 +15,8 @@ import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
-import peergos.shared.crypto.asymmetric.curve25519.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.password.*;
-import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.multiaddr.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
@@ -202,7 +198,7 @@ public class Main extends Builder {
                             Files.readAllBytes(args.fromPeergosDir("pki.public.key.path")));
             PublicKeyHash pkiPublicHash = ContentAddressedStorage.hashKey(pkiPublic);
             int webPort = args.getInt("port");
-            NetworkAccess network = NetworkAccess.buildJava(new URL("http://localhost:" + webPort), false).get();
+            NetworkAccess network = Builder.buildJava(new URL("http://localhost:" + webPort), false).get();
             String pkiFilePassword = args.getArg("pki.keyfile.password");
             SecretSigningKey pkiSecret =
                     SecretSigningKey.fromCbor(CborObject.fromByteArray(PasswordProtected.decryptWithPassword(
@@ -474,7 +470,7 @@ public class Main extends Builder {
 
             if (a.hasArg("mirror.node.id")) {
                 Multihash nodeToMirrorId = Cid.decode(a.getArg("mirror.node.id"));
-                NetworkAccess localApi = NetworkAccess.buildJava(webPort).join();
+                NetworkAccess localApi = Builder.buildJava(webPort).join();
                 new Thread(() -> {
                     while (true) {
                         try {
@@ -492,7 +488,7 @@ public class Main extends Builder {
                 }).start();
             }
             if (a.hasArg("mirror.username")) {
-                NetworkAccess localApi = NetworkAccess.buildJava(webPort).join();
+                NetworkAccess localApi = Builder.buildJava(webPort).join();
                 new Thread(() -> {
                     while (true) {
                         try {
@@ -533,7 +529,7 @@ public class Main extends Builder {
 
         System.out.println("\n\nPeergos mounted at " + path + "\n\n");
         try {
-            NetworkAccess network = NetworkAccess.buildJava(webPort).get();
+            NetworkAccess network = Builder.buildJava(webPort).get();
             Crypto crypto = initCrypto();
             UserContext userContext = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
             PeergosFS peergosFS = new PeergosFS(userContext);

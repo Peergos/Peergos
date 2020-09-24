@@ -33,7 +33,7 @@ public class RamUserTests extends UserTests {
         ServerMessager.HTTP serverMessager = new ServerMessager.HTTP(new JavaPoster(new URI("http://localhost:" + args.getArg("port")).toURL(), false));
         NetworkAccess network = new NetworkAccess(service.coreNode, service.social, service.storage,
                 service.mutable, mutableTree, synchronizer, service.controller, service.usage,
-                serverMessager,
+                serverMessager, service.crypto.hasher,
                 Arrays.asList("peergos"), false);
         return Arrays.asList(new Object[][] {
                 {network, service}
