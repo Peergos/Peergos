@@ -28,7 +28,7 @@ public class Crypto {
         this.boxer = boxer;
     }
 
-    private static synchronized Crypto init(Supplier<Crypto> instanceCreator) {
+    public static synchronized Crypto init(Supplier<Crypto> instanceCreator) {
         if (INSTANCE != null)
             return INSTANCE;
         Crypto instance = instanceCreator.get();
