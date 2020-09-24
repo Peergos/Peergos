@@ -1,17 +1,15 @@
 package peergos.shared.crypto.asymmetric.curve25519;
 
 import peergos.shared.cbor.*;
-import peergos.shared.crypto.TweetNaCl;
 import peergos.shared.crypto.asymmetric.PublicBoxingKey;
 import peergos.shared.crypto.asymmetric.SecretBoxingKey;
 import peergos.shared.crypto.random.*;
 import peergos.shared.util.ArrayOps;
 
-import java.io.DataOutput;
-import java.io.IOException;
 import java.util.*;
 
 public class Curve25519PublicKey implements PublicBoxingKey {
+    public static final int BOX_NONCE_BYTES = 24;
     private final byte[] publicKey;
     private final Curve25519 implementation;
     private final SafeRandom random;
@@ -53,7 +51,7 @@ public class Curve25519PublicKey implements PublicBoxingKey {
     }
 
     public byte[] createNonce() {
-        byte[] nonce = new byte[TweetNaCl.BOX_NONCE_BYTES];
+        byte[] nonce = new byte[BOX_NONCE_BYTES];
         random.randombytes(nonce, 0, nonce.length);
         return nonce;
     }

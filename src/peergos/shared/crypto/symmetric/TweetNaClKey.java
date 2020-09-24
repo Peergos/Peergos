@@ -1,11 +1,9 @@
 package peergos.shared.crypto.symmetric;
 
 import peergos.shared.cbor.*;
-import peergos.shared.crypto.*;
 import peergos.shared.crypto.random.*;
 
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
 
 public class TweetNaClKey implements SymmetricKey
 {
@@ -19,7 +17,7 @@ public class TweetNaClKey implements SymmetricKey
 
     public TweetNaClKey(byte[] secretKey, boolean isDirty, Salsa20Poly1305 implementation, SafeRandom random)
     {
-        if (secretKey.length != TweetNaCl.SECRETBOX_KEY_BYTES)
+        if (secretKey.length != KEY_BYTES)
             throw new IllegalStateException("Incorrect key size! ("+secretKey.length+")");
         this.secretKey = secretKey;
         this.isDirty = isDirty;

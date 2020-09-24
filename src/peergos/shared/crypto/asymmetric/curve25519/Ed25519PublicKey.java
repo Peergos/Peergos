@@ -3,10 +3,10 @@ package peergos.shared.crypto.asymmetric.curve25519;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.PublicSigningKey;
 
-import java.io.*;
 import java.util.*;
 
 public class Ed25519PublicKey implements PublicSigningKey {
+    public static final int SIGNATURE_SIZE_BYTES = 64;
 
     private final byte[] publicKey;
     private final Ed25519 implementation;

@@ -1,9 +1,9 @@
 package peergos.server.corenode;
 
+import peergos.server.crypto.*;
 import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
-import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
@@ -13,7 +13,6 @@ import peergos.shared.storage.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
-import java.sql.*;
 import java.util.*;
 import java.util.concurrent.*;
 

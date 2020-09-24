@@ -845,11 +845,11 @@ public class MultiUserTests {
             CborObject.CborMap fromParent = propsCipherText.decrypt(priorMetaKey, x -> (CborObject.CborMap)x);
             FileProperties props = FileProperties.fromCbor(fromParent.get("s"));
             throw new IllegalStateException("We shouldn't be able to decrypt this after a rename! new name = " + props.name);
-        } catch (TweetNaCl.InvalidCipherTextException e) {}
+        } catch (InvalidCipherTextException e) {}
         try {
             FileProperties freshProperties = fileAccess.getProperties(priorPointer.rBaseKey);
             throw new IllegalStateException("We shouldn't be able to decrypt this after a rename!");
-        } catch (TweetNaCl.InvalidCipherTextException e) {}
+        } catch (InvalidCipherTextException e) {}
 
         Assert.assertTrue("target can't read through original path", ! unsharedView.isPresent());
         Assert.assertTrue("target can't read through new path", ! unsharedView2.isPresent());

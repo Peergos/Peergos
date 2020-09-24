@@ -7,7 +7,6 @@ import peergos.shared.util.*;
 import java.io.*;
 import java.nio.file.*;
 import java.util.*;
-import java.util.concurrent.*;
 
 public class JniTweetNacl {
 
@@ -114,7 +113,7 @@ public class JniTweetNacl {
             System.arraycopy(cipher, 0, expandedCipher, TweetNaCl.SECRETBOX_OVERHEAD_BYTES, cipher.length);
             int res = impl.crypto_secretbox_open(message, expandedCipher, expandedCipher.length, nonce, key);
             if (res != 0)
-                throw new TweetNaCl.InvalidCipherTextException();
+                throw new InvalidCipherTextException();
             return Arrays.copyOfRange(message, 32, message.length);
         }
 

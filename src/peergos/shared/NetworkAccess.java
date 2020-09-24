@@ -18,7 +18,6 @@ import peergos.shared.user.fs.*;
 import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.*;
 
-import java.net.*;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
@@ -357,7 +356,7 @@ public class NetworkAccess {
                                     cap.wBaseKey.map(wBase -> fa.getSigner(cap.rBaseKey, wBase, entryWriter)), ownerName, version)));
                         return getFileFromLink(cap.owner, rc, entryWriter, ownerName, this, version)
                                 .thenApply(f -> Optional.of(f));
-                    } catch (TweetNaCl.InvalidCipherTextException e) {
+                    } catch (InvalidCipherTextException e) {
                         LOG.info("Couldn't decrypt file from friend: " + ownerName);
                         return Futures.of(Optional.empty());
                     }

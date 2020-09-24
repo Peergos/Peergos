@@ -1,13 +1,9 @@
 package peergos.shared.crypto.asymmetric.curve25519;
 
 import peergos.shared.cbor.*;
-import peergos.shared.crypto.TweetNaCl;
 import peergos.shared.crypto.asymmetric.PublicBoxingKey;
 import peergos.shared.crypto.asymmetric.SecretBoxingKey;
 
-import java.io.ByteArrayOutputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
 import java.util.*;
 
 public class Curve25519SecretKey implements SecretBoxingKey {
@@ -45,8 +41,8 @@ public class Curve25519SecretKey implements SecretBoxingKey {
     }
 
     public byte[] decryptMessage(byte[] cipher, PublicBoxingKey from) {
-        byte[] nonce = Arrays.copyOfRange(cipher, cipher.length - TweetNaCl.BOX_NONCE_BYTES, cipher.length);
-        cipher = Arrays.copyOfRange(cipher, 0, cipher.length - TweetNaCl.BOX_NONCE_BYTES);
+        byte[] nonce = Arrays.copyOfRange(cipher, cipher.length - Curve25519PublicKey.BOX_NONCE_BYTES, cipher.length);
+        cipher = Arrays.copyOfRange(cipher, 0, cipher.length - Curve25519PublicKey.BOX_NONCE_BYTES);
         return implementation.crypto_box_open(cipher, nonce, from.getPublicBoxingKey(), secretKey);
     }
 

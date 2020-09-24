@@ -3,7 +3,10 @@ package peergos.server;
 import com.zaxxer.hikari.*;
 import peergos.server.corenode.*;
 import peergos.server.crypto.*;
+import peergos.server.crypto.asymmetric.curve25519.*;
 import peergos.server.crypto.hash.*;
+import peergos.server.crypto.random.*;
+import peergos.server.crypto.symmetric.*;
 import peergos.server.mutable.*;
 import peergos.server.space.*;
 import peergos.server.sql.*;
@@ -18,7 +21,6 @@ import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.password.*;
-import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multiaddr.*;
@@ -37,15 +39,15 @@ import java.util.function.*;
 public class Builder {
 
     public static Crypto initJava() {
-        SafeRandom.Java random = new SafeRandom.Java();
-        Salsa20Poly1305.Java symmetricProvider = new Salsa20Poly1305.Java();
-        Ed25519.Java signer = new Ed25519.Java();
-        Curve25519 boxer = new Curve25519.Java();
+        SafeRandomJava random = new SafeRandomJava();
+        Salsa20Poly1305Java symmetricProvider = new Salsa20Poly1305Java();
+        Ed25519Java signer = new Ed25519Java();
+        Curve25519 boxer = new Curve25519Java();
         return new Crypto(random, new ScryptJava(), symmetricProvider, signer, boxer);
     }
 
     public static Crypto initNative(Salsa20Poly1305 symmetric, Ed25519 signer, Curve25519 boxer) {
-        SafeRandom.Java random = new SafeRandom.Java();
+        SafeRandomJava random = new SafeRandomJava();
         return new Crypto(random, new ScryptJava(), symmetric, signer, boxer);
     }
 
@@ -54,7 +56,7 @@ public class Builder {
             JniTweetNacl nativeNacl = JniTweetNacl.build();
             Salsa20Poly1305 symmetricProvider = new JniTweetNacl.Symmetric(nativeNacl);
             Ed25519 signer = new JniTweetNacl.Signer(nativeNacl);
-            Curve25519 boxer = new Curve25519.Java();
+            Curve25519 boxer = new Curve25519Java();
             return initNative(symmetricProvider, signer, boxer);
         } catch (Throwable t) {
             return initJava();

@@ -25,12 +25,12 @@ public class WriterDataTests {
         ContentAddressedStorage dht = new RAMStorage();
         MutablePointers mutable = UserRepository.build(dht, new JdbcIpnsAndSocial(Main.buildEphemeralSqlite(), new SqliteCommands()));
 
-        SigningKeyPair pairA = SigningKeyPair.insecureRandom();
+        SigningKeyPair pairA = SigningKeyPair.random(crypto.random, crypto.signer);
         PublicKeyHash pubA = ContentAddressedStorage.hashKey(pairA.publicSigningKey);
         TransactionId test = dht.startTransaction(pubA).join();
         SigningPrivateKeyAndPublicHash signerA = new SigningPrivateKeyAndPublicHash(pubA, pairA.secretSigningKey);
 
-        SigningKeyPair pairB = SigningKeyPair.insecureRandom();
+        SigningKeyPair pairB = SigningKeyPair.random(crypto.random, crypto.signer);
         PublicKeyHash pubB = ContentAddressedStorage.hashKey(pairB.publicSigningKey);
         SigningPrivateKeyAndPublicHash signerB = new SigningPrivateKeyAndPublicHash(pubB, pairB.secretSigningKey);
 

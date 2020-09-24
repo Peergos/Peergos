@@ -1,7 +1,6 @@
 package peergos.shared.crypto.password;
 
 import peergos.shared.cbor.*;
-import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
@@ -31,7 +30,7 @@ public class PasswordProtected {
                                                Salsa20Poly1305 provider,
                                                SafeRandom random) {
         List<Cborable> elements = new ArrayList<>();
-        byte[] saltBytes = random.randomBytes(TweetNaCl.SECRETBOX_KEY_BYTES);
+        byte[] saltBytes = random.randomBytes(32);
         String salt = ArrayOps.bytesToHex(saltBytes);
 
         try {
