@@ -29,7 +29,7 @@
     </fileset>
   </path>
 
-  <!-- Arguments to gwtc and devmode targets -->
+  <!-- Arguments to gwtc and devmode targets, set style to Obfuscated for 3X smaller output-->
   <property name="gwt.args" value="-generateJsInteropExports -style Pretty -strict" />
 
   <!-- Configure path to GWT SDK -->
