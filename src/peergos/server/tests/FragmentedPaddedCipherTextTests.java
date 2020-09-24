@@ -11,11 +11,10 @@ import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.*;
 
 import java.util.*;
-import java.util.concurrent.*;
 
 public class FragmentedPaddedCipherTextTests {
 
-    private static final Crypto crypto = Builder.initJava();
+    private static final Crypto crypto = Builder.initJavaCrypto();
 
     @Test
     public void legacyFormatWithinlinedIdentityMultihash() {

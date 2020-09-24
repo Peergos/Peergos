@@ -33,7 +33,7 @@ public class RestartTests {
     private static Process server;
 
     public RestartTests() throws Exception {
-        this.network = Builder.buildJava(new URL("http://localhost:" + args.getInt("port")), false).get();
+        this.network = Builder.buildJavaNetworkAccess(new URL("http://localhost:" + args.getInt("port")), false).get();
     }
 
     @BeforeClass
@@ -53,7 +53,7 @@ public class RestartTests {
     }
 
     private static void restart() throws Exception {
-        NetworkAccess network = Builder.buildJava(new URL("http://localhost:" + args.getInt("port")), false)
+        NetworkAccess network = Builder.buildJavaNetworkAccess(new URL("http://localhost:" + args.getInt("port")), false)
                 .join();
         Multihash pkiNodeId = network.dhtClient.id().join();
         PublicKeyHash peergosId = network.coreNode.getPublicKeyHash("peergos").join().get();
@@ -70,7 +70,7 @@ public class RestartTests {
     private static void waitUntilReady() {
         for (int i=0; i < 30; i++) {
             try {
-                Builder.buildJava(new URL("http://localhost:" + args.getInt("port")), false).get();
+                Builder.buildJavaNetworkAccess(new URL("http://localhost:" + args.getInt("port")), false).get();
                 return;
             } catch (Exception e) {
                 try {

@@ -38,7 +38,7 @@ import java.util.function.*;
 
 public class Builder {
 
-    public static Crypto initJava() {
+    public static Crypto initJavaCrypto() {
         SafeRandomJava random = new SafeRandomJava();
         Salsa20Poly1305Java symmetricProvider = new Salsa20Poly1305Java();
         Ed25519Java signer = new Ed25519Java();
@@ -46,7 +46,7 @@ public class Builder {
         return Crypto.init(() -> new Crypto(random, new ScryptJava(), symmetricProvider, signer, boxer));
     }
 
-    public static Crypto initNative(Salsa20Poly1305 symmetric, Ed25519 signer, Curve25519 boxer) {
+    public static Crypto initNativeCrypto(Salsa20Poly1305 symmetric, Ed25519 signer, Curve25519 boxer) {
         SafeRandomJava random = new SafeRandomJava();
         return Crypto.init(() -> new Crypto(random, new ScryptJava(), symmetric, signer, boxer));
     }
@@ -57,9 +57,9 @@ public class Builder {
             Salsa20Poly1305 symmetricProvider = new JniTweetNacl.Symmetric(nativeNacl);
             Ed25519 signer = new JniTweetNacl.Signer(nativeNacl);
             Curve25519 boxer = new Curve25519Java();
-            return initNative(symmetricProvider, signer, boxer);
+            return initNativeCrypto(symmetricProvider, signer, boxer);
         } catch (Throwable t) {
-            return initJava();
+            return initJavaCrypto();
         }
     }
 
@@ -261,28 +261,28 @@ public class Builder {
     }
 
 
-    public static CompletableFuture<NetworkAccess> buildJava(URL apiAddress, URL proxyAddress, String pkiNodeId) {
+    public static CompletableFuture<NetworkAccess> buildJavaNetworkAccess(URL apiAddress, URL proxyAddress, String pkiNodeId) {
         Multihash pkiServerNodeId = Cid.decode(pkiNodeId);
         JavaPoster p2pPoster = new JavaPoster(proxyAddress, false);
         JavaPoster apiPoster = new JavaPoster(apiAddress, false);
         return NetworkAccess.build(apiPoster, p2pPoster, pkiServerNodeId, NetworkAccess.buildLocalDht(apiPoster, true), new ScryptJava(), false);
     }
 
-    public static CompletableFuture<NetworkAccess> buildJava(URL target, boolean isPublicServer) {
-        return buildNonCachingJava(target, isPublicServer)
+    public static CompletableFuture<NetworkAccess> buildJavaNetworkAccess(URL target, boolean isPublicServer) {
+        return buildNonCachingJavaNetworkAccess(target, isPublicServer)
                 .thenApply(e -> e.withMutablePointerCache(7_000));
     }
 
-    public static CompletableFuture<NetworkAccess> buildNonCachingJava(URL target, boolean isPublicServer) {
+    public static CompletableFuture<NetworkAccess> buildNonCachingJavaNetworkAccess(URL target, boolean isPublicServer) {
         JavaPoster poster = new JavaPoster(target, isPublicServer);
         Multihash pkiNodeId = null; // This is not required when talking to a Peergos server
         ContentAddressedStorage localDht = NetworkAccess.buildLocalDht(poster, true);
         return NetworkAccess.build(poster, poster, pkiNodeId, localDht, new ScryptJava(), false);
     }
 
-    public static CompletableFuture<NetworkAccess> buildJava(int targetPort) {
+    public static CompletableFuture<NetworkAccess> buildLocalJavaNetworkAccess(int targetPort) {
         try {
-            return buildJava(new URL("http://localhost:" + targetPort + "/"), false);
+            return buildJavaNetworkAccess(new URL("http://localhost:" + targetPort + "/"), false);
         } catch (MalformedURLException e) {
             throw new RuntimeException(e);
         }
