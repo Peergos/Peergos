@@ -361,7 +361,7 @@ public interface ContentAddressedStorage {
         @Override
         public CompletableFuture<Multihash> id() {
             return poster.get(apiPrefix + ID)
-                    .thenApply(raw -> Multihash.fromBase58((String)((Map)JSONParser.parse(new String(raw))).get("ID")));
+                    .thenApply(raw -> Cid.decodePeerId((String)((Map)JSONParser.parse(new String(raw))).get("ID")));
         }
 
         @Override

@@ -86,7 +86,7 @@ public class MultiNodeNetworkTests {
         // start pki node
         UserService pki = Main.PKI_INIT.main(args);
         PublicKeyHash peergosId = pki.coreNode.getPublicKeyHash("peergos").join().get();
-        args = args.setArg("peergos.identity.hash", peergosId.toBase58());
+        args = args.setArg("peergos.identity.hash", peergosId.toString());
         NetworkAccess toPki = buildApi(args);
         Multihash pkiNodeId = toPki.dhtClient.id().get();
         nodes.add(toPki);
@@ -102,7 +102,7 @@ public class MultiNodeNetworkTests {
             Args normalNode = UserTests.buildArgs()
                     .with("useIPFS", "true")
                     .with("port", "" + peergosPort)
-                    .with("pki-node-id", pkiNodeId.toBase58())
+                    .with("pki-node-id", pkiNodeId.toString())
                     .with("peergos.identity.hash", peergosId.toString())
                     .with("ipfs-api-address", "/ip4/127.0.0.1/tcp/" + ipfsApiPort)
                     .with("ipfs-gateway-address", "/ip4/127.0.0.1/tcp/" + ipfsGatewayPort)

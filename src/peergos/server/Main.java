@@ -261,7 +261,7 @@ public class Main extends Builder {
 
                     if (ipfs != null)
                         ipfs.stop();
-                    args = args.setIfAbsent("pki-node-id", pkiIpfsNodeId.toBase58());
+                    args = args.setIfAbsent("pki-node-id", pkiIpfsNodeId.toString());
                     UserService daemon = PEERGOS.main(args);
                     poststrap(args);
                     return daemon;
@@ -318,7 +318,7 @@ public class Main extends Builder {
 
                     if (ipfs != null)
                         ipfs.stop();
-                    args = args.setIfAbsent("pki-node-id", pkiIpfsNodeId.toBase58());
+                    args = args.setIfAbsent("pki-node-id", pkiIpfsNodeId.toString());
                     return PEERGOS.main(args);
                 } catch (Exception e) {
                     throw new RuntimeException(e.getMessage(), e);

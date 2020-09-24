@@ -20,6 +20,7 @@ public class Cid extends Multihash {
         Raw(0x55),
         DagProtobuf(0x70),
         DagCbor(0x71),
+        LibP2pKey(0x72),
         EthereumBlock(0x90),
         EthereumTx(0x91),
         BitcoinBlock(0xb0),
@@ -138,6 +139,15 @@ public class Cid extends Multihash {
 
         byte[] data = Multibase.decode(v);
         return cast(data);
+    }
+
+    public static Cid decodePeerId(String peerId) {
+        if (peerId.startsWith("1")) {
+            // convert base58 encoded identity multihash to cidV1
+            Multihash hash = Multihash.decode(Base58.decode(peerId));
+            return new Cid(1, Cid.Codec.LibP2pKey, hash.type, hash.getHash());
+        }
+        return Cid.decode(peerId);
     }
 
     public static Cid cast(byte[] data) {

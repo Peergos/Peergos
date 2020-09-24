@@ -57,7 +57,7 @@ public class RestartTests {
                 .join();
         Multihash pkiNodeId = network.dhtClient.id().join();
         PublicKeyHash peergosId = network.coreNode.getPublicKeyHash("peergos").join().get();
-        args = args.setArg("pki-node-id", pkiNodeId.toBase58());
+        args = args.setArg("pki-node-id", pkiNodeId.toString());
         args = args.setArg("peergos.identity.hash", peergosId.toString());
         server.destroy();
         server.destroyForcibly();

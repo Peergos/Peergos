@@ -217,7 +217,7 @@ public class Builder {
     }
 
     public static Multihash getPkiServerId(Args a) {
-        return Cid.decode(a.getArg("pki-node-id"));
+        return Cid.decodePeerId(a.getArg("pki-node-id"));
     }
 
     public static CoreNode buildCorenode(Args a,

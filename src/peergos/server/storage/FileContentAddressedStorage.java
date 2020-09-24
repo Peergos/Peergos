@@ -290,7 +290,7 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
                 File file = root.resolve(getFilePath(h)).toFile();
                 if (file.exists() && !file.delete())
                     LOG.warning("Could not delete " + file);
-                File legacy = root.resolve(h.toBase58()).toFile();
+                File legacy = root.resolve(h.toString()).toFile();
                 if (legacy.exists() && ! legacy.delete())
                     LOG.warning("Could not delete " + legacy);
             }

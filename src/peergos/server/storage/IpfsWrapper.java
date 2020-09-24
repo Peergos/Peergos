@@ -3,6 +3,7 @@ package peergos.server.storage;
 import peergos.server.util.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multiaddr.MultiAddress;
+import peergos.shared.io.ipfs.multibase.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
@@ -146,7 +147,8 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
     }
 
     public synchronized Multihash nodeId() {
-        return Cid.decode(runIpfsCmdAndGetOutput("config", "Identity.PeerID"));
+        String peerId = runIpfsCmdAndGetOutput("config", "Identity.PeerID");
+        return Cid.decodePeerId(peerId);
     }
 
     public synchronized void setConfig(String key, String val) {
