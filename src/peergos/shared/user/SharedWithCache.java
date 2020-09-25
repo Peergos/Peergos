@@ -11,6 +11,10 @@ import java.util.concurrent.*;
 import java.util.function.*;
 import java.util.stream.*;
 
+/** Who we've shared each file with is stored in a parallel directory tree under the CACHE_BASE dir.
+ *  A serialized SharedWithState for all the children of a directory is stored at
+ *  CACHE_BASE/$path-to-dir/sharedWith.cbor
+ */
 public class SharedWithCache {
 
     public enum Access { READ, WRITE }
@@ -59,9 +63,6 @@ public class SharedWithCache {
     }
 
     public CompletableFuture<Boolean> buildSharedWithCache() {
-        Supplier<CompletableFuture<FileWrapper>> homeDirSupplier =
-                () -> retriever.apply(Paths.get("/" + ourname))
-                        .thenApply(Optional::get);
         return retriever.apply(Paths.get(ourname, CapabilityStore.CAPABILITY_CACHE_DIR))
                 .thenCompose(cacheDirOpt -> retriever.apply(Paths.get("/" + ourname + "/" + UserContext.SHARED_DIR_NAME))
                         .thenCompose(shared -> shared.get().getChildren(crypto.hasher, network))
