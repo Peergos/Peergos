@@ -6,6 +6,7 @@ import peergos.server.social.*;
 import peergos.server.storage.*;
 import peergos.shared.*;
 import peergos.shared.corenode.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.mutable.*;
 import peergos.shared.social.*;
 import peergos.shared.storage.*;
@@ -24,9 +25,10 @@ public class NonWriteThroughNetwork extends NetworkAccess {
                                      WriteSynchronizer synchronizer,
                                      InstanceAdmin instanceAdmin,
                                      SpaceUsage spaceUsage,
+                                     Hasher hasher,
                                      List<String> usernames,
                                      boolean isJavascript) {
-        super(coreNode, social, ipfs, mutable, tree, synchronizer, instanceAdmin, spaceUsage, null, usernames, isJavascript);
+        super(coreNode, social, ipfs, mutable, tree, synchronizer, instanceAdmin, spaceUsage, null, hasher, usernames, isJavascript);
     }
 
     public static NetworkAccess build(NetworkAccess source) {
@@ -40,6 +42,6 @@ public class NonWriteThroughNetwork extends NetworkAccess {
                 nonWriteThroughSocial,
                 nonWriteThroughIpfs,
                 nonWriteThroughPointers,
-                nonWriteThroughTree, synchronizer, source.instanceAdmin, source.spaceUsage, source.usernames, false);
+                nonWriteThroughTree, synchronizer, source.instanceAdmin, source.spaceUsage, source.hasher, source.usernames, false);
     }
 }

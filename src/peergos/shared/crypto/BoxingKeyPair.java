@@ -4,9 +4,7 @@ import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
 import peergos.shared.crypto.random.*;
-import peergos.shared.util.*;
 
-import java.io.*;
 import java.util.*;
 
 public class BoxingKeyPair implements Cborable
@@ -53,16 +51,5 @@ public class BoxingKeyPair implements Cborable
         return new BoxingKeyPair(
                 new Curve25519PublicKey(publicBoxBytes, boxer, random),
                 new Curve25519SecretKey(secretBoxBytes, boxer));
-    }
-
-    public static BoxingKeyPair insecureRandom() {
-
-        byte[] secretBoxBytes = new byte[32];
-        byte[] publicBoxBytes = new byte[32];
-
-        Random rnd = new Random();
-        rnd.nextBytes(secretBoxBytes);
-        rnd.nextBytes(publicBoxBytes);
-        return random(secretBoxBytes, publicBoxBytes, new Curve25519.Java(), new SafeRandom.Java());
     }
 }

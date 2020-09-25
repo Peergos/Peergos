@@ -42,7 +42,8 @@ public class MultiUserTests {
         WriteSynchronizer synchronizer = new WriteSynchronizer(service.mutable, service.storage, crypto.hasher);
         MutableTree mutableTree = new MutableTreeImpl(service.mutable, service.storage, crypto.hasher, synchronizer);
         this.network = new NetworkAccess(service.coreNode, service.social, service.storage,
-                service.mutable, mutableTree, synchronizer, service.controller, service.usage, service.serverMessages, Arrays.asList("peergos"), false);
+                service.mutable, mutableTree, synchronizer, service.controller, service.usage, service.serverMessages,
+                crypto.hasher, Arrays.asList("peergos"), false);
     }
 
     @BeforeClass
@@ -844,11 +845,11 @@ public class MultiUserTests {
             CborObject.CborMap fromParent = propsCipherText.decrypt(priorMetaKey, x -> (CborObject.CborMap)x);
             FileProperties props = FileProperties.fromCbor(fromParent.get("s"));
             throw new IllegalStateException("We shouldn't be able to decrypt this after a rename! new name = " + props.name);
-        } catch (TweetNaCl.InvalidCipherTextException e) {}
+        } catch (InvalidCipherTextException e) {}
         try {
             FileProperties freshProperties = fileAccess.getProperties(priorPointer.rBaseKey);
             throw new IllegalStateException("We shouldn't be able to decrypt this after a rename!");
-        } catch (TweetNaCl.InvalidCipherTextException e) {}
+        } catch (InvalidCipherTextException e) {}
 
         Assert.assertTrue("target can't read through original path", ! unsharedView.isPresent());
         Assert.assertTrue("target can't read through new path", ! unsharedView2.isPresent());

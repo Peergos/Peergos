@@ -1,13 +1,9 @@
 package peergos.shared.crypto.asymmetric.curve25519;
 
 import peergos.shared.cbor.*;
-import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.PublicSigningKey;
 import peergos.shared.crypto.asymmetric.SecretSigningKey;
 
-import java.io.ByteArrayOutputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
 import java.util.*;
 
 public class Ed25519SecretKey implements SecretSigningKey {
@@ -51,7 +47,7 @@ public class Ed25519SecretKey implements SecretSigningKey {
 
     @Override
     public byte[] signatureOnly(byte[] message) {
-        return Arrays.copyOf(implementation.crypto_sign(message, secretKey), TweetNaCl.SIGNATURE_SIZE_BYTES);
+        return Arrays.copyOf(implementation.crypto_sign(message, secretKey), Ed25519PublicKey.SIGNATURE_SIZE_BYTES);
     }
 
     public static SecretSigningKey fromCbor(Cborable cbor, Ed25519 provider) {

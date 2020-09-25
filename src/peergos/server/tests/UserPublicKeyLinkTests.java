@@ -2,21 +2,19 @@ package peergos.server.tests;
 
 import org.junit.*;
 import peergos.server.*;
+import peergos.server.crypto.asymmetric.curve25519.*;
+import peergos.server.crypto.random.*;
 import peergos.server.sql.*;
 import peergos.server.storage.*;
-import peergos.server.util.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.UserPublicKeyLink;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
-import peergos.shared.crypto.asymmetric.curve25519.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.crypto.random.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
 
 import java.nio.file.*;
-import java.sql.*;
 import java.time.LocalDate;
 import java.util.*;
 
@@ -37,7 +35,7 @@ public class UserPublicKeyLinkTests {
 
     @BeforeClass
     public static void init() {
-        PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, new Ed25519.Java());
+        PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, new Ed25519Java());
     }
 
     private PublicKeyHash putPublicSigningKey(SigningKeyPair user) throws Exception {
@@ -50,7 +48,7 @@ public class UserPublicKeyLinkTests {
 
     @Test
     public void createInitial() throws Exception {
-        SigningKeyPair user = SigningKeyPair.random(new SafeRandom.Java(), new Ed25519.Java());
+        SigningKeyPair user = SigningKeyPair.random(new SafeRandomJava(), new Ed25519Java());
         UserPublicKeyLink.Claim node = UserPublicKeyLink.Claim.build("someuser", user.secretSigningKey, LocalDate.now().plusYears(2), id);
 
         PublicKeyHash owner = putPublicSigningKey(user);
@@ -68,8 +66,8 @@ public class UserPublicKeyLinkTests {
 
     @Test
     public void createChain() throws Exception {
-        SigningKeyPair oldUser = SigningKeyPair.random(new SafeRandom.Java(), new Ed25519.Java());
-        SigningKeyPair newUser = SigningKeyPair.random(new SafeRandom.Java(), new Ed25519.Java());
+        SigningKeyPair oldUser = SigningKeyPair.random(new SafeRandomJava(), new Ed25519Java());
+        SigningKeyPair newUser = SigningKeyPair.random(new SafeRandomJava(), new Ed25519Java());
         PublicKeyHash oldHash = putPublicSigningKey(oldUser);
         PublicKeyHash newHash = putPublicSigningKey(newUser);
 
@@ -82,8 +80,8 @@ public class UserPublicKeyLinkTests {
 
     @Test
     public void repeatedPassword() throws Exception {
-        SigningKeyPair oldUser = SigningKeyPair.random(new SafeRandom.Java(), new Ed25519.Java());
-        SigningKeyPair newUser = SigningKeyPair.random(new SafeRandom.Java(), new Ed25519.Java());
+        SigningKeyPair oldUser = SigningKeyPair.random(new SafeRandomJava(), new Ed25519Java());
+        SigningKeyPair newUser = SigningKeyPair.random(new SafeRandomJava(), new Ed25519Java());
         PublicKeyHash oldHash = putPublicSigningKey(oldUser);
         PublicKeyHash newHash = putPublicSigningKey(newUser);
 

@@ -18,7 +18,6 @@ import peergos.shared.user.fs.*;
 import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.*;
 
-import java.net.*;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
@@ -55,6 +54,7 @@ public class NetworkAccess {
                          InstanceAdmin instanceAdmin,
                          SpaceUsage spaceUsage,
                          ServerMessager serverMessager,
+                         Hasher hasher,
                          List<String> usernames,
                          boolean isJavascript) {
         this.coreNode = coreNode;
@@ -66,7 +66,7 @@ public class NetworkAccess {
         this.instanceAdmin = instanceAdmin;
         this.spaceUsage = spaceUsage;
         this.serverMessager = serverMessager;
-        this.hasher = isJavascript ? new ScryptJS() : new ScryptJava();
+        this.hasher = hasher;
         this.usernames = usernames;
         this.creationTime = LocalDateTime.now();
         this.isJavascript = isJavascript;
@@ -78,7 +78,7 @@ public class NetworkAccess {
 
     public NetworkAccess withCorenode(CoreNode newCore) {
         return new NetworkAccess(newCore, social, dhtClient, mutable, tree, synchronizer, instanceAdmin,
-                spaceUsage, serverMessager, usernames, isJavascript);
+                spaceUsage, serverMessager, hasher, usernames, isJavascript);
     }
 
     @JsMethod
@@ -92,7 +92,7 @@ public class NetworkAccess {
         WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, dhtClient, hasher);
         MutableTree mutableTree = new MutableTreeImpl(mutable, dhtClient, hasher, synchronizer);
         return new NetworkAccess(coreNode, social, dhtClient, mutable, mutableTree, synchronizer, instanceAdmin,
-                spaceUsage, serverMessager, usernames, isJavascript);
+                spaceUsage, serverMessager, hasher, usernames, isJavascript);
     }
 
     public NetworkAccess withMutablePointerCache(int ttl) {
@@ -100,7 +100,7 @@ public class NetworkAccess {
         WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, dhtClient, hasher);
         MutableTree mutableTree = new MutableTreeImpl(mutable, dhtClient, hasher, synchronizer);
         return new NetworkAccess(coreNode, social, dhtClient, mutable, mutableTree, synchronizer, instanceAdmin,
-                spaceUsage, serverMessager, usernames, isJavascript);
+                spaceUsage, serverMessager, hasher, usernames, isJavascript);
     }
 
     public static CoreNode buildProxyingCorenode(HttpPoster poster, Multihash pkiServerNodeId) {
@@ -150,13 +150,6 @@ public class NetworkAccess {
         return res;
     }
 
-    public static CompletableFuture<NetworkAccess> buildJava(URL apiAddress, URL proxyAddress, String pkiNodeId) {
-        Multihash pkiServerNodeId = Cid.decode(pkiNodeId);
-        JavaPoster p2pPoster = new JavaPoster(proxyAddress, false);
-        JavaPoster apiPoster = new JavaPoster(apiAddress, false);
-        return build(apiPoster, p2pPoster, pkiServerNodeId, buildLocalDht(apiPoster, true), new ScryptJava(), false);
-    }
-
     public static CompletableFuture<NetworkAccess> build(HttpPoster apiPoster,
                                                          HttpPoster p2pPoster,
                                                          Multihash pkiServerNodeId,
@@ -170,7 +163,7 @@ public class NetworkAccess {
                     // We are on a Peergos server
                     CoreNode core = direct;
                     buildDirectS3Blockstore(localDht, core, apiPoster, true)
-                            .thenCompose(dht -> build(core, dht, apiPoster, p2pPoster, usernames, true, isJavascript))
+                            .thenCompose(dht -> build(core, dht, apiPoster, p2pPoster, hasher, usernames, true, isJavascript))
                             .thenApply(result::complete)
                             .exceptionally(t -> {
                                 result.completeExceptionally(t);
@@ -187,7 +180,7 @@ public class NetworkAccess {
                     ContentAddressedStorage localIpfs = buildLocalDht(apiPoster, false);
                     CoreNode core = buildProxyingCorenode(p2pPoster, pkiServerNodeId);
                     core.getUsernames("").thenCompose(usernames ->
-                            build(core, localIpfs, apiPoster, p2pPoster, usernames, false, isJavascript)
+                            build(core, localIpfs, apiPoster, p2pPoster, hasher, usernames, false, isJavascript)
                                     .thenApply(result::complete))
                             .exceptionally(t2 -> {
                                 result.completeExceptionally(t2);
@@ -202,6 +195,7 @@ public class NetworkAccess {
                                                           ContentAddressedStorage localDht,
                                                           HttpPoster apiPoster,
                                                           HttpPoster p2pPoster,
+                                                          Hasher hasher,
                                                           List<String> usernames,
                                                           boolean isPeergosServer,
                                                           boolean isJavascript) {
@@ -212,7 +206,7 @@ public class NetworkAccess {
                     ContentAddressedStorage storage = isPeergosServer ?
                             localDht :
                             new ContentAddressedStorage.Proxying(localDht, proxingDht, nodeId, core);
-                    HashVerifyingStorage verifyingStorage = new HashVerifyingStorage(new RetryStorage(storage, 3), isJavascript ? new ScryptJS() : new ScryptJava());
+                    HashVerifyingStorage verifyingStorage = new HashVerifyingStorage(new RetryStorage(storage, 3), hasher);
                     ContentAddressedStorage p2pDht = new CachingStorage(verifyingStorage, 1_000, 50 * 1024);
                     MutablePointersProxy httpMutable = new HttpMutablePointers(apiPoster, p2pPoster);
                     MutablePointers p2pMutable =
@@ -230,7 +224,7 @@ public class NetworkAccess {
                             new ProxyingSpaceUsage(nodeId, core, httpUsage, httpUsage);
                     ServerMessager serverMessager = new ServerMessager.HTTP(apiPoster);
                     return build(new CommittableStorage(p2pDht), core, p2pMutable, p2pSocial,
-                            new HttpInstanceAdmin(apiPoster), p2pUsage, serverMessager, usernames, isJavascript);
+                            new HttpInstanceAdmin(apiPoster), p2pUsage, serverMessager, hasher, usernames, isJavascript);
                 });
     }
 
@@ -241,33 +235,13 @@ public class NetworkAccess {
                                        InstanceAdmin instanceAdmin,
                                        SpaceUsage usage,
                                        ServerMessager serverMessager,
+                                       Hasher hasher,
                                        List<String> usernames,
                                        boolean isJavascript) {
-        Hasher hasher = isJavascript ? new ScryptJS() : new ScryptJava();
         WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, dht, hasher);
         MutableTree btree = new MutableTreeImpl(mutable, dht, hasher, synchronizer);
         return new NetworkAccess(coreNode, social, dht, mutable, btree, synchronizer, instanceAdmin,
-                usage, serverMessager, usernames, isJavascript);
-    }
-
-    public static CompletableFuture<NetworkAccess> buildJava(URL target, boolean isPublicServer) {
-        return buildNonCachingJava(target, isPublicServer)
-                .thenApply(e -> e.withMutablePointerCache(7_000));
-    }
-
-    public static CompletableFuture<NetworkAccess> buildNonCachingJava(URL target, boolean isPublicServer) {
-        JavaPoster poster = new JavaPoster(target, isPublicServer);
-        Multihash pkiNodeId = null; // This is not required when talking to a Peergos server
-        ContentAddressedStorage localDht = buildLocalDht(poster, true);
-        return build(poster, poster, pkiNodeId, localDht, new ScryptJava(), false);
-    }
-
-    public static CompletableFuture<NetworkAccess> buildJava(int targetPort) {
-        try {
-            return buildJava(new URL("http://localhost:" + targetPort + "/"), false);
-        } catch (MalformedURLException e) {
-            throw new RuntimeException(e);
-        }
+                usage, serverMessager, hasher, usernames, isJavascript);
     }
 
     public static CompletableFuture<NetworkAccess> buildPublicNetworkAccess(CoreNode core,
@@ -277,7 +251,7 @@ public class NetworkAccess {
         WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, storage, hasher);
         MutableTree mutableTree = new MutableTreeImpl(mutable, storage, null, synchronizer);
         return CompletableFuture.completedFuture(new NetworkAccess(core, null, storage, mutable, mutableTree,
-                synchronizer, null, null, null, Collections.emptyList(), false));
+                synchronizer, null, null, null, hasher, Collections.emptyList(), false));
     }
 
     public CompletableFuture<Optional<RetrievedCapability>> retrieveMetadata(AbsoluteCapability cap, Snapshot version) {
@@ -382,7 +356,7 @@ public class NetworkAccess {
                                     cap.wBaseKey.map(wBase -> fa.getSigner(cap.rBaseKey, wBase, entryWriter)), ownerName, version)));
                         return getFileFromLink(cap.owner, rc, entryWriter, ownerName, this, version)
                                 .thenApply(f -> Optional.of(f));
-                    } catch (TweetNaCl.InvalidCipherTextException e) {
+                    } catch (InvalidCipherTextException e) {
                         LOG.info("Couldn't decrypt file from friend: " + ownerName);
                         return Futures.of(Optional.empty());
                     }

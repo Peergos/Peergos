@@ -3,7 +3,7 @@ package peergos.server.tests;
 import org.junit.Assert;
 import org.junit.BeforeClass;
 import org.junit.Test;
-import peergos.server.Main;
+import peergos.server.*;
 import peergos.server.storage.*;
 import peergos.server.util.*;
 import peergos.shared.*;
@@ -62,11 +62,11 @@ public class P2pStreamNetworkTests {
     }
 
     private static NetworkAccess buildApi(Args args) throws Exception {
-        return NetworkAccess.buildJava(new URL("http://localhost:" + args.getInt("port")), false).get();
+        return Builder.buildJavaNetworkAccess(new URL("http://localhost:" + args.getInt("port")), false).get();
     }
 
     private static NetworkAccess buildProxiedApi(int ipfsApiPort, int ipfsGatewayPort, Multihash pkinodeId) throws Exception {
-        return NetworkAccess.buildJava(new URL("http://localhost:" + ipfsApiPort), new URL("http://localhost:" + ipfsGatewayPort), pkinodeId.toString()).get();
+        return Builder.buildJavaNetworkAccess(new URL("http://localhost:" + ipfsApiPort), new URL("http://localhost:" + ipfsGatewayPort), pkinodeId.toString()).get();
     }
 
     @Test

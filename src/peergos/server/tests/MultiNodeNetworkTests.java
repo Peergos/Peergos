@@ -121,7 +121,7 @@ public class MultiNodeNetworkTests {
     }
 
     private static NetworkAccess buildApi(Args args) throws Exception {
-        return NetworkAccess.buildNonCachingJava(new URL("http://localhost:" + args.getInt("port")), false).get();
+        return Builder.buildNonCachingJavaNetworkAccess(new URL("http://localhost:" + args.getInt("port")), false).get();
     }
 
     @Before

@@ -1,6 +1,6 @@
 // Copyright (C) 2011 - Will Glozer.  All rights reserved.
 
-package peergos.shared.scrypt.com.lambdaworks.crypto;
+package peergos.server.crypto.hash.lambdaworks.crypto;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;

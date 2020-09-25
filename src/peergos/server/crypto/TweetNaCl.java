@@ -1,5 +1,6 @@
-package peergos.shared.crypto;
+package peergos.server.crypto;
 
+import peergos.shared.crypto.*;
 import peergos.shared.util.*;
 
 import java.security.*;
@@ -30,12 +31,6 @@ public class TweetNaCl {
     private static final int SECRETBOX_INTERNAL_OVERHEAD_BYTES = 32;
 
     public static class InvalidSignatureException extends RuntimeException {}
-    public static class InvalidCipherTextException extends IllegalStateException {
-        public InvalidCipherTextException() {}
-        InvalidCipherTextException(String msg) {
-            super(msg);
-        }
-    }
 
     public static void crypto_sign_keypair(byte[] pk, byte[] sk, boolean isSeeded)
     {

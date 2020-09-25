@@ -74,23 +74,11 @@ public class SigningKeyPair implements Cborable
         return random(secretSignBytes, publicSignBytes, signer);
     }
 
-    private static SigningKeyPair random(byte[] secretSignBytes, byte[] publicSignBytes,
-                                         Ed25519 signer) {
+    private static SigningKeyPair random(byte[] secretSignBytes, byte[] publicSignBytes, Ed25519 signer) {
         signer.crypto_sign_keypair(publicSignBytes, secretSignBytes);
 
         return new SigningKeyPair(
                 new Ed25519PublicKey(publicSignBytes, signer),
                 new Ed25519SecretKey(secretSignBytes, signer));
-    }
-
-    public static SigningKeyPair insecureRandom() {
-
-        byte[] secretSignBytes = new byte[64];
-        byte[] publicSignBytes = new byte[32];
-
-        Random rnd = new Random();
-        rnd.nextBytes(secretSignBytes);
-        rnd.nextBytes(publicSignBytes);
-        return random(secretSignBytes, publicSignBytes, new Ed25519.Java());
     }
 }

@@ -2,14 +2,8 @@ package peergos.server;
 import java.util.logging.*;
 import peergos.server.util.Logging;
 
-import peergos.server.corenode.*;
-import peergos.server.mutable.*;
-import peergos.server.social.*;
-import peergos.server.storage.*;
 import peergos.shared.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.mutable.*;
-import peergos.shared.storage.*;
 import peergos.shared.user.*;
 
 import java.io.*;
@@ -24,7 +18,7 @@ public class Playground {
 
     public static void main(String[] args) throws Exception {
         Crypto crypto = Main.initCrypto();
-        NetworkAccess source = NetworkAccess.buildJava(new URL("https://demo.peergos.net"), true).get();
+        NetworkAccess source = Builder.buildJavaNetworkAccess(new URL("https://demo.peergos.net"), true).get();
         NetworkAccess nonWriteThrough = NonWriteThroughNetwork.build(source);
 
         String username = args[0];

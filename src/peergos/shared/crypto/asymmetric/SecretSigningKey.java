@@ -3,14 +3,7 @@ package peergos.shared.crypto.asymmetric;
 import jsinterop.annotations.JsType;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
-import peergos.shared.crypto.hash.*;
-import peergos.shared.crypto.random.*;
-import peergos.shared.crypto.symmetric.*;
-import peergos.shared.user.*;
-import peergos.shared.util.*;
 
-import java.io.*;
-import java.util.*;
 @JsType
 public interface SecretSigningKey extends Cborable {
 

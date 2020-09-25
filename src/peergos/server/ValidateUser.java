@@ -8,7 +8,6 @@ import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.user.*;
 
-import java.io.*;
 import java.net.*;
 import java.util.*;
 import java.util.logging.*;
@@ -20,7 +19,7 @@ public class ValidateUser {
 
     public static void main(String[] args) throws Exception {
         Crypto crypto = Main.initCrypto();
-        NetworkAccess network = NetworkAccess.buildJava(new URL("https://alpha.peergos.net"), true).get();
+        NetworkAccess network = Builder.buildJavaNetworkAccess(new URL("https://alpha.peergos.net"), true).get();
         String username = args[0];
         Optional<PublicKeyHash> identity = network.coreNode.getPublicKeyHash(username).join();
         Set<PublicKeyHash> ownedKeys = WriterData.getOwnedKeysRecursive(username, network.coreNode, network.mutable,

@@ -3,6 +3,10 @@ import java.time.*;
 import java.util.concurrent.atomic.*;
 import java.util.logging.*;
 
+import peergos.server.crypto.asymmetric.curve25519.*;
+import peergos.server.crypto.hash.*;
+import peergos.server.crypto.random.*;
+import peergos.server.crypto.symmetric.*;
 import peergos.server.util.*;
 
 import org.junit.*;
@@ -12,9 +16,7 @@ import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
-import peergos.shared.crypto.asymmetric.curve25519.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.server.*;
 import peergos.shared.mutable.*;
@@ -150,9 +152,9 @@ public abstract class UserTests {
         String username = generateUsername();
         String password = "test01";
 
-        SafeRandom.Java random = new SafeRandom.Java();
-        UserUtil.generateUser(username, password, new ScryptJava(), new Salsa20Poly1305.Java(),
-                random, new Ed25519.Java(), new Curve25519.Java(), SecretGenerationAlgorithm.getDefault(random)).thenAccept(userWithRoot -> {
+        SafeRandomJava random = new SafeRandomJava();
+        UserUtil.generateUser(username, password, new ScryptJava(), new Salsa20Poly1305Java(),
+                random, new Ed25519Java(), new Curve25519Java(), SecretGenerationAlgorithm.getDefault(random)).thenAccept(userWithRoot -> {
 		    PublicSigningKey expected = PublicSigningKey.fromString("7HvEWP6yd1UD8rOorfFrieJ8S7yC8+l3VisV9kXNiHmI7Eav7+3GTRSVBRCymItrzebUUoCi39M6rdgeOU9sXXFD");
 		    if (! expected.equals(userWithRoot.getUser().publicSigningKey))
 		        throw new IllegalStateException("Generated user different from the Javascript! \n"+userWithRoot.getUser().publicSigningKey + " != \n"+expected);

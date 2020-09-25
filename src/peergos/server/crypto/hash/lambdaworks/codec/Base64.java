@@ -1,6 +1,6 @@
 // Copyright (C) 2011 - Will Glozer.  All rights reserved.
 
-package peergos.shared.scrypt.com.lambdaworks.codec;
+package peergos.server.crypto.hash.lambdaworks.codec;
 
 import java.util.Arrays;
 
