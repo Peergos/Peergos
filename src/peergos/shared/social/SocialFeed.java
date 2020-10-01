@@ -8,6 +8,7 @@ import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
 import java.io.*;
+import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.*;
@@ -196,17 +197,14 @@ public class SocialFeed {
 
     public static CompletableFuture<SocialFeed> create(UserContext c) {
         return c.getUserRoot()
-                .thenCompose(home -> home.mkdir(UserContext.FEED_DIR_NAME, c.network, true, c.crypto))
-                .thenCompose(newHome -> {
+                .thenCompose(home -> home.getOrMkdirs(Paths.get(UserContext.FEED_DIR_NAME), c.network, true, c.crypto))
+                .thenCompose(feedDir -> {
                     FeedState empty = new FeedState(0, 0, 0L, Collections.emptyMap());
                     byte[] rawEmpty = empty.serialize();
-                    return newHome.getChild(UserContext.FEED_DIR_NAME, c.crypto.hasher, c.network)
-                            .thenApply(Optional::get)
-                            .thenCompose(feedDir ->
-                                    feedDir.uploadAndReturnFile(FEED_STATE, AsyncReader.build(rawEmpty), rawEmpty.length,
-                                            false, c.network, c.crypto)
-                                            .thenApply(stateFile -> new SocialFeed(feedDir, stateFile, empty, c))
-                                            .thenCompose(SocialFeed::update));
+                    return feedDir.uploadAndReturnFile(FEED_STATE, AsyncReader.build(rawEmpty), rawEmpty.length,
+                            false, c.network, c.crypto)
+                            .thenApply(stateFile -> new SocialFeed(feedDir, stateFile, empty, c))
+                            .thenCompose(SocialFeed::update);
                 });
     }
 
