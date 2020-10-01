@@ -12,6 +12,15 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.*;
 
+/** This social feed stores a list of caps shared with you.
+ *
+ *  Data is stored in /username/.feed/
+ *                                    feed-state.cbor    - Your serialized FeedState
+ *                                    feed-index.cbor    - An lookup from index in feed to byte offset in feed.cbor
+ *                                    feed.cbor          - An append only list of serialized SharedItems
+ *
+ *  The FeedState stores how many bytes of the incoming cap file has been processed from each friend
+ */
 public class SocialFeed {
     private static final String FEED_FILE = "feed.cbor";
     private static final String FEED_INDEX = "feed-index.cbor";
