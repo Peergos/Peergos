@@ -78,7 +78,7 @@ public class IPFS {
         Multipart m = new Multipart("http://" + host + ":" + port + version+"add?stream-channels=true", "UTF-8");
         for (NamedStreamable file: files) {
             if (file.isDirectory()) {
-                m.addSubtree("", ((NamedStreamable.FileWrapper)file).getFile());
+                m.addSubtree("", ((NamedStreamable.NativeFile)file).getFile());
             } else
                 m.addFilePart("file", file);
         };

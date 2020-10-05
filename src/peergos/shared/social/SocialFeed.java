@@ -30,7 +30,7 @@ public class SocialFeed {
     private FileWrapper dataDir, stateFile;
     private int lastSeenIndex, feedSizeRecords;
     private long feedSizeBytes;
-    private Map<String, UserState> currentCapBytesProcessed;
+    private Map<String, ProcessedCaps> currentCapBytesProcessed;
     private final UserContext context;
 
     public SocialFeed(FileWrapper dataDir,
@@ -117,7 +117,7 @@ public class SocialFeed {
                 .thenCompose(diff -> {
                     if (diff.isEmpty())
                         return Futures.of(this);
-                    UserState current = currentCapBytesProcessed.getOrDefault(friend.ownerName, UserState.empty());
+                    ProcessedCaps current = currentCapBytesProcessed.getOrDefault(friend.ownerName, ProcessedCaps.empty());
                     if (diff.priorBytes() == current.totalBytes()) {
                         // We have everything we need in the diff
                         return addToFriend(friend.ownerName, current, diff.newCaps.readCaps.getRetrievedCapabilities(),
@@ -150,12 +150,12 @@ public class SocialFeed {
     }
 
     private synchronized CompletableFuture<SocialFeed> addToFriend(String friendName,
-                                                                   UserState current,
+                                                                   ProcessedCaps current,
                                                                    List<CapabilityWithPath> readCapsToAdd,
                                                                    long updatedReadCapBytesTotal,
                                                                    List<CapabilityWithPath> writeCapsToAdd,
                                                                    long updateWriteCapBytesTotal) {
-        UserState updated = new UserState(
+        ProcessedCaps updated = new ProcessedCaps(
                 current.readCaps + readCapsToAdd.size(),
                 current.writeCaps + writeCapsToAdd.size(),
                 updatedReadCapBytesTotal,
@@ -208,54 +208,12 @@ public class SocialFeed {
                 });
     }
 
-    private static class UserState implements Cborable {
-        public final int readCaps, writeCaps;
-        public final long readCapBytes, writeCapBytes;
-
-        public UserState(int readCaps, int writeCaps, long readCapBytes, long writeCapBytes) {
-            this.readCaps = readCaps;
-            this.writeCaps = writeCaps;
-            this.readCapBytes = readCapBytes;
-            this.writeCapBytes = writeCapBytes;
-        }
-
-        public long totalBytes() {
-            return readCapBytes + writeCapBytes;
-        }
-
-        public static UserState empty() {
-            return new UserState(0, 0, 0L, 0L);
-        }
-
-        @Override
-        public CborObject toCbor() {
-            SortedMap<String, Cborable> state = new TreeMap<>();
-            state.put("rc", new CborObject.CborLong(readCaps));
-            state.put("wc", new CborObject.CborLong(writeCaps));
-            state.put("rb", new CborObject.CborLong(readCapBytes));
-            state.put("wb", new CborObject.CborLong(writeCapBytes));
-            return CborObject.CborMap.build(state);
-        }
-
-        public static UserState fromCbor(Cborable cbor) {
-            if (! (cbor instanceof CborObject.CborMap))
-                throw new IllegalStateException("Invalid cbor for UserState! " + cbor);
-            CborObject.CborMap m = (CborObject.CborMap) cbor;
-
-            int readCaps = (int) m.getLong("rc");
-            int writeCaps = (int) m.getLong("wc");
-            long readCapBytes = m.getLong("rb");
-            long writeCapBytes = m.getLong("wb");
-            return new UserState(readCaps, writeCaps, readCapBytes, writeCapBytes);
-        }
-    }
-
     private static class FeedState implements Cborable {
         public final int lastSeenIndex, feedSizeRecords;
         public final long feedSizeBytes;
-        public final Map<String, UserState> currentCapBytesProcessed;
+        public final Map<String, ProcessedCaps> currentCapBytesProcessed;
 
-        public FeedState(int lastSeenIndex, int feedSizeRecords, long feedSizeBytes, Map<String, UserState> currentCapBytesProcessed) {
+        public FeedState(int lastSeenIndex, int feedSizeRecords, long feedSizeBytes, Map<String, ProcessedCaps> currentCapBytesProcessed) {
             this.lastSeenIndex = lastSeenIndex;
             this.feedSizeRecords = feedSizeRecords;
             this.feedSizeBytes = feedSizeBytes;
@@ -269,7 +227,7 @@ public class SocialFeed {
             state.put("r", new CborObject.CborLong(feedSizeRecords));
             state.put("b", new CborObject.CborLong(feedSizeBytes));
             SortedMap<String, Cborable> processed = new TreeMap<>();
-            for (Map.Entry<String, UserState> e : currentCapBytesProcessed.entrySet()) {
+            for (Map.Entry<String, ProcessedCaps> e : currentCapBytesProcessed.entrySet()) {
                 processed.put(e.getKey(), e.getValue().toCbor());
             }
             state.put("p", CborObject.CborMap.build(processed));
@@ -284,8 +242,8 @@ public class SocialFeed {
             int lastSeenIndex = (int) m.getLong("s");
             int feedSizeRecords = (int) m.getLong("r");
             long feedSizeBytes = m.getLong("b");
-            Map<String, UserState> processedBytes = ((CborObject.CborMap)m.get("p"))
-                    .getMap(c -> ((CborObject.CborString) c).value, UserState::fromCbor);
+            Map<String, ProcessedCaps> processedBytes = ((CborObject.CborMap)m.get("p"))
+                    .getMap(c -> ((CborObject.CborString) c).value, ProcessedCaps::fromCbor);
             return new FeedState(lastSeenIndex, feedSizeRecords, feedSizeBytes, processedBytes);
         }
     }

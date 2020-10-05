@@ -69,7 +69,7 @@ public class Multipart {
             if (f.isDirectory())
                 addSubtree(dirPath, f);
             else
-                addFilePart("file", new NamedStreamable.FileWrapper(dirPath + "/", f));
+                addFilePart("file", new NamedStreamable.NativeFile(dirPath + "/", f));
         }
     }
 

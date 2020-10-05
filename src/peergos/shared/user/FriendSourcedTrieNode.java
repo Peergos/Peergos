@@ -62,43 +62,13 @@ public class FriendSourcedTrieNode implements TrieNode {
      * @param crypto
      * @return the read and write caps cached from this user
      */
-    public static CompletableFuture<ReadAndWriteCaps> loadCachedCaps(FileWrapper cacheDir,
+    private static CompletableFuture<ReadAndWriteCaps> loadCachedCaps(FileWrapper cacheDir,
                                                                      EntryPoint e,
                                                                      NetworkAccess network,
                                                                      Crypto crypto) {
         return CapabilityStore.loadCachedReadOnlyLinks(cacheDir, e.ownerName, network, crypto)
                 .thenCompose(readCaps -> CapabilityStore.loadCachedWriteableLinks(cacheDir, e.ownerName, network, crypto)
                         .thenApply(writeCaps -> new ReadAndWriteCaps(readCaps, writeCaps)));
-    }
-
-    public static CompletableFuture<Optional<FriendSourcedTrieNode>> buildAndUpdate(FileWrapper cacheDir,
-                                                                                    EntryPoint e,
-                                                                                    NetworkAccess network,
-                                                                                    Crypto crypto) {
-        return network.retrieveEntryPoint(e)
-                .thenCompose(sharedDirOpt -> {
-                    if (!sharedDirOpt.isPresent())
-                        return CompletableFuture.completedFuture(Optional.empty());
-                    return CapabilityStore.loadReadOnlyLinks(cacheDir, sharedDirOpt.get(), e.ownerName,
-                            network, crypto, true, true)
-                            .thenCompose(readCaps -> {
-                                return CapabilityStore.loadWriteableLinks(cacheDir, sharedDirOpt.get(), e.ownerName,
-                                        network, crypto, true, true)
-                                        .thenApply(writeCaps -> {
-                                            List<CapabilityWithPath> allCaps = new ArrayList<>();
-                                            allCaps.addAll(readCaps.getRetrievedCapabilities());
-                                            allCaps.addAll(writeCaps.getRetrievedCapabilities());
-                                            return Optional.of(new FriendSourcedTrieNode(cacheDir,
-                                                    e.ownerName,
-                                                    e,
-                                                    allCaps.stream()
-                                                            .reduce(TrieNodeImpl.empty(),
-                                                                    (root, cap) -> root.put(trimOwner(cap.path), new EntryPoint(cap.cap, e.ownerName)),
-                                                                    (a, b) -> a),
-                                                    readCaps.getBytesRead(), writeCaps.getBytesRead(), crypto));
-                                        });
-                            });
-                });
     }
 
     /**
@@ -241,33 +211,6 @@ public class FriendSourcedTrieNode implements TrieNode {
     @Override
     public boolean isEmpty() {
         return root.isEmpty();
-    }
-
-    public static class CapsDiff {
-        public final long priorReadByteOffset, priorWriteByteOffset;
-        public final ReadAndWriteCaps newCaps;
-
-        public CapsDiff(long priorReadByteOffset, long priorWriteByteOffset, ReadAndWriteCaps newCaps) {
-            this.priorReadByteOffset = priorReadByteOffset;
-            this.priorWriteByteOffset = priorWriteByteOffset;
-            this.newCaps = newCaps;
-        }
-
-        public boolean isEmpty() {
-            return newCaps.readCaps.getBytesRead() == 0 && newCaps.writeCaps.getBytesRead() == 0;
-        }
-
-        public long updatedReadBytes() {
-            return priorReadByteOffset + newCaps.readCaps.getBytesRead();
-        }
-
-        public long updatedWriteBytes() {
-            return priorWriteByteOffset + newCaps.writeCaps.getBytesRead();
-        }
-
-        public long priorBytes() {
-            return priorReadByteOffset + priorWriteByteOffset;
-        }
     }
 
     public static class ReadAndWriteCaps {

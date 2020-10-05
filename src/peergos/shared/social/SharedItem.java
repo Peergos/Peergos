@@ -46,7 +46,7 @@ public class SharedItem implements Cborable {
 
     public static SharedItem fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborMap))
-            throw new IllegalStateException("Invalid cbor for SharedItem! " + cbor);
+            throw new IllegalStateException("Invalid cbor! " + cbor);
         CborObject.CborMap m = (CborObject.CborMap) cbor;
 
         AbsoluteCapability cap = m.getObject("c", AbsoluteCapability::fromCbor);
