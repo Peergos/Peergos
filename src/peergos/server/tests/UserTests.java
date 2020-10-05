@@ -1112,14 +1112,14 @@ public abstract class UserTests {
         TodoBoard board = todoApp.getTodoBoard(todoBoardName).join();
         List<TodoList> lists = board.getTodoLists();
         assertTrue("size", lists.isEmpty());
-        TodoListItem item = new TodoListItem("id", "created", "text", false);
-        TodoListItem item2 = new TodoListItem("id2", "created2", "text2", true);
+        TodoListItem item = new TodoListItem("id", LocalDateTime.now(), "text", false);
+        TodoListItem item2 = new TodoListItem("id2", LocalDateTime.now(), "text2", true);
         String todoListName = "todoList";
 
         List<TodoListItem> items = new ArrayList<>();
         items.add(item);
         items.add(item2);
-        TodoList list = TodoList.build(todoListName, 1, items);
+        TodoList list = TodoList.build(todoListName, "1", items);
         lists = new ArrayList<>();
         lists.add(list);
         TodoBoard updatedBoard = TodoBoard.build(board.getName(), lists);

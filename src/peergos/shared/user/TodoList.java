@@ -10,25 +10,25 @@ import java.util.stream.Collectors;
 public class TodoList implements Cborable {
 
     private final List<TodoListItem> todoItems;
-    private final int index;
+    private final String id;
     private final String name;
 
-    public static TodoList build(String name, int index, List<TodoListItem> todoItems) {
-        return new TodoList(name, index, todoItems);
+    public static TodoList build(String name, String id, List<TodoListItem> todoItems) {
+        return new TodoList(name, id, todoItems);
     }
 
-    public static TodoList buildFromJs(String name, int index, TodoListItem[] todoItems) {
-        return new TodoList(name, index, Arrays.asList(todoItems));
+    public static TodoList buildFromJs(String name, String id, TodoListItem[] todoItems) {
+        return new TodoList(name, id, Arrays.asList(todoItems));
     }
 
-    private TodoList(String name, int index, List<TodoListItem> todoItems) {
+    private TodoList(String name, String id, List<TodoListItem> todoItems) {
         this.name = name;
-        this.index = index;
+        this.id = id;
         this.todoItems = todoItems;
     }
 
-    public int getIndex() {
-        return index;
+    public String getId() {
+        return id;
     }
 
     public String getName() {
@@ -43,7 +43,7 @@ public class TodoList implements Cborable {
     public CborObject toCbor() {
         Map<String, CborObject> cbor = new TreeMap<>();
         cbor.put("name", new CborObject.CborString(name));
-        cbor.put("index", new CborObject.CborString("" + index));
+        cbor.put("id", new CborObject.CborString(id));
         cbor.put("items", new CborObject.CborList(todoItems));
         return CborObject.CborMap.build(cbor);
     }
@@ -52,13 +52,13 @@ public class TodoList implements Cborable {
         if (! (cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("TodoList cbor must be a Map! " + cbor);
         CborObject.CborMap m = (CborObject.CborMap) cbor;
-        int index = Integer.parseInt(m.getString("index"));
+        String id = m.getString("id");
         String name = m.getString("name");
         List<TodoListItem> todoItems = m.getList("items")
                 .value.stream()
                 .map(TodoListItem::fromCbor)
                 .collect(Collectors.toList());
-        return new TodoList(name, index, todoItems);
+        return new TodoList(name, id, todoItems);
     }
 
 }
