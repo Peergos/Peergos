@@ -150,31 +150,30 @@ public class UserContext {
                 this.ctx = ctx;
             }
 
-            public CompletableFuture<TodoBoard> getTodoBoard(String filename) {
+            public CompletableFuture<Pair<TodoBoard,Boolean>> getTodoBoard(String filename) {
                 return getTodoBoard(this.ctx.username, filename);
             }
 
             @JsMethod
-            public CompletableFuture<TodoBoard> getTodoBoard(String owner, String filename) {
+            public CompletableFuture<Pair<TodoBoard,Boolean>> getTodoBoard(String owner, String filename) {
                 Path path = Paths.get(owner, APPS_DIR_NAME, TODO_DIR_NAME);
                 return ctx.getByPath(path).thenCompose(fw -> {
                     if (fw.isPresent()) {
                         FileWrapper todoDir = fw.get();
                         return todoDir.getChild(filename, ctx.crypto.hasher, ctx.network).thenCompose(todoFileOpt -> {
                             if (todoFileOpt.isEmpty()) {
-                                return CompletableFuture.completedFuture(TodoBoard.build(filename, new ArrayList<>()));
+                                return CompletableFuture.completedFuture(new Pair<>(TodoBoard.build(filename, new ArrayList<>()), false));
                             }
                             FileWrapper todoFile = todoFileOpt.get();
                             int size = todoFile.getFileProperties().sizeLow();
                             return todoFile.getInputStream(ctx.network, ctx.crypto, x -> {}).thenCompose(reader -> {
                                 byte[] data = new byte[size];
                                 return reader.readIntoArray(data, 0, data.length)
-                                        .thenApply(x -> TodoBoard.fromCbor(todoFile.isWritable(),
-                                                CborObject.fromByteArray(data)));
+                                        .thenApply(x -> new Pair<>(TodoBoard.fromCbor(CborObject.fromByteArray(data)), todoFile.isWritable()));
                             });
                         });
                     } else {
-                        return CompletableFuture.completedFuture(TodoBoard.build(filename, new ArrayList<>()));
+                        return CompletableFuture.completedFuture(new Pair<>(TodoBoard.build(filename, new ArrayList<>()), false));
                     }
                 });
             }

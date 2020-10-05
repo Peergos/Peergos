@@ -1109,7 +1109,7 @@ public abstract class UserTests {
         List<Pair<String,String>> todoBoards = todoApp.getTodoBoards().join();
         assertTrue("todoBoards", todoBoards.isEmpty());
         String todoBoardName = "s_a-m1p2l e";
-        TodoBoard board = todoApp.getTodoBoard(todoBoardName).join();
+        TodoBoard board = todoApp.getTodoBoard(todoBoardName).join().left;
         List<TodoList> lists = board.getTodoLists();
         assertTrue("size", lists.isEmpty());
         TodoListItem item = new TodoListItem("id", LocalDateTime.now(), "text", false);
@@ -1128,7 +1128,7 @@ public abstract class UserTests {
         assertTrue("todoBoards", !todoBoards.isEmpty());
         assertTrue("todoBoards filename", todoBoards.get(0).right.equals(todoBoardName));
         assertTrue("todoBoards owner", todoBoards.get(0).left.equals(context.username));
-        updatedBoard = todoApp.getTodoBoard(todoBoardName).join();
+        updatedBoard = todoApp.getTodoBoard(todoBoardName).join().left;
         lists = updatedBoard.getTodoLists();
         assertTrue("lists size", lists.size() == 1);
         TodoList todolist = lists.get(0);
@@ -1139,7 +1139,7 @@ public abstract class UserTests {
         assertTrue("item[1]", todoItems.get(1).equals(item2));
         boolean isDeleted = todoApp.deleteTodoBoard(context.username, todoBoardName).join();
         assertTrue("isDeleted", isDeleted);
-        TodoBoard emptyBoard = todoApp.getTodoBoard(todoBoardName).join();
+        TodoBoard emptyBoard = todoApp.getTodoBoard(todoBoardName).join().left;
         assertTrue("size", emptyBoard.getTodoLists().isEmpty());
         todoBoards = todoApp.getTodoBoards().join();
         assertTrue("todoBoards", todoBoards.isEmpty());
