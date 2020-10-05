@@ -101,7 +101,7 @@ public class PeergosNetworkUtils {
         todoLists.add(todoList);
         TodoBoard board = TodoBoard.build(todoBoardName, todoLists);
         todoApp.updateTodoBoard(sharerUser.username, board).join();
-        TodoBoard updatedBoard = todoApp.getTodoBoard(todoBoardName).join();
+        TodoBoard updatedBoard = todoApp.getTodoBoard(todoBoardName).join().left;
         todoLists = updatedBoard.getTodoLists();
         assertTrue("todoLists size", todoLists.size() == 1);
         todoItems = todoLists.get(0).getTodoItems();

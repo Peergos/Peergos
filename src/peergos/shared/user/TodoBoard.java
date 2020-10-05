@@ -11,21 +11,19 @@ import java.util.stream.Collectors;
 public class TodoBoard implements Cborable {
 
     private final List<TodoList> todoLists;
-    private final boolean isWritable;
     private final String name;
 
-    private TodoBoard(String name, boolean isWritable, List<TodoList> todoLists) {
+    private TodoBoard(String name, List<TodoList> todoLists) {
         this.name = name;
-        this.isWritable = isWritable;
         this.todoLists = todoLists;
     }
 
     public static TodoBoard build(String name, List<TodoList> todoLists) {
-        return new TodoBoard(name, true, todoLists);
+        return new TodoBoard(name, todoLists);
     }
 
     public static TodoBoard buildFromJs(String name, TodoList[] todoLists) {
-        return new TodoBoard(name, true, Arrays.asList(todoLists));
+        return new TodoBoard(name, Arrays.asList(todoLists));
     }
 
     public String getName() {
@@ -36,10 +34,6 @@ public class TodoBoard implements Cborable {
         return new ArrayList<>(todoLists);
     }
 
-    public boolean isWritable() {
-        return isWritable;
-    }
-
     @Override
     public CborObject toCbor() {
         Map<String, CborObject> cbor = new TreeMap<>();
@@ -48,7 +42,7 @@ public class TodoBoard implements Cborable {
         return CborObject.CborMap.build(cbor);
     }
 
-    public static TodoBoard fromCbor(boolean isWritable, Cborable cbor) {
+    public static TodoBoard fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("TodoList cbor must be a Map! " + cbor);
         CborObject.CborMap m = (CborObject.CborMap) cbor;
@@ -57,7 +51,7 @@ public class TodoBoard implements Cborable {
                 .value.stream()
                 .map(TodoList::fromCbor)
                 .collect(Collectors.toList());
-        return new TodoBoard(name, isWritable, todoList);
+        return new TodoBoard(name, todoList);
     }
 
 }
