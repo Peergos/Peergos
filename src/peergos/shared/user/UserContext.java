@@ -56,6 +56,7 @@ public class UserContext {
 
     private final WriteSynchronizer writeSynchronizer;
     private final TransactionService transactions;
+    private final IncomingCapCache capCache;
     public final SharedWithCache sharedWithCache;
 
     // The root of the global filesystem as viewed by this context
@@ -78,7 +79,8 @@ public class UserContext {
                        Crypto crypto,
                        CommittedWriterData userData,
                        TrieNode entrie,
-                       TransactionService transactions) {
+                       TransactionService transactions,
+                       IncomingCapCache capCache) {
         this.username = username;
         this.signer = signer;
         this.boxer = boxer;
@@ -91,6 +93,7 @@ public class UserContext {
             writeSynchronizer.put(signer.publicKeyHash, signer.publicKeyHash, userData);
         }
         this.transactions = transactions;
+        this.capCache = capCache;
         this.sharedWithCache = new SharedWithCache(this::getByPath, username, network, crypto);
     }
 
@@ -103,6 +106,17 @@ public class UserContext {
                 .thenCompose(home -> home.getChildrenWithSameWriter(crypto.hasher, network))
                 .thenApply(children -> children.stream().filter(f -> f.getName().equals(TRANSACTIONS_DIR_NAME)).findFirst().get())
                 .thenApply(txnDir -> new TransactionServiceImpl(network, crypto, txnDir));
+    }
+
+    private static CompletableFuture<IncomingCapCache> buildCapCache(TrieNode root,
+                                                                String username,
+                                                                NetworkAccess network,
+                                                                Crypto crypto) {
+        return root.getByPath(username, crypto.hasher, network)
+                .thenApply(Optional::get)
+                .thenCompose(home -> home.getChildrenWithSameWriter(crypto.hasher, network))
+                .thenApply(children -> children.stream().filter(f -> f.getName().equals(CapabilityStore.CAPABILITY_CACHE_DIR)).findFirst().get())
+                .thenCompose(cacheRoot -> IncomingCapCache.build(cacheRoot, crypto, network));
     }
 
     @JsMethod
@@ -173,21 +187,24 @@ public class UserContext {
                     .thenCompose(root -> TofuCoreNode.load(username, root, network, crypto)
                             .thenCompose(tofuCorenode -> {
                                 SigningPrivateKeyAndPublicHash signer = new SigningPrivateKeyAndPublicHash(userData.controller, userWithRoot.getUser().secretSigningKey);
-                                return buildTransactionService(root, username, network, crypto).thenCompose(transactions -> {
-                                    UserContext result = new UserContext(username,
-                                            signer,
-                                            userWithRoot.getBoxingPair(),
-                                            userWithRoot.getRoot(),
-                                            network.withCorenode(tofuCorenode),
-                                            crypto,
-                                            new CommittedWriterData(MaybeMultihash.of(pair.left), userData),
-                                            root,
-                                            transactions);
+                                return buildTransactionService(root, username, network, crypto)
+                                        .thenCompose(transactions -> buildCapCache(root, username, network, crypto)
+                                                .thenCompose(capCache -> {
+                                                    UserContext result = new UserContext(username,
+                                                            signer,
+                                                            userWithRoot.getBoxingPair(),
+                                                            userWithRoot.getRoot(),
+                                                            network.withCorenode(tofuCorenode),
+                                                            crypto,
+                                                            new CommittedWriterData(MaybeMultihash.of(pair.left), userData),
+                                                            root,
+                                                            transactions,
+                                                            capCache);
 
-                                    System.out.println("Initializing context..");
-                                    return result.init(progressCallback)
-                                            .exceptionally(Futures::logAndThrow);
-                                });
+                                                    System.out.println("Initializing context..");
+                                                    return result.init(progressCallback)
+                                                            .exceptionally(Futures::logAndThrow);
+                                                }));
                             }));
         } catch (Throwable t) {
             throw new IllegalStateException("Incorrect password");
@@ -360,7 +377,7 @@ public class UserContext {
                         Optional.empty());
         CommittedWriterData userData = new CommittedWriterData(MaybeMultihash.empty(), empty);
         UserContext context = new UserContext(null, null, null, null, network,
-                crypto, userData, TrieNodeImpl.empty(), null);
+                crypto, userData, TrieNodeImpl.empty(), null, null);
         return buildTrieFromCap(cap, context.entrie, network, crypto)
                 .thenApply(trieNode -> {
                     context.entrie = trieNode;
@@ -374,7 +391,8 @@ public class UserContext {
                                                                 Crypto crypto) {
         EntryPoint entry = new EntryPoint(cap, "");
         return NetworkAccess.retrieveEntryPoint(entry, network)
-                .thenCompose(r -> addRetrievedEntryPointToTrie(null, currentRoot, entry, r.getPath(), true, network, crypto));
+                .thenCompose(r -> addRetrievedEntryPointToTrie(null, currentRoot, entry, r.getPath(),
+                        true, null, network, crypto));
     }
 
     public static CompletableFuture<AbsoluteCapability> getPublicCapability(Path originalPath, NetworkAccess network) {
@@ -819,7 +837,7 @@ public class UserContext {
                                         });
                             }));
         }), network.dhtClient).thenCompose(s -> addRetrievedEntryPointToTrie(directoryName, TrieNodeImpl.empty(),
-                entry, "/" + directoryName, false, network, crypto));
+                entry, "/" + directoryName, false, null, network, crypto));
     }
 
     public CompletableFuture<PublicSigningKey> getSigningKey(PublicKeyHash keyhash) {
@@ -1676,7 +1694,8 @@ public class UserContext {
                 .collect(Collectors.toList());
         return Futures.reduceAll(ourFileSystemEntries, root,
                 (t, e) -> NetworkAccess.getLatestEntryPoint(e, network)
-                        .thenCompose(r -> addRetrievedEntryPointToTrie(ourName, t, r.entry, r.getPath(), false, network, crypto)),
+                        .thenCompose(r -> addRetrievedEntryPointToTrie(ourName, t, r.entry, r.getPath(),
+                                false, null, network, crypto)),
                 (a, b) -> a)
                 .exceptionally(Futures::logAndThrow);
     }
@@ -1701,7 +1720,7 @@ public class UserContext {
 
                                     List<CompletableFuture<Optional<FriendSourcedTrieNode>>> friendNodes = friendsOnly.stream()
                                             .parallel()
-                                            .map(e -> FriendSourcedTrieNode.build(copt.get(), e, network, crypto))
+                                            .map(e -> FriendSourcedTrieNode.build(capCache, e, network, crypto))
                                             .collect(Collectors.toList());
                                     return Futures.reduceAll(friendNodes, ourRoot,
                                             (t, e) -> e.thenApply(fromUser -> fromUser.map(userEntrie -> t.putNode(userEntrie.ownerName, userEntrie))
@@ -1713,7 +1732,8 @@ public class UserContext {
 
     private CompletableFuture<TrieNode> retrieveAndAddEntryPointToTrie(TrieNode root, EntryPoint e) {
         return NetworkAccess.retrieveEntryPoint(e, network)
-                .thenCompose(r -> addRetrievedEntryPointToTrie(username, root, r.entry, r.getPath(), false, network, crypto));
+                .thenCompose(r -> addRetrievedEntryPointToTrie(username, root, r.entry, r.getPath(), false,
+                        capCache, network, crypto));
     }
 
     private static Optional<FileWrapper> getChild(Set<FileWrapper> in, String name) {
@@ -1760,6 +1780,7 @@ public class UserContext {
                                                                             EntryPoint fileCap,
                                                                             String path,
                                                                             boolean checkOwner,
+                                                                            IncomingCapCache capCache,
                                                                             NetworkAccess network,
                                                                             Crypto crypto) {
         // check entrypoint doesn't forge the owner
@@ -1774,7 +1795,7 @@ public class UserContext {
             // This is a friend's sharing directory, create a wrapper to read the capabilities lazily from it
             return root.getByPath(Paths.get(ourName, CapabilityStore.CAPABILITY_CACHE_DIR).toString(), crypto.hasher, network)
                     .thenApply(opt -> opt.get())
-                    .thenCompose(cacheDir -> FriendSourcedTrieNode.build(cacheDir, fileCap, network, crypto))
+                    .thenCompose(cacheDir -> FriendSourcedTrieNode.build(capCache, fileCap, network, crypto))
                     .thenApply(fromUser -> fromUser.map(userEntrie -> root.putNode(username, userEntrie)).orElse(root));
         });
     }

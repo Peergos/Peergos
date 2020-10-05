@@ -127,19 +127,7 @@ public class SocialFeed {
                     }
                     // There must have been concurrent processing of new caps, e.g. by browsing to that user's files
                     // We need to load the whole lot to catch what we missed
-                    return friend.loadCachedCaps(context.network, context.crypto)
-                            .thenCompose(all -> {
-                                List<CapabilityWithPath> readCapsToAdd = Stream.of(all.readCaps, diff.newCaps.readCaps)
-                                        .flatMap(c -> c.getRetrievedCapabilities().stream())
-                                        .skip(current.readCaps)
-                                        .collect(Collectors.toList());
-                                List<CapabilityWithPath> writeCapsToAdd = Stream.of(all.writeCaps, diff.newCaps.writeCaps)
-                                        .flatMap(c -> c.getRetrievedCapabilities().stream())
-                                        .skip(current.writeCaps)
-                                        .collect(Collectors.toList());
-                                return addToFriend(friend.ownerName, current, readCapsToAdd, all.readCaps.getBytesRead(),
-                                        writeCapsToAdd, all.writeCaps.getBytesRead());
-                            });
+                    throw new IllegalStateException("TODO");
                 });
     }
 

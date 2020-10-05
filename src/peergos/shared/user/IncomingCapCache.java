@@ -25,6 +25,7 @@ import java.util.stream.*;
  *  /C/.capabilitycache/friend-name$incoming.cbor
  */
 public class IncomingCapCache {
+    private static final String WORLD_ROOT_NAME = "world";
     private static final String FRIEND_STATE_SUFFIX = "$incoming.cbor";
     private static final String DIR_STATE = "items.cbor";
 
@@ -37,6 +38,11 @@ public class IncomingCapCache {
         this.worldRoot = worldRoot;
         this.crypto = crypto;
         this.hasher = crypto.hasher;
+    }
+
+    public static CompletableFuture<IncomingCapCache> build(FileWrapper cacheRoot, Crypto crypto, NetworkAccess network) {
+        return cacheRoot.getOrMkdirs(Paths.get(WORLD_ROOT_NAME), network, true, crypto)
+                .thenApply(worldRoot -> new IncomingCapCache(cacheRoot, worldRoot, crypto));
     }
 
     public static class ChildElement implements Cborable {
@@ -128,6 +134,25 @@ public class IncomingCapCache {
             }
         }
 
+        public Optional<AbsoluteCapability> getChild(String name) {
+            return children.stream()
+                    .filter(c -> c.name.name.equals(name))
+                    .map(c -> c.cap)
+                    .findFirst();
+        }
+
+        public Set<AbsoluteCapability> getChildren() {
+            return children.stream()
+                    .map(c -> c.cap)
+                    .collect(Collectors.toSet());
+        }
+
+        public Set<String> getChildNames() {
+            return children.stream()
+                    .map(c -> c.name.name)
+                    .collect(Collectors.toSet());
+        }
+
         public static CapsInDirectory empty() {
             return new CapsInDirectory(Collections.emptyList());
         }
@@ -170,6 +195,61 @@ public class IncomingCapCache {
                 });
     }
 
+    public CompletableFuture<Optional<FileWrapper>> getAnyValidParentOfAChild(Path dir,
+                                                                              Hasher hasher,
+                                                                              NetworkAccess network) {
+        return worldRoot.getDescendentByPath(dir.toString(), hasher, network)
+                .thenCompose(dirOpt -> {
+                    if (dirOpt.isEmpty())
+                        return Futures.of(Optional.empty());
+
+                    return getAnyValidParentOfAChild(dirOpt.get(), hasher, network);
+                });
+    }
+
+    public CompletableFuture<Optional<FileWrapper>> getAnyValidParentOfAChild(FileWrapper dir,
+                                                                              Hasher hasher,
+                                                                              NetworkAccess network) {
+        return dir.getChild(DIR_STATE, hasher, network)
+                .thenCompose(capsOpt -> {
+                    String ownerName = dir.getOwnerName();
+                    if (capsOpt.isPresent())
+                        return Serialize.readFully(capsOpt.get(), crypto, network)
+                                .thenApply(CborObject::fromByteArray)
+                                .thenApply(CapsInDirectory::fromCbor)
+                                .thenCompose(caps -> network.retrieveEntryPoint(new EntryPoint(caps.children.stream()
+                                        .findFirst().get().cap, ownerName)))
+                                .thenCompose(fileOpt -> fileOpt.map(f -> f.retrieveParent(network))
+                                        .orElse(Futures.of(Optional.empty())));
+                    return dir.getChildren(hasher, network)
+                            .thenCompose(children -> Futures.findFirst(children,
+                                    c -> getAnyValidParentOfAChild(c, hasher, network)))
+                            .thenCompose(copt -> copt.map(f -> f.retrieveParent(network))
+                                    .orElse(Futures.of(Optional.empty())));
+                });
+    }
+
+    public CompletableFuture<Set<FileWrapper>> getIndirectChildren(Path dir,
+                                                                   Set<String> toExclude,
+                                                                   Hasher hasher,
+                                                                   NetworkAccess network) {
+        return worldRoot.getDescendentByPath(dir.toString(), hasher, network)
+                .thenCompose(dirOpt -> {
+                    if (dirOpt.isEmpty())
+                        return Futures.of(Collections.emptySet());
+                    return dirOpt.get().getChildren(hasher, network)
+                            .thenApply(children -> children.stream()
+                                    .filter(c -> ! toExclude.contains(c.getName()))
+                                    .collect(Collectors.toSet()))
+                            .thenCompose(remainingDirs -> Futures.combineAll(remainingDirs.stream()
+                                    .map(child -> getAnyValidParentOfAChild(child, hasher, network))
+                                    .collect(Collectors.toList())))
+                            .thenApply(res -> res.stream()
+                                    .flatMap(Optional::stream)
+                                    .collect(Collectors.toSet()));
+                });
+    }
+
     public CompletableFuture<CapsDiff> ensureFriendUptodate(String friend, EntryPoint sharedDir, NetworkAccess network) {
         return getAndUpdateRoot(network)
                 .thenCompose(root -> root.getDescendentByPath(friend + FRIEND_STATE_SUFFIX, hasher, network)
@@ -203,8 +283,7 @@ public class IncomingCapCache {
                                         );
                             }
                         }))
-                .thenApply(newCaps -> new CapsDiff(current.readCapBytes - newCaps.readCaps.getBytesRead(),
-                        current.writeCapBytes - newCaps.writeCaps.getBytesRead(), newCaps))
+                .thenApply(newCaps -> new CapsDiff(current.readCapBytes, current.writeCapBytes, newCaps))
                 .thenCompose(diff -> addNewCapsToMirror(friend, current, diff, network));
     }
 
