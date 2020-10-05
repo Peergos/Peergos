@@ -15,7 +15,6 @@ import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
-import peergos.shared.hamt.*;
 import peergos.shared.io.ipfs.multihash.Multihash;
 import peergos.shared.mutable.*;
 import peergos.shared.social.*;
@@ -43,6 +42,9 @@ public class UserContext {
     public static final String FEED_DIR_NAME = ".feed";
     public static final String TRANSACTIONS_DIR_NAME = ".transactions";
     public static final String FRIEND_ANNOTATIONS_FILE_NAME = ".annotations";
+
+    public static final String APPS_DIR_NAME = ".apps";
+    public static final String TODO_DIR_NAME = "todo";
 
     public static final String ENTRY_POINTS_FROM_FRIENDS_FILENAME = ".from-friends.cborstream";
     public static final String ENTRY_POINTS_FROM_US_FILENAME = ".from-us.cborstream";
@@ -130,6 +132,143 @@ public class UserContext {
         return file.getPath(network).thenCompose(pathString ->
                 unShareReadAccess(Paths.get(pathString), readersToUnShare)
         );
+    }
+
+    @JsMethod
+    public App.Todo getTodoApp() {
+        return new App.Todo(this);
+    }
+    public static class App {
+
+        public static class Todo {
+            private UserContext ctx;
+            private static Comparator<Pair<String, String>> sortByUser = Comparator.comparing(pair -> pair.left);
+            private static Comparator<Pair<String, String>> sortByTodoName = Comparator.comparing(pair -> pair.right);
+            private static Comparator<Pair<String, String>> todoListSorter = sortByUser.thenComparing(sortByTodoName);
+
+            public Todo(UserContext ctx) {
+                this.ctx = ctx;
+            }
+
+            public CompletableFuture<TodoBoard> getTodoBoard(String filename) {
+                return getTodoBoard(this.ctx.username, filename);
+            }
+
+            @JsMethod
+            public CompletableFuture<TodoBoard> getTodoBoard(String owner, String filename) {
+                Path path = Paths.get(owner, APPS_DIR_NAME, TODO_DIR_NAME);
+                return ctx.getByPath(path).thenCompose(fw -> {
+                    if (fw.isPresent()) {
+                        FileWrapper todoDir = fw.get();
+                        return todoDir.getChild(filename, ctx.crypto.hasher, ctx.network).thenCompose(todoFileOpt -> {
+                            if (todoFileOpt.isEmpty()) {
+                                return CompletableFuture.completedFuture(TodoBoard.build(filename, new ArrayList<>()));
+                            }
+                            FileWrapper todoFile = todoFileOpt.get();
+                            int size = todoFile.getFileProperties().sizeLow();
+                            return todoFile.getInputStream(ctx.network, ctx.crypto, x -> {}).thenCompose(reader -> {
+                                byte[] data = new byte[size];
+                                return reader.readIntoArray(data, 0, data.length)
+                                        .thenApply(x -> TodoBoard.fromCbor(todoFile.isWritable(),
+                                                CborObject.fromByteArray(data)));
+                            });
+                        });
+                    } else {
+                        return CompletableFuture.completedFuture(TodoBoard.build(filename, new ArrayList<>()));
+                    }
+                });
+            }
+
+            @JsMethod
+            public CompletableFuture<List<Pair<String, String>>> getTodoBoards() {
+                Path path = Paths.get(ctx.username, APPS_DIR_NAME, TODO_DIR_NAME);
+                return ctx.getByPath(path).thenCompose(fw -> {
+                    if (fw.isPresent()) {
+                        return CompletableFuture.completedFuture(fw.get());
+                    } else {
+                        LOG.info("Creating a directory for Todo");
+                        return ctx.getUserRoot()
+                                .thenCompose(root -> FileUtil.getOrMkdirs(root, Paths.get(APPS_DIR_NAME, TODO_DIR_NAME)
+                                        , ctx.crypto, ctx.network))
+                                .thenApply(dir -> dir);
+                    }
+                }).thenCompose(dir -> dir.getChildren(ctx.crypto.hasher, ctx.network).thenApply(children ->
+                        children.stream().map(file -> new Pair<>(ctx.username, file.getFileProperties().name))
+                                .collect(Collectors.toList()))
+                ).thenCompose(ourTodoBoards -> ctx.getSocialState().thenCompose(socialState -> {
+                        Set<String> followers = socialState.followerRoots.keySet();
+                        return getSharedTodoBoardFolders(followers).thenCompose(othersTodoDirs -> getSharedTodoBoards(othersTodoDirs))
+                            .thenApply(sharedTodoBoards -> new Pair<>(ourTodoBoards, sharedTodoBoards));
+                    })
+                ).thenApply(allTodoListPair -> {
+                    List<Pair<String, String>> sharedTodoBoards = new ArrayList(allTodoListPair.left);
+                    sharedTodoBoards.addAll(allTodoListPair.right);
+                    return sharedTodoBoards.stream().sorted(todoListSorter).collect(Collectors.toList());
+                });
+            }
+
+            private CompletableFuture<List<Pair<String, FileWrapper>>> getSharedTodoBoardFolders(Set<String> followers) {
+                if (followers.isEmpty()) {
+                    return Futures.of(Collections.emptyList());
+                }
+                List<Pair<String, FileWrapper>> folders = new ArrayList<>();
+                return Futures.reduceAll(followers,
+                        true,
+                        (x, follower) -> ctx.getByPath(follower + "/" + APPS_DIR_NAME + "/" + UserContext.TODO_DIR_NAME).thenCompose(ce -> {
+                            if(ce.isPresent())
+                                folders.add(new Pair<>(follower, ce.get()));
+                            return Futures.of(true);
+                        }), (a, b) -> a && b).thenApply(res -> folders);
+            }
+
+            private CompletableFuture<List<Pair<String, String>>> getSharedTodoBoards(List<Pair<String, FileWrapper>> todoDirs) {
+                if (todoDirs.isEmpty()) {
+                    return Futures.of(Collections.emptyList());
+                }
+                List<Pair<String, String>> boards = new ArrayList<>();
+                return Futures.reduceAll(todoDirs,
+                        true,
+                        (x, pair) -> pair.right.getChildren(ctx.crypto.hasher, ctx.network).thenCompose(children -> {
+                            List<Pair<String, String>> pairs = children.stream().map(child -> new Pair<>(pair.left, child.getName())).collect(Collectors.toList());
+                            boards.addAll(pairs);
+                            return Futures.of(true);
+                        }), (a, b) -> a && b).thenApply(res -> boards);
+            }
+
+            @JsMethod
+            public CompletableFuture<Boolean> updateTodoBoard(String owner, TodoBoard todoBoard) {
+                Path path = Paths.get(owner, APPS_DIR_NAME, TODO_DIR_NAME);
+                return ctx.getByPath(path).thenCompose(fw -> {
+                        if (fw.isPresent()) {
+                            return CompletableFuture.completedFuture(fw.get());
+                        } else {
+                            LOG.info("Creating a directory for Todo");
+                            return ctx.getUserRoot()
+                                    .thenCompose(root -> FileUtil.getOrMkdirs(root, Paths.get(APPS_DIR_NAME, TODO_DIR_NAME)
+                                            , ctx.crypto, ctx.network))
+                                    .thenApply(dir -> dir);
+                        }
+                    }).thenCompose(dir -> {
+                        byte[] bytes = todoBoard.serialize();
+                        return dir.uploadOrReplaceFile(todoBoard.getName(), AsyncReader.build(bytes),
+                                bytes.length, ctx.network, ctx.crypto, x -> {}, ctx.crypto.random.randomBytes(32))
+                                .thenApply(res -> true);
+                });
+            }
+
+            @JsMethod
+            public CompletableFuture<Boolean> deleteTodoBoard(String owner, String filename) {
+                Path path = Paths.get(owner, APPS_DIR_NAME, TODO_DIR_NAME);
+                return ctx.getByPath(path).thenCompose(dir -> {
+                    if (!dir.isPresent()) {
+                        return CompletableFuture.completedFuture(false);
+                    }
+                    Path pathToFile = path.resolve(filename);
+                    return dir.get().getChild(filename, ctx.crypto.hasher, ctx.network).thenCompose(file ->
+                            file.get().remove(dir.get(), pathToFile, ctx).thenApply(fw -> true));
+                });
+            }
+        }
     }
 
     @JsMethod

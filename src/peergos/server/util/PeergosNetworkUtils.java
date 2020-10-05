@@ -13,6 +13,7 @@ import peergos.shared.user.fs.*;
 import peergos.shared.user.fs.FileWrapper;
 import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.ArrayOps;
+import peergos.shared.util.Pair;
 import peergos.shared.util.Serialize;
 
 import java.io.File;
@@ -74,6 +75,50 @@ public class PeergosNetworkUtils {
                 }).collect(Collectors.toList());
     }
 
+    public static void sharedTodoBoard(NetworkAccess sharerNode, NetworkAccess shareeNode, Random random) throws Exception {
+        String sharerUsername = "sharer";
+        String sharerPassword = generatePassword();
+        UserContext sharerUser = ensureSignedUp(sharerUsername, sharerPassword, sharerNode.clear(), crypto);
+
+
+        String shareeUsername = "sharee";
+        String shareePassword = generatePassword();
+        UserContext shareeUser = ensureSignedUp(shareeUsername, shareePassword, sharerNode.clear(), crypto);
+
+        // friend sharer with others
+        List<UserContext> sharerList = Arrays.asList(sharerUser);
+        List<UserContext> shareeList = Arrays.asList(shareeUser);
+        friendBetweenGroups(sharerList, shareeList);
+
+        List<TodoListItem> todoItems = new ArrayList<>();
+        TodoListItem item = new TodoListItem("id", "created", "text", false);
+        todoItems.add(item);
+        TodoList todoList = TodoList.build("todoList", 1, todoItems);
+        UserContext.App.Todo todoApp = sharerUser.getTodoApp();
+        String todoBoardName = "my todo board";
+        List<TodoList> todoLists = new ArrayList<>();
+        todoLists.add(todoList);
+        TodoBoard board = TodoBoard.build(todoBoardName, todoLists);
+        todoApp.updateTodoBoard(sharerUser.username, board).join();
+        TodoBoard updatedBoard = todoApp.getTodoBoard(todoBoardName).join();
+        todoLists = updatedBoard.getTodoLists();
+        assertTrue("todoLists size", todoLists.size() == 1);
+        todoItems = todoLists.get(0).getTodoItems();
+        assertTrue("size", todoItems.size() == 1);
+
+        // sharer shares todolist with sharee
+        Path pathToToDo = Paths.get(sharerUser.username, UserContext.APPS_DIR_NAME, UserContext.TODO_DIR_NAME, todoBoardName);
+        Set<String> toShareTo = shareeList.stream().map(u -> u.username).collect(Collectors.toSet());
+        sharerUser.shareWriteAccessWith(pathToToDo, toShareTo).join();
+
+        UserContext.App.Todo shareeTodoApp = shareeUser.getTodoApp();
+        List<Pair<String, String>> lists = shareeTodoApp.getTodoBoards().join();
+        assertTrue("todoList filename", lists.get(0).right.equals(todoBoardName));
+        assertTrue("todoList owner", lists.get(0).left.equals(sharerUser.username));
+
+        //FAILS!! shareeTodoApp.updateTodoList(sharerUser.username, todoListName, new TodoList(true, todoItems)).join();
+        System.currentTimeMillis();
+    }
 
     public static void grantAndRevokeFileReadAccess(NetworkAccess sharerNode, NetworkAccess shareeNode, int shareeCount, Random random) throws Exception {
         Assert.assertTrue(0 < shareeCount);

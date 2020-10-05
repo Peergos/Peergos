@@ -1101,6 +1101,51 @@ public abstract class UserTests {
     }
 
     @Test
+    public void todoTest() throws Exception {
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        UserContext.App.Todo todoApp = context.getTodoApp();
+        List<Pair<String,String>> todoBoards = todoApp.getTodoBoards().join();
+        assertTrue("todoBoards", todoBoards.isEmpty());
+        String todoBoardName = "s_a-m1p2l e";
+        TodoBoard board = todoApp.getTodoBoard(todoBoardName).join();
+        List<TodoList> lists = board.getTodoLists();
+        assertTrue("size", lists.isEmpty());
+        TodoListItem item = new TodoListItem("id", "created", "text", false);
+        TodoListItem item2 = new TodoListItem("id2", "created2", "text2", true);
+        String todoListName = "todoList";
+
+        List<TodoListItem> items = new ArrayList<>();
+        items.add(item);
+        items.add(item2);
+        TodoList list = TodoList.build(todoListName, 1, items);
+        lists = new ArrayList<>();
+        lists.add(list);
+        TodoBoard updatedBoard = TodoBoard.build(board.getName(), lists);
+        todoApp.updateTodoBoard(context.username, updatedBoard).join();
+        todoBoards = todoApp.getTodoBoards().join();
+        assertTrue("todoBoards", !todoBoards.isEmpty());
+        assertTrue("todoBoards filename", todoBoards.get(0).right.equals(todoBoardName));
+        assertTrue("todoBoards owner", todoBoards.get(0).left.equals(context.username));
+        updatedBoard = todoApp.getTodoBoard(todoBoardName).join();
+        lists = updatedBoard.getTodoLists();
+        assertTrue("lists size", lists.size() == 1);
+        TodoList todolist = lists.get(0);
+        assertTrue("todoList name", todolist.getName().equals(todoListName));
+        List<TodoListItem> todoItems = todolist.getTodoItems();
+        assertTrue("size", todoItems.size() == 2);
+        assertTrue("item[0]", todoItems.get(0).equals(item));
+        assertTrue("item[1]", todoItems.get(1).equals(item2));
+        boolean isDeleted = todoApp.deleteTodoBoard(context.username, todoBoardName).join();
+        assertTrue("isDeleted", isDeleted);
+        TodoBoard emptyBoard = todoApp.getTodoBoard(todoBoardName).join();
+        assertTrue("size", emptyBoard.getTodoLists().isEmpty());
+        todoBoards = todoApp.getTodoBoards().join();
+        assertTrue("todoBoards", todoBoards.isEmpty());
+    }
+
+    @Test
     public void rename() throws Exception {
         String username = generateUsername();
         String password = "test01";
