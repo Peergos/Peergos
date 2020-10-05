@@ -153,6 +153,8 @@ public class FriendSourcedTrieNode implements TrieNode {
 
     @Override
     public synchronized TrieNode removeEntry(String path) {
+        if (TrieNode.canonicalise(path).isEmpty())
+            return TrieNodeImpl.empty();
         throw new IllegalStateException("Not valid operation on FriendSourcedTrieNode.");
     }
 
