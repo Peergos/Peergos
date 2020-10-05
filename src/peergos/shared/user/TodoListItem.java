@@ -4,6 +4,8 @@ import jsinterop.annotations.JsType;
 import peergos.shared.cbor.CborObject;
 import peergos.shared.cbor.Cborable;
 
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.*;
 
 //let item = {id: id, created: created, text: text, checked: checked};
@@ -11,22 +13,33 @@ import java.util.*;
 public class TodoListItem implements Cborable {
 
     public final String Id;
-    public final String created;
+    private final LocalDateTime created;
     public final String text;
     public final boolean checked;
 
-    public TodoListItem(String Id, String created, String text, boolean checked) {
+    public TodoListItem(String Id, LocalDateTime created, String text, boolean checked) {
         this.Id = Id;
         this.created = created;
         this.text = text;
         this.checked = checked;
     }
 
+    public String getCreatedAsMillisecondsString() {
+        long milliseconds = 1000 * created.toEpochSecond(java.time.ZoneOffset.UTC);
+        return "" + milliseconds;
+    }
+
+    public static TodoListItem build(String Id, String timeInMillis, String text, boolean checked) {
+        long milliseconds = Long.parseLong(timeInMillis);
+        LocalDateTime createdDateTime = LocalDateTime.ofEpochSecond(milliseconds/1000, 0, ZoneOffset.UTC);
+        return new TodoListItem(Id, createdDateTime, text, checked);
+    }
+
     @Override
     public CborObject toCbor() {
         Map<String, CborObject> cbor = new TreeMap<>();
         cbor.put("i", new CborObject.CborString(Id));
-        cbor.put("z", new CborObject.CborString(created));
+        cbor.put("z", new CborObject.CborLong(created.toEpochSecond(ZoneOffset.UTC)));
         cbor.put("t", new CborObject.CborString(text));
         cbor.put("c", new CborObject.CborBoolean(checked));
         return CborObject.CborMap.build(cbor);
@@ -37,10 +50,14 @@ public class TodoListItem implements Cborable {
             throw new IllegalStateException("Incorrect cbor for TodoListItem: " + cbor);
         SortedMap<CborObject, ? extends Cborable> map = ((CborObject.CborMap) cbor).values;
         CborObject.CborString idStr = (CborObject.CborString)map.get(new CborObject.CborString("i"));
-        CborObject.CborString createdStr = (CborObject.CborString)map.get(new CborObject.CborString("z"));
+
+
+        CborObject.CborMap m = (CborObject.CborMap) cbor;
+        long modifiedEpochSeconds = m.getLong("z");
+        LocalDateTime modified = LocalDateTime.ofEpochSecond(modifiedEpochSeconds, 0, ZoneOffset.UTC);
         CborObject.CborString textStr = (CborObject.CborString)map.get(new CborObject.CborString("t"));
         CborObject.CborBoolean checkedStr = (CborObject.CborBoolean)map.get(new CborObject.CborString("c"));
-        return new TodoListItem(idStr.value, createdStr.value, textStr.value, checkedStr.value);
+        return new TodoListItem(idStr.value, modified, textStr.value, checkedStr.value);
     }
 
     @Override
@@ -51,7 +68,12 @@ public class TodoListItem implements Cborable {
         TodoListItem that = (TodoListItem) o;
 
         if (Id != null ? !Id.equals(that.Id) : that.Id != null) return false;
-        if (created != null ? !created.equals(that.created) : that.created != null) return false;
+        if (created.toEpochSecond(ZoneOffset.UTC) != that.created.toEpochSecond(ZoneOffset.UTC)) {
+            return false;
+        }
+        //Can't use due to missing GWT emulation
+        // if (created != null ? !created.truncatedTo(ChronoUnit.SECONDS)
+        //        .equals(that.created.truncatedTo(ChronoUnit.SECONDS)) : that.created != null) return false;
         if (text != null ? !text.equals(that.text) : that.text != null) return false;
         return checked == that.checked;
     }

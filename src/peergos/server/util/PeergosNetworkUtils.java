@@ -19,6 +19,7 @@ import peergos.shared.util.Serialize;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.*;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.*;
@@ -91,9 +92,9 @@ public class PeergosNetworkUtils {
         friendBetweenGroups(sharerList, shareeList);
 
         List<TodoListItem> todoItems = new ArrayList<>();
-        TodoListItem item = new TodoListItem("id", "created", "text", false);
+        TodoListItem item = new TodoListItem("id", LocalDateTime.now(), "text", false);
         todoItems.add(item);
-        TodoList todoList = TodoList.build("todoList", 1, todoItems);
+        TodoList todoList = TodoList.build("todoList", "1", todoItems);
         UserContext.App.Todo todoApp = sharerUser.getTodoApp();
         String todoBoardName = "my todo board";
         List<TodoList> todoLists = new ArrayList<>();

@@ -34,12 +34,15 @@ public class LocalDateTime implements Comparable<LocalDateTime>{
 	public LocalDate toLocalDate() {
 		return date;
 	}
+
+    @JsMethod
     public long toEpochSecond(ZoneOffset offset) {
         long epochDay = toLocalDate().toEpochDay();
         long secs = epochDay * 86400 + toLocalTime().toSecondOfDay();
         secs -= offset.getTotalSeconds();
         return secs;
     }
+
     public static LocalDateTime ofEpochSecond(long epochSecond, int nanoOfSecond, ZoneOffset offset) {
         long localSecond = epochSecond + offset.getTotalSeconds();  // overflow caught later
         long localEpochDay = Math.floorDiv(localSecond, SECONDS_PER_DAY);
