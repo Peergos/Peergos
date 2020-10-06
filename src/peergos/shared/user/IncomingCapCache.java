@@ -180,38 +180,39 @@ public class IncomingCapCache {
     }
 
     public CompletableFuture<Optional<FileWrapper>> getByPath(Path file,
+                                                              Snapshot version,
                                                               Hasher hasher,
                                                               NetworkAccess network) {
         String finalPath = TrieNode.canonicalise(file.toString());
         List<String> elements = Arrays.asList(finalPath.split("/"));
-        return worldRoot.getDescendentByPath(elements.get(0), hasher, network)
+        Snapshot union = worldRoot.version.mergeAndOverwriteWith(version);
+        return worldRoot.getDescendentByPath(elements.get(0), union, hasher, network)
                 .thenCompose(dirOpt -> {
                     if (dirOpt.isEmpty())
                         return Futures.of(Optional.empty());
-                    return getByPath(dirOpt.get(), elements, 1, network);
+                    return getByPath(dirOpt.get(), elements, 1, union, network);
                 });
     }
 
     private static String pathSuffix(List<String> path, int from) {
         if (from >= path.size())
             return "";
-        return path.subList(from, path.size())
-                .stream()
-                .collect(Collectors.joining("/"));
+        return String.join("/", path.subList(from, path.size()));
     }
 
     private CompletableFuture<Optional<FileWrapper>> getByPath(FileWrapper mirrorDir,
                                                                List<String> path,
                                                                int childIndex,
+                                                               Snapshot version,
                                                                NetworkAccess network) {
         Supplier<CompletableFuture<Optional<FileWrapper>>> recurse =
-                () -> mirrorDir.getChild(path.get(childIndex), hasher, network)
+                () -> mirrorDir.getChild(version, path.get(childIndex), hasher, network)
                         .thenCompose(childOpt -> childOpt.map(c ->
-                                getByPath(c, path, childIndex + 1, network))
+                                getByPath(c, path, childIndex + 1, version, network))
                                 .orElseGet(() -> Futures.of(Optional.empty())));
         if (childIndex >= path.size())
             return getAnyValidParentOfAChild(mirrorDir, hasher, network);
-        return mirrorDir.getChild(DIR_STATE, hasher, network)
+        return mirrorDir.getChild(version, DIR_STATE, hasher, network)
                 .thenCompose(capsOpt -> {
                     if (capsOpt.isEmpty())
                         return recurse.get();
@@ -219,13 +220,13 @@ public class IncomingCapCache {
                             .thenApply(CborObject::fromByteArray)
                             .thenApply(CapsInDirectory::fromCbor)
                             .thenCompose(caps -> caps.getChild(path.get(childIndex))
-                                    .map(cap -> network.retrieveEntryPoint(new EntryPoint(cap, path.get(0)))
+                                    .map(cap -> network.getFile(new EntryPoint(cap, path.get(0)), version)
                                             .thenCompose(fopt -> fopt.isPresent() && fopt.get().isWritable() ?
                                                     fopt.get().getAnyLinkPointer(network)
                                                             .thenApply(linkOpt -> fopt.map(g -> g.withLinkPointer(linkOpt))) :
                                                     Futures.of(fopt))
                                             .thenCompose(fopt -> fopt.map(f ->
-                                                    f.getDescendentByPath(pathSuffix(path, childIndex + 1), hasher, network))
+                                                    f.getDescendentByPath(pathSuffix(path, childIndex + 1), version, hasher, network))
                                                     .orElse(Futures.of(Optional.empty()))))
                                     .orElseGet(recurse::get));
                 });
@@ -363,12 +364,12 @@ public class IncomingCapCache {
                 .thenCompose(sharedDir -> CapabilityStore.getReadOnlyCapabilityFileSize(sharedDir.file, crypto, network)
                         .thenCompose(bytes -> {
                             if (bytes == current.readCapBytes) {
-                                return getNewWritableCaps(Optional.of(sharedDir.file), current.writeCapBytes, crypto, network)
+                                return getNewWritableCaps(sharedDir.file, current.writeCapBytes, crypto, network)
                                         .thenApply(w -> new FriendSourcedTrieNode.ReadAndWriteCaps(CapabilitiesFromUser.empty(), w));
                             } else {
                                 return CapabilityStore.loadReadAccessSharingLinksFromIndex(null, sharedDir.file,
                                         null, network, crypto, current.readCapBytes, false, true)
-                                        .thenCompose(newReadCaps -> getNewWritableCaps(Optional.of(sharedDir.file),
+                                        .thenCompose(newReadCaps -> getNewWritableCaps(sharedDir.file,
                                                 current.writeCapBytes, crypto, network)
                                                 .thenApply(writeable -> new FriendSourcedTrieNode.ReadAndWriteCaps(newReadCaps, writeable))
                                         );
@@ -380,15 +381,15 @@ public class IncomingCapCache {
                         .thenApply(y -> diff));
     }
 
-    private synchronized CompletableFuture<CapabilitiesFromUser> getNewWritableCaps(Optional<FileWrapper> sharedDirOpt,
+    private synchronized CompletableFuture<CapabilitiesFromUser> getNewWritableCaps(FileWrapper sharedDir,
                                                                                     long byteOffsetWrite,
                                                                                     Crypto crypto,
                                                                                     NetworkAccess network) {
-        return CapabilityStore.getEditableCapabilityFileSize(sharedDirOpt.get(), crypto, network)
+        return CapabilityStore.getEditableCapabilityFileSize(sharedDir, crypto, network)
                 .thenCompose(editFilesize -> {
                     if (editFilesize == byteOffsetWrite)
                         return CompletableFuture.completedFuture(CapabilitiesFromUser.empty());
-                    return CapabilityStore.loadWriteAccessSharingLinksFromIndex(null, sharedDirOpt.get(),
+                    return CapabilityStore.loadWriteAccessSharingLinksFromIndex(null, sharedDir,
                             null, network, crypto, byteOffsetWrite, false, true);
                 });
     }

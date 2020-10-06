@@ -50,7 +50,7 @@ public class FriendSourcedTrieNode implements TrieNode {
                 .thenCompose(sharedDir -> {
                     return sharedDir.file.retrieveParent(network)
                             .thenCompose(sharedOpt -> {
-                                if (! sharedOpt.isPresent()) {
+                                if (sharedOpt.isEmpty()) {
                                     CompletableFuture<Optional<FileWrapper>> empty = CompletableFuture.completedFuture(Optional.empty());
                                     return empty;
                                 }
@@ -76,7 +76,7 @@ public class FriendSourcedTrieNode implements TrieNode {
                     .thenApply(opt -> opt.map(f -> f.withTrieNode(this)));
         Path file = Paths.get(ownerName + path);
         return ensureUptodate(crypto, network)
-                .thenCompose(x -> cache.getByPath(file, hasher, network))
+                .thenCompose(x -> cache.getByPath(file, cache.getVersion(), hasher, network))
                 .thenApply(opt -> opt.map(f -> convert(f, path)));
     }
 
@@ -90,7 +90,7 @@ public class FriendSourcedTrieNode implements TrieNode {
             return getFriendRoot(network)
                     .thenApply(opt -> opt.map(f -> f.withTrieNode(this)));
         Path file = Paths.get(ownerName + path);
-        return cache.getByPath(file, hasher, network) //TODO use version
+        return cache.getByPath(file, version, hasher, network)
                 .thenApply(opt -> opt.map(f -> convert(f, path)));
     }
 
