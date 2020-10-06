@@ -233,12 +233,19 @@ public class UserContext {
                                             , ctx.crypto, ctx.network))
                                     .thenApply(dir -> dir);
                         }
-                    }).thenCompose(dir -> {
-                        byte[] bytes = todoBoard.serialize();
-                        return dir.uploadOrReplaceFile(todoBoard.getName(), AsyncReader.build(bytes),
-                                bytes.length, ctx.network, ctx.crypto, x -> {}, ctx.crypto.random.randomBytes(32))
-                                .thenApply(res -> true);
-                });
+                    }).thenCompose(dir ->
+                        dir.getChild(todoBoard.getName(), ctx.crypto.hasher, ctx.network).thenCompose(file -> {
+                            byte[] bytes = todoBoard.serialize();
+                            if(file.isPresent()) {
+                                return file.get().overwriteFile(AsyncReader.build(bytes),bytes.length, ctx.network, ctx.crypto,
+                                        x -> {}).thenApply(res -> true);
+                            } else {
+                                return dir.uploadOrReplaceFile(todoBoard.getName(), AsyncReader.build(bytes),
+                                        bytes.length, ctx.network, ctx.crypto, x -> {
+                                        }, ctx.crypto.random.randomBytes(32))
+                                        .thenApply(res -> true);
+                            }
+                    }));
             }
 
             @JsMethod
