@@ -1207,6 +1207,26 @@ public abstract class UserTests {
     }
 
     @Test
+    public void calendarEventsOverYearBoundary() {
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+
+        UserContext.App.Calendar calendar = context.getCalendarApp();
+        LocalDate month = LocalDate.of(2020, Month.JANUARY.getValue(), 1);
+        calendar.updateCalendarEvent(2019, Month.DECEMBER.getValue(), "eventId", "calendarEvent").join();
+        Triple<List<String>,List<String>,List<String>> items = calendar.getCalendarEventsAroundMonth(month.getYear(), month.getMonthValue()).join();
+        assertTrue("size", items.left.size() == 1);
+
+        month = LocalDate.of(2020, Month.DECEMBER.getValue(), 1);
+        calendar.updateCalendarEvent(2021, Month.JANUARY.getValue(), "eventId", "calendarEvent").join();
+        items = calendar.getCalendarEventsAroundMonth(month.getYear(), month.getMonthValue()).join();
+        assertTrue("size", items.right.size() == 1);
+
+
+    }
+
+    @Test
     public void rename() throws Exception {
         String username = generateUsername();
         String password = "test01";

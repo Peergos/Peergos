@@ -189,33 +189,6 @@ public class UserContext {
                 });
             }
 
-            //month either side: -1, 0, +1
-            private CompletableFuture<Triple<List<String>,List<String>,List<String>>> getEventsAroundMonth(FileWrapper yearDirectory, int monthIndex) {
-                return yearDirectory.getChildren(ctx.crypto.hasher, ctx.network).thenCompose(monthFolders -> {
-                    List<String> left = new ArrayList<>();
-                    List<String> middle = new ArrayList<>();
-                    List<String> right = new ArrayList<>();
-                    Set<String> desiredMonths = IntStream.range(monthIndex -1, monthIndex + 2)
-                            .mapToObj(month -> String.valueOf(month)).collect(Collectors.toSet());
-                    Set<FileWrapper> relevantMonths = monthFolders.stream().filter(month ->
-                            desiredMonths.contains(month.getName())).collect(Collectors.toSet());
-                    return Futures.reduceAll(relevantMonths,
-                            true,
-                            (x, file) -> getEventsForMonth(file).thenCompose(ce -> {
-                                int monthFile = Integer.parseInt(file.getName());
-                                if(monthFile == (monthIndex -1)) {
-                                    left.addAll(ce);
-                                } else if(monthFile == monthIndex) {
-                                    middle.addAll(ce);
-                                } else if(monthFile == (monthIndex +1)) {
-                                    right.addAll(ce);
-                                }
-                                return Futures.of(true);
-                            })
-                            , (a, b) -> a && b).thenApply(res -> new Triple<>(left, middle, right));
-                });
-            }
-
             @JsMethod
             //REMEMBER  1 = January
             public CompletableFuture<Triple<List<String>,List<String>,List<String>>> getCalendarEventsAroundMonth(int year, int monthIndex) {
@@ -225,15 +198,17 @@ public class UserContext {
                 if(monthIndex > 12) {
                     throw new IllegalArgumentException("monthIndex > 12");
                 }
-                Path path = Paths.get(ctx.username, APPS_DIR_NAME, CALENDAR_DIR_NAME, ctx.username, "" + year);
-                return ctx.getByPath(path).thenCompose(fw -> {
-                    if (fw.isPresent()) {
-                        return getEventsAroundMonth(fw.get(), monthIndex);
-                    } else {
-                        return CompletableFuture.completedFuture(new Triple<>(Collections.emptyList(),
-                                Collections.emptyList(), Collections.emptyList()));
-                    }
-                });
+                Pair<Integer, Integer> previousMonth = monthIndex == 1 ? new Pair<>(year -1, 12)
+                        : new Pair<>(year, monthIndex -1);
+                Pair<Integer, Integer> currentMonth = new Pair<>(year, monthIndex);
+                Pair<Integer, Integer> nextMonth = monthIndex == 12 ? new Pair<>(year +1, 1)
+                        : new Pair<>(year, monthIndex +1);
+
+                return getCalendarEventsForMonth(previousMonth.left, previousMonth.right).thenCompose(previous ->
+                        getCalendarEventsForMonth(currentMonth.left, currentMonth.right).thenCompose(current ->
+                                getCalendarEventsForMonth(nextMonth.left, nextMonth.right).thenApply(next ->
+                                            new Triple<>(previous, current, next)
+                )));
             }
 
             @JsMethod
