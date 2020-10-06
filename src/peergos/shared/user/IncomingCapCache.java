@@ -11,6 +11,7 @@ import peergos.shared.util.*;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.*;
 import java.util.stream.*;
 
 /** A lookup from path to capabilities shared with you
@@ -178,9 +179,56 @@ public class IncomingCapCache {
         }
     }
 
+    public CompletableFuture<Optional<FileWrapper>> getByPath(Path file,
+                                                              Hasher hasher,
+                                                              NetworkAccess network) {
+        String finalPath = TrieNode.canonicalise(file.toString());
+        List<String> elements = Arrays.asList(finalPath.split("/"));
+        return worldRoot.getDescendentByPath(elements.get(0), hasher, network)
+                .thenCompose(dirOpt -> {
+                    if (dirOpt.isEmpty())
+                        return Futures.of(Optional.empty());
+                    return getCapOrChild(dirOpt.get(), elements, 1, network);
+                });
+    }
+
+    private static String pathSuffix(List<String> path, int from) {
+        if (from >= path.size())
+            return "";
+        return path.subList(from, path.size())
+                .stream()
+                .collect(Collectors.joining("/"));
+    }
+
+    private CompletableFuture<Optional<FileWrapper>> getCapOrChild(FileWrapper mirrorDir,
+                                                                   List<String> path,
+                                                                   int childIndex,
+                                                                   NetworkAccess network) {
+        Supplier<CompletableFuture<Optional<FileWrapper>>> recurse =
+                () -> mirrorDir.getChild(path.get(childIndex), hasher, network)
+                        .thenCompose(childOpt -> childOpt.map(c ->
+                                getCapOrChild(c, path, childIndex + 1, network))
+                                .orElseGet(() -> Futures.of(Optional.empty())));
+        if (childIndex >= path.size())
+            return getAnyValidParentOfAChild(mirrorDir, hasher, network);
+        return mirrorDir.getChild(DIR_STATE, hasher, network)
+                .thenCompose(capsOpt -> {
+                    if (capsOpt.isEmpty())
+                        return recurse.get();
+                    return Serialize.readFully(capsOpt.get(), crypto, network)
+                            .thenApply(CborObject::fromByteArray)
+                            .thenApply(CapsInDirectory::fromCbor)
+                            .thenCompose(caps -> caps.getChild(path.get(childIndex))
+                                    .map(cap -> network.retrieveEntryPoint(new EntryPoint(cap, path.get(0)))
+                                            .thenCompose(fopt -> fopt.map(f ->
+                                                    f.getDescendentByPath(pathSuffix(path, childIndex + 1), hasher, network))
+                                                    .orElse(Futures.of(Optional.empty()))))
+                                    .orElseGet(recurse::get));
+                });
+    }
+
     public CompletableFuture<CapsInDirectory> getCapsInDirectory(Path dir, NetworkAccess network) {
-        return getAndUpdateWorldRoot(network)
-                .thenCompose(worldRoot -> worldRoot.getDescendentByPath(dir.toString(), hasher, network))
+        return worldRoot.getDescendentByPath(dir.toString(), hasher, network)
                 .thenCompose(dirOpt -> {
                     if (dirOpt.isEmpty())
                         return Futures.of(CapsInDirectory.empty());
@@ -284,7 +332,9 @@ public class IncomingCapCache {
                             }
                         }))
                 .thenApply(newCaps -> new CapsDiff(current.readCapBytes, current.writeCapBytes, newCaps))
-                .thenCompose(diff -> addNewCapsToMirror(friend, current, diff, network));
+                .thenCompose(diff -> addNewCapsToMirror(friend, current, diff, network))
+                .thenCompose(diff -> getAndUpdateWorldRoot(network)
+                        .thenApply(y -> diff));
     }
 
     private synchronized CompletableFuture<CapabilitiesFromUser> getNewWritableCaps(Optional<FileWrapper> sharedDirOpt,

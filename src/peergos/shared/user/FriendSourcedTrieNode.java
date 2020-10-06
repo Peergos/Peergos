@@ -75,12 +75,8 @@ public class FriendSourcedTrieNode implements TrieNode {
             return getFriendRoot(network)
                     .thenApply(opt -> opt.map(f -> f.withTrieNode(this)));
         Path file = Paths.get(ownerName + path);
-        Path parent = file.getParent();
         return ensureUptodate(crypto, network)
-                .thenCompose(x -> cache.getCapsInDirectory(parent, network)
-                        .thenCompose(caps -> caps.getChild(file.getFileName().toString())
-                                .map(c -> network.retrieveEntryPoint(new EntryPoint(c, ownerName)))
-                                .orElseGet(() -> cache.getAnyValidParentOfAChild(file, hasher, network))))
+                .thenCompose(x -> cache.getByPath(file, hasher, network))
                 .thenApply(opt -> opt.map(f -> convert(f, path)));
     }
 
