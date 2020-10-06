@@ -43,7 +43,7 @@ public class FileWrapper {
     private final FileProperties props;
     private final String ownername;
     private final Optional<TrieNode> capTrie;
-    private final Snapshot version;
+    public final Snapshot version;
     private final boolean isWritable;
     private AtomicBoolean modified = new AtomicBoolean(); // This only used as a guard against concurrent modifications
 
@@ -175,7 +175,16 @@ public class FileWrapper {
         });
     }
 
-    public CompletableFuture<Optional<FileWrapper>> getDescendentByPath(String path, Hasher hasher, NetworkAccess network) {
+    public CompletableFuture<Optional<FileWrapper>> getDescendentByPath(String path,
+                                                                        Hasher hasher,
+                                                                        NetworkAccess network) {
+        return getDescendentByPath(path, version, hasher, network);
+    }
+
+    public CompletableFuture<Optional<FileWrapper>> getDescendentByPath(String path,
+                                                                        Snapshot version,
+                                                                        Hasher hasher,
+                                                                        NetworkAccess network) {
         ensureUnmodified();
         if (path.length() == 0)
             return CompletableFuture.completedFuture(Optional.of(this));
@@ -194,7 +203,7 @@ public class FileWrapper {
         return getChildren(version, hasher, network).thenCompose(children -> {
             for (FileWrapper child : children)
                 if (child.getFileProperties().name.equals(prefix)) {
-                    return child.getDescendentByPath(suffix, hasher, network);
+                    return child.getDescendentByPath(suffix, child.version, hasher, network);
                 }
             return CompletableFuture.completedFuture(Optional.empty());
         });
@@ -430,7 +439,7 @@ public class FileWrapper {
         return getChild(version, name, hasher, network);
     }
 
-    private CompletableFuture<Optional<FileWrapper>> getChild(Snapshot version, String name, Hasher hasher, NetworkAccess network) {
+    public CompletableFuture<Optional<FileWrapper>> getChild(Snapshot version, String name, Hasher hasher, NetworkAccess network) {
         return getChildren(version, hasher, network)
                 .thenApply(children -> children.stream().filter(f -> f.getName().equals(name)).findAny());
     }

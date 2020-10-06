@@ -81,44 +81,42 @@ public class FriendSourcedTrieNode implements TrieNode {
     }
 
     @Override
-    public synchronized CompletableFuture<Optional<FileWrapper>> getByPath(String path, Snapshot version, Hasher hasher, NetworkAccess network) {
+    public synchronized CompletableFuture<Optional<FileWrapper>> getByPath(String path,
+                                                                           Snapshot version,
+                                                                           Hasher hasher,
+                                                                           NetworkAccess network) {
         FileProperties.ensureValidPath(path);
         if (path.isEmpty() || path.equals("/"))
             return getFriendRoot(network)
                     .thenApply(opt -> opt.map(f -> f.withTrieNode(this)));
         Path file = Paths.get(ownerName + path);
-        Path parent = file.getParent();
-        return ensureUptodate(crypto, network)
-                .thenCompose(x -> cache.getCapsInDirectory(parent, network)
-                        .thenCompose(caps -> caps.getChild(file.getFileName().toString())
-                                .map(c -> network.getFile(new EntryPoint(c, ownerName), version)
-                                        .thenApply(opt -> opt.map(f -> convert(f, path))))
-                                .orElse(Futures.of(Optional.empty()))));
+        return cache.getByPath(file, hasher, network) //TODO use version
+                .thenApply(opt -> opt.map(f -> convert(f, path)));
     }
 
     @Override
-    public synchronized CompletableFuture<Set<FileWrapper>> getChildren(String path, Hasher hasher, NetworkAccess network) {
+    public synchronized CompletableFuture<Set<FileWrapper>> getChildren(String path,
+                                                                        Hasher hasher,
+                                                                        NetworkAccess network) {
         FileProperties.ensureValidPath(path);
         Path dir = Paths.get(ownerName + path);
         return ensureUptodate(crypto, network)
-                .thenCompose(x -> cache.getChildren(dir, hasher, network))
+                .thenCompose(x -> cache.getChildren(dir, cache.getVersion(), hasher, network))
                 .thenApply(children -> children.stream()
                         .map(f -> convert(f, path + "/" + f.getName()))
                         .collect(Collectors.toSet()));
     }
 
     @Override
-    public synchronized CompletableFuture<Set<FileWrapper>> getChildren(String path, Hasher hasher, Snapshot version, NetworkAccess network) {
+    public synchronized CompletableFuture<Set<FileWrapper>> getChildren(String path,
+                                                                        Hasher hasher,
+                                                                        Snapshot version,
+                                                                        NetworkAccess network) {
         FileProperties.ensureValidPath(path);
         Path dir = Paths.get(ownerName + path);
-        return ensureUptodate(crypto, network)
-                .thenCompose(x -> cache.getCapsInDirectory(dir, network)
-                        .thenCompose(caps -> Futures.combineAll(caps.getChildren().stream()
-                                .map(c -> network.getFile(new EntryPoint(c, ownerName), version)
-                                        .thenApply(opt -> opt.map(f -> convert(f, path + "/" + f.getName()))))
-                                .collect(Collectors.toList()))))
-                .thenApply(res -> res.stream()
-                        .flatMap(Optional::stream)
+        return cache.getChildren(dir, version, hasher, network)
+                .thenApply(children -> children.stream()
+                        .map(f -> convert(f, path + "/" + f.getName()))
                         .collect(Collectors.toSet()));
     }
 

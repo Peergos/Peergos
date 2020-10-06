@@ -188,7 +188,7 @@ public class IncomingCapCache {
                 .thenCompose(dirOpt -> {
                     if (dirOpt.isEmpty())
                         return Futures.of(Optional.empty());
-                    return getCapOrChild(dirOpt.get(), elements, 1, network);
+                    return getByPath(dirOpt.get(), elements, 1, network);
                 });
     }
 
@@ -200,14 +200,14 @@ public class IncomingCapCache {
                 .collect(Collectors.joining("/"));
     }
 
-    private CompletableFuture<Optional<FileWrapper>> getCapOrChild(FileWrapper mirrorDir,
-                                                                   List<String> path,
-                                                                   int childIndex,
-                                                                   NetworkAccess network) {
+    private CompletableFuture<Optional<FileWrapper>> getByPath(FileWrapper mirrorDir,
+                                                               List<String> path,
+                                                               int childIndex,
+                                                               NetworkAccess network) {
         Supplier<CompletableFuture<Optional<FileWrapper>>> recurse =
                 () -> mirrorDir.getChild(path.get(childIndex), hasher, network)
                         .thenCompose(childOpt -> childOpt.map(c ->
-                                getCapOrChild(c, path, childIndex + 1, network))
+                                getByPath(c, path, childIndex + 1, network))
                                 .orElseGet(() -> Futures.of(Optional.empty())));
         if (childIndex >= path.size())
             return getAnyValidParentOfAChild(mirrorDir, hasher, network);
@@ -220,6 +220,10 @@ public class IncomingCapCache {
                             .thenApply(CapsInDirectory::fromCbor)
                             .thenCompose(caps -> caps.getChild(path.get(childIndex))
                                     .map(cap -> network.retrieveEntryPoint(new EntryPoint(cap, path.get(0)))
+                                            .thenCompose(fopt -> fopt.isPresent() && fopt.get().isWritable() ?
+                                                    fopt.get().getAnyLinkPointer(network)
+                                                            .thenApply(linkOpt -> fopt.map(g -> g.withLinkPointer(linkOpt))) :
+                                                    Futures.of(fopt))
                                             .thenCompose(fopt -> fopt.map(f ->
                                                     f.getDescendentByPath(pathSuffix(path, childIndex + 1), hasher, network))
                                                     .orElse(Futures.of(Optional.empty()))))
@@ -227,17 +231,8 @@ public class IncomingCapCache {
                 });
     }
 
-    public CompletableFuture<CapsInDirectory> getCapsInDirectory(Path dir, NetworkAccess network) {
-        return worldRoot.getDescendentByPath(dir.toString(), hasher, network)
-                .thenCompose(dirOpt -> {
-                    if (dirOpt.isEmpty())
-                        return Futures.of(CapsInDirectory.empty());
-                    return getCaps(dirOpt.get(), network);
-                });
-    }
-
-    private CompletableFuture<CapsInDirectory> getCaps(FileWrapper dir, NetworkAccess network) {
-        return dir.getChild(DIR_STATE, hasher, network)
+    private CompletableFuture<CapsInDirectory> getCaps(FileWrapper dir, Snapshot version, NetworkAccess network) {
+        return dir.getChild(version, DIR_STATE, hasher, network)
                 .thenCompose(capsOpt -> {
                     if (capsOpt.isEmpty())
                         return Futures.of(CapsInDirectory.empty());
@@ -285,29 +280,33 @@ public class IncomingCapCache {
                         .collect(Collectors.toSet()));
     }
 
-    public CompletableFuture<Set<FileWrapper>> getChildren(Path dir, Hasher hasher, NetworkAccess network) {
+    public CompletableFuture<Set<FileWrapper>> getChildren(Path dir,
+                                                           Snapshot version,
+                                                           Hasher hasher,
+                                                           NetworkAccess network) {
         String finalPath = TrieNode.canonicalise(dir.toString());
         List<String> elements = Arrays.asList(finalPath.split("/"));
-        return worldRoot.getDescendentByPath(elements.get(0), hasher, network)
+        return worldRoot.getDescendentByPath(elements.get(0), version, hasher, network)
                 .thenCompose(dirOpt -> {
                     if (dirOpt.isEmpty())
                         return Futures.of(Collections.emptySet());
-                    return getChildren(dirOpt.get(), elements, 1, hasher, network);
+                    return getChildren(dirOpt.get(), elements, 1, version, hasher, network);
                 });
     }
 
     private CompletableFuture<Set<FileWrapper>> getChildren(FileWrapper mirrorDir,
                                                             List<String> path,
                                                             int childIndex,
+                                                            Snapshot version,
                                                             Hasher hasher,
                                                             NetworkAccess network) {
         Supplier<CompletableFuture<Set<FileWrapper>>> recurse =
-                () -> mirrorDir.getChild(path.get(childIndex), hasher, network)
+                () -> mirrorDir.getChild(version, path.get(childIndex), hasher, network)
                         .thenCompose(childOpt -> childOpt.map(c ->
-                                getChildren(c, path, childIndex + 1, hasher, network))
+                                getChildren(c, path, childIndex + 1, version, hasher, network))
                                 .orElseGet(() -> Futures.of(Collections.emptySet())));
         if (childIndex == path.size())
-            return getCaps(mirrorDir, network)
+            return getCaps(mirrorDir, version, network)
                     .thenCompose(caps -> Futures.combineAll(caps.getChildren().stream()
                             .map(cap -> network.retrieveEntryPoint(new EntryPoint(cap, path.get(0))))
                             .collect(Collectors.toSet()))
@@ -319,7 +318,7 @@ public class IncomingCapCache {
                                     .thenApply(indirectChildren -> Stream.concat(direct.stream(), indirectChildren.stream())
                                             .collect(Collectors.toSet()))));
 
-        return mirrorDir.getChild(DIR_STATE, hasher, network)
+        return mirrorDir.getChild(version, DIR_STATE, hasher, network)
                 .thenCompose(capsOpt -> {
                     if (capsOpt.isEmpty())
                         return recurse.get();
@@ -327,14 +326,18 @@ public class IncomingCapCache {
                             .thenApply(CborObject::fromByteArray)
                             .thenApply(CapsInDirectory::fromCbor)
                             .thenCompose(caps -> caps.getChild(path.get(childIndex))
-                                    .map(cap -> network.retrieveEntryPoint(new EntryPoint(cap, path.get(0)))
+                                    .map(cap -> network.getFile(new EntryPoint(cap, path.get(0)), version)
                                             .thenCompose(fopt -> fopt.map(f ->
-                                                    f.getDescendentByPath(pathSuffix(path, childIndex + 1), hasher, network)
+                                                    f.getDescendentByPath(pathSuffix(path, childIndex + 1), version, hasher, network)
                                                             .thenCompose(dir -> dir.map(d -> d.getChildren(hasher, network))
                                                                     .orElse(Futures.of(Collections.emptySet()))))
                                                     .orElse(Futures.of(Collections.emptySet()))))
                                     .orElseGet(recurse::get));
                 });
+    }
+
+    public Snapshot getVersion() {
+        return worldRoot.version;
     }
 
     public CompletableFuture<CapsDiff> ensureFriendUptodate(String friend, EntryPoint sharedDir, NetworkAccess network) {
