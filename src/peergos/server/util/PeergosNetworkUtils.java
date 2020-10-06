@@ -117,8 +117,9 @@ public class PeergosNetworkUtils {
         assertTrue("todoList filename", lists.get(0).right.equals(todoBoardName));
         assertTrue("todoList owner", lists.get(0).left.equals(sharerUser.username));
 
-        //FAILS!! shareeTodoApp.updateTodoList(sharerUser.username, todoListName, new TodoList(true, todoItems)).join();
-        System.currentTimeMillis();
+        shareeTodoApp.updateTodoBoard(sharerUser.username, updatedBoard).join();
+        lists = shareeTodoApp.getTodoBoards().join();
+        assertTrue("todoList filename", lists.get(0).right.equals(todoBoardName));
     }
 
     public static void grantAndRevokeFileReadAccess(NetworkAccess sharerNode, NetworkAccess shareeNode, int shareeCount, Random random) throws Exception {
