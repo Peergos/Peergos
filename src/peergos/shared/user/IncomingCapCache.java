@@ -286,11 +286,12 @@ public class IncomingCapCache {
                                                            NetworkAccess network) {
         String finalPath = TrieNode.canonicalise(dir.toString());
         List<String> elements = Arrays.asList(finalPath.split("/"));
-        return worldRoot.getDescendentByPath(elements.get(0), version, hasher, network)
+        Snapshot union = worldRoot.version.mergeAndOverwriteWith(version);
+        return worldRoot.getDescendentByPath(elements.get(0), union, hasher, network)
                 .thenCompose(dirOpt -> {
                     if (dirOpt.isEmpty())
                         return Futures.of(Collections.emptySet());
-                    return getChildren(dirOpt.get(), elements, 1, version, hasher, network);
+                    return getChildren(dirOpt.get(), elements, 1, union, hasher, network);
                 });
     }
 
