@@ -108,7 +108,8 @@ public class PeergosNetworkUtils {
         assertTrue("size", todoItems.size() == 1);
 
         // sharer shares todolist with sharee
-        Path pathToToDo = Paths.get(sharerUser.username, UserContext.APPS_DIR_NAME, UserContext.TODO_DIR_NAME, todoBoardName);
+        Path pathToToDo = Paths.get(sharerUser.username, UserContext.APPS_DIR_NAME,
+                UserContext.App.Todo.TODO_DIR_NAME, todoBoardName + UserContext.App.Todo.TODO_FILE_EXTENSION);
         Set<String> toShareTo = shareeList.stream().map(u -> u.username).collect(Collectors.toSet());
         sharerUser.shareWriteAccessWith(pathToToDo, toShareTo).join();
 

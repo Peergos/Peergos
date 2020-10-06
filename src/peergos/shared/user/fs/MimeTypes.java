@@ -1,5 +1,7 @@
 package peergos.shared.user.fs;
 
+import peergos.shared.user.UserContext;
+
 public class MimeTypes {
     final static int[] ID3 = new int[]{'I', 'D', '3'};
     final static int[] MP3 = new int[]{0xff, 0xfb};
@@ -121,6 +123,10 @@ public class MimeTypes {
                 return "text/calendar";
             return "text/plain";
         }
+
+        if (filename.endsWith(UserContext.App.Todo.TODO_FILE_EXTENSION))
+            return "application/vnd.peergos-todo";
+
         return "application/octet-stream";
     }
 

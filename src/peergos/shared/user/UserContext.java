@@ -44,7 +44,6 @@ public class UserContext {
     public static final String FRIEND_ANNOTATIONS_FILE_NAME = ".annotations";
 
     public static final String APPS_DIR_NAME = ".apps";
-    public static final String TODO_DIR_NAME = "todo";
 
     public static final String ENTRY_POINTS_FROM_FRIENDS_FILENAME = ".from-friends.cborstream";
     public static final String ENTRY_POINTS_FROM_US_FILENAME = ".from-us.cborstream";
@@ -128,6 +127,8 @@ public class UserContext {
 
         public static class Todo {
             private UserContext ctx;
+            public static final String TODO_DIR_NAME = "todo";
+            public static final String TODO_FILE_EXTENSION = ".todo.cbor";
             private static Comparator<Pair<String, String>> sortByUser = Comparator.comparing(pair -> pair.left);
             private static Comparator<Pair<String, String>> sortByTodoName = Comparator.comparing(pair -> pair.right);
             private static Comparator<Pair<String, String>> todoListSorter = sortByUser.thenComparing(sortByTodoName);
@@ -146,7 +147,7 @@ public class UserContext {
                 return ctx.getByPath(path).thenCompose(fw -> {
                     if (fw.isPresent()) {
                         FileWrapper todoDir = fw.get();
-                        return todoDir.getChild(filename, ctx.crypto.hasher, ctx.network).thenCompose(todoFileOpt -> {
+                        return todoDir.getChild(filename + TODO_FILE_EXTENSION, ctx.crypto.hasher, ctx.network).thenCompose(todoFileOpt -> {
                             if (todoFileOpt.isEmpty()) {
                                 return CompletableFuture.completedFuture(new Pair<>(TodoBoard.build(filename, new ArrayList<>()), false));
                             }
@@ -164,6 +165,10 @@ public class UserContext {
                 });
             }
 
+            private String extractTodoBoardName(String filename) {
+                return filename.substring(0, filename.length() - TODO_FILE_EXTENSION.length());
+            }
+            
             @JsMethod
             public CompletableFuture<List<Pair<String, String>>> getTodoBoards() {
                 Path path = Paths.get(ctx.username, APPS_DIR_NAME, TODO_DIR_NAME);
@@ -178,7 +183,7 @@ public class UserContext {
                                 .thenApply(dir -> dir);
                     }
                 }).thenCompose(dir -> dir.getChildren(ctx.crypto.hasher, ctx.network).thenApply(children ->
-                        children.stream().map(file -> new Pair<>(ctx.username, file.getFileProperties().name))
+                        children.stream().map(file -> new Pair<>(ctx.username, extractTodoBoardName(file.getFileProperties().name)))
                                 .collect(Collectors.toList()))
                 ).thenCompose(ourTodoBoards -> ctx.getSocialState().thenCompose(socialState -> {
                         Set<String> followers = socialState.followerRoots.keySet();
@@ -199,7 +204,7 @@ public class UserContext {
                 List<Pair<String, FileWrapper>> folders = new ArrayList<>();
                 return Futures.reduceAll(followers,
                         true,
-                        (x, follower) -> ctx.getByPath(follower + "/" + APPS_DIR_NAME + "/" + UserContext.TODO_DIR_NAME).thenCompose(ce -> {
+                        (x, follower) -> ctx.getByPath(follower + "/" + APPS_DIR_NAME + "/" + TODO_DIR_NAME).thenCompose(ce -> {
                             if(ce.isPresent())
                                 folders.add(new Pair<>(follower, ce.get()));
                             return Futures.of(true);
@@ -214,7 +219,8 @@ public class UserContext {
                 return Futures.reduceAll(todoDirs,
                         true,
                         (x, pair) -> pair.right.getChildren(ctx.crypto.hasher, ctx.network).thenCompose(children -> {
-                            List<Pair<String, String>> pairs = children.stream().map(child -> new Pair<>(pair.left, child.getName())).collect(Collectors.toList());
+                            List<Pair<String, String>> pairs = children.stream().map(child ->
+                                    new Pair<>(pair.left, extractTodoBoardName(child.getName()))).collect(Collectors.toList());
                             boards.addAll(pairs);
                             return Futures.of(true);
                         }), (a, b) -> a && b).thenApply(res -> boards);
@@ -234,13 +240,13 @@ public class UserContext {
                                     .thenApply(dir -> dir);
                         }
                     }).thenCompose(dir ->
-                        dir.getChild(todoBoard.getName(), ctx.crypto.hasher, ctx.network).thenCompose(file -> {
+                        dir.getChild(todoBoard.getName() + TODO_FILE_EXTENSION, ctx.crypto.hasher, ctx.network).thenCompose(file -> {
                             byte[] bytes = todoBoard.serialize();
                             if(file.isPresent()) {
                                 return file.get().overwriteFile(AsyncReader.build(bytes),bytes.length, ctx.network, ctx.crypto,
                                         x -> {}).thenApply(res -> true);
                             } else {
-                                return dir.uploadOrReplaceFile(todoBoard.getName(), AsyncReader.build(bytes),
+                                return dir.uploadOrReplaceFile(todoBoard.getName() + TODO_FILE_EXTENSION, AsyncReader.build(bytes),
                                         bytes.length, ctx.network, ctx.crypto, x -> {
                                         }, ctx.crypto.random.randomBytes(32))
                                         .thenApply(res -> true);
@@ -255,9 +261,9 @@ public class UserContext {
                     if (!dir.isPresent()) {
                         return CompletableFuture.completedFuture(false);
                     }
-                    Path pathToFile = path.resolve(filename);
-                    return dir.get().getChild(filename, ctx.crypto.hasher, ctx.network).thenCompose(file ->
-                            file.get().remove(dir.get(), pathToFile, ctx).thenApply(fw -> true));
+                    Path pathToFile = path.resolve(filename + TODO_FILE_EXTENSION);
+                    return dir.get().getChild(filename + TODO_FILE_EXTENSION, ctx.crypto.hasher, ctx.network)
+                            .thenCompose(file -> file.get().remove(dir.get(), pathToFile, ctx).thenApply(fw -> true));
                 });
             }
         }
