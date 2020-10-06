@@ -1,5 +1,7 @@
 package peergos.shared.user.fs;
 
+import peergos.shared.user.UserContext;
+
 public class MimeTypes {
     final static int[] MID = new int[]{'M', 'T', 'h', 'd'};
     final static int[] ID3 = new int[]{'I', 'D', '3'};
@@ -148,6 +150,10 @@ public class MimeTypes {
                 return "text/svg+xml";
             return "text/plain";
         }
+
+        if (filename.endsWith(UserContext.App.Todo.TODO_FILE_EXTENSION))
+            return "application/vnd.peergos-todo";
+
         return "application/octet-stream";
     }
 
