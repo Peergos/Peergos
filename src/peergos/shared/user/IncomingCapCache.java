@@ -232,30 +232,22 @@ public class IncomingCapCache {
                 .thenCompose(dirOpt -> {
                     if (dirOpt.isEmpty())
                         return Futures.of(CapsInDirectory.empty());
-                    return dirOpt.get().getChild(DIR_STATE, hasher, network)
-                            .thenCompose(capsOpt -> {
-                                if (capsOpt.isEmpty())
-                                    return Futures.of(CapsInDirectory.empty());
-                                return Serialize.readFully(capsOpt.get(), crypto, network)
-                                        .thenApply(CborObject::fromByteArray)
-                                        .thenApply(CapsInDirectory::fromCbor);
-                            });
+                    return getCaps(dirOpt.get(), network);
                 });
     }
 
-    public CompletableFuture<Optional<FileWrapper>> getAnyValidParentOfAChild(Path dir,
-                                                                              Hasher hasher,
-                                                                              NetworkAccess network) {
-        return worldRoot.getDescendentByPath(dir.toString(), hasher, network)
-                .thenCompose(dirOpt -> {
-                    if (dirOpt.isEmpty())
-                        return Futures.of(Optional.empty());
-
-                    return getAnyValidParentOfAChild(dirOpt.get(), hasher, network);
+    private CompletableFuture<CapsInDirectory> getCaps(FileWrapper dir, NetworkAccess network) {
+        return dir.getChild(DIR_STATE, hasher, network)
+                .thenCompose(capsOpt -> {
+                    if (capsOpt.isEmpty())
+                        return Futures.of(CapsInDirectory.empty());
+                    return Serialize.readFully(capsOpt.get(), crypto, network)
+                            .thenApply(CborObject::fromByteArray)
+                            .thenApply(CapsInDirectory::fromCbor);
                 });
     }
 
-    public CompletableFuture<Optional<FileWrapper>> getAnyValidParentOfAChild(FileWrapper dir,
+    private CompletableFuture<Optional<FileWrapper>> getAnyValidParentOfAChild(FileWrapper dir,
                                                                               Hasher hasher,
                                                                               NetworkAccess network) {
         return dir.getChild(DIR_STATE, hasher, network)
@@ -277,24 +269,71 @@ public class IncomingCapCache {
                 });
     }
 
-    public CompletableFuture<Set<FileWrapper>> getIndirectChildren(Path dir,
-                                                                   Set<String> toExclude,
-                                                                   Hasher hasher,
-                                                                   NetworkAccess network) {
-        return worldRoot.getDescendentByPath(dir.toString(), hasher, network)
+    private CompletableFuture<Set<FileWrapper>> getIndirectChildren(FileWrapper mirrorDir,
+                                                                    Set<String> toExclude,
+                                                                    Hasher hasher,
+                                                                    NetworkAccess network) {
+        return mirrorDir.getChildren(hasher, network)
+                .thenApply(children -> children.stream()
+                        .filter(c -> ! toExclude.contains(c.getName()) && ! c.getName().equals(DIR_STATE))
+                        .collect(Collectors.toSet()))
+                .thenCompose(remainingDirs -> Futures.combineAll(remainingDirs.stream()
+                        .map(child -> getAnyValidParentOfAChild(child, hasher, network))
+                        .collect(Collectors.toList())))
+                .thenApply(res -> res.stream()
+                        .flatMap(Optional::stream)
+                        .collect(Collectors.toSet()));
+    }
+
+    public CompletableFuture<Set<FileWrapper>> getChildren(Path dir, Hasher hasher, NetworkAccess network) {
+        String finalPath = TrieNode.canonicalise(dir.toString());
+        List<String> elements = Arrays.asList(finalPath.split("/"));
+        return worldRoot.getDescendentByPath(elements.get(0), hasher, network)
                 .thenCompose(dirOpt -> {
                     if (dirOpt.isEmpty())
                         return Futures.of(Collections.emptySet());
-                    return dirOpt.get().getChildren(hasher, network)
-                            .thenApply(children -> children.stream()
-                                    .filter(c -> ! toExclude.contains(c.getName()))
-                                    .collect(Collectors.toSet()))
-                            .thenCompose(remainingDirs -> Futures.combineAll(remainingDirs.stream()
-                                    .map(child -> getAnyValidParentOfAChild(child, hasher, network))
-                                    .collect(Collectors.toList())))
-                            .thenApply(res -> res.stream()
-                                    .flatMap(Optional::stream)
-                                    .collect(Collectors.toSet()));
+                    return getChildren(dirOpt.get(), elements, 1, hasher, network);
+                });
+    }
+
+    private CompletableFuture<Set<FileWrapper>> getChildren(FileWrapper mirrorDir,
+                                                            List<String> path,
+                                                            int childIndex,
+                                                            Hasher hasher,
+                                                            NetworkAccess network) {
+        Supplier<CompletableFuture<Set<FileWrapper>>> recurse =
+                () -> mirrorDir.getChild(path.get(childIndex), hasher, network)
+                        .thenCompose(childOpt -> childOpt.map(c ->
+                                getChildren(c, path, childIndex + 1, hasher, network))
+                                .orElseGet(() -> Futures.of(Collections.emptySet())));
+        if (childIndex == path.size())
+            return getCaps(mirrorDir, network)
+                    .thenCompose(caps -> Futures.combineAll(caps.getChildren().stream()
+                            .map(cap -> network.retrieveEntryPoint(new EntryPoint(cap, path.get(0))))
+                            .collect(Collectors.toSet()))
+                            .thenApply(kids -> kids.stream().flatMap(Optional::stream).collect(Collectors.toSet()))
+                            .thenCompose(direct -> getIndirectChildren(mirrorDir,
+                                    direct.stream()
+                                            .map(FileWrapper::getName)
+                                            .collect(Collectors.toSet()), hasher, network)
+                                    .thenApply(indirectChildren -> Stream.concat(direct.stream(), indirectChildren.stream())
+                                            .collect(Collectors.toSet()))));
+
+        return mirrorDir.getChild(DIR_STATE, hasher, network)
+                .thenCompose(capsOpt -> {
+                    if (capsOpt.isEmpty())
+                        return recurse.get();
+                    return Serialize.readFully(capsOpt.get(), crypto, network)
+                            .thenApply(CborObject::fromByteArray)
+                            .thenApply(CapsInDirectory::fromCbor)
+                            .thenCompose(caps -> caps.getChild(path.get(childIndex))
+                                    .map(cap -> network.retrieveEntryPoint(new EntryPoint(cap, path.get(0)))
+                                            .thenCompose(fopt -> fopt.map(f ->
+                                                    f.getDescendentByPath(pathSuffix(path, childIndex + 1), hasher, network)
+                                                            .thenCompose(dir -> dir.map(d -> d.getChildren(hasher, network))
+                                                                    .orElse(Futures.of(Collections.emptySet()))))
+                                                    .orElse(Futures.of(Collections.emptySet()))))
+                                    .orElseGet(recurse::get));
                 });
     }
 

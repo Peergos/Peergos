@@ -101,20 +101,10 @@ public class FriendSourcedTrieNode implements TrieNode {
         FileProperties.ensureValidPath(path);
         Path dir = Paths.get(ownerName + path);
         return ensureUptodate(crypto, network)
-                .thenCompose(x -> cache.getCapsInDirectory(dir, network)
-                        .thenCompose(caps -> Futures.combineAll(caps.getChildren().stream()
-                                .map(c -> network.retrieveEntryPoint(new EntryPoint(c, ownerName))
-                                        .thenApply(opt -> opt.map(f -> convert(f, path + "/" + f.getName()))))
-                                .collect(Collectors.toList()))))
-                .thenApply(res -> res.stream()
-                        .flatMap(Optional::stream)
-                        .collect(Collectors.toSet()))
-                .thenCompose(directChildren -> cache.getIndirectChildren(dir,
-                        directChildren.stream()
-                                .map(FileWrapper::getName)
-                                .collect(Collectors.toSet()), hasher, network)
-                        .thenApply(indirectChildren -> Stream.concat(directChildren.stream(), indirectChildren.stream())
-                                .collect(Collectors.toSet())));
+                .thenCompose(x -> cache.getChildren(dir, hasher, network))
+                .thenApply(children -> children.stream()
+                        .map(f -> convert(f, path + "/" + f.getName()))
+                        .collect(Collectors.toSet()));
     }
 
     @Override
