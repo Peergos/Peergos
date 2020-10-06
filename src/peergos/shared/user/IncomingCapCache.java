@@ -226,7 +226,7 @@ public class IncomingCapCache {
                                                             .thenApply(linkOpt -> fopt.map(g -> g.withLinkPointer(linkOpt))) :
                                                     Futures.of(fopt))
                                             .thenCompose(fopt -> fopt.map(f ->
-                                                    f.getDescendentByPath(pathSuffix(path, childIndex + 1), version, hasher, network))
+                                                    f.getDescendentByPath(pathSuffix(path, childIndex + 1), f.version, hasher, network))
                                                     .orElse(Futures.of(Optional.empty()))))
                                     .orElseGet(recurse::get));
                 });
