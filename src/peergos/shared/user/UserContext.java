@@ -148,6 +148,31 @@ public class UserContext {
                 this.ctx = ctx;
             }
 
+            @JsMethod
+            public CompletableFuture<FileWrapper> getEventFile(int year, int monthIndex, String id) {
+                if(monthIndex == 0) {
+                    throw new IllegalArgumentException("monthIndex starts at 1 for January!");
+                }
+                if(monthIndex > 12) {
+                    throw new IllegalArgumentException("monthIndex > 12");
+                }
+                Path path = Paths.get(ctx.username, APPS_DIR_NAME, CALENDAR_DIR_NAME,
+                        ctx.username, "" + year , "" + monthIndex);
+                return ctx.getByPath(path).thenCompose(dir -> {
+                    if (dir.isPresent()) {
+                        return dir.get().getChild(id + ".ics", ctx.crypto.hasher, ctx.network).thenCompose(fileOpt -> {
+                            if (fileOpt.isPresent()) {
+                                return Futures.of(fileOpt.get());
+                            }else{
+                                return Futures.errored(new IllegalStateException("Unable to find Event file"));
+                            }
+                        });
+                    } else {
+                        return Futures.errored(new IllegalStateException("Unable to find Event directory"));
+                    }
+                });
+            }
+            
             private CompletableFuture<String> getEventFile(FileWrapper calendarFile) {
                 int size = calendarFile.getFileProperties().sizeLow();
                 return calendarFile.getInputStream(ctx.network, ctx.crypto, x -> {})
