@@ -1256,6 +1256,27 @@ public class PeergosNetworkUtils {
         Assert.assertTrue(directFile1.isPresent());
         Optional<FileWrapper> directFile2 = fresherA.getByPath(file2).join();
         Assert.assertTrue(directFile2.isPresent());
+
+        // check feed after browsing to the senders home
+        String filename3 = "third-file.txt";
+        sharer.getUserRoot().join()
+                .uploadOrReplaceFile(filename3, AsyncReader.build(fileData), fileData.length,
+                        sharer.network, crypto, l -> {}, crypto.random.randomBytes(32)).join();
+        Path file3 = Paths.get(sharer.username, filename3);
+        sharer.shareReadAccessWithAll(sharer.getByPath(file3).join().get(), file3, Set.of(a.username)).join();
+
+        // browse to sender home
+        freshA.getByPath(Paths.get(sharer.username)).join();
+
+        // now check feed
+        SocialFeed updatedFeed3 = freshFeed.update().join();
+        List<SharedItem> items3 = updatedFeed3.getShared(2, 3, a.crypto, a.network).join();
+        Assert.assertTrue(items3.size() > 0);
+        SharedItem item3 = items3.get(0);
+        Assert.assertTrue(item3.owner.equals(sharer.username));
+        Assert.assertTrue(item3.sharer.equals(sharer.username));
+        AbsoluteCapability readCap3 = sharer.getByPath(file3).join().get().getPointer().capability.readOnly();
+        Assert.assertTrue(item3.cap.equals(readCap3));
     }
 
     public static void socialFeedVariations2(NetworkAccess network, Random random) {
