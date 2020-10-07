@@ -81,14 +81,14 @@ public class SocialFeed {
     public CompletableFuture<List<SharedItem>> getShared(int from, int to, Crypto crypto, NetworkAccess network) {
         return getPriorByteOffset(from)
                 .thenCompose(start -> dataDir.getChild(FEED_FILE, crypto.hasher, network)
-                        .thenCompose(fopt -> fopt.get().getInputStream(network, crypto, x -> {})
-                                .thenCompose(stream -> stream.seek(start.left)))
-                        .thenCompose(stream -> {
-                            List<SharedItem> res = new ArrayList<>();
-                            return stream.parseLimitedStream(SharedItem::fromCbor, res::add,
-                                    from - start.right, Math.min(feedSizeRecords, to) - from, feedSizeBytes)
-                                    .thenApply(x -> res);
-                        }));
+                        .thenCompose(fopt -> fopt.map(f -> f.getInputStream(network, crypto, x -> {})
+                                .thenCompose(stream -> stream.seek(start.left))
+                                .thenCompose(stream -> {
+                                    List<SharedItem> res = new ArrayList<>();
+                                    return stream.parseLimitedStream(SharedItem::fromCbor, res::add,
+                                            from - start.right, Math.min(feedSizeRecords, to) - from, feedSizeBytes)
+                                            .thenApply(x -> res);
+                                })).orElse(Futures.of(Collections.emptyList()))));
     }
 
     private CompletableFuture<Boolean> commit() {
