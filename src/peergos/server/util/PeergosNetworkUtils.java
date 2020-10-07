@@ -1283,7 +1283,7 @@ public class PeergosNetworkUtils {
         List<SharedItem> items = feed.getShared(0, 1000, sharee.crypto, sharee.network).join();
         Assert.assertTrue(items.size() == 2);
 
-        sharee.getUserRoot().join().mkdir("mine", sharer.network, false, sharer.crypto).join();
+        sharee.getUserRoot().join().mkdir("mine", sharee.network, false, sharer.crypto).join();
     }
 
     public static void socialFeedFailsInUI(NetworkAccess network, Random random) {
