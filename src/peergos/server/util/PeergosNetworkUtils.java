@@ -1369,7 +1369,7 @@ public class PeergosNetworkUtils {
         Path dirToShare3 = Paths.get(sharer.username, dir3);
         sharer.shareReadAccessWithAll(sharer.getByPath(dirToShare3).join().get(), dirToShare3, Set.of(a.username)).join();
 
-        feed = a.getSocialFeed().join();
+        feed = a.getSocialFeed().join().update().join();
         items = feed.getShared(0, 1000, a.crypto, a.network).join();
         Assert.assertTrue(items.size() == 3);
 
