@@ -190,6 +190,11 @@ public class MultiUserTests {
     }
 
     @Test
+    public void sharedCalendarEvents() throws Exception {
+        PeergosNetworkUtils.sharedCalendarEvents(network, network);
+    }
+
+    @Test
     public void safeCopyOfFriendsReadAccess() throws Exception {
         TriFunction<UserContext, UserContext, String, CompletableFuture<Boolean>> readAccessSharingFunction =
                 (u1, u2, filename) ->

@@ -1181,7 +1181,7 @@ public abstract class UserTests {
 
         UserContext.App.Calendar calendar = context.getCalendarApp();
         LocalDate now = LocalDate.now();
-        List<String> items = calendar.getCalendarEventsForMonth(now.getYear(), now.getMonthValue()).join();
+        List<Pair<String,String>> items = calendar.getCalendarEventsForMonth(now.getYear(), now.getMonthValue()).join();
         assertTrue("size", items.isEmpty());
         String Id = "Id";
         String item ="BEGIN:VCALENDAR\n" +
@@ -1198,7 +1198,7 @@ public abstract class UserTests {
                 "END:VEVENT\n" +
                 "END:VCALENDAR";
         calendar.updateCalendarEvent(now.getYear(), now.getMonth().getValue(), Id, item).join();
-        Triple<List<String>,List<String>,List<String>> updatedItems = calendar.getCalendarEventsAroundMonth(now.getYear(), now.getMonthValue()).join();
+        Triple<List<Pair<String,String>>,List<Pair<String,String>>,List<Pair<String,String>>> updatedItems = calendar.getCalendarEventsAroundMonth(now.getYear(), now.getMonthValue()).join();
         assertTrue("size", updatedItems.middle.size() == 1);
 
         calendar.removeCalendarEvent(now.getYear(), now.getMonth().getValue(), Id).join();
@@ -1215,7 +1215,7 @@ public abstract class UserTests {
         UserContext.App.Calendar calendar = context.getCalendarApp();
         LocalDate month = LocalDate.of(2020, Month.JANUARY.getValue(), 1);
         calendar.updateCalendarEvent(2019, Month.DECEMBER.getValue(), "eventId", "calendarEvent").join();
-        Triple<List<String>,List<String>,List<String>> items = calendar.getCalendarEventsAroundMonth(month.getYear(), month.getMonthValue()).join();
+        Triple<List<Pair<String,String>>,List<Pair<String,String>>,List<Pair<String,String>>> items = calendar.getCalendarEventsAroundMonth(month.getYear(), month.getMonthValue()).join();
         assertTrue("size", items.left.size() == 1);
 
         month = LocalDate.of(2020, Month.DECEMBER.getValue(), 1);

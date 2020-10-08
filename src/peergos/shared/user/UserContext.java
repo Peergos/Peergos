@@ -44,7 +44,6 @@ public class UserContext {
     public static final String FRIEND_ANNOTATIONS_FILE_NAME = ".annotations";
 
     public static final String APPS_DIR_NAME = ".apps";
-    public static final String CALENDAR_DIR_NAME = "calendar";
 
     public static final String ENTRY_POINTS_FROM_FRIENDS_FILENAME = ".from-friends.cborstream";
     public static final String ENTRY_POINTS_FROM_US_FILENAME = ".from-us.cborstream";
@@ -142,6 +141,8 @@ public class UserContext {
     public static class App {
 
         public static class Calendar {
+            public static final String CALENDAR_DIR_NAME = "calendar";
+            private static Comparator<Pair<String, String>> sortByUser = Comparator.comparing(pair -> pair.left);
             private UserContext ctx;
 
             public Calendar(UserContext ctx) {
@@ -149,15 +150,15 @@ public class UserContext {
             }
 
             @JsMethod
-            public CompletableFuture<FileWrapper> getEventFile(int year, int monthIndex, String id) {
+            public CompletableFuture<FileWrapper> getEventFile(String username, int year, int monthIndex, String id) {
                 if(monthIndex == 0) {
                     throw new IllegalArgumentException("monthIndex starts at 1 for January!");
                 }
                 if(monthIndex > 12) {
                     throw new IllegalArgumentException("monthIndex > 12");
                 }
-                Path path = Paths.get(ctx.username, APPS_DIR_NAME, CALENDAR_DIR_NAME,
-                        ctx.username, "" + year , "" + monthIndex);
+                Path path = Paths.get(username, APPS_DIR_NAME, CALENDAR_DIR_NAME, username,
+                        "" + year , "" + monthIndex);
                 return ctx.getByPath(path).thenCompose(dir -> {
                     if (dir.isPresent()) {
                         return dir.get().getChild(id + ".ics", ctx.crypto.hasher, ctx.network).thenCompose(fileOpt -> {
@@ -173,7 +174,7 @@ public class UserContext {
                 });
             }
             
-            private CompletableFuture<String> getEventFile(FileWrapper calendarFile) {
+            private CompletableFuture<String> readEventFile(FileWrapper calendarFile) {
                 int size = calendarFile.getFileProperties().sizeLow();
                 return calendarFile.getInputStream(ctx.network, ctx.crypto, x -> {})
                         .thenCompose(reader -> {
@@ -183,20 +184,20 @@ public class UserContext {
                         });
             }
 
-            private CompletableFuture<List<String>> getEventsForMonth(FileWrapper monthDirectory) {
+            private CompletableFuture<List<Pair<String, String>>> getEventsForMonth(String username, FileWrapper monthDirectory) {
                 return monthDirectory.getChildren(ctx.crypto.hasher, ctx.network).thenCompose(eventFiles -> {
-                    List<String> events = new ArrayList<>();
+                    List<Pair<String,String>> events = new ArrayList<>();
                     return Futures.reduceAll(eventFiles,
                         true,
-                        (x, file) -> getEventFile(file).thenCompose(ce -> {
-                            events.add(ce);
+                        (x, file) -> readEventFile(file).thenCompose(ce -> {
+                            events.add(new Pair<>(username, ce));
                             return Futures.of(true);
                         })
                         , (a, b) -> a && b).thenApply(res -> events);
                 });
             }
             @JsMethod
-            public CompletableFuture<List<String>> getCalendarEventsForMonth(int year, int monthIndex) {
+            public CompletableFuture<List<Pair<String, String>>> getCalendarEventsForMonth(int year, int monthIndex) {
                 if(monthIndex == 0) {
                     throw new IllegalArgumentException("monthIndex starts at 1 for January!");
                 }
@@ -207,16 +208,42 @@ public class UserContext {
                         ctx.username, "" + year , "" + monthIndex);
                 return ctx.getByPath(path).thenCompose(fw -> {
                     if (fw.isPresent()) {
-                        return getEventsForMonth(fw.get());
+                        return getEventsForMonth(ctx.username, fw.get());
                     } else {
                         return CompletableFuture.completedFuture(new ArrayList<>());
                     }
+                }).thenCompose(ourEvents -> ctx.getSocialState().thenCompose(socialState -> {
+                        Set<String> followers = socialState.followerRoots.keySet();
+                        return getSharedCalendarEventsForMonth(followers, year, monthIndex)
+                                    .thenApply(sharedEvents -> new Pair<>(ourEvents, sharedEvents));
+                        })
+                ).thenApply(allEvents -> {
+                    List<Pair<String, String>> result = new ArrayList(allEvents.left);
+                    result.addAll(allEvents.right);
+                    return result.stream().sorted(sortByUser).collect(Collectors.toList());
                 });
+            }
+            private CompletableFuture<List<Pair<String, String>>> getSharedCalendarEventsForMonth(Set<String> followers, int year, int monthIndex) {
+                if (followers.isEmpty()) {
+                    return Futures.of(Collections.emptyList());
+                }
+                List<Pair<String, String>> events = new ArrayList<>();
+                return Futures.reduceAll(followers,
+                        true,
+                        (x, follower) -> ctx.getByPath(Paths.get(follower, APPS_DIR_NAME, CALENDAR_DIR_NAME,
+                                follower, "" + year , "" + monthIndex)).thenCompose(fw -> {
+                            if(fw.isPresent())
+                                return getEventsForMonth(follower, fw.get()).thenApply(res -> {
+                                    events.addAll(res);
+                                    return true;
+                                });
+                            return Futures.of(true);
+                        }), (a, b) -> a && b).thenApply(res -> events);
             }
 
             @JsMethod
             //REMEMBER  1 = January
-            public CompletableFuture<Triple<List<String>,List<String>,List<String>>> getCalendarEventsAroundMonth(int year, int monthIndex) {
+            public CompletableFuture<Triple<List<Pair<String,String>>,List<Pair<String,String>>,List<Pair<String,String>>>> getCalendarEventsAroundMonth(int year, int monthIndex) {
                 if(monthIndex == 0) {
                     throw new IllegalArgumentException("monthIndex starts at 1 for January!");
                 }
