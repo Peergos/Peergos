@@ -4,7 +4,7 @@ public class MimeTypes {
     final static int[] ID3 = new int[]{'I', 'D', '3'};
     final static int[] MP3 = new int[]{0xff, 0xfb};
     final static int[] MP3_2 = new int[]{0xff, 0xfa};
-    final static int[] WAV_1 = new int[]{'R', 'I', 'F', 'F'};
+    final static int[] RIFF = new int[]{'R', 'I', 'F', 'F'};
     final static int[] WAV_2 = new int[]{'W', 'A', 'V', 'E'};
 
     final static int[] MP4 = new int[]{'f', 't', 'y', 'p'};
@@ -30,6 +30,7 @@ public class MimeTypes {
     final static int[] TIFF1 = new int[]{'I', 'I', 0x2A, 0};
     final static int[] TIFF2 = new int[]{'M', 'M', 0, 0x2A};
     final static int[] PNG = new int[]{137, 'P', 'N', 'G', 13, 10, 26, 10};
+    final static int[] WEBP = new int[]{'W', 'E', 'B', 'P'};
 
     final static int[] PDF = new int[]{0x25, 'P', 'D', 'F'};
     final static int[] ZIP = new int[]{'P', 'K', 3, 4};
@@ -51,6 +52,8 @@ public class MimeTypes {
             return "image/x-icon";
         if (equalArrays(start, CUR))
             return "image/x-icon";
+        if (equalArrays(start, RIFF) && equalArrays(start, 8, WEBP))
+            return "image/webp";
         // many browsers don't support tiff
         if (equalArrays(start, TIFF1))
             return "image/tiff";
@@ -89,7 +92,7 @@ public class MimeTypes {
             return "audio/mpeg";
         if (equalArrays(start, OGG)) // not sure how to distinguish from ogg video easily
             return "audio/ogg";
-        if (equalArrays(start, WAV_1) && equalArrays(start, 8, WAV_2))
+        if (equalArrays(start, RIFF) && equalArrays(start, 8, WAV_2))
             return "audio/wav";
 
         if (equalArrays(start, PDF))
