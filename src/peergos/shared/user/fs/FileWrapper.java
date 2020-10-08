@@ -998,7 +998,7 @@ public class FileWrapper {
                                                                    long fileSize,
                                                                    LocalDateTime updatedDateTime,
                                                                    Optional<byte[]> streamSecret) {
-        return generateThumbnail(network, fileData, (int) Math.min(fileSize, Integer.MAX_VALUE), fileName)
+        return generateThumbnail(network, fileData, (int) Math.min(fileSize, Integer.MAX_VALUE), fileName, mimeType)
                 .thenCompose(thumbData -> {
                     FileProperties fileProps = new FileProperties(fileName, false, props.isLink, mimeType, fileSize,
                             updatedDateTime, isHidden, thumbData, streamSecret);
@@ -1651,74 +1651,68 @@ public class FileWrapper {
         return new byte[0];
     }
 
-    private CompletableFuture<Optional<byte[]>> generateThumbnail(NetworkAccess network, AsyncReader fileData, int fileSize, String filename) {
+    private CompletableFuture<Optional<byte[]>> generateThumbnail(NetworkAccess network, AsyncReader fileData, int fileSize, String filename, String mimeType) {
         CompletableFuture<Optional<byte[]>> fut = new CompletableFuture<>();
         if (fileSize > MimeTypes.HEADER_BYTES_TO_IDENTIFY_MIME_TYPE) {
-            getFileType(fileData, filename).thenAccept(mimeType -> {
-                if (mimeType.startsWith("image")) {
-                    if (network.isJavascript()) {
-                        thumbnail.generateThumbnail(fileData, fileSize, filename).thenAccept(base64Str -> {
-                            byte[] bytesOfData = Base64.getDecoder().decode(base64Str);
-                            if (bytesOfData.length == 0)
-                                fut.complete(Optional.empty());
-                            else
-                                fut.complete(Optional.of(bytesOfData));
-                        });
-                    } else {
-                        byte[] bytes = new byte[fileSize];
-                        fileData.readIntoArray(bytes, 0, fileSize).thenAccept(data -> {
-                            fut.complete(generateThumbnail(bytes));
-                        });
-                    }
-                } else if (mimeType.startsWith("video")) {
-                    if (network.isJavascript()) {
-                        thumbnail.generateVideoThumbnail(fileData, fileSize, filename, mimeType).thenAccept(base64Str -> {
-                            if(base64Str == null) {
-                                fut.complete(Optional.empty());
-                            }
-                            byte[] bytesOfData = Base64.getDecoder().decode(base64Str);
-                            if (bytesOfData.length == 0)
-                                fut.complete(Optional.empty());
-                            else
-                                fut.complete(Optional.of(bytesOfData));
-                        });
-                    } else {
-                        byte[] bytes = new byte[fileSize];
-                        fileData.readIntoArray(bytes, 0, fileSize).thenAccept(data -> {
-                            fut.complete(Optional.of(generateVideoThumbnail(bytes)));
-                        });
-                    }
-                } else if (mimeType.startsWith("audio/mpeg")) {
-                    byte[] mp3Data = new byte[fileSize];
-                    fileData.readIntoArray(mp3Data, 0, fileSize).thenAccept(read -> {
-                        try {
-                            Mp3CoverImage mp3CoverImage = Mp3CoverImage.extractCoverArt(mp3Data);
-                            if (mp3CoverImage.imageData == null) {
-                                fut.complete(Optional.empty());
-                            } else {
-                                if (network.isJavascript()) {
-                                    AsyncReader.ArrayBacked imageBlob = new AsyncReader.ArrayBacked(mp3CoverImage.imageData);
-                                    thumbnail.generateThumbnail(imageBlob, mp3CoverImage.imageData.length, filename)
-                                            .thenAccept(base64Str -> {
-                                                byte[] bytesOfData = Base64.getDecoder().decode(base64Str);
-                                                fut.complete(Optional.of(bytesOfData));
-                                            });
-                                } else {
-                                    fut.complete(generateThumbnail(mp3CoverImage.imageData));
-                                }
-                            }
-                        } catch(Exception ex) {
+            if (mimeType.startsWith("image")) {
+                if (network.isJavascript()) {
+                    thumbnail.generateThumbnail(fileData, fileSize, filename).thenAccept(base64Str -> {
+                        byte[] bytesOfData = Base64.getDecoder().decode(base64Str);
+                        if (bytesOfData.length == 0)
                             fut.complete(Optional.empty());
-                        }
+                        else
+                            fut.complete(Optional.of(bytesOfData));
                     });
                 } else {
-                    fut.complete(Optional.empty());
+                    byte[] bytes = new byte[fileSize];
+                    fileData.readIntoArray(bytes, 0, fileSize).thenAccept(data -> {
+                        fut.complete(generateThumbnail(bytes));
+                    });
                 }
-            }).exceptionally(e -> {
-                e.printStackTrace();
+            } else if (mimeType.startsWith("video")) {
+                if (network.isJavascript()) {
+                    thumbnail.generateVideoThumbnail(fileData, fileSize, filename, mimeType).thenAccept(base64Str -> {
+                        if(base64Str == null) {
+                            fut.complete(Optional.empty());
+                        }
+                        byte[] bytesOfData = Base64.getDecoder().decode(base64Str);
+                        if (bytesOfData.length == 0)
+                            fut.complete(Optional.empty());
+                        else
+                            fut.complete(Optional.of(bytesOfData));
+                    });
+                } else {
+                    byte[] bytes = new byte[fileSize];
+                    fileData.readIntoArray(bytes, 0, fileSize).thenAccept(data -> {
+                        fut.complete(Optional.of(generateVideoThumbnail(bytes)));
+                    });
+                }
+            } else if (mimeType.startsWith("audio/mpeg")) {
+                byte[] mp3Data = new byte[fileSize];
+                fileData.readIntoArray(mp3Data, 0, fileSize).thenAccept(read -> {
+                    try {
+                        Mp3CoverImage mp3CoverImage = Mp3CoverImage.extractCoverArt(mp3Data);
+                        if (mp3CoverImage.imageData == null) {
+                            fut.complete(Optional.empty());
+                        } else {
+                            if (network.isJavascript()) {
+                                AsyncReader.ArrayBacked imageBlob = new AsyncReader.ArrayBacked(mp3CoverImage.imageData);
+                                thumbnail.generateThumbnail(imageBlob, mp3CoverImage.imageData.length, filename)
+                                        .thenAccept(base64Str -> {
+                                            byte[] bytesOfData = Base64.getDecoder().decode(base64Str);
+                                            fut.complete(Optional.of(bytesOfData));
+                                        });
+                            } else {
+                                fut.complete(generateThumbnail(mp3CoverImage.imageData));
+                            }
+                        }
+                    } catch(Exception ex) {
+                        fut.complete(Optional.empty());
+                    }
+                });
+            } else {
                 fut.complete(Optional.empty());
-                return null;
-            });
+            }
         } else {
             fut.complete(Optional.empty());
         }
