@@ -2,6 +2,7 @@ package peergos.shared.user.fs;
 
 import jsinterop.annotations.*;
 import peergos.shared.cbor.*;
+import peergos.shared.util.*;
 
 import java.io.*;
 import java.util.*;
@@ -124,6 +125,8 @@ public interface AsyncReader extends AutoCloseable {
                                 accumulator.accept(fromCbor.apply(readObject));
                             }
                             localOffset += readObject.toByteArray().length;
+                            if (objectsToRead == 0)
+                                return Futures.of((long)localOffset);
                         } catch (RuntimeException e) {
                             int fromThisChunk = localOffset;
                             return parseLimitedStreamRecurse(Arrays.copyOfRange(buf, localOffset, bytesRead), fromCbor,

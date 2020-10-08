@@ -108,26 +108,22 @@ public class SocialFeed {
     @JsMethod
     public CompletableFuture<SocialFeed> update() {
         return context.getFollowingNodes()
-                .thenCompose(friends -> Futures.reduceAll(friends, this, SocialFeed::updateFriend, (a, b) -> b))
+                .thenCompose(friends -> Futures.reduceAll(friends, this,
+                        (s, f) -> s.updateFriend(f, context.network), (a, b) -> b))
                 .thenCompose(x -> x.commit().thenApply(b -> x));
     }
 
-    private synchronized CompletableFuture<SocialFeed> updateFriend(FriendSourcedTrieNode friend) {
-        return friend.ensureUptodate(context.crypto, context.network)
+    private synchronized CompletableFuture<SocialFeed> updateFriend(FriendSourcedTrieNode friend, NetworkAccess network) {
+        ProcessedCaps current = currentCapBytesProcessed.getOrDefault(friend.ownerName, ProcessedCaps.empty());
+        return friend.getCaps(current.readCapBytes, current.writeCapBytes, network)
                 .thenCompose(diff -> {
                     if (diff.isEmpty())
                         return Futures.of(this);
-                    ProcessedCaps current = currentCapBytesProcessed.getOrDefault(friend.ownerName, ProcessedCaps.empty());
-                    if (diff.priorBytes() == current.totalBytes()) {
-                        // We have everything we need in the diff
-                        return addToFriend(friend.ownerName, current, diff.newCaps.readCaps.getRetrievedCapabilities(),
-                                diff.updatedReadBytes(),
-                                diff.newCaps.writeCaps.getRetrievedCapabilities(),
-                                diff.updatedWriteBytes());
-                    }
-                    // There must have been concurrent processing of new caps, e.g. by browsing to that user's files
-                    // We need to load the whole lot to catch what we missed
-                    throw new IllegalStateException("TODO");
+
+                    return addToFriend(friend.ownerName, current, diff.newCaps.readCaps.getRetrievedCapabilities(),
+                            diff.updatedReadBytes(),
+                            diff.newCaps.writeCaps.getRetrievedCapabilities(),
+                            diff.updatedWriteBytes());
                 });
     }
 

@@ -236,8 +236,10 @@ public class CapabilityStore {
         return friendSharedDir.getChild(capFilename, crypto.hasher, network)
                 .thenCompose(file -> {
                     if (! file.isPresent())
-                        return CompletableFuture.completedFuture(new CapabilitiesFromUser(0, Collections.emptyList()));
+                        return Futures.of(CapabilitiesFromUser.empty());
                     long capFileSize = file.get().getSize();
+                    if (capFileSize == startOffset)
+                        return Futures.of(CapabilitiesFromUser.empty());
                     return readSharingFile(startOffset, friendSharedDir.getName(), friendSharedDir.owner(), file.get(), network, crypto)
                             .thenCompose(res -> {
                                 if (saveCache) {

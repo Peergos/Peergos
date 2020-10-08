@@ -354,37 +354,38 @@ public class IncomingCapCache {
                 .thenCompose(currentState -> ensureUptodate(friend, sharedDir, currentState, crypto, network));
     }
 
+    public CompletableFuture<CapsDiff> getCapsFrom(String friend,
+                                                   EntryPoint originalSharedDir,
+                                                   long readByteOffset,
+                                                   long writeByteOffset,
+                                                   NetworkAccess network) {
+        return NetworkAccess.getLatestEntryPoint(originalSharedDir, network)
+                .thenCompose(sharedDir ->
+                        CapabilityStore.loadReadAccessSharingLinksFromIndex(null, sharedDir.file,
+                                null, network, crypto, readByteOffset, false, true)
+                                .thenCompose(newReadCaps ->
+                                        getWritableCaps(sharedDir.file, writeByteOffset, crypto, network)
+                                        .thenApply(writeable ->
+                                                new FriendSourcedTrieNode.ReadAndWriteCaps(newReadCaps, writeable))))
+                .thenApply(newCaps -> new CapsDiff(readByteOffset, writeByteOffset, newCaps));
+    }
+
     private synchronized CompletableFuture<CapsDiff> ensureUptodate(String friend,
                                                                    EntryPoint originalSharedDir,
                                                                    ProcessedCaps current,
                                                                    Crypto crypto,
                                                                    NetworkAccess network) {
         // check there are no new capabilities in the friend's shared directory
-        return NetworkAccess.getLatestEntryPoint(originalSharedDir, network)
-                .thenCompose(sharedDir -> CapabilityStore.getReadOnlyCapabilityFileSize(sharedDir.file, crypto, network)
-                        .thenCompose(bytes -> {
-                            if (bytes == current.readCapBytes) {
-                                return getNewWritableCaps(sharedDir.file, current.writeCapBytes, crypto, network)
-                                        .thenApply(w -> new FriendSourcedTrieNode.ReadAndWriteCaps(CapabilitiesFromUser.empty(), w));
-                            } else {
-                                return CapabilityStore.loadReadAccessSharingLinksFromIndex(null, sharedDir.file,
-                                        null, network, crypto, current.readCapBytes, false, true)
-                                        .thenCompose(newReadCaps -> getNewWritableCaps(sharedDir.file,
-                                                current.writeCapBytes, crypto, network)
-                                                .thenApply(writeable -> new FriendSourcedTrieNode.ReadAndWriteCaps(newReadCaps, writeable))
-                                        );
-                            }
-                        }))
-                .thenApply(newCaps -> new CapsDiff(current.readCapBytes, current.writeCapBytes, newCaps))
+        return getCapsFrom(friend, originalSharedDir, current.readCapBytes, current.writeCapBytes, network)
                 .thenCompose(diff -> addNewCapsToMirror(friend, current, diff, network))
                 .thenCompose(diff -> getAndUpdateWorldRoot(network)
                         .thenApply(y -> diff));
     }
 
-    private synchronized CompletableFuture<CapabilitiesFromUser> getNewWritableCaps(FileWrapper sharedDir,
-                                                                                    long byteOffsetWrite,
-                                                                                    Crypto crypto,
-                                                                                    NetworkAccess network) {
+    private synchronized CompletableFuture<CapabilitiesFromUser> getWritableCaps(FileWrapper sharedDir,
+                                                                                 long byteOffsetWrite,
+                                                                                 Crypto crypto,
+                                                                                 NetworkAccess network) {
         return CapabilityStore.getEditableCapabilityFileSize(sharedDir, crypto, network)
                 .thenCompose(editFilesize -> {
                     if (editFilesize == byteOffsetWrite)

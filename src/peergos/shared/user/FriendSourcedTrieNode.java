@@ -45,6 +45,12 @@ public class FriendSourcedTrieNode implements TrieNode {
         return cache.ensureFriendUptodate(ownerName, sharedDir, network);
     }
 
+    public synchronized CompletableFuture<CapsDiff> getCaps(long readByteOffset,
+                                                            long writeByteOffset,
+                                                            NetworkAccess network) {
+        return cache.getCapsFrom(ownerName, sharedDir, readByteOffset, writeByteOffset, network);
+    }
+
     private CompletableFuture<Optional<FileWrapper>> getFriendRoot(NetworkAccess network) {
         return NetworkAccess.getLatestEntryPoint(sharedDir, network)
                 .thenCompose(sharedDir -> {

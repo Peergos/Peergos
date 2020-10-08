@@ -1207,12 +1207,8 @@ public class PeergosNetworkUtils {
 
         String filename = "somefile.txt";
         byte[] fileData = sharer.crypto.random.randomBytes(1*1024*1024);
-
-        u1Root.uploadOrReplaceFile(filename, AsyncReader.build(fileData), fileData.length,
-                sharer.network, crypto, l -> {}, crypto.random.randomBytes(32)).join();
-
-        Path fileToShare = Paths.get(sharer.username, filename);
-        sharer.shareReadAccessWithAll(sharer.getByPath(fileToShare).join().get(), fileToShare, Set.of(a.username)).join();
+        Path file1 = Paths.get(sharer.username, "first-file.txt");
+        uploadAndShare(fileData, file1, sharer, a.username);
 
         // check 'a' can see the shared file in their social feed
         SocialFeed feed = a.getSocialFeed().join();
@@ -1221,9 +1217,9 @@ public class PeergosNetworkUtils {
         SharedItem item = items.get(0);
         Assert.assertTrue(item.owner.equals(sharer.username));
         Assert.assertTrue(item.sharer.equals(sharer.username));
-        AbsoluteCapability readCap = sharer.getByPath(fileToShare).join().get().getPointer().capability.readOnly();
+        AbsoluteCapability readCap = sharer.getByPath(file1).join().get().getPointer().capability.readOnly();
         Assert.assertTrue(item.cap.equals(readCap));
-        Assert.assertTrue(item.path.equals("/" + fileToShare.toString()));
+        Assert.assertTrue(item.path.equals("/" + file1.toString()));
 
         // Test the feed after a fresh login
         UserContext freshA = PeergosNetworkUtils.ensureSignedUp(a.username, password, network, crypto);
@@ -1234,12 +1230,8 @@ public class PeergosNetworkUtils {
         Assert.assertTrue(freshItem.equals(item));
 
         // Test sharing a new item after construction
-        String filename2 = "second-file.txt";
-        sharer.getUserRoot().join()
-                .uploadOrReplaceFile(filename2, AsyncReader.build(fileData), fileData.length,
-                        sharer.network, crypto, l -> {}, crypto.random.randomBytes(32)).join();
-        Path file2 = Paths.get(sharer.username, filename2);
-        sharer.shareReadAccessWithAll(sharer.getByPath(file2).join().get(), file2, Set.of(a.username)).join();
+        Path file2 = Paths.get(sharer.username, "second-file.txt");
+        uploadAndShare(fileData, file2, sharer, a.username);
 
         SocialFeed updatedFeed = freshFeed.update().join();
         List<SharedItem> items2 = updatedFeed.getShared(1, 2, a.crypto, a.network).join();
@@ -1252,21 +1244,20 @@ public class PeergosNetworkUtils {
 
         // check accessing the files normally
         UserContext fresherA = PeergosNetworkUtils.ensureSignedUp(a.username, password, network, crypto);
-        Optional<FileWrapper> directFile1 = fresherA.getByPath(fileToShare).join();
+        Optional<FileWrapper> directFile1 = fresherA.getByPath(file1).join();
         Assert.assertTrue(directFile1.isPresent());
         Optional<FileWrapper> directFile2 = fresherA.getByPath(file2).join();
         Assert.assertTrue(directFile2.isPresent());
 
         // check feed after browsing to the senders home
-        String filename3 = "third-file.txt";
-        sharer.getUserRoot().join()
-                .uploadOrReplaceFile(filename3, AsyncReader.build(fileData), fileData.length,
-                        sharer.network, crypto, l -> {}, crypto.random.randomBytes(32)).join();
-        Path file3 = Paths.get(sharer.username, filename3);
-        sharer.shareReadAccessWithAll(sharer.getByPath(file3).join().get(), file3, Set.of(a.username)).join();
+        Path file3 = Paths.get(sharer.username, "third-file.txt");
+        uploadAndShare(fileData, file3, sharer, a.username);
 
         // browse to sender home
         freshA.getByPath(Paths.get(sharer.username)).join();
+
+        Path file4 = Paths.get(sharer.username, "fourth-file.txt");
+        uploadAndShare(fileData, file4, sharer, a.username);
 
         // now check feed
         SocialFeed updatedFeed3 = freshFeed.update().join();
@@ -1277,6 +1268,14 @@ public class PeergosNetworkUtils {
         Assert.assertTrue(item3.sharer.equals(sharer.username));
         AbsoluteCapability readCap3 = sharer.getByPath(file3).join().get().getPointer().capability.readOnly();
         Assert.assertTrue(item3.cap.equals(readCap3));
+    }
+
+    private static void uploadAndShare(byte[] data, Path file, UserContext sharer, String sharee) {
+        String filename = file.getFileName().toString();
+        sharer.getByPath(file.getParent()).join().get()
+                .uploadOrReplaceFile(filename, AsyncReader.build(data), data.length,
+                        sharer.network, crypto, l -> {}, crypto.random.randomBytes(32)).join();
+        sharer.shareReadAccessWithAll(sharer.getByPath(file).join().get(), file, Set.of(sharee)).join();
     }
 
     public static void socialFeedVariations2(NetworkAccess network, Random random) {
