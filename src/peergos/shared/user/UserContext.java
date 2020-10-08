@@ -1655,6 +1655,16 @@ public class UserContext {
         );
     }
 
+    @JsMethod
+    public CompletableFuture<List<FileWrapper>> getFiles(List<SharedItem> pointers) {
+        return Futures.combineAllInOrder(pointers.stream()
+                .map(s -> network.getFile(s.cap, s.owner))
+                .collect(Collectors.toList()))
+                .thenApply(res -> res.stream()
+                        .flatMap(Optional::stream)
+                        .collect(Collectors.toList()));
+    }
+
     public CompletableFuture<Set<FileWrapper>> getChildren(String path) {
         FileProperties.ensureValidPath(path);
         return entrie.getChildren(path, crypto.hasher, network);

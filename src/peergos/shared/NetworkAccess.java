@@ -331,6 +331,15 @@ public class NetworkAccess {
                 });
     }
 
+    public CompletableFuture<Optional<FileWrapper>> getFile(AbsoluteCapability cap, String owner) {
+        return synchronizer.getValue(cap.owner, cap.writer)
+                .thenCompose(version -> getFile(version, cap, Optional.empty(), owner))
+                .exceptionally(t -> {
+                    LOG.log(Level.SEVERE, t.getMessage(), t);
+                    return Optional.empty();
+                });
+    }
+
     public CompletableFuture<Optional<FileWrapper>> getFile(EntryPoint e, Snapshot version) {
         if (version.contains(e.pointer.writer))
             return getFile(version, e.pointer, Optional.empty(), e.ownerName);
