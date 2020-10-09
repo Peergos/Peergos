@@ -36,6 +36,9 @@ public class MimeTypes {
     final static int[] ZIP = new int[]{'P', 'K', 3, 4};
 
     final static int[] ICS = new int[]{'B','E','G','I','N',':','V','C','A','L','E','N','D','A','R'};
+    final static int[] XML = new int[]{'<','?','x','m','l'};
+    final static int[] WOFF = new int[]{'w','O','F','F'};
+    final static int[] WOFF2 = new int[]{'w','O','F','2'};
 
     final static int HEADER_BYTES_TO_IDENTIFY_MIME_TYPE = 28;
 
@@ -119,6 +122,11 @@ public class MimeTypes {
             return "application/zip";
         }
 
+        if (equalArrays(start, WOFF))
+            return "font/woff";
+        if (equalArrays(start, WOFF2))
+            return "font/woff2";
+
         if (allAscii(start)) {
             if (filename.endsWith(".ics") && equalArrays(start, ICS))
                 return "text/calendar";
@@ -128,6 +136,8 @@ public class MimeTypes {
                 return "text/css";
             if (filename.endsWith(".js"))
                 return "text/javascript";
+            if (filename.endsWith(".svg") && equalArrays(start, XML))
+                return "text/svg+xml";
             return "text/plain";
         }
         return "application/octet-stream";
