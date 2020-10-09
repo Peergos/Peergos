@@ -107,6 +107,8 @@ public class MimeTypes {
         if (equalArrays(start, ZIP)) {
             if (filename.endsWith(".jar"))
                 return "application/java-archive";
+            if (filename.endsWith(".epub"))
+                return "application/epub+zip";
 
             if (filename.endsWith(".pptx"))
                 return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
