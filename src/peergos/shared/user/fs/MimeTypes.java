@@ -47,8 +47,11 @@ public class MimeTypes {
             return "image/bmp";
         if (equalArrays(start, GIF))
             return "image/gif";
-        if (equalArrays(start, PNG))
+        if (equalArrays(start, PNG)) {
+            if (filename.endsWith(".ico"))
+                return "image/vnd.microsoft.icon";
             return "image/png";
+        }
         if (equalArrays(start, JPEG))
             return "image/jpg";
         if (equalArrays(start, ICO))
