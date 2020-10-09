@@ -122,6 +122,12 @@ public class MimeTypes {
         if (allAscii(start)) {
             if (filename.endsWith(".ics") && equalArrays(start, ICS))
                 return "text/calendar";
+            if (filename.endsWith(".html"))
+                return "text/html";
+            if (filename.endsWith(".css"))
+                return "text/css";
+            if (filename.endsWith(".js"))
+                return "text/javascript";
             return "text/plain";
         }
         return "application/octet-stream";
