@@ -1,6 +1,7 @@
 package peergos.shared.user.fs;
 
 public class MimeTypes {
+    final static int[] MID = new int[]{'M', 'T', 'h', 'd'};
     final static int[] ID3 = new int[]{'I', 'D', '3'};
     final static int[] MP3 = new int[]{0xff, 0xfb};
     final static int[] MP3_2 = new int[]{0xff, 0xfa};
@@ -90,6 +91,8 @@ public class MimeTypes {
         if (equalArrays(start, 8, AVI))
             return "video/avi";
 
+        if (equalArrays(start, MID))
+            return "audio/midi";
         if (equalArrays(start, ID3))
             return "audio/mpeg";
         if (equalArrays(start, MP3))
