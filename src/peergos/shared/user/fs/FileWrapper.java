@@ -1255,7 +1255,10 @@ public class FileWrapper {
                     SigningPrivateKeyAndPublicHash signer = isLink ? parent.signingPair() : signingPair();
                     return userContext.network.synchronizer.applyComplexUpdate(owner(), signer,
                             (s, committer) -> nodeToUpdate.updateProperties(s, committer, us,
-                                    entryWriter, newProps, userContext.network))
+                                    entryWriter, newProps, userContext.network)
+                                    .thenCompose(updated -> parent.updateChildLinks(updated, committer,
+                                            Arrays.asList(new Pair<>(us, us)),
+                                            userContext.network, userContext.crypto.random, userContext.crypto.hasher)))
                             .thenApply(newVersion -> parent.withVersion(newVersion));
                 }).thenCompose(f -> userContext.sharedWithCache
                         .rename(ourPath, ourPath.getParent().resolve(newFilename))
