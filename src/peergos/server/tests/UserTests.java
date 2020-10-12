@@ -525,7 +525,7 @@ public abstract class UserTests {
         SymmetricKey baseKey = pointer.capability.rBaseKey;
         SymmetricKey parentKey = dir.getParentKey();
         Assert.assertTrue("parent key different from base key", ! parentKey.equals(baseKey));
-        pointer.fileAccess.getDirectChildren(baseKey, network).join();
+        pointer.fileAccess.getDirectChildren(pointer.capability, dir.version, network).join();
     }
 
     @Test
@@ -682,10 +682,10 @@ public abstract class UserTests {
 
         FileWrapper home = context.getByPath(Paths.get(username).toString()).get().get();
         RetrievedCapability homePointer = home.getPointer();
-        List<RelativeCapability> children = homePointer.fileAccess.getDirectChildren(homePointer.capability.rBaseKey, network).get();
-        for (RelativeCapability child : children) {
+        List<NamedRelativeCapability> children = homePointer.fileAccess.getDirectChildren(homePointer.capability, home.version, network).get();
+        for (NamedRelativeCapability child : children) {
             Assert.assertTrue("child pointer is minimal",
-                    ! child.writer.isPresent() && child.wBaseKeyLink.isPresent());
+                    ! child.cap.writer.isPresent() && child.cap.wBaseKeyLink.isPresent());
         }
     }
 

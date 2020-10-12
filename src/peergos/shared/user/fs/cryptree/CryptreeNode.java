@@ -5,6 +5,7 @@ import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
+import peergos.shared.inode.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
@@ -196,29 +197,45 @@ public class CryptreeNode implements Cborable {
     }
 
     public static class ChildrenLinks implements Cborable {
-        public final List<RelativeCapability> children;
+        public final Either<List<RelativeCapability>, List<NamedRelativeCapability>> children;
 
-        public ChildrenLinks(List<RelativeCapability> children) {
+        public ChildrenLinks(List<NamedRelativeCapability> children) {
+            this.children = Either.b(children);
+        }
+
+        private ChildrenLinks(Either<List<RelativeCapability>, List<NamedRelativeCapability>> children) {
             this.children = children;
         }
 
         @Override
         public CborObject toCbor() {
-            return new CborObject.CborList(children);
+            List<CborObject> mapped = children.map(
+                    x -> x.stream().map(Cborable::toCbor).collect(Collectors.toList()),
+                    x -> x.stream().map(Cborable::toCbor).collect(Collectors.toList()));
+            return new CborObject.CborList(mapped);
         }
 
         public static ChildrenLinks fromCbor(CborObject cbor) {
             if (! (cbor instanceof CborObject.CborList))
                 throw new IllegalStateException("Incorrect cbor for ChildrenLinks: " + cbor);
 
-            return new ChildrenLinks(((CborObject.CborList) cbor).value
-                    .stream()
-                    .map(RelativeCapability::fromCbor)
-                    .collect(Collectors.toList()));
+            List<? extends Cborable> cborList = ((CborObject.CborList) cbor).value;
+            if (cborList.isEmpty())
+                return empty();
+            CborObject.CborMap firstMap = (CborObject.CborMap) cborList.get(0);
+            if (firstMap.values.containsKey(new CborObject.CborString("n")))
+                return new ChildrenLinks(Either.b(cborList
+                        .stream()
+                        .map(NamedRelativeCapability::fromCbor)
+                        .collect(Collectors.toList())));
+            return new ChildrenLinks(Either.a(cborList
+                        .stream()
+                        .map(RelativeCapability::fromCbor)
+                        .collect(Collectors.toList())));
         }
 
         public static ChildrenLinks empty() {
-            return new ChildrenLinks(Collections.emptyList());
+            return new ChildrenLinks(Either.b(Collections.emptyList()));
         }
     }
 
@@ -277,36 +294,52 @@ public class CryptreeNode implements Cborable {
                         new EncryptedChunkRetriever(childrenOrData, nextChunkLocation, getDataKey(baseKey)));
     }
 
-    public CompletableFuture<List<RelativeCapability>> getDirectChildren(SymmetricKey baseKey, NetworkAccess network) {
+    public CompletableFuture<List<NamedRelativeCapability>> getDirectChildren(AbsoluteCapability us,
+                                                                              Snapshot version,
+                                                                              NetworkAccess network) {
         if (! isDirectory)
             return CompletableFuture.completedFuture(Collections.emptyList());
-        return getLinkedData(baseKey, ChildrenLinks::fromCbor, network, x -> {})
-                .thenApply(c -> c.children);
+        return getLinkedData(us.rBaseKey, ChildrenLinks::fromCbor, network, x -> {})
+                .thenCompose(c -> {
+                    if (c.children.isB())
+                        return Futures.of(c.children.b());
+                    // Only get here on legacy format directories
+                    return Futures.combineAllInOrder(c.children.a().stream()
+                            .map(r -> network.retrieveMetadata(r.toAbsolute(us), version)
+                                    .thenApply(opt -> opt.map(ret -> new NamedRelativeCapability(new PathElement(ret.getProperties().name),
+                                            r))))
+                            .collect(Collectors.toList()))
+                            .thenApply(res -> res.stream()
+                                    .flatMap(Optional::stream)
+                                    .collect(Collectors.toList()));
+                });
     }
 
-    public CompletableFuture<Set<AbsoluteCapability>> getDirectChildrenCapabilities(AbsoluteCapability us, NetworkAccess network) {
-        return getDirectChildren(us.rBaseKey, network)
+    public CompletableFuture<Set<NamedAbsoluteCapability>> getDirectChildrenCapabilities(AbsoluteCapability us,
+                                                                                         Snapshot version,
+                                                                                         NetworkAccess network) {
+        return getDirectChildren(us, version, network)
                 .thenApply(c ->c.stream()
                         .map(cap -> cap.toAbsolute(us))
                         .collect(Collectors.toSet()));
     }
 
-    public CompletableFuture<Set<AbsoluteCapability>> getAllChildrenCapabilities(Snapshot inVersion,
-                                                                                 AbsoluteCapability us,
-                                                                                 Hasher hasher,
-                                                                                 NetworkAccess network) {
+    public CompletableFuture<Set<NamedAbsoluteCapability>> getAllChildrenCapabilities(Snapshot inVersion,
+                                                                                      AbsoluteCapability us,
+                                                                                      Hasher hasher,
+                                                                                      NetworkAccess network) {
         return inVersion.withWriter(us.owner, us.writer, network).thenCompose(version -> {
-            CompletableFuture<Set<AbsoluteCapability>> childrenFuture = getDirectChildrenCapabilities(us, network);
+            CompletableFuture<Set<NamedAbsoluteCapability>> childrenFuture = getDirectChildrenCapabilities(us, version, network);
 
             CompletableFuture<Optional<RetrievedCapability>> moreChildrenFuture = getNextChunk(version, us, network,
                     Optional.empty(), hasher);
 
             return childrenFuture.thenCompose(children -> moreChildrenFuture.thenCompose(moreChildrenSource -> {
-                        CompletableFuture<Set<AbsoluteCapability>> moreChildren = moreChildrenSource
+                        CompletableFuture<Set<NamedAbsoluteCapability>> moreChildren = moreChildrenSource
                                 .map(d -> d.fileAccess.getAllChildrenCapabilities(version, d.capability, hasher, network))
                                 .orElse(CompletableFuture.completedFuture(Collections.emptySet()));
                         return moreChildren.thenApply(moreRetrievedChildren -> {
-                            Set<AbsoluteCapability> results = Stream.concat(
+                            Set<NamedAbsoluteCapability> results = Stream.concat(
                                     children.stream(),
                                     moreRetrievedChildren.stream())
                                     .collect(Collectors.toSet());
@@ -320,8 +353,9 @@ public class CryptreeNode implements Cborable {
     public CompletableFuture<Set<RetrievedCapability>> getDirectChildren(NetworkAccess network,
                                                                          AbsoluteCapability us,
                                                                          Snapshot version) {
-        return getDirectChildrenCapabilities(us, network)
+        return getDirectChildrenCapabilities(us, version, network)
                 .thenCompose(c -> network.retrieveAllMetadata(c.stream()
+                        .map(n -> n.cap)
                         .collect(Collectors.toList()), version)
                         .thenApply(HashSet::new));
     }
@@ -609,7 +643,7 @@ public class CryptreeNode implements Cborable {
                                             committer);
                                 })).thenCompose(nextChunk -> {
                             if (isDirectory()) {
-                                Set<WritableAbsoluteCapability> empty = Collections.emptySet();
+                                Set<NamedAbsoluteCapability> empty = Collections.emptySet();
                                 return getDirectChildren(network, us.cap, version)
                                         .thenCompose(children -> Futures.reduceAll(children,
                                                 new Pair<>(nextChunk.left, empty),
@@ -635,7 +669,8 @@ public class CryptreeNode implements Cborable {
                                                                     newChild.left,
                                                                     committer)
                                                                     .thenApply(updatedChild -> new Pair<>(updatedChild.left,
-                                                                            Stream.concat(p.right.stream(), Stream.of(updatedChild.right))
+                                                                            Stream.concat(p.right.stream(),
+                                                                                    Stream.of(new NamedAbsoluteCapability(c.getProperties().name, updatedChild.right)))
                                                                                     .collect(Collectors.toSet()))));
                                                 },
                                                 (x, y) -> new Pair<>(x.left.merge(y.left),
@@ -648,8 +683,8 @@ public class CryptreeNode implements Cborable {
                                                     Optional.of(newUs.signer);
                                             RelativeCapability nextChunkRel = RelativeCapability.buildSubsequentChunk(
                                                     nextChunk.right.getMapKey(), newUs.cap.rBaseKey);
-                                            List<RelativeCapability> relativeChildLinks = newChildCaps.right.stream()
-                                                    .map(newUs.cap::relativise)
+                                            List<NamedRelativeCapability> relativeChildLinks = newChildCaps.right.stream()
+                                                    .map(n -> new NamedRelativeCapability(n.name, newUs.cap.relativise(n.cap)))
                                                     .collect(Collectors.toList());
                                             return createDir(MaybeMultihash.empty(), newUs.cap.rBaseKey,
                                                     newUs.cap.wBaseKey.get(), signer, props, newParentCap, newParentKey,
@@ -737,13 +772,13 @@ public class CryptreeNode implements Cborable {
 
     public CompletableFuture<Snapshot> addChildrenAndCommit(Snapshot current,
                                                             Committer committer,
-                                                            List<RelativeCapability> targetCAPs,
+                                                            List<NamedRelativeCapability> targetCAPs,
                                                             WritableAbsoluteCapability us,
                                                             SigningPrivateKeyAndPublicHash signer,
                                                             NetworkAccess network,
                                                             Crypto crypto) {
         // Make sure subsequent blobs use a different transaction to obscure linkage of different parts of this dir
-        return getDirectChildren(us.rBaseKey, network).thenCompose(children -> {
+        return getDirectChildren(us, current, network).thenCompose(children -> {
             if (children.size() + targetCAPs.size() > getMaxChildLinksPerBlob()) {
                 return getNextChunk(current, us, network, Optional.empty(), crypto.hasher).thenCompose(nextMetablob -> {
 
@@ -755,8 +790,8 @@ public class CryptreeNode implements Cborable {
                     } else {
                         // first fill this directory, then overflow into a new one
                         int freeSlots = getMaxChildLinksPerBlob() - children.size();
-                        List<RelativeCapability> addToUs = targetCAPs.subList(0, freeSlots);
-                        List<RelativeCapability> addToNext = targetCAPs.subList(freeSlots, targetCAPs.size());
+                        List<NamedRelativeCapability> addToUs = targetCAPs.subList(0, freeSlots);
+                        List<NamedRelativeCapability> addToNext = targetCAPs.subList(freeSlots, targetCAPs.size());
                         return (addToUs.isEmpty() ?
                                 CompletableFuture.completedFuture(current) :
                                 addChildrenAndCommit(current, committer, addToUs, us, signer, network, crypto))
@@ -766,10 +801,10 @@ public class CryptreeNode implements Cborable {
                                     SymmetricKey ourParentKey = getParentKey(us.rBaseKey);
                                     Optional<RelativeCapability> parentCap = getParentBlock(ourParentKey).parentLink;
                                     RelativeCapability nextChunk = RelativeCapability.buildSubsequentChunk(crypto.random.randomBytes(32), nextSubfoldersKey);
-                                    List<RelativeCapability> addToNextChunk = addToNext.stream()
+                                    List<NamedRelativeCapability> addToNextChunk = addToNext.stream()
                                             .limit(getMaxChildLinksPerBlob())
                                             .collect(Collectors.toList());
-                                    List<RelativeCapability> remaining = addToNext.stream()
+                                    List<NamedRelativeCapability> remaining = addToNext.stream()
                                             .skip(getMaxChildLinksPerBlob())
                                             .collect(Collectors.toList());
                                     return CryptreeNode.createDir(MaybeMultihash.empty(), nextSubfoldersKey,
@@ -794,7 +829,7 @@ public class CryptreeNode implements Cborable {
                     }
                 });
             } else {
-                ArrayList<RelativeCapability> newFiles = new ArrayList<>(children);
+                ArrayList<NamedRelativeCapability> newFiles = new ArrayList<>(children);
                 newFiles.addAll(targetCAPs);
 
                 return IpfsTransaction.call(us.owner,
@@ -804,18 +839,6 @@ public class CryptreeNode implements Cborable {
                         network.dhtClient);
             }
         });
-    }
-
-    public CompletableFuture<Snapshot> addChildLinks(WritableAbsoluteCapability cap,
-                                                     SigningPrivateKeyAndPublicHash signer,
-                                                     Collection<WritableAbsoluteCapability> childrenCaps,
-                                                     NetworkAccess network,
-                                                     Crypto crypto,
-                                                     Snapshot version,
-                                                     Committer committer) {
-        return addChildrenAndCommit(version, committer, childrenCaps.stream()
-                                .map(childCap -> cap.relativise(childCap))
-                                .collect(Collectors.toList()), cap, signer, network, crypto);
     }
 
     public CompletableFuture<Snapshot> mkdir(Snapshot base,
@@ -846,7 +869,8 @@ public class CryptreeNode implements Cborable {
                     return IpfsTransaction.call(us.owner,
                             tid -> child.commit(base, committer, childCap, entryWriter, network, tid), network.dhtClient)
                             .thenCompose(updatedBase -> {
-                                RelativeCapability subdirPointer = new RelativeCapability(Optional.empty(), dirMapKey, dirReadKey, Optional.of(toChildWriteKey));
+                                RelativeCapability cap = new RelativeCapability(Optional.empty(), dirMapKey, dirReadKey, Optional.of(toChildWriteKey));
+                                NamedRelativeCapability subdirPointer = new NamedRelativeCapability(new PathElement(name), cap);
                                 SigningPrivateKeyAndPublicHash signer = getSigner(us.rBaseKey, us.wBaseKey.get(), entryWriter);
                                 return addChildrenAndCommit(updatedBase, committer, Arrays.asList(subdirPointer), us, signer, network, crypto);
                             });
@@ -884,23 +908,24 @@ public class CryptreeNode implements Cborable {
                                                         Collection<Pair<AbsoluteCapability, AbsoluteCapability>> childCasPairs,
                                                         NetworkAccess network,
                                                         Hasher hasher) {
-        Set<Location> locsToRemove = childCasPairs.stream()
-                .map(p -> p.left.getLocation())
-                .collect(Collectors.toSet());
         return getDirectChildren(network, ourPointer, base).thenCompose(children -> {
 
             Set<Location> existingChildLocs = children.stream()
                     .map(r -> r.capability.getLocation())
                     .collect(Collectors.toSet());
 
-            List<RelativeCapability> withRemoval = children.stream()
-                    .filter(e -> ! locsToRemove.contains(e.capability.getLocation()))
-                    .map(c -> ourPointer.relativise(c.capability))
+            Map<Location, AbsoluteCapability> oldToNew = childCasPairs.stream()
+                    .collect(Collectors.toMap(p -> p.left.getLocation(), p -> p.right));
+
+            List<NamedRelativeCapability> unchanged = children.stream()
+                    .filter(e -> ! oldToNew.containsKey(e.capability.getLocation()))
+                    .map(c -> new NamedRelativeCapability(c.getProperties().name, ourPointer.relativise(c.capability)))
                     .collect(Collectors.toList());
 
-            List<RelativeCapability> toAdd = childCasPairs.stream()
-                    .filter(p -> existingChildLocs.contains(p.left.getLocation()))
-                    .map(p -> ourPointer.relativise(p.right))
+            List<NamedRelativeCapability> toAdd = children.stream()
+                    .filter(e -> oldToNew.containsKey(e.capability.getLocation()))
+                    .map(c -> new NamedRelativeCapability(c.getProperties().name,
+                            ourPointer.relativise(oldToNew.get(c.capability.getLocation()))))
                     .collect(Collectors.toList());
 
             Collection<Pair<AbsoluteCapability, AbsoluteCapability>> remaining = childCasPairs.stream()
@@ -909,7 +934,7 @@ public class CryptreeNode implements Cborable {
 
             return (! toAdd.isEmpty() ?
                     IpfsTransaction.call(ourPointer.owner,
-                            tid -> withChildren(ourPointer.rBaseKey, new ChildrenLinks(Stream.concat(withRemoval.stream(), toAdd.stream())
+                            tid -> withChildren(ourPointer.rBaseKey, new ChildrenLinks(Stream.concat(unchanged.stream(), toAdd.stream())
                                     .collect(Collectors.toList())), hasher)
                                     .thenCompose(d -> d.commit(base, committer, ourPointer, signer, network, tid)),
                             network.dhtClient) :
@@ -941,9 +966,9 @@ public class CryptreeNode implements Cborable {
                 .map(r -> r.getLocation())
                 .collect(Collectors.toSet());
         return getDirectChildren(network, ourPointer, current).thenCompose(children -> {
-            List<RelativeCapability> withRemoval = children.stream()
+            List<NamedRelativeCapability> withRemoval = children.stream()
                     .filter(e -> ! locsToRemove.contains(e.capability.getLocation()))
-                    .map(c -> ourPointer.relativise(c.capability))
+                    .map(c -> new NamedRelativeCapability(new PathElement(c.getProperties().name), ourPointer.relativise(c.capability)))
                     .collect(Collectors.toList());
 
             return IpfsTransaction.call(ourPointer.owner,
@@ -1094,7 +1119,7 @@ public class CryptreeNode implements Cborable {
         Optional<SigningPrivateKeyAndPublicHash> empty = Optional.empty();
         return createDir(MaybeMultihash.empty(), linkCap.rBaseKey, linkCap.wBaseKey.get(), empty, targetProps.asLink(),
                 Optional.of(toParent), parentKey, nextChunk,
-                new ChildrenLinks(Collections.singletonList(toTarget)), crypto.hasher);
+                new ChildrenLinks(Collections.singletonList(new NamedRelativeCapability(new PathElement(targetProps.name), toTarget))), crypto.hasher);
     }
 
     public static CompletableFuture<DirAndChildren> createEmptyDir(
@@ -1108,7 +1133,7 @@ public class CryptreeNode implements Cborable {
             RelativeCapability nextChunk,
             Hasher hasher) {
         return createDir(lastCommittedHash, rBaseKey, wBaseKey, signingPair, props, parentCap, parentKey, nextChunk,
-                new ChildrenLinks(Collections.emptyList()), hasher);
+                ChildrenLinks.empty(), hasher);
     }
 
     public static CompletableFuture<DirAndChildren> createDir(

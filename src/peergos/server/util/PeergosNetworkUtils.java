@@ -1396,11 +1396,14 @@ public class PeergosNetworkUtils {
     }
 
     public static List<Set<AbsoluteCapability>> getAllChildCapsByChunk(FileWrapper dir, NetworkAccess network) {
-        return getAllChildCapsByChunk(dir.getPointer().capability, dir.getPointer().fileAccess, network);
+        return getAllChildCapsByChunk(dir.getPointer().capability, dir.getPointer().fileAccess, dir.version, network);
     }
 
-    public static List<Set<AbsoluteCapability>> getAllChildCapsByChunk(AbsoluteCapability cap, CryptreeNode dir, NetworkAccess network) {
-        Set<AbsoluteCapability> direct = dir.getDirectChildrenCapabilities(cap, network).join();
+    public static List<Set<AbsoluteCapability>> getAllChildCapsByChunk(AbsoluteCapability cap,
+                                                                       CryptreeNode dir,
+                                                                       Snapshot inVersion,
+                                                                       NetworkAccess network) {
+        Set<NamedAbsoluteCapability> direct = dir.getDirectChildrenCapabilities(cap, inVersion, network).join();
 
         AbsoluteCapability nextChunkCap = cap.withMapKey(dir.getNextChunkLocation(cap.rBaseKey, Optional.empty(), cap.getMapKey(), null).join());
 
@@ -1409,9 +1412,10 @@ public class PeergosNetworkUtils {
                         network.dhtClient).join().get(), network.dhtClient).join());
 
         Optional<CryptreeNode> next = network.getMetadata(version.get(nextChunkCap.writer).props, nextChunkCap).join();
+        Set<AbsoluteCapability> directUnnamed = direct.stream().map(n -> n.cap).collect(Collectors.toSet());
         if (! next.isPresent())
-            return Arrays.asList(direct);
-        return Stream.concat(Stream.of(direct), getAllChildCapsByChunk(nextChunkCap, next.get(), network).stream())
+            return Arrays.asList(directUnnamed);
+        return Stream.concat(Stream.of(directUnnamed), getAllChildCapsByChunk(nextChunkCap, next.get(), inVersion, network).stream())
                 .collect(Collectors.toList());
     }
 
@@ -1424,7 +1428,8 @@ public class PeergosNetworkUtils {
     public static Set<AbsoluteCapability> getAllChildCaps(AbsoluteCapability cap, CryptreeNode dir, NetworkAccess network) {
             return dir.getAllChildrenCapabilities(new Snapshot(cap.writer,
                     WriterData.getWriterData(network.mutable.getPointerTarget(cap.owner, cap.writer,
-                            network.dhtClient).join().get(), network.dhtClient).join()), cap, crypto.hasher, network).join();
+                            network.dhtClient).join().get(), network.dhtClient).join()), cap, crypto.hasher, network).join()
+                    .stream().map(n -> n.cap).collect(Collectors.toSet());
     }
 
     public static void shareFolderForWriteAccess(NetworkAccess sharerNode, NetworkAccess shareeNode, int shareeCount, Random random) throws Exception {

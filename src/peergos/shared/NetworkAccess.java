@@ -379,11 +379,11 @@ public class NetworkAccess {
                                                                  NetworkAccess network,
                                                                  Snapshot version) {
         // the link is formatted as a directory cryptree node and the target is the solitary child
-        return link.fileAccess.getDirectChildrenCapabilities(link.capability, network)
+        return link.fileAccess.getDirectChildrenCapabilities(link.capability, version, network)
                 .thenCompose(children -> {
                     if (children.size() != 1)
                         throw new IllegalStateException("Link cryptree nodes must have exactly one child link!");
-                    AbsoluteCapability cap = children.stream().findFirst().get();
+                    AbsoluteCapability cap = children.stream().findFirst().get().cap;
                     Set<PublicKeyHash> childWriters = Collections.singleton(cap.writer);
                     return version.withWriters(owner, childWriters, network)
                             .thenCompose(fullVersion -> network.retrieveAllMetadata(Collections.singletonList(cap), fullVersion)
