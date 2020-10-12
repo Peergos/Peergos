@@ -451,9 +451,9 @@ public abstract class UserTests {
 
         //rename
         String newname = "newname.txt";
-        FileWrapper updatedRoot5 = updatedRoot4.getDescendentByPath(otherName, crypto.hasher, context.network).get().get()
-                .rename(newname, updatedRoot4, Paths.get(username, otherName), context).get();
-        checkFileContents(data3, updatedRoot5.getDescendentByPath(newname, crypto.hasher, context.network).get().get(), context);
+        FileWrapper updatedRoot5 = updatedRoot4.getDescendentByPath(otherName, crypto.hasher, context.network).join().get()
+                .rename(newname, updatedRoot4, Paths.get(username, otherName), context).join();
+        checkFileContents(data3, updatedRoot5.getDescendentByPath(newname, crypto.hasher, context.network).join().get(), context);
         // check from the root as well
         checkFileContents(data3, context.getByPath(username + "/" + newname).get().get(), context);
         // check from a fresh log in too

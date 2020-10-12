@@ -1259,7 +1259,7 @@ public class FileWrapper {
                                     .thenCompose(updated -> parent.updateChildLinks(updated, committer,
                                             Arrays.asList(new Pair<>(us, new NamedAbsoluteCapability(newFilename, us))),
                                             userContext.network, userContext.crypto.random, userContext.crypto.hasher)))
-                            .thenApply(newVersion -> parent.withVersion(newVersion));
+                            .thenCompose(newVersion -> parent.getUpdated(newVersion, userContext.network));
                 }).thenCompose(f -> userContext.sharedWithCache
                         .rename(ourPath, ourPath.getParent().resolve(newFilename))
                         .thenApply(b -> f));

@@ -955,7 +955,7 @@ public class CryptreeNode implements Cborable {
                     .map(c -> new NamedRelativeCapability(c.getProperties().name, ourPointer.relativise(c.capability)))
                     .collect(Collectors.toList());
 
-            List<NamedRelativeCapability> toAdd = children.stream()
+            List<NamedRelativeCapability> updatedLinks = children.stream()
                     .filter(e -> oldToNew.containsKey(e.capability.getLocation()))
                     .map(c -> {
                         NamedAbsoluteCapability newTarget = oldToNew.get(c.capability.getLocation());
@@ -968,9 +968,9 @@ public class CryptreeNode implements Cborable {
                     .filter(p -> ! existingChildLocs.contains(p.left.getLocation()))
                     .collect(Collectors.toSet());
 
-            return (! toAdd.isEmpty() ?
+            return (! updatedLinks.isEmpty() ?
                     IpfsTransaction.call(ourPointer.owner,
-                            tid -> withChildren(ourPointer.rBaseKey, new ChildrenLinks(Stream.concat(unchanged.stream(), toAdd.stream())
+                            tid -> withChildren(ourPointer.rBaseKey, new ChildrenLinks(Stream.concat(unchanged.stream(), updatedLinks.stream())
                                     .collect(Collectors.toList())), hasher)
                                     .thenCompose(d -> d.commit(base, committer, ourPointer, signer, network, tid)),
                             network.dhtClient) :
