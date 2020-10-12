@@ -222,7 +222,7 @@ public class FileWrapper {
     public CompletableFuture<Snapshot> updateChildLinks(
             Snapshot version,
             Committer committer,
-            Collection<Pair<AbsoluteCapability, AbsoluteCapability>> childCases,
+            Collection<Pair<AbsoluteCapability, NamedAbsoluteCapability>> childCases,
             NetworkAccess network,
             SafeRandom random,
             Hasher hasher) {
@@ -1257,7 +1257,7 @@ public class FileWrapper {
                             (s, committer) -> nodeToUpdate.updateProperties(s, committer, us,
                                     entryWriter, newProps, userContext.network)
                                     .thenCompose(updated -> parent.updateChildLinks(updated, committer,
-                                            Arrays.asList(new Pair<>(us, us)),
+                                            Arrays.asList(new Pair<>(us, new NamedAbsoluteCapability(newFilename, us))),
                                             userContext.network, userContext.crypto.random, userContext.crypto.hasher)))
                             .thenApply(newVersion -> parent.withVersion(newVersion));
                 }).thenCompose(f -> userContext.sharedWithCache

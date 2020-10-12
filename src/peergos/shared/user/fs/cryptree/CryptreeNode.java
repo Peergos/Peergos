@@ -917,8 +917,9 @@ public class CryptreeNode implements Cborable {
                                                        RetrievedCapability modified,
                                                        NetworkAccess network,
                                                        Hasher hasher) {
+        NamedAbsoluteCapability newChild = new NamedAbsoluteCapability(modified.getProperties().name, modified.capability);
         return updateChildLinks(base, committer, ourPointer, signer,
-                Arrays.asList(new Pair<>(original.capability, modified.capability)), network, hasher);
+                Arrays.asList(new Pair<>(original.capability, newChild)), network, hasher);
     }
 
     public CompletableFuture<Snapshot> updateChildLink(Snapshot base,
@@ -926,7 +927,7 @@ public class CryptreeNode implements Cborable {
                                                        WritableAbsoluteCapability ourPointer,
                                                        SigningPrivateKeyAndPublicHash signer,
                                                        AbsoluteCapability originalCap,
-                                                       AbsoluteCapability modifiedCap,
+                                                       NamedAbsoluteCapability modifiedCap,
                                                        NetworkAccess network,
                                                        Hasher hasher) {
         return updateChildLinks(base, committer, ourPointer, signer,
@@ -937,7 +938,7 @@ public class CryptreeNode implements Cborable {
                                                         Committer committer,
                                                         WritableAbsoluteCapability ourPointer,
                                                         SigningPrivateKeyAndPublicHash signer,
-                                                        Collection<Pair<AbsoluteCapability, AbsoluteCapability>> childCasPairs,
+                                                        Collection<Pair<AbsoluteCapability, NamedAbsoluteCapability>> childCasPairs,
                                                         NetworkAccess network,
                                                         Hasher hasher) {
         return getDirectChildren(network, ourPointer, base).thenCompose(children -> {
@@ -946,7 +947,7 @@ public class CryptreeNode implements Cborable {
                     .map(r -> r.capability.getLocation())
                     .collect(Collectors.toSet());
 
-            Map<Location, AbsoluteCapability> oldToNew = childCasPairs.stream()
+            Map<Location, NamedAbsoluteCapability> oldToNew = childCasPairs.stream()
                     .collect(Collectors.toMap(p -> p.left.getLocation(), p -> p.right));
 
             List<NamedRelativeCapability> unchanged = children.stream()
@@ -956,11 +957,14 @@ public class CryptreeNode implements Cborable {
 
             List<NamedRelativeCapability> toAdd = children.stream()
                     .filter(e -> oldToNew.containsKey(e.capability.getLocation()))
-                    .map(c -> new NamedRelativeCapability(c.getProperties().name,
-                            ourPointer.relativise(oldToNew.get(c.capability.getLocation()))))
+                    .map(c -> {
+                        NamedAbsoluteCapability newTarget = oldToNew.get(c.capability.getLocation());
+                        return new NamedRelativeCapability(newTarget.name,
+                                ourPointer.relativise(newTarget.cap));
+                    })
                     .collect(Collectors.toList());
 
-            Collection<Pair<AbsoluteCapability, AbsoluteCapability>> remaining = childCasPairs.stream()
+            Collection<Pair<AbsoluteCapability, NamedAbsoluteCapability>> remaining = childCasPairs.stream()
                     .filter(p -> ! existingChildLocs.contains(p.left.getLocation()))
                     .collect(Collectors.toSet());
 
