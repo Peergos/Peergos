@@ -434,11 +434,13 @@ public class FileWrapper {
                         return Futures.of(Optional.empty());
                     RetrievedCapability rc = rcOpt.get();
                     FileProperties props = rc.getProperties();
+                    Optional<SigningPrivateKeyAndPublicHash> childsEntryWriter = pointer.capability.wBaseKey
+                            .map(wBase -> pointer.fileAccess.getSigner(pointer.capability.rBaseKey, wBase, entryWriter));
                     if (! props.isLink)
-                        return Futures.of(Optional.of(new FileWrapper(rc, Optional.empty(), entryWriter, ownername, version)));
+                        return Futures.of(Optional.of(new FileWrapper(rc, Optional.empty(), childsEntryWriter, ownername, version)));
                     return version.withWriter(owner(), rc.capability.writer, network)
                             .thenCompose(fullVersion ->
-                                    NetworkAccess.getFileFromLink(owner(), rc, entryWriter, ownername, network, fullVersion)
+                                    NetworkAccess.getFileFromLink(owner(), rc, childsEntryWriter, ownername, network, fullVersion)
                                             .thenApply(Optional::of));
                 });
     }
