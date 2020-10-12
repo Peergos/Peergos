@@ -201,11 +201,9 @@ public class FileWrapper {
         int slash = path.indexOf("/");
         String prefix = slash > 0 ? path.substring(0, slash) : path;
         String suffix = slash > 0 ? path.substring(slash + 1) : "";
-        return getChildren(version, hasher, network).thenCompose(children -> {
-            for (FileWrapper child : children)
-                if (child.getFileProperties().name.equals(prefix)) {
-                    return child.getDescendentByPath(suffix, child.version, hasher, network);
-                }
+        return getChild(version, prefix, hasher, network).thenCompose(child -> {
+            if (child.isPresent())
+                return child.get().getDescendentByPath(suffix, child.get().version, hasher, network);
             return CompletableFuture.completedFuture(Optional.empty());
         });
     }
@@ -426,9 +424,23 @@ public class FileWrapper {
         return getChild(version, name, hasher, network);
     }
 
-    public CompletableFuture<Optional<FileWrapper>> getChild(Snapshot version, String name, Hasher hasher, NetworkAccess network) {
-        return getChildren(version, hasher, network)
-                .thenApply(children -> children.stream().filter(f -> f.getName().equals(name)).findAny());
+    public CompletableFuture<Optional<FileWrapper>> getChild(Snapshot version,
+                                                             String name,
+                                                             Hasher hasher,
+                                                             NetworkAccess network) {
+        return pointer.fileAccess.getChild(name, pointer.capability, version, hasher, network)
+                .thenCompose(rcOpt -> {
+                    if (rcOpt.isEmpty())
+                        return Futures.of(Optional.empty());
+                    RetrievedCapability rc = rcOpt.get();
+                    FileProperties props = rc.getProperties();
+                    if (! props.isLink)
+                        return Futures.of(Optional.of(new FileWrapper(rc, Optional.empty(), entryWriter, ownername, version)));
+                    return version.withWriter(owner(), rc.capability.writer, network)
+                            .thenCompose(fullVersion ->
+                                    NetworkAccess.getFileFromLink(owner(), rc, entryWriter, ownername, network, fullVersion)
+                                            .thenApply(Optional::of));
+                });
     }
 
     @JsMethod

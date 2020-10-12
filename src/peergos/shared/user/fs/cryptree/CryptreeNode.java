@@ -360,6 +360,20 @@ public class CryptreeNode implements Cborable {
                         .thenApply(HashSet::new));
     }
 
+    public CompletableFuture<Optional<RetrievedCapability>> getDirectChild(NetworkAccess network,
+                                                                           String name,
+                                                                           AbsoluteCapability us,
+                                                                           Snapshot version) {
+        return getDirectChildrenCapabilities(us, version, network)
+                .thenCompose(c -> {
+                    Optional<NamedAbsoluteCapability> matching = c.stream()
+                            .filter(n -> n.name.name.equals(name)).findFirst();
+                    if (matching.isEmpty())
+                        return Futures.of(Optional.empty());
+                    return network.retrieveMetadata(matching.get().cap, version);
+                });
+    }
+
     public CompletableFuture<Set<RetrievedCapability>> getChildren(Snapshot version,
                                                                    Hasher hasher,
                                                                    NetworkAccess network,
@@ -382,6 +396,24 @@ public class CryptreeNode implements Cborable {
                     });
                 })
         );
+    }
+
+    public CompletableFuture<Optional<RetrievedCapability>> getChild(String name,
+                                                                     AbsoluteCapability us,
+                                                                     Snapshot version,
+                                                                     Hasher hasher,
+                                                                     NetworkAccess network) {
+        return getDirectChild(network, name, us, version)
+                .thenCompose(directOpt -> {
+                    if (directOpt.isPresent())
+                        return Futures.of(directOpt);
+                    return getNextChunk(version, us, network,
+                            Optional.empty(), hasher).thenCompose(nextOpt -> {
+                        if (nextOpt.isPresent())
+                            return nextOpt.get().fileAccess.getChild(name, nextOpt.get().capability, version, hasher, network);
+                        return Futures.of(Optional.empty());
+                    });
+                });
     }
 
     public CompletableFuture<Snapshot> updateProperties(Snapshot base,
