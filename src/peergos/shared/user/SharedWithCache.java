@@ -71,12 +71,12 @@ public class SharedWithCache {
                                         true,
                                         (x, friendDirectory) -> {
                                             return CapabilityStore.loadReadOnlyLinks(cacheDirOpt.get(), friendDirectory,
-                                                    ourname, network, crypto, false, false)
+                                                    ourname, network, crypto, false)
                                                     .thenCompose(readCaps -> {
                                                         readCaps.getRetrievedCapabilities().stream()
                                                                 .forEach(rc -> addSharedWith(Access.READ, Paths.get(rc.path), Collections.singleton(friendDirectory.getName())));
                                                         return CapabilityStore.loadWriteableLinks(cacheDirOpt.get(), friendDirectory,
-                                                                ourname, network, crypto, false, false)
+                                                                ourname, network, crypto, false)
                                                                 .thenApply(writeCaps -> {
                                                                     writeCaps.getRetrievedCapabilities().stream()
                                                                             .forEach(rc -> addSharedWith(Access.WRITE, Paths.get(rc.path), Collections.singleton(friendDirectory.getName())));
