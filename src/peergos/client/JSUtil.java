@@ -14,7 +14,7 @@ import java.util.concurrent.*;
 public class JSUtil {
 
     @JsMethod
-    public CompletableFuture<List<FileWrapper>> getFiles(UserContext context, SharedItem[] pointersArray) {
+    public static CompletableFuture<List<FileWrapper>> getFiles(UserContext context, SharedItem[] pointersArray) {
         List<SharedItem> pointers = Arrays.asList(pointersArray);
         return context.getFiles(pointers);
     }
