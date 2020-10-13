@@ -1158,38 +1158,31 @@ public class UserContext {
 
     public CompletableFuture<Boolean> sendFollowRequest(String targetUsername, SymmetricKey requestedKey) {
         return getSharingFolder().thenCompose(sharing -> {
-            return sharing.getChildren(crypto.hasher, network).thenCompose(children -> {
-                // check for them not reciprocating
-                return getFollowing().thenCompose(following -> {
-                    boolean alreadyFollowing = following.stream()
-                            .filter(x -> x.equals(targetUsername))
-                            .findAny()
-                            .isPresent();
-                    if (alreadyFollowing) {
-                        return Futures.errored(new Exception("User " + targetUsername +" is already a follower!"));
+            // check for them not reciprocating
+            return getFollowing().thenCompose(following -> {
+                boolean alreadyFollowing = following.stream()
+                        .filter(x -> x.equals(targetUsername))
+                        .findAny()
+                        .isPresent();
+                if (alreadyFollowing) {
+                    return Futures.errored(new Exception("User " + targetUsername +" is already a follower!"));
+                }
+                return getPublicKeys(targetUsername).thenCompose(targetUserOpt -> {
+                    if (! targetUserOpt.isPresent()) {
+                        return Futures.errored(new Exception("User " + targetUsername + " does not exist!"));
                     }
-                    return getPublicKeys(targetUsername).thenCompose(targetUserOpt -> {
-                        if (! targetUserOpt.isPresent()) {
-                            return Futures.errored(new Exception("User " + targetUsername + " does not exist!"));
-                        }
-                        PublicBoxingKey targetUser = targetUserOpt.get().right;
-                        return sharing.getChild(targetUsername, crypto.hasher, network).thenCompose(dirOpt -> {
-                            if (dirOpt.isPresent())
-                                return Futures.of(dirOpt);
-                            return sharing.mkdir(targetUsername, network, null, true, crypto)
-                                    .thenCompose(updatedSharing -> updatedSharing.getChild(targetUsername, crypto.hasher, network));
-                        }).thenCompose(friendRootOpt -> {
+                    PublicBoxingKey targetUser = targetUserOpt.get().right;
+                    return sharing.getOrMkdirs(Paths.get(targetUsername), network, true, crypto)
+                            .thenCompose(friendRoot -> {
 
-                            FileWrapper friendRoot = friendRootOpt.get();
-                            // if they accept the request we will add a note to our static data so we know who we sent the read access to
-                            EntryPoint entry = new EntryPoint(friendRoot.getPointer().capability.readOnly(), username);
+                                // if they accept the request we will add a note to our static data so we know who we sent the read access to
+                                EntryPoint entry = new EntryPoint(friendRoot.getPointer().capability.readOnly(), username);
 
-                            FollowRequest followReq = new FollowRequest(Optional.of(entry), Optional.ofNullable(requestedKey));
+                                FollowRequest followReq = new FollowRequest(Optional.of(entry), Optional.ofNullable(requestedKey));
 
-                            PublicKeyHash targetSigner = targetUserOpt.get().left;
-                            return blindAndSendFollowRequest(targetSigner, targetUser, followReq);
-                        });
-                    });
+                                PublicKeyHash targetSigner = targetUserOpt.get().left;
+                                return blindAndSendFollowRequest(targetSigner, targetUser, followReq);
+                            });
                 });
             });
         });

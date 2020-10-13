@@ -233,8 +233,8 @@ public class FileWrapper {
 
     public CompletableFuture<Boolean> hasChildWithName(Snapshot version, String name, Hasher hasher, NetworkAccess network) {
         ensureUnmodified();
-        return getChildren(version, hasher, network)
-                .thenApply(children -> children.stream().anyMatch(c -> c.props.name.equals(name)));
+        return getChild(version, name, hasher, network)
+                .thenApply(Optional::isPresent);
     }
 
     /**
