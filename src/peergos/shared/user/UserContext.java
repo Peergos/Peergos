@@ -1656,7 +1656,8 @@ public class UserContext {
     }
 
     @JsMethod
-    public CompletableFuture<List<FileWrapper>> getFiles(List<SharedItem> pointers) {
+    public CompletableFuture<List<FileWrapper>> getFiles(SharedItem[] pointersArray) {
+        List<SharedItem> pointers = Arrays.asList(pointersArray);
         return Futures.combineAllInOrder(pointers.stream()
                 .map(s -> network.getFile(s.cap, s.owner))
                 .collect(Collectors.toList()))
