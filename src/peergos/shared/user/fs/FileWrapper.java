@@ -359,24 +359,13 @@ public class FileWrapper {
     }
 
     public CompletableFuture<Set<FileWrapper>> getChildren(Snapshot version, Hasher hasher, NetworkAccess network) {
-        return getChildren(version, false, hasher, network);
-    }
-
-    public CompletableFuture<Set<FileWrapper>> getChildrenWithSameWriter(Hasher hasher, NetworkAccess network) {
-        return getChildren(version, true, hasher, network);
-    }
-
-    public CompletableFuture<Set<FileWrapper>> getChildren(Snapshot version, boolean sameWriterOnly, Hasher hasher, NetworkAccess network) {
         if (capTrie.isPresent())
             return capTrie.get().getChildren("/", hasher, version.merge(this.version), network);
         if (isReadable()) {
             Optional<SigningPrivateKeyAndPublicHash> childsEntryWriter = pointer.capability.wBaseKey
                     .map(wBase -> pointer.fileAccess.getSigner(pointer.capability.rBaseKey, wBase, entryWriter));
             return pointer.fileAccess.getAllChildrenCapabilities(version, pointer.capability, hasher, network)
-                    .thenCompose(childCaps -> sameWriterOnly ?
-                            getFilesWithSameWriter(owner(), childCaps, childsEntryWriter, ownername, network, version) :
-                            getFiles(owner(), childCaps, childsEntryWriter, ownername, network, version)
-                    );
+                    .thenCompose(childCaps -> getFiles(owner(), childCaps, childsEntryWriter, ownername, network, version));
         }
         throw new IllegalStateException("Unreadable FileWrapper!");
     }
@@ -399,23 +388,6 @@ public class FileWrapper {
                                         return Futures.of(new FileWrapper(rc, Optional.empty(), entryWriter, ownername, fullVersion));
                                     return NetworkAccess.getFileFromLink(owner, rc, entryWriter, ownername, network, version);
                                 })
-                                .collect(Collectors.toSet()))));
-    }
-
-    private static CompletableFuture<Set<FileWrapper>> getFilesWithSameWriter(PublicKeyHash owner,
-                                                                              Set<NamedAbsoluteCapability> caps,
-                                                                              Optional<SigningPrivateKeyAndPublicHash> entryWriter,
-                                                                              String ownername,
-                                                                              NetworkAccess network,
-                                                                              Snapshot version) {
-        Set<PublicKeyHash> childWriters = caps.stream()
-                .map(c -> c.cap.writer)
-                .collect(Collectors.toSet());
-        return version.withWriters(owner, childWriters, network)
-                .thenCompose(fullVersion -> network.retrieveAllMetadata(caps.stream().map(n -> n.cap).collect(Collectors.toList()), fullVersion)
-                        .thenCompose(rcs -> Futures.combineAll(rcs.stream()
-                                .filter(rc -> ! rc.getProperties().isLink)
-                                .map(rc -> Futures.of(new FileWrapper(rc, Optional.empty(), entryWriter, ownername, fullVersion)))
                                 .collect(Collectors.toSet()))));
     }
 

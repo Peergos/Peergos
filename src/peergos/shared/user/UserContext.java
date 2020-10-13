@@ -103,8 +103,8 @@ public class UserContext {
                                                                                  Crypto crypto) {
         return root.getByPath(username, crypto.hasher, network)
                 .thenApply(Optional::get)
-                .thenCompose(home -> home.getChildrenWithSameWriter(crypto.hasher, network))
-                .thenApply(children -> children.stream().filter(f -> f.getName().equals(TRANSACTIONS_DIR_NAME)).findFirst().get())
+                .thenCompose(home -> home.getChild(TRANSACTIONS_DIR_NAME, crypto.hasher, network))
+                .thenApply(Optional::get)
                 .thenApply(txnDir -> new TransactionServiceImpl(network, crypto, txnDir));
     }
 
@@ -114,8 +114,8 @@ public class UserContext {
                                                                 Crypto crypto) {
         return root.getByPath(username, crypto.hasher, network)
                 .thenApply(Optional::get)
-                .thenCompose(home -> home.getChildrenWithSameWriter(crypto.hasher, network))
-                .thenApply(children -> children.stream().filter(f -> f.getName().equals(CapabilityStore.CAPABILITY_CACHE_DIR)).findFirst().get())
+                .thenCompose(home -> home.getChild(CapabilityStore.CAPABILITY_CACHE_DIR, crypto.hasher, network))
+                .thenApply(Optional::get)
                 .thenCompose(cacheRoot -> IncomingCapCache.build(cacheRoot, crypto, network));
     }
 
@@ -1722,8 +1722,7 @@ public class UserContext {
         return ourRoot.getByPath(ourName, crypto.hasher, network)
                         .thenApply(Optional::get)
                 .thenCompose(homeDir -> time(() -> getFriendsEntryPoints(homeDir), "Get friend's entry points")
-                        .thenCompose(friendEntries -> homeDir.getChildrenWithSameWriter(crypto.hasher, network)
-                                .thenApply(children -> children.stream().filter(c -> c.getName().equals(CapabilityStore.CAPABILITY_CACHE_DIR)).findFirst())
+                        .thenCompose(friendEntries -> homeDir.getChild(CapabilityStore.CAPABILITY_CACHE_DIR, crypto.hasher, network)
                                 .thenCompose(copt -> {
                                     List<EntryPoint> friendsOnly = friendEntries.stream()
                                             .filter(e -> !e.ownerName.equals(ourName))
@@ -1754,9 +1753,8 @@ public class UserContext {
     }
 
     private CompletableFuture<List<EntryPoint>> getFriendsEntryPoints(FileWrapper homeDir) {
-        return homeDir.getChildrenWithSameWriter(crypto.hasher, network)
-                .thenCompose(children -> {
-                    Optional<FileWrapper> fopt = getChild(children, ENTRY_POINTS_FROM_FRIENDS_FILENAME);
+        return homeDir.getChild(ENTRY_POINTS_FROM_FRIENDS_FILENAME, crypto.hasher, network)
+                .thenCompose(fopt -> {
                     return fopt.map(f -> {
                         List<EntryPoint> res = new ArrayList<>();
                         return f.getInputStream(network, crypto, x -> {})
@@ -1765,16 +1763,16 @@ public class UserContext {
                     }).orElse(CompletableFuture.completedFuture(Collections.emptyList()))
                             .thenCompose(fromFriends -> {
                                 // filter out blocked friends
-                                Optional<FileWrapper> bopt = getChild(children, BLOCKED_USERNAMES_FILE);
-                                return bopt.map(f -> f.getInputStream(network, crypto, x -> {})
-                                        .thenCompose(in -> Serialize.readFully(in, f.getSize()))
-                                        .thenApply(data -> new HashSet<>(Arrays.asList(new String(data).split("\n")))
-                                                .stream()
-                                                .collect(Collectors.toSet())))
-                                        .orElse(CompletableFuture.completedFuture(Collections.emptySet()))
-                                        .thenApply(toRemove -> fromFriends.stream()
-                                                .filter(e -> ! toRemove.contains(e.ownerName))
-                                                .collect(Collectors.toList()));
+                                return homeDir.getChild(BLOCKED_USERNAMES_FILE, crypto.hasher, network)
+                                        .thenCompose(bopt -> bopt.map(f -> f.getInputStream(network, crypto, x -> {})
+                                                .thenCompose(in -> Serialize.readFully(in, f.getSize()))
+                                                .thenApply(data -> new HashSet<>(Arrays.asList(new String(data).split("\n")))
+                                                        .stream()
+                                                        .collect(Collectors.toSet())))
+                                                .orElse(CompletableFuture.completedFuture(Collections.emptySet()))
+                                                .thenApply(toRemove -> fromFriends.stream()
+                                                        .filter(e -> !toRemove.contains(e.ownerName))
+                                                        .collect(Collectors.toList())));
                             });
                 }).thenApply(entries -> {
                     // Only take the most recent version of each entry
