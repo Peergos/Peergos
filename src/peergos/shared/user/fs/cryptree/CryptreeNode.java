@@ -291,28 +291,30 @@ public class CryptreeNode implements Cborable {
                         .collect(Collectors.toSet()));
     }
 
-    public CompletableFuture<Set<AbsoluteCapability>> getAllChildrenCapabilities(Snapshot version,
+    public CompletableFuture<Set<AbsoluteCapability>> getAllChildrenCapabilities(Snapshot inVersion,
                                                                                  AbsoluteCapability us,
                                                                                  Hasher hasher,
                                                                                  NetworkAccess network) {
-        CompletableFuture<Set<AbsoluteCapability>> childrenFuture = getDirectChildrenCapabilities(us, network);
+        return inVersion.withWriter(us.owner, us.writer, network).thenCompose(version -> {
+            CompletableFuture<Set<AbsoluteCapability>> childrenFuture = getDirectChildrenCapabilities(us, network);
 
-        CompletableFuture<Optional<RetrievedCapability>> moreChildrenFuture = getNextChunk(version, us, network,
-                Optional.empty(), hasher);
+            CompletableFuture<Optional<RetrievedCapability>> moreChildrenFuture = getNextChunk(version, us, network,
+                    Optional.empty(), hasher);
 
-        return childrenFuture.thenCompose(children -> moreChildrenFuture.thenCompose(moreChildrenSource -> {
-                    CompletableFuture<Set<AbsoluteCapability>> moreChildren = moreChildrenSource
-                            .map(d -> d.fileAccess.getAllChildrenCapabilities(version, d.capability, hasher, network))
-                            .orElse(CompletableFuture.completedFuture(Collections.emptySet()));
-                    return moreChildren.thenApply(moreRetrievedChildren -> {
-                        Set<AbsoluteCapability> results = Stream.concat(
-                                children.stream(),
-                                moreRetrievedChildren.stream())
-                                .collect(Collectors.toSet());
-                        return results;
-                    });
-                })
-        );
+            return childrenFuture.thenCompose(children -> moreChildrenFuture.thenCompose(moreChildrenSource -> {
+                        CompletableFuture<Set<AbsoluteCapability>> moreChildren = moreChildrenSource
+                                .map(d -> d.fileAccess.getAllChildrenCapabilities(version, d.capability, hasher, network))
+                                .orElse(CompletableFuture.completedFuture(Collections.emptySet()));
+                        return moreChildren.thenApply(moreRetrievedChildren -> {
+                            Set<AbsoluteCapability> results = Stream.concat(
+                                    children.stream(),
+                                    moreRetrievedChildren.stream())
+                                    .collect(Collectors.toSet());
+                            return results;
+                        });
+                    })
+            );
+        });
     }
 
     public CompletableFuture<Set<RetrievedCapability>> getDirectChildren(NetworkAccess network,
