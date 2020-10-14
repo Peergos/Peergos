@@ -221,11 +221,18 @@ public class IncomingCapCache {
                             .thenApply(CapsInDirectory::fromCbor)
                             .thenCompose(caps -> caps.getChild(path.get(childIndex))
                                     .map(cap -> network.getFile(new EntryPoint(cap, path.get(0)), version)
-                                            .thenCompose(fopt -> fopt.isPresent() && fopt.get().isWritable() ?
-                                                    fopt.get().getAnyLinkPointer(network)
-                                                            .thenApply(linkOpt -> fopt.map(g -> g.withLinkPointer(linkOpt))) :
-                                                    Futures.of(fopt))
-                                            .thenCompose(fopt -> fopt.map(f ->
+                                            .thenCompose(fopt -> {
+                                                if (fopt.isPresent()) {
+                                                    if (fopt.get().isWritable())
+                                                        return fopt.get().getAnyLinkPointer(network)
+                                                                .thenApply(linkOpt -> fopt.map(g -> g.withLinkPointer(linkOpt)));
+                                                    // there might be a descendant that is writable
+                                                    return mirrorDir.hasChild(path.get(childIndex), hasher, network)
+                                                            .thenApply(hasDescendantCaps -> hasDescendantCaps ?
+                                                                    Optional.<FileWrapper>empty() : fopt);
+                                                }
+                                                return Futures.of(fopt);
+                                            }).thenCompose(fopt -> fopt.map(f ->
                                                     f.getDescendentByPath(pathSuffix(path, childIndex + 1), f.version, hasher, network))
                                                     .orElseGet(recurse)))
                                     .orElseGet(recurse::get));
