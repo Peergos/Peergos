@@ -142,7 +142,8 @@ public class UserContext {
         public static class Todo {
             private UserContext ctx;
             public static final String TODO_DIR_NAME = "todo";
-            public static final String TODO_FILE_EXTENSION = ".todo.cbor";
+            @JsProperty
+            public static final String TODO_FILE_EXTENSION = ".todo";
             private static Comparator<Pair<String, String>> sortByUser = Comparator.comparing(pair -> pair.left);
             private static Comparator<Pair<String, String>> sortByTodoName = Comparator.comparing(pair -> pair.right);
             private static Comparator<Pair<String, String>> todoListSorter = sortByUser.thenComparing(sortByTodoName);
