@@ -260,8 +260,8 @@ public class IncomingCapCache {
                         return Serialize.readFully(capsOpt.get(), crypto, network)
                                 .thenApply(CborObject::fromByteArray)
                                 .thenApply(CapsInDirectory::fromCbor)
-                                .thenCompose(caps -> network.retrieveEntryPoint(new EntryPoint(caps.children.stream()
-                                        .findFirst().get().cap, ownerName)))
+                                .thenCompose(caps -> Futures.findFirst(caps.children,
+                                        c -> network.retrieveEntryPoint(new EntryPoint(c.cap, ownerName))))
                                 .thenCompose(fileOpt -> fileOpt.map(f -> f.retrieveParent(network))
                                         .orElse(Futures.of(Optional.empty())));
                     return dir.getChildren(hasher, network)
