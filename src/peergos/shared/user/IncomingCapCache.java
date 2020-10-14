@@ -253,6 +253,13 @@ public class IncomingCapCache {
     private CompletableFuture<Optional<FileWrapper>> getAnyValidParentOfAChild(FileWrapper dir,
                                                                               Hasher hasher,
                                                                               NetworkAccess network) {
+        Supplier<CompletableFuture<Optional<FileWrapper>>> recurse =
+                () -> dir.getChildren(hasher, network)
+                        .thenCompose(children -> Futures.findFirst(children,
+                                c -> getAnyValidParentOfAChild(c, hasher, network)))
+                        .thenCompose(copt -> copt.map(f -> f.retrieveParent(network))
+                                .orElse(Futures.of(Optional.empty())));
+
         return dir.getChild(DIR_STATE, hasher, network)
                 .thenCompose(capsOpt -> {
                     String ownerName = dir.getOwnerName();
@@ -263,12 +270,8 @@ public class IncomingCapCache {
                                 .thenCompose(caps -> Futures.findFirst(caps.children,
                                         c -> network.retrieveEntryPoint(new EntryPoint(c.cap, ownerName))))
                                 .thenCompose(fileOpt -> fileOpt.map(f -> f.retrieveParent(network))
-                                        .orElse(Futures.of(Optional.empty())));
-                    return dir.getChildren(hasher, network)
-                            .thenCompose(children -> Futures.findFirst(children,
-                                    c -> getAnyValidParentOfAChild(c, hasher, network)))
-                            .thenCompose(copt -> copt.map(f -> f.retrieveParent(network))
-                                    .orElse(Futures.of(Optional.empty())));
+                                        .orElseGet(recurse));
+                    return recurse.get();
                 });
     }
 
