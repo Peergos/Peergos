@@ -34,7 +34,7 @@ import static peergos.server.tests.UserTests.buildArgs;
 /**
  * Run some I/O and then check the file-system is as expected.
  */
-public class Simulator implements Runnable {
+public class Simulator {
     private class SimulationRecord {
         private final List<Simulation> simuations = new ArrayList<>();
         private final List<Long> timestamps = new ArrayList<>();
@@ -283,7 +283,8 @@ public class Simulator implements Runnable {
     private void readSharedDirectory(String user, Path path) {
         FileSystem testFileSystem = fileSystems.getTestFileSystem(user);
         List<Path> paths = testFileSystem.ls(path.getParent());
-        if(paths.isEmpty()) {
+        if (paths.isEmpty()) {
+            testFileSystem.ls(path.getParent());
             throw new IllegalStateException("Unable to read shared directory. user:" + user + " directory:" + path);
         }
     }
@@ -293,7 +294,7 @@ public class Simulator implements Runnable {
                 .collect(Collectors.joining(","));
 
         String msg = "OP: <" + user + "> " + simulation + " " + path + " " + extraS;
-        LOG.info(msg);
+        System.out.println(msg);
     }
 
     private void write(String user, Path path) {
@@ -519,21 +520,23 @@ public class Simulator implements Runnable {
         simulationRecord.add(simulation);
     }
 
-    public void run() {
+    public void run(boolean verifyAll) {
         LOG.info("Running file-system IO-simulation");
 
         init();
 
         for (int iOp = 2; iOp < opCount; iOp++) {
-            System.out.println("iOp=" + iOp);
             Simulation simulation = getNextSimulation.get();
+            System.out.println("iOp=" + iOp + " " + simulation);
             run(simulation);
-            /*
-            boolean isVerified = verify();
-            if (! isVerified) {
-                isVerified = verify();
-                throw new Error("FAILED VERIFICATION!");
-            }*/
+
+            if (verifyAll) {
+                boolean isVerified = verify();
+                if (!isVerified) {
+                    isVerified = verify();
+                    throw new Error("FAILED VERIFICATION!");
+                }
+            }
         }
         LOG.info("Running file-system verification");
         boolean isVerified = verify();
@@ -715,9 +718,13 @@ public class Simulator implements Runnable {
             allFilesAndFolders.addAll(dirToFiles.keySet());
             for (Path path : allFilesAndFolders) {
                 boolean verifyContents = verifyContents(user, path);
+                if (! verifyContents)
+                    verifyContents(user, path);
                 isUserVerified &= verifyContents;
                 boolean sharingPermissionsAreVerified = verifySharingPermissions(user, path);
                 isUserVerified &= sharingPermissionsAreVerified;
+                if (! sharingPermissionsAreVerified)
+                    verifySharingPermissions(user, path);
             }
             if (! isUserVerified) {
                 LOG.info("User " + user + " is not verified!");
@@ -763,9 +770,6 @@ public class Simulator implements Runnable {
                 throw new IllegalStateException(ioe);
             }
         };
-
-
-        int opCount = 200;
 
         Map<Simulation, Double> probabilities = Stream.of(
                 new Pair<>(Simulation.READ_OWN_FILE, 0.0),
@@ -832,6 +836,8 @@ public class Simulator implements Runnable {
             }
         }
         Args simulatorArgs = Args.parse(a);
+        int opCount = 2000;
+        boolean verifyAll = true;
         int seed = simulatorArgs.getInt("random-seed", 1);
         int nUsers = simulatorArgs.getInt("n-users", 3);
         int meanFileLength  = simulatorArgs.getInt("mean-file-length", 256);
@@ -851,8 +857,9 @@ public class Simulator implements Runnable {
         Simulator simulator = new Simulator(opCount, random, meanFileLength, getNextSimulation, fileSystems, randomizeFriendNetwork);
 
         try {
-            simulator.run();
+            simulator.run(verifyAll);
         } catch (Throwable t) {
+            t.printStackTrace();
             LOG.log(Level.SEVERE, t, () -> "So long");
         } finally {
             System.exit(0);
