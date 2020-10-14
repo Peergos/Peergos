@@ -227,7 +227,7 @@ public class IncomingCapCache {
                                                     Futures.of(fopt))
                                             .thenCompose(fopt -> fopt.map(f ->
                                                     f.getDescendentByPath(pathSuffix(path, childIndex + 1), f.version, hasher, network))
-                                                    .orElse(Futures.of(Optional.empty()))))
+                                                    .orElseGet(recurse)))
                                     .orElseGet(recurse::get));
                 });
     }
@@ -333,7 +333,7 @@ public class IncomingCapCache {
                                                     f.getDescendentByPath(pathSuffix(path, childIndex + 1), version, hasher, network)
                                                             .thenCompose(dir -> dir.map(d -> d.getChildren(hasher, network))
                                                                     .orElse(Futures.of(Collections.emptySet()))))
-                                                    .orElse(Futures.of(Collections.emptySet()))))
+                                                    .orElseGet(recurse)))
                                     .orElseGet(recurse::get));
                 });
     }
