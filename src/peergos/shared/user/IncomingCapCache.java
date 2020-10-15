@@ -222,19 +222,29 @@ public class IncomingCapCache {
                             .thenCompose(caps -> caps.getChild(path.get(childIndex))
                                     .map(cap -> network.getFile(new EntryPoint(cap, path.get(0)), version)
                                             .thenCompose(fopt -> {
+                                                Function<Optional<FileWrapper>, CompletableFuture<Optional<FileWrapper>>> getDescendant =
+                                                        dir -> dir.map(f ->
+                                                                f.getDescendentByPath(pathSuffix(path, childIndex + 1), f.version, hasher, network))
+                                                                .orElseGet(recurse);
+
                                                 if (fopt.isPresent()) {
                                                     if (fopt.get().isWritable())
                                                         return fopt.get().getAnyLinkPointer(network)
-                                                                .thenApply(linkOpt -> fopt.map(g -> g.withLinkPointer(linkOpt)));
-                                                    // there might be a descendant that is writable
+                                                                .thenApply(linkOpt -> fopt.map(g -> g.withLinkPointer(linkOpt)))
+                                                                .thenCompose(getDescendant);
+
+                                                    // there might be a descendant that is writable, though they might be
+                                                    // descendant caps that have since been revoked
                                                     return mirrorDir.hasChild(path.get(childIndex), hasher, network)
-                                                            .thenApply(hasDescendantCaps -> hasDescendantCaps ?
-                                                                    Optional.<FileWrapper>empty() : fopt);
+                                                            .thenCompose(hasDescendantCaps -> hasDescendantCaps ?
+                                                                    recurse.get()
+                                                                            .thenCompose(dopt ->
+                                                                                    dopt.map(res -> Futures.of(dopt))
+                                                                                            .orElseGet(() -> getDescendant.apply(fopt))) :
+                                                                    getDescendant.apply(fopt));
                                                 }
-                                                return Futures.of(fopt);
-                                            }).thenCompose(fopt -> fopt.map(f ->
-                                                    f.getDescendentByPath(pathSuffix(path, childIndex + 1), f.version, hasher, network))
-                                                    .orElseGet(recurse)))
+                                                return recurse.get();
+                                            }))
                                     .orElseGet(recurse::get));
                 });
     }
