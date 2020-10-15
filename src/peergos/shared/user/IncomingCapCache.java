@@ -344,7 +344,7 @@ public class IncomingCapCache {
                                                             .thenCompose(dir -> dir.map(d -> d.getChildren(hasher, network))
                                                                     .orElse(Futures.of(Collections.emptySet()))))
                                                     .orElseGet(recurse)))
-                                    .orElseGet(recurse::get));
+                                    .orElseGet(recurse));
                 });
     }
 

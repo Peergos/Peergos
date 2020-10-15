@@ -91,7 +91,7 @@ public class SocialFeed {
                                 })).orElse(Futures.of(Collections.emptyList()))));
     }
 
-    private CompletableFuture<Boolean> commit() {
+    private synchronized CompletableFuture<Boolean> commit() {
         byte[] raw = new FeedState(lastSeenIndex, feedSizeRecords, feedSizeBytes, currentCapBytesProcessed).serialize();
         return stateFile.overwriteFile(AsyncReader.build(raw), raw.length,
                 context.network, context.crypto, x -> {})
@@ -106,7 +106,7 @@ public class SocialFeed {
      * @return
      */
     @JsMethod
-    public CompletableFuture<SocialFeed> update() {
+    public synchronized CompletableFuture<SocialFeed> update() {
         return context.getFollowingNodes()
                 .thenCompose(friends -> Futures.reduceAll(friends, this,
                         (s, f) -> s.updateFriend(f, context.network), (a, b) -> b))
