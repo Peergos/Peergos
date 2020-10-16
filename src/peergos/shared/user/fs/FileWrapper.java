@@ -417,7 +417,7 @@ public class FileWrapper {
                     if (! props.isLink)
                         return version.withWriter(rc.capability.owner, rc.capability.writer, network)
                                 .thenApply(fullVersion -> Optional.of(new FileWrapper(rc, Optional.empty(),
-                                        childsEntryWriter, ownername, version)));
+                                        childsEntryWriter, ownername, fullVersion)));
                     return version.withWriter(owner(), rc.capability.writer, network)
                             .thenCompose(fullVersion ->
                                     NetworkAccess.getFileFromLink(owner(), rc, childsEntryWriter, ownername, network, fullVersion)
