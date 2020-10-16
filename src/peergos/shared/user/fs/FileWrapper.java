@@ -82,6 +82,8 @@ public class FileWrapper {
                 this.props = directProps;
             }
         }
+        if (! version.contains(pointer.capability.writer))
+            throw new IllegalStateException("File version doesn't include its own writer!");
         if (isWritable() && !signingPair().publicKeyHash.equals(pointer.capability.writer))
             throw new IllegalStateException("Invalid FileWrapper! public writing keys don't match!");
     }
@@ -330,7 +332,9 @@ public class FileWrapper {
                 return Futures.of(Optional.empty());
             FileProperties parentProps = parentRFP.getProperties();
             if (! parentProps.isLink)
-                return Futures.of(Optional.of(new FileWrapper(parentRFP, Optional.empty(), Optional.empty(), ownerName, version)));
+                return version.withWriter(parentRFP.capability.owner, parentRFP.capability.writer, network)
+                        .thenApply(fullVersion -> Optional.of(new FileWrapper(parentRFP, Optional.empty(),
+                                Optional.empty(), ownerName, fullVersion)));
             return retrieveParent(parentRFP, ownerName, version, network);
         });
     }
