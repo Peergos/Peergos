@@ -82,7 +82,7 @@ public class FileWrapper {
                 this.props = directProps;
             }
         }
-        if (! version.contains(pointer.capability.writer))
+        if (pointer != null && ! version.contains(pointer.capability.writer))
             throw new IllegalStateException("File version doesn't include its own writer!");
         if (isWritable() && !signingPair().publicKeyHash.equals(pointer.capability.writer))
             throw new IllegalStateException("Invalid FileWrapper! public writing keys don't match!");
