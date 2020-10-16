@@ -350,7 +350,7 @@ public class IncomingCapCache {
                             .thenCompose(caps -> caps.getChild(path.get(childIndex))
                                     .map(cap -> network.getFile(new EntryPoint(cap, path.get(0)), version)
                                             .thenCompose(fopt -> fopt.map(f ->
-                                                    f.getDescendentByPath(pathSuffix(path, childIndex + 1), version, hasher, network)
+                                                    f.getDescendentByPath(pathSuffix(path, childIndex + 1), version.mergeAndOverwriteWith(f.version), hasher, network)
                                                             .thenCompose(dir -> dir.map(d -> d.getChildren(hasher, network))
                                                                     .orElse(Futures.of(Collections.emptySet()))))
                                                     .orElseGet(recurse)))
