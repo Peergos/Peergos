@@ -123,6 +123,66 @@ public class PeergosNetworkUtils {
         assertTrue("todoList filename", lists.get(0).right.equals(todoBoardName));
     }
 
+    private static void sleep(int seconds){
+        try {
+            Thread.sleep(seconds * 1000);
+        } catch(InterruptedException ie) {
+
+        }
+    }
+
+    public static void sharedTodoBoardsChangeDetection(NetworkAccess sharerNode, NetworkAccess shareeNode, Random random) throws Exception {
+        String sharerUsername = "sharer";
+        String sharerPassword = generatePassword();
+        UserContext sharerUser = ensureSignedUp(sharerUsername, sharerPassword, sharerNode.clear(), crypto);
+
+
+        String shareeUsername = "sharee";
+        String shareePassword = generatePassword();
+        UserContext shareeUser = ensureSignedUp(shareeUsername, shareePassword, sharerNode.clear(), crypto);
+
+        // friend sharer with others
+        List<UserContext> sharerList = Arrays.asList(sharerUser);
+        List<UserContext> shareeList = Arrays.asList(shareeUser);
+        friendBetweenGroups(sharerList, shareeList);
+
+        List<TodoListItem> todoItems = new ArrayList<>();
+        TodoListItem item = new TodoListItem("id", LocalDateTime.now(), "text", false);
+        todoItems.add(item);
+        TodoList todoList = TodoList.build("todoList", "1", todoItems);
+        UserContext.App.Todo todoApp = sharerUser.getTodoApp();
+        String todoBoardName = "my todo board";
+        List<TodoList> todoLists = new ArrayList<>();
+        todoLists.add(todoList);
+        TodoBoard board = TodoBoard.build(todoBoardName, todoLists);
+        sleep(1);
+        TodoBoard updatedBoard = todoApp.updateTodoBoard(sharerUser.username, board).join();
+        assertTrue("modified date", board.getTimestamp().isBefore(updatedBoard.getTimestamp()));
+
+        Path pathToToDo = Paths.get(sharerUser.username, UserContext.APPS_DIR_NAME,
+                UserContext.App.Todo.TODO_DIR_NAME, todoBoardName + UserContext.App.Todo.TODO_FILE_EXTENSION);
+        Set<String> toShareTo = shareeList.stream().map(u -> u.username).collect(Collectors.toSet());
+        sharerUser.shareWriteAccessWith(pathToToDo, toShareTo).join();
+
+        UserContext.App.Todo shareeTodoApp = shareeUser.getTodoApp();
+        Pair<TodoBoard,Boolean> shareeBoardInstance = shareeTodoApp.getTodoBoard(sharerUser.username, board.getName()).join();
+        sleep(1);
+        TodoBoard shareeUpdatedBoard = todoApp.updateTodoBoard(sharerUser.username, shareeBoardInstance.left).join();
+        assertTrue("modified date", shareeBoardInstance.left.getTimestamp().isBefore(shareeUpdatedBoard.getTimestamp()));
+
+        //now make sure optimistic locking works
+        todoApp.updateTodoBoard(sharerUser.username, updatedBoard)
+                .thenApply(res -> {
+                    throw new Error("Not expected!");
+                }).exceptionally(ex -> {
+                    if(!ex.getMessage().contains("Todo Board out-of-date! Please close and re-open")){
+                        throw new Error("Incorrect Error!");
+                    }
+                    return null;
+                });
+
+    }
+
     public static void grantAndRevokeFileReadAccess(NetworkAccess sharerNode, NetworkAccess shareeNode, int shareeCount, Random random) throws Exception {
         Assert.assertTrue(0 < shareeCount);
         //sign up a user on sharerNode

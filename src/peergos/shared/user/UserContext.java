@@ -157,25 +157,27 @@ public class UserContext {
             }
 
             @JsMethod
-            public CompletableFuture<Pair<TodoBoard,Boolean>> getTodoBoard(String owner, String filename) {
+            public CompletableFuture<Pair<TodoBoard,Boolean>> getTodoBoard(String owner, String boardName) {
                 Path path = Paths.get(owner, APPS_DIR_NAME, TODO_DIR_NAME);
                 return ctx.getByPath(path).thenCompose(fw -> {
                     if (fw.isPresent()) {
                         FileWrapper todoDir = fw.get();
-                        return todoDir.getChild(filename + TODO_FILE_EXTENSION, ctx.crypto.hasher, ctx.network).thenCompose(todoFileOpt -> {
+                        return todoDir.getChild(boardName + TODO_FILE_EXTENSION, ctx.crypto.hasher, ctx.network).thenCompose(todoFileOpt -> {
                             if (todoFileOpt.isEmpty()) {
-                                return CompletableFuture.completedFuture(new Pair<>(TodoBoard.build(filename, new ArrayList<>()), false));
+                                return CompletableFuture.completedFuture(new Pair<>(TodoBoard.build(boardName, new ArrayList<>()), false));
                             }
                             FileWrapper todoFile = todoFileOpt.get();
-                            int size = todoFile.getFileProperties().sizeLow();
+                            FileProperties props = todoFile.getFileProperties();
+                            int size = props.sizeLow();
                             return todoFile.getInputStream(ctx.network, ctx.crypto, x -> {}).thenCompose(reader -> {
                                 byte[] data = new byte[size];
                                 return reader.readIntoArray(data, 0, data.length)
-                                        .thenApply(x -> new Pair<>(TodoBoard.fromCbor(CborObject.fromByteArray(data)), todoFile.isWritable()));
+                                        .thenApply(x -> new Pair<>(TodoBoard.fromCbor(props.modified,
+                                                CborObject.fromByteArray(data)), todoFile.isWritable()));
                             });
                         });
                     } else {
-                        return CompletableFuture.completedFuture(new Pair<>(TodoBoard.build(filename, new ArrayList<>()), false));
+                        return CompletableFuture.completedFuture(new Pair<>(TodoBoard.build(boardName, new ArrayList<>()), false));
                     }
                 });
             }
@@ -242,8 +244,9 @@ public class UserContext {
             }
 
             @JsMethod
-            public CompletableFuture<Boolean> updateTodoBoard(String owner, TodoBoard todoBoard) {
+            public CompletableFuture<TodoBoard> updateTodoBoard(String owner, TodoBoard todoBoard) {
                 Path path = Paths.get(owner, APPS_DIR_NAME, TODO_DIR_NAME);
+                String filename = todoBoard.getName() + TODO_FILE_EXTENSION;
                 return ctx.getByPath(path).thenCompose(fw -> {
                         if (fw.isPresent()) {
                             return CompletableFuture.completedFuture(fw.get());
@@ -255,16 +258,35 @@ public class UserContext {
                                     .thenApply(dir -> dir);
                         }
                     }).thenCompose(dir ->
-                        dir.getChild(todoBoard.getName() + TODO_FILE_EXTENSION, ctx.crypto.hasher, ctx.network).thenCompose(file -> {
+                        dir.getUpdatedChild(filename, ctx.crypto.hasher, ctx.network).thenCompose(file -> {
                             byte[] bytes = todoBoard.serialize();
                             if(file.isPresent()) {
-                                return file.get().overwriteFile(AsyncReader.build(bytes),bytes.length, ctx.network, ctx.crypto,
-                                        x -> {}).thenApply(res -> true);
+                                FileWrapper existingFile = file.get();
+                                LocalDateTime modified = existingFile.getFileProperties().modified;
+                                LocalDateTime current = todoBoard.getTimestamp();
+                                if(current.equals(modified)) {
+                                    return file.get().overwriteFile(AsyncReader.build(bytes), bytes.length, ctx.network, ctx.crypto,
+                                            x -> {})
+                                            .thenApply(updatedFile -> {
+                                                LocalDateTime newTimestamp = updatedFile.getFileProperties().modified;
+                                                if(newTimestamp.equals(modified)) {
+                                                    System.out.println("debug");
+                                                    System.out.println("debug2");
+                                                }
+                                                TodoBoard tb = TodoBoard.buildWithTimestamp(todoBoard.getName(),
+                                                    todoBoard.getTodoLists(), newTimestamp);
+                                                return tb;
+                                            });
+                                } else {
+                                    throw new IllegalStateException("Todo Board out-of-date! Please close and re-open");
+                                }
                             } else {
                                 return dir.uploadOrReplaceFile(todoBoard.getName() + TODO_FILE_EXTENSION, AsyncReader.build(bytes),
                                         bytes.length, ctx.network, ctx.crypto, x -> {
                                         }, ctx.crypto.random.randomBytes(32))
-                                        .thenApply(res -> true);
+                                        .thenCompose(res -> res.getChild(filename, ctx.crypto.hasher, ctx.network))
+                                        .thenApply(updatedFile -> TodoBoard.buildWithTimestamp(todoBoard.getName(),
+                                                todoBoard.getTodoLists(), updatedFile.get().getFileProperties().modified));
                             }
                     }));
             }

@@ -444,6 +444,12 @@ public class FileWrapper {
                 .thenApply(children -> children.stream().filter(f -> f.getName().equals(name)).findAny());
     }
 
+    public CompletableFuture<Optional<FileWrapper>> getUpdatedChild(String name, Hasher hasher, NetworkAccess network) {
+        return getChildren(version, hasher, network)
+                .thenApply(children -> children.stream().filter(f -> f.getName().equals(name)).findAny())
+                .thenCompose(fw -> fw.isEmpty() ? Futures.of(fw) : fw.get().getUpdated(fw.get().version, network).thenApply(res -> Optional.of(res)));
+    }
+
     @JsMethod
     public String getOwnerName() {
         return ownername;
