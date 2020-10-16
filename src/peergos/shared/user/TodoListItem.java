@@ -40,7 +40,7 @@ public class TodoListItem implements Cborable {
         Map<String, CborObject> cbor = new TreeMap<>();
         cbor.put("i", new CborObject.CborString(Id));
         cbor.put("z", new CborObject.CborLong(created.toEpochSecond(ZoneOffset.UTC)));
-        cbor.put("t", new CborObject.CborString(text));
+        cbor.put("t", new CborObject.CborString(text.substring(0, Math.min(text.length(), 60))));
         cbor.put("c", new CborObject.CborBoolean(checked));
         return CborObject.CborMap.build(cbor);
     }
