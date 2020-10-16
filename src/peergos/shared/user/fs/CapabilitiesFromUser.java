@@ -24,6 +24,10 @@ public class CapabilitiesFromUser implements Cborable {
         return retrievedCapabilities;
     }
 
+    public static CapabilitiesFromUser empty() {
+        return new CapabilitiesFromUser(0L, Collections.emptyList());
+    }
+
     @Override
     public CborObject toCbor() {
         Map<String, CborObject> cbor = new TreeMap<>();

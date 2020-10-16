@@ -1188,6 +1188,213 @@ public class PeergosNetworkUtils {
         MultiUserTests.checkUserValidity(network, sharer.username);
     }
 
+    public static void socialFeed(NetworkAccess network, Random random) {
+        CryptreeNode.setMaxChildLinkPerBlob(10);
+
+        String password = "notagoodone";
+
+        UserContext sharer = PeergosNetworkUtils.ensureSignedUp(generateUsername(random), password, network, crypto);
+
+        List<UserContext> shareeUsers = getUserContextsForNode(network, random, 1, Arrays.asList(password, password));
+        UserContext a = shareeUsers.get(0);
+
+        // friend sharer with others
+        friendBetweenGroups(Arrays.asList(sharer), shareeUsers);
+
+        // friends are now connected
+        // share a file from u1 to u2
+        FileWrapper u1Root = sharer.getUserRoot().join();
+
+        String filename = "somefile.txt";
+        byte[] fileData = sharer.crypto.random.randomBytes(1*1024*1024);
+        Path file1 = Paths.get(sharer.username, "first-file.txt");
+        uploadAndShare(fileData, file1, sharer, a.username);
+
+        // check 'a' can see the shared file in their social feed
+        SocialFeed feed = a.getSocialFeed().join();
+        List<SharedItem> items = feed.getShared(0, 1, a.crypto, a.network).join();
+        Assert.assertTrue(items.size() > 0);
+        SharedItem item = items.get(0);
+        Assert.assertTrue(item.owner.equals(sharer.username));
+        Assert.assertTrue(item.sharer.equals(sharer.username));
+        AbsoluteCapability readCap = sharer.getByPath(file1).join().get().getPointer().capability.readOnly();
+        Assert.assertTrue(item.cap.equals(readCap));
+        Assert.assertTrue(item.path.equals("/" + file1.toString()));
+
+        // Test the feed after a fresh login
+        UserContext freshA = PeergosNetworkUtils.ensureSignedUp(a.username, password, network, crypto);
+        SocialFeed freshFeed = freshA.getSocialFeed().join();
+        List<SharedItem> freshItems = freshFeed.getShared(0, 1, a.crypto, a.network).join();
+        Assert.assertTrue(freshItems.size() > 0);
+        SharedItem freshItem = freshItems.get(0);
+        Assert.assertTrue(freshItem.equals(item));
+
+        // Test sharing a new item after construction
+        Path file2 = Paths.get(sharer.username, "second-file.txt");
+        uploadAndShare(fileData, file2, sharer, a.username);
+
+        SocialFeed updatedFeed = freshFeed.update().join();
+        List<SharedItem> items2 = updatedFeed.getShared(1, 2, a.crypto, a.network).join();
+        Assert.assertTrue(items2.size() > 0);
+        SharedItem item2 = items2.get(0);
+        Assert.assertTrue(item2.owner.equals(sharer.username));
+        Assert.assertTrue(item2.sharer.equals(sharer.username));
+        AbsoluteCapability readCap2 = sharer.getByPath(file2).join().get().getPointer().capability.readOnly();
+        Assert.assertTrue(item2.cap.equals(readCap2));
+
+        // check accessing the files normally
+        UserContext fresherA = PeergosNetworkUtils.ensureSignedUp(a.username, password, network, crypto);
+        Optional<FileWrapper> directFile1 = fresherA.getByPath(file1).join();
+        Assert.assertTrue(directFile1.isPresent());
+        Optional<FileWrapper> directFile2 = fresherA.getByPath(file2).join();
+        Assert.assertTrue(directFile2.isPresent());
+
+        // check feed after browsing to the senders home
+        Path file3 = Paths.get(sharer.username, "third-file.txt");
+        uploadAndShare(fileData, file3, sharer, a.username);
+
+        // browse to sender home
+        freshA.getByPath(Paths.get(sharer.username)).join();
+
+        Path file4 = Paths.get(sharer.username, "fourth-file.txt");
+        uploadAndShare(fileData, file4, sharer, a.username);
+
+        // now check feed
+        SocialFeed updatedFeed3 = freshFeed.update().join();
+        List<SharedItem> items3 = updatedFeed3.getShared(2, 3, a.crypto, a.network).join();
+        Assert.assertTrue(items3.size() > 0);
+        SharedItem item3 = items3.get(0);
+        Assert.assertTrue(item3.owner.equals(sharer.username));
+        Assert.assertTrue(item3.sharer.equals(sharer.username));
+        AbsoluteCapability readCap3 = sharer.getByPath(file3).join().get().getPointer().capability.readOnly();
+        Assert.assertTrue(item3.cap.equals(readCap3));
+    }
+
+    private static void uploadAndShare(byte[] data, Path file, UserContext sharer, String sharee) {
+        String filename = file.getFileName().toString();
+        sharer.getByPath(file.getParent()).join().get()
+                .uploadOrReplaceFile(filename, AsyncReader.build(data), data.length,
+                        sharer.network, crypto, l -> {}, crypto.random.randomBytes(32)).join();
+        sharer.shareReadAccessWithAll(sharer.getByPath(file).join().get(), file, Set.of(sharee)).join();
+    }
+
+    public static void socialFeedVariations2(NetworkAccess network, Random random) {
+        CryptreeNode.setMaxChildLinkPerBlob(10);
+
+        String password = "notagoodone";
+        UserContext sharer = PeergosNetworkUtils.ensureSignedUp(generateUsername(random), password, network, crypto);
+
+        List<UserContext> shareeUsers = getUserContextsForNode(network, random, 1, Arrays.asList(password, password));
+        UserContext sharee = shareeUsers.get(0);
+
+        // friend sharer with others
+        friendBetweenGroups(Arrays.asList(sharer), shareeUsers);
+        String dir1 = "one";
+        String dir2 = "two";
+        sharer.getUserRoot().join().mkdir(dir1, sharer.network, false, sharer.crypto).join();
+        sharer.getUserRoot().join().mkdir(dir2, sharer.network, false, sharer.crypto).join();
+
+        Path dirToShare1 = Paths.get(sharer.username, dir1);
+        Path dirToShare2 = Paths.get(sharer.username, dir2);
+        sharer.shareReadAccessWithAll(sharer.getByPath(dirToShare1).join().get(), dirToShare1, Set.of(sharee.username)).join();
+        sharer.shareReadAccessWithAll(sharer.getByPath(dirToShare2).join().get(), dirToShare2, Set.of(sharee.username)).join();
+
+        SocialFeed feed = sharee.getSocialFeed().join();
+        List<SharedItem> items = feed.getShared(0, 1000, sharee.crypto, sharee.network).join();
+        Assert.assertTrue(items.size() == 2);
+
+        sharee.getUserRoot().join().mkdir("mine", sharee.network, false, sharer.crypto).join();
+    }
+
+    public static void socialFeedFailsInUI(NetworkAccess network, Random random) {
+        CryptreeNode.setMaxChildLinkPerBlob(10);
+
+        String password = "notagoodone";
+        UserContext sharer = PeergosNetworkUtils.ensureSignedUp(generateUsername(random), password, network, crypto);
+
+        List<UserContext> shareeUsers = getUserContextsForNode(network, random, 1, Arrays.asList(password, password));
+        UserContext sharee = shareeUsers.get(0);
+
+        // friend sharer with others
+        friendBetweenGroups(Arrays.asList(sharer), shareeUsers);
+        String dir1 = "one";
+        String dir2 = "two";
+        sharer.getUserRoot().join().mkdir(dir1, sharer.network, false, sharer.crypto).join();
+        sharer.getUserRoot().join().mkdir(dir2, sharer.network, false, sharer.crypto).join();
+
+        Path dirToShare1 = Paths.get(sharer.username, dir1);
+        Path dirToShare2 = Paths.get(sharer.username, dir2);
+        sharer.shareReadAccessWithAll(sharer.getByPath(dirToShare1).join().get(), dirToShare1, Set.of(sharee.username)).join();
+        sharer.shareReadAccessWithAll(sharer.getByPath(dirToShare2).join().get(), dirToShare2, Set.of(sharee.username)).join();
+
+        SocialFeed feed = sharee.getSocialFeed().join();
+        List<SharedItem> items = feed.getShared(0, 1000, sharee.crypto, sharee.network).join();
+        Assert.assertTrue(items.size() == 2);
+
+        sharee = PeergosNetworkUtils.ensureSignedUp(sharee.username, password, network, crypto);
+        sharee.getUserRoot().join().mkdir("mine", sharer.network, false, sharer.crypto).join();
+
+        feed = sharee.getSocialFeed().join();
+        items = feed.getShared(0, 1000, sharee.crypto, sharee.network).join();
+        Assert.assertTrue(items.size() == 2);
+
+        //When attempting this in the web-ui the below call results in a failure when loading timeline entry
+        //Cannot seek to position 680 in file of length 340
+        feed = sharee.getSocialFeed().join();
+        items = feed.getShared(0, 1000, sharee.crypto, sharee.network).join();
+        Assert.assertTrue(items.size() == 2);
+    }
+
+    public static void socialFeedEmpty(NetworkAccess network, Random random) {
+        CryptreeNode.setMaxChildLinkPerBlob(10);
+
+        String password = "notagoodone";
+
+        UserContext sharer = PeergosNetworkUtils.ensureSignedUp(generateUsername(random), password, network, crypto);
+
+        SocialFeed feed = sharer.getSocialFeed().join();
+        List<SharedItem> items = feed.getShared(0, 1, sharer.crypto, sharer.network).join();
+        Assert.assertTrue(items.size() == 0);
+    }
+
+    public static void socialFeedVariations(NetworkAccess network, Random random) {
+        CryptreeNode.setMaxChildLinkPerBlob(10);
+
+        String password = "notagoodone";
+        UserContext sharer = PeergosNetworkUtils.ensureSignedUp(generateUsername(random), password, network, crypto);
+
+        List<UserContext> shareeUsers = getUserContextsForNode(network, random, 1, Arrays.asList(password, password));
+        UserContext a = shareeUsers.get(0);
+
+        // friend sharer with others
+        friendBetweenGroups(Arrays.asList(sharer), shareeUsers);
+        String dir1 = "one";
+        String dir2 = "two";
+        sharer.getUserRoot().join().mkdir(dir1, sharer.network, false, sharer.crypto).join();
+        sharer.getUserRoot().join().mkdir(dir2, sharer.network, false, sharer.crypto).join();
+
+        Path dirToShare1 = Paths.get(sharer.username, dir1);
+        Path dirToShare2 = Paths.get(sharer.username, dir2);
+        sharer.shareReadAccessWithAll(sharer.getByPath(dirToShare1).join().get(), dirToShare1, Set.of(a.username)).join();
+        sharer.shareReadAccessWithAll(sharer.getByPath(dirToShare2).join().get(), dirToShare2, Set.of(a.username)).join();
+
+        SocialFeed feed = a.getSocialFeed().join();
+        List<SharedItem> items = feed.getShared(0, 1000, a.crypto, a.network).join();
+        Assert.assertTrue(items.size() == 2);
+
+        //Add another file and share
+        String dir3 = "three";
+        sharer.getUserRoot().join().mkdir(dir3, sharer.network, false, sharer.crypto).join();
+
+        Path dirToShare3 = Paths.get(sharer.username, dir3);
+        sharer.shareReadAccessWithAll(sharer.getByPath(dirToShare3).join().get(), dirToShare3, Set.of(a.username)).join();
+
+        feed = a.getSocialFeed().join().update().join();
+        items = feed.getShared(0, 1000, a.crypto, a.network).join();
+        Assert.assertTrue(items.size() == 3);
+
+    }
+
     public static List<Set<AbsoluteCapability>> getAllChildCapsByChunk(FileWrapper dir, NetworkAccess network) {
         return getAllChildCapsByChunk(dir.getPointer().capability, dir.getPointer().fileAccess, network);
     }

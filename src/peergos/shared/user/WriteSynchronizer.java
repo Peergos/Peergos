@@ -82,6 +82,13 @@ public class WriteSynchronizer {
                         () -> getWriterData(owner, writer.publicKeyHash));
     }
 
+    /** Apply an update
+     *
+     * @param owner
+     * @param writer
+     * @param transformer
+     * @return
+     */
     public CompletableFuture<Snapshot> applyComplexUpdate(PublicKeyHash owner,
                                                           SigningPrivateKeyAndPublicHash writer,
                                                           ComplexMutation transformer) {
@@ -101,4 +108,35 @@ public class WriteSynchronizer {
                         () -> getWriterData(owner, writer.publicKeyHash));
     }
 
+    /** Apply an update and return a computed value
+     *
+     * @param owner
+     * @param writer
+     * @param transformer
+     * @param <V>
+     * @return
+     */
+    public <V> CompletableFuture<Pair<Snapshot, V>> applyComplexComputation(PublicKeyHash owner,
+                                                                            SigningPrivateKeyAndPublicHash writer,
+                                                                            ComplexComputation<V> transformer) {
+        CompletableFuture<Pair<Snapshot, V>> res = new CompletableFuture<>();
+        return pending.computeIfAbsent(new Pair<>(owner, writer.publicKeyHash), p -> new AsyncLock<>(getWriterData(owner, p.right)))
+                .runWithLock(current -> transformer.apply(current,
+                        (aOwner, signer, wd, existing, tid) -> wd.commit(aOwner, signer, existing.hash, mutable, dht, hasher, tid)
+                        .thenCompose(s -> {
+                            if (signer.publicKeyHash.equals(writer.publicKeyHash))
+                                return CompletableFuture.completedFuture(s);
+                            // need to update local queue for other writer
+                            return pending.computeIfAbsent(
+                                    new Pair<>(owner, signer.publicKeyHash),
+                                    p -> new AsyncLock<>(getWriterData(owner, p.right))
+                            ).runWithLock(v -> CompletableFuture.completedFuture(v.withVersion(signer.publicKeyHash, s.get(signer))))
+                                    .thenApply(x -> s);
+                        })).thenApply(p -> {
+                            res.complete(p);
+                            return p.left;
+                        }),
+                        () -> getWriterData(owner, writer.publicKeyHash))
+                .thenCompose(x -> res);
+    }
 }

@@ -43,7 +43,7 @@ public class FileWrapper {
     private final FileProperties props;
     private final String ownername;
     private final Optional<TrieNode> capTrie;
-    private final Snapshot version;
+    public final Snapshot version;
     private final boolean isWritable;
     private AtomicBoolean modified = new AtomicBoolean(); // This only used as a guard against concurrent modifications
 
@@ -175,7 +175,16 @@ public class FileWrapper {
         });
     }
 
-    public CompletableFuture<Optional<FileWrapper>> getDescendentByPath(String path, Hasher hasher, NetworkAccess network) {
+    public CompletableFuture<Optional<FileWrapper>> getDescendentByPath(String path,
+                                                                        Hasher hasher,
+                                                                        NetworkAccess network) {
+        return getDescendentByPath(path, version, hasher, network);
+    }
+
+    public CompletableFuture<Optional<FileWrapper>> getDescendentByPath(String path,
+                                                                        Snapshot version,
+                                                                        Hasher hasher,
+                                                                        NetworkAccess network) {
         ensureUnmodified();
         if (path.length() == 0)
             return CompletableFuture.completedFuture(Optional.of(this));
@@ -194,7 +203,7 @@ public class FileWrapper {
         return getChildren(version, hasher, network).thenCompose(children -> {
             for (FileWrapper child : children)
                 if (child.getFileProperties().name.equals(prefix)) {
-                    return child.getDescendentByPath(suffix, hasher, network);
+                    return child.getDescendentByPath(suffix, child.version, hasher, network);
                 }
             return CompletableFuture.completedFuture(Optional.empty());
         });
@@ -430,7 +439,7 @@ public class FileWrapper {
         return getChild(version, name, hasher, network);
     }
 
-    private CompletableFuture<Optional<FileWrapper>> getChild(Snapshot version, String name, Hasher hasher, NetworkAccess network) {
+    public CompletableFuture<Optional<FileWrapper>> getChild(Snapshot version, String name, Hasher hasher, NetworkAccess network) {
         return getChildren(version, hasher, network)
                 .thenApply(children -> children.stream().filter(f -> f.getName().equals(name)).findAny());
     }
@@ -1141,6 +1150,65 @@ public class FileWrapper {
                     requestedBaseReadKey, requestedBaseWriteKey, desiredMapKey, isSystemFolder, crypto).thenApply(x -> {
                 setModified();
                 return x;
+            });
+        });
+    }
+
+    /** Get or create a descendant directory
+     *
+     * @param subPath
+     * @param network
+     * @param isSystemFolder
+     * @param crypto
+     * @return
+     */
+    public CompletableFuture<FileWrapper> getOrMkdirs(Path subPath,
+                                                      NetworkAccess network,
+                                                      boolean isSystemFolder,
+                                                      Crypto crypto) {
+        String finalPath = TrieNode.canonicalise(subPath.toString());
+        List<String> elements = Arrays.asList(finalPath.split("/"));
+        return network.synchronizer.applyComplexComputation(owner(), signingPair(),
+                (state, committer) -> getOrMkdirs(elements, isSystemFolder, network, crypto, state, committer))
+                .thenApply(p -> p.right);
+    }
+
+    private CompletableFuture<Pair<Snapshot, FileWrapper>> getOrMkdirs(List<String> subPath,
+                                                                      boolean isSystemFolder,
+                                                                      NetworkAccess network,
+                                                                      Crypto crypto,
+                                                                      Snapshot version,
+                                                                      Committer committer) {
+        return Futures.reduceAll(subPath, new Pair<>(version, this), (p, name) -> p.right.getOrMkdir(name,
+                Optional.empty(), Optional.empty(), Optional.empty(), isSystemFolder, network, crypto, p.left, committer),
+                (a, b) -> b);
+    }
+
+    private CompletableFuture<Pair<Snapshot, FileWrapper>> getOrMkdir(String newFolderName,
+                                                                      Optional<SymmetricKey> requestedBaseReadKey,
+                                                                      Optional<SymmetricKey> requestedBaseWriteKey,
+                                                                      Optional<byte[]> desiredMapKey,
+                                                                      boolean isSystemFolder,
+                                                                      NetworkAccess network,
+                                                                      Crypto crypto,
+                                                                      Snapshot version,
+                                                                      Committer committer) {
+
+        if (! this.isDirectory()) {
+            return Futures.errored(new IllegalStateException("Cannot mkdir in a file!"));
+        }
+        if (! isLegalName(newFolderName)) {
+            return Futures.errored(new IllegalStateException("Illegal directory name: " + newFolderName));
+        }
+        return getChild(version, newFolderName, crypto.hasher, network).thenCompose(childOpt -> {
+            if (childOpt.isPresent()) {
+                return Futures.of(new Pair<>(version, childOpt.get()));
+            }
+            return pointer.fileAccess.mkdir(version, committer, newFolderName, network, writableFilePointer(), getChildsEntryWriter(),
+                    requestedBaseReadKey, requestedBaseWriteKey, desiredMapKey, isSystemFolder, crypto).thenCompose(x -> {
+                setModified();
+                return getUpdated(x, network).thenCompose(us -> us.getChild(newFolderName, crypto.hasher, network))
+                        .thenApply(child -> new Pair<>(x, child.get()));
             });
         });
     }

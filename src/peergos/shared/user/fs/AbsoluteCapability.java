@@ -48,6 +48,7 @@ public class AbsoluteCapability implements Cborable {
         return new Location(owner, writer, mapKey);
     }
 
+    @JsMethod
     public boolean isWritable() {
         return wBaseKey.isPresent();
     }

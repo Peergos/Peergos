@@ -27,7 +27,12 @@ public class PeergosFileSystemImpl implements FileSystem {
     }
 
     private FileWrapper getPath(Path path) {
-        return userContext.getByPath(path).join().get();
+        Optional<FileWrapper> res = userContext.getByPath(path).join();
+        if (res.isEmpty()) {
+            userContext.getByPath(path).join();
+            throw new IllegalStateException("Unable to retrieve file at " + path);
+        }
+        return res.get();
     }
 
     private FileWrapper getDirectory(Path path) {

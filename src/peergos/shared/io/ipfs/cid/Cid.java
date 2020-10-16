@@ -8,6 +8,8 @@ import java.io.*;
 import java.util.*;
 
 public class Cid extends Multihash {
+    public static final int V0 = 0;
+    public static final int V1 = 1;
 
     public static final class CidEncodingException extends RuntimeException {
 
@@ -78,18 +80,18 @@ public class Cid extends Multihash {
 
     @Override
     public byte[] toBytes() {
-        if (version == 0)
+        if (version == V0)
             return toBytesV0();
-        else if (version == 1)
+        else if (version == V1)
             return toBytesV1();
         throw new IllegalStateException("Unknown cid version: " + version);
     }
 
     @Override
     public String toString() {
-        if (version == 0) {
+        if (version == V0) {
             return super.toString();
-        } else if (version == 1) {
+        } else if (version == V1) {
             return Multibase.encode(Multibase.Base.Base58BTC, toBytesV1());
         }
         throw new IllegalStateException("Unknown Cid version: " + version);
@@ -122,11 +124,11 @@ public class Cid extends Multihash {
     }
 
     public static Cid buildV0(Multihash h) {
-        return Cid.build(0, Codec.DagProtobuf, h);
+        return Cid.build(V0, Codec.DagProtobuf, h);
     }
 
     public static Cid buildCidV1(Codec c, Multihash.Type type, byte[] hash) {
-        return new Cid(1, c, type, hash);
+        return new Cid(V1, c, type, hash);
     }
 
     public static Cid decode(String v) {
@@ -157,7 +159,7 @@ public class Cid extends Multihash {
         InputStream in = new ByteArrayInputStream(data);
         try {
             long version = readVarint(in);
-            if (version != 0 && version != 1)
+            if (version != V0 && version != V1)
                 throw new CidEncodingException("Invalid Cid version number: " + version);
 
             long codec = readVarint(in);

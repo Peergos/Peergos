@@ -96,7 +96,7 @@ public class InodeFileSystem implements Cborable {
      * @param dir
      * @param remainingPath
      * @param tid
-     * @return The resulting filesystem, and whether to remove the child form the parent
+     * @return The resulting filesystem, and whether to remove the child from the parent
      */
     private CompletableFuture<Pair<InodeFileSystem, Boolean>> removeCapRecurse(PublicKeyHash owner,
                                                                                SigningPrivateKeyAndPublicHash writer,

@@ -20,6 +20,8 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
+import java.util.stream.*;
+
 import static javaemul.internal.InternalPreconditions.checkCriticalElement;
 import static javaemul.internal.InternalPreconditions.checkCriticalNotNull;
 import static javaemul.internal.InternalPreconditions.checkNotNull;
@@ -63,6 +65,11 @@ public final class Optional<T> {
             consumer.accept(ref);
         }
     }
+
+    public Stream<T> stream() {
+        return ! isPresent() ? Stream.empty() : Stream.of(ref);
+    }
+
     public Optional<T> filter(Predicate<? super T> predicate) {
         checkNotNull(predicate);
         if (!isPresent() || predicate.test(ref)) {

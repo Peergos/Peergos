@@ -155,15 +155,39 @@ public class MultiUserTests {
     }
 
     @Test
-    public void grantAndRevokeReadAccessToFileInFolder() throws IOException{
+    public void grantAndRevokeReadAccessToFileInFolder() throws IOException {
         PeergosNetworkUtils.grantAndRevokeReadAccessToFileInFolder(network, random);
     }
 
     @Test
-    public void grantAndRevokeWriteThenReadAccessToFolder() throws IOException{
+    public void grantAndRevokeWriteThenReadAccessToFolder() throws IOException {
         PeergosNetworkUtils.grantAndRevokeWriteThenReadAccessToFolder(network, random);
     }
 
+    @Test
+    public void socialFeed() {
+        PeergosNetworkUtils.socialFeed(network, random);
+    }
+
+    @Test
+    public void socialFeedVariations() {
+        PeergosNetworkUtils.socialFeedVariations(network, random);
+    }
+
+    @Test
+    public void socialFeedVariations2() {
+        PeergosNetworkUtils.socialFeedVariations2(network, random);
+    }
+
+    @Test
+    public void socialFeedFailsInUI() {
+        PeergosNetworkUtils.socialFeedFailsInUI(network, random);
+    }
+
+    @Test
+    public void socialFeedEmpty() {
+        PeergosNetworkUtils.socialFeedEmpty(network, random);
+    }
 
     @Test
     public void safeCopyOfFriendsReadAccess() throws Exception {

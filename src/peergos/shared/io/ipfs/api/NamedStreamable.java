@@ -22,16 +22,16 @@ public interface NamedStreamable
         return bout.toByteArray();
     }
 
-    class FileWrapper implements NamedStreamable {
+    class NativeFile implements NamedStreamable {
         private final File source;
         private final String relativePath;
 
-        public FileWrapper(String relativePath, File source) {
+        public NativeFile(String relativePath, File source) {
             this.source = source;
             this.relativePath = relativePath;
         }
 
-        public FileWrapper(File source) {
+        public NativeFile(File source) {
             this("", source);
         }
 
