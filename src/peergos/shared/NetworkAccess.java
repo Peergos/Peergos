@@ -394,7 +394,7 @@ public class NetworkAccess {
                                             return Futures.of(new FileWrapper(rc, Optional.of(link), entryWriter, ownername, fullVersion));
                                         // We have a link chain! Be sure to use the name from the first link,
                                         // and remaining properties from the final target
-                                        return getFileFromLink(owner, rc, entryWriter, ownername, network, version)
+                                        return getFileFromLink(owner, rc, entryWriter, ownername, network, fullVersion)
                                                 .thenApply(f -> new FileWrapper(f.getPointer(), Optional.of(link), entryWriter, ownername, fullVersion));
                                     }));
                 });

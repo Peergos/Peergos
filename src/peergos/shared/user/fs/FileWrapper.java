@@ -415,7 +415,7 @@ public class FileWrapper {
                     Optional<SigningPrivateKeyAndPublicHash> childsEntryWriter = pointer.capability.wBaseKey
                             .map(wBase -> pointer.fileAccess.getSigner(pointer.capability.rBaseKey, wBase, entryWriter));
                     if (! props.isLink)
-                        return version.withWriter(rc.capability.owner, rc.capability.writer, network)
+                        return version.withWriter(owner(), rc.capability.writer, network)
                                 .thenApply(fullVersion -> Optional.of(new FileWrapper(rc, Optional.empty(),
                                         childsEntryWriter, ownername, fullVersion)));
                     return version.withWriter(owner(), rc.capability.writer, network)
@@ -831,7 +831,7 @@ public class FileWrapper {
                     return network.synchronizer.applyComplexUpdate(owner(), child.signingPair(),
                             (current, committer) -> updateExistingChild(current, committer, child,
                                     fileData, startIndex, endIndex, network, crypto, monitor))
-                            .thenApply(this::withVersion);
+                            .thenApply(childVersion -> withVersion(version.mergeAndOverwriteWith(childVersion)));
                 });
     }
 
