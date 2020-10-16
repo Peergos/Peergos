@@ -415,7 +415,9 @@ public class FileWrapper {
                     Optional<SigningPrivateKeyAndPublicHash> childsEntryWriter = pointer.capability.wBaseKey
                             .map(wBase -> pointer.fileAccess.getSigner(pointer.capability.rBaseKey, wBase, entryWriter));
                     if (! props.isLink)
-                        return Futures.of(Optional.of(new FileWrapper(rc, Optional.empty(), childsEntryWriter, ownername, version)));
+                        return version.withWriter(rc.capability.owner, rc.capability.writer, network)
+                                .thenApply(fullVersion -> Optional.of(new FileWrapper(rc, Optional.empty(),
+                                        childsEntryWriter, ownername, version)));
                     return version.withWriter(owner(), rc.capability.writer, network)
                             .thenCompose(fullVersion ->
                                     NetworkAccess.getFileFromLink(owner(), rc, childsEntryWriter, ownername, network, fullVersion)
