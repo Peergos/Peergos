@@ -1,6 +1,7 @@
 package peergos.shared.util;
 
 import java.util.*;
+import java.util.function.*;
 
 public class Either<A, B> {
     private final A a;
@@ -9,6 +10,12 @@ public class Either<A, B> {
     private Either(A a, B b) {
         this.a = a;
         this.b = b;
+    }
+
+    public <V> V map(Function<A, V> aMap, Function<B, V> bmap) {
+        if (isA())
+            return aMap.apply(a);
+        return bmap.apply(b);
     }
 
     public boolean isA() {

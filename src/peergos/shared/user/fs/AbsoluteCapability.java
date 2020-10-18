@@ -117,7 +117,7 @@ public class AbsoluteCapability implements Cborable {
     }
 
     @Override
-    public CborObject toCbor() {
+    public CborObject.CborMap toCbor() {
         Map<String, CborObject> cbor = new TreeMap<>();
         cbor.put("o", owner.toCbor());
         cbor.put("w", writer.toCbor());

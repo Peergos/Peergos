@@ -47,9 +47,8 @@ public class TofuCoreNode implements CoreNode {
 
         return root.getByPath(username, crypto.hasher, network)
                 .thenApply(Optional::get)
-                .thenCompose(homeDir -> homeDir.getChildrenWithSameWriter(crypto.hasher, network)
-                        .thenCompose(children -> {
-                            Optional<FileWrapper> keystoreOpt = children.stream().filter(c -> c.getName().equals(KEY_STORE_NAME)).findFirst();
+                .thenCompose(homeDir -> homeDir.getChild(KEY_STORE_NAME, crypto.hasher, network)
+                        .thenCompose(keystoreOpt -> {
                             if (keystoreOpt.isEmpty()) {
                                 // initialize empty keystore
                                 TofuKeyStore store = new TofuKeyStore();

@@ -4,6 +4,7 @@ import org.junit.*;
 import org.junit.runner.*;
 import org.junit.runners.*;
 import peergos.server.*;
+import peergos.server.storage.*;
 import peergos.server.tests.*;
 import peergos.server.util.*;
 import peergos.shared.*;
@@ -37,7 +38,10 @@ public class SocialBenchmark {
     private static Pair<UserService, NetworkAccess> buildHttpNetworkAccess(boolean useIpfs, Random r) throws Exception {
         Args args = UserTests.buildArgs().with("useIPFS", "" + useIpfs);
         UserService service = Main.PKI_INIT.main(args);
-        return new Pair<>(service, Builder.buildJavaNetworkAccess(new URL("http://localhost:" + args.getInt("port")), false).get());
+        NetworkAccess net = Builder.buildJavaNetworkAccess(new URL("http://localhost:" + args.getInt("port")), false).join();
+        int delayMillis = 50;
+        NetworkAccess delayed = DelayingStorage.buildNetwork(net, delayMillis, delayMillis);
+        return new Pair<>(service, delayed);
     }
 
     @Parameterized.Parameters()
