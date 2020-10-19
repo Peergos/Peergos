@@ -77,12 +77,12 @@ public class PeergosNetworkUtils {
     }
 
     public static void sharedTodoBoard(NetworkAccess sharerNode, NetworkAccess shareeNode, Random random) throws Exception {
-        String sharerUsername = "sharer";
+        String sharerUsername = "sharer3";
         String sharerPassword = generatePassword();
         UserContext sharerUser = ensureSignedUp(sharerUsername, sharerPassword, sharerNode.clear(), crypto);
 
 
-        String shareeUsername = "sharee";
+        String shareeUsername = "sharee4";
         String shareePassword = generatePassword();
         UserContext shareeUser = ensureSignedUp(shareeUsername, shareePassword, sharerNode.clear(), crypto);
 
