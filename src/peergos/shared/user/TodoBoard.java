@@ -1,9 +1,9 @@
 package peergos.shared.user;
 
 import jsinterop.annotations.JsType;
-import peergos.shared.cbor.CborObject;
-import peergos.shared.cbor.Cborable;
+import peergos.shared.cbor.*;
 
+import java.io.ByteArrayInputStream;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.*;
@@ -58,17 +58,28 @@ public class TodoBoard implements Cborable {
 
     @Override
     public CborObject toCbor() {
-        Map<String, CborObject> cbor = new TreeMap<>();
-        cbor.put("version", new CborObject.CborString(VERSION_1));
-        cbor.put("name", new CborObject.CborString(name.substring(0, Math.min(name.length(), 25))));
-        cbor.put("lists", new CborObject.CborList(todoLists));
-        return CborObject.CborMap.build(cbor);
+        Map<String, CborObject> cborData = new TreeMap<>();
+        cborData.put("version", new CborObject.CborString(VERSION_1));
+        cborData.put("name", new CborObject.CborString(name.substring(0, Math.min(name.length(), 25))));
+        cborData.put("lists", new CborObject.CborList(todoLists));
+
+        List<CborObject> contents = new ArrayList<>();
+        contents.add(new CborObject.CborString(UserContext.App.Todo.TODO_MIME_TYPE));
+        contents.add(CborObject.CborMap.build(cborData));
+
+        return new CborObject.CborList(contents);
     }
 
     public static TodoBoard fromCbor(LocalDateTime timestamp, Cborable cbor) {
-        if (! (cbor instanceof CborObject.CborMap))
-            throw new IllegalStateException("TodoList cbor must be a Map! " + cbor);
-        CborObject.CborMap m = (CborObject.CborMap) cbor;
+        if (! (cbor instanceof CborObject.CborList))
+            throw new IllegalStateException("Invalid cbor for TodoList: " + cbor);
+
+        List<? extends Cborable> contents = ((CborObject.CborList) cbor).value;
+        String mimeType = ((CborObject.CborString) contents.get(0)).value;
+        if (!mimeType.equals(UserContext.App.Todo.TODO_MIME_TYPE))
+            throw new IllegalStateException("Invalid mimetype for TodoList: " + mimeType);
+
+        CborObject.CborMap m = (CborObject.CborMap) contents.get(1);
         String version = m.getString("version");
         if (! version.equals(VERSION_1)) {
             throw new IllegalStateException("Unsupported version:" + version);

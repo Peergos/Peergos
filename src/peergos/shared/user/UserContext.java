@@ -144,6 +144,7 @@ public class UserContext {
             public static final String TODO_DIR_NAME = "todo";
             @JsProperty
             public static final String TODO_FILE_EXTENSION = ".todo";
+            public static final String TODO_MIME_TYPE = "application/vnd.peergos-todo";
             private static Comparator<Pair<String, String>> sortByUser = Comparator.comparing(pair -> pair.left);
             private static Comparator<Pair<String, String>> sortByTodoName = Comparator.comparing(pair -> pair.right);
             private static Comparator<Pair<String, String>> todoListSorter = sortByUser.thenComparing(sortByTodoName);
