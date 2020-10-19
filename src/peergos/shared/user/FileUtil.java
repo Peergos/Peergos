@@ -14,11 +14,6 @@ import java.util.concurrent.CompletableFuture;
 
 public class FileUtil {
 
-
-    public static String getFilename(Path p) {
-        return p.getName(p.getNameCount() - 1).toString();
-    }
-
     private static List<String> toList(Path p) {
         return Arrays.asList(toRelative(p).toString().split("/"));
     }
