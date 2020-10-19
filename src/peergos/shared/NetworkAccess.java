@@ -340,6 +340,16 @@ public class NetworkAccess {
                 });
     }
 
+    public CompletableFuture<Optional<?>> getFile(SharedItem item) {
+        return synchronizer.getValue(item.cap.owner, item.cap.writer)
+                .thenCompose(version -> getFile(version, item.cap, Optional.empty(), item.owner))
+                .thenApply(opt -> opt.isPresent() ? Optional.of(new Pair<>(item, opt.get())) : Optional.empty())
+                .exceptionally(t -> {
+                    LOG.log(Level.SEVERE, t.getMessage(), t);
+                    return Optional.empty();
+                });
+    }
+
     public CompletableFuture<Optional<FileWrapper>> getFile(EntryPoint e, Snapshot version) {
         if (version.contains(e.pointer.writer))
             return getFile(version, e.pointer, Optional.empty(), e.ownerName);
