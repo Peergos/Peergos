@@ -795,11 +795,10 @@ public class FileWrapper {
                                     if (props.size >= endIndex)
                                         return CompletableFuture.completedFuture(updatedBase);
                                     WritableAbsoluteCapability cap = us.writableFilePointer();
-                                    FileProperties newProps = props.withSize(endIndex);
                                     return network.getFile(updatedBase, cap, entryWriter, ownername)
                                             .thenCompose(updatedChild -> updatedChild.get()
                                                     .getPointer().fileAccess.updateProperties(updatedBase, committer, cap,
-                                                            entryWriter, newProps, network));
+                                                            entryWriter, updatedChild.get().props.withSize(endIndex), network));
                                 });
                     });
                 });

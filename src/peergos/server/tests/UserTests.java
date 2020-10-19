@@ -510,6 +510,39 @@ public abstract class UserTests {
     }
 
     @Test
+    public void fileModifiedDateShouldChangeAfterOverwrite() throws Exception {
+        String username = generateUsername();
+        String password = "test";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        FileWrapper userRoot = context.getUserRoot().get();
+
+        String filename = "somedata.txt";
+        byte[] data = randomData(1024);
+        userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
+                context.crypto, l -> {}, context.crypto.random.randomBytes(32)).get();
+
+        userRoot = context.getUserRoot().get();
+
+        userRoot.getChild(filename, context.crypto.hasher, context.network).thenCompose(file -> {
+            FileWrapper existingFile = file.get();
+            LocalDateTime modified = existingFile.getFileProperties().modified;
+            byte[] bytes = randomData(1024 * 2);
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException ie) {
+                ie.printStackTrace();
+            }
+            return file.get().overwriteFile(AsyncReader.build(bytes), bytes.length, context.network, context.crypto,
+                    x -> {})
+                    .thenApply(updatedFile -> {
+                        LocalDateTime newTimestamp = updatedFile.getFileProperties().modified;
+                        Assert.assertTrue("modified date", ! newTimestamp.equals(modified));
+                        return updatedFile;
+                    });
+        }).join();
+    }
+
+    @Test
     public void directoryEncryptionKey() throws Exception {
         // ensure that a directory's child links are encrypted with the base key, not the parent key
         String username = generateUsername();

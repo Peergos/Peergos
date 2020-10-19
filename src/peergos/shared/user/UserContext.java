@@ -255,10 +255,6 @@ public class UserContext {
                                             x -> {})
                                             .thenApply(updatedFile -> {
                                                 LocalDateTime newTimestamp = updatedFile.getFileProperties().modified;
-                                                if(newTimestamp.equals(modified)) {
-                                                    System.out.println("debug");
-                                                    System.out.println("debug2");
-                                                }
                                                 TodoBoard tb = TodoBoard.buildWithTimestamp(todoBoard.getName(),
                                                     todoBoard.getTodoLists(), newTimestamp);
                                                 return tb;
