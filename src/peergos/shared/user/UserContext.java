@@ -195,8 +195,8 @@ public class UserContext {
                     } else {
                         LOG.info("Creating a directory for Todo");
                         return ctx.getUserRoot()
-                                .thenCompose(root -> FileUtil.getOrMkdirs(root, Paths.get(APPS_DIR_NAME, TODO_DIR_NAME)
-                                        , ctx.crypto, ctx.network))
+                                .thenCompose(root -> root.getOrMkdirs(Paths.get(APPS_DIR_NAME, TODO_DIR_NAME)
+                                        , ctx.network, true, ctx.crypto))
                                 .thenApply(dir -> dir);
                     }
                 }).thenCompose(dir -> dir.getChildren(ctx.crypto.hasher, ctx.network).thenApply(children ->
@@ -253,8 +253,8 @@ public class UserContext {
                         } else {
                             LOG.info("Creating a directory for Todo");
                             return ctx.getUserRoot()
-                                    .thenCompose(root -> FileUtil.getOrMkdirs(root, Paths.get(APPS_DIR_NAME, TODO_DIR_NAME)
-                                            , ctx.crypto, ctx.network))
+                                    .thenCompose(root -> root.getOrMkdirs(Paths.get(APPS_DIR_NAME, TODO_DIR_NAME)
+                                            , ctx.network, true, ctx.crypto))
                                     .thenApply(dir -> dir);
                         }
                     }).thenCompose(dir ->
