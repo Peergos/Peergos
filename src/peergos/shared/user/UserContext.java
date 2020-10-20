@@ -1650,9 +1650,10 @@ public class UserContext {
     }
 
     @JsMethod
-    public CompletableFuture<List<FileWrapper>> getFiles(List<SharedItem> pointers) {
+    public CompletableFuture<List<Pair<SharedItem, FileWrapper>>> getFiles(List<SharedItem> pointers) {
         return Futures.combineAllInOrder(pointers.stream()
-                .map(s -> network.getFile(s.cap, s.owner))
+                .map(s -> network.getFile(s.cap, s.owner)
+                        .thenApply(opt -> opt.map(f -> new Pair<>(s, f))))
                 .collect(Collectors.toList()))
                 .thenApply(res -> res.stream()
                         .flatMap(Optional::stream)
