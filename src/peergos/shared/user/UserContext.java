@@ -159,30 +159,58 @@ public class UserContext {
                     fileOpt.get().uploadOrReplaceFile(path.getFileName().toString(), AsyncReader.build(data),
                             data.length, ctx.network, ctx.crypto, x -> {}, ctx.crypto.random.randomBytes(32))
                             .thenApply(fw -> true)
-            ).thenApply(res -> true);
+            );
         }
-        
-        private static CompletableFuture<List<SharedItem>> getSharedItems(UserContext ctx, Path cacheFilePath,
+
+        private static CompletableFuture<PropertiesFile> readPropertiesFile(UserContext ctx, Path path) {
+            return ctx.getByPath(path).thenCompose(optFile -> {
+                if (! optFile.isEmpty()) {
+                    long len = optFile.get().getSize();
+                    return optFile.get().getInputStream(ctx.network, ctx.crypto, len, l-> {})
+                            .thenCompose(is -> Serialize.readFully(is, len).thenApply(bytes ->
+                                    PropertiesFile.fromCbor(CborObject.fromByteArray(bytes))));
+                } else {
+                    return Futures.of(PropertiesFile.empty());
+                }
+            });
+        }
+
+        private static CompletableFuture<Boolean> savePropertiesFile(UserContext ctx, Path path, PropertiesFile propsFile) {
+            byte[] data = propsFile.serialize();
+            return ctx.getByPath(path.getParent()).thenCompose(fileOpt ->
+                    fileOpt.get().uploadOrReplaceFile(path.getFileName().toString(), AsyncReader.build(data),
+                            data.length, ctx.network, ctx.crypto, x -> {}, ctx.crypto.random.randomBytes(32))
+                            .thenApply(fw -> true)
+            );
+        }
+
+        private static CompletableFuture<List<SharedItem>> getSharedItems(UserContext ctx, Path cacheFilePath, Path propsPath,
                                                                            Function<List<SharedItem>, List<SharedItem>> filter) {
             int pageSize = 100;
-            return readCacheFile(ctx, cacheFilePath).thenCompose(cacheFilePair -> {
-                boolean isNewCacheFile = cacheFilePair.left;
-                List<SharedItem> items = cacheFilePair.right.getItems();
-                return ctx.getSocialFeed().thenCompose(feed -> feed.update().thenCompose( updatedFeed -> {
-                    if (updatedFeed.hasUnseen() || isNewCacheFile) {
-                        int lastSeenIndex = isNewCacheFile ? 0 : updatedFeed.getLastSeenIndex();
-                        CompletableFuture<List<SharedItem>> future = Futures.incomplete();
-                        return retrieveUnSeenSharedItems(updatedFeed, lastSeenIndex, pageSize, new ArrayList<>(), filter, ctx, future)
-                                .thenCompose(newItems -> {
-                                    items.addAll(newItems);
-                                    return saveCacheFile(ctx, cacheFilePath, new SharedItemCacheFile(items))
-                                            .thenCompose(res -> ctx.getFiles(items).thenApply(i -> i.stream().map(e -> e.left).collect(Collectors.toList())));
-                                });
-                    } else {
-                        return ctx.getFiles(items).thenApply(i -> i.stream().map(e -> e.left).collect(Collectors.toList()));
-                    }
-                }));
-            });
+            final String socialFeedIndexKey = "social.feed.index";
+            return readCacheFile(ctx, cacheFilePath).thenCompose(cacheFilePair ->
+                readPropertiesFile(ctx, propsPath).thenCompose(props -> {
+                    boolean isNewCacheFile = cacheFilePair.left;
+                    List<SharedItem> items = cacheFilePair.right.getItems();
+                    int socialFeedIndex = props.getIntProperty(socialFeedIndexKey, 0);
+                    return ctx.getSocialFeed().thenCompose(feed -> feed.update().thenCompose( updatedFeed -> {
+                        if (socialFeedIndex < updatedFeed.getLastSeenIndex() || updatedFeed.hasUnseen() || isNewCacheFile) {
+                            int lastSeenIndex = isNewCacheFile ? 0 : socialFeedIndex;
+                            CompletableFuture<List<SharedItem>> future = Futures.incomplete();
+                            return retrieveUnSeenSharedItems(updatedFeed, lastSeenIndex, pageSize, new ArrayList<>(), filter, ctx, future)
+                                    .thenCompose(newItems -> {
+                                        items.addAll(newItems);
+                                        props.setIntProperty(socialFeedIndexKey, updatedFeed.getLastSeenIndex());
+                                        return saveCacheFile(ctx, cacheFilePath, new SharedItemCacheFile(items))
+                                                .thenCompose(res -> savePropertiesFile(ctx, propsPath, props))
+                                                .thenCompose(res -> ctx.getFiles(items).thenApply(i -> i.stream().map(e -> e.left).collect(Collectors.toList())));
+                                    });
+                        } else {
+                            return ctx.getFiles(items).thenApply(i -> i.stream().map(e -> e.left).collect(Collectors.toList()));
+                        }
+                    }));
+                })
+            );
         }
 
         private static CompletableFuture<List<SharedItem>> retrieveUnSeenSharedItems(SocialFeed feed, int lastSeenIndex, int pageSize,
@@ -210,6 +238,7 @@ public class UserContext {
             @JsProperty
             public static final String TODO_FILE_EXTENSION = ".todo";
             public static final String SHARED_WITH_US_CACHE_FILENAME = "sharedWithUs.cbor";
+            public static final String PROPERTIES_FILENAME = "properties.cbor";
             public static final String TODO_MIME_TYPE = "application/vnd.peergos-todo";
             private static Comparator<Pair<String, String>> sortByUser = Comparator.comparing(pair -> pair.left);
             private static Comparator<Pair<String, String>> sortByTodoName = Comparator.comparing(pair -> pair.right);
@@ -295,8 +324,11 @@ public class UserContext {
             }
 
             private CompletableFuture<List<Pair<String, String>>> getSharedTodoBoards() {
-                Path cacheFilePath = Paths.get(ctx.username, APPS_DIR_NAME, TODO_DIR_NAME, SHARED_WITH_US_CACHE_FILENAME);
-                return getSharedItems(ctx, cacheFilePath, sharedItemsFilter).thenApply(sharedWithUs -> {
+                Path path = Paths.get(ctx.username, APPS_DIR_NAME, TODO_DIR_NAME);
+                Path cacheFilePath = path.resolve(SHARED_WITH_US_CACHE_FILENAME);
+                Path propsPath = path.resolve(PROPERTIES_FILENAME);
+
+                return getSharedItems(ctx, cacheFilePath, propsPath, sharedItemsFilter).thenApply(sharedWithUs -> {
                     if (sharedWithUs.isEmpty()) {
                         return Collections.emptyList();
                     }
