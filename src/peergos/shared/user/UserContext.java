@@ -1650,24 +1650,14 @@ public class UserContext {
     }
 
     @JsMethod
-    public CompletableFuture<List<Pair<SharedItem,FileWrapper>>> getFiles(List<SharedItem> pointers) {
-        List<CompletableFuture<Optional<?>>> futures = pointers.stream().map(s -> network.getFile(s)).collect(Collectors.toList());
-        CompletableFuture<List<Pair<SharedItem, FileWrapper>>> identity = CompletableFuture.completedFuture(Collections.emptyList());
-        return futures.stream().reduce(identity,
-                (a, b) -> b.thenCompose(opt ->
-                        a.thenApply(set -> {
-                            if(opt.isPresent()) {
-                                ArrayList<Pair<SharedItem, FileWrapper>> combined = new ArrayList<>(set.size() + 1);
-                                combined.addAll(set);
-                                Pair<SharedItem, FileWrapper> pair = (Pair<SharedItem, FileWrapper>)opt.get();
-                                combined.add(new Pair<>(pair.left,pair.right));
-                                return combined;
-                            } else {
-                                return set;
-                            }
-                        })),
-                (a, b) -> b.thenCompose(setb ->
-                        a.thenApply(seta -> Stream.concat(seta.stream(), setb.stream()).collect(Collectors.toList()))));
+    public CompletableFuture<List<Pair<SharedItem, FileWrapper>>> getFiles(List<SharedItem> pointers) {
+        return Futures.combineAllInOrder(pointers.stream()
+                .map(s -> network.getFile(s.cap, s.owner)
+                        .thenApply(opt -> opt.map(f -> new Pair<>(s, f))))
+                .collect(Collectors.toList()))
+                .thenApply(res -> res.stream()
+                        .flatMap(Optional::stream)
+                        .collect(Collectors.toList()));
     }
 
     public CompletableFuture<Set<FileWrapper>> getChildren(String path) {
