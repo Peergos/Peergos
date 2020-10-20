@@ -76,6 +76,73 @@ public class PeergosNetworkUtils {
                 }).collect(Collectors.toList());
     }
 
+    public static void sharedTodoBoardsVariations(NetworkAccess sharerNode, NetworkAccess shareeNode, Random random) throws Exception {
+        String sharerUsername = "sharer5";
+        String sharerPassword = generatePassword();
+        UserContext sharerUser = ensureSignedUp(sharerUsername, sharerPassword, sharerNode.clear(), crypto);
+
+
+        String shareeUsername = "sharee6";
+        String shareePassword = generatePassword();
+        UserContext shareeUser = ensureSignedUp(shareeUsername, shareePassword, sharerNode.clear(), crypto);
+
+        // friend sharer with others
+        List<UserContext> sharerList = Arrays.asList(sharerUser);
+        List<UserContext> shareeList = Arrays.asList(shareeUser);
+        friendBetweenGroups(sharerList, shareeList);
+        String todoBoardName = "One";
+        TodoList todoList = TodoList.build("todoList", "1"
+                , Arrays.asList(new TodoListItem("id", LocalDateTime.now(), "text", false)));
+        UserContext.App.Todo todoApp = sharerUser.getTodoApp();
+        TodoBoard board = TodoBoard.build(todoBoardName, Arrays.asList(todoList));
+        todoApp.updateTodoBoard(sharerUser.username, board).join();
+        List<Pair<String, String>> result = todoApp.getTodoBoards().join();
+        assertTrue("todoLists size", result.size() == 1);
+
+
+        Path pathToToDo = Paths.get(sharerUser.username, UserContext.APPS_DIR_NAME,
+                UserContext.App.Todo.TODO_DIR_NAME, todoBoardName + UserContext.App.Todo.TODO_FILE_EXTENSION);
+        Set<String> toShareTo = shareeList.stream().map(u -> u.username).collect(Collectors.toSet());
+        sharerUser.shareWriteAccessWith(pathToToDo, toShareTo).join();
+
+
+        UserContext.App.Todo shareeTodoApp = shareeUser.getTodoApp();
+        List<Pair<String, String>> lists = shareeTodoApp.getTodoBoards().join();
+        assertTrue("todoLists size", result.size() == 1);
+        assertTrue("todoList filename", lists.get(0).right.equals(todoBoardName));
+        assertTrue("todoList owner", lists.get(0).left.equals(sharerUser.username));
+        Pair<TodoBoard,Boolean> boardContainer = shareeTodoApp.getTodoBoard(sharerUser.username, todoBoardName).join();
+        assertTrue("todo bard is writable", boardContainer.right);
+
+        shareeTodoApp.updateTodoBoard(sharerUser.username, boardContainer.left).join();
+
+        //now unshare
+        sharerUser.unShareWriteAccess(pathToToDo, toShareTo).join();
+        //this should fail
+        try {
+            shareeTodoApp.updateTodoBoard(sharerUser.username, board).join();
+            assertTrue("Todoboard not available", false);
+        } catch(Exception e){}
+
+        lists = shareeTodoApp.getTodoBoards().join();
+        assertTrue("todoLists size", lists.size() == 0);
+
+        //now add another
+        todoBoardName = "Two";
+        board = TodoBoard.build(todoBoardName, Arrays.asList(todoList));
+        todoApp.updateTodoBoard(sharerUser.username, board).join();
+        result = todoApp.getTodoBoards().join();
+        assertTrue("todoLists size", result.size() == 2);
+
+        //sharee should see the new board when shared
+        pathToToDo = Paths.get(sharerUser.username, UserContext.APPS_DIR_NAME,
+                UserContext.App.Todo.TODO_DIR_NAME, todoBoardName + UserContext.App.Todo.TODO_FILE_EXTENSION);
+        sharerUser.shareWriteAccessWith(pathToToDo, toShareTo).join();
+        lists = shareeTodoApp.getTodoBoards().join();
+        assertTrue("todoLists size", lists.size() == 1);
+
+    }
+
     public static void sharedTodoBoard(NetworkAccess sharerNode, NetworkAccess shareeNode, Random random) throws Exception {
         String sharerUsername = "sharer3";
         String sharerPassword = generatePassword();
@@ -120,6 +187,7 @@ public class PeergosNetworkUtils {
 
         shareeTodoApp.updateTodoBoard(sharerUser.username, updatedBoard).join();
         lists = shareeTodoApp.getTodoBoards().join();
+        assertTrue("todoLists.size()", lists.size() == 1);
         assertTrue("todoList filename", lists.get(0).right.equals(todoBoardName));
     }
 

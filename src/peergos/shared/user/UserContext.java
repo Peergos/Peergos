@@ -139,15 +139,95 @@ public class UserContext {
     }
     public static class App {
 
+        //Boolean indicates new file
+        private static CompletableFuture<Pair<Boolean, SharedItemCacheFile>> readCacheFile(UserContext ctx, Path path) {
+            return ctx.getByPath(path).thenCompose(optFile -> {
+                if (! optFile.isEmpty()) {
+                    long len = optFile.get().getSize();
+                    return optFile.get().getInputStream(ctx.network, ctx.crypto, len, l-> {})
+                            .thenCompose(is -> Serialize.readFully(is, len).thenApply(bytes ->
+                                new Pair<>(false, SharedItemCacheFile.fromCbor(CborObject.fromByteArray(bytes)))));
+                } else {
+                    return Futures.of(new Pair<>(true, new SharedItemCacheFile(Collections.emptyList())));
+                }
+            });
+        }
+
+        private static CompletableFuture<Boolean> saveCacheFile(UserContext ctx, Path path, SharedItemCacheFile cacheFile) {
+            byte[] data = cacheFile.serialize();
+            return ctx.getByPath(path.getParent()).thenCompose(fileOpt ->
+                    fileOpt.get().uploadOrReplaceFile(path.getFileName().toString(), AsyncReader.build(data),
+                            data.length, ctx.network, ctx.crypto, x -> {}, ctx.crypto.random.randomBytes(32))
+                            .thenApply(fw -> true)
+            ).thenApply(res -> true);
+        }
+        
+        private static CompletableFuture<List<SharedItem>> getSharedItems(UserContext ctx, Path cacheFilePath,
+                                                                           Function<List<SharedItem>, List<SharedItem>> filter) {
+            int pageSize = 100;
+            return readCacheFile(ctx, cacheFilePath).thenCompose(cacheFilePair -> {
+                boolean isNewCacheFile = cacheFilePair.left;
+                List<SharedItem> items = cacheFilePair.right.getItems();
+                return ctx.getSocialFeed().thenCompose(feed -> feed.update().thenCompose( updatedFeed -> {
+                    if (updatedFeed.hasUnseen() || isNewCacheFile) {
+                        int lastSeenIndex = isNewCacheFile ? 0 : updatedFeed.getLastSeenIndex();
+                        CompletableFuture<List<SharedItem>> future = Futures.incomplete();
+                        return retrieveUnSeenSharedItems(updatedFeed, lastSeenIndex, pageSize, new ArrayList<>(), filter, ctx, future)
+                                .thenCompose(newItems -> {
+                                    items.addAll(newItems);
+                                    return saveCacheFile(ctx, cacheFilePath, new SharedItemCacheFile(items))
+                                            .thenCompose(res -> ctx.getFiles(items).thenApply(i -> i.stream().map(e -> e.left).collect(Collectors.toList())));
+                                });
+                    } else {
+                        return ctx.getFiles(items).thenApply(i -> i.stream().map(e -> e.left).collect(Collectors.toList()));
+                    }
+                }));
+            });
+        }
+
+        private static CompletableFuture<List<SharedItem>> retrieveUnSeenSharedItems(SocialFeed feed, int lastSeenIndex, int pageSize,
+                                                                          List<SharedItem> results,
+                                                                          Function<List<SharedItem>, List<SharedItem>> filter,
+                                                                          UserContext ctx, CompletableFuture<List<SharedItem>> future) {
+            if (! feed.hasUnseen() ) {
+                future.complete(results);
+                return future;
+            } else {
+                return feed.getShared(lastSeenIndex, lastSeenIndex + pageSize, ctx.crypto, ctx.network)
+                        .thenCompose(sharedItems -> {
+                            int newIndex = lastSeenIndex + sharedItems.size();
+                            return feed.setLastSeenIndex(newIndex).thenCompose(res -> {
+                                results.addAll(filter.apply(sharedItems));
+                                return retrieveUnSeenSharedItems(feed, newIndex, pageSize, results, filter, ctx, future);
+                            });
+                        });
+            }
+        }
+
         public static class Todo {
             private UserContext ctx;
             public static final String TODO_DIR_NAME = "todo";
             @JsProperty
             public static final String TODO_FILE_EXTENSION = ".todo";
+            public static final String SHARED_WITH_US_CACHE_FILENAME = "sharedWithUs.cbor";
             public static final String TODO_MIME_TYPE = "application/vnd.peergos-todo";
             private static Comparator<Pair<String, String>> sortByUser = Comparator.comparing(pair -> pair.left);
             private static Comparator<Pair<String, String>> sortByTodoName = Comparator.comparing(pair -> pair.right);
             private static Comparator<Pair<String, String>> todoListSorter = sortByUser.thenComparing(sortByTodoName);
+
+            private static final Function<List<SharedItem>, List<SharedItem>> sharedItemsFilter = items ->
+                    items.stream().filter(f -> {
+                        try {
+                            Path path = Paths.get(f.path);
+                            Path parent = path.getParent();
+                            Path grandParent = parent.getParent();
+                            return f.path.endsWith(TODO_FILE_EXTENSION) && path.getNameCount() == 4
+                                    && parent.getFileName().toString().equals(TODO_DIR_NAME)
+                                    && grandParent.getFileName().toString().equals(APPS_DIR_NAME);
+                        } catch (Exception e) {
+                            return false;
+                        }
+                    }).collect(Collectors.toList());
 
             public Todo(UserContext ctx) {
                 this.ctx = ctx;
@@ -184,6 +264,9 @@ public class UserContext {
             }
 
             private String extractTodoBoardName(String filename) {
+                if (filename.indexOf('/') > -1) {
+                    filename = filename.substring(filename.lastIndexOf('/') +1);
+                }
                 return filename.substring(0, filename.length() - TODO_FILE_EXTENSION.length());
             }
             
@@ -201,47 +284,26 @@ public class UserContext {
                                 .thenApply(dir -> dir);
                     }
                 }).thenCompose(dir -> dir.getChildren(ctx.crypto.hasher, ctx.network).thenApply(children ->
-                        children.stream().map(file -> new Pair<>(ctx.username, extractTodoBoardName(file.getFileProperties().name)))
+                        children.stream().filter(f -> f.getFileProperties().name.endsWith(TODO_FILE_EXTENSION))
+                                .map(file -> new Pair<>(ctx.username, extractTodoBoardName(file.getFileProperties().name)))
                                 .collect(Collectors.toList()))
-                ).thenCompose(ourTodoBoards -> ctx.getSocialState().thenCompose(socialState -> {
-                        Set<String> followers = socialState.followerRoots.keySet();
-                        return getSharedTodoBoardFolders(followers).thenCompose(othersTodoDirs -> getSharedTodoBoards(othersTodoDirs))
-                            .thenApply(sharedTodoBoards -> new Pair<>(ourTodoBoards, sharedTodoBoards));
-                    })
-                ).thenApply(allTodoListPair -> {
-                    List<Pair<String, String>> sharedTodoBoards = new ArrayList(allTodoListPair.left);
-                    sharedTodoBoards.addAll(allTodoListPair.right);
-                    return sharedTodoBoards.stream().sorted(todoListSorter).collect(Collectors.toList());
+                ).thenCompose(ourTodoBoards -> getSharedTodoBoards().thenApply(sharedTodoBoards ->
+                        Stream.concat(ourTodoBoards.stream(), sharedTodoBoards.stream())
+                                .sorted(todoListSorter)
+                                .collect(Collectors.toList())
+                ));
+            }
+
+            private CompletableFuture<List<Pair<String, String>>> getSharedTodoBoards() {
+                Path cacheFilePath = Paths.get(ctx.username, APPS_DIR_NAME, TODO_DIR_NAME, SHARED_WITH_US_CACHE_FILENAME);
+                return getSharedItems(ctx, cacheFilePath, sharedItemsFilter).thenApply(sharedWithUs -> {
+                    if (sharedWithUs.isEmpty()) {
+                        return Collections.emptyList();
+                    }
+                    return sharedWithUs.stream()
+                            .map(item -> new Pair<>(item.sharer, extractTodoBoardName(item.path)))
+                            .collect(Collectors.toList());
                 });
-            }
-
-            private CompletableFuture<List<Pair<String, FileWrapper>>> getSharedTodoBoardFolders(Set<String> followers) {
-                if (followers.isEmpty()) {
-                    return Futures.of(Collections.emptyList());
-                }
-                List<Pair<String, FileWrapper>> folders = new ArrayList<>();
-                return Futures.reduceAll(followers,
-                        true,
-                        (x, follower) -> ctx.getByPath(follower + "/" + APPS_DIR_NAME + "/" + TODO_DIR_NAME).thenCompose(ce -> {
-                            if(ce.isPresent())
-                                folders.add(new Pair<>(follower, ce.get()));
-                            return Futures.of(true);
-                        }), (a, b) -> a && b).thenApply(res -> folders);
-            }
-
-            private CompletableFuture<List<Pair<String, String>>> getSharedTodoBoards(List<Pair<String, FileWrapper>> todoDirs) {
-                if (todoDirs.isEmpty()) {
-                    return Futures.of(Collections.emptyList());
-                }
-                List<Pair<String, String>> boards = new ArrayList<>();
-                return Futures.reduceAll(todoDirs,
-                        true,
-                        (x, pair) -> pair.right.getChildren(ctx.crypto.hasher, ctx.network).thenCompose(children -> {
-                            List<Pair<String, String>> pairs = children.stream().map(child ->
-                                    new Pair<>(pair.left, extractTodoBoardName(child.getName()))).collect(Collectors.toList());
-                            boards.addAll(pairs);
-                            return Futures.of(true);
-                        }), (a, b) -> a && b).thenApply(res -> boards);
             }
 
             @JsMethod
@@ -252,6 +314,9 @@ public class UserContext {
                         if (fw.isPresent()) {
                             return CompletableFuture.completedFuture(fw.get());
                         } else {
+                            if(! owner.equals(ctx.username)) {
+                                throw new IllegalStateException("Todo Board no longer available!");
+                            }
                             LOG.info("Creating a directory for Todo");
                             return ctx.getUserRoot()
                                     .thenCompose(root -> root.getOrMkdirs(Paths.get(APPS_DIR_NAME, TODO_DIR_NAME)
@@ -1827,9 +1892,10 @@ public class UserContext {
     }
 
     @JsMethod
-    public CompletableFuture<List<FileWrapper>> getFiles(List<SharedItem> pointers) {
+    public CompletableFuture<List<Pair<SharedItem, FileWrapper>>> getFiles(List<SharedItem> pointers) {
         return Futures.combineAllInOrder(pointers.stream()
-                .map(s -> network.getFile(s.cap, s.owner))
+                .map(s -> network.getFile(s.cap, s.owner)
+                        .thenApply(opt -> opt.map(f -> new Pair<>(s, f))))
                 .collect(Collectors.toList()))
                 .thenApply(res -> res.stream()
                         .flatMap(Optional::stream)
