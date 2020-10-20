@@ -239,7 +239,6 @@ public class UserContext {
             public static final String TODO_FILE_EXTENSION = ".todo";
             public static final String SHARED_WITH_US_CACHE_FILENAME = "sharedWithUs.cbor";
             public static final String PROPERTIES_FILENAME = "properties.cbor";
-            public static final String TODO_MIME_TYPE = "application/vnd.peergos-todo";
             private static Comparator<Pair<String, String>> sortByUser = Comparator.comparing(pair -> pair.left);
             private static Comparator<Pair<String, String>> sortByTodoName = Comparator.comparing(pair -> pair.right);
             private static Comparator<Pair<String, String>> todoListSorter = sortByUser.thenComparing(sortByTodoName);

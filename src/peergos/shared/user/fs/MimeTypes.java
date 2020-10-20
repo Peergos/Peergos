@@ -1,13 +1,5 @@
 package peergos.shared.user.fs;
 
-import peergos.shared.cbor.CborConstants;
-import peergos.shared.cbor.CborDecoder;
-import peergos.shared.cbor.CborType;
-import peergos.shared.user.UserContext;
-
-import java.io.ByteArrayInputStream;
-import java.util.Optional;
-
 public class MimeTypes {
     final static int[] MID = new int[]{'M', 'T', 'h', 'd'};
     final static int[] ID3 = new int[]{'I', 'D', '3'};
@@ -48,6 +40,10 @@ public class MimeTypes {
     final static int[] XML = new int[]{'<','?','x','m','l'};
     final static int[] WOFF = new int[]{'w','O','F','F'};
     final static int[] WOFF2 = new int[]{'w','O','F','2'};
+
+    // mimetypes for files that are cbor list(mimetype int, map(data)), mimetypes < 24 use a single byte
+    public static final int CBOR_PEERGOS_TODO_INT = 10;
+    final static int[] CBOR_PEERGOS_TODO = new int[]{0x82 /* cbor list with 2 elements*/, CBOR_PEERGOS_TODO_INT};
 
     final static int HEADER_BYTES_TO_IDENTIFY_MIME_TYPE = 40;
 
@@ -143,6 +139,9 @@ public class MimeTypes {
         if (equalArrays(start, WOFF2))
             return "font/woff2";
 
+        if (equalArrays(start, CBOR_PEERGOS_TODO))
+            return "application/vnd.peergos-todo";
+
         if (allAscii(start)) {
             if (filename.endsWith(".ics") && equalArrays(start, ICS))
                 return "text/calendar";
@@ -156,30 +155,9 @@ public class MimeTypes {
                 return "text/svg+xml";
             return "text/plain";
         }
-        Optional<String> cborMimeType = extractCborMimeType(start);
-        if (cborMimeType.isPresent() ) {
-            if (cborMimeType.get().equals(UserContext.App.Todo.TODO_MIME_TYPE) && filename.endsWith(UserContext.App.Todo.TODO_FILE_EXTENSION)) {
-                return UserContext.App.Todo.TODO_MIME_TYPE;
-            }
-        }
         return "application/octet-stream";
     }
 
-    private static Optional<String> extractCborMimeType(byte[] data) {
-        try {
-            CborDecoder decoder = new CborDecoder(new ByteArrayInputStream(data));
-            CborType type = decoder.peekType();
-            if (type.getMajorType() == CborConstants.TYPE_ARRAY) {
-                long nItems = decoder.readArrayLength();
-                if(nItems == 2 && decoder.peekType().getMajorType() == CborConstants.TYPE_TEXT_STRING) {
-                    String mimeType = decoder.readTextString(HEADER_BYTES_TO_IDENTIFY_MIME_TYPE-2);
-                    return Optional.of(mimeType);
-                }
-            }
-        } catch (Exception e) {
-        }
-        return Optional.empty();
-    }
     private static boolean allAscii(byte[] data) {
         for (byte b : data) {
             if ((b & 0xff) > 0x80)

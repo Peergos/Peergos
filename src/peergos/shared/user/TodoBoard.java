@@ -2,6 +2,7 @@ package peergos.shared.user;
 
 import jsinterop.annotations.JsType;
 import peergos.shared.cbor.*;
+import peergos.shared.user.fs.*;
 
 import java.io.ByteArrayInputStream;
 import java.time.LocalDateTime;
@@ -64,7 +65,7 @@ public class TodoBoard implements Cborable {
         cborData.put("lists", new CborObject.CborList(todoLists));
 
         List<CborObject> contents = new ArrayList<>();
-        contents.add(new CborObject.CborString(UserContext.App.Todo.TODO_MIME_TYPE));
+        contents.add(new CborObject.CborLong(MimeTypes.CBOR_PEERGOS_TODO_INT));
         contents.add(CborObject.CborMap.build(cborData));
 
         return new CborObject.CborList(contents);
@@ -75,8 +76,8 @@ public class TodoBoard implements Cborable {
             throw new IllegalStateException("Invalid cbor for TodoList: " + cbor);
 
         List<? extends Cborable> contents = ((CborObject.CborList) cbor).value;
-        String mimeType = ((CborObject.CborString) contents.get(0)).value;
-        if (!mimeType.equals(UserContext.App.Todo.TODO_MIME_TYPE))
+        long mimeType = ((CborObject.CborLong) contents.get(0)).value;
+        if (mimeType != MimeTypes.CBOR_PEERGOS_TODO_INT)
             throw new IllegalStateException("Invalid mimetype for TodoList: " + mimeType);
 
         CborObject.CborMap m = (CborObject.CborMap) contents.get(1);
