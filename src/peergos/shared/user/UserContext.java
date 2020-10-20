@@ -1656,13 +1656,15 @@ public class UserContext {
         return futures.stream().reduce(identity,
                 (a, b) -> b.thenCompose(opt ->
                         a.thenApply(set -> {
-                            ArrayList<Pair<SharedItem, FileWrapper>> combined = new ArrayList<>(set.size() + 1);
-                            combined.addAll(set);
                             if(opt.isPresent()) {
+                                ArrayList<Pair<SharedItem, FileWrapper>> combined = new ArrayList<>(set.size() + 1);
+                                combined.addAll(set);
                                 Pair<SharedItem, FileWrapper> pair = (Pair<SharedItem, FileWrapper>)opt.get();
                                 combined.add(new Pair<>(pair.left,pair.right));
+                                return combined;
+                            } else {
+                                return set;
                             }
-                            return combined;
                         })),
                 (a, b) -> b.thenCompose(setb ->
                         a.thenApply(seta -> Stream.concat(seta.stream(), setb.stream()).collect(Collectors.toList()))));
