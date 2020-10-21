@@ -1138,7 +1138,7 @@ public abstract class UserTests {
         String username = generateUsername();
         String password = "test01";
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
-        UserContext.App.Todo todoApp = context.getTodoApp();
+        App.Todo todoApp = context.getTodoApp();
         List<Pair<String,String>> todoBoards = todoApp.getTodoBoards().join();
         assertTrue("todoBoards", todoBoards.isEmpty());
         String todoBoardName = "s_a-m1p2l e";

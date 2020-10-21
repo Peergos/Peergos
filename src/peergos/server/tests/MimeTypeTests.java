@@ -1,10 +1,7 @@
 package peergos.server.tests;
 
 import org.junit.*;
-import peergos.shared.user.TodoBoard;
-import peergos.shared.user.TodoList;
-import peergos.shared.user.TodoListItem;
-import peergos.shared.user.UserContext;
+import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 
 import java.time.LocalDateTime;
@@ -30,7 +27,7 @@ public class MimeTypeTests {
         byte[] raw = board.toCbor().toByteArray();
 
         String mime = MimeTypes.calculateMimeType(raw,
-                board.getName() + UserContext.App.Todo.TODO_FILE_EXTENSION);
+                board.getName() + App.Todo.TODO_FILE_EXTENSION);
         Assert.assertTrue(mime.equals("application/vnd.peergos-todo"));
     }
 }

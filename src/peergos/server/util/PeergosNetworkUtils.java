@@ -93,7 +93,7 @@ public class PeergosNetworkUtils {
         String todoBoardName = "One";
         TodoList todoList = TodoList.build("todoList", "1"
                 , Arrays.asList(new TodoListItem("id", LocalDateTime.now(), "text", false)));
-        UserContext.App.Todo todoApp = sharerUser.getTodoApp();
+        App.Todo todoApp = sharerUser.getTodoApp();
         TodoBoard board = TodoBoard.build(todoBoardName, Arrays.asList(todoList));
         todoApp.updateTodoBoard(sharerUser.username, board).join();
         List<Pair<String, String>> result = todoApp.getTodoBoards().join();
@@ -101,12 +101,12 @@ public class PeergosNetworkUtils {
 
 
         Path pathToToDo = Paths.get(sharerUser.username, UserContext.APPS_DIR_NAME,
-                UserContext.App.Todo.TODO_DIR_NAME, todoBoardName + UserContext.App.Todo.TODO_FILE_EXTENSION);
+                App.Todo.TODO_DIR_NAME, todoBoardName + App.Todo.TODO_FILE_EXTENSION);
         Set<String> toShareTo = shareeList.stream().map(u -> u.username).collect(Collectors.toSet());
         sharerUser.shareWriteAccessWith(pathToToDo, toShareTo).join();
 
 
-        UserContext.App.Todo shareeTodoApp = shareeUser.getTodoApp();
+        App.Todo shareeTodoApp = shareeUser.getTodoApp();
         List<Pair<String, String>> lists = shareeTodoApp.getTodoBoards().join();
         assertTrue("todoLists size", result.size() == 1);
         assertTrue("todoList filename", lists.get(0).right.equals(todoBoardName));
@@ -136,7 +136,7 @@ public class PeergosNetworkUtils {
 
         //sharee should see the new board when shared
         pathToToDo = Paths.get(sharerUser.username, UserContext.APPS_DIR_NAME,
-                UserContext.App.Todo.TODO_DIR_NAME, todoBoardName + UserContext.App.Todo.TODO_FILE_EXTENSION);
+                App.Todo.TODO_DIR_NAME, todoBoardName + App.Todo.TODO_FILE_EXTENSION);
         sharerUser.shareWriteAccessWith(pathToToDo, toShareTo).join();
         lists = shareeTodoApp.getTodoBoards().join();
         assertTrue("todoLists size", lists.size() == 1);
@@ -162,7 +162,7 @@ public class PeergosNetworkUtils {
         TodoListItem item = new TodoListItem("id", LocalDateTime.now(), "text", false);
         todoItems.add(item);
         TodoList todoList = TodoList.build("todoList", "1", todoItems);
-        UserContext.App.Todo todoApp = sharerUser.getTodoApp();
+        App.Todo todoApp = sharerUser.getTodoApp();
         String todoBoardName = "my todo board";
         List<TodoList> todoLists = new ArrayList<>();
         todoLists.add(todoList);
@@ -176,11 +176,11 @@ public class PeergosNetworkUtils {
 
         // sharer shares todolist with sharee
         Path pathToToDo = Paths.get(sharerUser.username, UserContext.APPS_DIR_NAME,
-                UserContext.App.Todo.TODO_DIR_NAME, todoBoardName + UserContext.App.Todo.TODO_FILE_EXTENSION);
+                App.Todo.TODO_DIR_NAME, todoBoardName + App.Todo.TODO_FILE_EXTENSION);
         Set<String> toShareTo = shareeList.stream().map(u -> u.username).collect(Collectors.toSet());
         sharerUser.shareWriteAccessWith(pathToToDo, toShareTo).join();
 
-        UserContext.App.Todo shareeTodoApp = shareeUser.getTodoApp();
+        App.Todo shareeTodoApp = shareeUser.getTodoApp();
         List<Pair<String, String>> lists = shareeTodoApp.getTodoBoards().join();
         assertTrue("todoList filename", lists.get(0).right.equals(todoBoardName));
         assertTrue("todoList owner", lists.get(0).left.equals(sharerUser.username));
@@ -218,7 +218,7 @@ public class PeergosNetworkUtils {
         TodoListItem item = new TodoListItem("id", LocalDateTime.now(), "text", false);
         todoItems.add(item);
         TodoList todoList = TodoList.build("todoList", "1", todoItems);
-        UserContext.App.Todo todoApp = sharerUser.getTodoApp();
+        App.Todo todoApp = sharerUser.getTodoApp();
         String todoBoardName = "my todo board";
         List<TodoList> todoLists = new ArrayList<>();
         todoLists.add(todoList);
@@ -228,11 +228,11 @@ public class PeergosNetworkUtils {
         assertTrue("modified date", board.getTimestamp().isBefore(updatedBoard.getTimestamp()));
 
         Path pathToToDo = Paths.get(sharerUser.username, UserContext.APPS_DIR_NAME,
-                UserContext.App.Todo.TODO_DIR_NAME, todoBoardName + UserContext.App.Todo.TODO_FILE_EXTENSION);
+                App.Todo.TODO_DIR_NAME, todoBoardName + App.Todo.TODO_FILE_EXTENSION);
         Set<String> toShareTo = shareeList.stream().map(u -> u.username).collect(Collectors.toSet());
         sharerUser.shareWriteAccessWith(pathToToDo, toShareTo).join();
 
-        UserContext.App.Todo shareeTodoApp = shareeUser.getTodoApp();
+        App.Todo shareeTodoApp = shareeUser.getTodoApp();
         Pair<TodoBoard,Boolean> shareeBoardInstance = shareeTodoApp.getTodoBoard(sharerUser.username, board.getName()).join();
         sleep(1);
         TodoBoard shareeUpdatedBoard = todoApp.updateTodoBoard(sharerUser.username, shareeBoardInstance.left).join();
