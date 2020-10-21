@@ -93,7 +93,7 @@ public class PeergosNetworkUtils {
         String todoBoardName = "One";
         TodoList todoList = TodoList.build("todoList", "1"
                 , Arrays.asList(new TodoListItem("id", LocalDateTime.now(), "text", false)));
-        App.Todo todoApp = sharerUser.getTodoApp();
+        App.Todo todoApp = new App.Todo(sharerUser);
         TodoBoard board = TodoBoard.build(todoBoardName, Arrays.asList(todoList));
         todoApp.updateTodoBoard(sharerUser.username, board).join();
         List<Pair<String, String>> result = todoApp.getTodoBoards().join();
@@ -106,7 +106,7 @@ public class PeergosNetworkUtils {
         sharerUser.shareWriteAccessWith(pathToToDo, toShareTo).join();
 
 
-        App.Todo shareeTodoApp = shareeUser.getTodoApp();
+        App.Todo shareeTodoApp = new App.Todo(shareeUser);
         List<Pair<String, String>> lists = shareeTodoApp.getTodoBoards().join();
         assertTrue("todoLists size", result.size() == 1);
         assertTrue("todoList filename", lists.get(0).right.equals(todoBoardName));
@@ -162,7 +162,7 @@ public class PeergosNetworkUtils {
         TodoListItem item = new TodoListItem("id", LocalDateTime.now(), "text", false);
         todoItems.add(item);
         TodoList todoList = TodoList.build("todoList", "1", todoItems);
-        App.Todo todoApp = sharerUser.getTodoApp();
+        App.Todo todoApp = new App.Todo(sharerUser);
         String todoBoardName = "my todo board";
         List<TodoList> todoLists = new ArrayList<>();
         todoLists.add(todoList);
@@ -180,7 +180,7 @@ public class PeergosNetworkUtils {
         Set<String> toShareTo = shareeList.stream().map(u -> u.username).collect(Collectors.toSet());
         sharerUser.shareWriteAccessWith(pathToToDo, toShareTo).join();
 
-        App.Todo shareeTodoApp = shareeUser.getTodoApp();
+        App.Todo shareeTodoApp = new App.Todo(shareeUser);
         List<Pair<String, String>> lists = shareeTodoApp.getTodoBoards().join();
         assertTrue("todoList filename", lists.get(0).right.equals(todoBoardName));
         assertTrue("todoList owner", lists.get(0).left.equals(sharerUser.username));
@@ -218,7 +218,7 @@ public class PeergosNetworkUtils {
         TodoListItem item = new TodoListItem("id", LocalDateTime.now(), "text", false);
         todoItems.add(item);
         TodoList todoList = TodoList.build("todoList", "1", todoItems);
-        App.Todo todoApp = sharerUser.getTodoApp();
+        App.Todo todoApp = new App.Todo(sharerUser);
         String todoBoardName = "my todo board";
         List<TodoList> todoLists = new ArrayList<>();
         todoLists.add(todoList);
@@ -232,7 +232,7 @@ public class PeergosNetworkUtils {
         Set<String> toShareTo = shareeList.stream().map(u -> u.username).collect(Collectors.toSet());
         sharerUser.shareWriteAccessWith(pathToToDo, toShareTo).join();
 
-        App.Todo shareeTodoApp = shareeUser.getTodoApp();
+        App.Todo shareeTodoApp = new App.Todo(shareeUser);
         Pair<TodoBoard,Boolean> shareeBoardInstance = shareeTodoApp.getTodoBoard(sharerUser.username, board.getName()).join();
         sleep(1);
         TodoBoard shareeUpdatedBoard = todoApp.updateTodoBoard(sharerUser.username, shareeBoardInstance.left).join();

@@ -134,11 +134,6 @@ public class UserContext {
     }
 
     @JsMethod
-    public App.Todo getTodoApp() {
-        return new App.Todo(this);
-    }
-
-    @JsMethod
     public CompletableFuture<Boolean> unShareWriteAccess(FileWrapper file, String[] writers) {
         Set<String> writersToUnShare = new HashSet<>(Arrays.asList(writers));
         return file.getPath(network).thenCompose(pathString ->

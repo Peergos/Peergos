@@ -137,6 +137,7 @@ public class App {
                     }
                 }).collect(Collectors.toList());
 
+        @JsConstructor
         public Todo(UserContext ctx) {
             this.ctx = ctx;
         }
