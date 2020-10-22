@@ -98,4 +98,32 @@ public class ProfilePaths {
     public static CompletableFuture<Boolean> setEmail(UserContext user, String email) {
         return serializeAndSet(EMAIL, email, String::getBytes, user);
     }
+
+    public static CompletableFuture<Optional<String>> getWebRoot(String user, UserContext viewer) {
+        return getAndParse(Paths.get(user).resolve(WEBROOT), String::new, viewer);
+    }
+
+    public static CompletableFuture<Boolean> setWebRoot(UserContext user, String webroot) {
+        return serializeAndSet(WEBROOT, webroot, String::getBytes, user);
+    }
+
+    public static CompletableFuture<Boolean> publishWebroot(UserContext user) {
+        // first publish the actual web root, then publish the profile entry linking to the webroot
+        return getWebRoot(user.username, user)
+                .thenCompose(popt -> {
+                    if (popt.isEmpty())
+                        return Futures.of(Optional.empty());
+                    return user.getByPath(popt.get())
+                            .thenCompose(fopt -> fopt.map(user::makePublic)
+                                    .map(f -> f.thenApply(Optional::of))
+                                    .orElse(Futures.of(Optional.empty())));
+                }).thenCompose(res -> {
+                    if (res.isEmpty())
+                        return Futures.of(Optional.empty());
+                    return user.getByPath(Paths.get(user.username).resolve(WEBROOT))
+                            .thenCompose(opt -> opt.map(user::makePublic)
+                                    .map(f -> f.thenApply(Optional::of))
+                                    .orElse(Futures.of(Optional.empty())));
+                }).thenApply(x -> true);
+    }
 }
