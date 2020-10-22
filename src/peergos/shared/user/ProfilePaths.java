@@ -58,4 +58,44 @@ public class ProfilePaths {
     public static CompletableFuture<Boolean> setBio(UserContext user, String bio) {
         return serializeAndSet(BIO, bio, String::getBytes, user);
     }
+
+    public static CompletableFuture<Optional<String>> getStatus(String user, UserContext viewer) {
+        return getAndParse(Paths.get(user).resolve(STATUS), String::new, viewer);
+    }
+
+    public static CompletableFuture<Boolean> setStatus(UserContext user, String bio) {
+        return serializeAndSet(STATUS, bio, String::getBytes, user);
+    }
+
+    public static CompletableFuture<Optional<String>> getFirstName(String user, UserContext viewer) {
+        return getAndParse(Paths.get(user).resolve(FIRSTNAME), String::new, viewer);
+    }
+
+    public static CompletableFuture<Boolean> setFirstName(UserContext user, String firstname) {
+        return serializeAndSet(FIRSTNAME, firstname, String::getBytes, user);
+    }
+
+    public static CompletableFuture<Optional<String>> getLastName(String user, UserContext viewer) {
+        return getAndParse(Paths.get(user).resolve(LASTNAME), String::new, viewer);
+    }
+
+    public static CompletableFuture<Boolean> setLastName(UserContext user, String lastname) {
+        return serializeAndSet(LASTNAME, lastname, String::getBytes, user);
+    }
+
+    public static CompletableFuture<Optional<String>> getPhone(String user, UserContext viewer) {
+        return getAndParse(Paths.get(user).resolve(PHONE), String::new, viewer);
+    }
+
+    public static CompletableFuture<Boolean> setPhone(UserContext user, String phone) {
+        return serializeAndSet(PHONE, phone, String::getBytes, user);
+    }
+
+    public static CompletableFuture<Optional<String>> getEmail(String user, UserContext viewer) {
+        return getAndParse(Paths.get(user).resolve(EMAIL), String::new, viewer);
+    }
+
+    public static CompletableFuture<Boolean> setEmail(UserContext user, String email) {
+        return serializeAndSet(EMAIL, email, String::getBytes, user);
+    }
 }
