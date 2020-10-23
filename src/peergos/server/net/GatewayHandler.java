@@ -48,9 +48,18 @@ public class GatewayHandler implements HttpHandler {
             AbsoluteCapability capToWebroot = UserContext.getPublicCapability(toWebroot, network).join();
             Optional<FileWrapper> webroot = network.getFile(capToWebroot, owner).join();
             Optional<FileWrapper> assetOpt = webroot.get().getDescendentByPath(path, crypto.hasher, network).join();
-            if (assetOpt.isEmpty() || assetOpt.get().isDirectory()) {
+            if (assetOpt.isEmpty()) {
                 serve404(httpExchange, webroot);
                 return;
+            }
+            if (assetOpt.get().isDirectory()) {
+                Optional<FileWrapper> index = assetOpt.get().getChild("index.html", crypto.hasher, network).join();
+                if (index.isPresent())
+                    assetOpt = index;
+                else {
+                    serve404(httpExchange, webroot);
+                    return;
+                }
             }
             FileWrapper file = assetOpt.get();
             byte[] body = Serialize.readFully(file, crypto, network).join();
