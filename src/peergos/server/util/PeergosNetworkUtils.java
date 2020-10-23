@@ -13,13 +13,11 @@ import peergos.shared.user.fs.*;
 import peergos.shared.user.fs.FileWrapper;
 import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.ArrayOps;
-import peergos.shared.util.Pair;
 import peergos.shared.util.Serialize;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.*;
-import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.*;
@@ -74,14 +72,6 @@ public class PeergosNetworkUtils {
                         throw new IllegalStateException(ioe);
                     }
                 }).collect(Collectors.toList());
-    }
-
-    private static void sleep(int seconds){
-        try {
-            Thread.sleep(seconds * 1000);
-        } catch(InterruptedException ie) {
-
-        }
     }
 
     public static void grantAndRevokeFileReadAccess(NetworkAccess sharerNode, NetworkAccess shareeNode, int shareeCount, Random random) throws Exception {
