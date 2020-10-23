@@ -40,8 +40,8 @@ public class GatewayHandler implements HttpHandler {
                 throw new IllegalStateException("Incorrect domain! " + domain);
             String owner = domain.substring(0, domain.length() - domainSuffix.length());
             Path toProfileEntry = Paths.get(owner).resolve(".profile").resolve("webroot");
-            AbsoluteCapability capToWebrootFiled = UserContext.getPublicCapability(toProfileEntry, network).join();
-            Optional<FileWrapper> profileField = network.getFile(capToWebrootFiled, owner).join();
+            AbsoluteCapability capToWebrootField = UserContext.getPublicCapability(toProfileEntry, network).join();
+            Optional<FileWrapper> profileField = network.getFile(capToWebrootField, owner).join();
             Path toWebroot = Paths.get(new String(Serialize.readFully(profileField.get(), crypto, network).join()));
 
             AbsoluteCapability capToWebroot = UserContext.getPublicCapability(toWebroot, network).join();
