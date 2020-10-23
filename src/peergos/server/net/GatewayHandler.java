@@ -84,8 +84,6 @@ public class GatewayHandler implements HttpHandler {
             httpExchange.getResponseHeaders().set("x-frame-options", "sameorigin");
             // Enable cross site scripting protection
             httpExchange.getResponseHeaders().set("x-xss-protection", "1; mode=block");
-            // Don't let browser sniff mime types
-            httpExchange.getResponseHeaders().set("x-content-type-options", "nosniff");
             // Don't send Peergos referrer to anyone
             httpExchange.getResponseHeaders().set("referrer-policy", "no-referrer");
 
