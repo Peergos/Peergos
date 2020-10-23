@@ -4,9 +4,6 @@ import jsinterop.annotations.JsType;
 import peergos.shared.cbor.*;
 import peergos.shared.user.fs.*;
 
-import java.io.ByteArrayInputStream;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -16,45 +13,34 @@ public class TodoBoard implements Cborable {
     private static final String VERSION_1 = "1";
     private final List<TodoList> todoLists;
     private final String name;
-    private final LocalDateTime timestamp;
 
-    private TodoBoard(String name, List<TodoList> todoLists, LocalDateTime timestamp) {
+    private TodoBoard(String name, List<TodoList> todoLists) {
         this.name = name;
         this.todoLists = todoLists;
-        if (timestamp == null) {
-            this.timestamp = null;
-        } else {
-            long asSeconds = timestamp.toEpochSecond(ZoneOffset.UTC);
-            this.timestamp = LocalDateTime.ofEpochSecond(asSeconds, 0, ZoneOffset.UTC);
-        }
     }
 
     public static TodoBoard build(String name, List<TodoList> todoLists) {
-        return buildWithTimestamp(name, todoLists, LocalDateTime.now());
+        return new TodoBoard(name, todoLists);
     }
 
-    public static TodoBoard buildWithTimestamp(String name, List<TodoList> todoLists, LocalDateTime timestamp) {
-        return new TodoBoard(name, todoLists, timestamp);
-    }
-
-    public static TodoBoard buildFromJs(String name, TodoList[] todoLists, LocalDateTime timestamp) {
-        return new TodoBoard(name, Arrays.asList(todoLists), timestamp);
+    public static TodoBoard buildFromJs(String name, TodoList[] todoLists) {
+        return new TodoBoard(name, Arrays.asList(todoLists));
     }
 
     public String getName() {
         return name;
     }
 
-    public LocalDateTime getTimestamp() {
-        return timestamp;
-    }
-
     public List<TodoList> getTodoLists() {
         return new ArrayList<>(todoLists);
     }
 
-    public TodoBoard withTimestamp(LocalDateTime timestamp) {
-        return new TodoBoard(name, todoLists, timestamp);
+    public byte[] toByteArray() {
+        return this.serialize();
+    }
+
+    public static TodoBoard fromByteArray(byte[] data) {
+        return fromCbor(CborObject.fromByteArray(data));
     }
 
     @Override
@@ -71,7 +57,7 @@ public class TodoBoard implements Cborable {
         return new CborObject.CborList(contents);
     }
 
-    public static TodoBoard fromCbor(LocalDateTime timestamp, Cborable cbor) {
+    private static TodoBoard fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Invalid cbor for TodoList: " + cbor);
 
@@ -90,7 +76,7 @@ public class TodoBoard implements Cborable {
                 .value.stream()
                 .map(TodoList::fromCbor)
                 .collect(Collectors.toList());
-        return new TodoBoard(name, todoList, timestamp);
+        return new TodoBoard(name, todoList);
     }
 
 }

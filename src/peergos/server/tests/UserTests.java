@@ -1138,13 +1138,8 @@ public abstract class UserTests {
         String username = generateUsername();
         String password = "test01";
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
-        App.Todo todoApp = new App.Todo(context);
-        List<Pair<String,String>> todoBoards = todoApp.getTodoBoards().join();
-        assertTrue("todoBoards", todoBoards.isEmpty());
         String todoBoardName = "s_a-m1p2l e";
-        TodoBoard board = todoApp.getTodoBoard(todoBoardName).join().left;
-        List<TodoList> lists = board.getTodoLists();
-        assertTrue("size", lists.isEmpty());
+
         TodoListItem item = new TodoListItem("id", LocalDateTime.now(), "text", false);
         TodoListItem item2 = new TodoListItem("id2", LocalDateTime.now(), "text2", true);
         String todoListName = "todoList";
@@ -1153,15 +1148,20 @@ public abstract class UserTests {
         items.add(item);
         items.add(item2);
         TodoList list = TodoList.build(todoListName, "1", items);
-        lists = new ArrayList<>();
+        List<TodoList> lists = new ArrayList<>();
         lists.add(list);
-        TodoBoard updatedBoard = TodoBoard.build(board.getName(), lists);
-        todoApp.updateTodoBoard(context.username, updatedBoard).join();
-        todoBoards = todoApp.getTodoBoards().join();
-        assertTrue("todoBoards", !todoBoards.isEmpty());
-        assertTrue("todoBoards filename", todoBoards.get(0).right.equals(todoBoardName));
-        assertTrue("todoBoards owner", todoBoards.get(0).left.equals(context.username));
-        updatedBoard = todoApp.getTodoBoard(todoBoardName).join().left;
+        TodoBoard updatedBoard = TodoBoard.build(todoBoardName, lists);
+        byte[] data = updatedBoard.serialize();
+        FileWrapper userRoot = context.getUserRoot().join();
+        final String TODO_FILE_EXTENSION = ".todo";
+        FileWrapper updatedRoot = userRoot.uploadOrReplaceFile(todoBoardName + TODO_FILE_EXTENSION, new AsyncReader.ArrayBacked(data), data.length,
+                context.network, context.crypto, l -> {}, context.crypto.random.randomBytes(32)).get();
+
+        FileWrapper file = updatedRoot.getChild(todoBoardName + TODO_FILE_EXTENSION, context.crypto.hasher, context.network).join().get();
+        long size = file.getSize();
+        byte[] retrievedData = Serialize.readFully(file.getInputStream(context.network, context.crypto,
+                size, l-> {}).join(), file.getSize()).join();
+        updatedBoard = TodoBoard.fromByteArray(retrievedData);
         lists = updatedBoard.getTodoLists();
         assertTrue("lists size", lists.size() == 1);
         TodoList todolist = lists.get(0);
@@ -1170,12 +1170,6 @@ public abstract class UserTests {
         assertTrue("size", todoItems.size() == 2);
         assertTrue("item[0]", todoItems.get(0).equals(item));
         assertTrue("item[1]", todoItems.get(1).equals(item2));
-        boolean isDeleted = todoApp.deleteTodoBoard(context.username, todoBoardName).join();
-        assertTrue("isDeleted", isDeleted);
-        TodoBoard emptyBoard = todoApp.getTodoBoard(todoBoardName).join().left;
-        assertTrue("size", emptyBoard.getTodoLists().isEmpty());
-        todoBoards = todoApp.getTodoBoards().join();
-        assertTrue("todoBoards", todoBoards.isEmpty());
     }
 
     @Test

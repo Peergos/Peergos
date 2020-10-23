@@ -100,21 +100,6 @@ public class MultiUserTests {
     }
 
     @Test
-    public void sharedTodoBoards() throws Exception {
-        PeergosNetworkUtils.sharedTodoBoard(network, network, random);
-    }
-
-    @Test
-    public void sharedTodoBoardsVariations() throws Exception {
-        PeergosNetworkUtils.sharedTodoBoardsVariations(network, network, random);
-    }
-
-    @Test
-    public void sharedTodoBoardsChangeDetection() throws Exception {
-        PeergosNetworkUtils.sharedTodoBoardsChangeDetection(network, network, random);
-    }
-
-    @Test
     public void grantAndRevokeFileReadAccess() throws Exception {
         PeergosNetworkUtils.grantAndRevokeFileReadAccess(network, network, userCount, random);
     }

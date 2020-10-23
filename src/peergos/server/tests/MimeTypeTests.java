@@ -27,7 +27,7 @@ public class MimeTypeTests {
         byte[] raw = board.toCbor().toByteArray();
 
         String mime = MimeTypes.calculateMimeType(raw,
-                board.getName() + App.Todo.TODO_FILE_EXTENSION);
+                board.getName() + ".todo");
         Assert.assertTrue(mime.equals("application/vnd.peergos-todo"));
     }
 }
