@@ -47,14 +47,12 @@ public class GatewayHandler implements HttpHandler {
             AbsoluteCapability capToWebroot = UserContext.getPublicCapability(toWebroot, network).join();
             Optional<FileWrapper> webroot = network.getFile(capToWebroot, owner).join();
             Optional<FileWrapper> assetOpt = webroot.get().getDescendentByPath(path, crypto.hasher, network).join();
-            if (assetOpt.isEmpty()) {
+            if (assetOpt.isEmpty() || assetOpt.get().isDirectory()) {
                 httpExchange.getResponseHeaders().set("Content-Type", "text/plain");
                 httpExchange.sendResponseHeaders(404, 0);
                 return;
             }
             FileWrapper file = assetOpt.get();
-            if (file.isDirectory())
-                throw new IllegalStateException("Directory listings not allowed");
             byte[] body = Serialize.readFully(file, crypto, network).join();
 
 //            if (isGzip)
