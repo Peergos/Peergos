@@ -357,7 +357,6 @@ public class Main extends Builder {
             Main::startGateway,
             Stream.of(
                     new Command.Arg("port", "service port", false, "9000"),
-                    new Command.Arg("peergos.identity.hash", "The hash of peergos user's public key, this is used to bootstrap the pki", true, "z59vuwzfFDp3ZA8ZpnnmHEuMtyA1q34m3Th49DYXQVJntWpxdGrRqXi"),
                     new Command.Arg("peergos-url", "Address of the Peergos server to connect to", false, "http://localhost:8000"),
                     new Command.Arg("domain-suffix", "Domain suffix to accept", false, ".public.localhost:9000"),
                     new Command.Arg("domain", "Domain name to bind to,", false, "localhost"),

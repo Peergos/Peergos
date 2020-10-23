@@ -21,6 +21,7 @@ public class PublicGateway {
     private final String domainSuffix;
     private final NetworkAccess network;
     private final Crypto crypto;
+    private volatile HttpServer localhostServer;
 
     public PublicGateway(String domainSuffix, Crypto crypto, NetworkAccess network) {
         this.domainSuffix = domainSuffix;
@@ -28,12 +29,16 @@ public class PublicGateway {
         this.network = network;
     }
 
+    public void shutdown() {
+        localhostServer.stop(0);
+    }
+
     public void initAndStart(InetSocketAddress local,
                              boolean isPublicServer,
                              int connectionBacklog,
                              int handlerPoolSize) throws IOException {
         LOG.info("Starting local Peergos gateway at: localhost:" + local.getPort());
-        HttpServer localhostServer = HttpServer.create(local, connectionBacklog);
+        localhostServer = HttpServer.create(local, connectionBacklog);
 
         GatewayHandler publicGateway = new GatewayHandler(domainSuffix, crypto, network);
         localhostServer.createContext("/", isPublicServer ? new HSTSHandler(publicGateway) : publicGateway);

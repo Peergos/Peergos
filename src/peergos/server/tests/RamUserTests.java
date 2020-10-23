@@ -11,6 +11,7 @@ import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
+import java.io.*;
 import java.net.*;
 import java.nio.file.*;
 import java.util.*;
@@ -46,6 +47,50 @@ public class RamUserTests extends UserTests {
         Path peergosDir = args.fromPeergosDir("", "");
         System.out.println("Deleting " + peergosDir);
         deleteFiles(peergosDir.toFile());
+    }
+
+    @Test
+    public void publicWebHosting() throws Exception {
+        String username = generateUsername();
+        String password = "password";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        String dirName = "website";
+        context.getUserRoot().join().mkdir(dirName, context.network, false, crypto).join();
+        byte[] data = "<html><body><h1>You are AWESOME!</h1></body></html>".getBytes();
+        context.getByPath(username + "/" + dirName).join().get()
+                .uploadOrReplaceFile("index.html", AsyncReader.build(data), data.length, network, crypto, x -> {},
+                        crypto.random.randomBytes(32)).join();
+        ProfilePaths.setWebRoot(context, "/" + username + "/" + dirName).join();
+        ProfilePaths.publishWebroot(context).join();
+
+        // start a gateway
+        Args a = Args.parse(new String[]{
+                "-peergos-url", "http://localhost:" + args.getInt("port"),
+                "-port", "9000",
+                "-domain-suffix", ".public.localhost:9000"
+        });
+        PublicGateway publicGateway = Main.startGateway(a);
+
+        // retrieve website
+        byte[] retrieved = get(new URI("http://" + username + ".public.localhost:9000").toURL());
+        Assert.assertTrue(Arrays.equals(retrieved, data));
+
+        publicGateway.shutdown();
+    }
+
+    private static byte[] get(URL target) throws IOException {
+        HttpURLConnection conn = (HttpURLConnection) target.openConnection();
+        conn.setRequestMethod("GET");
+        conn.setRequestProperty("Host", target.getHost());
+
+        InputStream in = conn.getInputStream();
+        ByteArrayOutputStream resp = new ByteArrayOutputStream();
+
+        byte[] buf = new byte[4096];
+        int r;
+        while ((r = in.read(buf)) >= 0)
+            resp.write(buf, 0, r);
+        return resp.toByteArray();
     }
 
     @Test
