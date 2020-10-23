@@ -74,7 +74,6 @@ public class PeergosNetworkUtils {
                 }).collect(Collectors.toList());
     }
 
-
     public static void grantAndRevokeFileReadAccess(NetworkAccess sharerNode, NetworkAccess shareeNode, int shareeCount, Random random) throws Exception {
         Assert.assertTrue(0 < shareeCount);
         //sign up a user on sharerNode

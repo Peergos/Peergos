@@ -510,6 +510,39 @@ public abstract class UserTests {
     }
 
     @Test
+    public void fileModifiedDateShouldChangeAfterOverwrite() throws Exception {
+        String username = generateUsername();
+        String password = "test";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        FileWrapper userRoot = context.getUserRoot().get();
+
+        String filename = "somedata.txt";
+        byte[] data = randomData(1024);
+        userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
+                context.crypto, l -> {}, context.crypto.random.randomBytes(32)).get();
+
+        userRoot = context.getUserRoot().get();
+
+        userRoot.getChild(filename, context.crypto.hasher, context.network).thenCompose(file -> {
+            FileWrapper existingFile = file.get();
+            LocalDateTime modified = existingFile.getFileProperties().modified;
+            byte[] bytes = randomData(1024 * 2);
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException ie) {
+                ie.printStackTrace();
+            }
+            return file.get().overwriteFile(AsyncReader.build(bytes), bytes.length, context.network, context.crypto,
+                    x -> {})
+                    .thenApply(updatedFile -> {
+                        LocalDateTime newTimestamp = updatedFile.getFileProperties().modified;
+                        Assert.assertTrue("modified date", ! newTimestamp.equals(modified));
+                        return updatedFile;
+                    });
+        }).join();
+    }
+
+    @Test
     public void directoryEncryptionKey() throws Exception {
         // ensure that a directory's child links are encrypted with the base key, not the parent key
         String username = generateUsername();
@@ -1098,6 +1131,45 @@ public abstract class UserTests {
         CommittedWriterData cwd = network.synchronizer.getValue(pointer.owner, pointer.writer).join().get(pointer.writer);
         Optional<CryptreeNode> subdir = network.getMetadata(cwd.props, pointer).join();
         Assert.assertTrue("Child deleted", ! subdir.isPresent());
+    }
+
+    @Test
+    public void todoTest() throws Exception {
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        String todoBoardName = "s_a-m1p2l e";
+
+        TodoListItem item = new TodoListItem("id", LocalDateTime.now(), "text", false);
+        TodoListItem item2 = new TodoListItem("id2", LocalDateTime.now(), "text2", true);
+        String todoListName = "todoList";
+
+        List<TodoListItem> items = new ArrayList<>();
+        items.add(item);
+        items.add(item2);
+        TodoList list = TodoList.build(todoListName, "1", items);
+        List<TodoList> lists = new ArrayList<>();
+        lists.add(list);
+        TodoBoard updatedBoard = TodoBoard.build(todoBoardName, lists);
+        byte[] data = updatedBoard.serialize();
+        FileWrapper userRoot = context.getUserRoot().join();
+        final String TODO_FILE_EXTENSION = ".todo";
+        FileWrapper updatedRoot = userRoot.uploadOrReplaceFile(todoBoardName + TODO_FILE_EXTENSION, new AsyncReader.ArrayBacked(data), data.length,
+                context.network, context.crypto, l -> {}, context.crypto.random.randomBytes(32)).get();
+
+        FileWrapper file = updatedRoot.getChild(todoBoardName + TODO_FILE_EXTENSION, context.crypto.hasher, context.network).join().get();
+        long size = file.getSize();
+        byte[] retrievedData = Serialize.readFully(file.getInputStream(context.network, context.crypto,
+                size, l-> {}).join(), file.getSize()).join();
+        updatedBoard = TodoBoard.fromByteArray(retrievedData);
+        lists = updatedBoard.getTodoLists();
+        assertTrue("lists size", lists.size() == 1);
+        TodoList todolist = lists.get(0);
+        assertTrue("todoList name", todolist.getName().equals(todoListName));
+        List<TodoListItem> todoItems = todolist.getTodoItems();
+        assertTrue("size", todoItems.size() == 2);
+        assertTrue("item[0]", todoItems.get(0).equals(item));
+        assertTrue("item[1]", todoItems.get(1).equals(item2));
     }
 
     @Test

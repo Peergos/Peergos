@@ -41,7 +41,11 @@ public class MimeTypes {
     final static int[] WOFF = new int[]{'w','O','F','F'};
     final static int[] WOFF2 = new int[]{'w','O','F','2'};
 
-    final static int HEADER_BYTES_TO_IDENTIFY_MIME_TYPE = 28;
+    // mimetypes for files that are cbor list(mimetype int, map(data)), mimetypes < 24 use a single byte
+    public static final int CBOR_PEERGOS_TODO_INT = 10;
+    final static int[] CBOR_PEERGOS_TODO = new int[]{0x82 /* cbor list with 2 elements*/, CBOR_PEERGOS_TODO_INT};
+
+    final static int HEADER_BYTES_TO_IDENTIFY_MIME_TYPE = 40;
 
     public static final String calculateMimeType(byte[] start, String filename) {
         if (equalArrays(start, BMP))
@@ -134,6 +138,9 @@ public class MimeTypes {
             return "font/woff";
         if (equalArrays(start, WOFF2))
             return "font/woff2";
+
+        if (equalArrays(start, CBOR_PEERGOS_TODO))
+            return "application/vnd.peergos-todo";
 
         if (allAscii(start)) {
             if (filename.endsWith(".ics") && equalArrays(start, ICS))

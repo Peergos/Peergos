@@ -8,7 +8,6 @@ import java.util.*;
 import java.util.function.Function;
 import java.util.stream.*;
 
-import static peergos.shared.cbor.CborConstants.TYPE_BYTE_STRING;
 import static peergos.shared.cbor.CborConstants.TYPE_TEXT_STRING;
 
 public interface CborObject extends Cborable {
