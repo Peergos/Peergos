@@ -8,6 +8,7 @@ import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
+import java.io.*;
 import java.nio.file.*;
 import java.util.*;
 import java.util.logging.*;
@@ -48,8 +49,7 @@ public class GatewayHandler implements HttpHandler {
             Optional<FileWrapper> webroot = network.getFile(capToWebroot, owner).join();
             Optional<FileWrapper> assetOpt = webroot.get().getDescendentByPath(path, crypto.hasher, network).join();
             if (assetOpt.isEmpty() || assetOpt.get().isDirectory()) {
-                httpExchange.getResponseHeaders().set("Content-Type", "text/plain");
-                httpExchange.sendResponseHeaders(404, 0);
+                serve404(httpExchange, webroot);
                 return;
             }
             FileWrapper file = assetOpt.get();
@@ -102,5 +102,21 @@ public class GatewayHandler implements HttpHandler {
             if (LOGGING)
                 LOG.info("Public file Handler returned " + path + " query in: " + (t2 - t1) + " mS");
         }
+    }
+
+    private void serve404(HttpExchange httpExchange, Optional<FileWrapper> webroot) throws IOException {
+        if (webroot.isPresent()) {
+            Optional<FileWrapper> custom404 = webroot.get().getChild("404.html", crypto.hasher, network).join();
+            if (custom404.isPresent()) {
+                byte[] data = Serialize.readFully(custom404.get(), crypto, network).join();
+                httpExchange.getResponseHeaders().set("Content-Type", "text/html");
+                httpExchange.sendResponseHeaders(404, data.length);
+                httpExchange.getResponseBody().write(data);
+                httpExchange.close();
+                return;
+            }
+        }
+        httpExchange.getResponseHeaders().set("Content-Type", "text/plain");
+        httpExchange.sendResponseHeaders(404, 0);
     }
 }
