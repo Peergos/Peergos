@@ -29,6 +29,10 @@ public interface ContentAddressedStorage {
         return Futures.of(BlockStoreProperties.empty());
     }
 
+    /**
+     *
+     * @return an instance of the same type that doesn't do any cross domain requests
+     */
     ContentAddressedStorage directToOrigin();
 
     default CompletableFuture<List<PresignedUrl>> authReads(List<Multihash> blocks) {
