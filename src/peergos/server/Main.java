@@ -358,7 +358,7 @@ public class Main extends Builder {
             Stream.of(
                     new Command.Arg("port", "service port", false, "9000"),
                     new Command.Arg("peergos-url", "Address of the Peergos server to connect to", false, "http://localhost:8000"),
-                    new Command.Arg("domain-suffix", "Domain suffix to accept", false, ".public.localhost:9000"),
+                    new Command.Arg("domain-suffix", "Domain suffix to accept", false, ".peergos.localhost:9000"),
                     new Command.Arg("domain", "Domain name to bind to,", false, "localhost"),
                     new Command.Arg("public-server", "Are we a public server? (allow http GETs to API)", false, "false"),
                     new Command.Arg("collect-metrics", "Export aggregated metrics", false, "false"),
