@@ -21,6 +21,11 @@ public class DelayingStorage implements ContentAddressedStorage {
     }
 
     @Override
+    public ContentAddressedStorage directToOrigin() {
+        return this;
+    }
+
+    @Override
     public CompletableFuture<Multihash> id() {
         return source.id();
     }

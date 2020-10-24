@@ -81,6 +81,11 @@ public class NetworkAccess {
                 spaceUsage, serverMessager, hasher, usernames, isJavascript);
     }
 
+    public NetworkAccess withoutS3BlockStore() {
+        return new NetworkAccess(coreNode, social, dhtClient.directToOrigin(), mutable, tree, synchronizer, instanceAdmin,
+                spaceUsage, serverMessager, hasher, usernames, isJavascript);
+    }
+
     @JsMethod
     public CompletableFuture<Boolean> isUsernameRegistered(String username) {
         if (usernames.contains(username))

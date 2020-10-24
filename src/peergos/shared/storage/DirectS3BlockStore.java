@@ -40,6 +40,11 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
         this.core = core;
     }
 
+    @Override
+    public ContentAddressedStorage directToOrigin() {
+        return fallback;
+    }
+
     public static String hashToKey(Multihash hash) {
         // To be compatible with IPFS we use the same scheme here, the cid bytes encoded as uppercase base32
         String padded = new Base32().encodeAsString(hash.toBytes());

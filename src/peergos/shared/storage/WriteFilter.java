@@ -32,6 +32,11 @@ public class WriteFilter extends DelegatingStorage {
     }
 
     @Override
+    public ContentAddressedStorage directToOrigin() {
+        return this;
+    }
+
+    @Override
     public CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
                                                   PublicKeyHash writer,
                                                   List<byte[]> signedHashes,

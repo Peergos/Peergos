@@ -39,6 +39,11 @@ public class CommittableStorage extends DelegatingStorage {
     }
 
     @Override
+    public ContentAddressedStorage directToOrigin() {
+        return new CommittableStorage(target.directToOrigin());
+    }
+
+    @Override
     public CompletableFuture<Multihash> put(PublicKeyHash owner,
                                             PublicKeyHash writer,
                                             byte[] signature,

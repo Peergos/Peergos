@@ -28,6 +28,11 @@ public class RetryStorage implements ContentAddressedStorage {
         this.maxAttempts = maxAttempts;
     }
 
+    @Override
+    public ContentAddressedStorage directToOrigin() {
+        return new RetryStorage(target.directToOrigin(), maxAttempts);
+    }
+
     private <V> void retryAfter(Supplier<CompletableFuture<V>> method, int milliseconds) {
         executor.schedule(method::get, milliseconds, TimeUnit.MILLISECONDS);
     }
