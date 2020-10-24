@@ -82,7 +82,10 @@ public class NetworkAccess {
     }
 
     public NetworkAccess withoutS3BlockStore() {
-        return new NetworkAccess(coreNode, social, dhtClient.directToOrigin(), mutable, tree, synchronizer, instanceAdmin,
+        ContentAddressedStorage directDht = dhtClient.directToOrigin();
+        WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, directDht, hasher);
+        MutableTree tree = new MutableTreeImpl(mutable, directDht, hasher, synchronizer);
+        return new NetworkAccess(coreNode, social, directDht, mutable, tree, synchronizer, instanceAdmin,
                 spaceUsage, serverMessager, hasher, usernames, isJavascript);
     }
 
