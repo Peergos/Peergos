@@ -29,6 +29,12 @@ public interface ContentAddressedStorage {
         return Futures.of(BlockStoreProperties.empty());
     }
 
+    /**
+     *
+     * @return an instance of the same type that doesn't do any cross domain requests
+     */
+    ContentAddressedStorage directToOrigin();
+
     default CompletableFuture<List<PresignedUrl>> authReads(List<Multihash> blocks) {
         return Futures.errored(new IllegalStateException("Unimplemented call!"));
     }
@@ -344,6 +350,11 @@ public interface ContentAddressedStorage {
             this.isPeergosServer = isPeergosServer;
         }
 
+        @Override
+        public ContentAddressedStorage directToOrigin() {
+            return this;
+        }
+
         private static Multihash getObjectHash(Object rawJson) {
             Map json = (Map)rawJson;
             String hash = (String)json.get("Hash");
@@ -603,6 +614,11 @@ public interface ContentAddressedStorage {
             this.p2p = p2p;
             this.ourNodeId = ourNodeId;
             this.core = core;
+        }
+
+        @Override
+        public ContentAddressedStorage directToOrigin() {
+            return new Proxying(local.directToOrigin(), p2p, ourNodeId, core);
         }
 
         @Override

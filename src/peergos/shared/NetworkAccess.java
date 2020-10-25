@@ -81,6 +81,14 @@ public class NetworkAccess {
                 spaceUsage, serverMessager, hasher, usernames, isJavascript);
     }
 
+    public NetworkAccess withoutS3BlockStore() {
+        ContentAddressedStorage directDht = dhtClient.directToOrigin();
+        WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, directDht, hasher);
+        MutableTree tree = new MutableTreeImpl(mutable, directDht, hasher, synchronizer);
+        return new NetworkAccess(coreNode, social, directDht, mutable, tree, synchronizer, instanceAdmin,
+                spaceUsage, serverMessager, hasher, usernames, isJavascript);
+    }
+
     @JsMethod
     public CompletableFuture<Boolean> isUsernameRegistered(String username) {
         if (usernames.contains(username))

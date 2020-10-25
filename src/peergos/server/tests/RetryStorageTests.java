@@ -22,6 +22,12 @@ public class RetryStorageTests {
         public FailingStorage(int retryLimit) {
             this.retryLimit = retryLimit;
         }
+
+        @Override
+        public ContentAddressedStorage directToOrigin() {
+            return this;
+        }
+
         @Override
         public CompletableFuture<Multihash> id() {
             if(counter++ % retryLimit != 0) {

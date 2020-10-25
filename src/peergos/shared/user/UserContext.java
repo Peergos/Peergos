@@ -163,13 +163,16 @@ public class UserContext {
             progressCallback.accept("Generating keys");
             return UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider,
                     crypto.random, crypto.signer, crypto.boxer, algorithm)
-                    .thenCompose(userWithRoot ->
-                            login(username, userWithRoot, pair, network, crypto, progressCallback));
+                    .thenCompose(userWithRoot -> {
+                        progressCallback.accept("Logging in");
+                        return login(username, userWithRoot, pair, network, crypto, progressCallback);
+                    });
         }).exceptionally(Futures::logAndThrow);
     }
 
     public static CompletableFuture<UserContext> signIn(String username, UserWithRoot userWithRoot, NetworkAccess network
             , Crypto crypto, Consumer<String> progressCallback) {
+        progressCallback.accept("Logging in");
         return getWriterDataCbor(network, username)
                 .thenCompose(pair -> login(username, userWithRoot, pair, network, crypto, progressCallback))
                 .exceptionally(Futures::logAndThrow);
@@ -182,7 +185,6 @@ public class UserContext {
                                                         Crypto crypto,
                                                         Consumer<String> progressCallback) {
         try {
-            progressCallback.accept("Logging in");
             WriterData userData = WriterData.fromCbor(pair.right);
             return createOurFileTreeOnly(username, userWithRoot.getRoot(), userData, network, crypto)
                     .thenCompose(root -> TofuCoreNode.load(username, root, network, crypto)
@@ -230,10 +232,11 @@ public class UserContext {
 
     public static CompletableFuture<UserContext> signUpGeneral(String username,
                                                                String password,
-                                                               NetworkAccess network,
+                                                               NetworkAccess initialNetwork,
                                                                Crypto crypto,
                                                                SecretGenerationAlgorithm algorithm,
                                                                Consumer<String> progressCallback) {
+        NetworkAccess network = initialNetwork.withoutS3BlockStore();
         progressCallback.accept("Generating keys");
         return UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer, algorithm)
                 .thenCompose(userWithRoot -> {
@@ -283,7 +286,7 @@ public class UserContext {
                                                 TRANSACTIONS_DIR_NAME, network, crypto))
                                         .thenCompose(globalRoot -> createSpecialDirectory(globalRoot, username,
                                                 CapabilityStore.CAPABILITY_CACHE_DIR, network, crypto))
-                                        .thenCompose(y -> signIn(username, userWithRoot, network, crypto, progressCallback));
+                                        .thenCompose(y -> signIn(username, userWithRoot, initialNetwork, crypto, progressCallback));
                             }));
                 }).exceptionally(Futures::logAndThrow);
     }

@@ -45,6 +45,11 @@ public class HashVerifyingStorage extends DelegatingStorage {
     }
 
     @Override
+    public ContentAddressedStorage directToOrigin() {
+        return new HashVerifyingStorage(source.directToOrigin(), hasher);
+    }
+
+    @Override
     public CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
                                                   PublicKeyHash writer,
                                                   List<byte[]> signedHashes,

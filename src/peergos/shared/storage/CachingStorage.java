@@ -13,15 +13,21 @@ public class CachingStorage extends DelegatingStorage {
     private final LRUCache<Multihash, byte[]> cache;
     private final LRUCache<Multihash, CompletableFuture<Optional<CborObject>>> pending;
     private final LRUCache<Multihash, CompletableFuture<Optional<byte[]>>> pendingRaw;
-    private final int maxValueSize;
+    private final int maxValueSize, cacheSize;
 
     public CachingStorage(ContentAddressedStorage target, int cacheSize, int maxValueSize) {
         super(target);
         this.target = target;
         this.cache = new LRUCache<>(cacheSize);
         this.maxValueSize = maxValueSize;
+        this.cacheSize = cacheSize;
         this.pending = new LRUCache<>(100);
         this.pendingRaw = new LRUCache<>(100);
+    }
+
+    @Override
+    public ContentAddressedStorage directToOrigin() {
+        return new CachingStorage(target.directToOrigin(), cacheSize, maxValueSize);
     }
 
     @Override

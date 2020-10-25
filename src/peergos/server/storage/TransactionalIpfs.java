@@ -22,6 +22,11 @@ public class TransactionalIpfs extends DelegatingStorage implements DeletableCon
     }
 
     @Override
+    public ContentAddressedStorage directToOrigin() {
+        return this;
+    }
+
+    @Override
     public CompletableFuture<TransactionId> startTransaction(PublicKeyHash owner) {
         return Futures.of(transactions.startTransaction(owner));
     }

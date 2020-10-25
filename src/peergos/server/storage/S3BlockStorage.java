@@ -72,6 +72,11 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         this.p2pFallback = p2pFallback;
     }
 
+    @Override
+    public ContentAddressedStorage directToOrigin() {
+        return this;
+    }
+
     private static String hashToKey(Multihash hash) {
         return DirectS3BlockStore.hashToKey(hash);
     }

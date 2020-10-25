@@ -35,6 +35,11 @@ public class IpfsDHT implements ContentAddressedStorage {
     }
 
     @Override
+    public ContentAddressedStorage directToOrigin() {
+        return this;
+    }
+
+    @Override
     public CompletableFuture<Multihash> id() {
         CompletableFuture<Multihash> res = new CompletableFuture<>();
         try {

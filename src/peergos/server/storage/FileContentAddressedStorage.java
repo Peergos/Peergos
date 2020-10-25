@@ -42,6 +42,11 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     }
 
     @Override
+    public ContentAddressedStorage directToOrigin() {
+        return this;
+    }
+
+    @Override
     public CompletableFuture<Multihash> id() {
         return CompletableFuture.completedFuture(new Multihash(Multihash.Type.sha2_256, RAMStorage.hash("FileStorage".getBytes())));
     }
