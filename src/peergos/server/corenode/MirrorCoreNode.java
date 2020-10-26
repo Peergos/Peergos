@@ -110,15 +110,15 @@ public class MirrorCoreNode implements CoreNode {
             res.put("pkiKey", pkiOwnerIdentity);
             res.put("pkiTarget", pkiKeyTarget);
 
-            TreeMap<CborObject, ? extends Cborable> chainsMap = chains.entrySet()
+            TreeMap<String, ? extends Cborable> chainsMap = chains.entrySet()
                 .stream()
                 .collect(Collectors.toMap(
-                    e -> new CborObject.CborString(e.getKey()),
+                    e -> e.getKey(),
                     e -> new CborObject.CborList(e.getValue()),
                     (a,b) -> a,
                     TreeMap::new
                 ));
-            res.put("chains", new CborObject.CborMap(chainsMap));
+            res.put("chains", CborObject.CborMap.build(chainsMap));
             TreeMap<CborObject, ? extends Cborable> reverseMap = reverseLookup.entrySet()
                 .stream()
                 .collect(Collectors.toMap(
@@ -127,7 +127,7 @@ public class MirrorCoreNode implements CoreNode {
                     (a,b) -> a,
                     TreeMap::new
                 ));
-            res.put("reverse", new CborObject.CborMap(reverseMap));
+            res.put("reverse", new CborObject.CborList(reverseMap));
             res.put("usernames", new CborObject.CborList(usernames.stream()
                     .map(CborObject.CborString::new)
                     .collect(Collectors.toList())));
@@ -148,7 +148,7 @@ public class MirrorCoreNode implements CoreNode {
             Map<String, List<UserPublicKeyLink>> chains = ((CborObject.CborMap)map.get("chains"))
                     .getMap(fromString, chainParser);
 
-            Map<PublicKeyHash, String> reverse = ((CborObject.CborMap)map.get("reverse"))
+            Map<PublicKeyHash, String> reverse = ((CborObject.CborList)map.get("reverse"))
                     .getMap(PublicKeyHash::fromCbor, fromString);
 
             List<String> usernames = map.getList("usernames", fromString);

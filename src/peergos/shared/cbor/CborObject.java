@@ -110,10 +110,11 @@ public interface CborObject extends Cborable {
     final class CborMap implements CborObject {
         public final SortedMap<CborObject,? extends Cborable> values;
 
-        public CborMap(SortedMap<CborObject,? extends Cborable> values) {
+        private CborMap(SortedMap<CborObject,? extends Cborable> values) {
             this.values = values;
         }
 
+        // Only String keys should be used in IPLD dag-cbor
         public static CborMap build(Map<String, ? extends Cborable> values) {
             SortedMap<CborObject, Cborable> transformed = values.entrySet()
                     .stream()

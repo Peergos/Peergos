@@ -293,9 +293,7 @@ public class WriterData implements Cborable {
         followRequestReceiver.ifPresent(boxer -> result.put("inbound", new CborObject.CborMerkleLink(boxer)));
         ownedKeys.ifPresent(root -> result.put("owned", new CborObject.CborMerkleLink(root)));
         if (! namedOwnedKeys.isEmpty())
-            result.put("named", new CborObject.CborMap(new TreeMap<>(namedOwnedKeys.entrySet()
-                    .stream()
-                    .collect(Collectors.toMap(e -> new CborObject.CborString(e.getKey()), e -> e.getValue())))));
+            result.put("named", CborObject.CborMap.build(namedOwnedKeys));
         staticData.ifPresent(sd -> result.put("static", sd.toCbor()));
         tree.ifPresent(tree -> result.put("tree", new CborObject.CborMerkleLink(tree)));
         return CborObject.CborMap.build(result);

@@ -151,7 +151,7 @@ public class RamUsageStore implements UsageStore {
                             TreeMap::new
                     ));
 
-            CborObject.CborMap views = new CborObject.CborMap(viewsMap);
+            CborObject.CborList views = new CborObject.CborList(viewsMap);
             CborObject.CborMap usages = CborObject.CborMap.build(usage);
             Map<String, Cborable> map = new HashMap<>();
             map.put("views", views);
@@ -161,7 +161,7 @@ public class RamUsageStore implements UsageStore {
 
         public static State fromCbor(CborObject cbor) {
             CborObject.CborMap map = (CborObject.CborMap) cbor;
-            CborObject.CborMap viewsMap = (CborObject.CborMap) map.get("views");
+            CborObject.CborList viewsMap = (CborObject.CborList) map.get("views");
             CborObject.CborMap usagesMap = (CborObject.CborMap) map.get("usages");
 
             return new State(viewsMap.getMap(PublicKeyHash::fromCbor, WriterUsage::fromCbor),

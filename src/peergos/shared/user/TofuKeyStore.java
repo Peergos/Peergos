@@ -92,14 +92,14 @@ public class TofuKeyStore implements Cborable {
 
     @Override
     public CborObject toCbor() {
-        SortedMap<CborObject, CborObject> state = new TreeMap<>();
-        Consumer<Map<String, List<UserPublicKeyLink>>> serialise = map -> map.forEach((name, chain) -> state.put(new CborObject.CborString(name),
+        SortedMap<String, CborObject> state = new TreeMap<>();
+        Consumer<Map<String, List<UserPublicKeyLink>>> serialise = map -> map.forEach((name, chain) -> state.put(name,
                 new CborObject.CborList(chain.stream()
                         .map(link -> link.toCbor())
                         .collect(Collectors.toList()))));
         serialise.accept(chains);
         serialise.accept(expired);
-        return new CborObject.CborMap(state);
+        return CborObject.CborMap.build(state);
     }
 
     public static TofuKeyStore fromCbor(CborObject cbor) {
