@@ -1,5 +1,6 @@
 package peergos.shared.user;
 
+import jsinterop.annotations.JsMethod;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
@@ -43,66 +44,82 @@ public class ProfilePaths {
                 .thenApply(x -> true);
     }
 
-    public static CompletableFuture<Optional<byte[]>> getProfilePhoto(String user, UserContext viewer) {
-        return getAndParse(Paths.get(user).resolve(PHOTO_HIGH_RES), x -> x, viewer);
+    @JsMethod
+    public static CompletableFuture<Optional<String>> getProfilePhoto(String user, UserContext viewer) {
+        return getAndParse(Paths.get(user).resolve(PHOTO_HIGH_RES), String::new, viewer);
     }
 
-    public static CompletableFuture<Boolean> setProfilePhoto(UserContext user, byte[] image) {
-        return serializeAndSet(PHOTO_HIGH_RES, image, x -> x, user);
+    @JsMethod
+    public static CompletableFuture<Boolean> setProfilePhoto(UserContext user, String base64Str) {
+        return serializeAndSet(PHOTO_HIGH_RES, base64Str, String::getBytes, user);
     }
 
+    @JsMethod
     public static CompletableFuture<Optional<String>> getBio(String user, UserContext viewer) {
         return getAndParse(Paths.get(user).resolve(BIO), String::new, viewer);
     }
 
+    @JsMethod
     public static CompletableFuture<Boolean> setBio(UserContext user, String bio) {
         return serializeAndSet(BIO, bio, String::getBytes, user);
     }
 
+    @JsMethod
     public static CompletableFuture<Optional<String>> getStatus(String user, UserContext viewer) {
         return getAndParse(Paths.get(user).resolve(STATUS), String::new, viewer);
     }
 
-    public static CompletableFuture<Boolean> setStatus(UserContext user, String bio) {
-        return serializeAndSet(STATUS, bio, String::getBytes, user);
+    @JsMethod
+    public static CompletableFuture<Boolean> setStatus(UserContext user, String status) {
+        return serializeAndSet(STATUS, status, String::getBytes, user);
     }
 
+    @JsMethod
     public static CompletableFuture<Optional<String>> getFirstName(String user, UserContext viewer) {
         return getAndParse(Paths.get(user).resolve(FIRSTNAME), String::new, viewer);
     }
 
+    @JsMethod
     public static CompletableFuture<Boolean> setFirstName(UserContext user, String firstname) {
         return serializeAndSet(FIRSTNAME, firstname, String::getBytes, user);
     }
 
+    @JsMethod
     public static CompletableFuture<Optional<String>> getLastName(String user, UserContext viewer) {
         return getAndParse(Paths.get(user).resolve(LASTNAME), String::new, viewer);
     }
 
+    @JsMethod
     public static CompletableFuture<Boolean> setLastName(UserContext user, String lastname) {
         return serializeAndSet(LASTNAME, lastname, String::getBytes, user);
     }
 
+    @JsMethod
     public static CompletableFuture<Optional<String>> getPhone(String user, UserContext viewer) {
         return getAndParse(Paths.get(user).resolve(PHONE), String::new, viewer);
     }
 
+    @JsMethod
     public static CompletableFuture<Boolean> setPhone(UserContext user, String phone) {
         return serializeAndSet(PHONE, phone, String::getBytes, user);
     }
 
+    @JsMethod
     public static CompletableFuture<Optional<String>> getEmail(String user, UserContext viewer) {
         return getAndParse(Paths.get(user).resolve(EMAIL), String::new, viewer);
     }
 
+    @JsMethod
     public static CompletableFuture<Boolean> setEmail(UserContext user, String email) {
         return serializeAndSet(EMAIL, email, String::getBytes, user);
     }
 
+    @JsMethod
     public static CompletableFuture<Optional<String>> getWebRoot(String user, UserContext viewer) {
         return getAndParse(Paths.get(user).resolve(WEBROOT), String::new, viewer);
     }
 
+    @JsMethod
     public static CompletableFuture<Boolean> setWebRoot(UserContext user, String webroot) {
         return serializeAndSet(WEBROOT, webroot, String::getBytes, user);
     }

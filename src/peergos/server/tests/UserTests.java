@@ -1191,6 +1191,38 @@ public abstract class UserTests {
     }
 
     @Test
+    public void profileTest() throws Exception {
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+
+        String firstName = "john";
+        String lastName = "doe";
+        String bio = "asleep";
+        String phone = "555 5555";
+        String email = "joe@doesnt.exist";
+        String status = "busy";
+        String webroot = "webroot";
+
+        //kev-todo add extra fields
+        ProfilePaths.setFirstName(context, firstName).join();
+        ProfilePaths.setLastName(context, lastName).join();
+        ProfilePaths.setBio(context, bio).join();
+        ProfilePaths.setPhone(context, phone).join();
+        ProfilePaths.setEmail(context, email).join();
+        ProfilePaths.setStatus(context, status).join();
+        ProfilePaths.setWebRoot(context, webroot).join();
+
+        assertTrue("Correct value", ProfilePaths.getFirstName(username, context).join().get().equals(firstName));
+        assertTrue("Correct value", ProfilePaths.getLastName(username, context).join().get().equals(lastName));
+        assertTrue("Correct value", ProfilePaths.getBio(username, context).join().get().equals(bio));
+        assertTrue("Correct value", ProfilePaths.getPhone(username, context).join().get().equals(phone));
+        assertTrue("Correct value", ProfilePaths.getEmail(username, context).join().get().equals(email));
+        assertTrue("Correct value", ProfilePaths.getStatus(username, context).join().get().equals(status));
+        assertTrue("Correct value", ProfilePaths.getWebRoot(username, context).join().get().equals(webroot));
+    }
+
+    @Test
     public void rename() throws Exception {
         String username = generateUsername();
         String password = "test01";
