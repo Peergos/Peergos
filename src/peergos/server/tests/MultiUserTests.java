@@ -860,12 +860,12 @@ public class MultiUserTests {
         CommittedWriterData cwd2 = network.synchronizer.getValue(priorPointer.owner, priorPointer.writer).join().get(priorPointer.writer);
         CryptreeNode fileAccess = network.getMetadata(cwd2.props, priorPointer.withMapKey(newCap.getMapKey())).get().get();
         // check we are trying to decrypt the correct thing
-        PaddedCipherText priorPropsCipherText = (PaddedCipherText) ((CborObject.CborMap) priorFileAccess.toCbor()).get("p");
+        PaddedCipherText priorPropsCipherText = ((CborObject.CborMap) priorFileAccess.toCbor()).getObject("p", PaddedCipherText::fromCbor);
         CborObject.CborMap priorFromParent = priorPropsCipherText.decrypt(priorMetaKey, x -> (CborObject.CborMap)x);
         FileProperties priorProps = FileProperties.fromCbor(priorFromParent.get("s"));
         try {
             // Try decrypting the new metadata with the old key
-            PaddedCipherText propsCipherText = (PaddedCipherText) ((CborObject.CborMap) fileAccess.toCbor()).get("p");
+            PaddedCipherText propsCipherText = ((CborObject.CborMap) fileAccess.toCbor()).getObject("p", PaddedCipherText::fromCbor);
             CborObject.CborMap fromParent = propsCipherText.decrypt(priorMetaKey, x -> (CborObject.CborMap)x);
             FileProperties props = FileProperties.fromCbor(fromParent.get("s"));
             throw new IllegalStateException("We shouldn't be able to decrypt this after a rename! new name = " + props.name);
