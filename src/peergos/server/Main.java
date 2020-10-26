@@ -351,6 +351,22 @@ public class Main extends Builder {
                     new Command.Arg("mountPoint", "The directory to mount the Peergos filesystem in", true, "peergos")
             ).collect(Collectors.toList())
     );
+
+    public static final Command<PublicGateway> GATEWAY = new Command<>("gateway",
+            "Serve websites directly from Peergos",
+            Main::startGateway,
+            Stream.of(
+                    new Command.Arg("port", "service port", false, "9000"),
+                    new Command.Arg("peergos-url", "Address of the Peergos server to connect to", false, "http://localhost:8000"),
+                    new Command.Arg("domain-suffix", "Domain suffix to accept", false, ".peergos.localhost:9000"),
+                    new Command.Arg("domain", "Domain name to bind to,", false, "localhost"),
+                    new Command.Arg("public-server", "Are we a public server? (allow http GETs to API)", false, "false"),
+                    new Command.Arg("collect-metrics", "Export aggregated metrics", false, "false"),
+                    new Command.Arg("metrics.address", "Listen address for serving aggregated metrics", false, "localhost"),
+                    new Command.Arg("metrics.port", "Port for serving aggregated metrics", false, "8001")
+            ).collect(Collectors.toList())
+    );
+
     public static final Command<Boolean> SHELL = new Command<>("shell",
             "An interactive command-line-interface to a Peergos server.",
             Main::startShell,
@@ -514,6 +530,29 @@ public class Main extends Builder {
         }
     }
 
+    public static PublicGateway startGateway(Args a) {
+        Crypto crypto = initCrypto();
+        String peergosUrl = a.getArg("peergos-url");
+        String domainSuffix = a.getArg("domain-suffix");
+        try {
+            URL api = new URL(peergosUrl);
+            NetworkAccess network = Builder.buildJavaNetworkAccess(api, ! peergosUrl.startsWith("http://localhost")).join();
+            PublicGateway gateway = new PublicGateway(domainSuffix, crypto, network);
+
+            String domain = a.getArg("domain");
+            int webPort = a.getInt("port");
+            InetSocketAddress userAPIAddress = new InetSocketAddress(domain, webPort);
+            InetSocketAddress localAddress = new InetSocketAddress("localhost", userAPIAddress.getPort());
+            boolean isPublicServer = a.getBoolean("public-server", false);
+            int maxConnectionQueue = a.getInt("max-connection-queue", 500);
+            int handlerThreads = a.getInt("handler-threads", 50);
+            gateway.initAndStart(localAddress, isPublicServer, maxConnectionQueue, handlerThreads);
+            return gateway;
+        } catch (Exception ex) {
+            throw new RuntimeException(ex);
+        }
+    }
+
     public static FuseProcess startFuse(Args a) {
         String username = a.getArg("username");
         String password = a.getArg("password");
@@ -583,6 +622,7 @@ public class Main extends Builder {
                     SHELL,
                     FUSE,
                     ServerMessages.SERVER_MESSAGES,
+                    GATEWAY,
                     INSTALL_AND_RUN_IPFS,
                     PKI,
                     PKI_INIT
