@@ -30,7 +30,7 @@ public class CapabilitiesFromUser implements Cborable {
 
     @Override
     public CborObject toCbor() {
-        Map<String, CborObject> cbor = new TreeMap<>();
+        Map<String, Cborable> cbor = new TreeMap<>();
         cbor.put("bytes", new CborObject.CborLong(bytesRead));
         cbor.put("caps", new CborObject.CborList(retrievedCapabilities));
         return CborObject.CborMap.build(cbor);

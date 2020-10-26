@@ -16,9 +16,9 @@ public class PresignedUrl implements Cborable {
 
     @Override
     public CborObject toCbor() {
-        Map<String, CborObject> props = new TreeMap<>();
+        Map<String, Cborable> props = new TreeMap<>();
         props.put("b", new CborObject.CborString(base));
-        Map<String, CborObject> headers = new TreeMap<>();
+        Map<String, Cborable> headers = new TreeMap<>();
         for (Map.Entry<String, String> e : fields.entrySet()) {
             headers.put(e.getKey(), new CborObject.CborString(e.getValue()));
         }

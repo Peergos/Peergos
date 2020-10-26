@@ -92,7 +92,7 @@ public class TofuKeyStore implements Cborable {
 
     @Override
     public CborObject toCbor() {
-        SortedMap<String, CborObject> state = new TreeMap<>();
+        SortedMap<String, Cborable> state = new TreeMap<>();
         Consumer<Map<String, List<UserPublicKeyLink>>> serialise = map -> map.forEach((name, chain) -> state.put(name,
                 new CborObject.CborList(chain.stream()
                         .map(link -> link.toCbor())
@@ -108,22 +108,18 @@ public class TofuKeyStore implements Cborable {
 
         Map<String, List<UserPublicKeyLink>> chains = new HashMap<>();
         Map<String, List<UserPublicKeyLink>> expired = new HashMap<>();
-        SortedMap<CborObject, ? extends Cborable> values = ((CborObject.CborMap) cbor).values;
-        for (CborObject key: values.keySet()) {
-            if (key instanceof CborObject.CborString) {
-                String name = ((CborObject.CborString) key).value;
-                Cborable value = values.get(key);
-                if (value instanceof CborObject.CborList) {
-                    List<UserPublicKeyLink> chain = ((CborObject.CborList) value).value.stream()
-                            .map(UserPublicKeyLink::fromCbor)
-                            .collect(Collectors.toList());
-                    if (UserPublicKeyLink.isExpiredClaim(chain.get(chain.size() - 1)))
-                        expired.put(name, chain);
-                    else
-                        chains.put(name, chain);
-                } else throw new IllegalStateException("Invalid value in Tofu key store map: " + value);
-            } else throw new IllegalStateException("Invalid key in Tofu key store map: " + key);
-        }
+        ((CborObject.CborMap) cbor).applyToAll((name, value) ->
+        {
+            if (value instanceof CborObject.CborList) {
+                List<UserPublicKeyLink> chain = ((CborObject.CborList) value).value.stream()
+                        .map(UserPublicKeyLink::fromCbor)
+                        .collect(Collectors.toList());
+                if (UserPublicKeyLink.isExpiredClaim(chain.get(chain.size() - 1)))
+                    expired.put(name, chain);
+                else
+                    chains.put(name, chain);
+            } else throw new IllegalStateException("Invalid value in Tofu key store map: " + value);
+        });
         return new TofuKeyStore(chains, expired);
     }
 }

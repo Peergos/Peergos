@@ -20,7 +20,7 @@ public class SigningPrivateKeyAndPublicHash implements Cborable {
     @Override
     @SuppressWarnings("unusable-by-js")
     public CborObject toCbor() {
-        Map<String, CborObject> result = new TreeMap<>();
+        Map<String, Cborable> result = new TreeMap<>();
         result.put("p", publicKeyHash.toCbor());
         result.put("s", secret.toCbor());
         return CborObject.CborMap.build(result);

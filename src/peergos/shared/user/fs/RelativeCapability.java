@@ -75,7 +75,7 @@ public class RelativeCapability implements Cborable {
 
     @Override
     public CborObject.CborMap toCbor() {
-        Map<String, CborObject> cbor = new TreeMap<>();
+        Map<String, Cborable> cbor = new TreeMap<>();
         writer.ifPresent(w -> cbor.put("w", w.toCbor()));
         cbor.put("m", new CborObject.CborByteArray(mapKey));
         cbor.put("k", rBaseKey.toCbor());

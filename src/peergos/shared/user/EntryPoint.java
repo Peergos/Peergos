@@ -50,7 +50,7 @@ public class EntryPoint implements Cborable {
     @Override
     @SuppressWarnings("unusable-by-js")
     public CborObject toCbor() {
-        Map<String, CborObject> cbor = new TreeMap<>();
+        Map<String, Cborable> cbor = new TreeMap<>();
         cbor.put("c", pointer.toCbor());
         cbor.put("n", new CborObject.CborString(ownerName));
         return CborObject.CborMap.build(cbor);
@@ -61,9 +61,9 @@ public class EntryPoint implements Cborable {
         if (! (cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("Incorrect cbor type for EntryPoint: " + cbor);
 
-        SortedMap<CborObject, ? extends Cborable> map = ((CborObject.CborMap) cbor).values;
-        AbsoluteCapability pointer = AbsoluteCapability.fromCbor(map.get(new CborObject.CborString("c")));
-        String ownerName = ((CborObject.CborString) map.get(new CborObject.CborString("n"))).value;
+        CborObject.CborMap map = (CborObject.CborMap) cbor;
+        AbsoluteCapability pointer = map.getObject("c", AbsoluteCapability::fromCbor);
+        String ownerName = map.getString("n");
         return new EntryPoint(pointer, ownerName);
     }
 

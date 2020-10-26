@@ -45,7 +45,7 @@ public class TodoBoard implements Cborable {
 
     @Override
     public CborObject toCbor() {
-        Map<String, CborObject> cborData = new TreeMap<>();
+        Map<String, Cborable> cborData = new TreeMap<>();
         cborData.put("version", new CborObject.CborString(VERSION_1));
         cborData.put("name", new CborObject.CborString(name.substring(0, Math.min(name.length(), 25))));
         cborData.put("lists", new CborObject.CborList(todoLists));

@@ -152,7 +152,7 @@ public class RamUsageStore implements UsageStore {
                     ));
 
             CborObject.CborList views = new CborObject.CborList(viewsMap);
-            CborObject.CborMap usages = CborObject.CborMap.build(usage);
+            CborObject.CborMap usages = CborObject.CborMap.build(new HashMap<>(usage));
             Map<String, Cborable> map = new HashMap<>();
             map.put("views", views);
             map.put("usages", usages);

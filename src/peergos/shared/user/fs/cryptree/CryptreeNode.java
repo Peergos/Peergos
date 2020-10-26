@@ -223,7 +223,7 @@ public class CryptreeNode implements Cborable {
             if (cborList.isEmpty())
                 return empty();
             CborObject.CborMap firstMap = (CborObject.CborMap) cborList.get(0);
-            if (firstMap.values.containsKey(new CborObject.CborString("n")))
+            if (firstMap.containsKey("n"))
                 return new ChildrenLinks(Either.b(cborList
                         .stream()
                         .map(NamedRelativeCapability::fromCbor)

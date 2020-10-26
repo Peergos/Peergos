@@ -22,7 +22,7 @@ public class ProofOfWork implements Cborable {
 
     @Override
     public CborObject toCbor() {
-        Map<String, CborObject> values = new TreeMap<>();
+        Map<String, Cborable> values = new TreeMap<>();
         values.put("prefix", new CborObject.CborByteArray(prefix));
         values.put("type", new CborObject.CborLong(type.index));
         return CborObject.CborMap.build(values);

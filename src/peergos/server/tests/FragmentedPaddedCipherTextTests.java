@@ -74,10 +74,9 @@ public class FragmentedPaddedCipherTextTests {
             return true;
         }
         if (a instanceof CborObject.CborMap) {
-            SortedMap<CborObject, ? extends Cborable> aMap = ((CborObject.CborMap) a).values;
-            SortedMap<CborObject, ? extends Cborable> bMap = ((CborObject.CborMap) b).values;
-            for (CborObject key : aMap.keySet()) {
-                if (! structurallyEqual(aMap.get(key), bMap.get(key)))
+            CborObject.CborMap aMap = (CborObject.CborMap) a;
+            for (String key : aMap.keySet()) {
+                if (! structurallyEqual(aMap.get(key), ((CborObject.CborMap)b).get(key)))
                     return false;
             }
             return true;

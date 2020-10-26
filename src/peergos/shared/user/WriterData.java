@@ -285,7 +285,7 @@ public class WriterData implements Cborable {
 
     @Override
     public CborObject toCbor() {
-        Map<String, CborObject> result = new TreeMap<>();
+        Map<String, Cborable> result = new TreeMap<>();
 
         result.put("controller", new CborObject.CborMerkleLink(controller));
         generationAlgorithm.ifPresent(alg -> result.put("algorithm", alg.toCbor()));
@@ -293,7 +293,7 @@ public class WriterData implements Cborable {
         followRequestReceiver.ifPresent(boxer -> result.put("inbound", new CborObject.CborMerkleLink(boxer)));
         ownedKeys.ifPresent(root -> result.put("owned", new CborObject.CborMerkleLink(root)));
         if (! namedOwnedKeys.isEmpty())
-            result.put("named", CborObject.CborMap.build(namedOwnedKeys));
+            result.put("named", CborObject.CborMap.build(new HashMap<>(namedOwnedKeys)));
         staticData.ifPresent(sd -> result.put("static", sd.toCbor()));
         tree.ifPresent(tree -> result.put("tree", new CborObject.CborMerkleLink(tree)));
         return CborObject.CborMap.build(result);
@@ -312,10 +312,7 @@ public class WriterData implements Cborable {
         Optional<Multihash> owned = m.getOptional("owned", val -> ((CborObject.CborMerkleLink)val).target);
 
         Map<String, OwnerProof> named = m.getOptional("named", c -> (CborObject.CborMap)c)
-                .map(map -> map.values.entrySet().stream()
-                        .collect(Collectors.toMap(
-                                e -> ((CborObject.CborString)e.getKey()).value,
-                                e -> OwnerProof.fromCbor(e.getValue()))))
+                .map(map -> map.getMap(k -> ((CborObject.CborString)k).value, OwnerProof::fromCbor))
                 .orElseGet(() -> Collections.emptyMap());
 
         Optional<UserStaticData> staticData = m.getOptional("static", UserStaticData::fromCbor);

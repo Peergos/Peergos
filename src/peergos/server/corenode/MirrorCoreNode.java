@@ -110,7 +110,7 @@ public class MirrorCoreNode implements CoreNode {
             res.put("pkiKey", pkiOwnerIdentity);
             res.put("pkiTarget", pkiKeyTarget);
 
-            TreeMap<String, ? extends Cborable> chainsMap = chains.entrySet()
+            TreeMap<String, Cborable> chainsMap = chains.entrySet()
                 .stream()
                 .collect(Collectors.toMap(
                     e -> e.getKey(),
@@ -119,7 +119,7 @@ public class MirrorCoreNode implements CoreNode {
                     TreeMap::new
                 ));
             res.put("chains", CborObject.CborMap.build(chainsMap));
-            TreeMap<CborObject, ? extends Cborable> reverseMap = reverseLookup.entrySet()
+            TreeMap<CborObject, Cborable> reverseMap = reverseLookup.entrySet()
                 .stream()
                 .collect(Collectors.toMap(
                     e -> e.getKey().toCbor(),

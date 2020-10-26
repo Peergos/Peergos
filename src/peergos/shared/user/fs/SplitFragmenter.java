@@ -40,7 +40,7 @@ public class SplitFragmenter implements Fragmenter {
 
     @Override
     public CborObject toCbor() {
-        Map<String, CborObject> res = new HashMap<>();
+        Map<String, Cborable> res = new HashMap<>();
         res.put("t", new CborObject.CborLong(Fragmenter.Type.SIMPLE.val));
         return CborObject.CborMap.build(res);
     }

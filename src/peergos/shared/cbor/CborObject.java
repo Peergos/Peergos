@@ -5,7 +5,7 @@ import peergos.shared.io.ipfs.multihash.*;
 
 import java.io.*;
 import java.util.*;
-import java.util.function.Function;
+import java.util.function.*;
 import java.util.stream.*;
 
 import static peergos.shared.cbor.CborConstants.TYPE_TEXT_STRING;
@@ -68,9 +68,9 @@ public interface CborObject extends Cborable {
                     long nValues = decoder.readMapLength();
                     if (nValues > maxGroupSize)
                         throw new IllegalStateException("Invalid cbor: more map elements than original bytes!");
-                    SortedMap<CborObject, Cborable> result = new TreeMap<>();
+                    SortedMap<CborString, CborObject> result = new TreeMap<>();
                     for (long i=0; i < nValues; i++) {
-                        CborObject key = deserialize(decoder, maxGroupSize);
+                        CborString key = (CborString) deserialize(decoder, maxGroupSize);
                         CborObject value = deserialize(decoder, maxGroupSize);
                         result.put(key, value);
                     }
@@ -108,26 +108,41 @@ public interface CborObject extends Cborable {
     }
 
     final class CborMap implements CborObject {
-        public final SortedMap<CborObject,? extends Cborable> values;
+        // Only String keys should be used in IPLD dag-cbor maps
+        private final SortedMap<CborString, CborObject> values;
 
-        private CborMap(SortedMap<CborObject,? extends Cborable> values) {
+        private CborMap(SortedMap<CborString, CborObject> values) {
             this.values = values;
         }
 
-        // Only String keys should be used in IPLD dag-cbor
-        public static CborMap build(Map<String, ? extends Cborable> values) {
-            SortedMap<CborObject, Cborable> transformed = values.entrySet()
+        public static CborMap build(Map<String, Cborable> values) {
+            SortedMap<CborString, CborObject> transformed = values.entrySet()
                     .stream()
                     .collect(Collectors.toMap(
                             e -> new CborString(e.getKey()),
-                            e -> e.getValue(),
+                            e -> e.getValue().toCbor(),
                             (a, b) -> a, TreeMap::new));
             return new CborMap(transformed);
+        }
+
+        public void put(String key, CborObject val) {
+            values.put(new CborString(key), val);
+        }
+
+        public boolean containsKey(String key) {
+            return values.containsKey(new CborString(key));
+        }
+
+        public Set<String> keySet() {
+            return values.keySet().stream()
+                    .map(c -> c.value)
+                    .collect(Collectors.toSet());
         }
 
         public Cborable get(String key) {
             return values.get(new CborString(key));
         }
+
         public <T> T getObject(String key, Function<Cborable, T> fromCbor) {
             return fromCbor.apply(get(key));
         }
@@ -189,11 +204,15 @@ public interface CborObject extends Cborable {
                     .collect(Collectors.toList());
         }
 
+        public void applyToAll(BiConsumer<String, Cborable> func) {
+            values.entrySet().forEach(e -> func.accept(e.getKey().value, e.getValue()));
+        }
+
         @Override
         public void serialize(CborEncoder encoder) {
             try {
                 encoder.writeMapStart(values.size());
-                for (Map.Entry<CborObject, ? extends Cborable>  entry : values.entrySet()) {
+                for (Map.Entry<CborString, CborObject>  entry : values.entrySet()) {
                     entry.getKey().serialize(encoder);
                     entry.getValue().toCbor().serialize(encoder);
                 }

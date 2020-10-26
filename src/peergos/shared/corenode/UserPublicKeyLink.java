@@ -63,7 +63,7 @@ public class UserPublicKeyLink implements Cborable {
 
     @Override
     public CborObject toCbor() {
-        Map<String, CborObject> values = new TreeMap<>();
+        Map<String, Cborable> values = new TreeMap<>();
         values.put("owner", owner.toCbor());
         values.put("claim", claim.toCbor());
         keyChangeProof.ifPresent(proof -> values.put("keychange", new CborObject.CborByteArray(proof)));

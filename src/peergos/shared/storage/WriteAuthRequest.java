@@ -17,7 +17,7 @@ public class WriteAuthRequest implements Cborable {
 
     @Override
     public CborObject toCbor() {
-        Map<String, CborObject> props = new TreeMap<>();
+        Map<String, Cborable> props = new TreeMap<>();
         props.put("s", new CborObject.CborList(signatures.stream()
                 .map(CborObject.CborByteArray::new)
                 .collect(Collectors.toList())));

@@ -37,7 +37,7 @@ public class ErasureFragmenter implements Fragmenter {
 
     @Override
     public CborObject toCbor() {
-        Map<String, CborObject> res = new HashMap<>();
+        Map<String, Cborable> res = new HashMap<>();
         res.put("t", new CborObject.CborLong(Type.ERASURE_CODING.val));
         res.put("o", new CborObject.CborLong(nOriginalFragments));
         res.put("a", new CborObject.CborLong(nAllowedFailures));

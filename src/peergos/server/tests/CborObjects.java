@@ -78,7 +78,7 @@ public class CborObjects {
 
     @Test
     public void cborMap() {
-        SortedMap<String, CborObject> map = new TreeMap<>();
+        SortedMap<String, Cborable> map = new TreeMap<>();
         map.put("KEY 1", new CborObject.CborString("A value"));
         map.put("KEY 2", new CborObject.CborByteArray("Another value".getBytes()));
         map.put("KEY 3", new CborObject.CborNull());

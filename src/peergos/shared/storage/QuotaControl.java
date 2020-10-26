@@ -39,7 +39,7 @@ public interface QuotaControl {
 
         @Override
         public CborObject toCbor() {
-            Map<String, CborObject> props = new TreeMap<>();
+            Map<String, Cborable> props = new TreeMap<>();
             props.put("u", new CborObject.CborString(username));
             props.put("r", new CborObject.CborByteArray(signedRequest));
             return CborObject.CborMap.build(props);
@@ -74,7 +74,7 @@ public interface QuotaControl {
 
         @Override
         public CborObject toCbor() {
-            Map<String, CborObject> props = new TreeMap<>();
+            Map<String, Cborable> props = new TreeMap<>();
             props.put("u", new CborObject.CborString(username));
             props.put("s", new CborObject.CborLong(bytes));
             props.put("t", new CborObject.CborLong(utcMillis));
