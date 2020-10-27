@@ -47,7 +47,7 @@ public interface InstanceAdmin {
 
         @Override
         public CborObject toCbor() {
-            Map<String, CborObject> props = new TreeMap<>();
+            Map<String, Cborable> props = new TreeMap<>();
             props.put("v", new CborObject.CborString(version.toString()));
             return CborObject.CborMap.build(props);
         }

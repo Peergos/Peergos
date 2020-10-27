@@ -78,20 +78,20 @@ public class CborObjects {
 
     @Test
     public void cborMap() {
-        SortedMap<CborObject, CborObject> map = new TreeMap<>();
-        map.put(new CborObject.CborString("KEY 1"), new CborObject.CborString("A value"));
-        map.put(new CborObject.CborString("KEY 2"), new CborObject.CborByteArray("Another value".getBytes()));
-        map.put(new CborObject.CborString("KEY 3"), new CborObject.CborNull());
-        map.put(new CborObject.CborString("KEY 4"), new CborObject.CborBoolean(true));
+        SortedMap<String, Cborable> map = new TreeMap<>();
+        map.put("KEY 1", new CborObject.CborString("A value"));
+        map.put("KEY 2", new CborObject.CborByteArray("Another value".getBytes()));
+        map.put("KEY 3", new CborObject.CborNull());
+        map.put("KEY 4", new CborObject.CborBoolean(true));
         Multihash hash = Multihash.fromBase58("QmPZ9gcCEpqKTo6aq61g2nXGUhM4iCL3ewB6LDXZCtioEB");
         CborObject.CborMerkleLink link = new CborObject.CborMerkleLink(hash);
-        map.put(new CborObject.CborString("Key 5"), link);
+        map.put("Key 5", link);
         List<CborObject> list = new ArrayList<>();
         list.add(new CborObject.CborBoolean(true));
         list.add(new CborObject.CborNull());
         list.add(new CborObject.CborLong(256));
-        map.put(new CborObject.CborString("KEY 6"), new CborObject.CborList(list));
-        CborObject.CborMap cborMap = new CborObject.CborMap(map);
+        map.put("KEY 6", new CborObject.CborList(list));
+        CborObject.CborMap cborMap = CborObject.CborMap.build(map);
         compatibleAndIdempotentSerialization(cborMap);
     }
 

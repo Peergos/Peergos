@@ -20,7 +20,7 @@ public class BlindFollowRequest implements Cborable {
 
     @Override
     public CborObject toCbor() {
-        Map<String, CborObject> result = new TreeMap<>();
+        Map<String, Cborable> result = new TreeMap<>();
         result.put("k", dummySource.toCbor());
         result.put("f", followRequest.toCbor());
         return CborObject.CborMap.build(result);

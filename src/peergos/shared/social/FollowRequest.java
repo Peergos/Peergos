@@ -28,7 +28,7 @@ public class FollowRequest implements Cborable {
 
     @SuppressWarnings("unusable-by-js")
     public CborObject toCbor() {
-        Map<String, CborObject> result = new TreeMap<>();
+        Map<String, Cborable> result = new TreeMap<>();
         entry.ifPresent(e -> result.put("e", e.toCbor()));
         key.ifPresent(k -> result.put("k", k.toCbor()));
         return CborObject.CborMap.build(result);

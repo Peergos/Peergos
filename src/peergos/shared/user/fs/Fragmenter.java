@@ -32,14 +32,13 @@ public interface Fragmenter extends Cborable {
         if (! (cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("Incorrect cbor for Fragmenter: " + cbor);
 
-        SortedMap<CborObject, ? extends Cborable> values = ((CborObject.CborMap) cbor).values;
-
-        long t = ((CborObject.CborLong) values.get(new CborObject.CborString("t"))).value;
+        CborObject.CborMap map = (CborObject.CborMap) cbor;
+        long t = map.getLong("t");
         Type type = Type.ofVal((int) t);
         if (type == Type.SIMPLE)
             return new SplitFragmenter();
-        int originalFragments = (int)((CborObject.CborLong) values.get(new CborObject.CborString("o"))).value;
-        int allowedFailures = (int)((CborObject.CborLong) values.get(new CborObject.CborString("a"))).value;
+        int originalFragments = (int)(map.getLong("o"));
+        int allowedFailures = (int)(map.getLong("a"));
         return new ErasureFragmenter(originalFragments, allowedFailures);
     }
 

@@ -64,11 +64,11 @@ public class UserStaticData implements Cborable {
         public static EntryPoints fromCbor(Cborable cbor) {
             if (! (cbor instanceof CborObject.CborMap))
                 throw new IllegalStateException("Incorrect cbor type for EntryPoints: " + cbor);
-            CborObject.CborLong version = (CborObject.CborLong)((CborObject.CborMap) cbor).values.get(new CborObject.CborString("v"));
-            if (version.value != VERSION)
-                throw new IllegalStateException("Unknown UserStaticData version: " + version.value);
-            return new EntryPoints(version.value,
-                    ((CborObject.CborList) ((CborObject.CborMap) cbor).values.get(new CborObject.CborString("e")))
+            long version = ((CborObject.CborMap) cbor).getLong("v");
+            if (version != VERSION)
+                throw new IllegalStateException("Unknown UserStaticData version: " + version);
+            return new EntryPoints(version,
+                    ((CborObject.CborMap) cbor).getList("e")
                             .value.stream()
                             .map(EntryPoint::fromCbor)
                             .collect(Collectors.toList()));

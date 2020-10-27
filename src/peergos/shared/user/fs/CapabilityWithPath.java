@@ -17,7 +17,7 @@ public class CapabilityWithPath implements Cborable {
 
     @Override
     public CborObject toCbor() {
-        Map<String, CborObject> cbor = new TreeMap<>();
+        Map<String, Cborable> cbor = new TreeMap<>();
         cbor.put("p", new CborObject.CborString(path));
         cbor.put("c", cap.toCbor());
         return CborObject.CborMap.build(cbor);
@@ -26,10 +26,10 @@ public class CapabilityWithPath implements Cborable {
     public static CapabilityWithPath fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("Incorrect cbor for CapabilityWithPath: " + cbor);
-        SortedMap<CborObject, ? extends Cborable> map = ((CborObject.CborMap) cbor).values;
-        CborObject.CborString path = (CborObject.CborString)map.get(new CborObject.CborString("p"));
-        AbsoluteCapability fp = AbsoluteCapability.fromCbor(map.get(new CborObject.CborString("c")));
-        return new CapabilityWithPath(path.value, fp);
+        CborObject.CborMap map = (CborObject.CborMap) cbor;
+        String path = map.getString("p");
+        AbsoluteCapability fp = map.getObject("c", AbsoluteCapability::fromCbor);
+        return new CapabilityWithPath(path, fp);
     }
 
     @Override

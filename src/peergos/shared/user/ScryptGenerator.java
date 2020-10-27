@@ -31,7 +31,7 @@ public class ScryptGenerator implements SecretGenerationAlgorithm {
 
     @Override
     public CborObject toCbor() {
-        Map<String, CborObject> props = new TreeMap<>();
+        Map<String, Cborable> props = new TreeMap<>();
         props.put("type", new CborObject.CborLong(getType().value));
         props.put("m", new CborObject.CborLong(memoryCost));
         props.put("c", new CborObject.CborLong(cpuCost));

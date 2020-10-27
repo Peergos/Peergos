@@ -29,7 +29,7 @@ public class OwnerProof implements Cborable {
 
     @Override
     public CborObject toCbor() {
-        Map<String, CborObject> result = new TreeMap<>();
+        Map<String, Cborable> result = new TreeMap<>();
         result.put("o", new CborObject.CborMerkleLink(ownedKey));
         result.put("p", new CborObject.CborByteArray(signedOwner));
         return CborObject.CborMap.build(result);

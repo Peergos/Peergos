@@ -41,7 +41,7 @@ public class TodoList implements Cborable {
 
     @Override
     public CborObject toCbor() {
-        Map<String, CborObject> cbor = new TreeMap<>();
+        Map<String, Cborable> cbor = new TreeMap<>();
         cbor.put("name", new CborObject.CborString(name.substring(0, Math.min(name.length(), 20))));
         cbor.put("id", new CborObject.CborString(id));
         cbor.put("items", new CborObject.CborList(todoItems));

@@ -56,7 +56,7 @@ public interface SecretGenerationAlgorithm extends Cborable {
     static SecretGenerationAlgorithm fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("Incorrect cbor type for SecretGenerationAlgorithm: " + cbor);
-        Type type = Type.byValue((int)((CborObject.CborLong) ((CborObject.CborMap) cbor).values.get(new CborObject.CborString("type"))).value);
+        Type type = Type.byValue((int)((CborObject.CborMap) cbor).getLong("type"));
         if (type == Type.Scrypt)
             return ScryptGenerator.fromCbor(cbor);
         if (type == Type.Random)

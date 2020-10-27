@@ -37,7 +37,7 @@ public class TodoListItem implements Cborable {
 
     @Override
     public CborObject toCbor() {
-        Map<String, CborObject> cbor = new TreeMap<>();
+        Map<String, Cborable> cbor = new TreeMap<>();
         cbor.put("i", new CborObject.CborString(Id));
         cbor.put("z", new CborObject.CborLong(created.toEpochSecond(ZoneOffset.UTC)));
         cbor.put("t", new CborObject.CborString(text.substring(0, Math.min(text.length(), 60))));
@@ -48,16 +48,13 @@ public class TodoListItem implements Cborable {
     public static TodoListItem fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("Incorrect cbor for TodoListItem: " + cbor);
-        SortedMap<CborObject, ? extends Cborable> map = ((CborObject.CborMap) cbor).values;
-        CborObject.CborString idStr = (CborObject.CborString)map.get(new CborObject.CborString("i"));
-
-
-        CborObject.CborMap m = (CborObject.CborMap) cbor;
-        long modifiedEpochSeconds = m.getLong("z");
+        CborObject.CborMap map = (CborObject.CborMap) cbor;
+        String id = map.getString("i");
+        long modifiedEpochSeconds = map.getLong("z");
         LocalDateTime modified = LocalDateTime.ofEpochSecond(modifiedEpochSeconds, 0, ZoneOffset.UTC);
-        CborObject.CborString textStr = (CborObject.CborString)map.get(new CborObject.CborString("t"));
-        CborObject.CborBoolean checkedStr = (CborObject.CborBoolean)map.get(new CborObject.CborString("c"));
-        return new TodoListItem(idStr.value, modified, textStr.value, checkedStr.value);
+        String text = map.getString("t");
+        boolean checked = map.getBoolean("c");
+        return new TodoListItem(id, modified, text, checked);
     }
 
     @Override

@@ -25,7 +25,7 @@ public class BlockStoreProperties implements Cborable {
 
     @Override
     public CborObject toCbor() {
-        Map<String, CborObject> props = new TreeMap<>();
+        Map<String, Cborable> props = new TreeMap<>();
         props.put("w", new CborObject.CborBoolean(directWrites));
         props.put("pr", new CborObject.CborBoolean(publicReads));
         props.put("ar", new CborObject.CborBoolean(authedReads));
