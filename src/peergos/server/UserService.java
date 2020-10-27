@@ -228,7 +228,7 @@ public class UserService {
                 new SpaceHandler(this.usage, isPublicServer));
         addHandler.accept("/" + Constants.SERVER_MESSAGE_URL,
                 new ServerMessageHandler(this.serverMessages, coreNode, storage, isPublicServer));
-        addHandler.accept("/" + Constants.PUBLIC_FILES_URL, new PublicFileHandler(coreNode, mutable, storage));
+        addHandler.accept("/" + Constants.PUBLIC_FILES_URL, new PublicFileHandler(crypto.hasher, coreNode, mutable, storage));
         addHandler.accept(UI_URL, handler);
 
         localhostServer.setExecutor(Executors.newFixedThreadPool(handlerPoolSize));

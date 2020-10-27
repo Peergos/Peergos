@@ -5,6 +5,7 @@ import peergos.server.AggregatedMetrics;
 import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.corenode.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
@@ -22,8 +23,8 @@ public class PublicFileHandler implements HttpHandler {
     private final NetworkAccess network;
     private static final String PATH_PREFIX = "/public/";
 
-    public PublicFileHandler(CoreNode core, MutablePointers mutable, ContentAddressedStorage dht) {
-        this.network = NetworkAccess.buildPublicNetworkAccess(core, mutable, dht).join();
+    public PublicFileHandler(Hasher hasher, CoreNode core, MutablePointers mutable, ContentAddressedStorage dht) {
+        this.network = NetworkAccess.buildPublicNetworkAccess(hasher, core, mutable, dht).join();
     }
 
     @Override

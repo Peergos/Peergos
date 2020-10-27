@@ -252,10 +252,10 @@ public class NetworkAccess {
                 usage, serverMessager, hasher, usernames, isJavascript);
     }
 
-    public static CompletableFuture<NetworkAccess> buildPublicNetworkAccess(CoreNode core,
+    public static CompletableFuture<NetworkAccess> buildPublicNetworkAccess(Hasher hasher,
+                                                                            CoreNode core,
                                                                             MutablePointers mutable,
                                                                             ContentAddressedStorage storage) {
-        Hasher hasher = null; // not needed for read only public access
         WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, storage, hasher);
         MutableTree mutableTree = new MutableTreeImpl(mutable, storage, null, synchronizer);
         return CompletableFuture.completedFuture(new NetworkAccess(core, null, storage, mutable, mutableTree,
