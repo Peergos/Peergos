@@ -1175,59 +1175,6 @@ public abstract class UserTests {
     }
 
     @Test
-    public void calendarEventListTest() throws Exception {
-        String username = generateUsername();
-        String password = "test01";
-        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
-
-        UserContext.App.Calendar calendar = context.getCalendarApp().join();
-        LocalDate now = LocalDate.now();
-        List<Pair<String,String>> items = calendar.getCalendarEventsForMonth(now.getYear(), now.getMonthValue()).join();
-        assertTrue("size", items.isEmpty());
-        String Id = "Id";
-        String item ="BEGIN:VCALENDAR\n" +
-                "VERSION:2.0\n" +
-                "PRODID:-//test\n" +
-                "BEGIN:VEVENT\n" +
-                "DTSTAMP:20200914T144300Z\n" +
-                "UID:" + Id + "\n" +
-                "SUMMARY:title\n" +
-                "DESCRIPTION:memo\n" +
-                "DTSTART:20200914T134257Z\n" +
-                "DURATION:PT1H\n" +
-                "LOCATION:location\n" +
-                "END:VEVENT\n" +
-                "END:VCALENDAR";
-        calendar.updateCalendarEvent(now.getYear(), now.getMonth().getValue(), Id, item).join();
-        Triple<List<Pair<String,String>>,List<Pair<String,String>>,List<Pair<String,String>>> updatedItems = calendar.getCalendarEventsAroundMonth(now.getYear(), now.getMonthValue()).join();
-        assertTrue("size", updatedItems.middle.size() == 1);
-
-        calendar.removeCalendarEvent(now.getYear(), now.getMonth().getValue(), Id).join();
-        items = calendar.getCalendarEventsForMonth(now.getYear(), now.getMonthValue()).join();
-        assertTrue("size", items.size() == 0);
-    }
-
-    @Test
-    public void calendarEventsOverYearBoundary() {
-        String username = generateUsername();
-        String password = "test01";
-        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
-
-        UserContext.App.Calendar calendar = context.getCalendarApp().join();
-        LocalDate month = LocalDate.of(2020, Month.JANUARY.getValue(), 1);
-        calendar.updateCalendarEvent(2019, Month.DECEMBER.getValue(), "eventId", "calendarEvent").join();
-        Triple<List<Pair<String,String>>,List<Pair<String,String>>,List<Pair<String,String>>> items = calendar.getCalendarEventsAroundMonth(month.getYear(), month.getMonthValue()).join();
-        assertTrue("size", items.left.size() == 1);
-
-        month = LocalDate.of(2020, Month.DECEMBER.getValue(), 1);
-        calendar.updateCalendarEvent(2021, Month.JANUARY.getValue(), "eventId", "calendarEvent").join();
-        items = calendar.getCalendarEventsAroundMonth(month.getYear(), month.getMonthValue()).join();
-        assertTrue("size", items.right.size() == 1);
-
-
-    }
-
-    @Test
     public void rename() throws Exception {
         String username = generateUsername();
         String password = "test01";

@@ -1065,50 +1065,6 @@ public class PeergosNetworkUtils {
         Assert.assertTrue("a can't see unshared folder", children.isEmpty());
     }
 
-    public static void sharedCalendarEvents(NetworkAccess sharerNode, NetworkAccess shareeNode) throws Exception {
-        String sharerUsername = "sharer";
-        String sharerPassword = generatePassword();
-        UserContext sharerUser = ensureSignedUp(sharerUsername, sharerPassword, sharerNode.clear(), crypto);
-
-
-        String shareeUsername = "sharee";
-        String shareePassword = generatePassword();
-        UserContext shareeUser = ensureSignedUp(shareeUsername, shareePassword, shareeNode.clear(), crypto);
-
-        // friend sharer with others
-        List<UserContext> sharerList = Arrays.asList(sharerUser);
-        List<UserContext> shareeList = Arrays.asList(shareeUser);
-        friendBetweenGroups(sharerList, shareeList);
-
-        LocalDate now = LocalDate.now();
-        UserContext.App.Calendar calendar = sharerUser.getCalendarApp().join();
-        List<Pair<String,String>> items = calendar.getCalendarEventsForMonth(now.getYear(), now.getMonthValue()).join();
-        assertTrue("size", items.isEmpty());
-        String Id = "Id";
-        String item ="VCALENDAR item";
-        calendar.updateCalendarEvent(now.getYear(), now.getMonth().getValue(), Id, item).join();
-
-        List<Pair<String,String>> events = calendar.getCalendarEventsForMonth(now.getYear(), now.getMonthValue()).join();
-        assertTrue("size", events.size() == 1);
-
-        // sharer shares calendar event with sharee
-        Path pathToToDo = Paths.get(sharerUser.username, UserContext.APPS_DIR_NAME,
-                UserContext.App.Calendar.CALENDAR_DIR_NAME, sharerUser.username,
-                "" + now.getYear(), "" + now.getMonthValue(), Id + ".ics");
-        Set<String> toShareTo = shareeList.stream().map(u -> u.username).collect(Collectors.toSet());
-        sharerUser.shareWriteAccessWith(pathToToDo, toShareTo).join();
-
-        UserContext.App.Calendar shareeCalendar = shareeUser.getCalendarApp().join();
-        List<Pair<String,String>> sharedEvents = shareeCalendar.getCalendarEventsForMonth(now.getYear(), now.getMonthValue()).join();
-        assertTrue("size", sharedEvents.size() == 1);
-
-        //reload calendar from cache
-        shareeCalendar = shareeUser.getCalendarApp().join();
-        sharedEvents = shareeCalendar.getCalendarEventsForMonth(now.getYear(), now.getMonthValue()).join();
-        assertTrue("size", sharedEvents.size() == 1);
-
-    }
-
     public static void grantAndRevokeDirWriteAccessWithNestedWriteAccess(NetworkAccess network,
                                                                          Random random) {
         CryptreeNode.setMaxChildLinkPerBlob(10);
