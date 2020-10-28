@@ -129,9 +129,10 @@ public class IpfsCoreNode implements CoreNode {
                 // Check legality
                 UserPublicKeyLink.merge(existingChain, updatedChain, ipfs).get();
             }
-            PublicKeyHash owner = updatedChain.get(updatedChain.size() - 1).owner;
 
-            reverseLookup.put(owner, username);
+            for (UserPublicKeyLink link : updatedChain) {
+                reverseLookup.put(link.owner, username);
+            }
             chains.put(username, updatedChain);
             if (! oldValue.isPresent()) {
                 // This is a new user
