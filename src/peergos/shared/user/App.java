@@ -31,11 +31,11 @@ public class App {
     @JsMethod
     public static CompletableFuture<App> init(UserContext ctx, String appName, String fileExtension) {
         App app = new App(ctx);
-        Path calendarPath = Paths.get(APPS_DIR_NAME, appName, ctx.username);
+        Path appPath = Paths.get(APPS_DIR_NAME, appName, ctx.username);
         Path basePath = Paths.get(ctx.username, APPS_DIR_NAME, appName);
         Path cacheFilePath = basePath.resolve(SHARED_WITH_US_CACHE_FILENAME);
-        return ctx.getByPath("/" + ctx.username).thenCompose(root -> FileUtil.getOrMkdirs(root.get(), calendarPath, ctx.crypto, ctx.network))
-                .thenCompose(myCalendarDir -> ctx.getByPath(basePath).thenCompose(fw -> fw.get().hasChild(SHARED_WITH_US_CACHE_FILENAME, ctx.crypto.hasher, ctx.network).thenCompose(exists ->
+        return ctx.getByPath("/" + ctx.username).thenCompose(root -> FileUtil.getOrMkdirs(root.get(), appPath, ctx.crypto, ctx.network))
+                .thenCompose(appDir -> ctx.getByPath(basePath).thenCompose(fw -> fw.get().hasChild(SHARED_WITH_US_CACHE_FILENAME, ctx.crypto.hasher, ctx.network).thenCompose(exists ->
                         exists ? Futures.of(true) : app.writeInternal(cacheFilePath, SharedItemCache.empty().toCbor().toByteArray()))
                         .thenCompose(res -> app.getSharedItems(appName, item -> item.path.endsWith(fileExtension))
                                 .thenApply(sharedEvents -> {
