@@ -90,6 +90,12 @@ public class NetworkAccess {
     }
 
     @JsMethod
+    public CompletableFuture<Optional<String>> otherDomain() {
+        return dhtClient.blockStoreProperties()
+                .thenApply(props -> props.baseAuthedUrl);
+    }
+
+    @JsMethod
     public CompletableFuture<Boolean> isUsernameRegistered(String username) {
         if (usernames.contains(username))
             return CompletableFuture.completedFuture(true);

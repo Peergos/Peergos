@@ -39,6 +39,11 @@ public class CommittableStorage extends DelegatingStorage {
     }
 
     @Override
+    public CompletableFuture<BlockStoreProperties> blockStoreProperties() {
+        return target.blockStoreProperties();
+    }
+
+    @Override
     public ContentAddressedStorage directToOrigin() {
         return new CommittableStorage(target.directToOrigin());
     }

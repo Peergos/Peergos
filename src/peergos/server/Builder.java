@@ -162,9 +162,10 @@ public class Builder {
                 boolean directWrites = a.getBoolean("direct-s3-writes", false);
                 boolean publicReads = a.getBoolean("public-s3-reads", false);
                 boolean authedReads = a.getBoolean("authed-s3-reads", false);
-                BlockStoreProperties props = new BlockStoreProperties(directWrites, publicReads, authedReads, publicReadUrl);
-                return new S3BlockStorage(S3Config.build(a), Cid.decode(a.getArg("ipfs.id")),
-                        props, transactions, ipfs);
+                S3Config config = S3Config.build(a);
+                Optional<String> authedUrl = Optional.of("https://" + config.getHost() + "/");
+                BlockStoreProperties props = new BlockStoreProperties(directWrites, publicReads, authedReads, publicReadUrl, authedUrl);
+                return new S3BlockStorage(config, Cid.decode(a.getArg("ipfs.id")), props, transactions, ipfs);
             } else {
                 return new FileContentAddressedStorage(blockstorePath(a), transactions);
             }

@@ -63,7 +63,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         this.bucket = config.bucket;
         this.folder = config.path.isEmpty() || config.path.endsWith("/") ? config.path : config.path + "/";
         this.regionEndpoint = config.regionEndpoint;
-        this.host = bucket + "." + regionEndpoint;
+        this.host = config.getHost();
         this.accessKeyId = config.accessKey;
         this.secretKey = config.secretKey;
         LOG.info("Using S3 Block Storage at " + config.regionEndpoint + ", bucket " + config.bucket + ", path: " + config.path);
@@ -95,7 +95,6 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         if (blocks.size() > 50)
             throw new IllegalStateException("Too many reads to auth!");
         List<PresignedUrl> res = new ArrayList<>();
-        String host = bucket + "." + regionEndpoint;
 
         for (Multihash block : blocks) {
             String s3Key = hashToKey(block);
@@ -130,7 +129,6 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 transactions.addBlock(props.left, tid, owner);
                 String s3Key = hashToKey(props.left);
                 String contentSha256 = ArrayOps.bytesToHex(props.left.getHash());
-                String host = bucket + "." + regionEndpoint;
                 Map<String, String> extraHeaders = new LinkedHashMap<>();
                 extraHeaders.put("Content-Type", "application/octet-stream");
                 res.add(S3Request.preSignPut(s3Key, props.right, contentSha256, false,
