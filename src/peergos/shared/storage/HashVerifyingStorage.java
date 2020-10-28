@@ -45,6 +45,11 @@ public class HashVerifyingStorage extends DelegatingStorage {
     }
 
     @Override
+    public CompletableFuture<BlockStoreProperties> blockStoreProperties() {
+        return source.blockStoreProperties();
+    }
+
+    @Override
     public ContentAddressedStorage directToOrigin() {
         return new HashVerifyingStorage(source.directToOrigin(), hasher);
     }

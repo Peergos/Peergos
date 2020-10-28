@@ -18,7 +18,8 @@ import java.util.stream.*;
 public class DirectS3BlockStore implements ContentAddressedStorage {
 
     private final boolean directWrites, publicReads, authedReads;
-    private final Optional<String> baseUrl;
+    private final Optional<String> basePublicReadUrl;
+    private final Optional<String> baseAuthedUrl;
     private final HttpPoster direct;
     private final ContentAddressedStorage fallback;
     private final Multihash nodeId;
@@ -33,11 +34,17 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
         this.directWrites = blockStoreProperties.directWrites;
         this.publicReads = blockStoreProperties.publicReads;
         this.authedReads = blockStoreProperties.authedReads;
-        this.baseUrl = blockStoreProperties.baseUrl;
+        this.basePublicReadUrl = blockStoreProperties.basePublicReadUrl;
+        this.baseAuthedUrl = blockStoreProperties.baseAuthedUrl;
         this.direct = direct;
         this.fallback = fallback;
         this.nodeId = nodeId;
         this.core = core;
+    }
+
+    @Override
+    public CompletableFuture<BlockStoreProperties> blockStoreProperties() {
+        return Futures.of(new BlockStoreProperties(directWrites, publicReads, authedReads, basePublicReadUrl, baseAuthedUrl));
     }
 
     @Override
@@ -241,7 +248,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                 return CompletableFuture.completedFuture(Optional.of(hash.getHash()));
         if (publicReads) {
             CompletableFuture<Optional<byte[]>> res = new CompletableFuture<>();
-            direct.get(baseUrl.get() + hashToKey(hash))
+            direct.get(basePublicReadUrl.get() + hashToKey(hash))
                     .thenApply(Optional::of)
                     .thenAccept(res::complete)
                     .exceptionally(t -> {

@@ -22,6 +22,11 @@ public class S3Config {
         this.secretKey = secretKey;
         this.regionEndpoint = regionEndpoint;
     }
+
+    public String getHost() {
+        return bucket + "." + regionEndpoint;
+    }
+
     public static boolean useS3(Args a) {
         return a.hasArg("s3.bucket");
     }

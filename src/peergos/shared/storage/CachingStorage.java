@@ -26,6 +26,11 @@ public class CachingStorage extends DelegatingStorage {
     }
 
     @Override
+    public CompletableFuture<BlockStoreProperties> blockStoreProperties() {
+        return target.blockStoreProperties();
+    }
+
+    @Override
     public ContentAddressedStorage directToOrigin() {
         return new CachingStorage(target.directToOrigin(), cacheSize, maxValueSize);
     }
