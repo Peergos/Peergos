@@ -13,13 +13,11 @@ import peergos.shared.user.fs.*;
 import peergos.shared.user.fs.FileWrapper;
 import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.ArrayOps;
-import peergos.shared.util.Pair;
 import peergos.shared.util.Serialize;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.*;
-import java.time.LocalDate;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.*;
@@ -1065,6 +1063,7 @@ public class PeergosNetworkUtils {
         Assert.assertTrue("a can't see unshared folder", children.isEmpty());
     }
 
+    
     public static void grantAndRevokeDirWriteAccessWithNestedWriteAccess(NetworkAccess network,
                                                                          Random random) {
         CryptreeNode.setMaxChildLinkPerBlob(10);
