@@ -1081,7 +1081,7 @@ public class PeergosNetworkUtils {
         friendBetweenGroups(sharerList, shareeList);
 
         LocalDate now = LocalDate.now();
-        UserContext.App.Calendar calendar = sharerUser.getCalendarApp();
+        UserContext.App.Calendar calendar = sharerUser.getCalendarApp().join();
         List<Pair<String,String>> items = calendar.getCalendarEventsForMonth(now.getYear(), now.getMonthValue()).join();
         assertTrue("size", items.isEmpty());
         String Id = "Id";
@@ -1098,9 +1098,15 @@ public class PeergosNetworkUtils {
         Set<String> toShareTo = shareeList.stream().map(u -> u.username).collect(Collectors.toSet());
         sharerUser.shareWriteAccessWith(pathToToDo, toShareTo).join();
 
-        UserContext.App.Calendar shareeCalendar = shareeUser.getCalendarApp();
+        UserContext.App.Calendar shareeCalendar = shareeUser.getCalendarApp().join();
         List<Pair<String,String>> sharedEvents = shareeCalendar.getCalendarEventsForMonth(now.getYear(), now.getMonthValue()).join();
         assertTrue("size", sharedEvents.size() == 1);
+
+        //reload calendar from cache
+        shareeCalendar = shareeUser.getCalendarApp().join();
+        sharedEvents = shareeCalendar.getCalendarEventsForMonth(now.getYear(), now.getMonthValue()).join();
+        assertTrue("size", sharedEvents.size() == 1);
+
     }
 
     public static void grantAndRevokeDirWriteAccessWithNestedWriteAccess(NetworkAccess network,

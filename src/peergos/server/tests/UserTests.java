@@ -1174,12 +1174,13 @@ public abstract class UserTests {
         assertTrue("item[1]", todoItems.get(1).equals(item2));
     }
 
+    @Test
     public void calendarEventListTest() throws Exception {
         String username = generateUsername();
         String password = "test01";
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
 
-        UserContext.App.Calendar calendar = context.getCalendarApp();
+        UserContext.App.Calendar calendar = context.getCalendarApp().join();
         LocalDate now = LocalDate.now();
         List<Pair<String,String>> items = calendar.getCalendarEventsForMonth(now.getYear(), now.getMonthValue()).join();
         assertTrue("size", items.isEmpty());
@@ -1212,7 +1213,7 @@ public abstract class UserTests {
         String password = "test01";
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
 
-        UserContext.App.Calendar calendar = context.getCalendarApp();
+        UserContext.App.Calendar calendar = context.getCalendarApp().join();
         LocalDate month = LocalDate.of(2020, Month.JANUARY.getValue(), 1);
         calendar.updateCalendarEvent(2019, Month.DECEMBER.getValue(), "eventId", "calendarEvent").join();
         Triple<List<Pair<String,String>>,List<Pair<String,String>>,List<Pair<String,String>>> items = calendar.getCalendarEventsAroundMonth(month.getYear(), month.getMonthValue()).join();

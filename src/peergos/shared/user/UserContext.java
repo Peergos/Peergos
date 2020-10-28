@@ -134,19 +134,121 @@ public class UserContext {
     }
 
     @JsMethod
-    public App.Calendar getCalendarApp() {
-        return new App.Calendar(this);
+    public CompletableFuture<App.Calendar> getCalendarApp() {
+        return new App.Calendar(this).init();
     }
 
     public static class App {
+        public static final String SHARED_WITH_US_CACHE_FILENAME = "sharedWithUs.cbor";
+
+        private static CompletableFuture<SharedItemCache> readSharedItemCacheFile(UserContext ctx, Path path) {
+            return readFile(ctx, path).thenApply(bytes ->  SharedItemCache.fromCbor(CborObject.fromByteArray(bytes)));
+        }
+
+        private static CompletableFuture<byte[]> readFile(UserContext ctx, Path path) {
+            return ctx.getByPath(path).thenCompose(optFile -> {
+                    if(optFile.isEmpty()) {
+                        throw new IllegalStateException("File not found:" + path.toString());
+                    }
+                    long len = optFile.get().getSize();
+                    return optFile.get().getInputStream(ctx.network, ctx.crypto, len, l-> {})
+                            .thenCompose(is -> Serialize.readFully(is, len)
+                                    .thenApply(bytes -> bytes));
+            });
+        }
+
+        private static CompletableFuture<Boolean> saveFile(UserContext ctx, Path path, byte[] data) {
+            return ctx.getByPath(path.getParent()).thenCompose(fileOpt -> {
+                if(fileOpt.isEmpty()) {
+                    throw new IllegalStateException("File not found:" + path.toString());
+                }
+                return fileOpt.get().uploadOrReplaceFile(path.getFileName().toString(), AsyncReader.build(data),
+                        data.length, ctx.network, ctx.crypto, x -> {
+                        }, ctx.crypto.random.randomBytes(32))
+                        .thenApply(fw -> true);
+                }
+            );
+        }
+
+        private static List<SharedItem> filterSharedItems(List<SharedItem> items, Function<SharedItem, Boolean> filter) {
+            return items.stream().filter(item -> filter.apply(item)).collect(Collectors.toList());
+        }
+
+        private static CompletableFuture<List<SharedItem>> getSharedItems(UserContext ctx, String appName, Function<SharedItem, Boolean> sharedItemFilter) {
+            Function<SharedItem, Boolean> appFilter  = item -> {
+                Path path = Paths.get(item.path);
+                return path.getNameCount() >=4 && path.getName(1).toString().equals(APPS_DIR_NAME) && path.getName(2).toString().equals(appName);
+            };
+            Function<List<SharedItem>, List<SharedItem>> sharedItemsFilter = items ->
+                    items.stream().filter(f -> appFilter.apply(f)).filter(f -> sharedItemFilter.apply(f)).collect(Collectors.toList());
+            Path path = Paths.get(ctx.username, APPS_DIR_NAME, appName);
+            Path cacheFilePath = path.resolve(SHARED_WITH_US_CACHE_FILENAME);
+            int pageSize = 100;
+            return readSharedItemCacheFile(ctx, cacheFilePath).thenCompose(cachedItems -> {
+                        int socialFeedIndex = cachedItems.getReadIndex();
+                        return ctx.getSocialFeed().thenCompose(feed -> feed.update().thenCompose( updatedFeed -> {
+                            if (socialFeedIndex < updatedFeed.getLastSeenIndex() || updatedFeed.hasUnseen() || socialFeedIndex == 0) {
+                                CompletableFuture<List<SharedItem>> future = Futures.incomplete();
+                                return retrieveUnSeenSharedItems(updatedFeed, socialFeedIndex, pageSize, new ArrayList<>(), sharedItemsFilter, ctx, future)
+                                        .thenCompose(newItems -> {
+                                            List<SharedItem> combinedItems = new ArrayList<>(cachedItems.getItems());
+                                            combinedItems.addAll(newItems);
+                                            SharedItemCache updatedSharedCachedItems = new SharedItemCache(combinedItems, updatedFeed.getLastSeenIndex());
+                                            return saveFile(ctx, cacheFilePath, updatedSharedCachedItems.serialize())
+                                                    .thenCompose(res -> ctx.getFiles(combinedItems).thenApply(i -> i.stream().map(e -> e.left).collect(Collectors.toList())));
+                                        });
+                            } else {
+                                return ctx.getFiles(cachedItems.getItems()).thenApply(i -> i.stream().map(e -> e.left).collect(Collectors.toList()));
+                            }
+                        }));
+                    }
+            );
+        }
+
+        private static CompletableFuture<List<SharedItem>> retrieveUnSeenSharedItems(SocialFeed feed, int lastSeenIndex, int pageSize,
+                                                                                     List<SharedItem> results,
+                                                                                     Function<List<SharedItem>, List<SharedItem>> filter,
+                                                                                     UserContext ctx, CompletableFuture<List<SharedItem>> future) {
+            if (! feed.hasUnseen() ) {
+                future.complete(results);
+                return future;
+            } else {
+                return feed.getShared(lastSeenIndex, lastSeenIndex + pageSize, ctx.crypto, ctx.network)
+                    .thenCompose(sharedItems -> {
+                        int newIndex = lastSeenIndex + sharedItems.size();
+                        return feed.setLastSeenIndex(newIndex).thenCompose(res -> {
+                            results.addAll(filter.apply(sharedItems));
+                            return retrieveUnSeenSharedItems(feed, newIndex, pageSize, results, filter, ctx, future);
+                        });
+                    });
+            }
+        }
 
         public static class Calendar {
             public static final String CALENDAR_DIR_NAME = "calendar";
+            public static final String CALENDAR_FILE_EXTENSION = ".ics";
+
             private static Comparator<Pair<String, String>> sortByUser = Comparator.comparing(pair -> pair.left);
             private UserContext ctx;
+            private List<SharedItem> allSharedEvents;
 
             public Calendar(UserContext ctx) {
                 this.ctx = ctx;
+            }
+
+            private CompletableFuture<App.Calendar> init() {
+                Path calendarPath = Paths.get(APPS_DIR_NAME, CALENDAR_DIR_NAME, ctx.username);
+                Path basePath = Paths.get(ctx.username, APPS_DIR_NAME, CALENDAR_DIR_NAME);
+                Path cacheFilePath = basePath.resolve(SHARED_WITH_US_CACHE_FILENAME);
+                return ctx.getByPath("/" + ctx.username).thenCompose(root -> FileUtil.getOrMkdirs(root.get(), calendarPath, ctx.crypto, ctx.network))
+                    .thenCompose(myCalendarDir -> ctx.getByPath(basePath).thenCompose(fw -> fw.get().hasChild(SHARED_WITH_US_CACHE_FILENAME, ctx.crypto.hasher, ctx.network).thenCompose(exists ->
+                            exists ? Futures.of(true) : saveFile(ctx, cacheFilePath, SharedItemCache.empty().toCbor().toByteArray()))
+                        .thenCompose(res -> getSharedItems(ctx, CALENDAR_DIR_NAME, item -> item.path.endsWith(CALENDAR_FILE_EXTENSION))
+                            .thenApply(sharedEvents -> {
+                                this.allSharedEvents = sharedEvents;
+                                return this;
+                            }))
+                    ));
             }
 
             @JsMethod
@@ -161,7 +263,7 @@ public class UserContext {
                         "" + year , "" + monthIndex);
                 return ctx.getByPath(path).thenCompose(dir -> {
                     if (dir.isPresent()) {
-                        return dir.get().getChild(id + ".ics", ctx.crypto.hasher, ctx.network).thenCompose(fileOpt -> {
+                        return dir.get().getChild(id + CALENDAR_FILE_EXTENSION, ctx.crypto.hasher, ctx.network).thenCompose(fileOpt -> {
                             if (fileOpt.isPresent()) {
                                 return Futures.of(fileOpt.get());
                             }else{
@@ -177,11 +279,11 @@ public class UserContext {
             private CompletableFuture<String> readEventFile(FileWrapper calendarFile) {
                 int size = calendarFile.getFileProperties().sizeLow();
                 return calendarFile.getInputStream(ctx.network, ctx.crypto, x -> {})
-                        .thenCompose(reader -> {
-                            byte[] data = new byte[size];
-                            return reader.readIntoArray(data, 0, data.length)
-                                    .thenApply(x -> new String(data));
-                        });
+                    .thenCompose(reader -> {
+                        byte[] data = new byte[size];
+                        return reader.readIntoArray(data, 0, data.length)
+                                .thenApply(x -> new String(data));
+                    });
             }
 
             private CompletableFuture<List<Pair<String, String>>> getEventsForMonth(String username, FileWrapper monthDirectory) {
@@ -196,49 +298,41 @@ public class UserContext {
                         , (a, b) -> a && b).thenApply(res -> events);
                 });
             }
+
+            private CompletableFuture<List<Pair<String, String>>> readSharedItems(List<Pair<SharedItem, FileWrapper>> pairs) {
+                    List<Pair<String,String>> events = new ArrayList<>();
+                    return Futures.reduceAll(pairs,
+                            true,
+                            (x, pair) -> readEventFile(pair.right).thenCompose(ce -> {
+                                events.add(new Pair<>(pair.left.owner, ce));
+                                return Futures.of(true);
+                            })
+                            , (a, b) -> a && b).thenApply(res -> events);
+            }
+
             @JsMethod
             public CompletableFuture<List<Pair<String, String>>> getCalendarEventsForMonth(int year, int monthIndex) {
-                if(monthIndex == 0) {
+                if (monthIndex == 0) {
                     throw new IllegalArgumentException("monthIndex starts at 1 for January!");
                 }
-                if(monthIndex > 12) {
+                if (monthIndex > 12) {
                     throw new IllegalArgumentException("monthIndex > 12");
                 }
                 Path path = Paths.get(ctx.username, APPS_DIR_NAME, CALENDAR_DIR_NAME,
-                        ctx.username, "" + year , "" + monthIndex);
+                        ctx.username, "" + year, "" + monthIndex);
                 return ctx.getByPath(path).thenCompose(fw -> {
                     if (fw.isPresent()) {
                         return getEventsForMonth(ctx.username, fw.get());
                     } else {
                         return CompletableFuture.completedFuture(new ArrayList<>());
                     }
-                }).thenCompose(ourEvents -> ctx.getSocialState().thenCompose(socialState -> {
-                        Set<String> followers = socialState.followerRoots.keySet();
-                        return getSharedCalendarEventsForMonth(followers, year, monthIndex)
-                                    .thenApply(sharedEvents -> new Pair<>(ourEvents, sharedEvents));
-                        })
-                ).thenApply(allEvents -> {
-                    List<Pair<String, String>> result = new ArrayList(allEvents.left);
-                    result.addAll(allEvents.right);
-                    return result.stream().sorted(sortByUser).collect(Collectors.toList());
+                }).thenCompose(ourEvents -> {
+                    List<SharedItem> filteredSharedEvents = filterSharedItems(allSharedEvents, item -> item.path.contains(year + "/" + monthIndex));
+                    return ctx.getFiles(filteredSharedEvents)
+                            .thenCompose(availableSharedEvents -> readSharedItems(availableSharedEvents)
+                                .thenApply(sharedEvents -> Stream.concat(ourEvents.stream(), sharedEvents.stream())
+                                    .sorted(sortByUser).collect(Collectors.toList())));
                 });
-            }
-            private CompletableFuture<List<Pair<String, String>>> getSharedCalendarEventsForMonth(Set<String> followers, int year, int monthIndex) {
-                if (followers.isEmpty()) {
-                    return Futures.of(Collections.emptyList());
-                }
-                List<Pair<String, String>> events = new ArrayList<>();
-                return Futures.reduceAll(followers,
-                        true,
-                        (x, follower) -> ctx.getByPath(Paths.get(follower, APPS_DIR_NAME, CALENDAR_DIR_NAME,
-                                follower, "" + year , "" + monthIndex)).thenCompose(fw -> {
-                            if(fw.isPresent())
-                                return getEventsForMonth(follower, fw.get()).thenApply(res -> {
-                                    events.addAll(res);
-                                    return true;
-                                });
-                            return Futures.of(true);
-                        }), (a, b) -> a && b).thenApply(res -> events);
             }
 
             @JsMethod
@@ -255,12 +349,13 @@ public class UserContext {
                 Pair<Integer, Integer> currentMonth = new Pair<>(year, monthIndex);
                 Pair<Integer, Integer> nextMonth = monthIndex == 12 ? new Pair<>(year +1, 1)
                         : new Pair<>(year, monthIndex +1);
-
                 return getCalendarEventsForMonth(previousMonth.left, previousMonth.right).thenCompose(previous ->
-                        getCalendarEventsForMonth(currentMonth.left, currentMonth.right).thenCompose(current ->
-                                getCalendarEventsForMonth(nextMonth.left, nextMonth.right).thenApply(next ->
-                                            new Triple<>(previous, current, next)
-                )));
+                    getCalendarEventsForMonth(currentMonth.left, currentMonth.right).thenCompose(current ->
+                        getCalendarEventsForMonth(nextMonth.left, nextMonth.right).thenApply(next ->
+                                    new Triple<>(previous, current, next)
+                        )
+                    )
+                );
             }
 
             @JsMethod
@@ -269,7 +364,7 @@ public class UserContext {
                 return ctx.getUserRoot().thenCompose(root -> FileUtil.getOrMkdirs(root, path, ctx.crypto, ctx.network))
                         .thenCompose(dir -> {
                             byte[] bytes = calendarEvent.getBytes();
-                            String eventFilename = eventId + ".ics";
+                            String eventFilename = eventId + CALENDAR_FILE_EXTENSION;
                             return dir.uploadOrReplaceFile(eventFilename, AsyncReader.build(bytes), bytes.length,
                                     ctx.network, ctx.crypto, x -> {
                                     }, ctx.crypto.random.randomBytes(32)).thenApply(fw -> true);
@@ -281,7 +376,7 @@ public class UserContext {
                 Path path = Paths.get(APPS_DIR_NAME, CALENDAR_DIR_NAME, ctx.username, "" + year, "" + month);
                 return ctx.getUserRoot().thenCompose(root -> FileUtil.getOrMkdirs(root, path, ctx.crypto, ctx.network))
                     .thenCompose(dir -> {
-                        String filename = eventId + ".ics";
+                        String filename = eventId + CALENDAR_FILE_EXTENSION;
                         Path pathToFile = path.resolve(filename);
                         return dir.getChild(filename, ctx.crypto.hasher, ctx.network).thenCompose(file ->
                                 file.get().remove(dir, pathToFile, ctx).thenApply(fw -> true));
