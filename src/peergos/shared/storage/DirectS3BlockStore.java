@@ -112,14 +112,16 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
         if (cached != null)
             return Futures.of(cached.equals(nodeId));
         return core.getUsername(owner)
-                .thenCompose(user -> core.getChain(user))
-                .thenApply(chain -> {
-                    List<Multihash> storageProviders = chain.get(chain.size() - 1).claim.storageProviders;
-                    Multihash mainNode = storageProviders.get(0);
-                    storageNodeByOwner.put(owner, mainNode);
-                    System.out.println("Are we on owner's node? " + mainNode + " == " + nodeId);
-                    return mainNode.equals(nodeId);
-                });
+                .thenCompose(user -> core.getChain(user)
+                        .thenApply(chain -> {
+                            if (chain.isEmpty())
+                                throw new IllegalStateException("Empty chain returned for " + user);
+                            List<Multihash> storageProviders = chain.get(chain.size() - 1).claim.storageProviders;
+                            Multihash mainNode = storageProviders.get(0);
+                            storageNodeByOwner.put(owner, mainNode);
+                            System.out.println("Are we on owner's node? " + mainNode + " == " + nodeId);
+                            return mainNode.equals(nodeId);
+                        }));
     }
 
     @Override
