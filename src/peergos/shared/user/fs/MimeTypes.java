@@ -142,9 +142,10 @@ public class MimeTypes {
         if (equalArrays(start, CBOR_PEERGOS_TODO))
             return "application/vnd.peergos-todo";
 
+        if (filename.endsWith(".ics") && equalArrays(start, ICS))
+            return "text/calendar";
+
         if (allAscii(start)) {
-            if (filename.endsWith(".ics") && equalArrays(start, ICS))
-                return "text/calendar";
             if (filename.endsWith(".html"))
                 return "text/html";
             if (filename.endsWith(".css"))
