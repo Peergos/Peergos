@@ -1700,6 +1700,7 @@ public class UserContext {
                 .getEntryPoints(rootKey)
                 .stream()
                 .filter(e -> e.ownerName.equals(ourName))
+                .map(e -> e.withOwner(userData.controller))
                 .collect(Collectors.toList());
         return Futures.reduceAll(ourFileSystemEntries, root,
                 (t, e) -> NetworkAccess.getLatestEntryPoint(e, network)

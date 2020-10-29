@@ -23,6 +23,10 @@ public class EntryPoint implements Cborable {
         this.ownerName = ownerName;
     }
 
+    public EntryPoint withOwner(PublicKeyHash newOwner) {
+        return new EntryPoint(pointer.withOwner(newOwner), ownerName);
+    }
+
     public byte[] serializeAndSymmetricallyEncrypt(SymmetricKey key) {
         byte[] nonce = key.createNonce();
         return ArrayOps.concat(nonce, key.encrypt(serialize(), nonce));
