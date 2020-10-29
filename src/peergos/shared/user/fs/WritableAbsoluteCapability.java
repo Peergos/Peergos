@@ -43,6 +43,10 @@ public class WritableAbsoluteCapability extends AbsoluteCapability {
         return new WritableAbsoluteCapability(owner, writer, newMapKey, rBaseKey, wBaseKey.get());
     }
 
+    public AbsoluteCapability withOwner(PublicKeyHash owner) {
+        return new WritableAbsoluteCapability(owner, writer, getMapKey(), rBaseKey, wBaseKey.get());
+    }
+
     public WritableAbsoluteCapability withSigner(PublicKeyHash newSigner) {
         return new WritableAbsoluteCapability(owner, newSigner, getMapKey(), rBaseKey, wBaseKey.get());
     }

@@ -306,6 +306,24 @@ public abstract class UserTests {
     }
 
     @Test
+    public void ownerUpdateAfterPasswordChange() throws Exception {
+        String username = generateUsername();
+        String password = "password";
+        UserContext userContext = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+
+        PublicKeyHash originalOwner = userContext.getUserRoot().join().owner();
+
+        String newPassword = "newPassword";
+        userContext.changePassword(password, newPassword).get();
+        MultiUserTests.checkUserValidity(network, username);
+
+        UserContext changedPassword = PeergosNetworkUtils.ensureSignedUp(username, newPassword, network, crypto);
+        PublicKeyHash updatedOwner = changedPassword.getUserRoot().join().owner();
+
+        Assert.assertTrue(! updatedOwner.equals(originalOwner));
+    }
+
+    @Test
     public void changePasswordFAIL() throws Exception {
         String username = generateUsername();
         String password = "password";
