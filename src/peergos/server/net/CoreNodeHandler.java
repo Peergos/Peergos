@@ -125,9 +125,10 @@ public class CoreNodeHandler implements HttpHandler
     void getUsername(DataInputStream din, DataOutputStream dout) throws Exception
     {
         byte[] publicKey = CoreNodeUtils.deserializeByteArray(din);
-        String k = coreNode.getUsername(PublicKeyHash.fromCbor(CborObject.fromByteArray(publicKey))).get();
+        PublicKeyHash owner = PublicKeyHash.fromCbor(CborObject.fromByteArray(publicKey));
+        String k = coreNode.getUsername(owner).get();
         if (k == null)
-            k="";
+            throw new IllegalStateException("Unknown username for key: " + owner.toString());
         Serialize.serialize(k, dout);
     }
 
