@@ -172,6 +172,8 @@ public class FileProperties implements Cborable {
     public String getType() {
         if (isDirectory)
             return "dir";
+        if (mimeType.equals("text/calendar"))
+            return "calendar";
         if (mimeType.startsWith("image"))
             return "image";
         if (mimeType.startsWith("audio"))
@@ -200,7 +202,8 @@ public class FileProperties implements Cborable {
             return "spreadsheet";
         if (mimeType.equals("application/vnd.oasis.opendocument.presentation"))
             return "presentation";
-
+        if (mimeType.equals("application/vnd.peergos-todo"))
+            return "todo";
         return "file";
     }
 
