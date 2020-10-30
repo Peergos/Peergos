@@ -61,8 +61,8 @@ public class App {
 
     @JsMethod
     public CompletableFuture<Boolean> writeInternal(Path path, byte[] data) {
-        Path pathWithoutUsername = Paths.get(Stream.of(path.toString().split("/")).skip(1).collect(Collectors.joining("/")));
         if (path.toString().startsWith(ctx.username)) {
+            Path pathWithoutUsername = Paths.get(Stream.of(path.toString().split("/")).skip(1).collect(Collectors.joining("/")));
             return ctx.getByPath(ctx.username).thenCompose(userRoot -> userRoot.get().getOrMkdirs(pathWithoutUsername.getParent(), ctx.network, true, ctx.crypto)
                     .thenCompose(dir -> dir.uploadOrReplaceFile(path.getFileName().toString(), AsyncReader.build(data),
                             data.length, ctx.network, ctx.crypto, x -> {
