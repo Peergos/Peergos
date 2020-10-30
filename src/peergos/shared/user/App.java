@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class App {
     public static final String SHARED_WITH_US_CACHE_FILENAME = "sharedWithUs.cbor";
@@ -35,7 +36,6 @@ public class App {
         Path basePath = Paths.get(ctx.username, APPS_DIR_NAME, appName);
         Path cacheFilePath = basePath.resolve(SHARED_WITH_US_CACHE_FILENAME);
         return ctx.getByPath("/" + ctx.username).thenCompose(root -> root.get().getOrMkdirs(appPath, ctx.network, true, ctx.crypto))
-//        return ctx.getByPath("/" + ctx.username).thenCompose(root -> FileUtil.getOrMkdirs(root.get(), appPath, ctx.crypto, ctx.network))
                 .thenCompose(appDir -> ctx.getByPath(basePath).thenCompose(fw -> fw.get().hasChild(SHARED_WITH_US_CACHE_FILENAME, ctx.crypto.hasher, ctx.network).thenCompose(exists ->
                         exists ? Futures.of(true) : app.writeInternal(cacheFilePath, SharedItemCache.empty().toCbor().toByteArray()))
                         .thenCompose(res -> app.getSharedItems(appName, item -> item.path.endsWith(fileExtension))
@@ -61,12 +61,22 @@ public class App {
 
     @JsMethod
     public CompletableFuture<Boolean> writeInternal(Path path, byte[] data) {
-        return ctx.getByPath("/").thenCompose(globalRoot -> FileUtil.getOrMkdirs(globalRoot.get(), path.getParent(), ctx.crypto, ctx.network)
-//inError         return ctx.getByPath("/").thenCompose(globalRoot -> globalRoot.get().getOrMkdirs(path.getParent(), ctx.network, true, ctx.crypto)
-                .thenCompose(dir -> dir.uploadOrReplaceFile(path.getFileName().toString(), AsyncReader.build(data),
-                        data.length, ctx.network, ctx.crypto, x -> { }, ctx.crypto.random.randomBytes(32))
-                        .thenApply(fw -> true)
-                ));
+        Path pathWithoutUsername = Paths.get(Stream.of(path.toString().split("/")).skip(1).collect(Collectors.joining("/")));
+        if (path.toString().startsWith(ctx.username)) {
+            return ctx.getByPath(ctx.username).thenCompose(userRoot -> userRoot.get().getOrMkdirs(pathWithoutUsername.getParent(), ctx.network, true, ctx.crypto)
+                    .thenCompose(dir -> dir.uploadOrReplaceFile(path.getFileName().toString(), AsyncReader.build(data),
+                            data.length, ctx.network, ctx.crypto, x -> {
+                            }, ctx.crypto.random.randomBytes(32))
+                            .thenApply(fw -> true)
+                    ));
+        } else {
+            return ctx.getByPath(path.getParent())
+                    .thenCompose(dir -> dir.get().uploadOrReplaceFile(path.getFileName().toString(), AsyncReader.build(data),
+                            data.length, ctx.network, ctx.crypto, x -> {
+                            }, ctx.crypto.random.randomBytes(32))
+                            .thenApply(fw -> true)
+                    );
+        }
     }
 
 
