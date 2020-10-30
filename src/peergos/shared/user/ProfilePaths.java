@@ -17,7 +17,7 @@ public class ProfilePaths {
 
     public static final Path ROOT = Paths.get(".profile");
     private static final Path PHOTO = ROOT.resolve("photo");
-    public static final Path PHOTO_HIGH_RES = PHOTO.resolve("highres");
+    public static final Path PHOTO_HIGH_RES = ROOT.resolve("highres");
     public static final Path BIO = ROOT.resolve("bio");
     public static final Path STATUS = ROOT.resolve("status");
     public static final Path FIRSTNAME = ROOT.resolve("firstname");
