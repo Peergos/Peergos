@@ -1173,6 +1173,21 @@ public abstract class UserTests {
     }
 
     @Test
+    public void calendarTestInError() throws Exception {
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        App.init(context,"calendar",".ics").thenApply(res -> {
+           System.currentTimeMillis();
+           return null;
+        }).exceptionally(t -> {
+            t.printStackTrace();
+            assertTrue("Exception", false);
+            return Futures.logAndThrow(t);
+        }).join();
+    }
+
+    @Test
     public void rename() throws Exception {
         String username = generateUsername();
         String password = "test01";
