@@ -110,13 +110,12 @@ public class UserContext {
     }
 
     private static CompletableFuture<IncomingCapCache> buildCapCache(TrieNode root,
-                                                                String username,
-                                                                NetworkAccess network,
-                                                                Crypto crypto) {
+                                                                     String username,
+                                                                     NetworkAccess network,
+                                                                     Crypto crypto) {
         return root.getByPath(username, crypto.hasher, network)
                 .thenApply(Optional::get)
-                .thenCompose(home -> home.getChild(CapabilityStore.CAPABILITY_CACHE_DIR, crypto.hasher, network))
-                .thenApply(Optional::get)
+                .thenCompose(home -> home.getOrMkdirs(Paths.get(CapabilityStore.CAPABILITY_CACHE_DIR), network, true, crypto))
                 .thenCompose(cacheRoot -> IncomingCapCache.build(cacheRoot, crypto, network));
     }
 
