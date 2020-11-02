@@ -45,13 +45,23 @@ public class ProfilePaths {
     }
 
     @JsMethod
+    public static CompletableFuture<Optional<byte[]>> getHighResProfilePhoto(String user, UserContext viewer) {
+        return getAndParse(Paths.get(user).resolve(PHOTO_HIGH_RES), x -> x, viewer);
+    }
+
+    @JsMethod
+    public static CompletableFuture<Boolean> setHighResProfilePhoto(UserContext user, byte[] image) {
+        return serializeAndSet(PHOTO_HIGH_RES, image, x -> x, user);
+    }
+
+    @JsMethod
     public static CompletableFuture<Optional<String>> getProfilePhoto(String user, UserContext viewer) {
-        return getAndParse(Paths.get(user).resolve(PHOTO_HIGH_RES), String::new, viewer);
+        return getAndParse(Paths.get(user).resolve(PHOTO), String::new, viewer);
     }
 
     @JsMethod
     public static CompletableFuture<Boolean> setProfilePhoto(UserContext user, String base64Str) {
-        return serializeAndSet(PHOTO_HIGH_RES, base64Str, String::getBytes, user);
+        return serializeAndSet(PHOTO, base64Str, String::getBytes, user);
     }
 
     @JsMethod
