@@ -12,6 +12,7 @@ import peergos.shared.util.Serialize;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
@@ -115,6 +116,18 @@ public class App {
             Path pathToFile = path.resolve(filename);
             return dir.getChild(filename, ctx.crypto.hasher, ctx.network).thenCompose(file ->
                     file.get().remove(dir, pathToFile, ctx).thenApply(fw -> true));
+        });
+    }
+
+    @JsMethod
+    public CompletableFuture<List<String>> dirInternal(Path relativePath) {
+        Path path = fullPath(relativePath);
+        return ctx.getByPath(path).thenCompose(dirOpt -> {
+            if(dirOpt.isEmpty()) {
+                return Futures.of(Collections.emptyList());
+            }
+            return dirOpt.get().getChildren(ctx.crypto.hasher, ctx.network).thenApply(files ->
+                    files.stream().map(fw -> fw.getName()).collect(Collectors.toList()));
         });
     }
 
