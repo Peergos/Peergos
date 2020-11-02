@@ -21,23 +21,25 @@ import java.util.stream.Stream;
 public class App {
     public static final String SHARED_WITH_US_CACHE_FILENAME = "sharedWithUs.cbor";
     public static final String APPS_DIR_NAME = ".apps";
+    public static final String DATA_DIR_NAME = "data";
 
-    private UserContext ctx;
+    private final UserContext ctx;
+    private final Path appDataDirectory;
     private List<SharedItem> allSharedEvents = new ArrayList<>();
-
-    private App(UserContext ctx) {
+    private App(UserContext ctx, Path appDataDirectory) {
         this.ctx = ctx;
+        this.appDataDirectory = appDataDirectory;
     }
 
     @JsMethod
     public static CompletableFuture<App> init(UserContext ctx, String appName, String fileExtension) {
-        App app = new App(ctx);
+        App app = new App(ctx, Paths.get(ctx.username, APPS_DIR_NAME, appName, DATA_DIR_NAME));
         Path appPath = Paths.get(APPS_DIR_NAME, appName, ctx.username);
         Path basePath = Paths.get(ctx.username, APPS_DIR_NAME, appName);
         Path cacheFilePath = basePath.resolve(SHARED_WITH_US_CACHE_FILENAME);
         return ctx.getByPath("/" + ctx.username).thenCompose(root -> root.get().getOrMkdirs(appPath, ctx.network, true, ctx.crypto))
                 .thenCompose(appDir -> ctx.getByPath(basePath).thenCompose(fw -> fw.get().hasChild(SHARED_WITH_US_CACHE_FILENAME, ctx.crypto.hasher, ctx.network).thenCompose(exists ->
-                        exists ? Futures.of(true) : app.writeInternal(cacheFilePath, SharedItemCache.empty().toCbor().toByteArray()))
+                        exists ? Futures.of(true) : app.writeFileContents(cacheFilePath, SharedItemCache.empty().toCbor().toByteArray()))
                         .thenCompose(res -> app.getSharedItems(appName, item -> item.path.endsWith(fileExtension))
                                 .thenApply(sharedEvents -> {
                                     app.allSharedEvents = sharedEvents;
@@ -46,8 +48,28 @@ public class App {
                 ));
     }
 
+    private Path fullPath(Path path) {
+        String pathAsString = path.toString().trim();
+        Path relativePath = pathAsString.startsWith("/") ? Paths.get(pathAsString.substring(1)) : Paths.get(pathAsString);
+        return appDataDirectory.resolve(relativePath);
+    }
+
+    private CompletableFuture<Boolean> writeFileContents(Path path, byte[] data) {
+        Path pathWithoutUsername = Paths.get(Stream.of(path.toString().split("/")).skip(1).collect(Collectors.joining("/")));
+        return ctx.getByPath(ctx.username).thenCompose(userRoot -> userRoot.get().getOrMkdirs(pathWithoutUsername.getParent(), ctx.network, true, ctx.crypto)
+                .thenCompose(dir -> dir.uploadOrReplaceFile(path.getFileName().toString(), AsyncReader.build(data),
+                        data.length, ctx.network, ctx.crypto, x -> {
+                        }, ctx.crypto.random.randomBytes(32))
+                        .thenApply(fw -> true)
+                ));
+    }
+
     @JsMethod
-    public CompletableFuture<byte[]> readInternal(Path path) {
+    public CompletableFuture<byte[]> readInternal(Path relativePath) {
+        return readFileContents(fullPath(relativePath));
+    }
+
+    private CompletableFuture<byte[]> readFileContents(Path path) {
         return ctx.getByPath(path).thenCompose(optFile -> {
             if(optFile.isEmpty()) {
                 throw new IllegalStateException("File not found:" + path.toString());
@@ -60,28 +82,13 @@ public class App {
     }
 
     @JsMethod
-    public CompletableFuture<Boolean> writeInternal(Path path, byte[] data) {
-        if (path.toString().startsWith(ctx.username)) {
-            Path pathWithoutUsername = Paths.get(Stream.of(path.toString().split("/")).skip(1).collect(Collectors.joining("/")));
-            return ctx.getByPath(ctx.username).thenCompose(userRoot -> userRoot.get().getOrMkdirs(pathWithoutUsername.getParent(), ctx.network, true, ctx.crypto)
-                    .thenCompose(dir -> dir.uploadOrReplaceFile(path.getFileName().toString(), AsyncReader.build(data),
-                            data.length, ctx.network, ctx.crypto, x -> {
-                            }, ctx.crypto.random.randomBytes(32))
-                            .thenApply(fw -> true)
-                    ));
-        } else {
-            return ctx.getByPath(path.getParent())
-                    .thenCompose(dir -> dir.get().uploadOrReplaceFile(path.getFileName().toString(), AsyncReader.build(data),
-                            data.length, ctx.network, ctx.crypto, x -> {
-                            }, ctx.crypto.random.randomBytes(32))
-                            .thenApply(fw -> true)
-                    );
-        }
+    public CompletableFuture<Boolean> writeInternal(Path relativePath, byte[] data) {
+        return writeFileContents(fullPath(relativePath), data);
     }
 
-
     @JsMethod
-    public CompletableFuture<Boolean> deleteInternal(Path path) {
+    public CompletableFuture<Boolean> deleteInternal(Path relativePath) {
+        Path path = fullPath(relativePath);
         return ctx.getByPath(path.getParent()).thenCompose(dirOpt -> {
             if(dirOpt.isEmpty()) {
                 throw new IllegalStateException("File not found:" + path.toString());
@@ -95,7 +102,8 @@ public class App {
     }
 
     @JsMethod
-    public CompletableFuture<String> createSecretLinkInternal(Path path) {
+    public CompletableFuture<String> createSecretLinkInternal(Path relativePath) {
+        Path path = fullPath(relativePath);
         return ctx.getByPath(path).thenCompose(fileOpt -> {
             if (fileOpt.isPresent()) {
                 return Futures.of(fileOpt.get().toLink());
@@ -111,7 +119,7 @@ public class App {
     }
 
     private CompletableFuture<SharedItemCache> readSharedItemCacheFile(Path path) {
-        return readInternal(path).thenApply(bytes ->  SharedItemCache.fromCbor(CborObject.fromByteArray(bytes)));
+        return readFileContents(path).thenApply(bytes ->  SharedItemCache.fromCbor(CborObject.fromByteArray(bytes)));
     }
 
     private CompletableFuture<List<SharedItem>> getSharedItems(String appName, Function<SharedItem, Boolean> sharedItemFilter) {
@@ -134,7 +142,7 @@ public class App {
                                         List<SharedItem> combinedItems = new ArrayList<>(cachedItems.getItems());
                                         combinedItems.addAll(newItems);
                                         SharedItemCache updatedSharedCachedItems = new SharedItemCache(combinedItems, updatedFeed.getLastSeenIndex());
-                                        return writeInternal(cacheFilePath, updatedSharedCachedItems.serialize())
+                                        return writeFileContents(cacheFilePath, updatedSharedCachedItems.serialize())
                                                 .thenCompose(res -> ctx.getFiles(combinedItems).thenApply(i -> i.stream().map(e -> e.left).collect(Collectors.toList())));
                                     });
                         } else {
