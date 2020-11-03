@@ -1,13 +1,10 @@
 package peergos.shared.user;
 
 import jsinterop.annotations.JsMethod;
-import peergos.shared.cbor.CborObject;
 import peergos.shared.social.SharedItem;
-import peergos.shared.social.SocialFeed;
 import peergos.shared.user.fs.AsyncReader;
 import peergos.shared.user.fs.FileWrapper;
 import peergos.shared.util.Futures;
-import peergos.shared.util.Pair;
 import peergos.shared.util.Serialize;
 
 import java.nio.file.Path;
@@ -16,7 +13,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -38,33 +34,22 @@ import java.util.stream.Stream;
  * Any permissions granted by the user will be stored in /$username/.apps/$appname/permissions.cbor
  */
 public class App {
-    public static final String SHARED_WITH_US_CACHE_FILENAME = "sharedWithUs.cbor";
     public static final String APPS_DIR_NAME = ".apps";
     public static final String DATA_DIR_NAME = "data";
 
     private final UserContext ctx;
     private final Path appDataDirectory;
-    private List<SharedItem> allSharedEvents = new ArrayList<>();
     private App(UserContext ctx, Path appDataDirectory) {
         this.ctx = ctx;
         this.appDataDirectory = appDataDirectory;
     }
 
     @JsMethod
-    public static CompletableFuture<App> init(UserContext ctx, String appName, String fileExtension) {
+    public static CompletableFuture<App> init(UserContext ctx, String appName) {
         App app = new App(ctx, Paths.get(ctx.username, APPS_DIR_NAME, appName, DATA_DIR_NAME));
-        Path appPath = Paths.get(APPS_DIR_NAME, appName, ctx.username);
-        Path basePath = Paths.get(ctx.username, APPS_DIR_NAME, appName);
-        Path cacheFilePath = basePath.resolve(SHARED_WITH_US_CACHE_FILENAME);
-        return ctx.getByPath("/" + ctx.username).thenCompose(root -> root.get().getOrMkdirs(appPath, ctx.network, true, ctx.crypto))
-                .thenCompose(appDir -> ctx.getByPath(basePath).thenCompose(fw -> fw.get().hasChild(SHARED_WITH_US_CACHE_FILENAME, ctx.crypto.hasher, ctx.network).thenCompose(exists ->
-                        exists ? Futures.of(true) : app.writeFileContents(cacheFilePath, SharedItemCache.empty().toCbor().toByteArray()))
-                        .thenCompose(res -> app.getSharedItems(appName, item -> item.path.endsWith(fileExtension))
-                                .thenApply(sharedEvents -> {
-                                    app.allSharedEvents = sharedEvents;
-                                    return app;
-                                }))
-                ));
+        Path appPath = Paths.get(APPS_DIR_NAME, appName, DATA_DIR_NAME);
+        return ctx.getByPath(ctx.username).thenCompose(root -> root.get().getOrMkdirs(appPath, ctx.network, true, ctx.crypto))
+                .thenApply(appDir -> app);
     }
 
     private Path fullPath(Path path) {
@@ -142,84 +127,6 @@ public class App {
                 return Futures.errored(new IllegalStateException("Unable to find directory"));
             }
         });
-    }
-
-    @JsMethod
-    public CompletableFuture<List<byte[]>> filterSharedItems(Function<String, Boolean> filter) {
-        Function<String, String> relativeDir = fullPath -> Stream.of(fullPath.split("/")).skip(4).collect(Collectors.joining("/"));
-        List<SharedItem> filteredSharedItems = allSharedEvents.stream()
-                .filter(item -> filter.apply(relativeDir.apply(item.path)))
-                .collect(Collectors.toList());
-        return ctx.getFiles(filteredSharedItems)
-                .thenCompose(availableSharedEvents -> readSharedItems(availableSharedEvents));
-    }
-
-    private CompletableFuture<List<byte[]>> readSharedItems(List<Pair<SharedItem, FileWrapper>> pairs) {
-        List<byte[]> events = new ArrayList<>();
-        return Futures.reduceAll(pairs,
-                true,
-                (x, pair) ->  {
-                    long len = pair.right.getSize();
-                    return pair.right.getInputStream(ctx.network, ctx.crypto, len, l-> {})
-                            .thenCompose(is -> Serialize.readFully(is, len)
-                                    .thenApply(bytes -> events.add(bytes))).thenApply(res-> true);
-                }
-                , (a, b) -> a && b).thenApply(res -> events);
-    }
-
-
-    private CompletableFuture<SharedItemCache> readSharedItemCacheFile(Path path) {
-        return readFileContents(path).thenApply(bytes ->  SharedItemCache.fromCbor(CborObject.fromByteArray(bytes)));
-    }
-
-    private CompletableFuture<List<SharedItem>> getSharedItems(String appName, Function<SharedItem, Boolean> sharedItemFilter) {
-        Function<SharedItem, Boolean> appFilter  = item -> {
-            Path path = Paths.get(item.path);
-            return path.getNameCount() >=4 && path.getName(1).toString().equals(APPS_DIR_NAME) && path.getName(2).toString().equals(appName);
-        };
-        Function<List<SharedItem>, List<SharedItem>> sharedItemsFilter = items ->
-                items.stream().filter(f -> appFilter.apply(f)).filter(f -> sharedItemFilter.apply(f)).collect(Collectors.toList());
-        Path path = Paths.get(ctx.username, APPS_DIR_NAME, appName);
-        Path cacheFilePath = path.resolve(SHARED_WITH_US_CACHE_FILENAME);
-        int pageSize = 100;
-        return readSharedItemCacheFile(cacheFilePath).thenCompose(cachedItems -> {
-                    int socialFeedIndex = cachedItems.getReadIndex();
-                    return ctx.getSocialFeed().thenCompose(feed -> feed.update().thenCompose( updatedFeed -> {
-                        if (socialFeedIndex < updatedFeed.getLastSeenIndex() || updatedFeed.hasUnseen() || socialFeedIndex == 0) {
-                            CompletableFuture<List<SharedItem>> future = Futures.incomplete();
-                            return retrieveUnSeenSharedItems(updatedFeed, socialFeedIndex, pageSize, new ArrayList<>(), sharedItemsFilter, future)
-                                    .thenCompose(newItems -> {
-                                        List<SharedItem> combinedItems = new ArrayList<>(cachedItems.getItems());
-                                        combinedItems.addAll(newItems);
-                                        SharedItemCache updatedSharedCachedItems = new SharedItemCache(combinedItems, updatedFeed.getLastSeenIndex());
-                                        return writeFileContents(cacheFilePath, updatedSharedCachedItems.serialize())
-                                                .thenCompose(res -> ctx.getFiles(combinedItems).thenApply(i -> i.stream().map(e -> e.left).collect(Collectors.toList())));
-                                    });
-                        } else {
-                            return ctx.getFiles(cachedItems.getItems()).thenApply(i -> i.stream().map(e -> e.left).collect(Collectors.toList()));
-                        }
-                    }));
-                }
-        );
-    }
-
-    private CompletableFuture<List<SharedItem>> retrieveUnSeenSharedItems(SocialFeed feed, int lastSeenIndex, int pageSize,
-                                                                          List<SharedItem> results,
-                                                                          Function<List<SharedItem>, List<SharedItem>> filter,
-                                                                          CompletableFuture<List<SharedItem>> future) {
-        if (! feed.hasUnseen() ) {
-            future.complete(results);
-            return future;
-        } else {
-            return feed.getShared(lastSeenIndex, lastSeenIndex + pageSize, ctx.crypto, ctx.network)
-                    .thenCompose(sharedItems -> {
-                        int newIndex = lastSeenIndex + sharedItems.size();
-                        return feed.setLastSeenIndex(newIndex).thenCompose(res -> {
-                            results.addAll(filter.apply(sharedItems));
-                            return retrieveUnSeenSharedItems(feed, newIndex, pageSize, results, filter, future);
-                        });
-                    });
-        }
     }
 }
 
