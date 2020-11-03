@@ -172,6 +172,8 @@ public class FileProperties implements Cborable {
     public String getType() {
         if (isDirectory)
             return "dir";
+        if (mimeType.equals("text/calendar"))
+            return "calendar";
         if (mimeType.startsWith("image"))
             return "image";
         if (mimeType.startsWith("audio"))
