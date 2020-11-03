@@ -7,6 +7,7 @@ import peergos.shared.social.SocialFeed;
 import peergos.shared.user.fs.AsyncReader;
 import peergos.shared.user.fs.FileWrapper;
 import peergos.shared.util.Futures;
+import peergos.shared.util.Pair;
 import peergos.shared.util.Serialize;
 
 import java.nio.file.Path;
@@ -138,15 +139,34 @@ public class App {
             if (fileOpt.isPresent()) {
                 return Futures.of(fileOpt.get().toLink());
             } else {
-                return Futures.errored(new IllegalStateException("Unable to find Event directory"));
+                return Futures.errored(new IllegalStateException("Unable to find directory"));
             }
         });
     }
 
     @JsMethod
-    public List<SharedItem> filterSharedItems(Function<SharedItem, Boolean> filter) {
-        return allSharedEvents.stream().filter(item -> filter.apply(item)).collect(Collectors.toList());
+    public CompletableFuture<List<byte[]>> filterSharedItems(Function<String, Boolean> filter) {
+        Function<String, String> relativeDir = fullPath -> Stream.of(fullPath.split("/")).skip(4).collect(Collectors.joining("/"));
+        List<SharedItem> filteredSharedItems = allSharedEvents.stream()
+                .filter(item -> filter.apply(relativeDir.apply(item.path)))
+                .collect(Collectors.toList());
+        return ctx.getFiles(filteredSharedItems)
+                .thenCompose(availableSharedEvents -> readSharedItems(availableSharedEvents));
     }
+
+    private CompletableFuture<List<byte[]>> readSharedItems(List<Pair<SharedItem, FileWrapper>> pairs) {
+        List<byte[]> events = new ArrayList<>();
+        return Futures.reduceAll(pairs,
+                true,
+                (x, pair) ->  {
+                    long len = pair.right.getSize();
+                    return pair.right.getInputStream(ctx.network, ctx.crypto, len, l-> {})
+                            .thenCompose(is -> Serialize.readFully(is, len)
+                                    .thenApply(bytes -> events.add(bytes))).thenApply(res-> true);
+                }
+                , (a, b) -> a && b).thenApply(res -> events);
+    }
+
 
     private CompletableFuture<SharedItemCache> readSharedItemCacheFile(Path path) {
         return readFileContents(path).thenApply(bytes ->  SharedItemCache.fromCbor(CborObject.fromByteArray(bytes)));
