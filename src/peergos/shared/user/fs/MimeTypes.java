@@ -37,6 +37,7 @@ public class MimeTypes {
     final static int[] ZIP = new int[]{'P', 'K', 3, 4};
 
     final static int[] ICS = new int[]{'B','E','G','I','N',':','V','C','A','L','E','N','D','A','R'};
+    final static int[] VCF = new int[]{'B','E','G','I','N',':','V','C','A','R','D'};
     final static int[] XML = new int[]{'<','?','x','m','l'};
     final static int[] WOFF = new int[]{'w','O','F','F'};
     final static int[] WOFF2 = new int[]{'w','O','F','2'};
@@ -145,6 +146,8 @@ public class MimeTypes {
         if (allAscii(start)) {
             if (filename.endsWith(".ics") && equalArrays(start, ICS))
                 return "text/calendar";
+            if (filename.endsWith(".vcf") && equalArrays(start, VCF))
+                return "text/vcard";
             if (filename.endsWith(".html"))
                 return "text/html";
             if (filename.endsWith(".css"))
