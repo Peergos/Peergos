@@ -2,6 +2,7 @@ package peergos.shared.user;
 
 import jsinterop.annotations.JsMethod;
 import peergos.shared.social.SharedItem;
+import peergos.shared.user.app.*;
 import peergos.shared.user.fs.AsyncReader;
 import peergos.shared.user.fs.FileWrapper;
 import peergos.shared.util.Futures;
@@ -16,7 +17,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-/** This is the API that will be presented to a sandboxed application in Peergos.
+/** This is the trusted implementation of the API that will be presented to a sandboxed application in Peergos.
  *
  * An application without any privileges can be run without any arguments, equivalent to viewing a web page.
  * It can also be used to open a file selected by the user, in this case the app can save changes over the original file
@@ -33,7 +34,7 @@ import java.util.stream.Stream;
  * The apps internal storage, if allowed, is in /$username/.apps/$appname/data
  * Any permissions granted by the user will be stored in /$username/.apps/$appname/permissions.cbor
  */
-public class App {
+public class App implements StoreLocalAppData {
     public static final String APPS_DIR_NAME = ".apps";
     public static final String DATA_DIR_NAME = "data";
 
@@ -48,7 +49,8 @@ public class App {
     public static CompletableFuture<App> init(UserContext ctx, String appName) {
         App app = new App(ctx, Paths.get(ctx.username, APPS_DIR_NAME, appName, DATA_DIR_NAME));
         Path appPath = Paths.get(APPS_DIR_NAME, appName, DATA_DIR_NAME);
-        return ctx.getByPath(ctx.username).thenCompose(root -> root.get().getOrMkdirs(appPath, ctx.network, true, ctx.crypto))
+        return ctx.getUserRoot()
+                .thenCompose(root -> root.getOrMkdirs(appPath, ctx.network, true, ctx.crypto))
                 .thenApply(appDir -> app);
     }
 
@@ -114,18 +116,6 @@ public class App {
             }
             return dirOpt.get().getChildren(ctx.crypto.hasher, ctx.network).thenApply(files ->
                     files.stream().map(fw -> fw.getName()).collect(Collectors.toList()));
-        });
-    }
-
-    @JsMethod
-    public CompletableFuture<String> createSecretLinkInternal(Path relativePath) {
-        Path path = fullPath(relativePath);
-        return ctx.getByPath(path).thenCompose(fileOpt -> {
-            if (fileOpt.isPresent()) {
-                return Futures.of(fileOpt.get().toLink());
-            } else {
-                return Futures.errored(new IllegalStateException("Unable to find directory"));
-            }
         });
     }
 }
