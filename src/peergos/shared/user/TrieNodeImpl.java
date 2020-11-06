@@ -137,7 +137,8 @@ public class TrieNodeImpl implements TrieNode {
         if (!children.containsKey(elements[0]))
             return network.retrieveEntryPoint(value.get())
                     .thenCompose(dir -> dir.get().getDescendentByPath(trimmedPath, hasher, network)
-                            .thenCompose(parent -> parent.get().getChildren(hasher, network)));
+                            .thenCompose(parent -> parent.map(p -> p.getChildren(hasher, network))
+                                    .orElseGet(() -> Futures.of(Collections.emptySet()))));
         return children.get(elements[0]).getChildren(trimmedPath.substring(elements[0].length()), hasher, network);
     }
 
@@ -173,7 +174,8 @@ public class TrieNodeImpl implements TrieNode {
         if (!children.containsKey(elements[0]))
             return network.getFile(value.get(), version)
                     .thenCompose(dir -> dir.get().getDescendentByPath(trimmedPath, hasher, network)
-                            .thenCompose(parent -> parent.get().getChildren(version, hasher, network)));
+                            .thenCompose(parent -> parent.map(p -> p.getChildren(version, hasher, network))
+                                    .orElseGet(() -> Futures.of(Collections.emptySet()))));
         return children.get(elements[0]).getChildren(trimmedPath.substring(elements[0].length()), hasher, version, network);
     }
 
