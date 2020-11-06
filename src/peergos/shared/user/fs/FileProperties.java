@@ -174,6 +174,8 @@ public class FileProperties implements Cborable {
             return "dir";
         if (mimeType.equals("text/calendar"))
             return "calendar";
+        if (mimeType.equals("text/vcard"))
+            return "contact file";
         if (mimeType.startsWith("image"))
             return "image";
         if (mimeType.startsWith("audio"))
