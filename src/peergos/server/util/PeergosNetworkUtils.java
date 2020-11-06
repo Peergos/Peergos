@@ -1063,7 +1063,7 @@ public class PeergosNetworkUtils {
         Assert.assertTrue("a can't see unshared folder", children.isEmpty());
     }
 
-
+    
     public static void grantAndRevokeDirWriteAccessWithNestedWriteAccess(NetworkAccess network,
                                                                          Random random) {
         CryptreeNode.setMaxChildLinkPerBlob(10);

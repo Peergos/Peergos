@@ -1178,7 +1178,7 @@ public abstract class UserTests {
         FileWrapper file = updatedRoot.getChild(todoBoardName + TODO_FILE_EXTENSION, context.crypto.hasher, context.network).join().get();
         long size = file.getSize();
         byte[] retrievedData = Serialize.readFully(file.getInputStream(context.network, context.crypto,
-                size, l-> {}).join(), file.getSize()).join();
+                size, l -> {}).join(), file.getSize()).join();
         updatedBoard = TodoBoard.fromByteArray(retrievedData);
         lists = updatedBoard.getTodoLists();
         assertTrue("lists size", lists.size() == 1);

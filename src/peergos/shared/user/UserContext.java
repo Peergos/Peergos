@@ -43,8 +43,6 @@ public class UserContext {
     public static final String TRANSACTIONS_DIR_NAME = ".transactions";
     public static final String FRIEND_ANNOTATIONS_FILE_NAME = ".annotations";
 
-    public static final String APPS_DIR_NAME = ".apps";
-
     public static final String ENTRY_POINTS_FROM_FRIENDS_FILENAME = ".from-friends.cborstream";
     public static final String ENTRY_POINTS_FROM_US_FILENAME = ".from-us.cborstream";
     public static final String BLOCKED_USERNAMES_FILE = ".blocked-usernames.txt";
