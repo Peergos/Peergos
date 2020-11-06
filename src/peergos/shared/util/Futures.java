@@ -9,7 +9,6 @@ import java.util.stream.*;
 
 public class Futures {
 
-    @JsMethod
     public static final <T> CompletableFuture<T> of(T val) {
         return CompletableFuture.completedFuture(val);
     }
