@@ -21,6 +21,7 @@ public class Migrate {
                                          List<UserPublicKeyLink> updatedChain,
                                          long localQuota,
                                          List<BlindFollowRequest> pending,
+                                         TransactionStore transactions,
                                          DeletableContentAddressedStorage localStorage,
                                          JdbcIpnsAndSocial rawPointers,
                                          JdbcIpnsAndSocial rawSocial,
@@ -34,8 +35,8 @@ public class Migrate {
                 throw new IllegalStateException("Not enough space quota to migrate user!");
 
             // Mirror all the data to local
-            Mirror.mirrorUser(username, network, rawPointers, localStorage);
-            Mirror.mirrorUser(username, network, rawPointers, localStorage);
+            Mirror.mirrorUser(username, network, rawPointers, transactions, localStorage);
+            Map<PublicKeyHash, byte[]> userSnapshot = Mirror.mirrorUser(username, network, rawPointers, transactions, localStorage);
 
             // Copy pending follow requests to local server
             for (BlindFollowRequest req : pending) {
@@ -53,14 +54,6 @@ public class Migrate {
                 throw new IllegalStateException("Unable to update storage node in PKI during migration!");
 
             // Enforce redirecting writes from old server to this one and commit any diff since mirroring
-            Set<PublicKeyHash> ownedKeys = WriterData.getOwnedKeysRecursive(username, network.coreNode,
-                    network.mutable, network.dhtClient, crypto.hasher).join();
-            Map<PublicKeyHash, byte[]> pointerTargets = new HashMap<>();
-            for (PublicKeyHash key : ownedKeys) {
-                Optional<byte[]> localPointer = rawPointers.getPointer(key).join();
-                if (localPointer.isPresent())
-                    pointerTargets.put(key, localPointer.get());
-            }
 
             // todo send snapshot to previous storage node and commit diff returned
 
@@ -82,6 +75,7 @@ public class Migrate {
      * @return
      */
     public static boolean migrateToLocal(UserContext user,
+                                         TransactionStore transactions,
                                          DeletableContentAddressedStorage localStorage,
                                          JdbcIpnsAndSocial rawPointers,
                                          JdbcIpnsAndSocial rawSocial,
@@ -100,7 +94,7 @@ public class Migrate {
 
         long quota = user.getQuota().join();
         List<BlindFollowRequest> pending = user.getFollowRequests().join();
-        return migrateToLocal(user.username, updatedChain, quota, pending, localStorage, rawPointers,
+        return migrateToLocal(user.username, updatedChain, quota, pending, transactions, localStorage, rawPointers,
                 rawSocial, userQuotas, crypto, network);
     }
 }

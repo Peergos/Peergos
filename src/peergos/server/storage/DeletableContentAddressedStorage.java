@@ -33,7 +33,8 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
      */
     default CompletableFuture<List<Multihash>> mirror(PublicKeyHash owner,
                                                       Optional<Multihash> existing,
-                                                      Optional<Multihash> updated) {
+                                                      Optional<Multihash> updated,
+                                                      TransactionId tid) {
         if (existing.isEmpty()) {
             if (updated.isEmpty())
                 return Futures.of(Collections.emptyList());

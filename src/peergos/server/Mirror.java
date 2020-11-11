@@ -19,6 +19,7 @@ public class Mirror {
     public static void mirrorNode(Multihash nodeId,
                                   NetworkAccess mirror,
                                   JdbcIpnsAndSocial targetPointers,
+                                  TransactionStore transactions,
                                   DeletableContentAddressedStorage targetStorage) {
         Logging.LOG().log(Level.INFO, "Mirroring data for node " + nodeId);
         List<String> allUsers = mirror.coreNode.getUsernames("").join();
@@ -27,7 +28,7 @@ public class Mirror {
             List<UserPublicKeyLink> chain = mirror.coreNode.getChain(username).join();
             if (chain.get(chain.size() - 1).claim.storageProviders.contains(nodeId)) {
                 try {
-                    mirrorUser(username, mirror, targetPointers, targetStorage);
+                    mirrorUser(username, mirror, targetPointers, transactions, targetStorage);
                     userCount++;
                 } catch (Exception e) {
                     Logging.LOG().log(Level.WARNING, "Couldn't mirror user: " + username, e);
@@ -37,31 +38,55 @@ public class Mirror {
         Logging.LOG().log(Level.INFO, "Finished mirroring data for node " + nodeId + ", with " + userCount + " users.");
     }
 
-    public static void mirrorUser(String username,
-                                  NetworkAccess source,
-                                  JdbcIpnsAndSocial targetPointers,
-                                  DeletableContentAddressedStorage targetStorage) {
+    /**
+     *
+     * @param username
+     * @param source
+     * @param targetPointers
+     * @param targetStorage
+     * @return The version mirrored
+     */
+    public static Map<PublicKeyHash, byte[]> mirrorUser(String username,
+                                                        NetworkAccess source,
+                                                        JdbcIpnsAndSocial targetPointers,
+                                                        TransactionStore transactions,
+                                                        DeletableContentAddressedStorage targetStorage) {
         Logging.LOG().log(Level.INFO, "Mirroring data for " + username);
         Optional<PublicKeyHash> identity = source.coreNode.getPublicKeyHash(username).join();
         if (! identity.isPresent())
-            return;
+            return Collections.emptyMap();
+        Map<PublicKeyHash, byte[]> versions = new HashMap<>();
         Set<PublicKeyHash> ownedKeys = WriterData.getOwnedKeysRecursive(username, source.coreNode, source.mutable,
                 source.dhtClient, source.hasher).join();
         for (PublicKeyHash ownedKey : ownedKeys) {
-            mirrorMutableSubspace(identity.get(), ownedKey, source, targetPointers, targetStorage);
+            Optional<byte[]> version = mirrorMutableSubspace(identity.get(), ownedKey, source,
+                    targetPointers, transactions, targetStorage);
+            if (version.isPresent())
+                versions.put(ownedKey, version.get());
         }
         Logging.LOG().log(Level.INFO, "Finished mirroring data for " + username);
+        return versions;
     }
 
-    public static void mirrorMutableSubspace(PublicKeyHash owner,
-                                             PublicKeyHash writer,
-                                             NetworkAccess source,
-                                             JdbcIpnsAndSocial targetPointers,
-                                             DeletableContentAddressedStorage targetStorage) {
+    /**
+     *
+     * @param owner
+     * @param writer
+     * @param source
+     * @param targetPointers
+     * @param targetStorage
+     * @return the version mirrored
+     */
+    public static Optional<byte[]> mirrorMutableSubspace(PublicKeyHash owner,
+                                                         PublicKeyHash writer,
+                                                         NetworkAccess source,
+                                                         JdbcIpnsAndSocial targetPointers,
+                                                         TransactionStore transactions,
+                                                         DeletableContentAddressedStorage targetStorage) {
         Optional<byte[]> updated = source.mutable.getPointer(owner, writer).join();
         if (! updated.isPresent()) {
             Logging.LOG().log(Level.WARNING, "Skipping unretrievable mutable pointer for: " + writer);
-            return;
+            return updated;
         }
         Optional<byte[]> existing = targetPointers.getPointer(writer).join();
         // First pin the new root, then commit updated pointer
@@ -71,7 +96,13 @@ public class Mirror {
                 MaybeMultihash.empty();
         MaybeMultihash updatedTarget = MutablePointers.parsePointerTarget(newPointer, writer, source.dhtClient).join();
         // use a mirror call to distinguish from normal pin calls
-        targetStorage.mirror(owner, existingTarget.toOptional(), updatedTarget.toOptional());
-        targetPointers.setPointer(writer, existing, newPointer).join();
+        TransactionId tid = transactions.startTransaction(owner);
+        try {
+            targetStorage.mirror(owner, existingTarget.toOptional(), updatedTarget.toOptional(), tid);
+            targetPointers.setPointer(writer, existing, newPointer).join();
+        } finally {
+            transactions.closeTransaction(owner, tid);
+        }
+        return updated;
     }
 }
