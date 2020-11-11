@@ -1,16 +1,19 @@
 package peergos.server.storage;
 
+import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.api.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
+import peergos.shared.util.*;
 
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.stream.*;
 
 /** This interface is only used locally on a server and never exposed.
- *  These methods allow garbage collection to be implemented.
+ *  These methods allow garbage collection and local mirroring to be implemented.
  *
  */
 public interface DeletableContentAddressedStorage extends ContentAddressedStorage {
@@ -20,6 +23,26 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
     void delete(Multihash hash);
 
     List<Multihash> getOpenTransactionBlocks();
+
+    /** Ensure that local copies of all blocks in merkle tree referenced are present locally
+     *
+     * @param owner
+     * @param existing
+     * @param updated
+     * @return
+     */
+    default CompletableFuture<List<Multihash>> mirror(PublicKeyHash owner,
+                                                      Optional<Multihash> existing,
+                                                      Optional<Multihash> updated) {
+        if (existing.isEmpty()) {
+            if (updated.isEmpty())
+                return Futures.of(Collections.emptyList());
+            return recursivePin(owner, updated.get());
+        }
+        if (updated.isEmpty())
+            return recursiveUnpin(owner, existing.get());
+        return pinUpdate(owner, existing.get(), updated.get());
+    }
 
     class HTTP extends ContentAddressedStorage.HTTP implements DeletableContentAddressedStorage {
 

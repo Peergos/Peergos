@@ -7,6 +7,7 @@ import peergos.server.*;
 import peergos.server.storage.*;
 import peergos.server.util.*;
 import peergos.shared.*;
+import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.multihash.*;
@@ -81,6 +82,10 @@ public class MultiNodeNetworkTests {
         return nodes.get(i);
     }
 
+    private UserService getService(int i)  {
+        return services.get(i);
+    }
+
     @BeforeClass
     public static void init() throws Exception {
         // start pki node
@@ -142,6 +147,22 @@ public class MultiNodeNetworkTests {
             long quota = node.spaceUsage.getQuota(context.signer.publicKeyHash, signedTime).join();
             Assert.assertTrue(usage >0 && quota > 0);
         }
+    }
+
+    @Test
+    public void migrate() {
+        String username = generateUsername(random);
+        String password = randomString();
+        UserContext user = ensureSignedUp(username, password, getNode(iNode1), crypto);
+
+        // migrate to this node
+        UserService node2 = getService(iNode2);
+//       TODO Migrate.migrateToLocal(user, node2.storage, );
+
+        UserContext userViaNewServer = ensureSignedUp(username, password, getNode(iNode2), crypto);
+        List<UserPublicKeyLink> chain = userViaNewServer.network.coreNode.getChain(username).join();
+        Multihash storageNode = chain.get(chain.size() - 1).claim.storageProviders.stream().findFirst().get();
+        Assert.assertTrue(storageNode.equals(node2.storage.id().join()));
     }
 
     @Test

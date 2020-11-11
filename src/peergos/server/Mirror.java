@@ -1,6 +1,7 @@
 package peergos.server;
 
 import peergos.server.corenode.*;
+import peergos.server.storage.*;
 import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.corenode.*;
@@ -18,7 +19,7 @@ public class Mirror {
     public static void mirrorNode(Multihash nodeId,
                                   NetworkAccess mirror,
                                   JdbcIpnsAndSocial targetPointers,
-                                  ContentAddressedStorage targetStorage) {
+                                  DeletableContentAddressedStorage targetStorage) {
         Logging.LOG().log(Level.INFO, "Mirroring data for node " + nodeId);
         List<String> allUsers = mirror.coreNode.getUsernames("").join();
         int userCount = 0;
@@ -39,7 +40,7 @@ public class Mirror {
     public static void mirrorUser(String username,
                                   NetworkAccess source,
                                   JdbcIpnsAndSocial targetPointers,
-                                  ContentAddressedStorage targetStorage) {
+                                  DeletableContentAddressedStorage targetStorage) {
         Logging.LOG().log(Level.INFO, "Mirroring data for " + username);
         Optional<PublicKeyHash> identity = source.coreNode.getPublicKeyHash(username).join();
         if (! identity.isPresent())
@@ -56,7 +57,7 @@ public class Mirror {
                                              PublicKeyHash writer,
                                              NetworkAccess source,
                                              JdbcIpnsAndSocial targetPointers,
-                                             ContentAddressedStorage targetStorage) {
+                                             DeletableContentAddressedStorage targetStorage) {
         Optional<byte[]> updated = source.mutable.getPointer(owner, writer).join();
         if (! updated.isPresent()) {
             Logging.LOG().log(Level.WARNING, "Skipping unretrievable mutable pointer for: " + writer);
@@ -69,16 +70,8 @@ public class Mirror {
                 MutablePointers.parsePointerTarget(existing.get(), writer, source.dhtClient).join() :
                 MaybeMultihash.empty();
         MaybeMultihash updatedTarget = MutablePointers.parsePointerTarget(newPointer, writer, source.dhtClient).join();
-        if (! updatedTarget.isPresent()) {
-            // The writing key must have been deleted
-            if (existingTarget.isPresent())
-                targetStorage.recursiveUnpin(owner, existingTarget.get());
-            return;
-        }
-        if (existingTarget.isPresent())
-            targetStorage.pinUpdate(owner, existingTarget.get(), updatedTarget.get()).join();
-        else
-            targetStorage.recursivePin(owner, updatedTarget.get()).join();
+        // use a mirror call to distinguish from normal pin calls
+        targetStorage.mirror(owner, existingTarget.toOptional(), updatedTarget.toOptional());
         targetPointers.setPointer(writer, existing, newPointer).join();
     }
 }

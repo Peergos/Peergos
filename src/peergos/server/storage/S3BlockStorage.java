@@ -14,7 +14,6 @@ import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.util.*;
 
 import java.io.*;
-import java.net.*;
 import java.nio.file.*;
 import java.sql.*;
 import java.time.*;
@@ -168,6 +167,14 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         } finally {
             readTimer.observeDuration();
         }
+    }
+
+    @Override
+    public CompletableFuture<List<Multihash>> mirror(PublicKeyHash owner,
+                                                     Optional<Multihash> existing,
+                                                     Optional<Multihash> updated) {
+        // TODO
+        throw new IllegalStateException("Unimplemented!");
     }
 
     @Override

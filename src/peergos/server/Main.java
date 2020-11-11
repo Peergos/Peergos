@@ -380,6 +380,12 @@ public class Main extends Builder {
             Collections.emptyList()
     );
 
+    public static final Command<Boolean> MIGRATE = new Command<>("migrate",
+            "Move a Peergos account to this server.",
+            Main::migrate,
+            Collections.emptyList()
+    );
+
     public static UserService startPeergos(Args a) {
         try {
             Crypto crypto = initCrypto();
@@ -645,6 +651,36 @@ public class Main extends Builder {
         return true;
     }
 
+    /** This should be run on a Peergos server to which a user will be migrated
+     *
+     * @param a
+     * @return
+     */
+    public static boolean migrate(Args a) {
+        Crypto crypto = initCrypto();
+        String peergosUrl = a.getArg("peergos-url");
+        try {
+            URL api = new URL(peergosUrl);
+            NetworkAccess network = Builder.buildJavaNetworkAccess(api, ! peergosUrl.startsWith("http://localhost")).join();
+            Console console = System.console();
+            String username = console.readLine("Enter username to migrate to this server:");
+            String password = new String(console.readPassword("Enter password for " + username + ":"));
+
+            TransactionStore transactions = buildTransactionStore(a);
+            DeletableContentAddressedStorage localStorage = buildLocalStorage(a, transactions);
+            JdbcIpnsAndSocial rawPointers = buildRawPointers(a);
+            QuotaAdmin userQuotas = buildSpaceQuotas(a, localStorage, null);
+            JdbcIpnsAndSocial rawSocial = new JdbcIpnsAndSocial(getDBConnector(a, "social-sql-file"), getSqlCommands(a));
+
+            UserContext user = UserContext.signIn(username, password, network, crypto).join();
+
+            Migrate.migrateToLocal(user, localStorage, rawPointers, rawSocial, userQuotas, crypto, network);
+            return true;
+        } catch (Exception ex) {
+            throw new RuntimeException(ex);
+        }
+    }
+
     public static final Command<Void> MAIN = new Command<>("Main",
             "Run a Peergos command",
             args -> {
@@ -659,6 +695,7 @@ public class Main extends Builder {
                     QuotaCLI.QUOTA,
                     ServerMessages.SERVER_MESSAGES,
                     GATEWAY,
+                    MIGRATE,
                     INSTALL_AND_RUN_IPFS,
                     PKI,
                     PKI_INIT

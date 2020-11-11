@@ -38,6 +38,10 @@ public class UserPublicKeyLink implements Cborable {
         return keyChangeProof.map(x -> Arrays.copyOfRange(x, 0, x.length));
     }
 
+    public UserPublicKeyLink withClaim(Claim claim) {
+        return new UserPublicKeyLink(owner, claim, keyChangeProof);
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;

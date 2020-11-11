@@ -1567,7 +1567,7 @@ public class UserContext {
                 });
     }
 
-    private CompletableFuture<List<BlindFollowRequest>> getFollowRequests() {
+    public CompletableFuture<List<BlindFollowRequest>> getFollowRequests() {
         byte[] auth = TimeLimitedClient.signNow(signer.secret);
         return network.social.getFollowRequests(signer.publicKeyHash, auth).thenApply(reqs -> {
             CborObject cbor = CborObject.fromByteArray(reqs);
