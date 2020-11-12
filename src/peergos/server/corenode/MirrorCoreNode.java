@@ -8,6 +8,7 @@ import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.hamt.*;
+import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
@@ -29,6 +30,8 @@ public class MirrorCoreNode implements CoreNode {
     private final JdbcIpnsAndSocial localPointers;
     private final TransactionStore transactions;
     private final PublicKeyHash pkiOwnerIdentity;
+    private final Multihash ourNodeId;
+    private final Hasher hasher;
 
     private volatile CorenodeState state;
     private final Path statePath;
@@ -40,7 +43,8 @@ public class MirrorCoreNode implements CoreNode {
                           JdbcIpnsAndSocial localPointers,
                           TransactionStore transactions,
                           PublicKeyHash pkiOwnerIdentity,
-                          Path statePath) {
+                          Path statePath,
+                          Hasher hasher) {
         this.writeTarget = writeTarget;
         this.p2pMutable = p2pMutable;
         this.ipfs = ipfs;
@@ -48,6 +52,8 @@ public class MirrorCoreNode implements CoreNode {
         this.transactions = transactions;
         this.pkiOwnerIdentity = pkiOwnerIdentity;
         this.statePath = statePath;
+        this.ourNodeId = ipfs.id().join();
+        this.hasher = hasher;
         try {
             this.state = load(statePath);
         } catch (IOException e) {
@@ -274,6 +280,28 @@ public class MirrorCoreNode implements CoreNode {
                         this.update();
                     return x;
                 });
+    }
+
+    @Override
+    public CompletableFuture<UserSnapshot> migrateUser(String username,
+                                                       List<UserPublicKeyLink> newChain,
+                                                       Multihash currentStorageId) {
+        if (currentStorageId.equals(ourNodeId)) {
+            // a user is migrating away from this server
+            ProofOfWork work = ProofOfWork.empty();
+            updateChain(username, newChain, work).join();
+            return WriterData.getUserSnapshot(username, this, p2pMutable, ipfs, hasher)
+                    .thenApply(pointers -> new UserSnapshot(pointers, Collections.emptyList()));
+        }
+        Multihash migrationTargetNode = newChain.get(newChain.size() - 1).claim.storageProviders.get(0);
+        if (migrationTargetNode.equals(ourNodeId)) {
+            // we are copying data to this node, proxy call to their current storage server
+            // todo do mirroring etc. here
+            UserSnapshot res = writeTarget.migrateUser(username, newChain, currentStorageId).join();
+            update();
+            return Futures.of(res);
+        } else // Proxy call to their target storage server
+            return writeTarget.migrateUser(username, newChain, migrationTargetNode);
     }
 
     @Override

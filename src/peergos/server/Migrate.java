@@ -4,10 +4,10 @@ import peergos.server.corenode.*;
 import peergos.server.storage.*;
 import peergos.server.storage.admin.*;
 import peergos.shared.*;
-import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
-import peergos.shared.crypto.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.social.*;
 import peergos.shared.user.*;
 
@@ -19,6 +19,7 @@ public class Migrate {
 
     public static boolean migrateToLocal(String username,
                                          List<UserPublicKeyLink> updatedChain,
+                                         Multihash currentStorageNodeId,
                                          long localQuota,
                                          List<BlindFollowRequest> pending,
                                          TransactionStore transactions,
@@ -45,17 +46,11 @@ public class Migrate {
             }
 
             // Update pki data to announce this node as user's storage node
-            // This will signal the world, including the previous storage node to redirect writes here
+            // This will signal the world to redirect writes here
             // and start accepting writes (and follow requests) on this server for this user
-            byte[] data = new CborObject.CborList(updatedChain).serialize();
-            ProofOfWork work = crypto.hasher.generateProofOfWork(ProofOfWork.MIN_DIFFICULTY, data).join();
-            Optional<RequiredDifficulty> retry = network.coreNode.updateChain(username, updatedChain, work).join();
-            if (retry.isPresent())
-                throw new IllegalStateException("Unable to update storage node in PKI during migration!");
-
-            // Enforce redirecting writes from old server to this one and commit any diff since mirroring
-
-            // todo send snapshot to previous storage node and commit diff returned
+            // This is done via the original storage node, which then also starts redirecting writes here
+            UserSnapshot updated = network.coreNode.migrateUser(username, updatedChain, currentStorageNodeId).join();
+            // todo commit any diff
 
             return true;
         } catch (Exception ex) {
@@ -83,18 +78,25 @@ public class Migrate {
                                          Crypto crypto,
                                          NetworkAccess network) {
         List<UserPublicKeyLink> existing = network.coreNode.getChain(user.username).join();
-        UserPublicKeyLink last = existing.get(existing.size() - 1);
-        UserPublicKeyLink.Claim newClaim = UserPublicKeyLink.Claim.build(user.username, user.signer.secret,
-                LocalDate.now().plusMonths(2), Arrays.asList(localStorage.id().join()));
-        UserPublicKeyLink updatedLast = last.withClaim(newClaim);
-        List<UserPublicKeyLink> updatedChain = Stream.concat(
-                existing.stream().limit(existing.size() - 1),
-                Stream.of(updatedLast))
-                .collect(Collectors.toList());
+        List<UserPublicKeyLink> updatedChain = buildMigrationChain(existing, localStorage.id().join(), user.signer.secret);
 
         long quota = user.getQuota().join();
         List<BlindFollowRequest> pending = user.getFollowRequests().join();
-        return migrateToLocal(user.username, updatedChain, quota, pending, transactions, localStorage, rawPointers,
-                rawSocial, userQuotas, crypto, network);
+        Multihash currentStorageNodeId = existing.get(existing.size() - 1).claim.storageProviders.get(0);
+        return migrateToLocal(user.username, updatedChain, currentStorageNodeId, quota, pending,
+                transactions, localStorage, rawPointers, rawSocial, userQuotas, crypto, network);
+    }
+
+    public static List<UserPublicKeyLink> buildMigrationChain(List<UserPublicKeyLink> existing,
+                                                              Multihash newStorageId,
+                                                              SecretSigningKey signer) {
+        UserPublicKeyLink last = existing.get(existing.size() - 1);
+        UserPublicKeyLink.Claim newClaim = UserPublicKeyLink.Claim.build(last.claim.username, signer,
+                LocalDate.now().plusMonths(2), Arrays.asList(newStorageId));
+        UserPublicKeyLink updatedLast = last.withClaim(newClaim);
+        return Stream.concat(
+                existing.stream().limit(existing.size() - 1),
+                Stream.of(updatedLast))
+                .collect(Collectors.toList());
     }
 }

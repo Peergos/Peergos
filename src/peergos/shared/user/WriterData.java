@@ -320,6 +320,46 @@ public class WriterData implements Cborable {
         return new WriterData(controller, algo, publicData, followRequestReceiver, owned, named, staticData, tree);
     }
 
+    public static CompletableFuture<Map<PublicKeyHash, byte[]>> getUserSnapshot(String username,
+                                                                                CoreNode core,
+                                                                                MutablePointers mutable,
+                                                                                ContentAddressedStorage dht,
+                                                                                Hasher hasher) {
+        return core.getPublicKeyHash(username)
+                .thenCompose(publicKeyHash -> publicKeyHash
+                        .map(h -> getUserSnapshotRecursive(h, h, Collections.emptyMap(), mutable, dht, hasher))
+                        .orElseGet(() -> CompletableFuture.completedFuture(Collections.emptyMap())));
+    }
+
+    public static CompletableFuture<Map<PublicKeyHash, byte[]>> getUserSnapshotRecursive(PublicKeyHash owner,
+                                                                                         PublicKeyHash writer,
+                                                                                         Map<PublicKeyHash, byte[]> alreadyDone,
+                                                                                         MutablePointers mutable,
+                                                                                         ContentAddressedStorage ipfs,
+                                                                                         Hasher hasher) {
+        return getDirectOwnedKeys(owner, writer, mutable, ipfs, hasher)
+                .thenCompose(directOwned -> {
+                    Set<PublicKeyHash> newKeys = directOwned.stream().
+                            filter(h -> ! alreadyDone.containsKey(h))
+                            .collect(Collectors.toSet());
+                    Map<PublicKeyHash, byte[]> done = new HashMap<>(alreadyDone);
+                    return mutable.getPointer(owner, writer).thenCompose(val -> {
+                        if (val.isPresent())
+                            done.put(writer, val.get());
+                        BiFunction<Map<PublicKeyHash, byte[]>, PublicKeyHash,
+                                CompletableFuture<Map<PublicKeyHash, byte[]>>> composer =
+                                (a, w) -> getUserSnapshotRecursive(owner, w, a, mutable, ipfs, hasher)
+                                        .thenApply(ws ->
+                                                Stream.concat(ws.entrySet().stream(), a.entrySet().stream())
+                                                        .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue())));
+                        return Futures.reduceAll(newKeys, done,
+                                composer,
+                                (a, b) -> Stream.concat(a.entrySet().stream(), b.entrySet().stream())
+                                        .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue())));
+                    });
+                });
+    }
+
     public static CompletableFuture<Set<PublicKeyHash>> getOwnedKeysRecursive(String username,
                                                                               CoreNode core,
                                                                               MutablePointers mutable,

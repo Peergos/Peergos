@@ -151,18 +151,24 @@ public class MultiNodeNetworkTests {
 
     @Test
     public void migrate() {
+        if (iNode1 == 0)
+            return; // Don't test migration from pki node
         String username = generateUsername(random);
         String password = randomString();
-        UserContext user = ensureSignedUp(username, password, getNode(iNode1), crypto);
+        NetworkAccess node1 = getNode(iNode1);
+        UserContext user = ensureSignedUp(username, password, node1, crypto);
 
         // migrate to this node
         UserService node2 = getService(iNode2);
-//       TODO Migrate.migrateToLocal(user, node2.storage, );
+        List<UserPublicKeyLink> existing = user.network.coreNode.getChain(username).join();
+        Multihash newStorageNodeId = node2.storage.id().join();
+        List<UserPublicKeyLink> newChain = Migrate.buildMigrationChain(existing, newStorageNodeId, user.signer.secret);
+        node2.coreNode.migrateUser(username, newChain, node1.dhtClient.id().join()).join();
 
         UserContext userViaNewServer = ensureSignedUp(username, password, getNode(iNode2), crypto);
         List<UserPublicKeyLink> chain = userViaNewServer.network.coreNode.getChain(username).join();
         Multihash storageNode = chain.get(chain.size() - 1).claim.storageProviders.stream().findFirst().get();
-        Assert.assertTrue(storageNode.equals(node2.storage.id().join()));
+        Assert.assertTrue(storageNode.equals(newStorageNodeId));
     }
 
     @Test

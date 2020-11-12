@@ -100,7 +100,7 @@ public class ServerMessages extends Builder {
         JdbcIpnsAndSocial rawPointers = buildRawPointers(a, getDBConnector(a, "mutable-pointers-file", dbConnectionPool));
         MutablePointers localPointers = UserRepository.build(localStorage, rawPointers);
         MutablePointersProxy proxingMutable = new HttpMutablePointers(buildP2pHttpProxy(a), getPkiServerId(a));
-        CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable);
+        CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable, Main.initCrypto().hasher);
         return buildSpaceQuotas(a, localStorage, core,
                 getDBConnector(a, "space-requests-sql-file", dbConnectionPool),
                 getDBConnector(a, "quotas-sql-file", dbConnectionPool));

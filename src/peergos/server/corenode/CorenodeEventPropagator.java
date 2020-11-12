@@ -3,6 +3,8 @@ package peergos.server.corenode;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.user.*;
 
 import java.io.*;
 import java.util.*;
@@ -55,6 +57,13 @@ public class CorenodeEventPropagator implements CoreNode {
     @Override
     public CompletableFuture<List<String>> getUsernames(String prefix) {
         return target.getUsernames(prefix);
+    }
+
+    @Override
+    public CompletableFuture<UserSnapshot> migrateUser(String username,
+                                                       List<UserPublicKeyLink> newChain,
+                                                       Multihash currentStorageId) {
+        return target.migrateUser(username, newChain, currentStorageId);
     }
 
     @Override

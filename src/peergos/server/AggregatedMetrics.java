@@ -38,6 +38,7 @@ public class AggregatedMetrics {
     public static final Counter GET_PUBLIC_KEY  = build("core_node_get_public_key", "Total get-public-key calls.");
     public static final Counter GET_PUBLIC_KEY_CHAIN  = build("core_node_get_chain", "Total get-public-key-chain calls.");
     public static final Counter UPDATE_PUBLIC_KEY_CHAIN  = build("core_node_update_chain", "Total getupdate-public-key-chain calls.");
+    public static final Counter MIGRATE_USER  = build("core_node_migrate_user", "Total migrate-user calls.");
 
     public static final Histogram IPFS_PRE_GC_DURATION = Histogram.build()
             .name("ipfs_pre_gc")
