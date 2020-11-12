@@ -17,18 +17,22 @@ import java.util.logging.*;
 public class Mirror {
 
     public static void mirrorNode(Multihash nodeId,
-                                  NetworkAccess mirror,
+                                  CoreNode core,
+                                  MutablePointers p2pPointers,
+                                  ContentAddressedStorage storage,
                                   JdbcIpnsAndSocial targetPointers,
                                   TransactionStore transactions,
-                                  DeletableContentAddressedStorage targetStorage) {
+                                  DeletableContentAddressedStorage targetStorage,
+                                  Hasher hasher) {
         Logging.LOG().log(Level.INFO, "Mirroring data for node " + nodeId);
-        List<String> allUsers = mirror.coreNode.getUsernames("").join();
+        List<String> allUsers = core.getUsernames("").join();
         int userCount = 0;
         for (String username : allUsers) {
-            List<UserPublicKeyLink> chain = mirror.coreNode.getChain(username).join();
+            List<UserPublicKeyLink> chain = core.getChain(username).join();
             if (chain.get(chain.size() - 1).claim.storageProviders.contains(nodeId)) {
                 try {
-                    mirrorUser(username, mirror, targetPointers, transactions, targetStorage);
+                    mirrorUser(username, core, p2pPointers, storage, targetPointers,
+                            transactions, targetStorage, hasher);
                     userCount++;
                 } catch (Exception e) {
                     Logging.LOG().log(Level.WARNING, "Couldn't mirror user: " + username, e);
@@ -41,25 +45,32 @@ public class Mirror {
     /**
      *
      * @param username
-     * @param source
+     * @param core
+     * @param p2pPointers
+     * @param storage
      * @param targetPointers
+     * @param transactions
      * @param targetStorage
+     * @param hasher
      * @return The version mirrored
      */
     public static Map<PublicKeyHash, byte[]> mirrorUser(String username,
-                                                        NetworkAccess source,
+                                                        CoreNode core,
+                                                        MutablePointers p2pPointers,
+                                                        ContentAddressedStorage storage,
                                                         JdbcIpnsAndSocial targetPointers,
                                                         TransactionStore transactions,
-                                                        DeletableContentAddressedStorage targetStorage) {
+                                                        DeletableContentAddressedStorage targetStorage,
+                                                        Hasher hasher) {
         Logging.LOG().log(Level.INFO, "Mirroring data for " + username);
-        Optional<PublicKeyHash> identity = source.coreNode.getPublicKeyHash(username).join();
+        Optional<PublicKeyHash> identity = core.getPublicKeyHash(username).join();
         if (! identity.isPresent())
             return Collections.emptyMap();
         Map<PublicKeyHash, byte[]> versions = new HashMap<>();
-        Set<PublicKeyHash> ownedKeys = WriterData.getOwnedKeysRecursive(username, source.coreNode, source.mutable,
-                source.dhtClient, source.hasher).join();
+        Set<PublicKeyHash> ownedKeys = WriterData.getOwnedKeysRecursive(username, core, p2pPointers,
+                storage, hasher).join();
         for (PublicKeyHash ownedKey : ownedKeys) {
-            Optional<byte[]> version = mirrorMutableSubspace(identity.get(), ownedKey, source,
+            Optional<byte[]> version = mirrorMutableSubspace(identity.get(), ownedKey, p2pPointers, storage,
                     targetPointers, transactions, targetStorage);
             if (version.isPresent())
                 versions.put(ownedKey, version.get());
@@ -72,18 +83,20 @@ public class Mirror {
      *
      * @param owner
      * @param writer
-     * @param source
+     * @param p2pPointers
+     * @param storage
      * @param targetPointers
      * @param targetStorage
      * @return the version mirrored
      */
     public static Optional<byte[]> mirrorMutableSubspace(PublicKeyHash owner,
                                                          PublicKeyHash writer,
-                                                         NetworkAccess source,
+                                                         MutablePointers p2pPointers,
+                                                         ContentAddressedStorage storage,
                                                          JdbcIpnsAndSocial targetPointers,
                                                          TransactionStore transactions,
                                                          DeletableContentAddressedStorage targetStorage) {
-        Optional<byte[]> updated = source.mutable.getPointer(owner, writer).join();
+        Optional<byte[]> updated = p2pPointers.getPointer(owner, writer).join();
         if (! updated.isPresent()) {
             Logging.LOG().log(Level.WARNING, "Skipping unretrievable mutable pointer for: " + writer);
             return updated;
@@ -92,9 +105,9 @@ public class Mirror {
         // First pin the new root, then commit updated pointer
         byte[] newPointer = updated.get();
         MaybeMultihash existingTarget = existing.isPresent() ?
-                MutablePointers.parsePointerTarget(existing.get(), writer, source.dhtClient).join() :
+                MutablePointers.parsePointerTarget(existing.get(), writer, storage).join() :
                 MaybeMultihash.empty();
-        MaybeMultihash updatedTarget = MutablePointers.parsePointerTarget(newPointer, writer, source.dhtClient).join();
+        MaybeMultihash updatedTarget = MutablePointers.parsePointerTarget(newPointer, writer, storage).join();
         // use a mirror call to distinguish from normal pin calls
         TransactionId tid = transactions.startTransaction(owner);
         try {

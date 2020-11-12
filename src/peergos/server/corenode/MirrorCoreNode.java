@@ -1,5 +1,6 @@
 package peergos.server.corenode;
 
+import peergos.server.*;
 import peergos.server.storage.*;
 import peergos.server.util.*;
 import peergos.shared.*;
@@ -26,7 +27,7 @@ public class MirrorCoreNode implements CoreNode {
 
     private final CoreNode writeTarget;
     private final MutablePointers p2pMutable;
-    private final ContentAddressedStorage ipfs;
+    private final DeletableContentAddressedStorage ipfs;
     private final JdbcIpnsAndSocial localPointers;
     private final TransactionStore transactions;
     private final PublicKeyHash pkiOwnerIdentity;
@@ -39,7 +40,7 @@ public class MirrorCoreNode implements CoreNode {
 
     public MirrorCoreNode(CoreNode writeTarget,
                           MutablePointers p2pMutable,
-                          ContentAddressedStorage ipfs,
+                          DeletableContentAddressedStorage ipfs,
                           JdbcIpnsAndSocial localPointers,
                           TransactionStore transactions,
                           PublicKeyHash pkiOwnerIdentity,
@@ -296,7 +297,10 @@ public class MirrorCoreNode implements CoreNode {
         Multihash migrationTargetNode = newChain.get(newChain.size() - 1).claim.storageProviders.get(0);
         if (migrationTargetNode.equals(ourNodeId)) {
             // we are copying data to this node, proxy call to their current storage server
-            // todo do mirroring etc. here
+            // Mirror all the data to local
+            Mirror.mirrorUser(username, this, p2pMutable, ipfs, localPointers, transactions, ipfs, hasher);
+            Map<PublicKeyHash, byte[]> userSnapshot = Mirror.mirrorUser(username, this, p2pMutable, ipfs, localPointers,
+                    transactions, ipfs, hasher);
             UserSnapshot res = writeTarget.migrateUser(username, newChain, currentStorageId).join();
             update();
             return Futures.of(res);

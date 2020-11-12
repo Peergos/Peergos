@@ -36,8 +36,10 @@ public class Migrate {
                 throw new IllegalStateException("Not enough space quota to migrate user!");
 
             // Mirror all the data to local
-            Mirror.mirrorUser(username, network, rawPointers, transactions, localStorage);
-            Map<PublicKeyHash, byte[]> userSnapshot = Mirror.mirrorUser(username, network, rawPointers, transactions, localStorage);
+            Mirror.mirrorUser(username, network.coreNode, network.mutable, network.dhtClient, rawPointers, transactions,
+                    localStorage, crypto.hasher);
+            Map<PublicKeyHash, byte[]> userSnapshot = Mirror.mirrorUser(username, network.coreNode, network.mutable,
+                    network.dhtClient, rawPointers, transactions, localStorage, crypto.hasher);
 
             // Copy pending follow requests to local server
             for (BlindFollowRequest req : pending) {

@@ -510,7 +510,7 @@ public class Main extends Builder {
                 new Thread(() -> {
                     while (true) {
                         try {
-                            Mirror.mirrorNode(nodeToMirrorId, localApi, rawPointers, transactions, localStorage);
+                            Mirror.mirrorNode(nodeToMirrorId, core, p2mMutable, localStorage, rawPointers, transactions, localStorage, hasher);
                             try {
                                 Thread.sleep(60_000);
                             } catch (InterruptedException f) {}
@@ -524,11 +524,11 @@ public class Main extends Builder {
                 }).start();
             }
             if (a.hasArg("mirror.username")) {
-                NetworkAccess localApi = Builder.buildLocalJavaNetworkAccess(webPort).join();
                 new Thread(() -> {
                     while (true) {
                         try {
-                            Mirror.mirrorUser(a.getArg("mirror.username"), localApi, rawPointers, transactions, localStorage);
+                            Mirror.mirrorUser(a.getArg("mirror.username"), core, p2mMutable, localStorage,
+                                    rawPointers, transactions, localStorage, hasher);
                             try {
                                 Thread.sleep(60_000);
                             } catch (InterruptedException f) {}
