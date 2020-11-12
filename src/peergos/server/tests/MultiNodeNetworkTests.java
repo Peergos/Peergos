@@ -151,8 +151,8 @@ public class MultiNodeNetworkTests {
 
     @Test
     public void migrate() {
-        if (iNode1 == 0)
-            return; // Don't test migration from pki node
+        if (iNode1 == 0 || iNode2 == 0)
+            return; // Don't test migration to/from pki node
         String username = generateUsername(random);
         String password = randomString();
         NetworkAccess node1 = getNode(iNode1);
