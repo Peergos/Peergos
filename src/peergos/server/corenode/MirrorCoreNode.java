@@ -283,6 +283,15 @@ public class MirrorCoreNode implements CoreNode {
                 });
     }
 
+    private UserSnapshot update(UserSnapshot in) {
+        return new UserSnapshot(in.pointerState.entrySet().stream()
+                .flatMap(e -> localPointers.getPointer(e.getKey()).join()
+                        .map(v -> new Pair<>(e.getKey(), v))
+                        .stream())
+                .collect(Collectors.toMap(p -> p.left, p -> p.right)),
+                in.pendingFollowReqs);
+    }
+
     @Override
     public CompletableFuture<UserSnapshot> migrateUser(String username,
                                                        List<UserPublicKeyLink> newChain,
@@ -290,9 +299,11 @@ public class MirrorCoreNode implements CoreNode {
         if (currentStorageId.equals(ourNodeId)) {
             // a user is migrating away from this server
             ProofOfWork work = ProofOfWork.empty();
+            UserSnapshot snapshot = WriterData.getUserSnapshot(username, this, p2pMutable, ipfs, hasher)
+                    .thenApply(pointers -> new UserSnapshot(pointers, Collections.emptyList())).join();
             updateChain(username, newChain, work).join();
-            return WriterData.getUserSnapshot(username, this, p2pMutable, ipfs, hasher)
-                    .thenApply(pointers -> new UserSnapshot(pointers, Collections.emptyList()));
+            // from this point on new writes are proxied to the new storage server
+            return Futures.of(update(snapshot));
         }
         Multihash migrationTargetNode = newChain.get(newChain.size() - 1).claim.storageProviders.get(0);
         if (migrationTargetNode.equals(ourNodeId)) {

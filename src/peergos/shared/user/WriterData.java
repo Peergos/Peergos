@@ -350,11 +350,15 @@ public class WriterData implements Cborable {
                                 CompletableFuture<Map<PublicKeyHash, byte[]>>> composer =
                                 (a, w) -> getUserSnapshotRecursive(owner, w, a, mutable, ipfs, hasher)
                                         .thenApply(ws ->
-                                                Stream.concat(ws.entrySet().stream(), a.entrySet().stream())
+                                                Stream.concat(
+                                                        ws.entrySet().stream().filter(e -> ! a.containsKey(e.getKey())),
+                                                        a.entrySet().stream())
                                                         .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue())));
                         return Futures.reduceAll(newKeys, done,
                                 composer,
-                                (a, b) -> Stream.concat(a.entrySet().stream(), b.entrySet().stream())
+                                (a, b) -> Stream.concat(
+                                        a.entrySet().stream().filter(e -> ! b.containsKey(e.getKey())),
+                                        b.entrySet().stream())
                                         .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue())));
                     });
                 });
