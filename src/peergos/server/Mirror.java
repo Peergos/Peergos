@@ -19,10 +19,9 @@ public class Mirror {
     public static void mirrorNode(Multihash nodeId,
                                   CoreNode core,
                                   MutablePointers p2pPointers,
-                                  ContentAddressedStorage storage,
+                                  DeletableContentAddressedStorage storage,
                                   JdbcIpnsAndSocial targetPointers,
                                   TransactionStore transactions,
-                                  DeletableContentAddressedStorage targetStorage,
                                   Hasher hasher) {
         Logging.LOG().log(Level.INFO, "Mirroring data for node " + nodeId);
         List<String> allUsers = core.getUsernames("").join();
@@ -31,8 +30,7 @@ public class Mirror {
             List<UserPublicKeyLink> chain = core.getChain(username).join();
             if (chain.get(chain.size() - 1).claim.storageProviders.contains(nodeId)) {
                 try {
-                    mirrorUser(username, core, p2pPointers, storage, targetPointers,
-                            transactions, targetStorage, hasher);
+                    mirrorUser(username, core, p2pPointers, storage, targetPointers, transactions, hasher);
                     userCount++;
                 } catch (Exception e) {
                     Logging.LOG().log(Level.WARNING, "Couldn't mirror user: " + username, e);
@@ -50,17 +48,15 @@ public class Mirror {
      * @param storage
      * @param targetPointers
      * @param transactions
-     * @param targetStorage
      * @param hasher
      * @return The version mirrored
      */
     public static Map<PublicKeyHash, byte[]> mirrorUser(String username,
                                                         CoreNode core,
                                                         MutablePointers p2pPointers,
-                                                        ContentAddressedStorage storage,
+                                                        DeletableContentAddressedStorage storage,
                                                         JdbcIpnsAndSocial targetPointers,
                                                         TransactionStore transactions,
-                                                        DeletableContentAddressedStorage targetStorage,
                                                         Hasher hasher) {
         Logging.LOG().log(Level.INFO, "Mirroring data for " + username);
         Optional<PublicKeyHash> identity = core.getPublicKeyHash(username).join();
@@ -71,7 +67,7 @@ public class Mirror {
                 storage, hasher).join();
         for (PublicKeyHash ownedKey : ownedKeys) {
             Optional<byte[]> version = mirrorMutableSubspace(identity.get(), ownedKey, p2pPointers, storage,
-                    targetPointers, transactions, targetStorage);
+                    targetPointers, transactions);
             if (version.isPresent())
                 versions.put(ownedKey, version.get());
         }
@@ -86,16 +82,14 @@ public class Mirror {
      * @param p2pPointers
      * @param storage
      * @param targetPointers
-     * @param targetStorage
      * @return the version mirrored
      */
     public static Optional<byte[]> mirrorMutableSubspace(PublicKeyHash owner,
                                                          PublicKeyHash writer,
                                                          MutablePointers p2pPointers,
-                                                         ContentAddressedStorage storage,
+                                                         DeletableContentAddressedStorage storage,
                                                          JdbcIpnsAndSocial targetPointers,
-                                                         TransactionStore transactions,
-                                                         DeletableContentAddressedStorage targetStorage) {
+                                                         TransactionStore transactions) {
         Optional<byte[]> updated = p2pPointers.getPointer(owner, writer).join();
         if (! updated.isPresent()) {
             Logging.LOG().log(Level.WARNING, "Skipping unretrievable mutable pointer for: " + writer);
@@ -111,7 +105,7 @@ public class Mirror {
         // use a mirror call to distinguish from normal pin calls
         TransactionId tid = transactions.startTransaction(owner);
         try {
-            targetStorage.mirror(owner, existingTarget.toOptional(), updatedTarget.toOptional(), tid);
+            storage.mirror(owner, existingTarget.toOptional(), updatedTarget.toOptional(), tid);
             targetPointers.setPointer(writer, existing, newPointer).join();
         } finally {
             transactions.closeTransaction(owner, tid);

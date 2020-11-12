@@ -298,9 +298,9 @@ public class MirrorCoreNode implements CoreNode {
         if (migrationTargetNode.equals(ourNodeId)) {
             // we are copying data to this node, proxy call to their current storage server
             // Mirror all the data to local
-            Mirror.mirrorUser(username, this, p2pMutable, ipfs, localPointers, transactions, ipfs, hasher);
+            Mirror.mirrorUser(username, this, p2pMutable, ipfs, localPointers, transactions, hasher);
             Map<PublicKeyHash, byte[]> userSnapshot = Mirror.mirrorUser(username, this, p2pMutable, ipfs, localPointers,
-                    transactions, ipfs, hasher);
+                    transactions, hasher);
             UserSnapshot res = writeTarget.migrateUser(username, newChain, currentStorageId).join();
             update();
             return Futures.of(res);
