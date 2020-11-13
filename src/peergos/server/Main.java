@@ -439,8 +439,10 @@ public class Main extends Builder {
 
             Supplier<Connection> usageDb = getDBConnector(a, "space-usage-sql-file", dbConnectionPool);
             UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
+            JdbcIpnsAndSocial rawSocial = new JdbcIpnsAndSocial(getDBConnector(a, "social-sql-file"), sqlCommands);
 
-            CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable, hasher);
+            CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable,
+                    rawSocial, hasher);
 
             QuotaAdmin userQuotas = buildSpaceQuotas(a, localStorage, core,
                     getDBConnector(a, "space-requests-sql-file", dbConnectionPool),
@@ -466,9 +468,6 @@ public class Main extends Builder {
 
             SocialNetworkProxy httpSocial = new HttpSocialNetwork(p2pHttpProxy, p2pHttpProxy);
 
-            Supplier<Connection> socialDatabase = getDBConnector(a, "social-sql-file", dbConnectionPool);
-
-            JdbcIpnsAndSocial rawSocial = new JdbcIpnsAndSocial(socialDatabase, sqlCommands);
             SocialNetwork local = UserRepository.build(p2pDht, rawSocial);
             SocialNetwork p2pSocial = new ProxyingSocialNetwork(nodeId, core, local, httpSocial);
 

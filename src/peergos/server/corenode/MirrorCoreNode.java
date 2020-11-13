@@ -11,6 +11,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.hamt.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.mutable.*;
+import peergos.shared.social.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
@@ -30,6 +31,7 @@ public class MirrorCoreNode implements CoreNode {
     private final DeletableContentAddressedStorage ipfs;
     private final JdbcIpnsAndSocial localPointers;
     private final TransactionStore transactions;
+    private final JdbcIpnsAndSocial localSocial;
     private final PublicKeyHash pkiOwnerIdentity;
     private final Multihash ourNodeId;
     private final Hasher hasher;
@@ -43,6 +45,7 @@ public class MirrorCoreNode implements CoreNode {
                           DeletableContentAddressedStorage ipfs,
                           JdbcIpnsAndSocial localPointers,
                           TransactionStore transactions,
+                          JdbcIpnsAndSocial localSocial,
                           PublicKeyHash pkiOwnerIdentity,
                           Path statePath,
                           Hasher hasher) {
@@ -51,6 +54,7 @@ public class MirrorCoreNode implements CoreNode {
         this.ipfs = ipfs;
         this.localPointers = localPointers;
         this.transactions = transactions;
+        this.localSocial = localSocial;
         this.pkiOwnerIdentity = pkiOwnerIdentity;
         this.statePath = statePath;
         this.ourNodeId = ipfs.id().join();
@@ -324,8 +328,11 @@ public class MirrorCoreNode implements CoreNode {
                 }
             }
 
-            // TODO commit follow requests
-
+            // Copy pending follow requests to local server
+            for (BlindFollowRequest req : res.pendingFollowReqs) {
+                // write directly to local social database to avoid being redirected to user's current node
+                localSocial.addFollowRequest(owner, req.serialize()).join();
+            }
             return Futures.of(res);
         } else // Proxy call to their target storage server
             return writeTarget.migrateUser(username, newChain, migrationTargetNode);
