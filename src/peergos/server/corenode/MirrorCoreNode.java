@@ -300,6 +300,10 @@ public class MirrorCoreNode implements CoreNode {
     public CompletableFuture<UserSnapshot> migrateUser(String username,
                                                        List<UserPublicKeyLink> newChain,
                                                        Multihash currentStorageId) {
+        // check chain validity before proceeding further
+        List<UserPublicKeyLink> existingChain = getChain(username).join();
+        UserPublicKeyLink.merge(existingChain, newChain, ipfs).join();
+
         if (currentStorageId.equals(ourNodeId)) {
             // a user is migrating away from this server
             ProofOfWork work = ProofOfWork.empty();

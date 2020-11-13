@@ -18,7 +18,9 @@ import peergos.shared.util.*;
 
 import java.net.*;
 import java.nio.file.*;
+import java.time.*;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.stream.*;
 
 import static org.junit.Assert.*;
@@ -26,6 +28,7 @@ import static peergos.server.tests.UserTests.deleteFiles;
 import static peergos.server.tests.UserTests.randomString;
 import static peergos.server.tests.PeergosNetworkUtils.ensureSignedUp;
 import static peergos.server.tests.PeergosNetworkUtils.generateUsername;
+import static peergos.server.tests.PeergosNetworkUtils.*;
 
 @RunWith(Parameterized.class)
 public class MultiNodeNetworkTests {
@@ -175,6 +178,40 @@ public class MultiNodeNetworkTests {
         UserContext postMigration = ensureSignedUp(username, password, getNode(iNode2).clear(), crypto);
         long usageVia2 = postMigration.getSpaceUsage().join();
         Assert.assertTrue(usageVia2 == usageVia1);
+    }
+
+    @Test
+    public void invalidMigrate() {
+        if (iNode1 == 0 || iNode2 == 0)
+            return; // Don't test migration to/from pki node
+        String username = generateUsername(random);
+        String password = randomString();
+        NetworkAccess node1 = getNode(iNode1);
+        Multihash originalNodeId = node1.dhtClient.id().join();
+        UserContext user = ensureSignedUp(username, password, node1, crypto);
+        String evilusername = randomUsername("evil", new Random());
+        UserContext evil = ensureSignedUp(evilusername, password, node1, crypto);
+
+        // try to migrate with an invalid claim chain
+        UserService node2 = getService(iNode2);
+        List<UserPublicKeyLink> existing = user.network.coreNode.getChain(username).join();
+        Multihash newStorageNodeId = node2.storage.id().join();
+
+        List<UserPublicKeyLink> evilChain = evil.network.coreNode.getChain(evilusername).join();
+        UserPublicKeyLink evilLast = evilChain.get(0);
+        UserPublicKeyLink.Claim newClaim = UserPublicKeyLink.Claim.build(username, evil.signer.secret,
+                LocalDate.now().plusMonths(2), Arrays.asList(newStorageNodeId));
+        UserPublicKeyLink evilUpdate = evilLast.withClaim(newClaim);
+        List<UserPublicKeyLink> newChain = Arrays.asList(evilUpdate);
+        UserContext userViaNewServer = ensureSignedUp(username, password, getNode(iNode2), crypto);
+        try {
+            userViaNewServer.network.coreNode.migrateUser(username, newChain, originalNodeId).join();
+            throw new RuntimeException("Shouldn't get here!");
+        } catch (CompletionException e) {}
+
+        List<UserPublicKeyLink> chain = userViaNewServer.network.coreNode.getChain(username).join();
+        Multihash storageNode = chain.get(chain.size() - 1).claim.storageProviders.stream().findFirst().get();
+        Assert.assertTrue(storageNode.equals(originalNodeId));
     }
 
     @Test
