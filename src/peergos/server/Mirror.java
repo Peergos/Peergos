@@ -95,9 +95,19 @@ public class Mirror {
             Logging.LOG().log(Level.WARNING, "Skipping unretrievable mutable pointer for: " + writer);
             return updated;
         }
+
+        mirrorMerkleTree(owner, writer, updated.get(), storage, targetPointers, transactions);
+        return updated;
+    }
+
+    public static void mirrorMerkleTree(PublicKeyHash owner,
+                                        PublicKeyHash writer,
+                                        byte[] newPointer,
+                                        DeletableContentAddressedStorage storage,
+                                        JdbcIpnsAndSocial targetPointers,
+                                        TransactionStore transactions) {
         Optional<byte[]> existing = targetPointers.getPointer(writer).join();
         // First pin the new root, then commit updated pointer
-        byte[] newPointer = updated.get();
         MaybeMultihash existingTarget = existing.isPresent() ?
                 MutablePointers.parsePointerTarget(existing.get(), writer, storage).join() :
                 MaybeMultihash.empty();
@@ -110,6 +120,5 @@ public class Mirror {
         } finally {
             transactions.closeTransaction(owner, tid);
         }
-        return updated;
     }
 }

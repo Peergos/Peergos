@@ -157,6 +157,7 @@ public class MultiNodeNetworkTests {
         String password = randomString();
         NetworkAccess node1 = getNode(iNode1);
         UserContext user = ensureSignedUp(username, password, node1, crypto);
+        long usageVia1 = user.getSpaceUsage().join();
 
         // migrate to this node
         UserService node2 = getService(iNode2);
@@ -169,6 +170,11 @@ public class MultiNodeNetworkTests {
         List<UserPublicKeyLink> chain = userViaNewServer.network.coreNode.getChain(username).join();
         Multihash storageNode = chain.get(chain.size() - 1).claim.storageProviders.stream().findFirst().get();
         Assert.assertTrue(storageNode.equals(newStorageNodeId));
+
+        // test a fresh login on the new storage node
+        UserContext postMigration = ensureSignedUp(username, password, getNode(iNode2).clear(), crypto);
+        long usageVia2 = postMigration.getSpaceUsage().join();
+        Assert.assertTrue(usageVia2 == usageVia1);
     }
 
     @Test

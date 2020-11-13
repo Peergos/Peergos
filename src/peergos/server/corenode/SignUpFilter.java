@@ -34,8 +34,7 @@ public class SignUpFilter implements CoreNode {
                                                                        List<UserPublicKeyLink> chain,
                                                                        ProofOfWork proof,
                                                                        String token) {
-        boolean forUs = chain.get(chain.size() - 1).claim.storageProviders.contains(ourNodeId);
-        if (! forUs)
+        if (! forUs(chain))
             return target.updateChain(username, chain, proof, token);
 
         if (judge.allowSignupOrUpdate(username, token)) {
@@ -49,6 +48,10 @@ public class SignUpFilter implements CoreNode {
             return Futures.errored(new IllegalStateException("Invalid signup token."));
 
         return Futures.errored(new IllegalStateException("This server is not currently accepting new sign ups. Please try again later"));
+    }
+
+    private boolean forUs(List<UserPublicKeyLink> chain) {
+        return chain.get(chain.size() - 1).claim.storageProviders.contains(ourNodeId);
     }
 
     @Override
@@ -65,6 +68,11 @@ public class SignUpFilter implements CoreNode {
     public CompletableFuture<UserSnapshot> migrateUser(String username,
                                                        List<UserPublicKeyLink> newChain,
                                                        Multihash currentStorageId) {
+        if (forUs(newChain)) {
+            if (! judge.allowSignupOrUpdate(username, ""))
+                throw new IllegalStateException("This server is not currently accepting new user migrations.");
+        }
+
         return target.migrateUser(username, newChain, currentStorageId);
     }
 

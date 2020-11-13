@@ -301,7 +301,7 @@ public class MirrorCoreNode implements CoreNode {
             ProofOfWork work = ProofOfWork.empty();
             UserSnapshot snapshot = WriterData.getUserSnapshot(username, this, p2pMutable, ipfs, hasher)
                     .thenApply(pointers -> new UserSnapshot(pointers, Collections.emptyList())).join();
-            updateChain(username, newChain, work).join();
+            updateChain(username, newChain, work, "").join();
             // from this point on new writes are proxied to the new storage server
             return Futures.of(update(snapshot));
         }
@@ -310,12 +310,21 @@ public class MirrorCoreNode implements CoreNode {
             // we are copying data to this node, proxy call to their current storage server
             // Mirror all the data to local
             Mirror.mirrorUser(username, this, p2pMutable, ipfs, localPointers, transactions, hasher);
-            Map<PublicKeyHash, byte[]> userSnapshot = Mirror.mirrorUser(username, this, p2pMutable, ipfs,
+            Map<PublicKeyHash, byte[]> mirrored = Mirror.mirrorUser(username, this, p2pMutable, ipfs,
                     localPointers, transactions, hasher);
             UserSnapshot res = writeTarget.migrateUser(username, newChain, currentStorageId).join();
             update();
 
-            // TODO commit diff and follow requests
+            // commit diff since our mirror above
+            PublicKeyHash owner = newChain.get(newChain.size() - 1).owner;
+            for (Map.Entry<PublicKeyHash, byte[]> e : res.pointerState.entrySet()) {
+                byte[] existingVal = mirrored.get(e.getKey());
+                if (! Arrays.equals(existingVal, e.getValue())) {
+                    Mirror.mirrorMerkleTree(owner, e.getKey(), e.getValue(), ipfs, localPointers, transactions);
+                }
+            }
+
+            // TODO commit follow requests
 
             return Futures.of(res);
         } else // Proxy call to their target storage server
