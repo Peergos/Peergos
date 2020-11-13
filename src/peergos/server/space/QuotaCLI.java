@@ -19,19 +19,6 @@ import java.util.function.*;
 
 public class QuotaCLI extends Builder {
 
-    private static QuotaAdmin buildQuotaStore(Args a) {
-        Supplier<Connection> dbConnectionPool = getDBConnector(a, "transactions-sql-file");
-        TransactionStore transactions = buildTransactionStore(a, dbConnectionPool);
-        DeletableContentAddressedStorage localStorage = buildLocalStorage(a, transactions);
-        JdbcIpnsAndSocial rawPointers = buildRawPointers(a, getDBConnector(a, "mutable-pointers-file", dbConnectionPool));
-        MutablePointers localPointers = UserRepository.build(localStorage, rawPointers);
-        MutablePointersProxy proxingMutable = new HttpMutablePointers(buildP2pHttpProxy(a), getPkiServerId(a));
-        CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable);
-        return buildSpaceQuotas(a, localStorage, core,
-                getDBConnector(a, "space-requests-sql-file", dbConnectionPool),
-                getDBConnector(a, "quotas-sql-file", dbConnectionPool));
-    }
-
     private static void printQuota(String name, long quota) {
         System.out.println(name + " " + formatQuota(quota));
     }

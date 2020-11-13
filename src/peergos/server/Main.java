@@ -389,6 +389,7 @@ public class Main extends Builder {
     public static UserService startPeergos(Args a) {
         try {
             Crypto crypto = initCrypto();
+            Hasher hasher = crypto.hasher;
             PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, crypto.signer);
             int webPort = a.getInt("port");
             MultiAddress localPeergosApi = getLocalMultiAddress(webPort);
@@ -436,16 +437,16 @@ public class Main extends Builder {
             MutablePointers localPointers = UserRepository.build(localStorage, rawPointers);
             MutablePointersProxy proxingMutable = new HttpMutablePointers(p2pHttpProxy, pkiServerNodeId);
 
-            CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable, crypto.hasher);
+            Supplier<Connection> usageDb = getDBConnector(a, "space-usage-sql-file", dbConnectionPool);
+            UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
+
+            CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable, hasher);
 
             QuotaAdmin userQuotas = buildSpaceQuotas(a, localStorage, core,
                     getDBConnector(a, "space-requests-sql-file", dbConnectionPool),
                     getDBConnector(a, "quotas-sql-file", dbConnectionPool));
             CoreNode signupFilter = new SignUpFilter(core, userQuotas, nodeId);
 
-            Supplier<Connection> usageDb = getDBConnector(a, "space-usage-sql-file", dbConnectionPool);
-            UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
-            Hasher hasher = crypto.hasher;
             SpaceCheckingKeyFilter.update(usageStore, userQuotas, core, localPointers, localStorage, hasher);
             SpaceCheckingKeyFilter spaceChecker = new SpaceCheckingKeyFilter(core, localPointers, localStorage,
                     hasher, userQuotas, usageStore);
@@ -506,7 +507,6 @@ public class Main extends Builder {
 
             if (a.hasArg("mirror.node.id")) {
                 Multihash nodeToMirrorId = Cid.decode(a.getArg("mirror.node.id"));
-                NetworkAccess localApi = Builder.buildLocalJavaNetworkAccess(webPort).join();
                 new Thread(() -> {
                     while (true) {
                         try {
@@ -666,11 +666,18 @@ public class Main extends Builder {
             String username = console.readLine("Enter username to migrate to this server:");
             String password = new String(console.readPassword("Enter password for " + username + ":"));
 
-            TransactionStore transactions = buildTransactionStore(a);
+            Supplier<Connection> dbConnectionPool = getDBConnector(a, "transactions-sql-file");
+            TransactionStore transactions = buildTransactionStore(a, dbConnectionPool);
             DeletableContentAddressedStorage localStorage = buildLocalStorage(a, transactions);
-            JdbcIpnsAndSocial rawPointers = buildRawPointers(a);
-            QuotaAdmin userQuotas = buildSpaceQuotas(a, localStorage, null);
-            JdbcIpnsAndSocial rawSocial = new JdbcIpnsAndSocial(getDBConnector(a, "social-sql-file"), getSqlCommands(a));
+            JdbcIpnsAndSocial rawPointers = buildRawPointers(a,
+                    getDBConnector(a, "mutable-pointers-file", dbConnectionPool));
+
+            QuotaAdmin userQuotas = buildSpaceQuotas(a, localStorage, network.coreNode,
+                    getDBConnector(a, "space-requests-sql-file", dbConnectionPool),
+                    getDBConnector(a, "quotas-sql-file", dbConnectionPool));
+
+            Supplier<Connection> socialDatabase = getDBConnector(a, "social-sql-file", dbConnectionPool);
+            JdbcIpnsAndSocial rawSocial = new JdbcIpnsAndSocial(socialDatabase, getSqlCommands(a));
 
             UserContext user = UserContext.signIn(username, password, network, crypto).join();
 
