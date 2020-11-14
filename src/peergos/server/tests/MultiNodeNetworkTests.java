@@ -154,12 +154,23 @@ public class MultiNodeNetworkTests {
 
     @Test
     public void migrate() {
+        migrate(0);
+        migrate(1);
+        migrate(2);
+    }
+
+    public void migrate(int nPasswordChanges) {
         if (iNode1 == 0 || iNode2 == 0)
             return; // Don't test migration to/from pki node
         String username = generateUsername(random);
         String password = randomString();
         NetworkAccess node1 = getNode(iNode1);
         UserContext user = ensureSignedUp(username, password, node1, crypto);
+        for (int i=0; i < nPasswordChanges; i++) {
+            String newPassword = randomString();
+            user = user.changePassword(password, newPassword).join();
+            password = newPassword;
+        }
         long usageVia1 = user.getSpaceUsage().join();
 
         // migrate to this node
@@ -177,7 +188,9 @@ public class MultiNodeNetworkTests {
         // test a fresh login on the new storage node
         UserContext postMigration = ensureSignedUp(username, password, getNode(iNode2).clear(), crypto);
         long usageVia2 = postMigration.getSpaceUsage().join();
-        Assert.assertTrue(usageVia2 == usageVia1);
+        // Note we currently don't remove the old pointer after changing password,
+        // so there is a 5kib reduction after migration per password change
+        Assert.assertTrue(usageVia2 == usageVia1 || (nPasswordChanges > 0 && usageVia2 < usageVia1));
     }
 
     @Test
