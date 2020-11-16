@@ -2,7 +2,6 @@ package peergos.server;
 
 import peergos.server.corenode.*;
 import peergos.server.messages.*;
-import peergos.server.space.*;
 import peergos.server.sql.*;
 import peergos.server.storage.*;
 import peergos.server.storage.admin.*;

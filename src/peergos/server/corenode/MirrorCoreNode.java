@@ -315,16 +315,20 @@ public class MirrorCoreNode implements CoreNode {
         }
         Multihash migrationTargetNode = newChain.get(newChain.size() - 1).claim.storageProviders.get(0);
         if (migrationTargetNode.equals(ourNodeId)) {
-            // we are copying data to this node, proxy call to their current storage server
+            // We are copying data to this node
+            PublicKeyHash owner = newChain.get(newChain.size() - 1).owner;
+
             // Mirror all the data to local
             Mirror.mirrorUser(username, this, p2pMutable, ipfs, localPointers, transactions, hasher);
             Map<PublicKeyHash, byte[]> mirrored = Mirror.mirrorUser(username, this, p2pMutable, ipfs,
                     localPointers, transactions, hasher);
+
+            // Proxy call to their current storage server
             UserSnapshot res = writeTarget.migrateUser(username, newChain, currentStorageId).join();
+            // pick up the new pki data locally
             update();
 
             // commit diff since our mirror above
-            PublicKeyHash owner = newChain.get(newChain.size() - 1).owner;
             for (Map.Entry<PublicKeyHash, byte[]> e : res.pointerState.entrySet()) {
                 byte[] existingVal = mirrored.get(e.getKey());
                 if (! Arrays.equals(existingVal, e.getValue())) {

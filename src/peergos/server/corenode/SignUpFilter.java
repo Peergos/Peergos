@@ -6,6 +6,7 @@ import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.util.*;
+import peergos.shared.storage.*;
 import peergos.shared.user.*;
 
 import java.io.*;
@@ -17,11 +18,20 @@ public class SignUpFilter implements CoreNode {
     private final CoreNode target;
     private final QuotaAdmin judge;
     private final Multihash ourNodeId;
+    private final QuotaAdmin quotaStore;
+    private final HttpSpaceUsage space;
 
-    public SignUpFilter(CoreNode target, QuotaAdmin judge, Multihash ourNodeId) {
+
+    public SignUpFilter(CoreNode target,
+                        QuotaAdmin judge,
+                        Multihash ourNodeId,
+                        QuotaAdmin quotaStore,
+                        HttpSpaceUsage space) {
         this.target = target;
         this.judge = judge;
         this.ourNodeId = ourNodeId;
+        this.quotaStore = quotaStore;
+        this.space = space;
     }
 
     @Override
@@ -71,6 +81,13 @@ public class SignUpFilter implements CoreNode {
         if (forUs(newChain)) {
             if (! judge.allowSignupOrUpdate(username, ""))
                 throw new IllegalStateException("This server is not currently accepting new user migrations.");
+            PublicKeyHash owner = newChain.get(newChain.size() - 1).owner;
+
+            // check we have enough local quota to mirror all user's data
+            long currentUsage = space.getUsage(currentStorageId, owner).join();
+            long localQuota = quotaStore.getQuota(username);
+            if (localQuota < currentUsage)
+                throw new IllegalStateException("Not enough space for user to migrate user to this server!");
         }
 
         return target.migrateUser(username, newChain, currentStorageId);
