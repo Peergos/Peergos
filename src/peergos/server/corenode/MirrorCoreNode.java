@@ -1,6 +1,7 @@
 package peergos.server.corenode;
 
 import peergos.server.*;
+import peergos.server.space.*;
 import peergos.server.storage.*;
 import peergos.server.util.*;
 import peergos.shared.*;
@@ -32,6 +33,7 @@ public class MirrorCoreNode implements CoreNode {
     private final JdbcIpnsAndSocial localPointers;
     private final TransactionStore transactions;
     private final JdbcIpnsAndSocial localSocial;
+    private final UsageStore usageStore;
     private final PublicKeyHash pkiOwnerIdentity;
     private final Multihash ourNodeId;
     private final Hasher hasher;
@@ -46,6 +48,7 @@ public class MirrorCoreNode implements CoreNode {
                           JdbcIpnsAndSocial localPointers,
                           TransactionStore transactions,
                           JdbcIpnsAndSocial localSocial,
+                          UsageStore usageStore,
                           PublicKeyHash pkiOwnerIdentity,
                           Path statePath,
                           Hasher hasher) {
@@ -55,6 +58,7 @@ public class MirrorCoreNode implements CoreNode {
         this.localPointers = localPointers;
         this.transactions = transactions;
         this.localSocial = localSocial;
+        this.usageStore = usageStore;
         this.pkiOwnerIdentity = pkiOwnerIdentity;
         this.statePath = statePath;
         this.ourNodeId = ipfs.id().join();
@@ -341,6 +345,9 @@ public class MirrorCoreNode implements CoreNode {
                 // write directly to local social database to avoid being redirected to user's current node
                 localSocial.addFollowRequest(owner, req.serialize()).join();
             }
+
+            // Make sure usage is updated
+            SpaceCheckingKeyFilter.processCorenodeEvent(username, owner, usageStore, ipfs, p2pMutable, hasher);
             return Futures.of(res);
         } else // Proxy call to their target storage server
             return writeTarget.migrateUser(username, newChain, migrationTargetNode);

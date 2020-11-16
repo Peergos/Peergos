@@ -1,7 +1,6 @@
 package peergos.server;
 
 import peergos.server.storage.*;
-import peergos.server.storage.admin.*;
 import peergos.shared.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.asymmetric.*;

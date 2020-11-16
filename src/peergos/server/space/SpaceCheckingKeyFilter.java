@@ -184,23 +184,19 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
     }
 
     public static void processCorenodeEvent(String username,
-                                            PublicKeyHash writer,
+                                            PublicKeyHash owner,
                                             UsageStore usageStore,
                                             ContentAddressedStorage dht,
                                             MutablePointers mutable,
                                             Hasher hasher) {
         usageStore.addUserIfAbsent(username);
-        usageStore.addWriter(username, writer);
-        Set<PublicKeyHash> childrenKeys = WriterData.getDirectOwnedKeys(writer, writer, mutable, dht, hasher)
-                .join()
-                .stream()
-                .filter(k -> ! k.equals(writer))
-                .collect(Collectors.toSet());
-        WriterUsage current = usageStore.getUsage(writer);
-        MaybeMultihash updatedRoot = mutable.getPointerTarget(writer, writer, dht).join();
-        processMutablePointerEvent(usageStore, writer, writer, current.target(), updatedRoot, mutable, dht, hasher);
-        for (PublicKeyHash childKey : childrenKeys) {
-            processCorenodeEvent(username, childKey, usageStore, dht, mutable, hasher);
+        Set<PublicKeyHash> allUserKeys = WriterData.getOwnedKeysRecursive(owner, owner, mutable, dht, hasher).join();
+
+        for (PublicKeyHash writerKey : allUserKeys) {
+            usageStore.addWriter(username, writerKey);
+            WriterUsage current = usageStore.getUsage(writerKey);
+            MaybeMultihash updatedRoot = mutable.getPointerTarget(owner, writerKey, dht).join();
+            processMutablePointerEvent(usageStore, owner, writerKey, current.target(), updatedRoot, mutable, dht, hasher);
         }
     }
 
