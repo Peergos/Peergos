@@ -668,19 +668,14 @@ public class Main extends Builder {
             Supplier<Connection> dbConnectionPool = getDBConnector(a, "transactions-sql-file");
             TransactionStore transactions = buildTransactionStore(a, dbConnectionPool);
             DeletableContentAddressedStorage localStorage = buildLocalStorage(a, transactions);
-            JdbcIpnsAndSocial rawPointers = buildRawPointers(a,
-                    getDBConnector(a, "mutable-pointers-file", dbConnectionPool));
 
             QuotaAdmin userQuotas = buildSpaceQuotas(a, localStorage, network.coreNode,
                     getDBConnector(a, "space-requests-sql-file", dbConnectionPool),
                     getDBConnector(a, "quotas-sql-file", dbConnectionPool));
 
-            Supplier<Connection> socialDatabase = getDBConnector(a, "social-sql-file", dbConnectionPool);
-            JdbcIpnsAndSocial rawSocial = new JdbcIpnsAndSocial(socialDatabase, getSqlCommands(a));
-
             UserContext user = UserContext.signIn(username, password, network, crypto).join();
 
-            Migrate.migrateToLocal(user, transactions, localStorage, rawPointers, rawSocial, userQuotas, crypto, network);
+            Migrate.migrateToLocal(user, localStorage, userQuotas, network);
             return true;
         } catch (Exception ex) {
             throw new RuntimeException(ex);
