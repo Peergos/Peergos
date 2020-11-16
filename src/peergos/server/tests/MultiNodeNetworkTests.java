@@ -165,28 +165,30 @@ public class MultiNodeNetworkTests {
         String username = generateUsername(random);
         String password = randomString();
         NetworkAccess node1 = getNode(iNode1);
+        Multihash originalNodeId = node1.dhtClient.id().join();
+        NetworkAccess node2 = getNode(iNode2);
+        Multihash newStorageNodeId = node2.dhtClient.id().join();
+
         UserContext user = ensureSignedUp(username, password, node1, crypto);
         for (int i=0; i < nPasswordChanges; i++) {
             String newPassword = randomString();
-            user = user.changePassword(password, newPassword).join();
+            user = ensureSignedUp(username, password, node2, crypto).changePassword(password, newPassword).join();
             password = newPassword;
         }
         long usageVia1 = user.getSpaceUsage().join();
 
-        // migrate to this node
-        UserService node2 = getService(iNode2);
+        // migrate to node2
         List<UserPublicKeyLink> existing = user.network.coreNode.getChain(username).join();
-        Multihash newStorageNodeId = node2.storage.id().join();
         List<UserPublicKeyLink> newChain = Migrate.buildMigrationChain(existing, newStorageNodeId, user.signer.secret);
-        UserContext userViaNewServer = ensureSignedUp(username, password, getNode(iNode2), crypto);
-        userViaNewServer.network.coreNode.migrateUser(username, newChain, node1.dhtClient.id().join()).join();
+        UserContext userViaNewServer = ensureSignedUp(username, password, node2, crypto);
+        userViaNewServer.network.coreNode.migrateUser(username, newChain, originalNodeId).join();
 
         List<UserPublicKeyLink> chain = userViaNewServer.network.coreNode.getChain(username).join();
         Multihash storageNode = chain.get(chain.size() - 1).claim.storageProviders.stream().findFirst().get();
         Assert.assertTrue(storageNode.equals(newStorageNodeId));
 
         // test a fresh login on the new storage node
-        UserContext postMigration = ensureSignedUp(username, password, getNode(iNode2).clear(), crypto);
+        UserContext postMigration = ensureSignedUp(username, password, node2.clear(), crypto);
         long usageVia2 = postMigration.getSpaceUsage().join();
         // Note we currently don't remove the old pointer after changing password,
         // so there is a 5kib reduction after migration per password change
