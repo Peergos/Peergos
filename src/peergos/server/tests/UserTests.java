@@ -1204,7 +1204,6 @@ public abstract class UserTests {
         String status = "busy";
         String webroot = "webroot";
 
-        //kev-todo add extra fields
         ProfilePaths.setFirstName(context, firstName).join();
         ProfilePaths.setLastName(context, lastName).join();
         ProfilePaths.setBio(context, bio).join();
