@@ -693,16 +693,16 @@ public class UserContext {
     public CompletableFuture<UserContext> changePassword(String oldPassword, String newPassword) {
         return getKeyGenAlgorithm().thenCompose(alg -> {
             SecretGenerationAlgorithm newAlgorithm = SecretGenerationAlgorithm.withNewSalt(alg, crypto.random);
-            return changePassword(oldPassword, newPassword, alg, newAlgorithm);
+            // set claim expiry to two months from now
+            return changePassword(oldPassword, newPassword, alg, newAlgorithm, LocalDate.now().plusMonths(2));
         });
     }
 
     public CompletableFuture<UserContext> changePassword(String oldPassword,
                                                          String newPassword,
                                                          SecretGenerationAlgorithm existingAlgorithm,
-                                                         SecretGenerationAlgorithm newAlgorithm) {
-        // set claim expiry to two months from now
-        LocalDate expiry = LocalDate.now().plusMonths(2);
+                                                         SecretGenerationAlgorithm newAlgorithm,
+                                                         LocalDate expiry) {
         LOG.info("Changing password and setting expiry to: " + expiry);
 
         return UserUtil.generateUser(username, oldPassword, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer, existingAlgorithm)
