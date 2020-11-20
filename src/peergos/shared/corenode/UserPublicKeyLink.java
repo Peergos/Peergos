@@ -221,8 +221,14 @@ public class UserPublicKeyLink implements Cborable {
                 indexOfChange++;
             else
                 break;
+
         List<UserPublicKeyLink> tail = updated.subList(indexOfChange, updated.size());
-        if (! tail.get(0).owner.equals(existing.get(existing.size()-1).owner)) {
+
+        UserPublicKeyLink currentLast = existing.get(existing.size() - 1);
+        if (tail.get(0).claim.expiry.isBefore(currentLast.claim.expiry))
+            throw new IllegalStateException("New claim chain expiry before existing!");
+
+        if (! tail.get(0).owner.equals(currentLast.owner)) {
             if (tail.size() == 1)
                 return Futures.errored(new IllegalStateException("User already exists: Invalid key change attempt!"));
             else
@@ -236,7 +242,10 @@ public class UserPublicKeyLink implements Cborable {
             // You cannot reuse a previous password
             return Futures.errored(new IllegalStateException("You cannot reuse a previous password!"));
         }
-        List<UserPublicKeyLink> result = Stream.concat(existing.subList(0, existing.size() - 1).stream(), tail.stream()).collect(Collectors.toList());
+        List<UserPublicKeyLink> result = Stream.concat(
+                existing.subList(0, existing.size() - 1).stream(),
+                tail.stream())
+                .collect(Collectors.toList());
         return validChain(result, tail.get(0).claim.username, ipfs)
                 .thenApply(valid -> {
                     if (! valid)
@@ -248,7 +257,8 @@ public class UserPublicKeyLink implements Cborable {
     public static CompletableFuture<Boolean> validChain(List<UserPublicKeyLink> chain, String username, ContentAddressedStorage ipfs) {
         List<CompletableFuture<Boolean>> validities = new ArrayList<>();
         for (int i=0; i < chain.size()-1; i++)
-            validities.add(validLink(chain.get(i), chain.get(i+1).owner, username, ipfs));
+            validities.add(validLink(chain.get(i), chain.get(i + 1).owner, username, ipfs));
+
         BiFunction<Boolean, CompletableFuture<Boolean>, CompletableFuture<Boolean>> composer = (b, valid) -> valid.thenApply(res -> res && b);
         return Futures.reduceAll(validities,
                 true,

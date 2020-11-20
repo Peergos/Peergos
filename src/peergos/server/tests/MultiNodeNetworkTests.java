@@ -7,7 +7,9 @@ import peergos.server.*;
 import peergos.server.storage.*;
 import peergos.server.util.*;
 import peergos.shared.*;
+import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
+import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.multihash.*;
@@ -193,6 +195,19 @@ public class MultiNodeNetworkTests {
         // Note we currently don't remove the old pointer after changing password,
         // so there is a 5kib reduction after migration per password change
         Assert.assertTrue(usageVia2 == usageVia1 || (nPasswordChanges > 0 && usageVia2 < usageVia1));
+
+        // check a reverse migration can't be triggered by anyone else
+        try {
+            node1.coreNode.migrateUser(username, existing, newStorageNodeId).join();
+            throw new RuntimeException("Shouldn't get here!");
+        } catch (CompletionException e) {}
+
+        try { // check a direct update call with old chain also fails
+            ProofOfWork work = crypto.hasher.generateProofOfWork(ProofOfWork.DEFAULT_DIFFICULTY,
+                    new CborObject.CborList(existing).serialize()).join();
+            node1.coreNode.updateChain(username, existing, work).join();
+            throw new RuntimeException("Shouldn't get here!");
+        } catch (CompletionException e) {}
     }
 
     @Test

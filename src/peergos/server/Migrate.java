@@ -36,7 +36,7 @@ public class Migrate {
                                                               SecretSigningKey signer) {
         UserPublicKeyLink last = existing.get(existing.size() - 1);
         UserPublicKeyLink.Claim newClaim = UserPublicKeyLink.Claim.build(last.claim.username, signer,
-                LocalDate.now().plusMonths(2), Arrays.asList(newStorageId));
+                last.claim.expiry.plusDays(1), Arrays.asList(newStorageId));
         UserPublicKeyLink updatedLast = last.withClaim(newClaim);
         return Stream.concat(
                 existing.stream().limit(existing.size() - 1),
