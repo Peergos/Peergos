@@ -32,6 +32,7 @@ import java.io.*;
 import java.net.*;
 import java.nio.file.*;
 import java.sql.*;
+import java.time.*;
 import java.util.*;
 import java.util.function.*;
 import java.util.stream.Collectors;
@@ -216,7 +217,8 @@ public class Main extends Builder {
 
             // sign up peergos user
             SecretGenerationAlgorithm algorithm = SecretGenerationAlgorithm.getDefaultWithoutExtraSalt();
-            UserContext context = UserContext.signUpGeneral(pkiUsername, password, "", network, crypto, algorithm, x -> {}).get();
+            LocalDate expiry = LocalDate.now().plusMonths(2);
+            UserContext context = UserContext.signUpGeneral(pkiUsername, password, "", expiry, network, crypto, algorithm, x -> {}).get();
             Optional<PublicKeyHash> existingPkiKey = context.getNamedKey("pki").get();
             if (!existingPkiKey.isPresent() || existingPkiKey.get().equals(pkiPublicHash)) {
                 SigningPrivateKeyAndPublicHash pkiKeyPair = new SigningPrivateKeyAndPublicHash(pkiPublicHash, pkiSecret);

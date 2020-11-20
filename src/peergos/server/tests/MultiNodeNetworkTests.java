@@ -205,7 +205,7 @@ public class MultiNodeNetworkTests {
         try { // check a direct update call with old chain also fails
             ProofOfWork work = crypto.hasher.generateProofOfWork(ProofOfWork.DEFAULT_DIFFICULTY,
                     new CborObject.CborList(existing).serialize()).join();
-            node1.coreNode.updateChain(username, existing, work).join();
+            node1.coreNode.updateChain(username, existing, work, "").join();
             throw new RuntimeException("Shouldn't get here!");
         } catch (CompletionException e) {}
     }

@@ -217,8 +217,10 @@ public class UserContext {
                                                         NetworkAccess network,
                                                         Crypto crypto,
                                                         Consumer<String> progressCallback) {
+        // set claim expiry to two months from now
+        LocalDate expiry = LocalDate.now().plusMonths(2);
         SecretGenerationAlgorithm algorithm = SecretGenerationAlgorithm.getDefault(crypto.random);
-        return signUpGeneral(username, password, token, network, crypto, algorithm, progressCallback);
+        return signUpGeneral(username, password, token, expiry, network, crypto, algorithm, progressCallback);
     }
 
     public static CompletableFuture<UserContext> signUp(String username,
@@ -226,13 +228,16 @@ public class UserContext {
                                                         String token,
                                                         NetworkAccess network,
                                                         Crypto crypto) {
+        // set claim expiry to two months from now
+        LocalDate expiry = LocalDate.now().plusMonths(2);
         SecretGenerationAlgorithm algorithm = SecretGenerationAlgorithm.getDefault(crypto.random);
-        return signUpGeneral(username, password, token, network, crypto, algorithm, t -> {});
+        return signUpGeneral(username, password, token, expiry, network, crypto, algorithm, t -> {});
     }
 
     public static CompletableFuture<UserContext> signUpGeneral(String username,
                                                                String password,
                                                                String token,
+                                                               LocalDate expiry,
                                                                NetworkAccess initialNetwork,
                                                                Crypto crypto,
                                                                SecretGenerationAlgorithm algorithm,
@@ -245,9 +250,8 @@ public class UserContext {
                     SecretSigningKey secretSigningKey = userWithRoot.getUser().secretSigningKey;
                     PublicKeyHash signerHash = ContentAddressedStorage.hashKey(publicSigningKey);
                     SigningPrivateKeyAndPublicHash signer = new SigningPrivateKeyAndPublicHash(signerHash, secretSigningKey);
-
                     progressCallback.accept("Registering username");
-                    return UserContext.register(username, signer, token, crypto.hasher, network, progressCallback).thenApply(registered -> {
+                    return UserContext.register(username, signer, token, expiry, crypto.hasher, network, progressCallback).thenApply(registered -> {
                         if (!registered) {
                             throw new IllegalStateException("Couldn't register username: " + username);
                         }
@@ -583,12 +587,10 @@ public class UserContext {
     public static CompletableFuture<Boolean> register(String username,
                                                       SigningPrivateKeyAndPublicHash signer,
                                                       String token,
+                                                      LocalDate expiry,
                                                       Hasher hasher,
                                                       NetworkAccess network,
                                                       Consumer<String> progressCallback) {
-        LocalDate now = LocalDate.now();
-        // set claim expiry to two months from now
-        LocalDate expiry = now.plusMonths(2);
         LOG.info("claiming username: " + username + " with expiry " + expiry);
         return network.dhtClient.id()
                 .thenCompose(id -> {

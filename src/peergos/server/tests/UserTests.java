@@ -213,10 +213,9 @@ public abstract class UserTests {
     public void expiredSignin() {
         String username = generateUsername();
         String password = "password";
-        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
-
         // set username claim to an expiry in the past
-        context.renewUsernameClaim(LocalDate.now().minusDays(1)).join();
+        UserContext context = UserContext.signUpGeneral(username, password, "", LocalDate.now().minusDays(1),
+                network, crypto, SecretGenerationAlgorithm.getDefault(crypto.random), t -> {}).join();
 
         LocalDate expiry = context.getUsernameClaimExpiry().join();
         Assert.assertTrue(expiry.isBefore(LocalDate.now()));
