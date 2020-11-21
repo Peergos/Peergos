@@ -53,6 +53,10 @@ Audit
 -----
 Cure53 conducted an audit of Peergos in June 2019. The final report is [here](https://cure53.de/pentest-report_peergos.pdf).
 
+Chat room
+---------
+There is a public chat room for Peergos on [Matrix](https://app.element.io/#/room/#peergos-chat:matrix.org).
+
 Peergos aims
 ------------
  - To allow individuals to securely and privately store files in a peer to peer network which has no central node and is generally difficult to disrupt or surveil
