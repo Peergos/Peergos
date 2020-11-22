@@ -13,10 +13,10 @@ public class JdbcQuotas {
 
     private static final String QUOTA_USER_NAME = "name";
     private static final String QUOTA_SIZE = "quota";
-    private static final String SET_QUOTA = "UPDATE quotas SET quota = ? WHERE name = ?;";
-    private static final String GET_QUOTA = "SELECT quota FROM quotas WHERE name = ?;";
-    private static final String GET_ALL_QUOTAS = "SELECT name, quota FROM quotas;";
-    private static final String REMOVE_USER = "DELETE FROM quotas WHERE name = ?;";
+    private static final String SET_QUOTA = "UPDATE freequotas SET quota = ? WHERE name = ?;";
+    private static final String GET_QUOTA = "SELECT quota FROM freequotas WHERE name = ?;";
+    private static final String GET_ALL_QUOTAS = "SELECT name, quota FROM freequotas;";
+    private static final String REMOVE_USER = "DELETE FROM freequotas WHERE name = ?;";
 
     private final SqlSupplier commands;
     private volatile boolean isClosed;
@@ -52,7 +52,7 @@ public class JdbcQuotas {
 
     public void setQuota(String username, long quota) {
         try (Connection conn = getConnection();
-             PreparedStatement createuser = conn.prepareStatement(commands.insertOrIgnoreCommand("INSERT ", "INTO quotas (name, quota) VALUES(?, ?)"));
+             PreparedStatement createuser = conn.prepareStatement(commands.insertOrIgnoreCommand("INSERT ", "INTO freequotas (name, quota) VALUES(?, ?)"));
              PreparedStatement update = conn.prepareStatement(SET_QUOTA)) {
             createuser.setString(1, username);
             createuser.setLong(2, 0);
@@ -104,6 +104,33 @@ public class JdbcQuotas {
                 res.put(username, quota);
             }
             return res;
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new IllegalStateException(sqe);
+        }
+    }
+
+    public boolean hasUser(String username) {
+        try (Connection conn = getConnection();
+             PreparedStatement select = conn.prepareStatement(GET_QUOTA)) {
+            select.setString(1, username);
+            ResultSet rs = select.executeQuery();
+            return rs.next();
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new IllegalStateException(sqe);
+        }
+    }
+
+    public int numberOfUsers() {
+        try (Connection conn = getConnection();
+             PreparedStatement select = conn.prepareStatement(GET_ALL_QUOTAS)) {
+            ResultSet rs = select.executeQuery();
+            int count = 0;
+            while (rs.next()) {
+                count++;
+            }
+            return count;
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new IllegalStateException(sqe);

@@ -27,12 +27,16 @@ public class QuotaStoreTests {
     }
 
     @Test
-    public void updateLargeQuota() {
+    public void updatesAndCount() {
         String bob = "bob";
         long oneG = 1024 * 1024 * 1024L;
         store.setQuota(bob, oneG);
         Assert.assertTrue(store.getQuota(bob) == oneG);
         store.setQuota(bob, 50 * oneG);
         Assert.assertTrue(store.getQuota(bob) == 50 * oneG);
+
+        Assert.assertTrue(store.numberOfUsers() == 1);
+        store.setQuota("fred", oneG);
+        Assert.assertTrue(store.numberOfUsers() == 2);
     }
 }

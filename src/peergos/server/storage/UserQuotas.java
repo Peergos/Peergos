@@ -21,41 +21,24 @@ import java.util.stream.*;
 public class UserQuotas implements QuotaAdmin {
 	private static final Logger LOG = Logging.LOG();
 
-    private static final long RELOAD_PERIOD_MS = 3_600_000;
-
-    private final Path source;
     private final long defaultQuota, maxUsers;
-    private Map<String, Long> quotas = new ConcurrentHashMap<>();
-    private long lastModified, lastReloaded;
+    private final JdbcQuotas quotas;
     private final JdbcSpaceRequests spaceRequests;
     private final ContentAddressedStorage dht;
     private final CoreNode core;
 
-    public UserQuotas(Path source,
+    public UserQuotas(JdbcQuotas quotas,
                       long defaultQuota,
                       long maxUsers,
                       JdbcSpaceRequests spaceRequests,
                       ContentAddressedStorage dht,
                       CoreNode core) {
-        this.source = source;
+        this.quotas = quotas;
         this.defaultQuota = defaultQuota;
         this.maxUsers = maxUsers;
         this.spaceRequests = spaceRequests;
         this.dht = dht;
         this.core = core;
-        updateQuotas();
-        new ForkJoinPool(1).submit(() -> {
-            while (true) {
-                try {
-                    updateQuotas();
-                } catch (Throwable t) {
-                    LOG.log(Level.WARNING, t.getMessage(), t);
-                }
-                try {
-                    Thread.sleep(5000);
-                } catch (InterruptedException e) {}
-            }
-        });
     }
 
     @Override
@@ -111,31 +94,26 @@ public class UserQuotas implements QuotaAdmin {
 
     @Override
     public boolean acceptingSignups() {
-        return quotas.size() < maxUsers;
+        return quotas.numberOfUsers() < maxUsers;
     }
 
     @Override
     public List<String> getLocalUsernames() {
-        return new ArrayList<>(quotas.keySet());
+        return new ArrayList<>(quotas.getQuotas().keySet());
     }
 
     public boolean allowSignupOrUpdate(String username) {
-        if (quotas.containsKey(username))
+        if (quotas.hasUser(username))
             return true;
-        if (quotas.size() >= maxUsers)
+        if (quotas.numberOfUsers() >= maxUsers)
             return false;
-        quotas.put(username, defaultQuota);
-        try {
-            saveToFile();
-            return true;
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+        quotas.setQuota(username, defaultQuota);
+        return true;
     }
 
     @Override
     public long getQuota(String username) {
-        return quotas.getOrDefault(username, defaultQuota);
+        return quotas.getQuota(username);
     }
 
     @Override
@@ -148,36 +126,7 @@ public class UserQuotas implements QuotaAdmin {
     }
 
     public void setQuota(String username, long quota) {
-        quotas.put(username, quota);
-        try {
-            saveToFile();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    private void saveToFile() throws IOException {
-        Files.write(source, quotas.entrySet()
-                .stream()
-                .sorted(Comparator.comparing(e -> e.getKey()))
-                .map(e -> e.getKey() + " " + e.getValue())
-                .collect(Collectors.toList()), StandardOpenOption.CREATE);
-    }
-
-    private void updateQuotas() {
-        if (! source.toFile().exists())
-            return;
-        long modified = source.toFile().lastModified();
-        long now = System.currentTimeMillis();
-        if (modified != lastModified || (now - lastReloaded > RELOAD_PERIOD_MS)) {
-            if (modified != lastModified)
-                LOG.info("Reading modified user quotas...");
-            lastModified = modified;
-            lastReloaded = now;
-            Map<String, Long> readQuotas = readUsernamesFromFile();
-            quotas.keySet().retainAll(readQuotas.keySet());
-            quotas.putAll(readQuotas);
-        }
+        quotas.setQuota(username, quota);
     }
 
     private static String getUsername(String line) {
@@ -197,7 +146,7 @@ public class UserQuotas implements QuotaAdmin {
         return Long.parseLong(quota);
     }
 
-    private Map<String, Long> readUsernamesFromFile() {
+    public static Map<String, Long> readUsernamesFromFile(Path source) {
         try {
             if (! source.toFile().exists())
                 return Collections.emptyMap();
