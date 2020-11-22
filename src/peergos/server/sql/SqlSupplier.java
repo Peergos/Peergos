@@ -25,6 +25,10 @@ public interface SqlSupplier {
         return "CREATE TABLE IF NOT EXISTS spacerequests (name text primary key not null, spacerequest text not null);";
     }
 
+    default String createQuotasTableCommand() {
+        return "CREATE TABLE IF NOT EXISTS quotas (name text primary key not null, quota BIGINT not null);";
+    }
+
     default String createTransactionsTableCommand() {
         return "CREATE TABLE IF NOT EXISTS transactions (" +
                 "tid varchar(64) not null, owner varchar(64) not null, hash varchar(64) not null);";
