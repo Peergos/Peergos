@@ -4,6 +4,7 @@ import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 
+import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -90,6 +91,11 @@ public interface QuotaControl {
             long time = map.getLong("t");
             Optional<byte[]> proof = map.getOptionalByteArray("p");
             return new SpaceRequest(username, bytes, time, proof);
+        }
+
+        @Override
+        public String toString() {
+            return username + " " + (bytes/1024/1024) + " MiB " + LocalDateTime.ofEpochSecond(utcMillis/1000, 0, ZoneOffset.UTC);
         }
     }
 }

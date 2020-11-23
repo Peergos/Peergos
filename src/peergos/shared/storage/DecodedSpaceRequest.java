@@ -21,4 +21,9 @@ public class DecodedSpaceRequest {
     public int getSizeInMiB() {
         return (int) (decoded.getSizeInBytes() / (1024 * 1024));
     }
+
+    @Override
+    public String toString() {
+        return decoded.toString();
+    }
 }
