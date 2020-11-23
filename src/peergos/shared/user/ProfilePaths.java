@@ -28,10 +28,14 @@ public class ProfilePaths {
 
     private static <V> CompletableFuture<Optional<V>> getAndParse(Path p, Function<byte[], V> parser, UserContext viewer) {
         return viewer.getByPath(p)
-                .thenCompose(opt -> opt.map(f -> Serialize.readFully(f, viewer.crypto, viewer.network)
-                        .thenApply(parser)
-                        .thenApply(Optional::of))
-                        .orElse(Futures.of(Optional.empty())));
+                .thenCompose(opt -> parse(opt, parser, viewer));
+    }
+
+    private static <V> CompletableFuture<Optional<V>> parse(Optional<FileWrapper> opt, Function<byte[], V> parser, UserContext viewer) {
+        return opt.map(f -> Serialize.readFully(f, viewer.crypto, viewer.network)
+            .thenApply(parser)
+            .thenApply(Optional::of))
+            .orElse(Futures.of(Optional.empty()));
     }
 
     private static <V> CompletableFuture<Boolean> serializeAndSet(Path p, V val, Function<V, byte[]> serialize, UserContext user) {
@@ -42,6 +46,30 @@ public class ProfilePaths {
                         AsyncReader.build(raw), raw.length, user.network, user.crypto, x -> {},
                         user.crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH)))
                 .thenApply(x -> true);
+    }
+
+    @JsMethod
+    public static CompletableFuture<Profile> getProfile(String username, UserContext context) {
+        return context.getChildren(username + "/" + ROOT.toString()).thenCompose(files -> {
+            Function<Path, Optional<FileWrapper>> resolve = filePath ->
+                    files.stream().filter(f -> f.getName().equals(filePath.getFileName().toString())).findFirst();
+            return parse(resolve.apply(FIRSTNAME), String::new, context)
+            .thenCompose(firstNameOpt -> parse(resolve.apply(LASTNAME), String::new, context)
+                    .thenCompose(lastNameOpt -> parse(resolve.apply(BIO), String::new, context)
+                            .thenCompose(bioOpt -> parse(resolve.apply(PHONE), String::new, context)
+                                    .thenCompose(phoneOpt -> parse(resolve.apply(EMAIL), String::new, context)
+                                            .thenCompose(emailOpt -> parse(resolve.apply(PHOTO), x -> x, context)
+                                                    .thenCompose(imageOpt -> parse(resolve.apply(STATUS), String::new, context)
+                                                            .thenCompose(statusOpt -> parse(resolve.apply(WEBROOT), String::new, context)
+                                                                    .thenApply(webRootOpt -> new Profile(imageOpt, bioOpt, statusOpt, firstNameOpt, lastNameOpt, phoneOpt, emailOpt, webRootOpt))
+                                                            )
+                                                    )
+                                            )
+                                    )
+                            )
+                    )
+            );
+        });
     }
 
     @JsMethod

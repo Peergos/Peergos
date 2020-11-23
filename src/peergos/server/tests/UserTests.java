@@ -1203,6 +1203,8 @@ public abstract class UserTests {
         String email = "joe@doesnt.exist";
         String status = "busy";
         String webroot = "webroot";
+        byte[] thumbail = randomData(100);
+        byte[] hires = randomData(1000);
 
         ProfilePaths.setFirstName(context, firstName).join();
         ProfilePaths.setLastName(context, lastName).join();
@@ -1211,6 +1213,8 @@ public abstract class UserTests {
         ProfilePaths.setEmail(context, email).join();
         ProfilePaths.setStatus(context, status).join();
         ProfilePaths.setWebRoot(context, webroot).join();
+        ProfilePaths.setProfilePhoto(context, thumbail).join();
+        ProfilePaths.setHighResProfilePhoto(context, hires).join();
 
         assertTrue("Correct value", ProfilePaths.getFirstName(username, context).join().get().equals(firstName));
         assertTrue("Correct value", ProfilePaths.getLastName(username, context).join().get().equals(lastName));
@@ -1219,6 +1223,18 @@ public abstract class UserTests {
         assertTrue("Correct value", ProfilePaths.getEmail(username, context).join().get().equals(email));
         assertTrue("Correct value", ProfilePaths.getStatus(username, context).join().get().equals(status));
         assertTrue("Correct value", ProfilePaths.getWebRoot(username, context).join().get().equals(webroot));
+        assertTrue("Correct value", Arrays.equals(ProfilePaths.getProfilePhoto(username, context).join().get(), thumbail));
+        assertTrue("Correct value", Arrays.equals(ProfilePaths.getHighResProfilePhoto(username, context).join().get(), hires));
+
+        Profile profile = ProfilePaths.getProfile(username, context).join();
+        assertTrue("Correct value", profile.firstName.get().equals(firstName));
+        assertTrue("Correct value", profile.lastName.get().equals(lastName));
+        assertTrue("Correct value", profile.bio.get().equals(bio));
+        assertTrue("Correct value", profile.phone.get().equals(phone));
+        assertTrue("Correct value", profile.email.get().equals(email));
+        assertTrue("Correct value", profile.status.get().equals(status));
+        assertTrue("Correct value", profile.webRoot.get().equals(webroot));
+        assertTrue("Correct value", Arrays.equals(profile.profilePhoto.get(), thumbail));
     }
 
     @Test
