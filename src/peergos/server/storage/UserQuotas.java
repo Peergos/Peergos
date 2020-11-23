@@ -133,8 +133,11 @@ public class UserQuotas implements QuotaAdmin {
         return line.split(" ")[0];
     }
 
-    private static long parseQuota(String line) {
-        String quota = line.split(" ")[1];
+    private static long parseQuotaLine(String line) {
+        return parseQuota(line.split(" ")[1]);
+    }
+
+    public static long parseQuota(String quota) {
         if (quota.endsWith("t"))
             return Long.parseLong(quota.substring(0, quota.length() - 1)) * 1024 * 1024 * 1024 * 1024;
         if (quota.endsWith("g"))
@@ -152,7 +155,7 @@ public class UserQuotas implements QuotaAdmin {
                 return Collections.emptyMap();
             return Files.lines(source)
                     .map(String::trim)
-                    .collect(Collectors.toMap(UserQuotas::getUsername, UserQuotas::parseQuota));
+                    .collect(Collectors.toMap(UserQuotas::getUsername, UserQuotas::parseQuotaLine));
         } catch (IOException e) {
             LOG.log(Level.WARNING, e.getMessage(), e);
             return Collections.emptyMap();

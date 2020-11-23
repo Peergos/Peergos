@@ -186,7 +186,6 @@ public class Builder {
         long defaultQuota = a.getLong("default-quota");
         long maxUsers = a.getLong("max-users");
         Logging.LOG().info("Using default user space quota of " + defaultQuota);
-        Path quotaFilePath = a.fromPeergosDir("quotas_file","quotas.txt");
 
         boolean paidStorage = a.hasArg("quota-admin-address");
         if (! paidStorage) {

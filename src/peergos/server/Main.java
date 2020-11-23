@@ -622,6 +622,7 @@ public class Main extends Builder {
                     PEERGOS,
                     SHELL,
                     FUSE,
+                    QuotaCLI.QUOTA,
                     ServerMessages.SERVER_MESSAGES,
                     GATEWAY,
                     INSTALL_AND_RUN_IPFS,
