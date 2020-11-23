@@ -55,13 +55,13 @@ public class ProfilePaths {
     }
 
     @JsMethod
-    public static CompletableFuture<Optional<String>> getProfilePhoto(String user, UserContext viewer) {
-        return getAndParse(Paths.get(user).resolve(PHOTO), String::new, viewer);
+    public static CompletableFuture<Optional<byte[]>> getProfilePhoto(String user, UserContext viewer) {
+        return getAndParse(Paths.get(user).resolve(PHOTO), x -> x, viewer);
     }
 
     @JsMethod
-    public static CompletableFuture<Boolean> setProfilePhoto(UserContext user, String base64Str) {
-        return serializeAndSet(PHOTO, base64Str, String::getBytes, user);
+    public static CompletableFuture<Boolean> setProfilePhoto(UserContext user, byte[] base64Str) {
+        return serializeAndSet(PHOTO, base64Str, x -> x, user);
     }
 
     @JsMethod
