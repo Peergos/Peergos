@@ -16,6 +16,7 @@ public class JdbcQuotas {
     private static final String SET_QUOTA = "UPDATE freequotas SET quota = ? WHERE name = ?;";
     private static final String GET_QUOTA = "SELECT quota FROM freequotas WHERE name = ?;";
     private static final String GET_ALL_QUOTAS = "SELECT name, quota FROM freequotas;";
+    private static final String COUNT_USERS = "SELECT COUNT (name) FROM freequotas;";
     private static final String REMOVE_USER = "DELETE FROM freequotas WHERE name = ?;";
 
     private final SqlSupplier commands;
@@ -124,13 +125,10 @@ public class JdbcQuotas {
 
     public int numberOfUsers() {
         try (Connection conn = getConnection();
-             PreparedStatement select = conn.prepareStatement(GET_ALL_QUOTAS)) {
+             PreparedStatement select = conn.prepareStatement(COUNT_USERS)) {
             ResultSet rs = select.executeQuery();
-            int count = 0;
-            while (rs.next()) {
-                count++;
-            }
-            return count;
+            rs.next();
+            return rs.getInt(1);
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new IllegalStateException(sqe);
