@@ -177,6 +177,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         if (updated.isEmpty())
             return Futures.of(Collections.emptyList());
         Multihash newRoot = updated.get();
+        if (existing.equals(updated))
+            return Futures.of(Collections.singletonList(newRoot));
         boolean isRaw = (newRoot instanceof Cid) && ((Cid) newRoot).codec == Cid.Codec.Raw;
         Optional<byte[]> newVal = p2pFallback.getRaw(newRoot).join();
         if (newVal.isEmpty())
@@ -188,7 +190,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             return Futures.of(Collections.singletonList(newRoot));
 
         List<Multihash> newLinks = CborObject.fromByteArray(newBlock).links();
-        List<Multihash> existingLinks = existing.map(h -> get(existing.get()).join())
+        List<Multihash> existingLinks = existing.map(h -> get(h).join())
                 .flatMap(copt -> copt.map(CborObject::links))
                 .orElse(Collections.emptyList());
 
