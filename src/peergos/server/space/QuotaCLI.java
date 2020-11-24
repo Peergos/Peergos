@@ -27,7 +27,7 @@ public class QuotaCLI extends Builder {
 
     private static void printQuota(String name, long quota) {
         long mb = quota / 1024 / 1024;
-        if (mb > 1024)
+        if (mb < 1024)
             System.out.println(name + " " + mb + " MiB");
         else
             System.out.println(name + " " + mb/1024 + " GiB");
