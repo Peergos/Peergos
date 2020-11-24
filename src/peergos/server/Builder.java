@@ -186,14 +186,20 @@ public class Builder {
         long defaultQuota = a.getLong("default-quota");
         long maxUsers = a.getLong("max-users");
         Logging.LOG().info("Using default user space quota of " + defaultQuota);
-        Path quotaFilePath = a.fromPeergosDir("quotas_file","quotas.txt");
 
         boolean paidStorage = a.hasArg("quota-admin-address");
         if (! paidStorage) {
             SqlSupplier sqlCommands = getSqlCommands(a);
             Supplier<Connection> spaceDb = getDBConnector(a, "space-requests-sql-file");
+            Supplier<Connection> quotasDb = getDBConnector(a, "quotas-sql-file");
             JdbcSpaceRequests spaceRequests = JdbcSpaceRequests.build(spaceDb, sqlCommands);
-            return new UserQuotas(quotaFilePath, defaultQuota, maxUsers, spaceRequests, localDht, core);
+            JdbcQuotas quotas = JdbcQuotas.build(quotasDb, sqlCommands);
+            if (a.hasArg("quotas-init-file")) {
+                String quotaFile = a.getArg("quotas-init-file");
+                Map<String, Long> quotaInit = UserQuotas.readUsernamesFromFile(Paths.get(quotaFile));
+                quotaInit.forEach(quotas::setQuota);
+            }
+            return new UserQuotas(quotas, defaultQuota, maxUsers, spaceRequests, localDht, core);
         } else {
             JavaPoster poster = new JavaPoster(AddressUtil.getAddress(new MultiAddress(a.getArg("quota-admin-address"))), true);
             return new HttpQuotaAdmin(poster);
