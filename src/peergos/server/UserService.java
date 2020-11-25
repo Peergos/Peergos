@@ -117,6 +117,7 @@ public class UserService {
 
     public boolean initAndStart(InetSocketAddress local,
                                 Optional<TlsProperties> tlsProps,
+                                Optional<String> basicAuth,
                                 Optional<Path> webroot,
                                 boolean useWebCache,
                                 boolean isPublicServer,
@@ -210,9 +211,16 @@ public class UserService {
         }
 
         BiConsumer<String, HttpHandler> addHandler = (path, handlerFunc) -> {
-            localhostServer.createContext(path, handlerFunc);
-            if (tlsServer != null)
-                tlsServer.createContext(path, new HSTSHandler(handlerFunc));
+            if (basicAuth.isPresent())
+                localhostServer.createContext(path, new BasicAuthHandler(basicAuth.get(), handlerFunc));
+            else
+                localhostServer.createContext(path, handlerFunc);
+            if (tlsServer != null) {
+                if (basicAuth.isPresent())
+                    tlsServer.createContext(path, new HSTSHandler(new BasicAuthHandler(basicAuth.get(), handlerFunc)));
+                else
+                    tlsServer.createContext(path, new HSTSHandler(handlerFunc));
+            }
         };
 
         addHandler.accept(Constants.DHT_URL, new DHTHandler(storage, crypto.hasher, (h, i) -> true, isPublicServer));

@@ -275,13 +275,22 @@ public class Builder {
         return NetworkAccess.build(apiPoster, p2pPoster, pkiServerNodeId, NetworkAccess.buildLocalDht(apiPoster, true), new ScryptJava(), false);
     }
 
-    public static CompletableFuture<NetworkAccess> buildJavaNetworkAccess(URL target, boolean isPublicServer) {
-        return buildNonCachingJavaNetworkAccess(target, isPublicServer)
+    public static CompletableFuture<NetworkAccess> buildJavaNetworkAccess(URL target,
+                                                                          boolean isPublicServer) {
+        return buildJavaNetworkAccess(target, isPublicServer, Optional.empty());
+    }
+
+    public static CompletableFuture<NetworkAccess> buildJavaNetworkAccess(URL target,
+                                                                          boolean isPublicServer,
+                                                                          Optional<String> basicAuth) {
+        return buildNonCachingJavaNetworkAccess(target, isPublicServer, basicAuth)
                 .thenApply(e -> e.withMutablePointerCache(7_000));
     }
 
-    public static CompletableFuture<NetworkAccess> buildNonCachingJavaNetworkAccess(URL target, boolean isPublicServer) {
-        JavaPoster poster = new JavaPoster(target, isPublicServer);
+    public static CompletableFuture<NetworkAccess> buildNonCachingJavaNetworkAccess(URL target,
+                                                                                    boolean isPublicServer,
+                                                                                    Optional<String> basicAuth) {
+        JavaPoster poster = new JavaPoster(target, isPublicServer, basicAuth);
         Multihash pkiNodeId = null; // This is not required when talking to a Peergos server
         ContentAddressedStorage localDht = NetworkAccess.buildLocalDht(poster, true);
         return NetworkAccess.build(poster, poster, pkiNodeId, localDht, new ScryptJava(), false);
@@ -289,7 +298,7 @@ public class Builder {
 
     public static CompletableFuture<NetworkAccess> buildLocalJavaNetworkAccess(int targetPort) {
         try {
-            return buildJavaNetworkAccess(new URL("http://localhost:" + targetPort + "/"), false);
+            return buildJavaNetworkAccess(new URL("http://localhost:" + targetPort + "/"), false, Optional.empty());
         } catch (MalformedURLException e) {
             throw new RuntimeException(e);
         }
