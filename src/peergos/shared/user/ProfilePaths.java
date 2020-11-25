@@ -53,14 +53,19 @@ public class ProfilePaths {
         return context.getChildren(username + "/" + ROOT.toString()).thenCompose(files -> {
             Function<Path, Optional<FileWrapper>> resolve = filePath ->
                     files.stream().filter(f -> f.getName().equals(filePath.getFileName().toString())).findFirst();
-            return parse(resolve.apply(FIRSTNAME), String::new, context)
-            .thenCompose(firstNameOpt -> parse(resolve.apply(LASTNAME), String::new, context)
-                    .thenCompose(lastNameOpt -> parse(resolve.apply(BIO), String::new, context)
-                            .thenCompose(bioOpt -> parse(resolve.apply(PHONE), String::new, context)
-                                    .thenCompose(phoneOpt -> parse(resolve.apply(EMAIL), String::new, context)
-                                            .thenCompose(emailOpt -> parse(resolve.apply(PHOTO), x -> x, context)
-                                                    .thenCompose(imageOpt -> parse(resolve.apply(STATUS), String::new, context)
-                                                            .thenCompose(statusOpt -> parse(resolve.apply(WEBROOT), String::new, context)
+            return getProfileFields(resolve, username, context);
+        });
+    }
+
+    public static CompletableFuture<Profile> getProfileFields(Function<Path, Optional<FileWrapper>> resolveFunc, String username, UserContext context) {
+        return parse(resolveFunc.apply(FIRSTNAME), String::new, context)
+            .thenCompose(firstNameOpt -> parse(resolveFunc.apply(LASTNAME), String::new, context)
+                    .thenCompose(lastNameOpt -> parse(resolveFunc.apply(BIO), String::new, context)
+                            .thenCompose(bioOpt -> parse(resolveFunc.apply(PHONE), String::new, context)
+                                    .thenCompose(phoneOpt -> parse(resolveFunc.apply(EMAIL), String::new, context)
+                                            .thenCompose(emailOpt -> parse(resolveFunc.apply(PHOTO), x -> x, context)
+                                                    .thenCompose(imageOpt -> parse(resolveFunc.apply(STATUS), String::new, context)
+                                                            .thenCompose(statusOpt -> parse(resolveFunc.apply(WEBROOT), String::new, context)
                                                                     .thenApply(webRootOpt -> new Profile(imageOpt, bioOpt, statusOpt, firstNameOpt, lastNameOpt, phoneOpt, emailOpt, webRootOpt))
                                                             )
                                                     )
@@ -69,7 +74,6 @@ public class ProfilePaths {
                             )
                     )
             );
-        });
     }
 
     @JsMethod
