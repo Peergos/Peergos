@@ -859,6 +859,20 @@ public class FileWrapper {
         return updateProperties(version, committer, newProps, network);
     }
 
+    @JsMethod
+    public CompletableFuture<FileWrapper> updateThumbnail(String base64Str, NetworkAccess network) {
+        byte[] thumbData = null;
+        if (base64Str != null && base64Str.length() > 0) {
+            String b64Thumb = base64Str.substring(base64Str.indexOf(',') + 1);
+            thumbData = Base64.getDecoder().decode(b64Thumb);
+        }
+        FileProperties updatedProperties = thumbData == null ? this.props.withNoThumbnail()
+                : this.props.withThumbnail(thumbData);
+        return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
+                (s, committer) -> updateProperties(s, committer, updatedProperties, network)
+        ).thenCompose(finished -> getUpdated(finished, network));
+    }
+
     public CompletableFuture<Snapshot> uploadFileSection(Snapshot intialVersion,
                                                          Committer committer,
                                                          String filename,
