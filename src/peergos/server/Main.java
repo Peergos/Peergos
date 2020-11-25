@@ -201,7 +201,10 @@ public class Main extends Builder {
                             Files.readAllBytes(args.fromPeergosDir("pki.public.key.path")));
             PublicKeyHash pkiPublicHash = ContentAddressedStorage.hashKey(pkiPublic);
             int webPort = args.getInt("port");
-            NetworkAccess network = Builder.buildJavaNetworkAccess(new URL("http://localhost:" + webPort), false).get();
+            Optional<String> basicAuth = args.getOptionalArg("basic-auth")
+                    .map(a -> "Basic " + Base64.getEncoder().encodeToString(a.getBytes()));
+            NetworkAccess network = Builder.buildJavaNetworkAccess(new URL("http://localhost:" + webPort),
+                    false, basicAuth).get();
             String pkiFilePassword = args.getArg("pki.keyfile.password");
             SecretSigningKey pkiSecret =
                     SecretSigningKey.fromCbor(CborObject.fromByteArray(PasswordProtected.decryptWithPassword(
@@ -476,8 +479,9 @@ public class Main extends Builder {
             int maxConnectionQueue = a.getInt("max-connection-queue", 500);
             int handlerThreads = a.getInt("handler-threads", 50);
             boolean isPublicServer = a.getBoolean("public-server", false);
-            peergos.initAndStart(localAddress, tlsProps, webroot, useWebAssetCache, isPublicServer, maxConnectionQueue,
-                    handlerThreads);
+            Optional<String> basicAuth = a.getOptionalArg("basic-auth");
+            peergos.initAndStart(localAddress, tlsProps, basicAuth, webroot, useWebAssetCache, isPublicServer,
+                    maxConnectionQueue, handlerThreads);
             boolean isPkiNode = nodeId.equals(pkiServerNodeId);
             if (! isPkiNode && useIPFS) {
                 int pkiNodeSwarmPort = a.getInt("pki.node.swarm.port");
@@ -537,7 +541,8 @@ public class Main extends Builder {
         String domainSuffix = a.getArg("domain-suffix");
         try {
             URL api = new URL(peergosUrl);
-            NetworkAccess network = Builder.buildJavaNetworkAccess(api, ! peergosUrl.startsWith("http://localhost")).join();
+            NetworkAccess network = Builder.buildJavaNetworkAccess(api,
+                    ! peergosUrl.startsWith("http://localhost"), Optional.empty()).join();
             PublicGateway gateway = new PublicGateway(domainSuffix, crypto, network);
 
             String domain = a.getArg("domain");

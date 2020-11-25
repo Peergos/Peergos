@@ -13,10 +13,16 @@ public class JavaPoster implements HttpPoster {
 
     private final URL dht;
     private final boolean useGet;
+    private final Optional<String> basicAuth;
 
-    public JavaPoster(URL dht, boolean isPublicServer) {
+    public JavaPoster(URL dht, boolean isPublicServer, Optional<String> basicAuth) {
         this.dht = dht;
         this.useGet = isPublicServer;
+        this.basicAuth = basicAuth;
+    }
+
+    public JavaPoster(URL dht, boolean isPublicServer) {
+        this(dht, isPublicServer, Optional.empty());
     }
 
     public URL buildURL(String method) throws IOException {
@@ -49,6 +55,8 @@ public class JavaPoster implements HttpPoster {
             for (Map.Entry<String, String> e : headers.entrySet()) {
                 conn.setRequestProperty(e.getKey(), e.getValue());
             }
+            if (basicAuth.isPresent())
+                conn.setRequestProperty("Authorization", basicAuth.get());
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
             dout.write(payload);
@@ -78,7 +86,10 @@ public class JavaPoster implements HttpPoster {
     @Override
     public CompletableFuture<byte[]> postMultipart(String url, List<byte[]> files) {
         try {
-            Multipart mPost = new Multipart(buildURL(url).toString(), "UTF-8");
+            Map<String, String> headers = new HashMap<>();
+            if (basicAuth.isPresent())
+                headers.put("Authorization", basicAuth.get());
+            Multipart mPost = new Multipart(buildURL(url).toString(), "UTF-8", headers);
             for (byte[] file : files)
                 mPost.addFilePart("file", new NamedStreamable.ByteArrayWrapper(file));
             return CompletableFuture.completedFuture(mPost.finish().getBytes());
@@ -96,6 +107,8 @@ public class JavaPoster implements HttpPoster {
             for (Map.Entry<String, String> e : headers.entrySet()) {
                 conn.setRequestProperty(e.getKey(), e.getValue());
             }
+            if (basicAuth.isPresent())
+                conn.setRequestProperty("Authorization", basicAuth.get());
             conn.setDoOutput(true);
             OutputStream out = conn.getOutputStream();
             out.write(body);
@@ -149,6 +162,8 @@ public class JavaPoster implements HttpPoster {
             for (Map.Entry<String, String> e : headers.entrySet()) {
                 conn.setRequestProperty(e.getKey(), e.getValue());
             }
+            if (basicAuth.isPresent())
+                conn.setRequestProperty("Authorization", basicAuth.get());
 
             String contentEncoding = conn.getContentEncoding();
             boolean isGzipped = "gzip".equals(contentEncoding);
