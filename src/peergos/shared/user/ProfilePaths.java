@@ -166,6 +166,7 @@ public class ProfilePaths {
         return serializeAndSet(WEBROOT, webroot, String::getBytes, user);
     }
 
+    @JsMethod
     public static CompletableFuture<Boolean> publishWebroot(UserContext user) {
         // first publish the actual web root, then publish the profile entry linking to the webroot
         return getWebRoot(user.username, user)
@@ -183,6 +184,6 @@ public class ProfilePaths {
                             .thenCompose(opt -> opt.map(user::makePublic)
                                     .map(f -> f.thenApply(Optional::of))
                                     .orElse(Futures.of(Optional.empty())));
-                }).thenApply(x -> true);
+                }).thenApply(x -> x.isPresent());
     }
 }
