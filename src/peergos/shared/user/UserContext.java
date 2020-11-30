@@ -504,30 +504,7 @@ public class UserContext {
      */
     @JsMethod
     public CompletableFuture<List<DecodedSpaceRequest>> decodeSpaceRequests(List<QuotaControl.LabelledSignedSpaceRequest> in) {
-        return Futures.combineAllInOrder(in.stream()
-                .map(req -> network.coreNode.getPublicKeyHash(req.username)
-                        .thenCompose(keyHashOpt -> {
-                            if (! keyHashOpt.isPresent())
-                                throw new IllegalStateException("Couldn't retrieve public key for " + req.username);
-                            PublicKeyHash identityHash = keyHashOpt.get();
-                            return network.dhtClient.getSigningKey(identityHash);
-                        }).thenApply(keyOpt -> {
-                            if (! keyOpt.isPresent())
-                                throw new IllegalStateException("Couldn't retrieve public key for " + req.username);
-                            try {
-                                PublicSigningKey pubKey = keyOpt.get();
-                                byte[] raw = pubKey.unsignMessage(req.signedRequest);
-                                QuotaControl.SpaceRequest parsed = QuotaControl.SpaceRequest.fromCbor(CborObject.fromByteArray(raw));
-                                return Optional.of(new DecodedSpaceRequest(req, parsed));
-                            } catch (Exception e) {
-                                e.printStackTrace();
-                                return Optional.<DecodedSpaceRequest>empty();
-                            }
-                        }))
-                .collect(Collectors.toList()))
-                .thenApply(all -> all.stream()
-                        .flatMap(Optional::stream)
-                        .collect(Collectors.toList()));
+        return DecodedSpaceRequest.decodeSpaceRequests(in, network.coreNode, network.dhtClient);
     }
 
     /**
