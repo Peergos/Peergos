@@ -6,8 +6,10 @@ import peergos.server.sql.*;
 import peergos.server.storage.*;
 import peergos.server.storage.admin.*;
 import peergos.server.util.*;
+import peergos.shared.*;
 import peergos.shared.corenode.*;
 import peergos.shared.mutable.*;
+import peergos.shared.storage.*;
 
 import java.sql.*;
 import java.util.*;
@@ -46,6 +48,32 @@ public class QuotaCLI extends Builder {
                 String name = a.getArg("username");
                 long quota = UserQuotas.parseQuota(a.getArg("quota"));
                 quotas.setQuota(name, quota);
+                return true;
+            },
+            Arrays.asList(
+                    new Command.Arg("username", "The username to set the quota of", true),
+                    new Command.Arg("quota", "The quota in bytes or (k, m, g, t)", true),
+                    new Command.Arg("quotas-sql-file", "The filename for the quotas datastore", true, "quotas.sql")
+            )
+    );
+
+    public static final Command<Boolean> REQUESTS = new Command<>("requests",
+            "Show pending quota requests on this server",
+            a -> {
+                boolean paidStorage = a.hasArg("quota-admin-address");
+                if (paidStorage)
+                    throw new IllegalStateException("Quota CLI only valid on non paid instances");
+                SqlSupplier sqlCommands = getSqlCommands(a);
+                Supplier<Connection> quotasDb = getDBConnector(a, "space-requests-sql-file");
+                JdbcSpaceRequests reqs = JdbcSpaceRequests.build(quotasDb, sqlCommands);
+                List<QuotaControl.LabelledSignedSpaceRequest> raw = reqs.getSpaceRequests();
+
+                NetworkAccess net = Builder.buildLocalJavaNetworkAccess(a.getInt("port")).join();
+                List<DecodedSpaceRequest> allReqs = DecodedSpaceRequest.decodeSpaceRequests(raw, net.coreNode, net.dhtClient).join();
+                System.out.println("Quota requests:");
+                for (DecodedSpaceRequest req : allReqs) {
+                    printQuota(req.getUsername(), req.decoded.getSizeInBytes());
+                }
                 return true;
             },
             Arrays.asList(
