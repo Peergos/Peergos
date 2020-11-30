@@ -119,6 +119,6 @@ public class QuotaCLI extends Builder {
                     new Command.Arg("log-to-file", "Whether to log to a file", false, "false"),
                     new Command.Arg("log-to-console", "Whether to log to the console", false, "false")
             ),
-            Arrays.asList(SHOW, SET)
+            Arrays.asList(SHOW, SET, REQUESTS)
     );
 }
