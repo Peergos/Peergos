@@ -77,8 +77,6 @@ public class QuotaCLI extends Builder {
                 return true;
             },
             Arrays.asList(
-                    new Command.Arg("username", "The username to set the quota of", true),
-                    new Command.Arg("quota", "The quota in bytes or (k, m, g, t)", true),
                     new Command.Arg("quotas-sql-file", "The filename for the quotas datastore", true, "quotas.sql")
             )
     );
