@@ -50,12 +50,12 @@ public class GatewayHandler implements HttpHandler {
         webRootCache.put(owner, webRoot);
     }
 
-    private synchronized Asset lookupAsset(String path) {
-        return assetCache.get(path);
+    private synchronized Asset lookupAsset(String owner, String path) {
+        return assetCache.get(owner + "/" + path);
     }
 
-    private synchronized void cacheAsset(String path, Asset asset) {
-        assetCache.put(path, asset);
+    private synchronized void cacheAsset(String owner, String path, Asset asset) {
+        assetCache.put(owner + "/" + path, asset);
     }
 
     @Override
@@ -72,7 +72,7 @@ public class GatewayHandler implements HttpHandler {
                 throw new IllegalStateException("Incorrect domain! " + domain);
             String owner = domain.substring(0, domain.length() - domainSuffix.length());
 
-            Asset cached = lookupAsset(path);
+            Asset cached = lookupAsset(owner, path);
             if (cached != null) {
                 FileWrapper updated = cached.source.getUpdated(network).join();
                 if (updated.version.equals(cached.source.version)) {
@@ -115,7 +115,7 @@ public class GatewayHandler implements HttpHandler {
             byte[] body = Serialize.readFully(assetOpt.get(), crypto, network).join();
             serveAsset(body, path, httpExchange);
             if (body.length < MAX_ASSET_SIZE_CACHE) {
-                cacheAsset(path, new Asset(assetOpt.get(), body));
+                cacheAsset(owner, path, new Asset(assetOpt.get(), body));
             }
         } catch (Exception e) {
             LOG.severe("Error handling " +httpExchange.getRequestURI());
