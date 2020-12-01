@@ -406,10 +406,12 @@ public class Main extends Builder {
 
             SqlSupplier sqlCommands = getSqlCommands(a);
 
-            TransactionStore transactions = buildTransactionStore(a);
+            Supplier<Connection> dbConnectionPool = getDBConnector(a, "transactions-sql-file");
+            TransactionStore transactions = buildTransactionStore(a, dbConnectionPool);
 
             DeletableContentAddressedStorage localStorage = buildLocalStorage(a, transactions);
-            JdbcIpnsAndSocial rawPointers = buildRawPointers(a);
+            JdbcIpnsAndSocial rawPointers = buildRawPointers(a,
+                    getDBConnector(a, "mutable-pointers-file", dbConnectionPool));
             boolean enableGC = a.getBoolean("enable-gc", false);
             GarbageCollector gc = null;
             if (enableGC) {
@@ -427,10 +429,12 @@ public class Main extends Builder {
 
             CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable);
 
-            QuotaAdmin userQuotas = buildSpaceQuotas(a, localStorage, core);
+            QuotaAdmin userQuotas = buildSpaceQuotas(a, localStorage, core,
+                    getDBConnector(a, "space-requests-sql-file", dbConnectionPool),
+                    getDBConnector(a, "quotas-sql-file", dbConnectionPool));
             CoreNode signupFilter = new SignUpFilter(core, userQuotas, nodeId);
 
-            Supplier<Connection> usageDb = getDBConnector(a, "space-usage-sql-file");
+            Supplier<Connection> usageDb = getDBConnector(a, "space-usage-sql-file", dbConnectionPool);
             UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
             Hasher hasher = crypto.hasher;
             SpaceCheckingKeyFilter.update(usageStore, userQuotas, core, localPointers, localStorage, hasher);
@@ -452,7 +456,7 @@ public class Main extends Builder {
 
             SocialNetworkProxy httpSocial = new HttpSocialNetwork(p2pHttpProxy, p2pHttpProxy);
 
-            Supplier<Connection> socialDatabase = getDBConnector(a, "social-sql-file");
+            Supplier<Connection> socialDatabase = getDBConnector(a, "social-sql-file", dbConnectionPool);
 
             JdbcIpnsAndSocial rawSocial = new JdbcIpnsAndSocial(socialDatabase, sqlCommands);
             SocialNetwork local = UserRepository.build(p2pDht, rawSocial);
@@ -466,7 +470,7 @@ public class Main extends Builder {
             HttpSpaceUsage httpSpaceUsage = new HttpSpaceUsage(p2pHttpProxy, p2pHttpProxy);
             ProxyingSpaceUsage p2pSpaceUsage = new ProxyingSpaceUsage(nodeId, corePropagator, spaceChecker, httpSpaceUsage);
             UserService peergos = new UserService(p2pDht, crypto, corePropagator, p2pSocial, p2mMutable, storageAdmin,
-                    p2pSpaceUsage, new ServerMessageStore(getDBConnector(a, "server-messages-sql-file"),
+                    p2pSpaceUsage, new ServerMessageStore(getDBConnector(a, "server-messages-sql-file", dbConnectionPool),
                     sqlCommands, core, p2pDht), gc);
             InetSocketAddress localAddress = new InetSocketAddress("localhost", userAPIAddress.getPort());
             Optional<Path> webroot = a.hasArg("webroot") ?
