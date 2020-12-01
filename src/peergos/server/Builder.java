@@ -63,6 +63,13 @@ public class Builder {
         }
     }
 
+    public static Supplier<Connection> getDBConnector(Args a, String dbName, Supplier<Connection> existing) {
+        boolean usePostgres = a.getBoolean("use-postgres", false);
+        if (usePostgres)
+            return existing;
+        return getDBConnector(a, dbName);
+    }
+
     public static Supplier<Connection> getDBConnector(Args a, String dbName) {
         boolean usePostgres = a.getBoolean("use-postgres", false);
         HikariConfig config;
@@ -177,21 +184,18 @@ public class Builder {
         return usePostgres ? new PostgresCommands() : new SqliteCommands();
     }
 
-    public static TransactionStore buildTransactionStore(Args a) {
-        Supplier<Connection> transactionsDb = getDBConnector(a, "transactions-sql-file");
+    public static TransactionStore buildTransactionStore(Args a, Supplier<Connection> transactionsDb) {
         return JdbcTransactionStore.build(transactionsDb, getSqlCommands(a));
     }
 
-    public static QuotaAdmin buildSpaceQuotas(Args a, DeletableContentAddressedStorage localDht, CoreNode core) {
-        long defaultQuota = a.getLong("default-quota");
-        long maxUsers = a.getLong("max-users");
-        Logging.LOG().info("Using default user space quota of " + defaultQuota);
-
+    public static QuotaAdmin buildSpaceQuotas(Args a,
+                                              DeletableContentAddressedStorage localDht,
+                                              CoreNode core,
+                                              Supplier<Connection> spaceDb,
+                                              Supplier<Connection> quotasDb) {
         boolean paidStorage = a.hasArg("quota-admin-address");
         if (! paidStorage) {
             SqlSupplier sqlCommands = getSqlCommands(a);
-            Supplier<Connection> spaceDb = getDBConnector(a, "space-requests-sql-file");
-            Supplier<Connection> quotasDb = getDBConnector(a, "quotas-sql-file");
             JdbcSpaceRequests spaceRequests = JdbcSpaceRequests.build(spaceDb, sqlCommands);
             JdbcQuotas quotas = JdbcQuotas.build(quotasDb, sqlCommands);
             if (a.hasArg("quotas-init-file")) {
@@ -199,6 +203,9 @@ public class Builder {
                 Map<String, Long> quotaInit = UserQuotas.readUsernamesFromFile(Paths.get(quotaFile));
                 quotaInit.forEach(quotas::setQuota);
             }
+            long defaultQuota = a.getLong("default-quota");
+            long maxUsers = a.getLong("max-users");
+            Logging.LOG().info("Using default user space quota of " + defaultQuota);
             return new UserQuotas(quotas, defaultQuota, maxUsers, spaceRequests, localDht, core);
         } else {
             JavaPoster poster = new JavaPoster(AddressUtil.getAddress(new MultiAddress(a.getArg("quota-admin-address"))), true);
@@ -263,8 +270,8 @@ public class Builder {
                         a.fromPeergosDir("pki-mirror-state-path","pki-state.cbor"));
     }
 
-    public static JdbcIpnsAndSocial buildRawPointers(Args a) {
-        return new JdbcIpnsAndSocial(getDBConnector(a, "mutable-pointers-file"), getSqlCommands(a));
+    public static JdbcIpnsAndSocial buildRawPointers(Args a, Supplier<Connection> dbConnectionPool) {
+        return new JdbcIpnsAndSocial(dbConnectionPool, getSqlCommands(a));
     }
 
 

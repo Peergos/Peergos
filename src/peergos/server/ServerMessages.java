@@ -12,8 +12,10 @@ import peergos.shared.user.*;
 
 import java.io.*;
 import java.nio.file.*;
+import java.sql.*;
 import java.time.*;
 import java.util.*;
+import java.util.function.*;
 import java.util.stream.*;
 
 public class ServerMessages extends Builder {
@@ -92,13 +94,16 @@ public class ServerMessages extends Builder {
     );
 
     private static QuotaAdmin buildQuotaStore(Args a) {
-        TransactionStore transactions = buildTransactionStore(a);
+        Supplier<Connection> dbConnectionPool = getDBConnector(a, "transactions-sql-file");
+        TransactionStore transactions = buildTransactionStore(a, dbConnectionPool);
         DeletableContentAddressedStorage localStorage = buildLocalStorage(a, transactions);
-        JdbcIpnsAndSocial rawPointers = buildRawPointers(a);
+        JdbcIpnsAndSocial rawPointers = buildRawPointers(a, getDBConnector(a, "mutable-pointers-file", dbConnectionPool));
         MutablePointers localPointers = UserRepository.build(localStorage, rawPointers);
         MutablePointersProxy proxingMutable = new HttpMutablePointers(buildP2pHttpProxy(a), getPkiServerId(a));
         CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable);
-        return buildSpaceQuotas(a, localStorage, core);
+        return buildSpaceQuotas(a, localStorage, core,
+                getDBConnector(a, "space-requests-sql-file", dbConnectionPool),
+                getDBConnector(a, "quotas-sql-file", dbConnectionPool));
     }
 
     public static final Command<Boolean> NEW = new Command<>("new",
