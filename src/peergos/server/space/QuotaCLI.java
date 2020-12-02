@@ -12,6 +12,7 @@ import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 
 import java.sql.*;
+import java.time.*;
 import java.util.*;
 import java.util.function.*;
 
@@ -31,11 +32,16 @@ public class QuotaCLI extends Builder {
     }
 
     private static void printQuota(String name, long quota) {
+        System.out.println(name + " " + formatQuota(quota));
+    }
+
+    private static String formatQuota(long quota) {
         long mb = quota / 1024 / 1024;
+        if (mb == 0)
+            return quota + " B";
         if (mb < 1024)
-            System.out.println(name + " " + mb + " MiB");
-        else
-            System.out.println(name + " " + mb/1024 + " GiB");
+            return mb + " MiB";
+        return mb/1024 + " GiB";
     }
 
     public static final Command<Boolean> SET = new Command<>("set",
@@ -75,7 +81,9 @@ public class QuotaCLI extends Builder {
                 List<DecodedSpaceRequest> allReqs = DecodedSpaceRequest.decodeSpaceRequests(raw, net.coreNode, net.dhtClient).join();
                 System.out.println("Quota requests:");
                 for (DecodedSpaceRequest req : allReqs) {
-                    printQuota(req.getUsername(), req.decoded.getSizeInBytes());
+                    LocalDateTime reqTime = LocalDateTime.ofEpochSecond(req.decoded.utcMillis, 0, ZoneOffset.UTC);
+                    String formattedQuota = formatQuota(req.decoded.getSizeInBytes());
+                    System.out.println(req.getUsername() + " " + formattedQuota + " " + reqTime);
                 }
                 return true;
             },
