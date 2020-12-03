@@ -1202,7 +1202,10 @@ public abstract class UserTests {
         String phone = "555 5555";
         String email = "joe@doesnt.exist";
         String status = "busy";
-        String webroot = "webroot";
+        String dir = "webroot";
+        String webroot = "/" + username + "/" + dir;
+        context.getUserRoot().join().mkdir(dir, context.network, false, crypto).join();
+
         byte[] thumbail = randomData(100);
         byte[] hires = randomData(1000);
 
@@ -1235,6 +1238,10 @@ public abstract class UserTests {
         assertTrue("Correct value", profile.status.get().equals(status));
         assertTrue("Correct value", profile.webRoot.get().equals(webroot));
         assertTrue("Correct value", Arrays.equals(profile.profilePhoto.get(), thumbail));
+
+        ProfilePaths.publishWebroot(context).join();
+        ProfilePaths.unPublish(context).join();
+        //System.currentTimeMillis();
     }
 
     @Test

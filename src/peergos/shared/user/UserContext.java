@@ -420,6 +420,7 @@ public class UserContext {
         });
     }
 
+    @JsMethod
     public CompletableFuture<Optional<FileWrapper>> getPublicFile(Path file) {
         FileProperties.ensureValidParsedPath(file);
         return getPublicCapability(file, network)
@@ -895,6 +896,17 @@ public class UserContext {
                                         return network.mutable.setPointer(owner, owner, signed);
                                     })
                             );
+                });
+    }
+
+    public CompletableFuture<Boolean> unPublishDirectory(Path path) {
+        return getByPath(path)
+                .thenCompose(opt -> {
+                    FileWrapper toUnshare = opt.get();
+                    return getByPath(path.getParent())
+                            .thenCompose(parent ->
+                                    rotateAllKeys(toUnshare, parent.get(), false)
+                            ).thenApply(res -> true);
                 });
     }
 

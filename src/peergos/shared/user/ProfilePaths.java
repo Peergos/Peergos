@@ -167,6 +167,20 @@ public class ProfilePaths {
     }
 
     @JsMethod
+    public static CompletableFuture<Boolean> unPublish(UserContext user) {
+        return getWebRoot(user.username, user)
+                .thenCompose(popt -> {
+                    if (popt.isEmpty())
+                        return Futures.of(false);
+                    String path = popt.get();
+                    if (path.length() == 0) {
+                        return Futures.of(false);
+                    }
+                    return user.unPublishDirectory(Paths.get(path));
+                });
+    }
+
+    @JsMethod
     public static CompletableFuture<Boolean> publishWebroot(UserContext user) {
         // first publish the actual web root, then publish the profile entry linking to the webroot
         return getWebRoot(user.username, user)
