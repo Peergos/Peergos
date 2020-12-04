@@ -900,14 +900,33 @@ public class UserContext {
     }
 
     public CompletableFuture<Boolean> unPublishDirectory(Path path) {
-        return getByPath(path)
+        return sharedWith(path).thenCompose(sharedWithState -> getByPath(path)
                 .thenCompose(opt -> {
                     FileWrapper toUnshare = opt.get();
                     return getByPath(path.getParent())
-                            .thenCompose(parent ->
-                                    rotateAllKeys(toUnshare, parent.get(), false)
-                            ).thenApply(res -> true);
-                });
+                            .thenCompose(parentOpt -> {
+                                FileWrapper parent = parentOpt.get();
+                                return removePublicCap(path.toString()).thenCompose(cwd -> rotateAllKeys(toUnshare, parent, false)
+                                        .thenCompose(markedDirty ->
+                                                sharedWithCache.removeSharedWith(SharedWithCache.Access.READ, path, sharedWithState.readAccess)
+                                                        .thenCompose(b ->
+                                                                sharedWithCache.removeSharedWith(SharedWithCache.Access.WRITE, path, sharedWithState.writeAccess))
+                                        ));
+                            }).thenApply(res -> true);
+                }));
+    }
+
+    private CompletableFuture<CommittedWriterData> removePublicCap(String path) {
+        return writeSynchronizer.applyUpdate(signer.publicKeyHash, signer, (wd, tid) -> {
+            Optional<Multihash> publicData = wd.publicData;
+            if (publicData.isEmpty())
+                return Futures.of(wd);
+            return network.dhtClient.get(publicData.get())
+                    .thenCompose(rootCbor -> InodeFileSystem.build(rootCbor.get(), crypto.hasher, network.dhtClient))
+                    .thenCompose(pubCaps -> pubCaps.removeCap(signer.publicKeyHash, signer, path, tid))
+                    .thenCompose(updated -> network.dhtClient.put(signer.publicKeyHash, signer, updated.serialize(), crypto.hasher, tid))
+                    .thenApply(newRoot -> wd.withPublicRoot(newRoot));
+        }).thenApply(v -> v.get(signer));
     }
 
     public CompletableFuture<CommittedWriterData> makePublic(FileWrapper file) {

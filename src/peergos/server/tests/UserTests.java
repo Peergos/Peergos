@@ -1240,7 +1240,9 @@ public abstract class UserTests {
         assertTrue("Correct value", Arrays.equals(profile.profilePhoto.get(), thumbail));
 
         ProfilePaths.publishWebroot(context).join();
-        ProfilePaths.unPublish(context).join();
+        Optional<FileWrapper> fw = context.getPublicFile(Paths.get(webroot)).join();
+        assertTrue("webroot", fw.isPresent());
+        ProfilePaths.unpublishWebRoot(context).join();
         //System.currentTimeMillis();
     }
 

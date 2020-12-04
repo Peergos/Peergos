@@ -167,7 +167,7 @@ public class ProfilePaths {
     }
 
     @JsMethod
-    public static CompletableFuture<Boolean> unPublish(UserContext user) {
+    public static CompletableFuture<Boolean> unpublishWebRoot(UserContext user) {
         return getWebRoot(user.username, user)
                 .thenCompose(popt -> {
                     if (popt.isEmpty())
