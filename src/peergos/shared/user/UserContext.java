@@ -901,6 +901,8 @@ public class UserContext {
     public CompletableFuture<CommittedWriterData> makePublic(FileWrapper file) {
         if (! file.getOwnerName().equals(username))
             return Futures.errored(new IllegalStateException("Only the owner of a file can make it public!"));
+        if (file.isUserRoot())
+            return Futures.errored(new IllegalStateException("You cannot publish your home directory!"));
         return writeSynchronizer.applyUpdate(signer.publicKeyHash, signer, (wd, tid) -> file.getPath(network).thenCompose(path -> {
             ensureAllowedToShare(file, username, false);
             Optional<Multihash> publicData = wd.publicData;

@@ -21,7 +21,7 @@ public class GatewayHandler implements HttpHandler {
     private final String domainSuffix;
     private final NetworkAccess network;
     private final Crypto crypto;
-    private final LRUCache<String, FileWrapper> webRootCache;
+    private final LRUCache<String, WebRootEntry> webRootCache;
     private final LRUCache<String, Asset> assetCache;
 
     public GatewayHandler(String domainSuffix, Crypto crypto, NetworkAccess network) {
@@ -30,6 +30,16 @@ public class GatewayHandler implements HttpHandler {
         this.network = network;
         this.webRootCache = new LRUCache<>(1000);
         this.assetCache = new LRUCache<>(1000);
+    }
+
+    private final class WebRootEntry {
+        public final FileWrapper field;
+        public final FileWrapper webRoot;
+
+        public WebRootEntry(FileWrapper field, FileWrapper webRoot) {
+            this.field = field;
+            this.webRoot = webRoot;
+        }
     }
 
     private final class Asset {
@@ -42,11 +52,11 @@ public class GatewayHandler implements HttpHandler {
         }
     }
 
-    private synchronized FileWrapper lookupRoot(String owner) {
+    private synchronized WebRootEntry lookupRoot(String owner) {
         return webRootCache.get(owner);
     }
 
-    private synchronized void cacheRoot(String owner, FileWrapper webRoot) {
+    private synchronized void cacheRoot(String owner, WebRootEntry webRoot) {
         webRootCache.put(owner, webRoot);
     }
 
@@ -56,6 +66,10 @@ public class GatewayHandler implements HttpHandler {
 
     private synchronized void cacheAsset(String owner, String path, Asset asset) {
         assetCache.put(owner + "/" + path, asset);
+    }
+
+    private synchronized void invalidateAssets(String owner) {
+        assetCache.entrySet().removeIf(entry -> entry.getKey().startsWith(owner + "/"));
     }
 
     @Override
@@ -72,6 +86,28 @@ public class GatewayHandler implements HttpHandler {
                 throw new IllegalStateException("Incorrect domain! " + domain);
             String owner = domain.substring(0, domain.length() - domainSuffix.length());
 
+            WebRootEntry webRootEntry = lookupRoot(owner);
+            if (webRootEntry != null) {
+                FileWrapper updatedField = webRootEntry.field.getUpdated(network).join();
+                if (!updatedField.version.equals(webRootEntry.field.version)) {
+                    webRootEntry = new WebRootEntry(updatedField, null);
+                    invalidateAssets(owner);
+                }
+            } else {
+                Path toProfileEntry = Paths.get(owner).resolve(".profile").resolve("webroot");
+                AbsoluteCapability capToWebRootField = UserContext.getPublicCapability(toProfileEntry, network).join();
+                FileWrapper webRootField = network.getFile(capToWebRootField, owner).join().get();
+                webRootEntry = new WebRootEntry(webRootField, null);
+            }
+
+            if (webRootEntry.webRoot == null) {
+                Path toWebRoot = Paths.get(new String(Serialize.readFully(webRootEntry.field, crypto, network).join()));
+                AbsoluteCapability capToWebRoot = UserContext.getPublicCapability(toWebRoot, network).join();
+                FileWrapper webRoot = network.getFile(capToWebRoot, owner).join().get();
+                webRootEntry = new WebRootEntry(webRootEntry.field, webRoot);
+                cacheRoot(owner, webRootEntry);
+            }
+
             Asset cached = lookupAsset(owner, path);
             if (cached != null) {
                 FileWrapper updated = cached.source.getUpdated(network).join();
@@ -81,26 +117,9 @@ public class GatewayHandler implements HttpHandler {
                 }
             }
 
-            Optional<FileWrapper> webRoot = Optional.ofNullable(lookupRoot(owner));
-            Optional<FileWrapper> assetOpt;
-            if (webRoot.isPresent()) {
-                FileWrapper updated = webRoot.get().getUpdated(network).join();
-                cacheRoot(owner, updated);
-                assetOpt = updated.getDescendentByPath(path, crypto.hasher, network).join();
-            } else {
-                Path toProfileEntry = Paths.get(owner).resolve(".profile").resolve("webroot");
-                AbsoluteCapability capToWebrootField = UserContext.getPublicCapability(toProfileEntry, network).join();
-                Optional<FileWrapper> profileField = network.getFile(capToWebrootField, owner).join();
-                Path toWebroot = Paths.get(new String(Serialize.readFully(profileField.get(), crypto, network).join()));
-
-                AbsoluteCapability capToWebroot = UserContext.getPublicCapability(toWebroot, network).join();
-                webRoot = network.getFile(capToWebroot, owner).join();
-                assetOpt = webRoot.get().getDescendentByPath(path, crypto.hasher, network).join();
-                if (webRoot.isPresent())
-                    cacheRoot(owner, webRoot.get());
-            }
+            Optional<FileWrapper> assetOpt = webRootEntry.webRoot.getDescendentByPath(path, crypto.hasher, network).join();
             if (assetOpt.isEmpty()) {
-                serve404(httpExchange, webRoot);
+                serve404(httpExchange, webRootEntry.webRoot);
                 return;
             }
             if (assetOpt.get().isDirectory()) {
@@ -108,7 +127,7 @@ public class GatewayHandler implements HttpHandler {
                 if (index.isPresent())
                     assetOpt = index;
                 else {
-                    serve404(httpExchange, webRoot);
+                    serve404(httpExchange, webRootEntry.webRoot);
                     return;
                 }
             }
@@ -167,9 +186,9 @@ public class GatewayHandler implements HttpHandler {
         httpExchange.close();
     }
 
-    private void serve404(HttpExchange httpExchange, Optional<FileWrapper> webroot) throws IOException {
-        if (webroot.isPresent()) {
-            Optional<FileWrapper> custom404 = webroot.get().getChild("404.html", crypto.hasher, network).join();
+    private void serve404(HttpExchange httpExchange, FileWrapper webroot) throws IOException {
+        if (webroot != null) {
+            Optional<FileWrapper> custom404 = webroot.getChild("404.html", crypto.hasher, network).join();
             if (custom404.isPresent()) {
                 byte[] data = Serialize.readFully(custom404.get(), crypto, network).join();
                 httpExchange.getResponseHeaders().set("Content-Type", "text/html");
