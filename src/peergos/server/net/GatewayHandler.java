@@ -69,7 +69,7 @@ public class GatewayHandler implements HttpHandler {
     }
 
     private synchronized void invalidateAssets(String owner) {
-        assetCache.entrySet().removeIf(entry -> (entry.getKey().startsWith(owner + "/")));
+        assetCache.entrySet().removeIf(entry -> entry.getKey().startsWith(owner + "/"));
     }
 
     @Override
