@@ -51,10 +51,18 @@ public class InodeFilesystemTests {
         state.put(profileElement, cap2);
 
         checkAllMappings(state, current);
+        Assert.assertTrue(current.inodeCount == 3);
 
         current = current.removeCap(owner, user, path1, tid).join();
         state.remove(path1);
         checkAllMappings(state, current);
+
+        String p3 = "/username/.profile/webroot/somedir";
+        AbsoluteCapability cap3 = randomCap(owner, r);
+        current = current.addCap(owner, user, p3, cap3, tid).join();
+        state.put(p3, cap3);
+        checkAllMappings(state, current);
+        Assert.assertTrue(current.inodeCount == 4);
     }
 
     @Test
@@ -113,8 +121,10 @@ public class InodeFilesystemTests {
 
     private static void checkAllMappings(Map<String, AbsoluteCapability> state, InodeFileSystem current) {
         for (Map.Entry<String, AbsoluteCapability> e : state.entrySet()) {
-            AbsoluteCapability res = current.getByPath(e.getKey()).join().get().left.cap.get();
-            if (! res.equals(e.getValue()))
+            Pair<InodeCap, String> access = current.getByPath(e.getKey()).join().get();
+            AbsoluteCapability res = access.left.cap.get();
+            // If a higher privilege cap is published it will be returned with the remaining path
+            if (! res.equals(e.getValue()) && access.right.isEmpty())
                 throw new IllegalStateException("Incorrect state!");
         }
         Map<String, AbsoluteCapability> allCaps = getAllCaps(current, "/");

@@ -171,8 +171,17 @@ public class InodeFileSystem implements Cborable {
                 .thenCompose(childCapOpt -> {
                     if (childCapOpt.isPresent())
                         return getValue(childCapOpt.get().inode)
-                                .thenCompose(childOpt -> addCapRecurse(owner, writer, childCapOpt.get().inode,
-                                        childOpt.get(), tail(remainingPath), cap, tid));
+                                .thenCompose(childOpt -> {
+                                    if (childOpt.isPresent())
+                                        return addCapRecurse(owner, writer, childCapOpt.get().inode,
+                                                childOpt.get(), tail(remainingPath), cap, tid);
+                                    // Here a cap was published to a child dir, but not to any descendants of it yet
+                                    Inode newDir = new Inode(inodeCount, remainingPath[0]);
+                                    // parent is absent so we don't overwrite existing entry there
+                                    Optional<Pair<Inode, DirectoryInode>> parent = Optional.empty();
+                                    return getOrMkdir(owner, writer, parent, newDir, tid)
+                                            .thenCompose(p -> p.left.addCapRecurse(owner, writer, newDir, p.right, tail(remainingPath), cap, tid));
+                                });
                     Inode newDir = new Inode(inodeCount, remainingPath[0]);
                     return getOrMkdir(owner, writer, Optional.of(new Pair<>(dirKey, dir)), newDir, tid)
                             .thenCompose(p -> p.left.addCapRecurse(owner, writer, newDir, p.right, tail(remainingPath), cap, tid));
