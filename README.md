@@ -13,11 +13,11 @@ The name Peergos comes from the Greek word Πύργος (Pyrgos), which means st
 
 Demo
 ----
-There is a single machine demo running at [https://demo.peergos.net](https://demo.peergos.net) if you just want to try out Peergos now. 
+Want to try it out no? Here's our demo [https://demo.peergos.net](https://demo.peergos.net). 
 
-Alpha
+Beta
 ----
-Our alpha is live at https://alpha.peergos.net/. There are a limited number of accounts available. 
+Our beta is live at https://beta.peergos.net/. There are a limited number of free accounts available. 
 
 Tech book
 ---------
