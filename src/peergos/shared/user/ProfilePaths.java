@@ -176,7 +176,7 @@ public class ProfilePaths {
                     if (path.length() == 0) {
                         return Futures.of(false);
                     }
-                    return user.unPublishDirectory(Paths.get(path));
+                    return user.unPublishFile(Paths.get(path));
                 });
     }
 

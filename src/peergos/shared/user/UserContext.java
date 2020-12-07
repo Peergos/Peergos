@@ -899,7 +899,7 @@ public class UserContext {
                 });
     }
 
-    public CompletableFuture<Boolean> unPublishDirectory(Path path) {
+    public CompletableFuture<Boolean> unPublishFile(Path path) {
         return sharedWith(path).thenCompose(sharedWithState -> getByPath(path)
                 .thenCompose(opt -> {
                     FileWrapper toUnshare = opt.get();

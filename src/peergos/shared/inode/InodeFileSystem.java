@@ -109,8 +109,13 @@ public class InodeFileSystem implements Cborable {
         }
         return dir.hasMoreThanOneChild()
                 .thenCompose(hasOtherChildren -> dir.getChild(remainingPath[0]).thenCompose(childOpt -> {
-                    if (childOpt.isEmpty() || remainingPath.length == 1)
-                        return Futures.of(new Pair<>(this, ! hasOtherChildren));
+                    if (childOpt.isEmpty())
+                        return Futures.of(new Pair<>(this, false));
+                    if (remainingPath.length == 1)
+                        return dir.removeChild(childOpt.get(), owner, writer, tid)
+                                .thenCompose(updatedDir -> putValue(owner,
+                                        writer, dirKey, Optional.of(dir), updatedDir, tid))
+                                .thenApply(f -> new Pair<>(f, ! hasOtherChildren));
                     return getValue(childOpt.get().inode)
                             .thenCompose(childDir ->
                                     childDir.isPresent() ?
@@ -188,7 +193,7 @@ public class InodeFileSystem implements Cborable {
 
     public CompletableFuture<List<InodeCap>> listDirectory(String path) {
         String canonPath = TrieNode.canonicalise(path);
-        String[] elements = canonPath.split("/");
+        String[] elements = canonPath.isEmpty() ? new String[0] : canonPath.split("/");
         InodeCap start = new InodeCap(rootKey(), Optional.empty());
         return listDirectoryRecurse(start, elements);
     }
