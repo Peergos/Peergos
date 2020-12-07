@@ -1243,7 +1243,11 @@ public abstract class UserTests {
         Optional<FileWrapper> fw = context.getPublicFile(Paths.get(webroot)).join();
         assertTrue("webroot", fw.isPresent());
         ProfilePaths.unpublishWebRoot(context).join();
-        //System.currentTimeMillis();
+        ProfilePaths.publishWebroot(context).join();
+        Optional<FileWrapper> fw2 = context.getPublicFile(Paths.get(webroot)).join();
+
+
+        System.currentTimeMillis();
     }
 
     @Test
