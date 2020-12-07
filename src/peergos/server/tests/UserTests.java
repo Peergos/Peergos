@@ -1248,8 +1248,7 @@ public abstract class UserTests {
         assertTrue(currentCap.isEmpty());
         ProfilePaths.publishWebroot(context).join();
         Optional<FileWrapper> fw2 = context.getPublicFile(Paths.get(webroot)).join();
-
-        System.currentTimeMillis();
+        assertTrue("webroot", fw2.isPresent());
     }
 
     @Test
