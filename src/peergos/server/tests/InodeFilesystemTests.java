@@ -129,7 +129,7 @@ public class InodeFilesystemTests {
         }
         Map<String, AbsoluteCapability> allCaps = getAllCaps(current, "/");
         for (String key : allCaps.keySet()) {
-            if (! state.containsKey(key))
+            if (! state.containsKey(key.substring(1)))
                 throw new IllegalStateException("Unexpected published cap for " + key);
         }
     }
