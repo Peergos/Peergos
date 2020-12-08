@@ -426,7 +426,7 @@ public class UserContext {
         return getPublicCapability(file, network)
                 .thenCompose(cap -> buildTrieFromCap(cap, TrieNodeImpl.empty(), network, crypto)
                 .thenCompose(t -> t.getByPath(file.toString(), crypto.hasher, network)))
-                .exceptionally(e -> Futures.logAndReturn(e, Optional.empty()));
+                .exceptionally(e -> Optional.empty());
     }
 
     @JsMethod
