@@ -109,8 +109,13 @@ public class InodeFileSystem implements Cborable {
         }
         return dir.hasMoreThanOneChild()
                 .thenCompose(hasOtherChildren -> dir.getChild(remainingPath[0]).thenCompose(childOpt -> {
-                    if (childOpt.isEmpty() || remainingPath.length == 1)
-                        return Futures.of(new Pair<>(this, ! hasOtherChildren));
+                    if (childOpt.isEmpty())
+                        return Futures.of(new Pair<>(this, false));
+                    if (remainingPath.length == 1)
+                        return dir.removeChild(childOpt.get(), owner, writer, tid)
+                                .thenCompose(updatedDir -> putValue(owner,
+                                        writer, dirKey, Optional.of(dir), updatedDir, tid))
+                                .thenApply(f -> new Pair<>(f, ! hasOtherChildren));
                     return getValue(childOpt.get().inode)
                             .thenCompose(childDir ->
                                     childDir.isPresent() ?
@@ -166,8 +171,17 @@ public class InodeFileSystem implements Cborable {
                 .thenCompose(childCapOpt -> {
                     if (childCapOpt.isPresent())
                         return getValue(childCapOpt.get().inode)
-                                .thenCompose(childOpt -> addCapRecurse(owner, writer, childCapOpt.get().inode,
-                                        childOpt.get(), tail(remainingPath), cap, tid));
+                                .thenCompose(childOpt -> {
+                                    if (childOpt.isPresent())
+                                        return addCapRecurse(owner, writer, childCapOpt.get().inode,
+                                                childOpt.get(), tail(remainingPath), cap, tid);
+                                    // Here a cap was published to a child dir, but not to any descendants of it yet
+                                    Inode newDir = new Inode(inodeCount, remainingPath[0]);
+                                    // parent is absent so we don't overwrite existing entry there
+                                    Optional<Pair<Inode, DirectoryInode>> parent = Optional.empty();
+                                    return getOrMkdir(owner, writer, parent, newDir, tid)
+                                            .thenCompose(p -> p.left.addCapRecurse(owner, writer, newDir, p.right, tail(remainingPath), cap, tid));
+                                });
                     Inode newDir = new Inode(inodeCount, remainingPath[0]);
                     return getOrMkdir(owner, writer, Optional.of(new Pair<>(dirKey, dir)), newDir, tid)
                             .thenCompose(p -> p.left.addCapRecurse(owner, writer, newDir, p.right, tail(remainingPath), cap, tid));
@@ -188,7 +202,7 @@ public class InodeFileSystem implements Cborable {
 
     public CompletableFuture<List<InodeCap>> listDirectory(String path) {
         String canonPath = TrieNode.canonicalise(path);
-        String[] elements = canonPath.split("/");
+        String[] elements = canonPath.isEmpty() ? new String[0] : canonPath.split("/");
         InodeCap start = new InodeCap(rootKey(), Optional.empty());
         return listDirectoryRecurse(start, elements);
     }

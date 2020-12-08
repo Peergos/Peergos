@@ -1202,8 +1202,11 @@ public abstract class UserTests {
         String phone = "555 5555";
         String email = "joe@doesnt.exist";
         String status = "busy";
-        String webroot = "webroot";
-        byte[] thumbail = randomData(100);
+        String dir = "webroot";
+        String webroot = "/" + username + "/" + dir;
+        context.getUserRoot().join().mkdir(dir, context.network, false, crypto).join();
+
+        byte[] thumbnail = randomData(100);
         byte[] hires = randomData(1000);
 
         ProfilePaths.setFirstName(context, firstName).join();
@@ -1213,7 +1216,7 @@ public abstract class UserTests {
         ProfilePaths.setEmail(context, email).join();
         ProfilePaths.setStatus(context, status).join();
         ProfilePaths.setWebRoot(context, webroot).join();
-        ProfilePaths.setProfilePhoto(context, thumbail).join();
+        ProfilePaths.setProfilePhoto(context, thumbnail).join();
         ProfilePaths.setHighResProfilePhoto(context, hires).join();
 
         assertTrue("Correct value", ProfilePaths.getFirstName(username, context).join().get().equals(firstName));
@@ -1223,7 +1226,7 @@ public abstract class UserTests {
         assertTrue("Correct value", ProfilePaths.getEmail(username, context).join().get().equals(email));
         assertTrue("Correct value", ProfilePaths.getStatus(username, context).join().get().equals(status));
         assertTrue("Correct value", ProfilePaths.getWebRoot(username, context).join().get().equals(webroot));
-        assertTrue("Correct value", Arrays.equals(ProfilePaths.getProfilePhoto(username, context).join().get(), thumbail));
+        assertTrue("Correct value", Arrays.equals(ProfilePaths.getProfilePhoto(username, context).join().get(), thumbnail));
         assertTrue("Correct value", Arrays.equals(ProfilePaths.getHighResProfilePhoto(username, context).join().get(), hires));
 
         Profile profile = ProfilePaths.getProfile(username, context).join();
@@ -1234,7 +1237,18 @@ public abstract class UserTests {
         assertTrue("Correct value", profile.email.get().equals(email));
         assertTrue("Correct value", profile.status.get().equals(status));
         assertTrue("Correct value", profile.webRoot.get().equals(webroot));
-        assertTrue("Correct value", Arrays.equals(profile.profilePhoto.get(), thumbail));
+        assertTrue("Correct value", Arrays.equals(profile.profilePhoto.get(), thumbnail));
+
+        ProfilePaths.publishWebroot(context).join();
+        Optional<FileWrapper> fw = context.getPublicFile(Paths.get(webroot)).join();
+        assertTrue("webroot", fw.isPresent());
+
+        ProfilePaths.unpublishWebRoot(context).join();
+        Optional<FileWrapper> currentCap = context.getPublicFile(Paths.get(webroot)).join();
+        assertTrue(currentCap.isEmpty());
+        ProfilePaths.publishWebroot(context).join();
+        Optional<FileWrapper> fw2 = context.getPublicFile(Paths.get(webroot)).join();
+        assertTrue("webroot", fw2.isPresent());
     }
 
     @Test

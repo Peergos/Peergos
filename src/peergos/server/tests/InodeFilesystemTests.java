@@ -8,21 +8,17 @@ import peergos.server.corenode.*;
 import peergos.server.sql.*;
 import peergos.server.storage.*;
 import peergos.shared.*;
-import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
-import peergos.shared.hamt.*;
 import peergos.shared.inode.*;
-import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
+import java.io.*;
 import java.nio.file.*;
 import java.util.*;
-import java.util.concurrent.*;
-import java.util.function.*;
 import java.util.stream.*;
 
 public class InodeFilesystemTests {
@@ -30,6 +26,44 @@ public class InodeFilesystemTests {
     private static final Crypto crypto = Main.initCrypto();
 
     public InodeFilesystemTests() {}
+
+    @Test
+    public void deleteExample() throws IOException {
+        ContentAddressedStorage storage = new FileContentAddressedStorage(Files.createTempDirectory("peergos-tmp"),
+                JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()));
+        SigningPrivateKeyAndPublicHash user = createUser(storage, crypto);
+        Random r = new Random(28);
+
+        Map<String, AbsoluteCapability> state = new HashMap<>();
+
+        PublicKeyHash owner = user.publicKeyHash;
+        TransactionId tid = storage.startTransaction(owner).join();
+        InodeFileSystem current = InodeFileSystem.createEmpty(owner, user, storage, crypto.hasher, tid).join();
+
+        String path1 = "username/webroot";
+        AbsoluteCapability cap = randomCap(owner, r);
+        current = current.addCap(owner, user, path1, cap, tid).join();
+        state.put(path1, cap);
+
+        String profileElement = "username/.profile/webroot";
+        AbsoluteCapability cap2 = randomCap(owner, r);
+        current = current.addCap(owner, user, profileElement, cap2, tid).join();
+        state.put(profileElement, cap2);
+
+        checkAllMappings(state, current);
+        Assert.assertTrue(current.inodeCount == 3);
+
+        current = current.removeCap(owner, user, path1, tid).join();
+        state.remove(path1);
+        checkAllMappings(state, current);
+
+        String p3 = "username/.profile/webroot/somedir";
+        AbsoluteCapability cap3 = randomCap(owner, r);
+        current = current.addCap(owner, user, p3, cap3, tid).join();
+        state.put(p3, cap3);
+        checkAllMappings(state, current);
+        Assert.assertTrue(current.inodeCount == 4);
+    }
 
     @Test
     public void insertAndRetrieve() throws Exception {
@@ -41,7 +75,7 @@ public class InodeFilesystemTests {
         Map<String, AbsoluteCapability> state = new HashMap<>();
 
         PublicKeyHash owner = user.publicKeyHash;
-        TransactionId tid = storage.startTransaction(owner).get();
+        TransactionId tid = storage.startTransaction(owner).join();
         InodeFileSystem current = InodeFileSystem.createEmpty(owner, user, storage, crypto.hasher, tid).join();
 
         // build a random tree and keep track of the state
@@ -87,10 +121,30 @@ public class InodeFilesystemTests {
 
     private static void checkAllMappings(Map<String, AbsoluteCapability> state, InodeFileSystem current) {
         for (Map.Entry<String, AbsoluteCapability> e : state.entrySet()) {
-            AbsoluteCapability res = current.getByPath(e.getKey()).join().get().left.cap.get();
-            if (! res.equals(e.getValue()))
+            Pair<InodeCap, String> access = current.getByPath(e.getKey()).join().get();
+            AbsoluteCapability res = access.left.cap.get();
+            // If a higher privilege cap is published it will be returned with the remaining path
+            if (! res.equals(e.getValue()) && access.right.isEmpty())
                 throw new IllegalStateException("Incorrect state!");
         }
+        Map<String, AbsoluteCapability> allCaps = getAllCaps(current, "/");
+        for (String key : allCaps.keySet()) {
+            if (! state.containsKey(key.substring(1)))
+                throw new IllegalStateException("Unexpected published cap for " + key);
+        }
+    }
+
+    private static Map<String, AbsoluteCapability> getAllCaps(InodeFileSystem infs, String path) {
+        Map<String, AbsoluteCapability> res = new HashMap<>();
+        List<InodeCap> children = infs.listDirectory(path).join();
+        for (InodeCap child : children) {
+            String childPath = path + (path.endsWith("/") ? "" : "/") + child.inode.name.name;
+            res.putAll(getAllCaps(infs, childPath));
+            Optional<Pair<InodeCap, String>> cap = infs.getByPath(childPath).join();
+            if (cap.isPresent() && cap.get().left.cap.isPresent())
+                res.put(childPath, cap.get().left.cap.get());
+        }
+        return res;
     }
 
     private static AbsoluteCapability randomCap(PublicKeyHash owner, Random r) {
