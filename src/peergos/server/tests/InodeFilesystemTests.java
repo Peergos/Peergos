@@ -40,12 +40,12 @@ public class InodeFilesystemTests {
         TransactionId tid = storage.startTransaction(owner).join();
         InodeFileSystem current = InodeFileSystem.createEmpty(owner, user, storage, crypto.hasher, tid).join();
 
-        String path1 = "/username/webroot";
+        String path1 = "username/webroot";
         AbsoluteCapability cap = randomCap(owner, r);
         current = current.addCap(owner, user, path1, cap, tid).join();
         state.put(path1, cap);
 
-        String profileElement = "/username/.profile/webroot";
+        String profileElement = "username/.profile/webroot";
         AbsoluteCapability cap2 = randomCap(owner, r);
         current = current.addCap(owner, user, profileElement, cap2, tid).join();
         state.put(profileElement, cap2);
@@ -57,7 +57,7 @@ public class InodeFilesystemTests {
         state.remove(path1);
         checkAllMappings(state, current);
 
-        String p3 = "/username/.profile/webroot/somedir";
+        String p3 = "username/.profile/webroot/somedir";
         AbsoluteCapability cap3 = randomCap(owner, r);
         current = current.addCap(owner, user, p3, cap3, tid).join();
         state.put(p3, cap3);
