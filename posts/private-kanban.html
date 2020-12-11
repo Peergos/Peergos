@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <head>
-    <title>Peergos release v0.3.0</title>
+    <title>Private Planning Boards in Peergos</title>
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta charset="utf-8">
     <meta name="viewport"
@@ -102,38 +102,59 @@
     <div class="col m3 col s4">
     </div>
     <div class="col m9 col s8" role="main" style="overflow-x:auto; padding-bottom: 10px;">
-    <h1 class="page-header main-title">Peergos release v0.3.0</h1>
+    <h1 class="page-header main-title">Private Planning Boards in Peergos</h1>
     <div class="bs-docs-section">
-    <p>Privacy is alive and well at Peergos as we continue on our mission to build the private web where you are in control of your data and identity.</p>
-<p>We are pleased to announce the release of <a href="https://alpha.peergos.net/public/peergos/releases/v0.3.0">v0.3.0</a>, and it's a big one! You can try it out on our <a href="https://alpha.peergos.net">alpha server</a> now. This release patches a number of bugs in both the server and the client, and also brings a host of cool new features. There's too much to talk about in a single blog post, but we'll mention everything briefly before diving deep in later posts.</p>
-<p>Some of the highlights include:</p>
-<h3 id="performance-improvements">Performance improvements</h3>
-<ol>
-<li>S3 datastore - read and write directly to S3 from the browser without proxying through a Peergos server</li>
-<li>GC is now fully concurrent and doesn't have any "stop the world" pauses</li>
-<li>Smoother HD video streaming through a buffered async reader</li>
-</ol>
-<h3 id="client">Client</h3>
-<ol>
-<li>Improved sharing UX</li>
-<li>Saving a document in the text editor is now 7x faster</li>
-<li>Easily delete your account and all your data</li>
-</ol>
-<h3 id="server">Server</h3>
-<ol>
-<li>Privacy-respecting payments - self-host a Peergos server and charge for storage</li>
-<li>Easily install and run IPFS via a top-level command</li>
-<li>Expanded quota APIs</li>
-<li>Postgres is now supported as well as SQLite</li>
-</ol>
-<h3 id="protocol-upgrades">Protocol upgrades</h3>
-<ol>
-<li>Upgrade to IPFS v0.6.0 - see the release notes <a href="https://docs.ipfs.io/recent-releases/go-ipfs-0-6/#features">here</a>.</li>
-<li>Support base36 and base64 in multibase</li>
-<li>Limit identity multihashes to 36 bytes</li>
-</ol>
-<p>We are particularly proud of the direct S3 datastore as it allows a Peergos server to use S3 compatible storage for the blockstore. Clients can read and write directly to an S3 bucket after authorization from the Peergos server. This new feature makes the Peergos server much more scalable and reliable, and gets around the need for complicated access policies when using S3. We will be exploring this feature in more detail soon!</p>
-<p>In the meantime, head on over to <a href="https://alpha.peergos.net">our alpha</a> and check it out!</p>
+    <p>Working on a new project and need to keep track of multiple tasks or workstreams? Peergos has
+got you covered! We're excited to announce the first in a series of new apps in
+Peergos - kanban boards! Our kanban boards are multiple, customisable to-do lists, which help your workflow planning.</p>
+<p>If you haven't heard of Peergos before, it is a peer-to-peer, private storage, social and application platform. You can read more in our book: <a href="https://book.peergos.org">https://book.peergos.org</a>. Everything we do is <a href="https://github.com/peergos/peergos">open source</a>. </p>
+<p><center>
+<img alt="kanban" class="class" id="id" src="/theme/img/blog/kanban.png" width="90%" />
+<br/>
+Stay on top of everything you need to get done with kanban boards in Peergos.
+</center></p>
+<p>We love kanban boards! Most of us here at Peergos have used them at various
+companies or even personally to stay organised. As much as we love them, we've
+always been hesitant to use existing kanban board solutions due to privacy and
+security concerns. These boards often contain personal or confidential
+information - if you're part of a dev team working on an awesome new product
+feature that's going to dominate the market, you absolutely want to ensure that
+any details are kept away from prying eyes. So we built our own!</p>
+<p>You can now create a kanban board anywhere in your Peergos space - simply click
+on our application menu in the top left-hand corner (spoiler alert: you might
+see some applications there we haven't told anyone about yet) and then click on the
+nifty looking icon. Our boards have all the features you'd expect like dragging
+and dropping within and between lists to re-order, easily marking entries as
+done, or deleting them.</p>
+<p><center>
+<img alt="App menu" class="class" id="id" src="/theme/img/blog/app-menu-button.png" width="50%" />
+<br/>
+Applications menu button
+</center></p>
+<p>What makes our kanban boards special? All of the data for a given board is
+stored in a single file and end-to-end encrypted so no-one but you can see
+what's on your board. Unless, of course, you want other people to see your board!
+Just like any other file in Peergos, you can grant your friends read or write access
+to your boards, and even share them via secret links, which anyone can use. No need
+to worry about complicated access control, everything is securely handled
+by Peergos so you can focus on staying organized and getting
+things done.</p>
+<p>So whether it's tracking your shopping list, planning a big project or managing
+your time, try out kanban boards in Peergos. We're using it as an
+internal project management tool, and one of our core team members is currently
+using a Peergos kanban board to manage their house sale and move! If you don't already have an
+account, you can create one for free on <a href="https://beta.peergos.net?signup=true">our beta</a>.
+Let us know what you think and how we can improve our kanban boards!</p>
+<p>Stay tuned for introductions to the other new apps we're building as part of our <a href="/posts/next-generation-internet">grant</a> from the Next Generation Internet program (<a href="https://pointer.ngi.eu/">NGI POINTER</a>).</p>
+<p><br/><br/></p>
+<hr />
+<p><center>
+<img alt="NGI Pointer" class="class" height="65px" id="id" src="/theme/img/ngi-logo.png" />
+<img alt="NGI Pointer" class="class" height="65" id="id" src="/theme/img/eu.png" />
+</center>
+<br/>
+This project has received funding from the European Union’s Horizon 2020 research and innovation programme within the framework of the NGI-POINTER Project funded under grant agreement No 871528</p>
+<p><br/><br/><br/></p>
 <h4>RECENT POSTS</h4>
 <ul id="recent-posts">
     <li>

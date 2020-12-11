@@ -1,5 +1,58 @@
 <?xml version="1.0" encoding="utf-8"?>
-<feed xmlns="http://www.w3.org/2005/Atom"><title>Peergos - Peergos team</title><link href="https://peergos.gitlab.io/website/" rel="alternate"></link><link href="https://peergos.gitlab.io/website/feeds/peergos-team.atom.xml" rel="self"></link><id>https://peergos.gitlab.io/website/</id><updated>2020-09-20T00:00:00+01:00</updated><entry><title>How to solve the social dilemma and fix social media</title><link href="https://peergos.gitlab.io/website/posts/the-social-dilemma" rel="alternate"></link><published>2020-09-20T00:00:00+01:00</published><updated>2020-09-20T00:00:00+01:00</updated><author><name>Peergos team</name></author><id>tag:peergos.gitlab.io,2020-09-20:/website/posts/the-social-dilemma</id><summary type="html">&lt;p&gt;&lt;center&gt;
+<feed xmlns="http://www.w3.org/2005/Atom"><title>Peergos - Peergos team</title><link href="https://peergos.gitlab.io/website/" rel="alternate"></link><link href="https://peergos.gitlab.io/website/feeds/peergos-team.atom.xml" rel="self"></link><id>https://peergos.gitlab.io/website/</id><updated>2020-12-09T00:00:00+00:00</updated><entry><title>Private Planning Boards in Peergos</title><link href="https://peergos.gitlab.io/website/posts/private-kanban" rel="alternate"></link><published>2020-12-09T00:00:00+00:00</published><updated>2020-12-09T00:00:00+00:00</updated><author><name>Peergos team</name></author><id>tag:peergos.gitlab.io,2020-12-09:/website/posts/private-kanban</id><summary type="html">&lt;p&gt;Working on a new project and need to keep track of multiple tasks or workstreams? Peergos has
+got you covered! We're excited to announce the first in a series of new apps in
+Peergos - kanban boards! Our kanban boards are multiple, customisable to-do lists, which help your workflow planning.&lt;/p&gt;
+&lt;p&gt;If …&lt;/p&gt;</summary><content type="html">&lt;p&gt;Working on a new project and need to keep track of multiple tasks or workstreams? Peergos has
+got you covered! We're excited to announce the first in a series of new apps in
+Peergos - kanban boards! Our kanban boards are multiple, customisable to-do lists, which help your workflow planning.&lt;/p&gt;
+&lt;p&gt;If you haven't heard of Peergos before, it is a peer-to-peer, private storage, social and application platform. You can read more in our book: &lt;a href="https://book.peergos.org"&gt;https://book.peergos.org&lt;/a&gt;. Everything we do is &lt;a href="https://github.com/peergos/peergos"&gt;open source&lt;/a&gt;. &lt;/p&gt;
+&lt;p&gt;&lt;center&gt;
+&lt;img alt="kanban" class="class" id="id" src="/theme/img/blog/kanban.png" width="90%" /&gt;
+&lt;br/&gt;
+Stay on top of everything you need to get done with kanban boards in Peergos.
+&lt;/center&gt;&lt;/p&gt;
+&lt;p&gt;We love kanban boards! Most of us here at Peergos have used them at various
+companies or even personally to stay organised. As much as we love them, we've
+always been hesitant to use existing kanban board solutions due to privacy and
+security concerns. These boards often contain personal or confidential
+information - if you're part of a dev team working on an awesome new product
+feature that's going to dominate the market, you absolutely want to ensure that
+any details are kept away from prying eyes. So we built our own!&lt;/p&gt;
+&lt;p&gt;You can now create a kanban board anywhere in your Peergos space - simply click
+on our application menu in the top left-hand corner (spoiler alert: you might
+see some applications there we haven't told anyone about yet) and then click on the
+nifty looking icon. Our boards have all the features you'd expect like dragging
+and dropping within and between lists to re-order, easily marking entries as
+done, or deleting them.&lt;/p&gt;
+&lt;p&gt;&lt;center&gt;
+&lt;img alt="App menu" class="class" id="id" src="/theme/img/blog/app-menu-button.png" width="50%" /&gt;
+&lt;br/&gt;
+Applications menu button
+&lt;/center&gt;&lt;/p&gt;
+&lt;p&gt;What makes our kanban boards special? All of the data for a given board is
+stored in a single file and end-to-end encrypted so no-one but you can see
+what's on your board. Unless, of course, you want other people to see your board!
+Just like any other file in Peergos, you can grant your friends read or write access
+to your boards, and even share them via secret links, which anyone can use. No need
+to worry about complicated access control, everything is securely handled
+by Peergos so you can focus on staying organized and getting
+things done.&lt;/p&gt;
+&lt;p&gt;So whether it's tracking your shopping list, planning a big project or managing
+your time, try out kanban boards in Peergos. We're using it as an
+internal project management tool, and one of our core team members is currently
+using a Peergos kanban board to manage their house sale and move! If you don't already have an
+account, you can create one for free on &lt;a href="https://beta.peergos.net?signup=true"&gt;our beta&lt;/a&gt;.
+Let us know what you think and how we can improve our kanban boards!&lt;/p&gt;
+&lt;p&gt;Stay tuned for introductions to the other new apps we're building as part of our &lt;a href="/posts/next-generation-internet"&gt;grant&lt;/a&gt; from the Next Generation Internet program (&lt;a href="https://pointer.ngi.eu/"&gt;NGI POINTER&lt;/a&gt;).&lt;/p&gt;
+&lt;p&gt;&lt;br/&gt;&lt;br/&gt;&lt;/p&gt;
+&lt;hr /&gt;
+&lt;p&gt;&lt;center&gt;
+&lt;img alt="NGI Pointer" class="class" height="65px" id="id" src="/theme/img/ngi-logo.png" /&gt;
+&lt;img alt="NGI Pointer" class="class" height="65" id="id" src="/theme/img/eu.png" /&gt;
+&lt;/center&gt;
+&lt;br/&gt;
+This project has received funding from the European Union’s Horizon 2020 research and innovation programme within the framework of the NGI-POINTER Project funded under grant agreement No 871528&lt;/p&gt;
+&lt;p&gt;&lt;br/&gt;&lt;br/&gt;&lt;br/&gt;&lt;/p&gt;</content></entry><entry><title>How to solve the social dilemma and fix social media</title><link href="https://peergos.gitlab.io/website/posts/the-social-dilemma" rel="alternate"></link><published>2020-09-20T00:00:00+01:00</published><updated>2020-09-20T00:00:00+01:00</updated><author><name>Peergos team</name></author><id>tag:peergos.gitlab.io,2020-09-20:/website/posts/the-social-dilemma</id><summary type="html">&lt;p&gt;&lt;center&gt;
 &lt;a href="https://www.ngi.eu"&gt;
 &lt;img alt="The Social Dilemma" class="class" id="id" src="/theme/img/blog/the-social-dilemma.png" width="50%" /&gt;
 &lt;/a&gt;

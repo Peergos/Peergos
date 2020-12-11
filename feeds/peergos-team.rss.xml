@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<rss version="2.0"><channel><title>Peergos - Peergos team</title><link>https://peergos.gitlab.io/website/</link><description></description><lastBuildDate>Sun, 20 Sep 2020 00:00:00 +0100</lastBuildDate><item><title>How to solve the social dilemma and fix social media</title><link>https://peergos.gitlab.io/website/posts/the-social-dilemma</link><description>&lt;p&gt;&lt;center&gt;
+<rss version="2.0"><channel><title>Peergos - Peergos team</title><link>https://peergos.gitlab.io/website/</link><description></description><lastBuildDate>Wed, 09 Dec 2020 00:00:00 +0000</lastBuildDate><item><title>Private Planning Boards in Peergos</title><link>https://peergos.gitlab.io/website/posts/private-kanban</link><description>&lt;p&gt;Working on a new project and need to keep track of multiple tasks or workstreams? Peergos has
+got you covered! We're excited to announce the first in a series of new apps in
+Peergos - kanban boards! Our kanban boards are multiple, customisable to-do lists, which help your workflow planning.&lt;/p&gt;
+&lt;p&gt;If …&lt;/p&gt;</description><dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">Peergos team</dc:creator><pubDate>Wed, 09 Dec 2020 00:00:00 +0000</pubDate><guid isPermaLink="false">tag:peergos.gitlab.io,2020-12-09:/website/posts/private-kanban</guid></item><item><title>How to solve the social dilemma and fix social media</title><link>https://peergos.gitlab.io/website/posts/the-social-dilemma</link><description>&lt;p&gt;&lt;center&gt;
 &lt;a href="https://www.ngi.eu"&gt;
 &lt;img alt="The Social Dilemma" class="class" id="id" src="/theme/img/blog/the-social-dilemma.png" width="50%" /&gt;
 &lt;/a&gt;
