@@ -81,7 +81,8 @@ public class QuotaCLI extends Builder {
                 List<DecodedSpaceRequest> allReqs = DecodedSpaceRequest.decodeSpaceRequests(raw, net.coreNode, net.dhtClient).join();
                 System.out.println("Quota requests:");
                 for (DecodedSpaceRequest req : allReqs) {
-                    LocalDateTime reqTime = LocalDateTime.ofEpochSecond(req.decoded.utcMillis, 0, ZoneOffset.UTC);
+                    long utcMillis = req.decoded.utcMillis;
+                    LocalDateTime reqTime = LocalDateTime.ofEpochSecond(utcMillis/1000, ((int)(utcMillis % 1000)) * 1000_000, ZoneOffset.UTC);
                     String formattedQuota = formatQuota(req.decoded.getSizeInBytes());
                     System.out.println(req.getUsername() + " " + formattedQuota + " " + reqTime);
                 }
