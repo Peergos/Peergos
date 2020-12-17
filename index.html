@@ -13,7 +13,7 @@
     <link rel="stylesheet" href="/theme/vendor/materialize/css/materialize.min.css" type="text/css"/>
     <link rel="stylesheet" href="/theme/css/peergos.css" type="text/css"/>
 
-
+    <link rel="alternate" href="https://peergos.org/feeds/posts.atom.xml" type="application/atom+xml">
  </head>
 <body class="index" style="overflow-y: scroll;">
 <nav>
@@ -120,7 +120,31 @@
         </div>
 
     </div>
-
+    <div class="feature-light" align="center">
+      <div class="row">
+	<div id="tour">
+	  <div id="tourimages" style="height:300px">
+	  </div>
+	  <h5 id="tourdesc"></h5>
+	  <center>
+	    <div style="display:flex; justify-content:center;">
+	      <button style="font-size:xx-large; border-radius:45%; padding:0 1rem;"
+		      class="btn"
+		      onclick="showPrevElement()">
+		<
+	      </button>
+	      <div id="tourbuttons" style="padding:0; display:flex;">
+	      </div>
+	      <button style="font-size:xx-large; border-radius:45%; padding:0 1rem;"
+		      class="btn"
+		      onclick="showNextElement()">
+		>
+	      </button>
+	    </div>
+	  </center>
+	</div>
+      </div>
+    </div>
     <div class="feature-dark" align="center">
         <div class="row">
 
@@ -379,6 +403,118 @@
 
 </script>
 
+    <style>
+      .dot {
+	  height: 10px;
+	  width: 10px;
+	  border-radius: 50%;
+	  background: black;
+	  opacity: 0.2;
+	  cursor: pointer;
+	  position: relative;
+	  display: inline-block;
+	  margin: 0 6px;
+      }
+      
+      .dot-selected {
+	  opacity: 0.7;
+	  cursor: default;
+      }
+    </style>
+    <script>
+      // setup tour
+      const tourData = [
+	  {
+	      text: "Store your files and arrange them in folders.",
+	      image: "theme/img/tour/upload.png"
+	  },
+	  {
+	      text: "Add friends by sending them a secure follow request.",
+	      image: "theme/img/tour/social.png"
+	  },
+	  {
+	      text: "Securely share files or folders with friends.",
+	      image: "theme/img/tour/share.png"
+	  },
+	  {
+	      text: "Create a secret link to a file or folder to share with anyone.",
+	      image: "theme/img/tour/secret.png"
+	  },
+	  {
+	      text: "Store your photos and view slideshows of them.",
+	      image: "theme/img/tour/images.png"
+	  },
+	  {
+	      text: "Store and edit your text documents.",
+	      image: "theme/img/tour/text.png"
+	  },
+	  {
+	      text: "Store and play your music collection.",
+	      image: "theme/img/tour/music.png"
+	  },
+	  {
+	      text: "Store and watch your videos and movies from any device.",
+	      image: "theme/img/tour/video.png"
+	  },
+	  {
+	      text: "Store and view PDF documents.",
+	      image: "theme/img/tour/pdf.png"
+	  },
+	  {
+	      text: "Organise and plan things with our planning boards.",
+	      image: "theme/img/tour/kanban.png"
+	  }];
+      var currentElementIndex = 0;
+      function showElement(i){
+	  if (i < 0 || i >= tourData.length)
+	      return
+	  // revert previous element
+	  document.getElementById("tourbutton" + currentElementIndex).className = "dot";
+	  document.getElementById("tourimage" + currentElementIndex).style.display = "none";
+
+	  // show new element
+	  currentElementIndex = i;
+	  document.getElementById("tourbutton" + currentElementIndex).className = "dot dot-selected";
+	  document.getElementById("tourimage" + currentElementIndex).style.display = "inline";
+	  var data = tourData[currentElementIndex];
+	  document.getElementById("tourdesc").innerText = data.text;
+      }
+      function showPrevElement() {
+	  showElement(currentElementIndex - 1);
+      }
+      function showNextElement() {
+	  showElement(currentElementIndex + 1);
+      }
+      function buildTour() {
+	  var buttons = document.getElementById("tourbuttons");
+	  for (var i=0; i < tourData.length; i++) {
+	      // add images
+	      var image = document.createElement("img");
+	      image.style.height = "300px";
+	      image.style.maxWidth = "100%";
+	      image.style.cursor = "pointer";
+	      image.src = tourData[i].image;
+	      image.style.display = "none";
+	      image.id = "tourimage" + i;
+	      image.addEventListener('click', function(){showNextElement();});
+	      document.getElementById("tourimages").appendChild(image);
+	      
+	      // add buttons
+	      var item = document.createElement("div");
+	      item.style.display = "flex";
+	      item.style.alignItems = "center";
+	      var button = document.createElement("div");
+	      button.id = "tourbutton" + i;
+	      button.className = "dot";
+	      const index = i;
+	      button.addEventListener('click', function(){showElement(index);});
+	      item.appendChild(button);
+	      buttons.appendChild(item);
+	  }
+      }
+      buildTour();
+      showElement(0);
+    </script>
     <script src="/theme/js/particles.min.js"></script>
     <script src="/theme/js/stats.min.js"></script>
     <script>
