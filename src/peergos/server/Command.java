@@ -59,7 +59,7 @@ public class Command<V> {
 
         if (headOpt.isPresent()) {
             String head = headOpt.get();
-            if (head.equals("help")) {
+            if (head.equals("-help")) {
                 System.out.println(helpMessage());
                 return null;
             }
