@@ -59,14 +59,15 @@ public class Command<V> {
 
         if (headOpt.isPresent()) {
             String head = headOpt.get();
-            if (head.equals("-help")) {
-                System.out.println(helpMessage());
-                return null;
-            }
             if (subCommands.containsKey(head)) {
                 subCommands.get(head).main(args.tail());
                 return null;
             }
+        }
+
+        if (args.hasArg("help")) {
+            System.out.println(helpMessage());
+                return null;
         }
 
         ensureArgs(args);
