@@ -1,6 +1,7 @@
 package peergos.server.storage.admin;
 
 import peergos.server.*;
+import peergos.server.net.*;
 import peergos.server.util.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
@@ -28,6 +29,7 @@ public class Admin implements InstanceAdmin {
     private final AtomicLong lastPendingRequestTime = new AtomicLong(System.currentTimeMillis());
     private final boolean enableWaitList;
     private int numberWaiting;
+    private final String sourceVersion;
 
     public Admin(Set<String> adminUsernames,
                  QuotaAdmin quotas,
@@ -44,11 +46,22 @@ public class Admin implements InstanceAdmin {
         } catch (IOException e) {
             this.numberWaiting = 0;
         }
+
+        String version = "";
+        try {
+            StaticHandler.Asset manifest = JarHandler.getAsset("META-INF/MANIFEST.MF", Paths.get("/"), false);
+            version = Arrays.stream(new String(manifest.data).split("\n"))
+                    .filter(line -> line.startsWith("Version"))
+                    .findFirst()
+                    .map(line -> line.substring("Version:".length()).trim())
+                    .orElse("");
+        } catch (Exception e) {}
+        this.sourceVersion = version;
     }
 
     @Override
     public CompletableFuture<VersionInfo> getVersionInfo() {
-        return CompletableFuture.completedFuture(new VersionInfo(UserService.CURRENT_VERSION));
+        return CompletableFuture.completedFuture(new VersionInfo(UserService.CURRENT_VERSION, sourceVersion));
     }
 
     @Override

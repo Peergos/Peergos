@@ -203,7 +203,7 @@ public class UserService {
         else
             LOG.info("Using webroot from jar");
         StaticHandler handler = webroot.map(p -> (StaticHandler) new FileHandler(p, true))
-                .orElseGet(() -> new JarHandler(true, Paths.get("webroot")));
+                .orElseGet(() -> new JarHandler(true, Paths.get("/webroot")));
 
         if (useWebCache) {
             LOG.info("Caching web-resources");

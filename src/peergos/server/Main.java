@@ -23,6 +23,7 @@ import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.mutable.*;
 import peergos.shared.social.*;
 import peergos.shared.storage.*;
+import peergos.shared.storage.controller.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
@@ -548,7 +549,8 @@ public class Main extends Builder {
                     "██║     ███████╗███████╗██║  ██║╚██████╔╝╚██████╔╝███████║\n" +
                     "╚═╝     ╚══════╝╚══════╝╚═╝  ╚═╝ ╚═════╝  ╚═════╝ ╚══════╝\n");
             System.out.println("Peergos daemon started. Browse to http://localhost:" + webPort + "/ to sign up or login. ");
-            System.out.println("Running version " + UserService.CURRENT_VERSION);
+            InstanceAdmin.VersionInfo version = storageAdmin.getVersionInfo().join();
+            System.out.println("Running version " + version);
             return peergos;
         } catch (Exception e) {
             throw new RuntimeException(e);
