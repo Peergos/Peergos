@@ -540,6 +540,15 @@ public class Main extends Builder {
                 GATEWAY.main(gatewayArgs);
             }
             a.saveToFileIfAbsent();
+            System.out.println("\n" +
+                    "██████╗ ███████╗███████╗██████╗  ██████╗  ██████╗ ███████╗\n" +
+                    "██╔══██╗██╔════╝██╔════╝██╔══██╗██╔════╝ ██╔═══██╗██╔════╝\n" +
+                    "██████╔╝█████╗  █████╗  ██████╔╝██║  ███╗██║   ██║███████╗\n" +
+                    "██╔═══╝ ██╔══╝  ██╔══╝  ██╔══██╗██║   ██║██║   ██║╚════██║\n" +
+                    "██║     ███████╗███████╗██║  ██║╚██████╔╝╚██████╔╝███████║\n" +
+                    "╚═╝     ╚══════╝╚══════╝╚═╝  ╚═╝ ╚═════╝  ╚═════╝ ╚══════╝\n");
+            System.out.println("Peergos daemon started. Browse to http://localhost:" + webPort + "/ to sign up or login. ");
+            System.out.println("Running version " + UserService.CURRENT_VERSION);
             return peergos;
         } catch (Exception e) {
             throw new RuntimeException(e);
