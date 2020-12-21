@@ -556,8 +556,6 @@ public class CLI implements Runnable {
                 .completer(new StringsCompleter(
                         "http://",
                         "https://",
-                        "https://demo.peergos.net",
-                        "https://alpha.peergos.net",
                         "https://beta.peergos.net",
                         "http://localhost"))
                 .build();
