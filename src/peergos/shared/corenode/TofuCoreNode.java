@@ -126,8 +126,11 @@ public class TofuCoreNode implements CoreNode {
     }
 
     @Override
-    public CompletableFuture<Optional<RequiredDifficulty>> updateChain(String username, List<UserPublicKeyLink> chain, ProofOfWork proof) {
-        return source.updateChain(username, chain, proof).thenCompose(res -> {
+    public CompletableFuture<Optional<RequiredDifficulty>> updateChain(String username,
+                                                                       List<UserPublicKeyLink> chain,
+                                                                       ProofOfWork proof,
+                                                                       String token) {
+        return source.updateChain(username, chain, proof, token).thenCompose(res -> {
             if (res.isPresent())
                 return Futures.of(res);
             return tofu.updateChain(username, chain, network.dhtClient)

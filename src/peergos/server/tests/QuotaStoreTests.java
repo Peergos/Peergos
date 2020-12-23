@@ -39,4 +39,12 @@ public class QuotaStoreTests {
         store.setQuota("fred", oneG);
         Assert.assertTrue(store.numberOfUsers() == 2);
     }
+
+    @Test
+    public void tokens() {
+        String token = "bob";
+        store.addToken(token);
+        Assert.assertTrue(store.allowAndRemoveToken(token));
+        Assert.assertFalse(store.allowAndRemoveToken(token));
+    }
 }

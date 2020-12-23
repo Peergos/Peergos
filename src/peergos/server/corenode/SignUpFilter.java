@@ -28,14 +28,17 @@ public class SignUpFilter implements CoreNode {
     }
 
     @Override
-    public CompletableFuture<Optional<RequiredDifficulty>> updateChain(String username, List<UserPublicKeyLink> chain, ProofOfWork proof) {
+    public CompletableFuture<Optional<RequiredDifficulty>> updateChain(String username,
+                                                                       List<UserPublicKeyLink> chain,
+                                                                       ProofOfWork proof,
+                                                                       String token) {
         boolean forUs = chain.get(chain.size() - 1).claim.storageProviders.contains(ourNodeId);
         if (! forUs)
-            return target.updateChain(username, chain, proof);
+            return target.updateChain(username, chain, proof, token);
         return CompletableFuture.completedFuture(true)
                 .thenCompose(x -> {
-                    if (judge.allowSignupOrUpdate(username))
-                        return target.updateChain(username, chain, proof);
+                    if (judge.allowSignupOrUpdate(username, token))
+                        return target.updateChain(username, chain, proof, token);
                     throw new IllegalStateException("This server is not currently accepting new sign ups. Please try again later");
                 });
     }

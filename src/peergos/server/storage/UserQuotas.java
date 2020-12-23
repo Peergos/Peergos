@@ -18,6 +18,8 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.*;
 
+/** This implements a quota manager for Peergos instances that are not charging for storage
+ */
 public class UserQuotas implements QuotaAdmin {
 	private static final Logger LOG = Logging.LOG();
 
@@ -102,8 +104,11 @@ public class UserQuotas implements QuotaAdmin {
         return new ArrayList<>(quotas.getQuotas().keySet());
     }
 
-    public boolean allowSignupOrUpdate(String username) {
+    @Override
+    public boolean allowSignupOrUpdate(String username, String token) {
         if (quotas.hasUser(username))
+            return true;
+        if (quotas.allowAndRemoveToken(token))
             return true;
         if (quotas.numberOfUsers() >= maxUsers)
             return false;

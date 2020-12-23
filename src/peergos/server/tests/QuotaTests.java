@@ -13,7 +13,7 @@ import java.net.*;
 import java.nio.file.*;
 import java.util.*;
 
-import static peergos.server.util.PeergosNetworkUtils.ensureSignedUp;
+import static peergos.server.tests.PeergosNetworkUtils.ensureSignedUp;
 
 @RunWith(Parameterized.class)
 public class QuotaTests {

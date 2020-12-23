@@ -35,8 +35,8 @@ public class HttpQuotaAdmin implements QuotaAdmin {
     }
 
     @Override
-    public boolean allowSignupOrUpdate(String username) {
-        return poster.get(QUOTA_URL + ALLOWED + "?username=" + username)
+    public boolean allowSignupOrUpdate(String username, String token) {
+        return poster.get(QUOTA_URL + ALLOWED + "?username=" + username + "&token="+token)
                 .thenApply(res -> ((CborObject.CborBoolean)CborObject.fromByteArray(res)).value).join();
     }
 

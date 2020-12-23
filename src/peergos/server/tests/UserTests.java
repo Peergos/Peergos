@@ -189,7 +189,7 @@ public abstract class UserTests {
         String username = generateUsername();
         String password = "password";
         PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
-        CompletableFuture<UserContext> secondSignup = UserContext.signUp(username, password, network, crypto);
+        CompletableFuture<UserContext> secondSignup = UserContext.signUp(username, password, "", network, crypto);
 
         Assert.assertTrue("Second sign up fails", secondSignup.isCompletedExceptionally());
     }
@@ -267,9 +267,9 @@ public abstract class UserTests {
         String username = generateUsername();
         String password1 = "password1";
         String password2 = "password2";
-        UserContext.ensureSignedUp(username, password1, network, crypto).join();
+        PeergosNetworkUtils.ensureSignedUp(username, password1, network, crypto);
         try {
-            UserContext.signUp(username, password2, network, crypto).get();
+            UserContext.signUp(username, password2, "", network, crypto).get();
         } catch (Exception e) {
             if (! e.getMessage().contains("User already exists"))
                 Assert.fail("Incorrect error message");
@@ -280,9 +280,9 @@ public abstract class UserTests {
     public void repeatedSignUp() {
         String username = generateUsername();
         String password = "password";
-        UserContext.ensureSignedUp(username, password, network, crypto).join();
+        PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         try {
-            UserContext.signUp(username, password, network, crypto).get();
+            UserContext.signUp(username, password, "", network, crypto).get();
         } catch (Exception e) {
             if (!Exceptions.getRootCause(e).getMessage().contains("User already exists"))
                 Assert.fail("Incorrect error message");

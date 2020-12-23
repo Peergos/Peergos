@@ -63,7 +63,10 @@ public class NonWriteThroughCoreNode implements CoreNode {
     }
 
     @Override
-    public CompletableFuture<Optional<RequiredDifficulty>> updateChain(String username, List<UserPublicKeyLink> updated, ProofOfWork proof) {
+    public CompletableFuture<Optional<RequiredDifficulty>> updateChain(String username,
+                                                                       List<UserPublicKeyLink> updated,
+                                                                       ProofOfWork proof,
+                                                                       String token) {
         try {
             List<UserPublicKeyLink> modified = tempChains.get(username);
             if (modified != null)

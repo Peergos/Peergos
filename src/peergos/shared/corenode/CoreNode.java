@@ -21,11 +21,14 @@ public interface CoreNode {
      *
      * @param username
      * @param chain The changed links of the chain
+     * @param proof Any required proof of work
+     * @param token Any required token to authorise signup on this server
      * @return Optional.empty() if successfully updated, otherwise the required difficulty
      */
     CompletableFuture<Optional<RequiredDifficulty>> updateChain(String username,
                                                                 List<UserPublicKeyLink> chain,
-                                                                ProofOfWork proof);
+                                                                ProofOfWork proof,
+                                                                String token);
 
     /**
      *

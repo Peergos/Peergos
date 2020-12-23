@@ -214,21 +214,26 @@ public class UserContext {
     @JsMethod
     public static CompletableFuture<UserContext> signUp(String username,
                                                         String password,
+                                                        String token,
                                                         NetworkAccess network,
                                                         Crypto crypto,
                                                         Consumer<String> progressCallback) {
-        return signUpGeneral(username, password, network, crypto, SecretGenerationAlgorithm.getDefault(crypto.random), progressCallback);
+        SecretGenerationAlgorithm algorithm = SecretGenerationAlgorithm.getDefault(crypto.random);
+        return signUpGeneral(username, password, token, network, crypto, algorithm, progressCallback);
     }
 
     public static CompletableFuture<UserContext> signUp(String username,
                                                         String password,
+                                                        String token,
                                                         NetworkAccess network,
                                                         Crypto crypto) {
-        return signUpGeneral(username, password, network, crypto, SecretGenerationAlgorithm.getDefault(crypto.random), t -> {});
+        SecretGenerationAlgorithm algorithm = SecretGenerationAlgorithm.getDefault(crypto.random);
+        return signUpGeneral(username, password, token, network, crypto, algorithm, t -> {});
     }
 
     public static CompletableFuture<UserContext> signUpGeneral(String username,
                                                                String password,
+                                                               String token,
                                                                NetworkAccess initialNetwork,
                                                                Crypto crypto,
                                                                SecretGenerationAlgorithm algorithm,
@@ -243,7 +248,7 @@ public class UserContext {
                     SigningPrivateKeyAndPublicHash signer = new SigningPrivateKeyAndPublicHash(signerHash, secretSigningKey);
 
                     progressCallback.accept("Registering username");
-                    return UserContext.register(username, signer, crypto.hasher, network, progressCallback).thenApply(registered -> {
+                    return UserContext.register(username, signer, token, crypto.hasher, network, progressCallback).thenApply(registered -> {
                         if (!registered) {
                             throw new IllegalStateException("Couldn't register username: " + username);
                         }
@@ -455,15 +460,6 @@ public class UserContext {
                 });
     }
 
-    public static CompletableFuture<UserContext> ensureSignedUp(String username, String password, NetworkAccess network, Crypto crypto) {
-
-        return network.isUsernameRegistered(username).thenCompose(isRegistered -> {
-            if (isRegistered)
-                return signIn(username, password, network, crypto);
-            return signUp(username, password, network, crypto);
-        });
-    }
-
     private CompletableFuture<UserContext> init(Consumer<String> progressCallback) {
         progressCallback.accept("Retrieving Friends");
         return writeSynchronizer.getValue(signer.publicKeyHash, signer.publicKeyHash)
@@ -587,6 +583,7 @@ public class UserContext {
 
     public static CompletableFuture<Boolean> register(String username,
                                                       SigningPrivateKeyAndPublicHash signer,
+                                                      String token,
                                                       Hasher hasher,
                                                       NetworkAccess network,
                                                       Consumer<String> progressCallback) {
@@ -600,7 +597,7 @@ public class UserContext {
                     return network.coreNode.getChain(username).thenCompose(existing -> {
                         if (existing.size() > 0)
                             throw new IllegalStateException("User already exists!");
-                        return updateChainWithRetry(username, claimChain, hasher, network, progressCallback);
+                        return updateChainWithRetry(username, claimChain, token, hasher, network, progressCallback);
                     });
                 });
     }
@@ -621,17 +618,18 @@ public class UserContext {
 
     private static CompletableFuture<Boolean> updateChainWithRetry(String username,
                                                                    List<UserPublicKeyLink> claimChain,
+                                                                   String token,
                                                                    Hasher hasher,
                                                                    NetworkAccess network,
                                                                    Consumer<String> progressCallback) {
         byte[] data = new CborObject.CborList(claimChain).serialize();
         return time(() -> hasher.generateProofOfWork(ProofOfWork.MIN_DIFFICULTY, data), "Proof of work")
-                .thenCompose(proof -> network.coreNode.updateChain(username, claimChain, proof))
+                .thenCompose(proof -> network.coreNode.updateChain(username, claimChain, proof, token))
                 .thenCompose(diff -> {
                     if (diff.isPresent()) {
                         progressCallback.accept("The server is currently under load, retrying...");
                         return time(() -> hasher.generateProofOfWork(diff.get().requiredDifficulty, data), "Proof of work")
-                                .thenCompose(proof -> network.coreNode.updateChain(username, claimChain, proof))
+                                .thenCompose(proof -> network.coreNode.updateChain(username, claimChain, proof, token))
                                 .thenApply(d -> {
                                     if (d.isPresent())
                                         throw new IllegalStateException("Server is under load please try again later");
@@ -654,7 +652,7 @@ public class UserContext {
             UserPublicKeyLink.Claim newClaim = UserPublicKeyLink.Claim.build(username, signer.secret, expiry, storage);
             List<UserPublicKeyLink> updated = new ArrayList<>(existing.subList(0, existing.size() - 1));
             updated.add(new UserPublicKeyLink(signer.publicKeyHash, newClaim, Optional.empty()));
-            return updateChainWithRetry(username, updated, hasher, network, x -> {});
+            return updateChainWithRetry(username, updated, "", hasher, network, x -> {});
         });
     }
 
@@ -751,12 +749,12 @@ public class UserContext {
                                                     return network.coreNode.getChain(username).thenCompose(existing -> {
                                                         List<Multihash> storage = existing.get(existing.size() - 1).claim.storageProviders;
                                                         List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createChain(signer, newUser, username, expiry, storage);
-                                                        return updateChainWithRetry(username, claimChain, crypto.hasher, network, x -> {})
+                                                        return updateChainWithRetry(username, claimChain, "", crypto.hasher, network, x -> {})
                                                                 .thenCompose(updatedChain -> {
                                                                     if (!updatedChain)
                                                                         throw new IllegalStateException("Couldn't register new public keys during password change!");
 
-                                                                    return UserContext.ensureSignedUp(username, newPassword, network, crypto);
+                                                                    return UserContext.signUp(username, newPassword, "", network, crypto);
                                                                 });
                                                     });
                                                 });

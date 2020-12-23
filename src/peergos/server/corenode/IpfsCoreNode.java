@@ -151,8 +151,9 @@ public class IpfsCoreNode implements CoreNode {
      */
     @Override
     public synchronized CompletableFuture<Optional<RequiredDifficulty>> updateChain(String username,
-                                                               List<UserPublicKeyLink> updatedChain,
-                                                               ProofOfWork proof) {
+                                                                                    List<UserPublicKeyLink> updatedChain,
+                                                                                    ProofOfWork proof,
+                                                                                    String token) {
         if (! UsernameValidator.isValidUsername(username))
             throw new IllegalStateException("Invalid username");
 

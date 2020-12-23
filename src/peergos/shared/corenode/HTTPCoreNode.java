@@ -121,7 +121,10 @@ public class HTTPCoreNode implements CoreNode {
     }
 
     @Override
-    public CompletableFuture<Optional<RequiredDifficulty>> updateChain(String username, List<UserPublicKeyLink> chain, ProofOfWork proof) {
+    public CompletableFuture<Optional<RequiredDifficulty>> updateChain(String username,
+                                                                       List<UserPublicKeyLink> chain,
+                                                                       ProofOfWork proof,
+                                                                       String token) {
         try {
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
             DataOutputStream dout = new DataOutputStream(bout);
@@ -129,6 +132,7 @@ public class HTTPCoreNode implements CoreNode {
             Serialize.serialize(username, dout);
             Serialize.serialize(new CborObject.CborList(chain).serialize(), dout);
             Serialize.serialize(proof.serialize(), dout);
+            Serialize.serialize(token, dout);
             dout.flush();
 
             return poster.postUnzip(urlPrefix + Constants.CORE_URL + "updateChain", bout.toByteArray())

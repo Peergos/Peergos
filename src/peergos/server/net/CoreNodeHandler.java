@@ -104,7 +104,8 @@ public class CoreNodeHandler implements HttpHandler
         byte[] raw = Serialize.deserializeByteArray(din, 2 * UserPublicKeyLink.MAX_SIZE);
         List<UserPublicKeyLink> res = ((CborObject.CborList)CborObject.fromByteArray(raw)).map(UserPublicKeyLink::fromCbor);
         ProofOfWork proof = ProofOfWork.fromCbor(CborObject.fromByteArray(Serialize.deserializeByteArray(din, 100)));
-        Optional<RequiredDifficulty> err = coreNode.updateChain(username, res, proof).get();
+        String token = CoreNodeUtils.deserializeString(din);
+        Optional<RequiredDifficulty> err = coreNode.updateChain(username, res, proof, token).get();
         dout.writeBoolean(err.isEmpty());
         if (err.isPresent())
             dout.writeInt(err.get().requiredDifficulty);

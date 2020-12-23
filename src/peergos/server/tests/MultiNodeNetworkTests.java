@@ -23,8 +23,8 @@ import java.util.stream.*;
 import static org.junit.Assert.*;
 import static peergos.server.tests.UserTests.deleteFiles;
 import static peergos.server.tests.UserTests.randomString;
-import static peergos.server.util.PeergosNetworkUtils.ensureSignedUp;
-import static peergos.server.util.PeergosNetworkUtils.generateUsername;
+import static peergos.server.tests.PeergosNetworkUtils.ensureSignedUp;
+import static peergos.server.tests.PeergosNetworkUtils.generateUsername;
 
 @RunWith(Parameterized.class)
 public class MultiNodeNetworkTests {

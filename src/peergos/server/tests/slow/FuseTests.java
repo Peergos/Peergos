@@ -45,7 +45,7 @@ public class FuseTests {
 
         Main.PKI_INIT.main(args);
         NetworkAccess network = Builder.buildLocalJavaNetworkAccess(WEB_PORT).get();
-        UserContext userContext = UserContext.ensureSignedUp(username, password, network, Main.initCrypto()).get();
+        UserContext userContext = PeergosNetworkUtils.ensureSignedUp(username, password, network, Main.initCrypto());
 
         Path mount = Files.createTempDirectory("peergos");
         String mountPath = args.getArg("mountPoint", mount.toString());

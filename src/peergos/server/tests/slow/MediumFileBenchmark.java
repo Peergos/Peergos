@@ -48,7 +48,7 @@ public class MediumFileBenchmark {
     }
 
     public static UserContext ensureSignedUp(String username, String password, NetworkAccess network, Crypto crypto) throws Exception {
-        return UserContext.ensureSignedUp(username, password, network, crypto).get();
+        return PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
     }
 
     // UPLOAD(0) duration: 7451 mS, best: 7451 mS, worst: 7451 mS, av: 7451 mS
