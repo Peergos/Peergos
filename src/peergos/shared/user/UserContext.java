@@ -754,7 +754,7 @@ public class UserContext {
                                                                     if (!updatedChain)
                                                                         throw new IllegalStateException("Couldn't register new public keys during password change!");
 
-                                                                    return UserContext.signUp(username, newPassword, "", network, crypto);
+                                                                    return UserContext.signIn(username, newPassword, network, crypto);
                                                                 });
                                                     });
                                                 });
