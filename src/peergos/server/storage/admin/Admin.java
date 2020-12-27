@@ -2,9 +2,11 @@ package peergos.server.storage.admin;
 
 import peergos.server.*;
 import peergos.server.net.*;
+import peergos.server.storage.*;
 import peergos.server.util.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.crypto.random.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
 import peergos.shared.storage.controller.*;
@@ -94,6 +96,12 @@ public class Admin implements InstanceAdmin {
     @Override
     public CompletableFuture<Boolean> acceptingSignups() {
         return Futures.of(quotas.acceptingSignups());
+    }
+
+    public String generateSignupToken(SafeRandom rnd) {
+        if (quotas instanceof UserQuotas)
+            return ((UserQuotas) quotas).generateToken(rnd);
+        throw new IllegalStateException("The payment server needs to generate tokens for paid storage");
     }
 
     private static Pattern VALID_EMAIL = Pattern.compile("^[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,6}$", Pattern.CASE_INSENSITIVE);
