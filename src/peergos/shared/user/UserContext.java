@@ -201,7 +201,6 @@ public class UserContext {
                                                             transactions,
                                                             capCache);
 
-                                                    System.out.println("Initializing context..");
                                                     return result.init(progressCallback)
                                                             .exceptionally(Futures::logAndThrow);
                                                 }));
