@@ -21,12 +21,14 @@ public class UserStats {
         NetworkAccess network = Builder.buildJavaNetworkAccess(new URL("https://beta.peergos.net"), true).get();
         List<String> usernames = network.coreNode.getUsernames("").get();
         ForkJoinPool pool = new ForkJoinPool(20);
+        List<String> errors = Collections.synchronizedList(new ArrayList<>());
         List<Summary> summaries = pool.submit(() -> usernames.stream().parallel().flatMap(username -> {
+            List<Multihash> hosts = Collections.emptyList();
             try {
                 List<UserPublicKeyLink> chain = network.coreNode.getChain(username).get();
                 UserPublicKeyLink last = chain.get(chain.size() - 1);
                 LocalDate expiry = last.claim.expiry;
-                List<Multihash> hosts = last.claim.storageProviders;
+                hosts = last.claim.storageProviders;
                 PublicKeyHash owner = last.owner;
                 Set<PublicKeyHash> ownedKeysRecursive =
                         WriterData.getOwnedKeysRecursive(username, network.coreNode, network.mutable,
@@ -42,11 +44,16 @@ public class UserStats {
                 System.out.println(summary);
                 return Stream.of(new Summary(username, expiry, total, hosts, ownedKeysRecursive));
             } catch (Exception e) {
-                System.err.println("Error for " + username);
+                String host = hosts.stream().findFirst().map(Object::toString).orElse("");
+                errors.add(username + ": " + host);
+                System.err.println("Error for " + username + " on host " + host);
                 e.printStackTrace();
                 return Stream.empty();
             }
         }).collect(Collectors.toList())).join();
+
+        System.out.println("Errors: " + errors.size());
+        errors.forEach(System.out::println);
 
         // Sort by usage
         sortAndPrint(summaries, (a, b) -> Long.compare(b.usage, a.usage), "usage.txt");
