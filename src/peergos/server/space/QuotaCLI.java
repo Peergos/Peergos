@@ -122,16 +122,19 @@ public class QuotaCLI extends Builder {
     public static final Command<Boolean> TOKEN_CREATE = new Command<>("create",
             "Create tokens for signups",
             a -> {
+                Crypto crypto = Main.initCrypto();
+                int count = a.getInt("count", 1);
+                System.out.println("Created signup tokens:");
                 boolean paidStorage = a.hasArg("quota-admin-address");
-                if (paidStorage)
-                    throw new IllegalStateException("Quota CLI only valid on non paid instances");
+                if (paidStorage) {
+                    QuotaAdmin quotas = Builder.buildPaidQuotas(a);
+                    for (int i=0; i < count; i++)
+                        System.out.println(quotas.generateToken(crypto.random));
+                }
                 SqlSupplier sqlCommands = getSqlCommands(a);
                 Supplier<Connection> quotasDb = getDBConnector(a, "quotas-sql-file");
                 JdbcQuotas quotas = JdbcQuotas.build(quotasDb, sqlCommands);
 
-                Crypto crypto = Main.initCrypto();
-                int count = a.getInt("count", 1);
-                System.out.println("Created signup tokens:");
                 for (int i=0; i < count; i++) {
                     String token = ArrayOps.bytesToHex(crypto.random.randomBytes(32));
                     quotas.addToken(token);

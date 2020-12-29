@@ -194,23 +194,26 @@ public class Builder {
                                               Supplier<Connection> spaceDb,
                                               Supplier<Connection> quotasDb) {
         boolean paidStorage = a.hasArg("quota-admin-address");
-        if (! paidStorage) {
-            SqlSupplier sqlCommands = getSqlCommands(a);
-            JdbcSpaceRequests spaceRequests = JdbcSpaceRequests.build(spaceDb, sqlCommands);
-            JdbcQuotas quotas = JdbcQuotas.build(quotasDb, sqlCommands);
-            if (a.hasArg("quotas-init-file")) {
-                String quotaFile = a.getArg("quotas-init-file");
-                Map<String, Long> quotaInit = UserQuotas.readUsernamesFromFile(Paths.get(quotaFile));
-                quotaInit.forEach(quotas::setQuota);
-            }
-            long defaultQuota = a.getLong("default-quota");
-            long maxUsers = a.getLong("max-users");
-            Logging.LOG().info("Using default user space quota of " + defaultQuota);
-            return new UserQuotas(quotas, defaultQuota, maxUsers, spaceRequests, localDht, core);
-        } else {
-            JavaPoster poster = new JavaPoster(AddressUtil.getAddress(new MultiAddress(a.getArg("quota-admin-address"))), true);
-            return new HttpQuotaAdmin(poster);
+        if (paidStorage)
+            return buildPaidQuotas(a);
+
+        SqlSupplier sqlCommands = getSqlCommands(a);
+        JdbcSpaceRequests spaceRequests = JdbcSpaceRequests.build(spaceDb, sqlCommands);
+        JdbcQuotas quotas = JdbcQuotas.build(quotasDb, sqlCommands);
+        if (a.hasArg("quotas-init-file")) {
+            String quotaFile = a.getArg("quotas-init-file");
+            Map<String, Long> quotaInit = UserQuotas.readUsernamesFromFile(Paths.get(quotaFile));
+            quotaInit.forEach(quotas::setQuota);
         }
+        long defaultQuota = a.getLong("default-quota");
+        long maxUsers = a.getLong("max-users");
+        Logging.LOG().info("Using default user space quota of " + defaultQuota);
+        return new UserQuotas(quotas, defaultQuota, maxUsers, spaceRequests, localDht, core);
+    }
+
+    public static QuotaAdmin buildPaidQuotas(Args a) {
+        JavaPoster poster = new JavaPoster(AddressUtil.getAddress(new MultiAddress(a.getArg("quota-admin-address"))), true);
+        return new HttpQuotaAdmin(poster);
     }
 
     public static CoreNode buildPkiCorenode(MutablePointers mutable, ContentAddressedStorage dht, Args a) {

@@ -127,10 +127,9 @@ public class UserQuotas implements QuotaAdmin {
         return false;
     }
 
-    public String generateToken(SafeRandom rnd) {
-        String token = ArrayOps.bytesToHex(rnd.randomBytes(32));
-        quotas.addToken(token);
-        return token;
+    @Override
+    public boolean addToken(String token) {
+        return quotas.addToken(token);
     }
 
     @Override

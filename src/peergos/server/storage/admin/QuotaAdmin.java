@@ -3,8 +3,10 @@ package peergos.server.storage.admin;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.crypto.random.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
+import peergos.shared.util.*;
 
 import java.util.*;
 
@@ -17,7 +19,15 @@ public interface QuotaAdmin extends QuotaControl {
 
     boolean allowSignupOrUpdate(String username, String token);
 
+    boolean addToken(String token);
+
     boolean consumeToken(String token);
+
+    default String generateToken(SafeRandom rnd) {
+        String token = ArrayOps.bytesToHex(rnd.randomBytes(32));
+        addToken(token);
+        return token;
+    }
 
     long getQuota(String username);
 

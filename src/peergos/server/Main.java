@@ -551,7 +551,7 @@ public class Main extends Builder {
             boolean generateToken = a.getBoolean("generate-token", false);
             if (generateToken && userQuotas instanceof UserQuotas) {
                 System.out.println("Generating signup token...");
-                String token = ((UserQuotas) userQuotas).generateToken(crypto.random);
+                String token = userQuotas.generateToken(crypto.random);
                 System.out.println("Peergos daemon started. Browse to http://localhost:" + webPort + "/?signup=true&token="
                         + token + " to sign up.");
             } else

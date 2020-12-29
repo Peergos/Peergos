@@ -17,6 +17,7 @@ public class HttpQuotaAdmin implements QuotaAdmin {
     public static final String SIGNUPS = "signups";
     public static final String USERNAMES = "usernames";
     public static final String ALLOWED = "allowed";
+    public static final String TOKEN_ADD = "token-add";
     public static final String TOKEN_REMOVE = "token-remove";
     public static final String QUOTA_PRIVATE = "quota-by-name";
     public static final String PAYMENT_PROPERTIES = "payment-properties";
@@ -45,6 +46,12 @@ public class HttpQuotaAdmin implements QuotaAdmin {
     public long getQuota(String username) {
         return poster.get(QUOTA_URL + QUOTA_PRIVATE + "?username=" + username)
                 .thenApply(res -> ((CborObject.CborLong)CborObject.fromByteArray(res)).value).join();
+    }
+
+    @Override
+    public boolean addToken(String token) {
+        return poster.get(QUOTA_URL + TOKEN_ADD + "?token=" + token)
+                .thenApply(res -> ((CborObject.CborBoolean)CborObject.fromByteArray(res)).value).join();
     }
 
     @Override

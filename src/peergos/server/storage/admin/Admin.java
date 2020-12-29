@@ -99,9 +99,7 @@ public class Admin implements InstanceAdmin {
     }
 
     public String generateSignupToken(SafeRandom rnd) {
-        if (quotas instanceof UserQuotas)
-            return ((UserQuotas) quotas).generateToken(rnd);
-        throw new IllegalStateException("The payment server needs to generate tokens for paid storage");
+        return quotas.generateToken(rnd);
     }
 
     private static Pattern VALID_EMAIL = Pattern.compile("^[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,6}$", Pattern.CASE_INSENSITIVE);
