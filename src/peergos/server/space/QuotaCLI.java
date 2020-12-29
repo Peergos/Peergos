@@ -130,9 +130,13 @@ public class QuotaCLI extends Builder {
                 JdbcQuotas quotas = JdbcQuotas.build(quotasDb, sqlCommands);
 
                 Crypto crypto = Main.initCrypto();
-                String token = ArrayOps.bytesToHex(crypto.random.randomBytes(32));
-                quotas.addToken(token);
-                System.out.println("Created signup token " + token);
+                int count = a.getInt("count", 1);
+                System.out.println("Created signup tokens:");
+                for (int i=0; i < count; i++) {
+                    String token = ArrayOps.bytesToHex(crypto.random.randomBytes(32));
+                    quotas.addToken(token);
+                    System.out.println(token);
+                }
                 return true;
             },
             Arrays.asList(
