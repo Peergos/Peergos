@@ -44,7 +44,8 @@ public class QuotaStoreTests {
     public void tokens() {
         String token = "bob";
         store.addToken(token);
-        Assert.assertTrue(store.allowAndRemoveToken(token));
-        Assert.assertFalse(store.allowAndRemoveToken(token));
+        Assert.assertTrue(store.isTokenAllowed(token));
+        store.removeToken(token);
+        Assert.assertFalse(store.isTokenAllowed(token));
     }
 }

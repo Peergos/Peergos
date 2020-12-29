@@ -17,6 +17,8 @@ public interface QuotaAdmin extends QuotaControl {
 
     boolean allowSignupOrUpdate(String username, String token);
 
+    boolean consumeToken(String token);
+
     long getQuota(String username);
 
     List<String> getLocalUsernames();

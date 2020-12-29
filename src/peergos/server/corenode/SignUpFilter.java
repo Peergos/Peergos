@@ -5,6 +5,7 @@ import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.util.*;
 
 import java.io.*;
 import java.util.*;
@@ -35,12 +36,16 @@ public class SignUpFilter implements CoreNode {
         boolean forUs = chain.get(chain.size() - 1).claim.storageProviders.contains(ourNodeId);
         if (! forUs)
             return target.updateChain(username, chain, proof, token);
-        return CompletableFuture.completedFuture(true)
-                .thenCompose(x -> {
-                    if (judge.allowSignupOrUpdate(username, token))
-                        return target.updateChain(username, chain, proof, token);
-                    throw new IllegalStateException("This server is not currently accepting new sign ups. Please try again later");
-                });
+
+        if (judge.allowSignupOrUpdate(username, token)) {
+            return target.updateChain(username, chain, proof, token).thenApply(res -> {
+                if (res.isEmpty())
+                    judge.consumeToken(token);
+                return res;
+            });
+        }
+
+        return Futures.errored(new IllegalStateException("This server is not currently accepting new sign ups. Please try again later"));
     }
 
     @Override

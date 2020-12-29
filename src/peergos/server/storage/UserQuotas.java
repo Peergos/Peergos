@@ -109,7 +109,7 @@ public class UserQuotas implements QuotaAdmin {
     public boolean allowSignupOrUpdate(String username, String token) {
         if (quotas.hasUser(username))
             return true;
-        if (quotas.allowAndRemoveToken(token)) {
+        if (quotas.isTokenAllowed(token)) {
             quotas.setQuota(username, defaultQuota);
             return true;
         }
@@ -117,6 +117,14 @@ public class UserQuotas implements QuotaAdmin {
             return false;
         quotas.setQuota(username, defaultQuota);
         return true;
+    }
+
+    @Override
+    public boolean consumeToken(String token) {
+        if (! token.isEmpty()) {
+            return quotas.removeToken(token);
+        }
+        return false;
     }
 
     public String generateToken(SafeRandom rnd) {
