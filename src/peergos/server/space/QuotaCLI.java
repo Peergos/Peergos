@@ -130,6 +130,7 @@ public class QuotaCLI extends Builder {
                     QuotaAdmin quotas = Builder.buildPaidQuotas(a);
                     for (int i=0; i < count; i++)
                         System.out.println(quotas.generateToken(crypto.random));
+                    return true;
                 }
                 SqlSupplier sqlCommands = getSqlCommands(a);
                 Supplier<Connection> quotasDb = getDBConnector(a, "quotas-sql-file");
