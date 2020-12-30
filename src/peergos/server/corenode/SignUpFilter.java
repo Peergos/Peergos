@@ -40,7 +40,7 @@ public class SignUpFilter implements CoreNode {
         if (judge.allowSignupOrUpdate(username, token)) {
             return target.updateChain(username, chain, proof, token).thenApply(res -> {
                 if (res.isEmpty())
-                    judge.consumeToken(token);
+                    judge.consumeToken(username, token);
                 return res;
             });
         }

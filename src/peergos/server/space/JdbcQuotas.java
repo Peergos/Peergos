@@ -55,7 +55,7 @@ public class JdbcQuotas {
         }
     }
 
-    public void setQuota(String username, long quota) {
+    public boolean setQuota(String username, long quota) {
         try (Connection conn = getConnection();
              PreparedStatement createuser = conn.prepareStatement(commands.insertOrIgnoreCommand("INSERT ", "INTO freequotas (name, quota) VALUES(?, ?)"));
              PreparedStatement update = conn.prepareStatement(SET_QUOTA)) {
@@ -66,6 +66,7 @@ public class JdbcQuotas {
             update.setLong(1, quota);
             update.setString(2, username);
             update.executeUpdate();
+            return true;
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new IllegalStateException(sqe);

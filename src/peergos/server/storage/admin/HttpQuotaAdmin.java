@@ -55,8 +55,8 @@ public class HttpQuotaAdmin implements QuotaAdmin {
     }
 
     @Override
-    public boolean consumeToken(String token) {
-        return poster.get(QUOTA_URL + TOKEN_REMOVE + "?token=" + token)
+    public boolean consumeToken(String username, String token) {
+        return poster.get(QUOTA_URL + TOKEN_REMOVE + "?username=" + username + "&token=" + token)
                 .thenApply(res -> ((CborObject.CborBoolean)CborObject.fromByteArray(res)).value).join();
     }
 

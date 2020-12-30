@@ -21,7 +21,7 @@ public interface QuotaAdmin extends QuotaControl {
 
     boolean addToken(String token);
 
-    boolean consumeToken(String token);
+    boolean consumeToken(String username, String token);
 
     default String generateToken(SafeRandom rnd) {
         String token = ArrayOps.bytesToHex(rnd.randomBytes(32));
