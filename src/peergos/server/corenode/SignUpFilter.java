@@ -44,6 +44,8 @@ public class SignUpFilter implements CoreNode {
                 return res;
             });
         }
+        if (! token.isEmpty())
+            return Futures.errored(new IllegalStateException("Invalid signup token."));
 
         return Futures.errored(new IllegalStateException("This server is not currently accepting new sign ups. Please try again later"));
     }
