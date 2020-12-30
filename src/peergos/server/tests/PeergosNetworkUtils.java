@@ -1,9 +1,8 @@
-package peergos.server.util;
+package peergos.server.tests;
 
 import org.junit.Assert;
 import peergos.server.*;
 import peergos.server.storage.ResetableFileInputStream;
-import peergos.server.tests.*;
 import peergos.shared.Crypto;
 import peergos.shared.NetworkAccess;
 import peergos.shared.crypto.symmetric.SymmetricKey;
@@ -1519,6 +1518,9 @@ public class PeergosNetworkUtils {
     }
 
     public static UserContext ensureSignedUp(String username, String password, NetworkAccess network, Crypto crypto) {
-        return UserContext.ensureSignedUp(username, password, network, crypto).join();
+        boolean isRegistered = network.isUsernameRegistered(username).join();
+        if (isRegistered)
+            return UserContext.signIn(username, password, network, crypto).join();
+        return UserContext.signUp(username, password, "", network, crypto).join();
     }
 }

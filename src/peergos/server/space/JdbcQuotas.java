@@ -18,6 +18,10 @@ public class JdbcQuotas {
     private static final String GET_ALL_QUOTAS = "SELECT name, quota FROM freequotas;";
     private static final String COUNT_USERS = "SELECT COUNT (name) FROM freequotas;";
     private static final String REMOVE_USER = "DELETE FROM freequotas WHERE name = ?;";
+    private static final String HAS_TOKEN = "SELECT * FROM signuptokens WHERE token = ?;";
+    private static final String REMOVE_TOKEN = "DELETE FROM signuptokens WHERE token = ?;";
+    private static final String ADD_TOKEN = "INSERT INTO signuptokens (token) VALUES(?);";
+    private static final String LIST_TOKENS = "SELECT token from signuptokens;";
 
     private final SqlSupplier commands;
     private volatile boolean isClosed;
@@ -51,7 +55,7 @@ public class JdbcQuotas {
         }
     }
 
-    public void setQuota(String username, long quota) {
+    public boolean setQuota(String username, long quota) {
         try (Connection conn = getConnection();
              PreparedStatement createuser = conn.prepareStatement(commands.insertOrIgnoreCommand("INSERT ", "INTO freequotas (name, quota) VALUES(?, ?)"));
              PreparedStatement update = conn.prepareStatement(SET_QUOTA)) {
@@ -62,6 +66,7 @@ public class JdbcQuotas {
             update.setLong(1, quota);
             update.setString(2, username);
             update.executeUpdate();
+            return true;
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new IllegalStateException(sqe);
@@ -117,6 +122,56 @@ public class JdbcQuotas {
             select.setString(1, username);
             ResultSet rs = select.executeQuery();
             return rs.next();
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new IllegalStateException(sqe);
+        }
+    }
+
+    public boolean hasToken(String token) {
+        try (Connection conn = getConnection();
+             PreparedStatement select = conn.prepareStatement(HAS_TOKEN)) {
+            select.setString(1, token);
+            ResultSet res =  select.executeQuery();
+            return res.next();
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new IllegalStateException(sqe);
+        }
+    }
+
+    public boolean removeToken(String token) {
+        try (Connection conn = getConnection();
+             PreparedStatement select = conn.prepareStatement(REMOVE_TOKEN)) {
+            select.setString(1, token);
+            int modified = select.executeUpdate();
+            return modified == 1;
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new IllegalStateException(sqe);
+        }
+    }
+
+    public boolean addToken(String token) {
+        try (Connection conn = getConnection();
+             PreparedStatement select = conn.prepareStatement(ADD_TOKEN)) {
+            select.setString(1, token);
+            int modified = select.executeUpdate();
+            return modified == 1;
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new IllegalStateException(sqe);
+        }
+    }
+
+    public List<String> listTokens() {
+        try (Connection conn = getConnection();
+             PreparedStatement select = conn.prepareStatement(LIST_TOKENS)) {
+            ResultSet res = select.executeQuery();
+            List<String> results = new ArrayList<>();
+            while (res.next())
+                results.add(res.getString(QUOTA_USER_NAME));
+            return results;
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new IllegalStateException(sqe);

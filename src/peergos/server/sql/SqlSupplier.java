@@ -26,7 +26,8 @@ public interface SqlSupplier {
     }
 
     default String createQuotasTableCommand() {
-        return "CREATE TABLE IF NOT EXISTS freequotas (name text primary key not null, quota BIGINT not null);";
+        return "CREATE TABLE IF NOT EXISTS freequotas (name text primary key not null, quota BIGINT not null);" +
+                "CREATE TABLE IF NOT EXISTS signuptokens (token varchar(64) primary key not null);";
     }
 
     default String createTransactionsTableCommand() {

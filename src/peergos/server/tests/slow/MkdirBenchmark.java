@@ -47,7 +47,7 @@ public class MkdirBenchmark {
     }
 
     public static UserContext ensureSignedUp(String username, String password, NetworkAccess network, Crypto crypto) throws Exception {
-        return UserContext.ensureSignedUp(username, password, network, crypto).get();
+        return PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
     }
 
     // (0 - 100 mkdirs)

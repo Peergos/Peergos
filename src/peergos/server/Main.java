@@ -216,7 +216,7 @@ public class Main extends Builder {
 
             // sign up peergos user
             SecretGenerationAlgorithm algorithm = SecretGenerationAlgorithm.getDefaultWithoutExtraSalt();
-            UserContext context = UserContext.signUpGeneral(pkiUsername, password, network, crypto, algorithm, x -> {}).get();
+            UserContext context = UserContext.signUpGeneral(pkiUsername, password, "", network, crypto, algorithm, x -> {}).get();
             Optional<PublicKeyHash> existingPkiKey = context.getNamedKey("pki").get();
             if (!existingPkiKey.isPresent() || existingPkiKey.get().equals(pkiPublicHash)) {
                 SigningPrivateKeyAndPublicHash pkiKeyPair = new SigningPrivateKeyAndPublicHash(pkiPublicHash, pkiSecret);
@@ -548,7 +548,14 @@ public class Main extends Builder {
                     " █████║    ██╔═══╝ ██╔══╝  ██╔══╝  ██╔══██╗██║   ██║██║   ██║╚════██║    █████║\n" +
                     "███████╗   ██║     ███████╗███████╗██║  ██║╚██████╔╝╚██████╔╝███████║   ███████╗\n" +
                     "╚══════╝   ╚═╝     ╚══════╝╚══════╝╚═╝  ╚═╝ ╚═════╝  ╚═════╝ ╚══════╝   ╚══════╝");
-            System.out.println("Peergos daemon started. Browse to http://localhost:" + webPort + "/ to sign up or login. ");
+            boolean generateToken = a.getBoolean("generate-token", false);
+            if (generateToken) {
+                System.out.println("Generating signup token...");
+                String token = userQuotas.generateToken(crypto.random);
+                System.out.println("Peergos daemon started. Browse to http://localhost:" + webPort + "/?signup=true&token="
+                        + token + " to sign up.");
+            } else
+                System.out.println("Peergos daemon started. Browse to http://localhost:" + webPort + "/ to sign up or login. ");
             InstanceAdmin.VersionInfo version = storageAdmin.getVersionInfo().join();
             System.out.println("Running version " + version);
             return peergos;
@@ -600,7 +607,7 @@ public class Main extends Builder {
         try {
             NetworkAccess network = Builder.buildLocalJavaNetworkAccess(webPort).get();
             Crypto crypto = initCrypto();
-            UserContext userContext = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+            UserContext userContext = UserContext.signIn(username, password, network, crypto).join();
             PeergosFS peergosFS = new PeergosFS(userContext);
             FuseProcess fuseProcess = new FuseProcess(peergosFS, path);
 

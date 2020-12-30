@@ -2,15 +2,7 @@ package peergos.server.fuse;
 import java.util.logging.*;
 import peergos.server.util.Logging;
 
-import peergos.server.util.PeergosNetworkUtils;
-import peergos.shared.*;
-import peergos.server.Main;
-import peergos.shared.user.UserContext;
-import peergos.server.util.Args;
-
 import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.*;
 
 public class FuseProcess implements Runnable, AutoCloseable {
 	private static final Logger LOG = Logging.LOG();

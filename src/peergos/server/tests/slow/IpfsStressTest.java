@@ -1,6 +1,7 @@
 package peergos.server.tests.slow;
 import java.util.logging.*;
 
+import peergos.server.tests.*;
 import peergos.server.util.Args;
 import peergos.server.util.Logging;
 
@@ -47,7 +48,7 @@ public class IpfsStressTest {
     }
 
     public static UserContext ensureSignedUp(String username, String password, NetworkAccess network, Crypto crypto) throws Exception {
-        return UserContext.ensureSignedUp(username, password, network, crypto).get();
+        return PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
     }
 
     @Test

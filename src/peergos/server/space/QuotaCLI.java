@@ -10,6 +10,7 @@ import peergos.shared.*;
 import peergos.shared.corenode.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
+import peergos.shared.util.*;
 
 import java.sql.*;
 import java.time.*;
@@ -118,6 +119,66 @@ public class QuotaCLI extends Builder {
             )
     );
 
+    public static final Command<Boolean> TOKEN_CREATE = new Command<>("create",
+            "Create tokens for signups",
+            a -> {
+                Crypto crypto = Main.initCrypto();
+                int count = a.getInt("count", 1);
+                System.out.println("Created signup tokens:");
+                boolean paidStorage = a.hasArg("quota-admin-address");
+                if (paidStorage) {
+                    QuotaAdmin quotas = Builder.buildPaidQuotas(a);
+                    for (int i=0; i < count; i++)
+                        System.out.println(quotas.generateToken(crypto.random));
+                }
+                SqlSupplier sqlCommands = getSqlCommands(a);
+                Supplier<Connection> quotasDb = getDBConnector(a, "quotas-sql-file");
+                JdbcQuotas quotas = JdbcQuotas.build(quotasDb, sqlCommands);
+
+                for (int i=0; i < count; i++) {
+                    String token = ArrayOps.bytesToHex(crypto.random.randomBytes(32));
+                    quotas.addToken(token);
+                    System.out.println(token);
+                }
+                return true;
+            },
+            Arrays.asList(
+                    new Command.Arg("quotas-sql-file", "The filename for the quotas datastore", true, "quotas.sql")
+            )
+    );
+
+    public static final Command<Boolean> TOKENS_LIST = new Command<>("list",
+            "Show tokens for signups",
+            a -> {
+                boolean paidStorage = a.hasArg("quota-admin-address");
+                if (paidStorage)
+                    throw new IllegalStateException("Quota CLI only valid on non paid instances");
+                SqlSupplier sqlCommands = getSqlCommands(a);
+                Supplier<Connection> quotasDb = getDBConnector(a, "quotas-sql-file");
+                JdbcQuotas quotas = JdbcQuotas.build(quotasDb, sqlCommands);
+
+                List<String> tokens = quotas.listTokens();
+                System.out.println("Stored tokens:");
+                tokens.forEach(System.out::println);
+                return true;
+            },
+            Arrays.asList(
+                    new Command.Arg("quotas-sql-file", "The filename for the quotas datastore", true, "quotas.sql")
+            )
+    );
+
+    public static final Command<Boolean> TOKEN = new Command<>("token",
+            "Create and list tokens for signups",
+            a -> {
+                System.out.println("Run with -help to show options");
+                return null;
+            },
+            Arrays.asList(
+                    new Command.Arg("quotas-sql-file", "The filename for the quotas datastore", true, "quotas.sql")
+            ),
+            Arrays.asList(TOKEN_CREATE, TOKENS_LIST)
+    );
+
     public static final Command<Boolean> QUOTA = new Command<>("quota",
             "Manage free quota of users on this server",
             args -> {
@@ -129,6 +190,6 @@ public class QuotaCLI extends Builder {
                     new Command.Arg("log-to-file", "Whether to log to a file", false, "false"),
                     new Command.Arg("log-to-console", "Whether to log to the console", false, "false")
             ),
-            Arrays.asList(SHOW, SET, REQUESTS)
+            Arrays.asList(SHOW, SET, REQUESTS, TOKEN)
     );
 }

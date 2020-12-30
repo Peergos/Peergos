@@ -44,7 +44,7 @@ public class LoginBenchmark {
     }
 
     public static UserContext ensureSignedUp(String username, String password, NetworkAccess network, Crypto crypto) throws Exception {
-        return UserContext.ensureSignedUp(username, password, network, crypto).get();
+        return PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
     }
 
     // LOGIN(19) duration: 1326 mS, best: 1292 mS, worst: 1375 mS, av: 1322 mS

@@ -203,7 +203,7 @@ public class SocialBenchmark {
     }
 
     public static UserContext ensureSignedUp(String username, String password, NetworkAccess network, Crypto crypto) {
-        return UserContext.ensureSignedUp(username, password, network, crypto).join();
+        return PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
     }
 
     public static <V> Pair<V, Long> time(Supplier<V> work) {

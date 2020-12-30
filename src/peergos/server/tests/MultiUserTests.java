@@ -3,7 +3,6 @@ package peergos.server.tests;
 import org.junit.*;
 import peergos.server.storage.ResetableFileInputStream;
 import peergos.server.util.Args;
-import peergos.server.util.PeergosNetworkUtils;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.fingerprint.*;
 import peergos.shared.util.TriFunction;
@@ -25,8 +24,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.stream.*;
 
 import static org.junit.Assert.assertTrue;
-import static peergos.server.util.PeergosNetworkUtils.ensureSignedUp;
-import static peergos.server.util.PeergosNetworkUtils.getUserContextsForNode;
+import static peergos.server.tests.PeergosNetworkUtils.ensureSignedUp;
+import static peergos.server.tests.PeergosNetworkUtils.getUserContextsForNode;
 
 public class MultiUserTests {
 

@@ -48,7 +48,7 @@ public class SmallFileBenchmark {
     }
 
     public static UserContext ensureSignedUp(String username, String password, NetworkAccess network, Crypto crypto) throws Exception {
-        return UserContext.ensureSignedUp(username, password, network, crypto).get();
+        return PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
     }
 
     // UPLOAD(0) duration: 1085 mS, best: 1085 mS, worst: 1085 mS, av: 1085 mS

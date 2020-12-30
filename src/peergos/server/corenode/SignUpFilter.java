@@ -5,6 +5,7 @@ import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.util.*;
 
 import java.io.*;
 import java.util.*;
@@ -28,16 +29,25 @@ public class SignUpFilter implements CoreNode {
     }
 
     @Override
-    public CompletableFuture<Optional<RequiredDifficulty>> updateChain(String username, List<UserPublicKeyLink> chain, ProofOfWork proof) {
+    public CompletableFuture<Optional<RequiredDifficulty>> updateChain(String username,
+                                                                       List<UserPublicKeyLink> chain,
+                                                                       ProofOfWork proof,
+                                                                       String token) {
         boolean forUs = chain.get(chain.size() - 1).claim.storageProviders.contains(ourNodeId);
         if (! forUs)
-            return target.updateChain(username, chain, proof);
-        return CompletableFuture.completedFuture(true)
-                .thenCompose(x -> {
-                    if (judge.allowSignupOrUpdate(username))
-                        return target.updateChain(username, chain, proof);
-                    throw new IllegalStateException("This server is not currently accepting new sign ups. Please try again later");
-                });
+            return target.updateChain(username, chain, proof, token);
+
+        if (judge.allowSignupOrUpdate(username, token)) {
+            return target.updateChain(username, chain, proof, token).thenApply(res -> {
+                if (res.isEmpty())
+                    judge.consumeToken(username, token);
+                return res;
+            });
+        }
+        if (! token.isEmpty())
+            return Futures.errored(new IllegalStateException("Invalid signup token."));
+
+        return Futures.errored(new IllegalStateException("This server is not currently accepting new sign ups. Please try again later"));
     }
 
     @Override

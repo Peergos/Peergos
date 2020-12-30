@@ -8,7 +8,7 @@ import peergos.server.simulation.Stat;
 import peergos.server.storage.IpfsWrapper;
 import peergos.server.util.Args;
 import peergos.server.util.Logging;
-import peergos.server.util.PeergosNetworkUtils;
+import peergos.server.tests.PeergosNetworkUtils;
 import peergos.shared.Crypto;
 import peergos.shared.NetworkAccess;
 import peergos.shared.user.*;
