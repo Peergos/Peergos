@@ -549,7 +549,7 @@ public class Main extends Builder {
                     "███████╗   ██║     ███████╗███████╗██║  ██║╚██████╔╝╚██████╔╝███████║   ███████╗\n" +
                     "╚══════╝   ╚═╝     ╚══════╝╚══════╝╚═╝  ╚═╝ ╚═════╝  ╚═════╝ ╚══════╝   ╚══════╝");
             boolean generateToken = a.getBoolean("generate-token", false);
-            if (generateToken && userQuotas instanceof UserQuotas) {
+            if (generateToken) {
                 System.out.println("Generating signup token...");
                 String token = userQuotas.generateToken(crypto.random);
                 System.out.println("Peergos daemon started. Browse to http://localhost:" + webPort + "/?signup=true&token="
