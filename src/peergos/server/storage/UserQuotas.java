@@ -8,7 +8,6 @@ import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.crypto.random.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
@@ -109,7 +108,7 @@ public class UserQuotas implements QuotaAdmin {
     public boolean allowSignupOrUpdate(String username, String token) {
         if (quotas.hasUser(username))
             return true;
-        if (quotas.isTokenAllowed(token))
+        if (quotas.hasToken(token))
             return true;
         if (quotas.numberOfUsers() >= maxUsers)
             return false;

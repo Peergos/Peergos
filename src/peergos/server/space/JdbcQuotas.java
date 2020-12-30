@@ -128,7 +128,7 @@ public class JdbcQuotas {
         }
     }
 
-    public boolean isTokenAllowed(String token) {
+    public boolean hasToken(String token) {
         try (Connection conn = getConnection();
              PreparedStatement select = conn.prepareStatement(HAS_TOKEN)) {
             select.setString(1, token);
