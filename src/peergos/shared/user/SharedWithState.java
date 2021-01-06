@@ -151,12 +151,12 @@ public class SharedWithState implements Cborable {
         CborObject.CborMap m = (CborObject.CborMap) cbor;
         CborObject.CborMap r = m.get("r", c -> (CborObject.CborMap) c);
         Function<Cborable, String> getString = c -> ((CborObject.CborString) c).value;
-        Map<String, Set<String>> readShares = r.getMap(
+        Map<String, Set<String>> readShares = r.toMap(
                 getString,
                 c -> new HashSet<>(((CborObject.CborList)c).map(getString)));
 
         CborObject.CborMap w = m.get("w", c -> (CborObject.CborMap) c);
-        Map<String, Set<String>> writehares = w.getMap(
+        Map<String, Set<String>> writehares = w.toMap(
                 getString,
                 c -> new HashSet<>(((CborObject.CborList)c).map(getString)));
 

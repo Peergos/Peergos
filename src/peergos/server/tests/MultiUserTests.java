@@ -189,6 +189,16 @@ public class MultiUserTests {
     }
 
     @Test
+    public void groupSharing() {
+        PeergosNetworkUtils.groupSharing(network, random);
+    }
+
+    @Test
+    public void groupSharingToFollowers() {
+        PeergosNetworkUtils.groupSharingToFollowers(network, random);
+    }
+
+    @Test
     public void safeCopyOfFriendsReadAccess() throws Exception {
         TriFunction<UserContext, UserContext, String, CompletableFuture<Boolean>> readAccessSharingFunction =
                 (u1, u2, filename) ->

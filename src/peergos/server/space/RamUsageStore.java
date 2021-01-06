@@ -4,8 +4,6 @@ import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.mutable.*;
-import peergos.shared.storage.*;
 
 import java.io.*;
 import java.nio.file.*;
@@ -165,7 +163,7 @@ public class RamUsageStore implements UsageStore {
             CborObject.CborMap usagesMap = (CborObject.CborMap) map.get("usages");
 
             return new State(viewsMap.getMap(PublicKeyHash::fromCbor, WriterUsage::fromCbor),
-                    usagesMap.getMap(e -> ((CborObject.CborString) e).value, UserUsage::fromCbor));
+                    usagesMap.toMap(e -> ((CborObject.CborString) e).value, UserUsage::fromCbor));
         }
 
         public Map<String, UserUsage> getUsage() {

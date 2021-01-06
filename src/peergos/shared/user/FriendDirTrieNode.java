@@ -62,6 +62,11 @@ public class FriendDirTrieNode implements TrieNode {
     }
 
     @Override
+    public TrieNode getChildNode(String name) {
+        throw new IllegalStateException("Not valid operation on FriendSourcedTrieNode.");
+    }
+
+    @Override
     public boolean isEmpty() {
         throw new IllegalStateException("Invalid operation");
     }
