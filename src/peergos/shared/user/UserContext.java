@@ -959,7 +959,7 @@ public class UserContext {
     public CompletableFuture<Set<FileWrapper>> getFriendRoots() {
         List<CompletableFuture<Optional<FileWrapper>>> friendRoots = entrie.getChildNames()
                 .stream()
-                .filter(p -> !p.startsWith(username))
+                .filter(p -> !p.equals(username))
                 .map(p -> getByPath(p)).collect(Collectors.toList());
         return Futures.combineAll(friendRoots)
                 .thenApply(set -> set.stream().filter(opt -> opt.isPresent()).map(opt -> opt.get()).collect(Collectors.toSet()));
@@ -1811,7 +1811,7 @@ public class UserContext {
             if (parts.length < 3 || !parts[2].equals(SHARED_DIR_NAME))
                 return CompletableFuture.completedFuture(root.put(path, fileCap));
             String username = parts[1];
-            if (username.endsWith(ourName)) // This is a sharing directory of ours for a friend
+            if (username.equals(ourName)) // This is a sharing directory of ours for a friend
                 return CompletableFuture.completedFuture(root);
             // This is a friend's sharing directory, create a wrapper to read the capabilities lazily from it
             return root.getByPath(Paths.get(ourName, CapabilityStore.CAPABILITY_CACHE_DIR).toString(), crypto.hasher, network)
