@@ -13,7 +13,7 @@ The name Peergos comes from the Greek word Πύργος (Pyrgos), which means st
 
 Demo
 ----
-Want to try it out no? Here's our demo [https://demo.peergos.net](https://demo.peergos.net). 
+Want to try it out now? Here's our demo [https://demo.peergos.net](https://demo.peergos.net). 
 
 Beta
 ----
