@@ -31,13 +31,17 @@ Architecture talk at IPFS Lab Day:
 
 [![Architecture Talk](https://img.youtube.com/vi/h54pShffxvI/0.jpg)](https://www.youtube.com/watch?v=h54pShffxvI)
 
+Introduction and 2020 update:
+
+[![Introduction and 2020 update](https://i.vimeocdn.com/video/1041961357.jpg?mw=480&mh=540)](https://vimeo.com/316903779)
+
 Introduction:
 
 [![Introduction](https://img.youtube.com/vi/dCLboQDlzds/0.jpg)](https://www.youtube.com/watch?v=dCLboQDlzds)
 
 Tour:
 
-[![Tour](https://i.vimeocdn.com/video/759008279.jpg?mw=480&mh=540)](https://vimeo.com/316903779)
+[![Tour](https://i.vimeocdn.com/video/759008279.jpg?mw=480&mh=540)](https://vimeo.com/503650925)
 
 Support
 -------
