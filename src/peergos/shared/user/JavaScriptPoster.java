@@ -9,13 +9,22 @@ public class JavaScriptPoster implements HttpPoster {
 
     private final NativeJSHttp http = new NativeJSHttp();
     private final boolean isAbsolute, useGet;
+    private final String prefix;
 
-    public JavaScriptPoster(boolean isAbsolute, boolean useGet) {
+    public JavaScriptPoster(boolean isAbsolute, boolean useGet, String prefix) {
         this.isAbsolute = isAbsolute;
         this.useGet = useGet;
+        this.prefix = prefix;
     }
 
     private String canonicalise(String url) {
+        boolean prefixNotEmpty = this.prefix != null && !this.prefix.equals("");
+        if (prefixNotEmpty && url.startsWith(this.prefix)) {
+            return url;
+        } else if (prefixNotEmpty) {
+            return this.prefix + url;
+        }
+
         if (isAbsolute && ! url.startsWith("/"))
             return "/" + url;
         return url;
@@ -44,12 +53,12 @@ public class JavaScriptPoster implements HttpPoster {
             headersArray[index++] = e.getKey();
             headersArray[index++] = e.getValue();
         }
-        return http.put(url, payload, headersArray);
+        return http.put(canonicalise(url), payload, headersArray);
     }
 
     @Override
     public CompletableFuture<byte[]> get(String url) {
-        return get(url, Collections.emptyMap());
+        return get(canonicalise(url), Collections.emptyMap());
     }
 
     @Override
@@ -61,9 +70,9 @@ public class JavaScriptPoster implements HttpPoster {
                 headersArray[index++] = e.getKey();
                 headersArray[index++] = e.getValue();
             }
-            return http.getWithHeaders(url, headersArray);
+            return http.getWithHeaders(canonicalise(url), headersArray);
         }
-        return postUnzip(url, new byte[0]);
+        return postUnzip(canonicalise(url), new byte[0]);
     }
 
     @JsMethod

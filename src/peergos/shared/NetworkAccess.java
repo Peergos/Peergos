@@ -142,12 +142,12 @@ public class NetworkAccess {
     }
 
     @JsMethod
-    public static CompletableFuture<NetworkAccess> buildJS(String pkiNodeId, boolean isPublic) {
+    public static CompletableFuture<NetworkAccess> buildJS(String pkiNodeId, boolean isPublic, String prefix) {
         Multihash pkiServerNodeId = Cid.decode(pkiNodeId);
         System.setOut(new ConsolePrintStream());
         System.setErr(new ConsolePrintStream());
-        JavaScriptPoster relative = new JavaScriptPoster(false, isPublic);
-        JavaScriptPoster absolute = new JavaScriptPoster(true, true);
+        JavaScriptPoster relative = new JavaScriptPoster(false, isPublic, prefix);
+        JavaScriptPoster absolute = new JavaScriptPoster(true, true, prefix);
 
         return isPeergosServer(relative)
                 .thenApply(isPeergosServer -> new Pair<>(isPeergosServer ? relative : absolute, isPeergosServer))
