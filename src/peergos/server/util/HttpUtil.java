@@ -19,6 +19,21 @@ public class HttpUtil {
         return true;
     }
 
+    /**
+     * @return true if handled
+     */
+    public static boolean handleCors(HttpExchange exchange) throws IOException {
+        exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
+
+        if (exchange.getRequestMethod().equalsIgnoreCase("OPTIONS")) {
+            exchange.getResponseHeaders().add("Access-Control-Allow-Methods", "GET, OPTIONS");
+            exchange.getResponseHeaders().add("Access-Control-Allow-Headers", "Content-Type");
+            exchange.sendResponseHeaders(204, -1);
+            return true;
+        }
+        return false;
+    }
+
     /** Parse a url query string ignoring encoding
      *
      * @param query

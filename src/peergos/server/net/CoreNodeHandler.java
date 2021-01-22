@@ -43,6 +43,8 @@ public class CoreNodeHandler implements HttpHandler
         String method = subComponents[0];
 
         try {
+            if (HttpUtil.handleCors(exchange))
+                return;
             if (! HttpUtil.allowedQuery(exchange, isPublicServer)) {
                 exchange.sendResponseHeaders(405, 0);
                 return;

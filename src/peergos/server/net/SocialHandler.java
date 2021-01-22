@@ -49,6 +49,8 @@ public class SocialHandler implements HttpHandler {
 
         PublicKeyHash owner = PublicKeyHash.fromString(last.apply("owner"));
         try {
+            if (HttpUtil.handleCors(exchange))
+                return;
             if (! HttpUtil.allowedQuery(exchange, isPublicServer)) {
                 exchange.sendResponseHeaders(405, 0);
                 return;

@@ -55,6 +55,8 @@ public class DHTHandler implements HttpHandler {
         long t1 = System.currentTimeMillis();
         String path = httpExchange.getRequestURI().getPath();
         try {
+            if (HttpUtil.handleCors(httpExchange))
+                return;
             if (! HttpUtil.allowedQuery(httpExchange, isPublicServer)) {
                 httpExchange.sendResponseHeaders(405, 0);
                 return;

@@ -42,6 +42,8 @@ public class SpaceHandler implements HttpHandler {
 
         Cborable result;
         try {
+            if (HttpUtil.handleCors(exchange))
+                return;
             if (! HttpUtil.allowedQuery(exchange, isPublicServer)) {
                 exchange.sendResponseHeaders(405, 0);
                 return;

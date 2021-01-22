@@ -36,6 +36,8 @@ public class AdminHandler implements HttpHandler {
 
         Cborable reply;
         try {
+            if (HttpUtil.handleCors(exchange))
+                return;
             if (! HttpUtil.allowedQuery(exchange, isPublicServer)) {
                 exchange.sendResponseHeaders(405, 0);
                 return;
