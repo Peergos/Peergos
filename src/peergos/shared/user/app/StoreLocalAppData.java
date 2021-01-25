@@ -9,11 +9,11 @@ import java.util.concurrent.*;
  */
 public interface StoreLocalAppData {
 
-    CompletableFuture<List<String>> dirInternal(Path relativePath);
+    CompletableFuture<List<String>> dirInternal(Path relativePath, String username);
 
-    CompletableFuture<byte[]> readInternal(Path relativePath);
+    CompletableFuture<byte[]> readInternal(Path relativePath, String username);
 
-    CompletableFuture<Boolean> writeInternal(Path relativePath, byte[] data);
+    CompletableFuture<Boolean> writeInternal(Path relativePath, byte[] data, String username);
 
-    CompletableFuture<Boolean> deleteInternal(Path relativePath);
+    CompletableFuture<Boolean> deleteInternal(Path relativePath, String username);
 }

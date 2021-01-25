@@ -47,10 +47,12 @@ public class App implements StoreLocalAppData {
 
     @JsMethod
     public static CompletableFuture<App> init(UserContext ctx, String appName) {
-        App app = new App(ctx, Paths.get(ctx.username, APPS_DIR_NAME, appName, DATA_DIR_NAME));
+        Path path = Paths.get(ctx.username == null ? "<guest>" : ctx.username, APPS_DIR_NAME, appName, DATA_DIR_NAME);
+        App app = new App(ctx, path);
         Path appPath = Paths.get(APPS_DIR_NAME, appName, DATA_DIR_NAME);
-        return ctx.getUserRoot()
-                .thenCompose(root -> root.getOrMkdirs(appPath, ctx.network, true, ctx.crypto))
+        return ctx.username == null ? Futures.of(app) :
+                ctx.getUserRoot()
+                .thenCompose(root -> root.getOrMkdirs(appPath, ctx.network, false, ctx.crypto))
                 .thenApply(appDir -> app);
     }
 
@@ -58,6 +60,15 @@ public class App implements StoreLocalAppData {
         String pathAsString = path.toString().trim();
         Path relativePath = pathAsString.startsWith("/") ? Paths.get(pathAsString.substring(1)) : Paths.get(pathAsString);
         return appDataDirectory.resolve(relativePath);
+    }
+    private Path fullPathShared(String username,Path path) {
+        String pathAsString = path.toString().trim();
+        Path relativePath = pathAsString.startsWith("/") ? Paths.get(pathAsString.substring(1)) : Paths.get(pathAsString);
+
+        String stem = appDataDirectory.toString();
+        String fullDirectory = username + stem.substring(stem.indexOf('/')) + "/" + relativePath;
+        Path appPath = Paths.get(fullDirectory);
+        return appPath;
     }
 
     private CompletableFuture<Boolean> writeFileContents(Path path, byte[] data) {
@@ -71,10 +82,10 @@ public class App implements StoreLocalAppData {
     }
 
     @JsMethod
-    public CompletableFuture<byte[]> readInternal(Path relativePath) {
-        return readFileContents(fullPath(relativePath));
+    public CompletableFuture<byte[]> readInternal(Path relativePath, String username) {
+        Path path = username == null || username.equals(ctx.username) ? fullPath(relativePath) : fullPathShared(username, relativePath);
+        return readFileContents(path);
     }
-
     private CompletableFuture<byte[]> readFileContents(Path path) {
         return ctx.getByPath(path).thenCompose(optFile -> {
             if(optFile.isEmpty()) {
@@ -88,13 +99,13 @@ public class App implements StoreLocalAppData {
     }
 
     @JsMethod
-    public CompletableFuture<Boolean> writeInternal(Path relativePath, byte[] data) {
-        return writeFileContents(fullPath(relativePath), data);
+    public CompletableFuture<Boolean> writeInternal(Path relativePath, byte[] data, String username) {
+        Path path = username == null || username.equals(ctx.username) ? fullPath(relativePath) : fullPathShared(username, relativePath);
+        return writeFileContents(path, data);
     }
-
     @JsMethod
-    public CompletableFuture<Boolean> deleteInternal(Path relativePath) {
-        Path path = fullPath(relativePath);
+    public CompletableFuture<Boolean> deleteInternal(Path relativePath, String username) {
+        Path path = username == null || username.equals(ctx.username) ? fullPath(relativePath) : fullPathShared(username, relativePath);
         return ctx.getByPath(path.getParent()).thenCompose(dirOpt -> {
             if(dirOpt.isEmpty()) {
                 throw new IllegalStateException("File not found:" + path.toString());
@@ -106,10 +117,9 @@ public class App implements StoreLocalAppData {
                     file.get().remove(dir, pathToFile, ctx).thenApply(fw -> true));
         });
     }
-
     @JsMethod
-    public CompletableFuture<List<String>> dirInternal(Path relativePath) {
-        Path path = fullPath(relativePath);
+    public CompletableFuture<List<String>> dirInternal(Path relativePath, String username) {
+        Path path = username == null || username.equals(ctx.username) ? fullPath(relativePath) : fullPathShared(username, relativePath);
         return ctx.getByPath(path).thenCompose(dirOpt -> {
             if(dirOpt.isEmpty()) {
                 return Futures.of(Collections.emptyList());
