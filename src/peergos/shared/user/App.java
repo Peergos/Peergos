@@ -9,6 +9,7 @@ import peergos.shared.util.Serialize;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -46,21 +47,26 @@ public class App implements StoreAppData {
 
     @JsMethod
     public static CompletableFuture<App> init(UserContext ctx, String appName) {
-        Path path = Paths.get(APPS_DIR_NAME, appName, DATA_DIR_NAME);
-        App app = new App(ctx, path);
+        Path appDataDir = Paths.get(APPS_DIR_NAME, appName, DATA_DIR_NAME);
+        App app = new App(ctx, appDataDir);
         return ctx.username == null ? Futures.of(app) :
                 ctx.getUserRoot()
-                .thenCompose(root -> root.getOrMkdirs(path, ctx.network, true, ctx.crypto))
+                .thenCompose(root -> root.getOrMkdirs(appDataDir, ctx.network, true, ctx.crypto))
                 .thenApply(appDir -> app);
     }
 
     private void validatePath(Path path) {
-        String pathAsString = path.toString().trim();
-        if (pathAsString.contains("..")) {
-            throw new IllegalStateException("Path element .. not allowed!");
-        }
+        String pathAsString = path.toString().trim().replace('\\', '/');
         if (pathAsString.startsWith("//")) {
             throw new IllegalStateException("Path must be relative!");
+        }
+        List<String> parts = Arrays.stream(pathAsString.split("/"))
+                .filter(s -> pathAsString.length() > 0)
+                .collect(Collectors.toList());
+        for (int i = 0; i < parts.size() -1; i++) {
+            if (pathAsString.contains("..")) {
+                throw new IllegalStateException("Path element .. not allowed!");
+            }
         }
     }
 
