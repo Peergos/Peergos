@@ -40,7 +40,7 @@ public class FriendSourcedTrieNode implements TrieNode {
      * @param network
      * @return Any new capabilities from the friend and the previously processed size of caps in bytes
      */
-    public synchronized CompletableFuture<CapsDiff> ensureUptodate(Crypto crypto,
+    public synchronized CompletableFuture<Boolean> ensureUptodate(Crypto crypto,
                                                                    NetworkAccess network) {
         return cache.ensureFriendUptodate(ownerName, sharedDir, network);
     }
