@@ -63,8 +63,8 @@ public class App implements StoreAppData {
         List<String> parts = Arrays.stream(pathAsString.split("/"))
                 .filter(s -> pathAsString.length() > 0)
                 .collect(Collectors.toList());
-        for (int i = 0; i < parts.size() -1; i++) {
-            if (parts.get(i).contains("..")) {
+        for (int i = 0; i < parts.size(); i++) {
+            if (parts.get(i).equals("..")) {
                 throw new IllegalStateException("Path element .. not allowed!");
             }
         }
