@@ -28,12 +28,14 @@ public class ServerMessageHandler implements HttpHandler {
     private final CoreNode pki;
     private final ContentAddressedStorage ipfs;
     private final boolean isPublicServer;
+    private final boolean enableCors;
 
-    public ServerMessageHandler(ServerMessageStore store, CoreNode pki, ContentAddressedStorage ipfs, boolean isPublicServer) {
+    public ServerMessageHandler(ServerMessageStore store, CoreNode pki, ContentAddressedStorage ipfs, boolean isPublicServer, boolean enableCors) {
         this.store = store;
         this.pki = pki;
         this.ipfs = ipfs;
         this.isPublicServer = isPublicServer;
+        this.enableCors = enableCors;
     }
 
     public void handle(HttpExchange exchange)
@@ -51,7 +53,7 @@ public class ServerMessageHandler implements HttpHandler {
 
         Cborable result;
         try {
-            if (HttpUtil.handleCors(exchange))
+            if (enableCors && HttpUtil.handleCors(exchange))
                 return;
             if (! HttpUtil.allowedQuery(exchange, isPublicServer)) {
                 exchange.sendResponseHeaders(405, 0);
