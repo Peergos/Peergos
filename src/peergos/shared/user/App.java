@@ -52,7 +52,7 @@ public class App implements StoreLocalAppData {
         Path appPath = Paths.get(APPS_DIR_NAME, appName, DATA_DIR_NAME);
         return ctx.username == null ? Futures.of(app) :
                 ctx.getUserRoot()
-                .thenCompose(root -> root.getOrMkdirs(appPath, ctx.network, false, ctx.crypto))
+                .thenCompose(root -> root.getOrMkdirs(appPath, ctx.network, true, ctx.crypto))
                 .thenApply(appDir -> app);
     }
 
