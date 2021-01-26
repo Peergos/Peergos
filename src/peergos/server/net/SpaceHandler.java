@@ -21,10 +21,12 @@ public class SpaceHandler implements HttpHandler {
 
     private final SpaceUsage spaceUsage;
     private final boolean isPublicServer;
+    private final boolean enableCors;
 
-    public SpaceHandler(SpaceUsage spaceUsage, boolean isPublicServer) {
+    public SpaceHandler(SpaceUsage spaceUsage, boolean isPublicServer, boolean enableCors) {
         this.spaceUsage = spaceUsage;
         this.isPublicServer = isPublicServer;
+        this.enableCors = enableCors;
     }
 
     public void handle(HttpExchange exchange)
@@ -42,7 +44,7 @@ public class SpaceHandler implements HttpHandler {
 
         Cborable result;
         try {
-            if (HttpUtil.handleCors(exchange))
+            if (enableCors && HttpUtil.handleCors(exchange))
                 return;
             if (! HttpUtil.allowedQuery(exchange, isPublicServer)) {
                 exchange.sendResponseHeaders(405, 0);

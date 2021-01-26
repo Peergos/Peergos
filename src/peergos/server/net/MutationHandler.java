@@ -19,10 +19,12 @@ public class MutationHandler implements HttpHandler {
 
     private final MutablePointers mutable;
     private final boolean isPublicServer;
+    private final boolean enableCors;
 
-    public MutationHandler(MutablePointers mutable, boolean isPublicServer) {
+    public MutationHandler(MutablePointers mutable, boolean isPublicServer, boolean enableCors) {
         this.mutable = mutable;
         this.isPublicServer = isPublicServer;
+        this.enableCors = enableCors;
     }
 
     public void handle(HttpExchange exchange) throws IOException
@@ -44,7 +46,7 @@ public class MutationHandler implements HttpHandler {
         PublicKeyHash owner = PublicKeyHash.fromString(params.get("owner").get(0));
         PublicKeyHash writer = PublicKeyHash.fromString(params.get("writer").get(0));
         try {
-            if (HttpUtil.handleCors(exchange))
+            if (enableCors && HttpUtil.handleCors(exchange))
                 return;
             if (! HttpUtil.allowedQuery(exchange, isPublicServer)) {
                 exchange.sendResponseHeaders(405, 0);

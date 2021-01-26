@@ -122,7 +122,8 @@ public class UserService {
                                 boolean useWebCache,
                                 boolean isPublicServer,
                                 int connectionBacklog,
-                                int handlerPoolSize) throws IOException {
+                                int handlerPoolSize,
+                                boolean enableCors) throws IOException {
         InetAddress allInterfaces = InetAddress.getByName("::");
         if (tlsProps.isPresent())
             try {
@@ -225,17 +226,17 @@ public class UserService {
 
         addHandler.accept(Constants.DHT_URL, new DHTHandler(storage, crypto.hasher, (h, i) -> true, isPublicServer));
         addHandler.accept("/" + Constants.CORE_URL,
-                new CoreNodeHandler(this.coreNode, isPublicServer));
+                new CoreNodeHandler(this.coreNode, isPublicServer, enableCors));
         addHandler.accept("/" + Constants.SOCIAL_URL,
-                new SocialHandler(this.social, isPublicServer));
+                new SocialHandler(this.social, isPublicServer, enableCors));
         addHandler.accept("/" + Constants.MUTABLE_POINTERS_URL,
-                new MutationHandler(this.mutable, isPublicServer));
+                new MutationHandler(this.mutable, isPublicServer, enableCors));
         addHandler.accept("/" + Constants.ADMIN_URL,
-                new AdminHandler(this.controller, isPublicServer));
+                new AdminHandler(this.controller, isPublicServer, enableCors));
         addHandler.accept("/" + Constants.SPACE_USAGE_URL,
-                new SpaceHandler(this.usage, isPublicServer));
+                new SpaceHandler(this.usage, isPublicServer, enableCors));
         addHandler.accept("/" + Constants.SERVER_MESSAGE_URL,
-                new ServerMessageHandler(this.serverMessages, coreNode, storage, isPublicServer));
+                new ServerMessageHandler(this.serverMessages, coreNode, storage, isPublicServer, enableCors));
         addHandler.accept("/" + Constants.PUBLIC_FILES_URL, new PublicFileHandler(crypto.hasher, coreNode, mutable, storage));
         addHandler.accept(UI_URL, handler);
 

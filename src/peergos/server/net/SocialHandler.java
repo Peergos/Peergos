@@ -24,10 +24,12 @@ public class SocialHandler implements HttpHandler {
 
     private final SocialNetwork social;
     private final boolean isPublicServer;
+    private final boolean enableCors;
 
-    public SocialHandler(SocialNetwork social, boolean isPublicServer) {
+    public SocialHandler(SocialNetwork social, boolean isPublicServer, boolean enableCors) {
         this.social = social;
         this.isPublicServer = isPublicServer;
+        this.enableCors = enableCors;
     }
 
     public void handle(HttpExchange exchange)
@@ -49,7 +51,7 @@ public class SocialHandler implements HttpHandler {
 
         PublicKeyHash owner = PublicKeyHash.fromString(last.apply("owner"));
         try {
-            if (HttpUtil.handleCors(exchange))
+            if (enableCors && HttpUtil.handleCors(exchange))
                 return;
             if (! HttpUtil.allowedQuery(exchange, isPublicServer)) {
                 exchange.sendResponseHeaders(405, 0);

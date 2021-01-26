@@ -487,8 +487,9 @@ public class Main extends Builder {
             int handlerThreads = a.getInt("handler-threads", 50);
             boolean isPublicServer = a.getBoolean("public-server", false);
             Optional<String> basicAuth = a.getOptionalArg("basic-auth");
+            boolean enableCors = a.getBoolean("enable-cors", false);
             peergos.initAndStart(localAddress, tlsProps, basicAuth, webroot, useWebAssetCache, isPublicServer,
-                    maxConnectionQueue, handlerThreads);
+                    maxConnectionQueue, handlerThreads, enableCors);
             boolean isPkiNode = nodeId.equals(pkiServerNodeId);
             if (! isPkiNode && useIPFS) {
                 int pkiNodeSwarmPort = a.getInt("pki.node.swarm.port");

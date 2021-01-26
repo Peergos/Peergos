@@ -18,10 +18,12 @@ public class AdminHandler implements HttpHandler {
 
     private final InstanceAdmin target;
     private final boolean isPublicServer;
+    private final boolean enableCors;
 
-    public AdminHandler(InstanceAdmin target, boolean isPublicServer) {
+    public AdminHandler(InstanceAdmin target, boolean isPublicServer, boolean enableCors) {
         this.target = target;
         this.isPublicServer = isPublicServer;
+        this.enableCors = enableCors;
     }
 
     public void handle(HttpExchange exchange) {
@@ -36,7 +38,7 @@ public class AdminHandler implements HttpHandler {
 
         Cborable reply;
         try {
-            if (HttpUtil.handleCors(exchange))
+            if (enableCors && HttpUtil.handleCors(exchange))
                 return;
             if (! HttpUtil.allowedQuery(exchange, isPublicServer)) {
                 exchange.sendResponseHeaders(405, 0);

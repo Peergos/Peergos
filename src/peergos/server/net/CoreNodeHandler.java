@@ -22,10 +22,12 @@ public class CoreNodeHandler implements HttpHandler
 
     private final CoreNode coreNode;
     private final boolean isPublicServer;
+    private final boolean enableCors;
 
-    public CoreNodeHandler(CoreNode coreNode, boolean isPublicServer) {
+    public CoreNodeHandler(CoreNode coreNode, boolean isPublicServer, boolean enableCors) {
         this.coreNode = coreNode;
         this.isPublicServer = isPublicServer;
+        this.enableCors = enableCors;
     }
 
     public void handle(HttpExchange exchange)
@@ -43,7 +45,7 @@ public class CoreNodeHandler implements HttpHandler
         String method = subComponents[0];
 
         try {
-            if (HttpUtil.handleCors(exchange))
+            if (enableCors && HttpUtil.handleCors(exchange))
                 return;
             if (! HttpUtil.allowedQuery(exchange, isPublicServer)) {
                 exchange.sendResponseHeaders(405, 0);
