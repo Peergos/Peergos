@@ -5,9 +5,9 @@ import java.util.*;
 import java.util.concurrent.*;
 
 /**
- * These are available to apps that have been granted the STORE_LOCAL_APP_DATA permission
+ * These are available to apps that have been granted the STORE_APP_DATA permission
  */
-public interface StoreLocalAppData {
+public interface StoreAppData {
 
     CompletableFuture<List<String>> dirInternal(Path relativePath, String username);
 
