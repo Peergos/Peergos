@@ -64,7 +64,7 @@ public class App implements StoreAppData {
                 .filter(s -> pathAsString.length() > 0)
                 .collect(Collectors.toList());
         for (int i = 0; i < parts.size() -1; i++) {
-            if (pathAsString.contains("..")) {
+            if (parts.get(i).contains("..")) {
                 throw new IllegalStateException("Path element .. not allowed!");
             }
         }
