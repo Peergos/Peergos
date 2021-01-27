@@ -198,6 +198,46 @@ public class SocialBenchmark {
         Assert.assertTrue(afterGc < 4_000);
     }
 
+    @Test
+    public void readingSharedFiles() {
+        String username = generateUsername();
+        String password = "password";
+        Pair<UserContext, Long> initial = time(() -> ensureSignedUp(username, password, network, crypto));
+        UserContext us = initial.left;
+
+        int nFriends = 1;
+        List<Pair<String, String>> otherUsers = IntStream.range(0, nFriends)
+                .mapToObj(x -> new Pair<>(generateUsername(), password))
+                .collect(Collectors.toList());
+        List<UserContext> friends = otherUsers.stream()
+                .map(p -> ensureSignedUp(p.left, p.right, network, crypto))
+                .collect(Collectors.toList());
+
+        PeergosNetworkUtils.friendBetweenGroups(Arrays.asList(us), friends);
+
+        // Add a few files, shared read only with a random friend friend
+        int nFiles = 40;
+        for (int i=0; i < nFiles; i++) {
+            byte[] fileData = "dataaaa".getBytes();
+            String filename = "File" + i;
+            us.getUserRoot().join().uploadOrReplaceFile(filename, AsyncReader.build(fileData),
+                    fileData.length, network, crypto, x -> {}, crypto.random.randomBytes(32)).join();
+            String sharee = otherUsers.get(random.nextInt(otherUsers.size())).left;
+            us.shareReadAccessWith(Paths.get(username, filename), Collections.singleton(sharee)).join();
+        }
+
+        int reps = 100;
+        long start = System.currentTimeMillis();
+        for (int j=0; j < reps; j++) {
+            for (int i = 0; i < nFiles; i++) {
+                String name = "File" + i;
+                System.out.println("getByPath took " + time(() -> friends.get(0).getByPath(Paths.get(username, name)).join()).right);
+            }
+        }
+        long end = System.currentTimeMillis();
+        System.out.println("Took " + (end - start) + "mS");
+    }
+
     private String generateUsername() {
         return "test" + (random.nextInt() % 10000);
     }
