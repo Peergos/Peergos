@@ -33,7 +33,7 @@ Architecture talk at IPFS Lab Day:
 
 Introduction and 2020 update:
 
-[![Introduction and 2020 update](https://i.vimeocdn.com/video/1041961357.jpg?mw=480&mh=540)](https://vimeo.com/316903779)
+[![Introduction and 2020 update](https://img.youtube.com/vi/oXMqYDLKWPc/0.jpg)](https://www.youtube.com/watch?v=oXMqYDLKWPc)
 
 Introduction:
 
