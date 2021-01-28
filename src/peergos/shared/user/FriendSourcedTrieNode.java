@@ -40,7 +40,7 @@ public class FriendSourcedTrieNode implements TrieNode {
      * @param network
      * @return Any new capabilities from the friend and the previously processed size of caps in bytes
      */
-    public synchronized CompletableFuture<Boolean> ensureUptodate(Crypto crypto,
+    public synchronized CompletableFuture<CapsDiff> ensureUptodate(Crypto crypto,
                                                                    NetworkAccess network) {
         return cache.ensureFriendUptodate(ownerName, sharedDir, network);
     }
@@ -164,6 +164,11 @@ public class FriendSourcedTrieNode implements TrieNode {
         public ReadAndWriteCaps(CapabilitiesFromUser readCaps, CapabilitiesFromUser writeCaps) {
             this.readCaps = readCaps;
             this.writeCaps = writeCaps;
+        }
+
+        public static ReadAndWriteCaps empty() {
+            CapabilitiesFromUser empty = CapabilitiesFromUser.empty();
+            return new ReadAndWriteCaps(empty, empty);
         }
     }
 }
