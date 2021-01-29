@@ -1093,7 +1093,7 @@ public class UserContext {
         return processFollowRequests()
                 .thenCompose(pending -> getFollowerRoots().thenCompose(
                         followerRoots -> getFriendRoots().thenCompose(
-                                followingRoots -> getFollowers().thenCompose(
+                                followingRoots -> getFollowerNames().thenCompose(
                                         followers -> getFriendAnnotations().thenCompose(
                                                 annotations -> getGroupNameMappings().thenApply(
                                                         groups -> new SocialState(pending, followers, followerRoots, followingRoots, annotations, groups.uidToGroupName)))))));
