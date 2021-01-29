@@ -976,7 +976,7 @@ public class MultiUserTests {
 
         Set<FileWrapper> children = u2ToU1.get().getChildren(crypto.hasher, u2.network).get();
 
-        assertTrue("Browse to friend root", children.isEmpty());
+        assertTrue("Browse to friend root", children.size() == 1);
 
         SocialState u1Social = PeergosNetworkUtils.ensureSignedUp(username1, password1, network.clear(), crypto)
                 .getSocialState().get();
