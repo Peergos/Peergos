@@ -45,7 +45,6 @@ public class UserContext {
     public static final String FRIEND_ANNOTATIONS_FILE_NAME = ".annotations";
 
     public static final String ENTRY_POINTS_FROM_FRIENDS_FILENAME = ".from-friends.cborstream";
-    public static final String ENTRY_POINTS_FROM_US_FILENAME = ".from-us.cborstream";
     public static final String BLOCKED_USERNAMES_FILE = ".blocked-usernames.txt";
 
     @JsProperty
@@ -958,26 +957,22 @@ public class UserContext {
 
     @JsMethod
     public CompletableFuture<Set<FileWrapper>> getFriendRoots() {
-        List<CompletableFuture<Optional<FileWrapper>>> friendRoots = entrie.getChildNames()
-                .stream()
-                .filter(p -> !p.equals(username))
-                .map(p -> getByPath(p)).collect(Collectors.toList());
-        return Futures.combineAll(friendRoots)
-                .thenApply(set -> set.stream().filter(opt -> opt.isPresent()).map(opt -> opt.get()).collect(Collectors.toSet()));
+        return getChildren("/").thenApply(c -> c.stream()
+                .filter(f -> ! f.getName().equals(username))
+                .collect(Collectors.toSet()));
     }
 
     @JsMethod
     public CompletableFuture<Set<String>> getFollowing() {
         return getFriendRoots()
                 .thenApply(set -> set.stream()
-                        .map(froot -> froot.getOwnerName())
-                        .filter(name -> !name.equals(username))
+                        .map(FileWrapper::getOwnerName)
                         .collect(Collectors.toSet()));
     }
 
     @JsMethod
     public CompletableFuture<Set<String>> getFollowerNames() {
-        return getFollowerRoots().thenApply(m -> m.keySet());
+        return getFollowerRoots().thenApply(Map::keySet);
     }
 
     public CompletableFuture<Map<String, FileWrapper>> getFollowerRoots() {
@@ -995,20 +990,6 @@ public class UserContext {
                 .map(n -> (FriendSourcedTrieNode)n)
                 .filter(n -> ! n.ownerName.equals(username))
                 .collect(Collectors.toSet()));
-    }
-
-    private CompletableFuture<Set<String>> getFollowers() {
-        return getByPath(Paths.get(username, ENTRY_POINTS_FROM_FRIENDS_FILENAME))
-                .thenCompose(fopt -> fopt
-                        .map(f -> {
-                            Set<EntryPoint> res = new HashSet<>();
-                            return f.getInputStream(network, crypto, x -> {})
-                                    .thenCompose(reader -> reader.parseStream(EntryPoint::fromCbor, res::add, f.getSize())
-                                            .thenApply(x -> res.stream()
-                                                    .map(e -> e.ownerName)
-                                                    .filter(name -> ! name.equals(username))
-                                                    .collect(Collectors.toSet())));
-                        }).orElse(CompletableFuture.completedFuture(Collections.emptySet())));
     }
 
     public CompletableFuture<Map<String, FriendAnnotation>> getFriendAnnotations() {
@@ -1155,12 +1136,7 @@ public class UserContext {
                             return getGroupUid(SocialState.FOLLOWERS_GROUP_NAME)
                                     .thenCompose(followersUidOpt -> shareReadAccessWith(Paths.get(username,
                                             SHARED_DIR_NAME, followersUidOpt.get()), Collections.singleton(theirUsername)))
-                                    .thenCompose(x -> addExternalEntryPoint(entry))
-                                    .thenCompose(x -> retrieveAndAddEntryPointToTrie(this.entrie, entry))
-                                    .thenApply(trie -> {
-                                        this.entrie = trie;
-                                        return entry;
-                                    });
+                                    .thenApply(x -> entry);
                         }));
             } else {
                 EntryPoint entry = new EntryPoint(AbsoluteCapability.createNull(), username);
@@ -1607,7 +1583,9 @@ public class UserContext {
 
     private synchronized CompletableFuture<FileWrapper> addExternalEntryPoint(EntryPoint entry) {
         boolean isOurs = username.equals(entry.ownerName);
-        String filename = isOurs ? ENTRY_POINTS_FROM_US_FILENAME : ENTRY_POINTS_FROM_FRIENDS_FILENAME;
+        if (isOurs)
+            throw new IllegalStateException("Cannot add an entry point to your won filesystem!");
+        String filename = ENTRY_POINTS_FROM_FRIENDS_FILENAME;
         // verify owner before adding
         return entry.isValid("/" + entry.ownerName, network)
                 .thenCompose(valid -> valid ?
@@ -1697,9 +1675,8 @@ public class UserContext {
                             return getGroupUid(SocialState.FOLLOWERS_GROUP_NAME)
                                     .thenCompose(followersUidOpt -> shareReadAccessWith(Paths.get(username,
                                             SHARED_DIR_NAME, followersUidOpt.get()), Collections.singleton(theirName)))
-                                    .thenCompose(x -> addExternalEntryPoint(entryWeSentToThem))
                                     .thenCompose(x -> network.social.removeFollowRequest(signer.publicKeyHash, signer.secret.signMessage(p.cipher.serialize())))
-                                    .thenCompose(x -> retrieveAndAddEntryPointToTrie(trie, entryWeSentToThem));
+                                    .thenApply(x -> trie);
                         } else {
                             // they accepted and reciprocated
                             // add entry point to static data to signify their acceptance
@@ -1717,10 +1694,8 @@ public class UserContext {
                                     .thenCompose(x -> getGroupUid(SocialState.FRIENDS_GROUP_NAME)
                                             .thenCompose(friendsUidOpt -> shareReadAccessWith(Paths.get(username,
                                                     SHARED_DIR_NAME, friendsUidOpt.get()), Collections.singleton(theirName))))
-                                    .thenCompose(x -> addExternalEntryPoint(entryWeSentToThem))
-                                    .thenCompose(x -> retrieveAndAddEntryPointToTrie(trie, entryWeSentToThem))
-                                    .thenCompose(newRoot -> NetworkAccess.getLatestEntryPoint(entry, network)
-                                            .thenCompose(r -> addToStatic.apply(newRoot.put(r.getPath(), r.entry), p.withEntryPoint(r.entry))))
+                                    .thenCompose(x -> NetworkAccess.getLatestEntryPoint(entry, network)
+                                            .thenCompose(r -> addToStatic.apply(trie.put(r.getPath(), r.entry), p.withEntryPoint(r.entry))))
                                     .exceptionally(t -> trie);
                         }
                     };
