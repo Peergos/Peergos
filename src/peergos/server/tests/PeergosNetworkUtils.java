@@ -366,7 +366,7 @@ public class PeergosNetworkUtils {
 
         FileWrapper friend = sharee.getByPath(Paths.get(sharer.username)).join().get();
         Set<FileWrapper> friendChildren = friend.getChildren(crypto.hasher, sharee.network).join();
-        Assert.assertEquals(friendChildren.size(), 1);
+        Assert.assertEquals(friendChildren.size(), 2);
     }
 
     public static void sharedwithPermutations(NetworkAccess sharerNode, Random rnd) throws Exception {
@@ -1006,7 +1006,7 @@ public class PeergosNetworkUtils {
         // check 'a' can't see the shared directory
         FileWrapper unsharedLocation = a.getByPath(sharer.username).join().get();
         Set<FileWrapper> children = unsharedLocation.getChildren(crypto.hasher, sharer.network).join();
-        Assert.assertTrue("a can't see unshared folder", children.isEmpty());
+        Assert.assertTrue("a can't see unshared folder", children.stream().filter(c -> c.getName().equals(folderName)).findFirst().isEmpty());
     }
 
     public static void grantAndRevokeWriteThenReadAccessToFolder(NetworkAccess network, Random random) throws IOException {
@@ -1059,7 +1059,7 @@ public class PeergosNetworkUtils {
         // check 'a' can't see the shared directory
         unsharedLocation = a.getByPath(sharer.username).join().get();
         children = unsharedLocation.getChildren(crypto.hasher, sharer.network).join();
-        Assert.assertTrue("a can't see unshared folder", children.isEmpty());
+        Assert.assertTrue("a can't see unshared folder", children.stream().filter(c -> c.getName().equals(folderName)).findFirst().isEmpty());
     }
 
     
