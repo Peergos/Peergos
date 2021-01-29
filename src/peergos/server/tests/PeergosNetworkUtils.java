@@ -1210,7 +1210,8 @@ public class PeergosNetworkUtils {
 
         // check 'a' can see the shared file in their social feed
         SocialFeed feed = a.getSocialFeed().join();
-        List<SharedItem> items = feed.getShared(0, 1, a.crypto, a.network).join();
+        int feedSize = 3;
+        List<SharedItem> items = feed.getShared(feedSize, feedSize + 1, a.crypto, a.network).join();
         Assert.assertTrue(items.size() > 0);
         SharedItem item = items.get(0);
         Assert.assertTrue(item.owner.equals(sharer.username));
@@ -1222,7 +1223,7 @@ public class PeergosNetworkUtils {
         // Test the feed after a fresh login
         UserContext freshA = PeergosNetworkUtils.ensureSignedUp(a.username, password, network, crypto);
         SocialFeed freshFeed = freshA.getSocialFeed().join();
-        List<SharedItem> freshItems = freshFeed.getShared(0, 1, a.crypto, a.network).join();
+        List<SharedItem> freshItems = freshFeed.getShared(feedSize, feedSize + 1, a.crypto, a.network).join();
         Assert.assertTrue(freshItems.size() > 0);
         SharedItem freshItem = freshItems.get(0);
         Assert.assertTrue(freshItem.equals(item));
@@ -1232,7 +1233,7 @@ public class PeergosNetworkUtils {
         uploadAndShare(fileData, file2, sharer, a.username);
 
         SocialFeed updatedFeed = freshFeed.update().join();
-        List<SharedItem> items2 = updatedFeed.getShared(1, 2, a.crypto, a.network).join();
+        List<SharedItem> items2 = updatedFeed.getShared(feedSize + 1, feedSize + 2, a.crypto, a.network).join();
         Assert.assertTrue(items2.size() > 0);
         SharedItem item2 = items2.get(0);
         Assert.assertTrue(item2.owner.equals(sharer.username));
@@ -1259,7 +1260,7 @@ public class PeergosNetworkUtils {
 
         // now check feed
         SocialFeed updatedFeed3 = freshFeed.update().join();
-        List<SharedItem> items3 = updatedFeed3.getShared(2, 3, a.crypto, a.network).join();
+        List<SharedItem> items3 = updatedFeed3.getShared(feedSize + 2, feedSize + 3, a.crypto, a.network).join();
         Assert.assertTrue(items3.size() > 0);
         SharedItem item3 = items3.get(0);
         Assert.assertTrue(item3.owner.equals(sharer.username));
@@ -1299,7 +1300,7 @@ public class PeergosNetworkUtils {
 
         SocialFeed feed = sharee.getSocialFeed().join();
         List<SharedItem> items = feed.getShared(0, 1000, sharee.crypto, sharee.network).join();
-        Assert.assertTrue(items.size() == 2);
+        Assert.assertTrue(items.size() == 3 + 2);
 
         sharee.getUserRoot().join().mkdir("mine", sharee.network, false, sharer.crypto).join();
     }
@@ -1327,20 +1328,20 @@ public class PeergosNetworkUtils {
 
         SocialFeed feed = sharee.getSocialFeed().join();
         List<SharedItem> items = feed.getShared(0, 1000, sharee.crypto, sharee.network).join();
-        Assert.assertTrue(items.size() == 2);
+        Assert.assertTrue(items.size() == 3 + 2);
 
         sharee = PeergosNetworkUtils.ensureSignedUp(sharee.username, password, network, crypto);
         sharee.getUserRoot().join().mkdir("mine", sharer.network, false, sharer.crypto).join();
 
         feed = sharee.getSocialFeed().join();
         items = feed.getShared(0, 1000, sharee.crypto, sharee.network).join();
-        Assert.assertTrue(items.size() == 2);
+        Assert.assertTrue(items.size() == 3 + 2);
 
         //When attempting this in the web-ui the below call results in a failure when loading timeline entry
         //Cannot seek to position 680 in file of length 340
         feed = sharee.getSocialFeed().join();
         items = feed.getShared(0, 1000, sharee.crypto, sharee.network).join();
-        Assert.assertTrue(items.size() == 2);
+        Assert.assertTrue(items.size() == 3 + 2);
     }
 
     public static void socialFeedEmpty(NetworkAccess network, Random random) {
