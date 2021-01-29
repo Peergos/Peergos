@@ -984,6 +984,7 @@ public class UserContext {
         return getSharingFolder()
                 .thenCompose(sharing -> sharing.getChildren(crypto.hasher, network))
                 .thenApply(children -> children.stream()
+                        .filter(c -> ! c.getName().startsWith(".") && ! c.getName().startsWith(GROUPS_FILENAME))
                         .collect(Collectors.toMap(e -> e.getFileProperties().name, e -> e)));
     }
 

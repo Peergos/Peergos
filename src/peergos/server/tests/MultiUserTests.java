@@ -1039,6 +1039,9 @@ public class MultiUserTests {
         assertTrue("Friend root present after accepted follow request", u1Tou2.isPresent());
         assertTrue("Friend root not present after non reciprocated follow request", !u2Tou1.isPresent());
 
+        Set<String> followers = u1.getFollowerNames().join();
+        assertTrue(followers.contains(u2.username));
+
         // Now test them trying to become full friends after u1 unfollowing u2
         u1.unfollow(u2.username).join();
         u1.sendInitialFollowRequest(u2.username).join();
