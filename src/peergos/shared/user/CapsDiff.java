@@ -50,7 +50,9 @@ public class CapsDiff {
     }
 
     public boolean isEmpty() {
-        return newCaps.readCaps.getBytesRead() == 0 && newCaps.writeCaps.getBytesRead() == 0;
+        return newCaps.readCaps.getBytesRead() == 0 &&
+                newCaps.writeCaps.getBytesRead() == 0 &&
+                groupDiffs.values().stream().allMatch(CapsDiff::isEmpty);
     }
 
     public long updatedReadBytes() {

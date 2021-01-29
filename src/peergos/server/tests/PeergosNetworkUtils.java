@@ -1043,7 +1043,7 @@ public class PeergosNetworkUtils {
         // check 'a' can't see the shared directory
         FileWrapper unsharedLocation = a.getByPath(sharer.username).join().get();
         Set<FileWrapper> children = unsharedLocation.getChildren(crypto.hasher, sharer.network).join();
-        Assert.assertTrue("a can't see unshared folder", children.isEmpty());
+        Assert.assertTrue("a can't see unshared folder", children.stream().filter(c -> c.getName().equals(folderName)).findFirst().isEmpty());
 
 
         sharer.shareReadAccessWithAll(sharer.getByPath(dirPath).join().get(), dirPath
@@ -1379,7 +1379,7 @@ public class PeergosNetworkUtils {
 
         SocialFeed feed = a.getSocialFeed().join();
         List<SharedItem> items = feed.getShared(0, 1000, a.crypto, a.network).join();
-        Assert.assertTrue(items.size() == 2);
+        Assert.assertTrue(items.size() == 3 + 2);
 
         //Add another file and share
         String dir3 = "three";
@@ -1390,8 +1390,7 @@ public class PeergosNetworkUtils {
 
         feed = a.getSocialFeed().join().update().join();
         items = feed.getShared(0, 1000, a.crypto, a.network).join();
-        Assert.assertTrue(items.size() == 3);
-
+        Assert.assertTrue(items.size() == 3 + 3);
     }
 
     public static void groupSharing(NetworkAccess network, Random random) {
@@ -1436,7 +1435,7 @@ public class PeergosNetworkUtils {
         Assert.assertTrue(dir2.isEmpty());
 
         // new friends
-        List<UserContext> newFriends = getUserContextsForNode(network.clear(), random, 1, Arrays.asList(password, password));
+        List<UserContext> newFriends = getUserContextsForNode(network, random, 1, Arrays.asList(password, password));
         UserContext newFriend = newFriends.get(0);
 
         // friend sharer with others
@@ -1452,7 +1451,7 @@ public class PeergosNetworkUtils {
         String password = "notagoodone";
         UserContext sharer = PeergosNetworkUtils.ensureSignedUp(generateUsername(random), password, network, crypto);
 
-        List<UserContext> shareeUsers = getUserContextsForNode(network.clear(), random, 2, Arrays.asList(password, password));
+        List<UserContext> shareeUsers = getUserContextsForNode(network, random, 2, Arrays.asList(password, password));
         UserContext friend = shareeUsers.get(0);
 
         // make others follow sharer

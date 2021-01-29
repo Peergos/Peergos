@@ -378,8 +378,10 @@ public class IncomingCapCache {
                     byte[] current = latestPointer.get();
                     Pair<byte[], CapsDiff> cached = pointerCache.get(writer);
                     boolean equal = cached != null && Arrays.equals(current, cached.left);
-                    if (equal)
-                        return Futures.of(cached.right);
+                    if (equal) {
+                        if (cached.right.groupDiffs.size() == groups.size())
+                            return Futures.of(cached.right);
+                    }
 
                     return getAndUpdateRoot(network)
                             .thenCompose(root -> root.getDescendentByPath(friend + FRIEND_STATE_SUFFIX, hasher, network)
@@ -408,7 +410,8 @@ public class IncomingCapCache {
                         (d, e) -> NetworkAccess.getLatestEntryPoint(e, network)
                                 .thenCompose(sharedDir -> retrieveNewCaps(e,
                                         current.groups.getOrDefault(sharedDir.file.getName(), ProcessedCaps.empty()), network, crypto)
-                                .thenApply(diff -> d.mergeGroups(current.createGroupDiff(sharedDir.file.getName(), diff)))),
+                                        .thenApply(diff -> d.mergeGroups(current.createGroupDiff(sharedDir.file.getName(), diff))))
+                                .exceptionally(t -> d),
                         (a, b) -> a.mergeGroups(b)));
     }
 
@@ -417,7 +420,12 @@ public class IncomingCapCache {
                                                                NetworkAccess network,
                                                                Crypto crypto) {
         return NetworkAccess.getLatestEntryPoint(sharingDir, network)
-                .thenCompose(sharedDir ->retrieveNewCaps(sharedDir, current.readCapBytes, current.writeCapBytes, network, crypto));
+                .thenCompose(sharedDir ->retrieveNewCaps(sharedDir, current.readCapBytes, current.writeCapBytes, network, crypto))
+                .exceptionally(t -> {
+                    // we might have been removed from a group or similar
+                    t.printStackTrace();
+                    return CapsDiff.empty();
+                });
     }
 
     private static CompletableFuture<CapsDiff> retrieveNewCaps(RetrievedEntryPoint sharedDir,
@@ -440,6 +448,7 @@ public class IncomingCapCache {
                                                                     ProcessedCaps current,
                                                                     Crypto crypto,
                                                                     NetworkAccess network) {
+        System.out.println("***** ICC.ensureUptodate(" + groups.size());
         // check there are no new capabilities in the friend's shared directory, or any of their groups
         return getCapsFrom(friend, originalSharedDir, groups, current, network)
                 .thenCompose(diff -> addNewCapsToMirror(friend, current, diff, network))
