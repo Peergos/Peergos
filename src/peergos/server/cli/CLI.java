@@ -557,7 +557,7 @@ public class CLI implements Runnable {
                         "http://",
                         "https://",
                         "https://beta.peergos.net",
-                        "http://localhost"))
+                        "http://localhost:8000"))
                 .build();
 
         String address = reader.readLine("Enter Server address \n > ").trim();
@@ -575,19 +575,33 @@ public class CLI implements Runnable {
         writer.println("Enter username");
         String username = reader.readLine(PROMPT).trim();
 
-        writer.println("Enter password for '" + username + "'");
-        String password = reader.readLine(PROMPT, PASSWORD_MASK);
-
         NetworkAccess networkAccess = Builder.buildJavaNetworkAccess(serverURL, serverURL.getHost().equals("localhost")).join();
         Consumer<String> progressConsumer =  msg -> {
             writer.println(msg);
             writer.flush();
             return;
         };
-        UserContext userContext = UserContext.signIn(username, password, networkAccess, CRYPTO, progressConsumer).join();
-        return new CLIContext(userContext, serverURL.toString(), username);
-    }
 
+        boolean isRegistered = networkAccess.isUsernameRegistered(username).join();
+        if (! isRegistered) {
+            writer.println("To create account, enter password");
+            String password = reader.readLine(PROMPT, PASSWORD_MASK);
+            writer.println("Re-enter password");
+            String password2 = reader.readLine(PROMPT, PASSWORD_MASK);
+            if (! password.equals(password2)) {
+                writer.println("Passwords don't match!");
+                System.exit(0);
+            }
+
+            UserContext userContext = UserContext.signUp(username, password, "", networkAccess, CRYPTO, progressConsumer).join();
+            return new CLIContext(userContext, serverURL.toString(), username);
+        } else {
+            writer.println("Enter password for '" + username + "'");
+            String password = reader.readLine(PROMPT, PASSWORD_MASK);
+            UserContext userContext = UserContext.signIn(username, password, networkAccess, CRYPTO, progressConsumer).join();
+            return new CLIContext(userContext, serverURL.toString(), username);
+        }
+    }
 
     public static Terminal buildTerminal() {
         try {
