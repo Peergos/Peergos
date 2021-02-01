@@ -31,6 +31,7 @@ public class IncomingCapCache {
     private static final String DIR_STATE = "items.cbor";
 
     private FileWrapper cacheRoot, worldRoot;
+    private final Map<PublicKeyHash, Triple<byte[], Long, Long>> pointerCache;
     private final Crypto crypto;
     private final Hasher hasher;
 
@@ -39,6 +40,7 @@ public class IncomingCapCache {
         this.worldRoot = worldRoot;
         this.crypto = crypto;
         this.hasher = crypto.hasher;
+        this.pointerCache = new HashMap<>();
     }
 
     public static CompletableFuture<IncomingCapCache> build(FileWrapper cacheRoot, Crypto crypto, NetworkAccess network) {
@@ -362,16 +364,34 @@ public class IncomingCapCache {
         return worldRoot.version;
     }
 
-    public CompletableFuture<CapsDiff> ensureFriendUptodate(String friend, EntryPoint sharedDir, NetworkAccess network) {
-        return getAndUpdateRoot(network)
-                .thenCompose(root -> root.getDescendentByPath(friend + FRIEND_STATE_SUFFIX, hasher, network)
-                        .thenCompose(stateOpt -> {
-                            if (stateOpt.isEmpty())
-                                return Futures.of(ProcessedCaps.empty());
-                            return Serialize.readFully(stateOpt.get(), crypto, network)
-                                    .thenApply(arr -> ProcessedCaps.fromCbor(CborObject.fromByteArray(arr)));
-                        }))
-                .thenCompose(currentState -> ensureUptodate(friend, sharedDir, currentState, crypto, network));
+    public synchronized CompletableFuture<CapsDiff> ensureFriendUptodate(String friend, EntryPoint sharedDir, NetworkAccess network) {
+        // if the friend's mutable pointer hasn't changed since our last update we can short circuit early
+        PublicKeyHash owner = sharedDir.pointer.owner;
+        PublicKeyHash writer = sharedDir.pointer.writer;
+        return network.mutable.getPointer(owner, writer)
+                .thenCompose(latestPointer -> {
+                    if (latestPointer.isEmpty())
+                        throw new IllegalStateException("Couldn't get pointer for directory of " + friend);
+                    byte[] current = latestPointer.get();
+                    Triple<byte[], Long, Long> cached = pointerCache.get(writer);
+                    boolean equal = cached != null && Arrays.equals(current, cached.left);
+                    if (equal)
+                        return Futures.of(new CapsDiff(cached.middle, cached.right, FriendSourcedTrieNode.ReadAndWriteCaps.empty()));
+
+                    return getAndUpdateRoot(network)
+                            .thenCompose(root -> root.getDescendentByPath(friend + FRIEND_STATE_SUFFIX, hasher, network)
+                                    .thenCompose(stateOpt -> {
+                                        if (stateOpt.isEmpty())
+                                            return Futures.of(ProcessedCaps.empty());
+                                        return Serialize.readFully(stateOpt.get(), crypto, network)
+                                                .thenApply(arr -> ProcessedCaps.fromCbor(CborObject.fromByteArray(arr)));
+                                    }))
+                            .thenCompose(currentState -> ensureUptodate(friend, sharedDir, currentState, crypto, network))
+                            .thenApply(res -> {
+                                pointerCache.put(writer, new Triple<>(latestPointer.get(), res.updatedReadBytes(), res.updatedWriteBytes()));
+                                return res;
+                            });
+                });
     }
 
     public CompletableFuture<CapsDiff> getCapsFrom(String friend,
@@ -419,6 +439,8 @@ public class IncomingCapCache {
                                                            ProcessedCaps current,
                                                            CapsDiff diff,
                                                            NetworkAccess network) {
+        if (diff.isEmpty())
+            return Futures.of(diff);
         List<CapabilityWithPath> readCaps = diff.newCaps.readCaps.getRetrievedCapabilities();
         List<CapabilityWithPath> writeCaps = diff.newCaps.writeCaps.getRetrievedCapabilities();
         List<CapabilityWithPath> all = Stream.concat(readCaps.stream(), writeCaps.stream())

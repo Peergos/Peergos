@@ -165,5 +165,10 @@ public class FriendSourcedTrieNode implements TrieNode {
             this.readCaps = readCaps;
             this.writeCaps = writeCaps;
         }
+
+        public static ReadAndWriteCaps empty() {
+            CapabilitiesFromUser empty = CapabilitiesFromUser.empty();
+            return new ReadAndWriteCaps(empty, empty);
+        }
     }
 }
