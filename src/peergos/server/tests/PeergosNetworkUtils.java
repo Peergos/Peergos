@@ -1478,6 +1478,41 @@ public class PeergosNetworkUtils {
         Assert.assertTrue(dir2.isEmpty());
     }
 
+    public static void groupReadIndividualWrite(NetworkAccess network, Random random) {
+        CryptreeNode.setMaxChildLinkPerBlob(10);
+
+        String password = "notagoodone";
+        UserContext sharer = PeergosNetworkUtils.ensureSignedUp(generateUsername(random), password, network, crypto);
+
+        List<UserContext> shareeUsers = getUserContextsForNode(network.clear(), random, 2, Arrays.asList(password, password));
+        UserContext friend = shareeUsers.get(0);
+
+        // friend sharer with others
+        friendBetweenGroups(Arrays.asList(sharer), shareeUsers);
+        String dirName = "one";
+        sharer.getUserRoot().join().mkdir(dirName, sharer.network, false, sharer.crypto).join();
+
+        Path dirToShare1 = Paths.get(sharer.username, dirName);
+        SocialState social = sharer.getSocialState().join();
+        String friends = social.getFriendsGroupUid();
+        sharer.shareReadAccessWithAll(sharer.getByPath(dirToShare1).join().get(), dirToShare1, Set.of(friends)).join();
+
+        FileSharedWithState fileSharedWithState = sharer.sharedWith(dirToShare1).join();
+        Assert.assertTrue(fileSharedWithState.readAccess.size() == 1);
+        Assert.assertTrue(fileSharedWithState.readAccess.contains(friends));
+
+        sharer.shareWriteAccessWith(dirToShare1, Set.of(friend.username)).join();
+
+        Optional<FileWrapper> dir = friend.getByPath(dirToShare1).join();
+        Assert.assertTrue(dir.isPresent() && dir.get().isWritable());
+
+        Optional<FileWrapper> home = friend.getByPath(Paths.get(sharer.username)).join();
+        Assert.assertTrue(home.isPresent());
+
+        Optional<FileWrapper> dirViaGetChild = home.get().getChild(dirName, sharer.crypto.hasher, sharer.network).join();
+        Assert.assertTrue(dirViaGetChild.isPresent() && dirViaGetChild.get().isWritable());
+    }
+
     public static List<Set<AbsoluteCapability>> getAllChildCapsByChunk(FileWrapper dir, NetworkAccess network) {
         return getAllChildCapsByChunk(dir.getPointer().capability, dir.getPointer().fileAccess, dir.version, network);
     }

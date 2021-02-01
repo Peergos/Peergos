@@ -111,7 +111,7 @@ public class IncomingCapCache {
                             Stream.of(updatedChild))
                             .collect(Collectors.toList())));
                 }
-                if (current.sharers.equals(Arrays.asList(sharer))) {
+                if (current.sharers.equals(Arrays.asList(sharer)) && ! current.cap.isWritable()) {
                     ChildElement updatedChild = new ChildElement(name, cap, current.sharers);
                     return Futures.of(new CapsInDirectory(Stream.concat(remainder.stream(),
                             Stream.of(updatedChild))
