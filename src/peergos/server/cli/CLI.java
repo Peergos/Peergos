@@ -584,7 +584,8 @@ public class CLI implements Runnable {
 
         boolean isRegistered = networkAccess.isUsernameRegistered(username).join();
         if (! isRegistered) {
-            writer.println("To create account, enter password");
+            writer.println("To create account, enter password,");
+            writer.println("we recommend a random alphanumeric password longer than 12 characters");
             String password = reader.readLine(PROMPT, PASSWORD_MASK);
             writer.println("Re-enter password");
             String password2 = reader.readLine(PROMPT, PASSWORD_MASK);
