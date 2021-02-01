@@ -281,8 +281,8 @@ public class IncomingCapCache {
                                 .thenApply(CapsInDirectory::fromCbor)
                                 .thenCompose(caps -> Futures.findFirst(caps.children,
                                         c -> network.retrieveEntryPoint(new EntryPoint(c.cap, ownerName))))
-                                .thenCompose(fileOpt -> fileOpt.map(f -> f.retrieveParent(network))
-                                        .orElseGet(recurse));
+                                .thenCompose(fileOpt -> Futures.asyncExceptionally(() -> fileOpt.map(f -> f.retrieveParent(network))
+                                        .orElseGet(recurse), t -> recurse.get()));
                     return recurse.get();
                 });
     }
