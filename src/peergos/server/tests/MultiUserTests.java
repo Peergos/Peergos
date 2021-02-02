@@ -211,7 +211,7 @@ public class MultiUserTests {
 
         TriFunction<UserContext, Path, String[], CompletableFuture<Boolean>> unshareFunction =
                 (u1, dirToShare, usersToRemove) ->
-                        u1.unShareReadAccessGroupAware(u1.getByPath(dirToShare).join().get(), usersToRemove);
+                        u1.unShareReadAccess(u1.getByPath(dirToShare).join().get(), usersToRemove);
 
         TriFunction<UserContext, Path, FileSharedWithState, Integer> resultFunc =
                 (u1, dirToShare, fileSharedWithState) -> u1.sharedWith(dirToShare).join().readAccess.size();
@@ -226,7 +226,7 @@ public class MultiUserTests {
                         u1.shareWriteAccessWithAll(dirToShare, usersToAdd);
         TriFunction<UserContext, Path, String[], CompletableFuture<Boolean>> unshareFunction =
                 (u1, dirToShare, usersToRemove) ->
-                        u1.unShareWriteAccessGroupAware(u1.getByPath(dirToShare).join().get(), usersToRemove);
+                        u1.unShareWriteAccess(u1.getByPath(dirToShare).join().get(), usersToRemove);
         TriFunction<UserContext, Path, FileSharedWithState, Integer> resultFunc =
                 (u1, dirToShare, fileSharedWithState) -> u1.sharedWith(dirToShare).join().writeAccess.size();
 

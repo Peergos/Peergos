@@ -1379,16 +1379,37 @@ public class UserContext {
                                 new IllegalStateException("Could not find path " + path.toString())), path, Collections.singleton(followersGroupUid))));
     }
 
+    /**
+     * Remove read access to a file for the supplied readers.
+     * The readers can include the inbuilt friend groupUid and followers groupUid
+     * If the friend group is supplied - in addition to removing read access for the friend group, all individual friends that currently have read access will lose read access
+     * If the followers group is supplied - in addition to removing read access for the follower group AND friend group all individual users that currently have read access will lose read access
+     *
+     * @param file - The file
+     * @param readers - The usernames to lose read access
+     * @return
+     */
     @JsMethod
     public CompletableFuture<Boolean> unShareReadAccess(FileWrapper file, String[] readers) {
-        Set<String> readersToUnShare = new HashSet<>(Arrays.asList(readers));
-        return file.getPath(network).thenCompose(pathString ->
-                unShareReadAccess(Paths.get(pathString), readersToUnShare)
-        );
+        List<String> readersToUnShare = Arrays.asList(readers);
+        return file.getPath(network).thenCompose(pathString -> {
+            //does list of readers include groups?
+            if (readersToUnShare.stream().filter(i -> i.startsWith(".")).findFirst().isPresent()) {
+                return getSocialState().thenCompose(social -> sharedWith(Paths.get(pathString))
+                        .thenCompose(fileSharingState -> {
+                            List<String> currentReadAccess = new ArrayList<>(fileSharingState.readAccess);
+                            Set<String> allReadersToUnShare = gatherAllUsernamesToUnshare(social, currentReadAccess, Arrays.asList(readers));
+                            return unShareReadAccess(Paths.get(pathString), allReadersToUnShare);
+                        }));
+            } else {
+                return unShareReadAccess(Paths.get(pathString), new HashSet<>(readersToUnShare));
+            }
+        });
     }
 
     /*
         Taking into account currently shared users/groups and users/groups selected for unsharing, build a list that is group aware
+        Note: Only inbuilt groups of friends and followers are currently handled
      */
     private Set<String> gatherAllUsernamesToUnshare(SocialState social,
                                                     List<String> currentSharedWithUsernames, List<String> usernamesToUnshare) {
@@ -1421,36 +1442,32 @@ public class UserContext {
         return new HashSet<>(usersToUnshare);
     }
 
-    @JsMethod
-    public CompletableFuture<Boolean> unShareReadAccessGroupAware(FileWrapper file, String[] readers) {
-        return file.getPath(network).thenCompose(pathString ->
-                getSocialState().thenCompose(social -> sharedWith(Paths.get(pathString))
-                        .thenCompose(fileSharingState -> {
-                            List<String> currentReadAccess = new ArrayList<>(fileSharingState.readAccess);
-                            Set<String> readersToUnShare = gatherAllUsernamesToUnshare(social, currentReadAccess, Arrays.asList(readers));
-                            return unShareReadAccess(Paths.get(pathString), readersToUnShare);
-                        }))
-        );
-    }
-
+    /**
+     * Remove write access to a file for the supplied writers.
+     * The writers can include the inbuilt friend groupUid and followers groupUid
+     * If the friend group is supplied - in addition to removing write access for the friend group, all individual friends that currently have write access will lose write access
+     * If the followers group is supplied - in addition to removing write access for the follower group AND friend group all individual users that currently have write access will lose write access
+     *
+     * @param file - The file
+     * @param writers - The usernames to lose write access
+     * @return
+     */
     @JsMethod
     public CompletableFuture<Boolean> unShareWriteAccess(FileWrapper file, String[] writers) {
-        Set<String> writersToUnShare = new HashSet<>(Arrays.asList(writers));
-        return file.getPath(network).thenCompose(pathString ->
-                unShareWriteAccess(Paths.get(pathString), writersToUnShare)
-        );
-    }
-
-    @JsMethod
-    public CompletableFuture<Boolean> unShareWriteAccessGroupAware(FileWrapper file, String[] writers) {
-        return file.getPath(network).thenCompose(pathString ->
-                getSocialState().thenCompose(social -> sharedWith(Paths.get(pathString))
+        List<String> writersToUnShare = Arrays.asList(writers);
+        return file.getPath(network).thenCompose(pathString -> {
+            //does list of writers include groups?
+            if (writersToUnShare.stream().filter(i -> i.startsWith(".")).findFirst().isPresent()) {
+                return getSocialState().thenCompose(social -> sharedWith(Paths.get(pathString))
                         .thenCompose(fileSharingState -> {
                             List<String> currentWriteAccess = new ArrayList<>(fileSharingState.writeAccess);
-                            Set<String> writersToUnShare = gatherAllUsernamesToUnshare(social, currentWriteAccess, Arrays.asList(writers));
-                            return unShareWriteAccess(Paths.get(pathString), writersToUnShare);
-                        }))
-        );
+                            Set<String> allWritersToUnShare = gatherAllUsernamesToUnshare(social, currentWriteAccess, Arrays.asList(writers));
+                            return unShareWriteAccess(Paths.get(pathString), allWritersToUnShare);
+                        }));
+            } else {
+                return unShareWriteAccess(Paths.get(pathString), new HashSet<>(writersToUnShare));
+            }
+        });
     }
 
     public CompletableFuture<Boolean> shareReadAccessWith(Path path, Set<String> readersToAdd) {
