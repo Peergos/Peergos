@@ -337,7 +337,7 @@ public class PeergosNetworkUtils {
         sharer.shareWriteAccessWith(dirPath, Collections.singleton(sharee.username)).join();
 
         // no revoke write access to dir
-        sharer.unShareWriteAccess(dirPath, Collections.singleton(sharee.username)).join();
+        sharer.unShareWriteAccess(dirPath, sharee.username).join();
 
         // check sharee can't read the dir
         Optional<FileWrapper> sharedDir = sharee.getByPath(dirPath).join();
@@ -404,11 +404,11 @@ public class PeergosNetworkUtils {
         result = sharer.sharedWith(p).join();
         Assert.assertTrue(result.readAccess.size() == 1 && result.writeAccess.size() == 1);
 
-        sharer.unShareReadAccess(p, Set.of(sharee.username)).join();
+        sharer.unShareReadAccess(p, sharee.username).join();
         result = sharer.sharedWith(p).join();
         Assert.assertTrue(result.readAccess.size() == 0 && result.writeAccess.size() == 1);
 
-        sharer.unShareWriteAccess(p, Set.of(sharee2.username)).join();
+        sharer.unShareWriteAccess(p, sharee2.username).join();
         result = sharer.sharedWith(p).join();
         Assert.assertTrue(result.readAccess.size() == 0 && result.writeAccess.size() == 0);
 
@@ -422,7 +422,7 @@ public class PeergosNetworkUtils {
         result = sharer.sharedWith(p).join();
         Assert.assertTrue(result.readAccess.size() == 1 && result.writeAccess.size() == 1);
 
-        sharer.unShareWriteAccess(p, Set.of(sharee2.username)).join();
+        sharer.unShareWriteAccess(p, sharee2.username).join();
         result = sharer.sharedWith(p).join();
         Assert.assertTrue(result.readAccess.size() == 1 && result.writeAccess.size() == 0);
 
@@ -509,7 +509,7 @@ public class PeergosNetworkUtils {
         file.rename(renamedFolderName, u1Root, p, sharer).join();
         p = Paths.get(sharerUsername, renamedFolderName);
 
-        sharer.unShareReadAccess(p, Set.of(sharee.username)).join();
+        sharer.unShareReadAccess(p, sharee.username).join();
         result = sharer.sharedWith(p).join();
         Assert.assertTrue(result.readAccess.size() == 0 && result.writeAccess.size() == 0);
 

@@ -1223,7 +1223,7 @@ public class UserContext {
         return unShareWriteAccess(path, Collections.singleton(writerToRemove));
     }
 
-    public CompletableFuture<Boolean> unShareWriteAccess(Path path, Set<String> writersToRemove) {
+    private CompletableFuture<Boolean> unShareWriteAccess(Path path, Set<String> writersToRemove) {
         // 1. Authorise new writer pair as an owned key to parent's writer
         // 2. Rotate all keys (except data keys which are marked as dirty)
         // 3. Update link from parent to point ot new rotated child
@@ -1332,7 +1332,7 @@ public class UserContext {
         );
     }
 
-    public CompletableFuture<Boolean> unShareReadAccess(Path path, Set<String> readersToRemove) {
+    private CompletableFuture<Boolean> unShareReadAccess(Path path, Set<String> readersToRemove) {
         String pathString = path.toString();
         String absolutePathString = pathString.startsWith("/") ? pathString : "/" + pathString;
         return getByPath(absolutePathString).thenCompose(opt -> {

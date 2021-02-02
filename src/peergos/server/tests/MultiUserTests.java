@@ -306,10 +306,10 @@ public class MultiUserTests {
                 reader, fileData.length, u1.network, crypto, x -> {}, u1.crypto.random.randomBytes(32)).join();
         Path filePath = Paths.get(u1.username, "subdir", "file.txt");
         FileWrapper file = u1.getByPath(filePath).join().get();
-        u1.shareWriteAccessWith(filePath, Stream.of(u2.username).collect(Collectors.toSet())).join();
-        u1.shareWriteAccessWith(filePath, Stream.of(u3.username).collect(Collectors.toSet())).join();
-        u1.shareReadAccessWith(filePath, Stream.of(u4.username).collect(Collectors.toSet())).join();
-        u1.unShareReadAccess(filePath, Stream.of(u4.username).collect(Collectors.toSet())).join();
+        u1.shareWriteAccessWith(filePath, Collections.singleton(u2.username)).join();
+        u1.shareWriteAccessWith(filePath, Collections.singleton(u3.username)).join();
+        u1.shareReadAccessWith(filePath, Collections.singleton(u4.username)).join();
+        u1.unShareReadAccess(filePath, u4.username).join();
 
         // check u1 can log in
         UserContext freshContext = PeergosNetworkUtils.ensureSignedUp(u1.username, "a", network.clear(), crypto);
