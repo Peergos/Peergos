@@ -13,6 +13,7 @@ import peergos.shared.user.fs.FileWrapper;
 import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.ArrayOps;
 import peergos.shared.util.Serialize;
+import peergos.shared.util.TriFunction;
 
 import java.io.File;
 import java.io.IOException;
@@ -1511,6 +1512,41 @@ public class PeergosNetworkUtils {
 
         Optional<FileWrapper> dirViaGetChild = home.get().getChild(dirName, sharer.crypto.hasher, sharer.network).join();
         Assert.assertTrue(dirViaGetChild.isPresent() && dirViaGetChild.get().isWritable());
+    }
+
+    public static void groupAwareSharing(NetworkAccess network, Random random,
+                                         TriFunction<UserContext, Path, Set<String>, CompletableFuture<Boolean>> shareFunction,
+                                         TriFunction<UserContext, Path, String[], CompletableFuture<Boolean>> unshareFunction,
+                                         TriFunction<UserContext, Path, FileSharedWithState, Integer> resultFunc) {
+        CryptreeNode.setMaxChildLinkPerBlob(10);
+        String password = "notagoodone";
+        UserContext sharer = PeergosNetworkUtils.ensureSignedUp(generateUsername(random), password, network, crypto);
+        UserContext shareeFriend = PeergosNetworkUtils.ensureSignedUp(generateUsername(random), password, network, crypto);
+        UserContext shareeFollower = PeergosNetworkUtils.ensureSignedUp(generateUsername(random), password, network, crypto);
+
+        followBetweenGroups(Arrays.asList(sharer), Arrays.asList(shareeFollower));
+        friendBetweenGroups(Arrays.asList(sharer), Arrays.asList(shareeFriend));
+
+        String dir1 = "one";
+        sharer.getUserRoot().join().mkdir(dir1, sharer.network, false, sharer.crypto).join();
+        Path dirToShare1 = Paths.get(sharer.username, dir1);
+        SocialState social = sharer.getSocialState().join();
+        String followers = social.getFollowersGroupUid();
+        String friends = social.getFriendsGroupUid();
+
+        shareFunction.apply(sharer, dirToShare1, Set.of(shareeFriend.username)).join();
+        shareFunction.apply(sharer, dirToShare1, Set.of(shareeFollower.username)).join();
+        shareFunction.apply(sharer, dirToShare1, Set.of(followers)).join();
+        shareFunction.apply(sharer, dirToShare1, Set.of(friends)).join();
+
+        FileSharedWithState fileSharedWithState = sharer.sharedWith(dirToShare1).join();
+        Assert.assertTrue(resultFunc.apply(sharer, dirToShare1, fileSharedWithState) == 4);
+
+        String[] usersToRemove = new String[] {friends, followers};
+        unshareFunction.apply(sharer, dirToShare1, usersToRemove).join();
+
+        fileSharedWithState = sharer.sharedWith(dirToShare1).join();
+        Assert.assertTrue(resultFunc.apply(sharer, dirToShare1, fileSharedWithState) == 0);
     }
 
     public static List<Set<AbsoluteCapability>> getAllChildCapsByChunk(FileWrapper dir, NetworkAccess network) {

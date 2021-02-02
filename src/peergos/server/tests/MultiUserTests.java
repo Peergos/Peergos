@@ -204,6 +204,36 @@ public class MultiUserTests {
     }
 
     @Test
+    public void groupAwareSharingReadAccess() {
+        TriFunction<UserContext, Path, Set<String>, CompletableFuture<Boolean>> shareFunction =
+                (u1, dirToShare, usersToAdd) ->
+                        u1.shareReadAccessWithAll(u1.getByPath(dirToShare).join().get(), dirToShare, usersToAdd);
+
+        TriFunction<UserContext, Path, String[], CompletableFuture<Boolean>> unshareFunction =
+                (u1, dirToShare, usersToRemove) ->
+                        u1.unShareReadAccessGroupAware(u1.getByPath(dirToShare).join().get(), usersToRemove);
+
+        TriFunction<UserContext, Path, FileSharedWithState, Integer> resultFunc =
+                (u1, dirToShare, fileSharedWithState) -> u1.sharedWith(dirToShare).join().readAccess.size();
+
+        PeergosNetworkUtils.groupAwareSharing(network, random, shareFunction, unshareFunction, resultFunc);
+    }
+
+    @Test
+    public void groupAwareSharingWriteAccess() {
+        TriFunction<UserContext, Path, Set<String>, CompletableFuture<Boolean>> shareFunction =
+                (u1, dirToShare, usersToAdd) ->
+                        u1.shareWriteAccessWithAll(dirToShare, usersToAdd);
+        TriFunction<UserContext, Path, String[], CompletableFuture<Boolean>> unshareFunction =
+                (u1, dirToShare, usersToRemove) ->
+                        u1.unShareWriteAccessGroupAware(u1.getByPath(dirToShare).join().get(), usersToRemove);
+        TriFunction<UserContext, Path, FileSharedWithState, Integer> resultFunc =
+                (u1, dirToShare, fileSharedWithState) -> u1.sharedWith(dirToShare).join().writeAccess.size();
+
+        PeergosNetworkUtils.groupAwareSharing(network, random, shareFunction, unshareFunction, resultFunc);
+    }
+
+    @Test
     public void safeCopyOfFriendsReadAccess() throws Exception {
         TriFunction<UserContext, UserContext, String, CompletableFuture<Boolean>> readAccessSharingFunction =
                 (u1, u2, filename) ->
