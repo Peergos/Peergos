@@ -1332,20 +1332,43 @@ public class UserContext {
         );
     }
 
-    private CompletableFuture<Boolean> unShareReadAccess(Path path, Set<String> readersToRemove) {
-        String pathString = path.toString();
-        String absolutePathString = pathString.startsWith("/") ? pathString : "/" + pathString;
-        return getByPath(absolutePathString).thenCompose(opt -> {
-            FileWrapper toUnshare = opt.orElseThrow(() -> new IllegalStateException("Specified un-shareWith path " + absolutePathString + " does not exist"));
-            // now change to new base keys, clean some keys and mark others as dirty
-            return getByPath(path.getParent().toString())
-                    .thenCompose(parent -> rotateAllKeys(toUnshare, parent.get(), false)
-                            .thenCompose(markedDirty -> {
-                                return sharedWithCache.removeSharedWith(SharedWithCache.Access.READ, path, readersToRemove)
-                                        .thenCompose(b -> reSendAllWriteAccessRecursive(path))
-                                        .thenCompose(b -> reSendAllReadAccessRecursive(path));
-                            }));
-        });
+    /**
+     * Remove read access to a file for the supplied readers.
+     * The readers can include the inbuilt friend groupUid and followers groupUid
+     * If the friend group is supplied - in addition to removing read access for the friend group,
+     * all individual friends that currently have read access will lose read access
+     * If the followers group is supplied - in addition to removing read access for the follower group AND friend
+     * group all individual users that currently have read access will lose read access
+     *
+     * @param path - The path to the file/dir to revoke access to
+     * @param initialReadersToRemove - The usernames or groupUids to revoke read access to
+     * @return
+     */
+    private CompletableFuture<Boolean> unShareReadAccess(Path path, Set<String> initialReadersToRemove) {
+        //does list of readers include groups?
+        boolean hasGroups = initialReadersToRemove.stream().anyMatch(i -> i.startsWith("."));
+        return (hasGroups ?
+                getSocialState().thenCompose(social -> sharedWith(path)
+                        .thenApply(fileSharingState -> {
+                            Set<String> currentReadAccess = fileSharingState.readAccess;
+                            return gatherAllUsernamesToUnshare(social, currentReadAccess, initialReadersToRemove);
+                        })) :
+                Futures.of(initialReadersToRemove))
+                .thenCompose(readersToRemove -> {
+                    String pathString = path.toString();
+                    String absolutePathString = pathString.startsWith("/") ? pathString : "/" + pathString;
+                    return getByPath(absolutePathString).thenCompose(opt -> {
+                        FileWrapper toUnshare = opt.orElseThrow(() -> new IllegalStateException("Specified un-shareWith path " + absolutePathString + " does not exist"));
+                        // now change to new base keys, clean some keys and mark others as dirty
+                        return getByPath(path.getParent().toString())
+                                .thenCompose(parent -> rotateAllKeys(toUnshare, parent.get(), false)
+                                        .thenCompose(markedDirty -> {
+                                            return sharedWithCache.removeSharedWith(SharedWithCache.Access.READ, path, readersToRemove)
+                                                    .thenCompose(b -> reSendAllWriteAccessRecursive(path))
+                                                    .thenCompose(b -> reSendAllReadAccessRecursive(path));
+                                        }));
+                    });
+                });
     }
 
     @JsMethod
@@ -1379,32 +1402,10 @@ public class UserContext {
                                 new IllegalStateException("Could not find path " + path.toString())), path, Collections.singleton(followersGroupUid))));
     }
 
-    /**
-     * Remove read access to a file for the supplied readers.
-     * The readers can include the inbuilt friend groupUid and followers groupUid
-     * If the friend group is supplied - in addition to removing read access for the friend group, all individual friends that currently have read access will lose read access
-     * If the followers group is supplied - in addition to removing read access for the follower group AND friend group all individual users that currently have read access will lose read access
-     *
-     * @param file - The file
-     * @param readers - The usernames to lose read access
-     * @return
-     */
     @JsMethod
-    public CompletableFuture<Boolean> unShareReadAccess(FileWrapper file, String[] readers) {
+    public CompletableFuture<Boolean> unShareReadAccess(Path file, String[] readers) {
         Set<String> readersToUnShare = new HashSet<>(Arrays.asList(readers));
-        return file.getPath(network).thenCompose(pathString -> {
-            //does list of readers include groups?
-            if (readersToUnShare.stream().anyMatch(i -> i.startsWith("."))) {
-                return getSocialState().thenCompose(social -> sharedWith(Paths.get(pathString))
-                        .thenCompose(fileSharingState -> {
-                            Set<String> currentReadAccess = fileSharingState.readAccess;
-                            Set<String> allReadersToUnShare = gatherAllUsernamesToUnshare(social, currentReadAccess, readersToUnShare);
-                            return unShareReadAccess(Paths.get(pathString), allReadersToUnShare);
-                        }));
-            } else {
-                return unShareReadAccess(Paths.get(pathString), new HashSet<>(readersToUnShare));
-            }
-        });
+        return unShareReadAccess(file, new HashSet<>(readersToUnShare));
     }
 
     /*
