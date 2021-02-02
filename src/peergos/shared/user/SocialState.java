@@ -54,7 +54,7 @@ public class SocialState {
     }
 
     public Set<String> getFriends() {
-        HashSet<String> res = new HashSet<>(getFriends());
+        HashSet<String> res = new HashSet<>(getFollowing());
         res.retainAll(getFollowers());
         return res;
     }
