@@ -1391,14 +1391,14 @@ public class UserContext {
      */
     @JsMethod
     public CompletableFuture<Boolean> unShareReadAccess(FileWrapper file, String[] readers) {
-        List<String> readersToUnShare = Arrays.asList(readers);
+        Set<String> readersToUnShare = new HashSet<>(Arrays.asList(readers));
         return file.getPath(network).thenCompose(pathString -> {
             //does list of readers include groups?
-            if (readersToUnShare.stream().filter(i -> i.startsWith(".")).findFirst().isPresent()) {
+            if (readersToUnShare.stream().anyMatch(i -> i.startsWith("."))) {
                 return getSocialState().thenCompose(social -> sharedWith(Paths.get(pathString))
                         .thenCompose(fileSharingState -> {
-                            List<String> currentReadAccess = new ArrayList<>(fileSharingState.readAccess);
-                            Set<String> allReadersToUnShare = gatherAllUsernamesToUnshare(social, currentReadAccess, Arrays.asList(readers));
+                            Set<String> currentReadAccess = fileSharingState.readAccess;
+                            Set<String> allReadersToUnShare = gatherAllUsernamesToUnshare(social, currentReadAccess, readersToUnShare);
                             return unShareReadAccess(Paths.get(pathString), allReadersToUnShare);
                         }));
             } else {
@@ -1412,34 +1412,35 @@ public class UserContext {
         Note: Only inbuilt groups of friends and followers are currently handled
      */
     private Set<String> gatherAllUsernamesToUnshare(SocialState social,
-                                                    List<String> currentSharedWithUsernames, List<String> usernamesToUnshare) {
+                                                    Set<String> currentSharedWithUsernames,
+                                                    Set<String> usernamesToUnshare) {
 
-        List<String> followerNames = social.followerRoots.keySet().stream().collect(Collectors.toList());
-        List<String> followeeNames = social.followingRoots.stream().map(f -> f.getFileProperties().name).collect(Collectors.toList());
-        List<String> friendNames = followerNames.stream().filter(x -> followeeNames.contains(x)).collect(Collectors.toList());
+        Set<String> followers = social.getFollowers();
+        Set<String> following = social.getFollowing();
+        Set<String> friends = social.getFriends();
 
         String friendGroupUid = social.getFriendsGroupUid();
         String followersGroupUid = social.getFollowersGroupUid();
 
-        List<String> usersToUnshare = new ArrayList<>(usernamesToUnshare);
-        if (usernamesToUnshare.indexOf(friendGroupUid) > -1) {
+        Set<String> usersToUnshare = new HashSet<>(usernamesToUnshare);
+        if (usernamesToUnshare.contains(friendGroupUid)) {
             for (String name : currentSharedWithUsernames) {
-                if (usersToUnshare.indexOf(name) == -1 && friendNames.indexOf(name) > -1) {
+                if (! usersToUnshare.contains(name) && friends.contains(name)) {
                     usersToUnshare.add(name);
                 }
             }
         }
-        if (usernamesToUnshare.indexOf(followersGroupUid) > -1) {
+        if (usernamesToUnshare.contains(followersGroupUid)) {
             for (String name: currentSharedWithUsernames) {
-                if (usersToUnshare.indexOf(name) == -1 && followerNames.indexOf(name) > -1) {
+                if (! usersToUnshare.contains(name) && followers.contains(name)) {
                     usersToUnshare.add(name);
                 }
             }
-            if (currentSharedWithUsernames.indexOf(friendGroupUid) > -1) {
+            if (currentSharedWithUsernames.contains(friendGroupUid)) {
                 usersToUnshare.add(friendGroupUid);
             }
         }
-        return new HashSet<>(usersToUnshare);
+        return usersToUnshare;
     }
 
     /**
@@ -1454,18 +1455,18 @@ public class UserContext {
      */
     @JsMethod
     public CompletableFuture<Boolean> unShareWriteAccess(FileWrapper file, String[] writers) {
-        List<String> writersToUnShare = Arrays.asList(writers);
+        Set<String> writersToUnShare = new HashSet<>(Arrays.asList(writers));
         return file.getPath(network).thenCompose(pathString -> {
             //does list of writers include groups?
-            if (writersToUnShare.stream().filter(i -> i.startsWith(".")).findFirst().isPresent()) {
+            if (writersToUnShare.stream().anyMatch(i -> i.startsWith("."))) {
                 return getSocialState().thenCompose(social -> sharedWith(Paths.get(pathString))
                         .thenCompose(fileSharingState -> {
-                            List<String> currentWriteAccess = new ArrayList<>(fileSharingState.writeAccess);
-                            Set<String> allWritersToUnShare = gatherAllUsernamesToUnshare(social, currentWriteAccess, Arrays.asList(writers));
+                            Set<String> currentWriteAccess = fileSharingState.writeAccess;
+                            Set<String> allWritersToUnShare = gatherAllUsernamesToUnshare(social, currentWriteAccess, writersToUnShare);
                             return unShareWriteAccess(Paths.get(pathString), allWritersToUnShare);
                         }));
             } else {
-                return unShareWriteAccess(Paths.get(pathString), new HashSet<>(writersToUnShare));
+                return unShareWriteAccess(Paths.get(pathString), writersToUnShare);
             }
         });
     }

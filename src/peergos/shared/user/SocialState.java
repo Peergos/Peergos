@@ -45,6 +45,20 @@ public class SocialState {
                 .collect(Collectors.toMap(e -> e.getValue(), e -> e.getKey()));
     }
 
+    public Set<String> getFollowers() {
+        return followerRoots.keySet();
+    }
+
+    public Set<String> getFollowing() {
+        return followingRoots.stream().map(f -> f.getFileProperties().name).collect(Collectors.toSet());
+    }
+
+    public Set<String> getFriends() {
+        HashSet<String> res = new HashSet<>(getFriends());
+        res.retainAll(getFollowers());
+        return res;
+    }
+
     public String getFriendsGroupUid() {
         return groupNameToUid.get(FRIENDS_GROUP_NAME);
     }
