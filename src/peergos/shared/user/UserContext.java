@@ -122,80 +122,6 @@ public class UserContext {
         return transactions;
     }
 
-    @JsMethod
-    public CompletableFuture<Boolean> unShareReadAccess(FileWrapper file, String[] readers) {
-        Set<String> readersToUnShare = new HashSet<>(Arrays.asList(readers));
-        return file.getPath(network).thenCompose(pathString ->
-                unShareReadAccess(Paths.get(pathString), readersToUnShare)
-        );
-    }
-
-    /*
-        Taking into account currently shared users/groups and users/groups selected for unsharing, build a list that is group aware
-     */
-    private Set<String> gatherAllUsernamesToUnshare(SocialState social,
-                                                List<String> currentSharedWithUsernames, List<String> usernamesToUnshare) {
-
-        List<String> followerNames = social.followerRoots.keySet().stream().collect(Collectors.toList());
-        List<String> followeeNames = social.followingRoots.stream().map(f -> f.getFileProperties().name).collect(Collectors.toList());
-        List<String> friendNames = followerNames.stream().filter(x -> followeeNames.contains(x)).collect(Collectors.toList());
-
-        String friendGroupUid = social.getFriendsGroupUid();
-        String followersGroupUid = social.getFollowersGroupUid();
-
-        List<String> usersToUnshare = new ArrayList<>(usernamesToUnshare);
-        if (usernamesToUnshare.indexOf(friendGroupUid) > -1) {
-            for (String name : currentSharedWithUsernames) {
-                if (usersToUnshare.indexOf(name) == -1 && friendNames.indexOf(name) > -1) {
-                    usersToUnshare.add(name);
-                }
-            }
-        }
-        if (usernamesToUnshare.indexOf(followersGroupUid) > -1) {
-            for (String name: currentSharedWithUsernames) {
-                if (usersToUnshare.indexOf(name) == -1 && followerNames.indexOf(name) > -1) {
-                    usersToUnshare.add(name);
-                }
-            }
-            if (currentSharedWithUsernames.indexOf(friendGroupUid) > -1) {
-                usersToUnshare.add(friendGroupUid);
-            }
-        }
-        return new HashSet<>(usersToUnshare);
-    }
-
-    @JsMethod
-    public CompletableFuture<Boolean> unShareReadAccessGroupAware(FileWrapper file, String[] readers) {
-        return file.getPath(network).thenCompose(pathString ->
-            getSocialState().thenCompose(social -> sharedWith(Paths.get(pathString))
-                .thenCompose(fileSharingState -> {
-                    List<String> currentReadAccess = new ArrayList<>(fileSharingState.readAccess);
-                    Set<String> readersToUnShare = gatherAllUsernamesToUnshare(social, currentReadAccess, Arrays.asList(readers));
-                    return unShareReadAccess(Paths.get(pathString), readersToUnShare);
-                }))
-        );
-    }
-
-    @JsMethod
-    public CompletableFuture<Boolean> unShareWriteAccess(FileWrapper file, String[] writers) {
-        Set<String> writersToUnShare = new HashSet<>(Arrays.asList(writers));
-        return file.getPath(network).thenCompose(pathString ->
-                unShareWriteAccess(Paths.get(pathString), writersToUnShare)
-        );
-    }
-
-    @JsMethod
-    public CompletableFuture<Boolean> unShareWriteAccessGroupAware(FileWrapper file, String[] writers) {
-        return file.getPath(network).thenCompose(pathString ->
-                getSocialState().thenCompose(social -> sharedWith(Paths.get(pathString))
-                    .thenCompose(fileSharingState -> {
-                        List<String> currentWriteAccess = new ArrayList<>(fileSharingState.writeAccess);
-                        Set<String> writersToUnShare = gatherAllUsernamesToUnshare(social, currentWriteAccess, Arrays.asList(writers));
-                        return unShareWriteAccess(Paths.get(pathString), writersToUnShare);
-                    }))
-        );
-    }
-
     public static CompletableFuture<UserContext> signIn(String username, String password, NetworkAccess network
             , Crypto crypto) {
         return signIn(username, password, network, crypto, t -> {});
@@ -1451,6 +1377,80 @@ public class UserContext {
                 .thenCompose(followersGroupUid -> getByPath(path.toString())
                         .thenCompose(file -> shareReadAccessWithAll(file.orElseThrow(() ->
                                 new IllegalStateException("Could not find path " + path.toString())), path, Collections.singleton(followersGroupUid))));
+    }
+
+    @JsMethod
+    public CompletableFuture<Boolean> unShareReadAccess(FileWrapper file, String[] readers) {
+        Set<String> readersToUnShare = new HashSet<>(Arrays.asList(readers));
+        return file.getPath(network).thenCompose(pathString ->
+                unShareReadAccess(Paths.get(pathString), readersToUnShare)
+        );
+    }
+
+    /*
+        Taking into account currently shared users/groups and users/groups selected for unsharing, build a list that is group aware
+     */
+    private Set<String> gatherAllUsernamesToUnshare(SocialState social,
+                                                    List<String> currentSharedWithUsernames, List<String> usernamesToUnshare) {
+
+        List<String> followerNames = social.followerRoots.keySet().stream().collect(Collectors.toList());
+        List<String> followeeNames = social.followingRoots.stream().map(f -> f.getFileProperties().name).collect(Collectors.toList());
+        List<String> friendNames = followerNames.stream().filter(x -> followeeNames.contains(x)).collect(Collectors.toList());
+
+        String friendGroupUid = social.getFriendsGroupUid();
+        String followersGroupUid = social.getFollowersGroupUid();
+
+        List<String> usersToUnshare = new ArrayList<>(usernamesToUnshare);
+        if (usernamesToUnshare.indexOf(friendGroupUid) > -1) {
+            for (String name : currentSharedWithUsernames) {
+                if (usersToUnshare.indexOf(name) == -1 && friendNames.indexOf(name) > -1) {
+                    usersToUnshare.add(name);
+                }
+            }
+        }
+        if (usernamesToUnshare.indexOf(followersGroupUid) > -1) {
+            for (String name: currentSharedWithUsernames) {
+                if (usersToUnshare.indexOf(name) == -1 && followerNames.indexOf(name) > -1) {
+                    usersToUnshare.add(name);
+                }
+            }
+            if (currentSharedWithUsernames.indexOf(friendGroupUid) > -1) {
+                usersToUnshare.add(friendGroupUid);
+            }
+        }
+        return new HashSet<>(usersToUnshare);
+    }
+
+    @JsMethod
+    public CompletableFuture<Boolean> unShareReadAccessGroupAware(FileWrapper file, String[] readers) {
+        return file.getPath(network).thenCompose(pathString ->
+                getSocialState().thenCompose(social -> sharedWith(Paths.get(pathString))
+                        .thenCompose(fileSharingState -> {
+                            List<String> currentReadAccess = new ArrayList<>(fileSharingState.readAccess);
+                            Set<String> readersToUnShare = gatherAllUsernamesToUnshare(social, currentReadAccess, Arrays.asList(readers));
+                            return unShareReadAccess(Paths.get(pathString), readersToUnShare);
+                        }))
+        );
+    }
+
+    @JsMethod
+    public CompletableFuture<Boolean> unShareWriteAccess(FileWrapper file, String[] writers) {
+        Set<String> writersToUnShare = new HashSet<>(Arrays.asList(writers));
+        return file.getPath(network).thenCompose(pathString ->
+                unShareWriteAccess(Paths.get(pathString), writersToUnShare)
+        );
+    }
+
+    @JsMethod
+    public CompletableFuture<Boolean> unShareWriteAccessGroupAware(FileWrapper file, String[] writers) {
+        return file.getPath(network).thenCompose(pathString ->
+                getSocialState().thenCompose(social -> sharedWith(Paths.get(pathString))
+                        .thenCompose(fileSharingState -> {
+                            List<String> currentWriteAccess = new ArrayList<>(fileSharingState.writeAccess);
+                            Set<String> writersToUnShare = gatherAllUsernamesToUnshare(social, currentWriteAccess, Arrays.asList(writers));
+                            return unShareWriteAccess(Paths.get(pathString), writersToUnShare);
+                        }))
+        );
     }
 
     public CompletableFuture<Boolean> shareReadAccessWith(Path path, Set<String> readersToAdd) {
