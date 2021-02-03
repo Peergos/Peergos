@@ -1216,35 +1216,11 @@ public class UserContext {
     }
 
     public CompletableFuture<Boolean> unShareReadAccess(Path path, String readerToRemove) {
-        return unShareReadAccess(path, Collections.singleton(readerToRemove));
+        return unShareReadAccessWith(path, Collections.singleton(readerToRemove));
     }
 
     public CompletableFuture<Boolean> unShareWriteAccess(Path path, String writerToRemove) {
-        return unShareWriteAccess(path, Collections.singleton(writerToRemove));
-    }
-
-    private CompletableFuture<Boolean> unShareWriteAccess(Path path, Set<String> writersToRemove) {
-        // 1. Authorise new writer pair as an owned key to parent's writer
-        // 2. Rotate all keys (except data keys which are marked as dirty)
-        // 3. Update link from parent to point ot new rotated child
-        // 4. Delete old file and subtree
-        // 5. Remove old writer from parent owned keys
-        String pathString = path.toString();
-        String absolutePathString = pathString.startsWith("/") ? pathString : "/" + pathString;
-        return getByPath(path).thenCompose(opt -> {
-            FileWrapper toUnshare = opt.orElseThrow(() -> new IllegalStateException("Specified un-shareWith path "
-                    + absolutePathString + " does not exist"));
-            return getByPath(path.getParent().toString())
-                    .thenCompose(parentOpt -> {
-                        FileWrapper parent = parentOpt.get();
-                        return rotateAllKeys(toUnshare, parent, true)
-                                .thenCompose(x ->
-                                        sharedWithCache.removeSharedWith(SharedWithCache.Access.WRITE,
-                                                path, writersToRemove))
-                                .thenCompose(b -> reSendAllWriteAccessRecursive(path))
-                                .thenCompose(b -> reSendAllReadAccessRecursive(path));
-                    });
-        });
+        return unShareWriteAccessWith(path, Collections.singleton(writerToRemove));
     }
 
     private CompletableFuture<Snapshot> rotateAllKeys(FileWrapper file,
@@ -1344,15 +1320,15 @@ public class UserContext {
      * @param initialReadersToRemove - The usernames or groupUids to revoke read access to
      * @return
      */
-    private CompletableFuture<Boolean> unShareReadAccess(Path path, Set<String> initialReadersToRemove) {
+    @JsMethod
+    public CompletableFuture<Boolean> unShareReadAccessWith(Path path, Set<String> initialReadersToRemove) {
         //does list of readers include groups?
         boolean hasGroups = initialReadersToRemove.stream().anyMatch(i -> i.startsWith("."));
         return (hasGroups ?
                 getSocialState().thenCompose(social -> sharedWith(path)
-                        .thenApply(fileSharingState -> {
-                            Set<String> currentReadAccess = fileSharingState.readAccess;
-                            return gatherAllUsernamesToUnshare(social, currentReadAccess, initialReadersToRemove);
-                        })) :
+                        .thenApply(fileSharingState ->
+                            gatherAllUsernamesToUnshare(social, fileSharingState.readAccess, initialReadersToRemove)
+                        )) :
                 Futures.of(initialReadersToRemove))
                 .thenCompose(readersToRemove -> {
                     String pathString = path.toString();
@@ -1367,6 +1343,52 @@ public class UserContext {
                                                     .thenCompose(b -> reSendAllWriteAccessRecursive(path))
                                                     .thenCompose(b -> reSendAllReadAccessRecursive(path));
                                         }));
+                    });
+                });
+    }
+
+    /**
+     * Remove write access to a file for the supplied writers.
+     * The readers can include the inbuilt friend groupUid and followers groupUid
+     * If the friend group is supplied - in addition to removing write access for the friend group,
+     * all individual friends that currently have write access will lose write access
+     * If the followers group is supplied - in addition to removing write access for the follower group AND friend
+     * group all individual users that currently have write access will lose write access
+     *
+     * @param path - The path to the file/dir to revoke access to
+     * @param initialWritersToRemove - The usernames or groupUids to revoke write access to
+     * @return
+     */
+    @JsMethod
+    public CompletableFuture<Boolean> unShareWriteAccessWith(Path path, Set<String> initialWritersToRemove) {
+        //does list of readers include groups?
+        boolean hasGroups = initialWritersToRemove.stream().anyMatch(i -> i.startsWith("."));
+        return (hasGroups ?
+                getSocialState().thenCompose(social -> sharedWith(path)
+                        .thenApply(fileSharingState ->
+                            gatherAllUsernamesToUnshare(social, fileSharingState.writeAccess, initialWritersToRemove)
+                        )) :
+                Futures.of(initialWritersToRemove))
+                .thenCompose(writersToRemove -> {
+                    // 1. Authorise new writer pair as an owned key to parent's writer
+                    // 2. Rotate all keys (except data keys which are marked as dirty)
+                    // 3. Update link from parent to point to new rotated child
+                    // 4. Delete old file and subtree
+                    // 5. Remove old writer from parent owned keys
+                    String pathString = path.toString();
+                    String absolutePathString = pathString.startsWith("/") ? pathString : "/" + pathString;
+                    return getByPath(absolutePathString).thenCompose(opt -> {
+                        FileWrapper toUnshare = opt.orElseThrow(() -> new IllegalStateException("Specified un-shareWith path " + absolutePathString + " does not exist"));
+                        return getByPath(path.getParent().toString())
+                                .thenCompose(parentOpt -> {
+                                    FileWrapper parent = parentOpt.get();
+                                    return rotateAllKeys(toUnshare, parent, true)
+                                            .thenCompose(x ->
+                                                    sharedWithCache.removeSharedWith(SharedWithCache.Access.WRITE,
+                                                            path, writersToRemove))
+                                            .thenCompose(b -> reSendAllWriteAccessRecursive(path))
+                                            .thenCompose(b -> reSendAllReadAccessRecursive(path));
+                                });
                     });
                 });
     }
@@ -1389,7 +1411,7 @@ public class UserContext {
         return getSocialState()
                 .thenApply(s -> s.getFriendsGroupUid())
                 .thenCompose(friendsGroupUid -> getByPath(path.toString())
-                        .thenCompose(file -> shareReadAccessWithAll(file.orElseThrow(() ->
+                        .thenCompose(file -> shareReadAccessWith(file.orElseThrow(() ->
                                 new IllegalStateException("Could not find path " + path.toString())), path, Collections.singleton(friendsGroupUid))));
     }
 
@@ -1398,14 +1420,8 @@ public class UserContext {
         return getSocialState()
                 .thenApply(s -> s.getFollowersGroupUid())
                 .thenCompose(followersGroupUid -> getByPath(path.toString())
-                        .thenCompose(file -> shareReadAccessWithAll(file.orElseThrow(() ->
+                        .thenCompose(file -> shareReadAccessWith(file.orElseThrow(() ->
                                 new IllegalStateException("Could not find path " + path.toString())), path, Collections.singleton(followersGroupUid))));
-    }
-
-    @JsMethod
-    public CompletableFuture<Boolean> unShareReadAccess(Path file, String[] readers) {
-        Set<String> readersToUnShare = new HashSet<>(Arrays.asList(readers));
-        return unShareReadAccess(file, new HashSet<>(readersToUnShare));
     }
 
     /*
@@ -1444,55 +1460,14 @@ public class UserContext {
         return usersToUnshare;
     }
 
-    /**
-     * Remove write access to a file for the supplied writers.
-     * The writers can include the inbuilt friend groupUid and followers groupUid
-     * If the friend group is supplied - in addition to removing write access for the friend group, all individual friends that currently have write access will lose write access
-     * If the followers group is supplied - in addition to removing write access for the follower group AND friend group all individual users that currently have write access will lose write access
-     *
-     * @param file - The file
-     * @param writers - The usernames to lose write access
-     * @return
-     */
     @JsMethod
-    public CompletableFuture<Boolean> unShareWriteAccess(FileWrapper file, String[] writers) {
-        Set<String> writersToUnShare = new HashSet<>(Arrays.asList(writers));
-        return file.getPath(network).thenCompose(pathString -> {
-            //does list of writers include groups?
-            if (writersToUnShare.stream().anyMatch(i -> i.startsWith("."))) {
-                return getSocialState().thenCompose(social -> sharedWith(Paths.get(pathString))
-                        .thenCompose(fileSharingState -> {
-                            Set<String> currentWriteAccess = fileSharingState.writeAccess;
-                            Set<String> allWritersToUnShare = gatherAllUsernamesToUnshare(social, currentWriteAccess, writersToUnShare);
-                            return unShareWriteAccess(Paths.get(pathString), allWritersToUnShare);
-                        }));
-            } else {
-                return unShareWriteAccess(Paths.get(pathString), writersToUnShare);
-            }
-        });
-    }
-
     public CompletableFuture<Boolean> shareReadAccessWith(Path path, Set<String> readersToAdd) {
         if (readersToAdd.isEmpty())
             return Futures.of(true);
 
         return getByPath(path.toString())
-                .thenCompose(file -> shareReadAccessWithAll(file.orElseThrow(() ->
+                .thenCompose(file -> shareReadAccessWith(file.orElseThrow(() ->
                         new IllegalStateException("Could not find path " + path.toString())), path, readersToAdd));
-    }
-
-    public CompletableFuture<Boolean> shareWriteAccessWith(Path fileToShare, Set<String> writersToAdd) {
-        return getByPath(fileToShare.getParent().toString())
-                .thenCompose(parent -> {
-                    if (! parent.isPresent())
-                        throw new IllegalStateException("Could not find path " + fileToShare.getParent().toString());
-                    return parent.get().getChild(fileToShare.getFileName().toString(), crypto.hasher, network)
-                            .thenCompose(file -> {
-                                if (! file.isPresent())
-                                    throw new IllegalStateException("Could not find path " + fileToShare.toString());
-                                return shareWriteAccessWithAll(file.get(), fileToShare, parent.get(), writersToAdd);
-                            });
-                });
     }
 
     public CompletableFuture<Boolean> reSendAllWriteAccessRecursive(Path start) {
@@ -1511,7 +1486,7 @@ public class UserContext {
                         (a, b) -> a));
     }
 
-    public CompletableFuture<Boolean> shareReadAccessWithAll(FileWrapper file, Path p, Set<String> readersToAdd) {
+    private CompletableFuture<Boolean> shareReadAccessWith(FileWrapper file, Path p, Set<String> readersToAdd) {
         ensureAllowedToShare(file, username, false);
         BiFunction<FileWrapper, FileWrapper, CompletableFuture<Boolean>> sharingFunction = (sharedDir, fileWrapper) ->
                 CapabilityStore.addReadOnlySharingLinkTo(sharedDir, fileWrapper.getPointer().capability,
@@ -1530,7 +1505,8 @@ public class UserContext {
         });
     }
 
-    public CompletableFuture<Boolean> shareWriteAccessWithAll(Path fileToShare,
+    @JsMethod
+    public CompletableFuture<Boolean> shareWriteAccessWith(Path fileToShare,
                                                                Set<String> writersToAdd) {
         return getByPath(fileToShare.getParent())
                 .thenCompose(parentOpt -> ! parentOpt.isPresent() ?
@@ -1538,10 +1514,10 @@ public class UserContext {
                 parentOpt.get().getChild(fileToShare.getFileName().toString(), crypto.hasher, network)
                         .thenCompose(fileOpt -> ! fileOpt.isPresent() ?
                                 Futures.errored(new IllegalStateException("Unable to read " + fileToShare)) :
-                                shareWriteAccessWithAll(fileOpt.get(), fileToShare, parentOpt.get(), writersToAdd)));
+                                shareWriteAccessWith(fileOpt.get(), fileToShare, parentOpt.get(), writersToAdd)));
     }
 
-    public CompletableFuture<Boolean> shareWriteAccessWithAll(FileWrapper file,
+    private CompletableFuture<Boolean> shareWriteAccessWith(FileWrapper file,
                                                               Path pathToFile,
                                                               FileWrapper parent,
                                                               Set<String> writersToAdd) {
@@ -1612,23 +1588,6 @@ public class UserContext {
                                                               Set<String> usersToAdd,
                                                               SharedWithCache.Access access) {
         return sharedWithCache.addSharedWith(access, pathToFile, usersToAdd);
-    }
-
-    @JsMethod
-    public CompletableFuture<Boolean> shareReadAccessWith(FileWrapper file,
-                                                          String pathToFile,
-                                                          String[] usernamesToGrantReadAccess) {
-        Set<String> usersToGrantReadAccess = new HashSet<>(Arrays.asList(usernamesToGrantReadAccess));
-        return shareReadAccessWithAll(file, Paths.get(pathToFile), usersToGrantReadAccess);
-    }
-
-    @JsMethod
-    public CompletableFuture<Boolean> shareWriteAccessWith(FileWrapper file,
-                                                           String pathToFile,
-                                                           FileWrapper parent,
-                                                           String[] usernamesToGrantWriteAccess) {
-        Set<String> usersToGrantWriteAccess = new HashSet<>(Arrays.asList(usernamesToGrantWriteAccess));
-        return shareWriteAccessWithAll(file, Paths.get(pathToFile), parent, usersToGrantWriteAccess);
     }
 
     public CompletableFuture<Boolean> shareAccessWith(FileWrapper file, String usernameToGrantAccess,

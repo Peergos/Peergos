@@ -207,10 +207,10 @@ public class MultiUserTests {
     public void groupAwareSharingReadAccess() {
         TriFunction<UserContext, Path, Set<String>, CompletableFuture<Boolean>> shareFunction =
                 (u1, dirToShare, usersToAdd) ->
-                        u1.shareReadAccessWithAll(u1.getByPath(dirToShare).join().get(), dirToShare, usersToAdd);
+                        u1.shareReadAccessWith(dirToShare, usersToAdd);
 
-        TriFunction<UserContext, Path, String[], CompletableFuture<Boolean>> unshareFunction =
-                (u1, dirToShare, usersToRemove) -> u1.unShareReadAccess(dirToShare, usersToRemove);
+        TriFunction<UserContext, Path, Set<String>, CompletableFuture<Boolean>> unshareFunction =
+                (u1, dirToShare, usersToRemove) -> u1.unShareReadAccessWith(dirToShare, usersToRemove);
 
         TriFunction<UserContext, Path, FileSharedWithState, Integer> resultFunc =
                 (u1, dirToShare, fileSharedWithState) -> u1.sharedWith(dirToShare).join().readAccess.size();
@@ -222,10 +222,10 @@ public class MultiUserTests {
     public void groupAwareSharingWriteAccess() {
         TriFunction<UserContext, Path, Set<String>, CompletableFuture<Boolean>> shareFunction =
                 (u1, dirToShare, usersToAdd) ->
-                        u1.shareWriteAccessWithAll(dirToShare, usersToAdd);
-        TriFunction<UserContext, Path, String[], CompletableFuture<Boolean>> unshareFunction =
+                        u1.shareWriteAccessWith(dirToShare, usersToAdd);
+        TriFunction<UserContext, Path, Set<String>, CompletableFuture<Boolean>> unshareFunction =
                 (u1, dirToShare, usersToRemove) ->
-                        u1.unShareWriteAccess(u1.getByPath(dirToShare).join().get(), usersToRemove);
+                        u1.unShareWriteAccessWith(dirToShare, usersToRemove);
         TriFunction<UserContext, Path, FileSharedWithState, Integer> resultFunc =
                 (u1, dirToShare, fileSharedWithState) -> u1.sharedWith(dirToShare).join().writeAccess.size();
 
