@@ -76,7 +76,7 @@ public class FriendSourcedTrieNode implements TrieNode {
     }
 
     private FileWrapper convert(FileWrapper file, String path) {
-        return file.withTrieNode(new FriendDirTrieNode(path, this));
+        return file.withTrieNode(new ExternalTrieNode(path, this));
     }
 
     private CompletableFuture<Boolean> updateIncludingGroups(NetworkAccess network) {
