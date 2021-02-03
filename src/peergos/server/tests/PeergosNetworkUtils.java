@@ -1203,7 +1203,7 @@ public class PeergosNetworkUtils {
 
         // check 'a' can see the shared file in their social feed
         SocialFeed feed = a.getSocialFeed().join();
-        int feedSize = 3;
+        int feedSize = 2;
         List<SharedItem> items = feed.getShared(feedSize, feedSize + 1, a.crypto, a.network).join();
         Assert.assertTrue(items.size() > 0);
         SharedItem item = items.get(0);
@@ -1293,7 +1293,7 @@ public class PeergosNetworkUtils {
 
         SocialFeed feed = sharee.getSocialFeed().join();
         List<SharedItem> items = feed.getShared(0, 1000, sharee.crypto, sharee.network).join();
-        Assert.assertTrue(items.size() == 3 + 2);
+        Assert.assertTrue(items.size() == 2 + 2);
 
         sharee.getUserRoot().join().mkdir("mine", sharee.network, false, sharer.crypto).join();
     }
@@ -1320,21 +1320,22 @@ public class PeergosNetworkUtils {
         sharer.shareReadAccessWith(dirToShare2, Set.of(sharee.username)).join();
 
         SocialFeed feed = sharee.getSocialFeed().join();
+        int initialFeedSize = 2;
         List<SharedItem> items = feed.getShared(0, 1000, sharee.crypto, sharee.network).join();
-        Assert.assertTrue(items.size() == 3 + 2);
+        Assert.assertTrue(items.size() == initialFeedSize + 2);
 
         sharee = PeergosNetworkUtils.ensureSignedUp(sharee.username, password, network, crypto);
         sharee.getUserRoot().join().mkdir("mine", sharer.network, false, sharer.crypto).join();
 
         feed = sharee.getSocialFeed().join();
         items = feed.getShared(0, 1000, sharee.crypto, sharee.network).join();
-        Assert.assertTrue(items.size() == 3 + 2);
+        Assert.assertTrue(items.size() == initialFeedSize + 2);
 
         //When attempting this in the web-ui the below call results in a failure when loading timeline entry
         //Cannot seek to position 680 in file of length 340
         feed = sharee.getSocialFeed().join();
         items = feed.getShared(0, 1000, sharee.crypto, sharee.network).join();
-        Assert.assertTrue(items.size() == 3 + 2);
+        Assert.assertTrue(items.size() == initialFeedSize + 2);
     }
 
     public static void socialFeedEmpty(NetworkAccess network, Random random) {
@@ -1371,8 +1372,9 @@ public class PeergosNetworkUtils {
         sharer.shareReadAccessWith(dirToShare2, Set.of(a.username)).join();
 
         SocialFeed feed = a.getSocialFeed().join();
+        int initialFeedSize = 2;
         List<SharedItem> items = feed.getShared(0, 1000, a.crypto, a.network).join();
-        Assert.assertTrue(items.size() == 3 + 2);
+        Assert.assertTrue(items.size() == initialFeedSize + 2);
 
         //Add another file and share
         String dir3 = "three";
@@ -1383,7 +1385,7 @@ public class PeergosNetworkUtils {
 
         feed = a.getSocialFeed().join().update().join();
         items = feed.getShared(0, 1000, a.crypto, a.network).join();
-        Assert.assertTrue(items.size() == 3 + 3);
+        Assert.assertTrue(items.size() == initialFeedSize + 3);
     }
 
     public static void groupSharing(NetworkAccess network, Random random) {
