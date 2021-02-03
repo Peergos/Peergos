@@ -1092,32 +1092,39 @@ public class MultiUserTests {
 
     @Test
     public void acceptThenCompleteFollowRequest() throws Exception {
-        UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), random(), network, crypto);
-        UserContext u2 = PeergosNetworkUtils.ensureSignedUp(random(), random(), network, crypto);
-        u2.sendFollowRequest(u1.username, SymmetricKey.random()).get();
-        List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
-        assertTrue("Receive a follow request", u1Requests.size() > 0);
-        u1.sendReplyFollowRequest(u1Requests.get(0), true, false).get();
-        List<FollowRequestWithCipherText> u2FollowRequests = u2.processFollowRequests().get();
-        Optional<FileWrapper> u1Tou2 = u2.getByPath("/" + u1.username).get();
-        Optional<FileWrapper> u2Tou1 = u1.getByPath("/" + u2.username).get();
+        UserContext a = PeergosNetworkUtils.ensureSignedUp(random(), random(), network, crypto);
+        UserContext b = PeergosNetworkUtils.ensureSignedUp(random(), random(), network, crypto);
+        b.sendFollowRequest(a.username, SymmetricKey.random()).get();
+        assertTrue(! b.getSocialState().join().getFollowing().contains(a.username));
+        assertTrue(! b.getSocialState().join().getFollowers().contains(a.username));
 
-        assertTrue("Friend root present after accepted follow request", u1Tou2.isPresent());
-        assertTrue("Friend root not present after non reciprocated follow request", !u2Tou1.isPresent());
+        List<FollowRequestWithCipherText> aRequests = a.processFollowRequests().get();
+        assertTrue("Receive a follow request", aRequests.size() > 0);
+        a.sendReplyFollowRequest(aRequests.get(0), true, false).get();
+        List<FollowRequestWithCipherText> bFollowRequests = b.processFollowRequests().get();
+        Optional<FileWrapper> aTob = b.getByPath("/" + a.username).get();
+        Optional<FileWrapper> bToa = a.getByPath("/" + b.username).get();
+
+        assertTrue("Friend root present after accepted follow request", aTob.isPresent());
+        assertTrue("Friend root not present after non reciprocated follow request", bToa.isEmpty());
+        assertTrue(a.getSocialState().join().getFollowers().contains(b.username));
+        assertTrue(b.getSocialState().join().getFollowing().contains(a.username));
 
         // Now test them trying to become full friends
-        u1.sendInitialFollowRequest(u2.username).join();
-        List<FollowRequestWithCipherText> reqs = u2.processFollowRequests().get();
-        u2.sendReplyFollowRequest(reqs.get(0), true, true).join();
-        SocialState u1Social = u1.getSocialState().join();
-        Assert.assertTrue(u1Social.followerRoots.containsKey(u2.username));
-        Assert.assertTrue(u1Social.followingRoots.stream().anyMatch(f -> f.getName().equals(u2.username)));
+        a.sendInitialFollowRequest(b.username).join();
+        List<FollowRequestWithCipherText> reqs = b.processFollowRequests().get();
+        b.sendReplyFollowRequest(reqs.get(0), true, true).join();
+        SocialState aSocial = a.getSocialState().join();
+        Assert.assertTrue(aSocial.followerRoots.containsKey(b.username));
+        Assert.assertTrue(aSocial.followingRoots.stream().anyMatch(f -> f.getName().equals(b.username)));
 
-        SocialState u2Social = u2.getSocialState().join();
-        Assert.assertTrue(u2Social.followerRoots.containsKey(u1.username));
-        Assert.assertTrue(u2Social.followingRoots.stream().anyMatch(f -> f.getName().equals(u1.username)));
+        SocialState bSocial = b.getSocialState().join();
+        Assert.assertTrue(bSocial.followerRoots.containsKey(a.username));
+        Assert.assertTrue(bSocial.followingRoots.stream().anyMatch(f -> f.getName().equals(a.username)));
+
+        assertTrue(b.getByPath("/" + a.username).join().isPresent());
+        assertTrue(a.getByPath("/" + b.username).join().isPresent());
     }
-
 
     @Test
     public void rejectFollowRequest() throws Exception {

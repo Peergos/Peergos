@@ -45,6 +45,7 @@ public class UserContext {
     public static final String FRIEND_ANNOTATIONS_FILE_NAME = ".annotations";
 
     public static final String ENTRY_POINTS_FROM_FRIENDS_FILENAME = ".from-friends.cborstream";
+    public static final String SOCIAL_STATE_FILENAME = ".social-state.cbor";
     public static final String BLOCKED_USERNAMES_FILE = ".blocked-usernames.txt";
 
     @JsProperty
@@ -956,15 +957,18 @@ public class UserContext {
 
     @JsMethod
     public CompletableFuture<Set<String>> getFollowerNames() {
-        return getFollowerRoots().thenApply(Map::keySet);
+        return getFollowerRoots(true).thenApply(Map::keySet);
     }
 
-    public CompletableFuture<Map<String, FileWrapper>> getFollowerRoots() {
-        return getSharingFolder()
+    public CompletableFuture<Map<String, FileWrapper>> getFollowerRoots(boolean filterPending) {
+        return getPendingOutgoingFollowRequests()
+                .thenCompose(pendingOutgoing -> getSharingFolder()
                 .thenCompose(sharing -> sharing.getChildren(crypto.hasher, network))
                 .thenApply(children -> children.stream()
-                        .filter(c -> ! c.getName().startsWith(".") && ! c.getName().startsWith(GROUPS_FILENAME))
-                        .collect(Collectors.toMap(e -> e.getFileProperties().name, e -> e)));
+                        .filter(c -> ! c.getName().startsWith(".") &&
+                                ! c.getName().startsWith(GROUPS_FILENAME) &&
+                                (!filterPending || ! pendingOutgoing.pendingOutgoingFollowRequests.contains(c.getName())))
+                        .collect(Collectors.toMap(e -> e.getFileProperties().name, e -> e))));
     }
 
     public CompletableFuture<Set<FriendSourcedTrieNode>> getFollowingNodes() {
@@ -1053,10 +1057,45 @@ public class UserContext {
                 }));
     }
 
+    private CompletableFuture<PendingSocialState> getPendingOutgoingFollowRequests() {
+        return getUserRoot()
+                .thenCompose(home -> home.hasChild(SOCIAL_STATE_FILENAME, crypto.hasher, network)
+                        .thenCompose(exists ->  {
+                            if (! exists)
+                                return CompletableFuture.completedFuture(PendingSocialState.empty());
+                            return home.getChild(SOCIAL_STATE_FILENAME, crypto.hasher, network)
+                                    .thenCompose(fileOpt ->
+                                            fileOpt.get().getInputStream(network, crypto, x -> {})
+                                                    .thenCompose(reader -> Serialize.parse(reader, fileOpt.get().getSize(),
+                                                            PendingSocialState::fromCbor)));
+                        }));
+    }
+
+    private CompletableFuture<Boolean> removeFromPendingOutgoing(String usernameToRemove) {
+        return getUserRoot()
+                .thenCompose(home -> home.hasChild(SOCIAL_STATE_FILENAME, crypto.hasher, network)
+                        .thenCompose(exists ->  {
+                            if (! exists)
+                                return CompletableFuture.completedFuture(true);
+                            return home.getChild(SOCIAL_STATE_FILENAME, crypto.hasher, network)
+                                    .thenCompose(fileOpt ->
+                                            fileOpt.get().getInputStream(network, crypto, x -> {})
+                                                    .thenCompose(reader -> Serialize.parse(reader, fileOpt.get().getSize(),
+                                                            PendingSocialState::fromCbor))
+                                                    .thenCompose(current -> {
+                                                        PendingSocialState updated = current.withoutPending(usernameToRemove);
+                                                        byte[] raw = updated.serialize();
+                                                        return fileOpt.get().overwriteFile(AsyncReader.build(raw), raw.length,
+                                                                network, crypto, x -> {})
+                                                                .thenApply(x -> true);
+                                                    }));
+                        }));
+    }
+
     @JsMethod
     public CompletableFuture<SocialState> getSocialState() {
         return processFollowRequests()
-                .thenCompose(pending -> getFollowerRoots().thenCompose(
+                .thenCompose(pending -> getFollowerRoots(true).thenCompose(
                         followerRoots -> getFriendRoots().thenCompose(
                                 followingRoots -> getFollowerNames().thenCompose(
                                         followers -> getFriendAnnotations().thenCompose(
@@ -1109,8 +1148,14 @@ public class UserContext {
                         .thenCompose(existingOpt -> {
                             if (existingOpt.isPresent())
                                 return Futures.of(existingOpt);
-                            return sharing.mkdir(theirUsername, network, initialRequest.key.get(), true, crypto)
-                                    .thenCompose(updatedSharing -> updatedSharing.getChild(theirUsername, crypto.hasher, network));
+                            return sharing.getChild(theirUsername, crypto.hasher, network)
+                                    .thenCompose(existingFriendDir -> {
+                                        if (existingFriendDir.isEmpty())
+                                            return sharing.mkdir(theirUsername, network, initialRequest.key.get(), true, crypto)
+                                                    .thenCompose(updatedSharing -> updatedSharing.getChild(theirUsername, crypto.hasher, network));
+                                        // If we already have a sharing dir for them, don't rotate the keys
+                                        return Futures.of(existingFriendDir);
+                                    });
                         }).thenCompose(friendRootOpt -> {
                             FileWrapper friendRoot = friendRootOpt.get();
                             // add a note to our entry point store so we know who we sent the read access to
@@ -1192,13 +1237,21 @@ public class UserContext {
                     return sharing.getOrMkdirs(Paths.get(targetUsername), network, true, crypto)
                             .thenCompose(friendRoot -> {
 
-                                // if they accept the request we will add a note to our static data so we know who we sent the read access to
                                 EntryPoint entry = new EntryPoint(friendRoot.getPointer().capability.readOnly(), username);
-
                                 FollowRequest followReq = new FollowRequest(Optional.of(entry), Optional.ofNullable(requestedKey));
 
                                 PublicKeyHash targetSigner = targetUserOpt.get().left;
-                                return blindAndSendFollowRequest(targetSigner, targetUser, followReq);
+                                return getPendingOutgoingFollowRequests()
+                                        .thenCompose(pending -> blindAndSendFollowRequest(targetSigner, targetUser, followReq)
+                                                .thenCompose(b -> {
+                                                    // note that we have a pending request sent to them
+                                                    PendingSocialState updated = pending.withPending(targetUsername);
+                                                    byte[] raw = updated.toCbor().serialize();
+                                                    return getUserRoot().thenCompose(home -> home.uploadOrReplaceFile(
+                                                            SOCIAL_STATE_FILENAME, AsyncReader.build(raw), raw.length,
+                                                            network, crypto, x -> {}, crypto.random.randomBytes(32)))
+                                                            .thenApply(x -> b);
+                                                }));
                             });
                 });
             });
@@ -1657,7 +1710,7 @@ public class UserContext {
 
     private CompletableFuture<List<FollowRequestWithCipherText>> processFollowRequests(List<BlindFollowRequest> all) {
         return getSharingFolder().thenCompose(sharing ->
-                getFollowerRoots().thenCompose(followerRoots -> {
+                getFollowerRoots(false).thenCompose(followerRoots -> {
                     List<FollowRequestWithCipherText> withDecrypted = all.stream()
                             .map(b -> new FollowRequestWithCipherText(b.followRequest.decrypt(boxer.secretBoxingKey, b.dummySource, FollowRequest::fromCbor), b))
                             .collect(Collectors.toList());
@@ -1668,10 +1721,11 @@ public class UserContext {
 
                     BiFunction<TrieNode, FollowRequestWithCipherText, CompletableFuture<TrieNode>> addToStatic = (root, p) -> {
                         FollowRequest freq = p.req;
-                        if (!Arrays.equals(freq.entry.get().pointer.rBaseKey.serialize(), SymmetricKey.createNull().serialize())) {
+                        if (! Arrays.equals(freq.entry.get().pointer.rBaseKey.serialize(), SymmetricKey.createNull().serialize())) {
                             CompletableFuture<TrieNode> updatedRoot = freq.entry.get().ownerName.equals(username) ?
                                     CompletableFuture.completedFuture(root) : // ignore responses claiming to be owned by us
                                     addExternalEntryPoint(freq.entry.get())
+                                    .thenCompose(x -> removeFromPendingOutgoing(freq.entry.get().ownerName))
                                     .thenCompose(x -> retrieveAndAddEntryPointToTrie(root, freq.entry.get()));
                             return updatedRoot.thenCompose(newRoot -> {
                                 entrie = newRoot;

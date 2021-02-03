@@ -2,11 +2,13 @@ package peergos.shared.util;
 
 import jsinterop.annotations.*;
 import peergos.shared.*;
+import peergos.shared.cbor.*;
 import peergos.shared.user.fs.*;
 
 import java.io.*;
 import java.util.Arrays;
 import java.util.concurrent.*;
+import java.util.function.*;
 
 public class Serialize
 {
@@ -108,6 +110,12 @@ public class Serialize
     public static CompletableFuture<byte[]> readFully(AsyncReader in, long size) {
         byte[] res = new byte[(int)size];
         return in.readIntoArray(res, 0, (int) size).thenApply(i -> res);
+    }
+
+    public static <T> CompletableFuture<T> parse(AsyncReader in, long size, Function<Cborable, T> parser) {
+        byte[] res = new byte[(int)size];
+        return in.readIntoArray(res, 0, (int) size)
+                .thenApply(i -> Cborable.parser(parser).apply(res));
     }
 
     public static CompletableFuture<Boolean> readFullArray(AsyncReader in, byte[] result) {
