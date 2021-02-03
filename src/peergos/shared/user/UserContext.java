@@ -1247,9 +1247,9 @@ public class UserContext {
                                                     // note that we have a pending request sent to them
                                                     PendingSocialState updated = pending.withPending(targetUsername);
                                                     byte[] raw = updated.toCbor().serialize();
-                                                    return getUserRoot().thenCompose(home -> home.uploadOrReplaceFile(
-                                                            SOCIAL_STATE_FILENAME, AsyncReader.build(raw), raw.length,
-                                                            network, crypto, x -> {}, crypto.random.randomBytes(32)))
+                                                    return getUserRoot().thenCompose(home -> home.uploadFileSection(
+                                                            SOCIAL_STATE_FILENAME, AsyncReader.build(raw), true, 0, raw.length, Optional.empty(),
+                                                            true, network, crypto, x -> {}, crypto.random.randomBytes(32)))
                                                             .thenApply(x -> b);
                                                 }));
                             });
