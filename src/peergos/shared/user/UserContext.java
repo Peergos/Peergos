@@ -1743,8 +1743,8 @@ public class UserContext {
                         String theirName = freq.entry.get().ownerName;
                         FileWrapper ourDirForThem = followerRoots.get(theirName);
                         byte[] ourKeyForThem = ourDirForThem.getKey().serialize();
-                        byte[] keyFromResponse = freq.key.map(k -> k.serialize()).orElse(null);
-                        if (keyFromResponse == null || !Arrays.equals(keyFromResponse, ourKeyForThem)) {
+                        Optional<byte[]> keyFromResponse = freq.key.map(Cborable::serialize);
+                        if (keyFromResponse.isEmpty()) {
                             // They didn't reciprocate (follow us)
                             CompletableFuture<FileWrapper> removeDir = ourDirForThem.remove(sharing,
                                     Paths.get(username, SHARED_DIR_NAME, theirName), this);

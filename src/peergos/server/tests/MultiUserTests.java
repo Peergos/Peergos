@@ -1127,6 +1127,25 @@ public class MultiUserTests {
     }
 
     @Test
+    public void concurrentMutualFollowRequests() throws Exception {
+        UserContext a = PeergosNetworkUtils.ensureSignedUp(random(), random(), network, crypto);
+        UserContext b = PeergosNetworkUtils.ensureSignedUp(random(), random(), network, crypto);
+        b.sendFollowRequest(a.username, SymmetricKey.random()).get();
+        a.sendFollowRequest(b.username, SymmetricKey.random()).get();
+
+        // they should be friends now
+        List<FollowRequestWithCipherText> bFollowRequests = b.processFollowRequests().get();
+        List<FollowRequestWithCipherText> aFollowRequests = a.processFollowRequests().get();
+        Optional<FileWrapper> aTob = b.getByPath("/" + a.username).get();
+        Optional<FileWrapper> bToa = a.getByPath("/" + b.username).get();
+
+        assertTrue("Friend root present after accepted follow request", aTob.isPresent());
+        assertTrue("Friend root present after accepted follow request", bToa.isPresent());
+        assertTrue(a.getSocialState().join().getFriends().contains(b.username));
+        assertTrue(b.getSocialState().join().getFriends().contains(a.username));
+    }
+
+    @Test
     public void rejectFollowRequest() throws Exception {
         String username1 = random();
         String password1 = random();
