@@ -1433,7 +1433,6 @@ public class UserContext {
                                                     Set<String> usernamesToUnshare) {
 
         Set<String> followers = social.getFollowers();
-        Set<String> following = social.getFollowing();
         Set<String> friends = social.getFriends();
 
         String friendGroupUid = social.getFriendsGroupUid();
@@ -1441,18 +1440,14 @@ public class UserContext {
 
         Set<String> usersToUnshare = new HashSet<>(usernamesToUnshare);
         if (usernamesToUnshare.contains(friendGroupUid)) {
-            for (String name : currentSharedWithUsernames) {
-                if (! usersToUnshare.contains(name) && friends.contains(name)) {
-                    usersToUnshare.add(name);
-                }
-            }
+            HashSet<String> toAdd = new HashSet<>(currentSharedWithUsernames);
+            toAdd.retainAll(friends);
+            usersToUnshare.addAll(toAdd);
         }
         if (usernamesToUnshare.contains(followersGroupUid)) {
-            for (String name: currentSharedWithUsernames) {
-                if (! usersToUnshare.contains(name) && followers.contains(name)) {
-                    usersToUnshare.add(name);
-                }
-            }
+            HashSet<String> toAdd = new HashSet<>(currentSharedWithUsernames);
+            toAdd.retainAll(followers);
+            usersToUnshare.addAll(toAdd);
             if (currentSharedWithUsernames.contains(friendGroupUid)) {
                 usersToUnshare.add(friendGroupUid);
             }
