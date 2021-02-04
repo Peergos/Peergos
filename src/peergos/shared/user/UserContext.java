@@ -1760,7 +1760,8 @@ public class UserContext {
                             CompletableFuture<FileWrapper> removeDir = ourDirForThem.remove(sharing,
                                     Paths.get(username, SHARED_DIR_NAME, theirName), this);
 
-                            return removeDir.thenCompose(b -> addToStatic.apply(trie, p));
+                            return removeDir.thenCompose(x -> removeFromPendingOutgoing(freq.entry.get().ownerName))
+                                    .thenCompose(b -> addToStatic.apply(trie, p));
                         } else if (freq.entry.get().pointer.isNull()) {
                             // They reciprocated, but didn't accept (they follow us, but we can't follow them)
                             // add entry point to static data to signify their acceptance
