@@ -16,7 +16,6 @@ public class SocialState {
     public final Set<String> pendingOutgoing;
     public final Map<String, FileWrapper> followerRoots;
     public final Set<FileWrapper> followingRoots;
-    public final Map<String, FileWrapper> pendingOutgoingFollowRequests;
     public final Map<String, FriendAnnotation> friendAnnotations;
     public final Map<String, String> uidToGroupName, groupNameToUid;
 
@@ -29,10 +28,6 @@ public class SocialState {
                        Map<String, String> uidToGroupName) {
         this.pendingIncoming = pendingIncoming;
         this.pendingOutgoing = pendingOutgoing;
-        this.pendingOutgoingFollowRequests = followerRoots.entrySet()
-                .stream()
-                .filter(e -> ! actualFollowers.contains(e.getKey()))
-                .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue()));
         Map<String, FileWrapper> actualFollowerRoots = followerRoots.entrySet()
                 .stream()
                 .filter(e -> actualFollowers.contains(e.getKey()))
