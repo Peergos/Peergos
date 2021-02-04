@@ -1745,7 +1745,8 @@ public class UserContext {
                                         .thenApply(b -> newRoot);
                             });
                         }
-                        return CompletableFuture.completedFuture(root);
+                        return network.social.removeFollowRequest(signer.publicKeyHash, signer.secret.signMessage(p.cipher.serialize()))
+                                .thenApply(b -> root);
                     };
 
                     BiFunction<TrieNode, FollowRequestWithCipherText, CompletableFuture<TrieNode>> mozart = (trie, p) -> {

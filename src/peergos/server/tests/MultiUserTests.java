@@ -1128,9 +1128,9 @@ public class MultiUserTests {
 
     @Test
     public void denyThenSubsequentFollowRequest() throws Exception {
-        UserContext a = PeergosNetworkUtils.ensureSignedUp(random(), random(), network, crypto);
-        UserContext b = PeergosNetworkUtils.ensureSignedUp(random(), random(), network, crypto);
-        UserContext c = PeergosNetworkUtils.ensureSignedUp(random(), random(), network, crypto);
+        UserContext a = PeergosNetworkUtils.ensureSignedUp("a-" + random(), random(), network, crypto);
+        UserContext b = PeergosNetworkUtils.ensureSignedUp("b-" + random(), random(), network, crypto);
+        UserContext c = PeergosNetworkUtils.ensureSignedUp("c-" + random(), random(), network, crypto);
         b.sendFollowRequest(a.username, SymmetricKey.random()).get();
         assertTrue(! b.getSocialState().join().getFollowing().contains(a.username));
         assertTrue(! b.getSocialState().join().getFollowers().contains(a.username));
@@ -1139,14 +1139,15 @@ public class MultiUserTests {
         assertTrue("Receive a follow request", aRequests.size() > 0);
         a.sendReplyFollowRequest(aRequests.get(0), false, false).get();
         List<FollowRequestWithCipherText> bFollowRequests = b.processFollowRequests().get();
+        assertTrue(bFollowRequests.isEmpty());
         b.sendFollowRequest(a.username, SymmetricKey.random()).get();
 
         b.sendFollowRequest(c.username, SymmetricKey.random()).get();
-        SocialState state = b.getSocialState().join();
-        assertTrue(state.pendingIncoming.size() == 0);
+        SocialState bState = b.getSocialState().join();
+        assertTrue(bState.pendingIncoming.size() == 0);
         aRequests = b.processFollowRequests().get();
-        state = b.getSocialState().join();
-        assertTrue(state.pendingIncoming.size() == 0);
+        bState = b.getSocialState().join();
+        assertTrue(bState.pendingIncoming.size() == 0);
     }
 
     @Test
