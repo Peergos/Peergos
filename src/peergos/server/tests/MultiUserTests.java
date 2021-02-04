@@ -1140,7 +1140,7 @@ public class MultiUserTests {
         a.sendReplyFollowRequest(aRequests.get(0), false, false).get();
         List<FollowRequestWithCipherText> bFollowRequests = b.processFollowRequests().get();
         assertTrue(bFollowRequests.isEmpty());
-        b.sendFollowRequest(a.username, SymmetricKey.random()).get();
+        //b.sendFollowRequest(a.username, SymmetricKey.random()).get();
 
         b.sendFollowRequest(c.username, SymmetricKey.random()).get();
         SocialState bState = b.getSocialState().join();
@@ -1148,6 +1148,31 @@ public class MultiUserTests {
         aRequests = b.processFollowRequests().get();
         bState = b.getSocialState().join();
         assertTrue(bState.pendingIncoming.size() == 0);
+    }
+
+    @Test
+    public void acceptThenSubsequentFollowRequest() throws Exception {
+        UserContext a = PeergosNetworkUtils.ensureSignedUp("a-" + random(), random(), network, crypto);
+        UserContext b = PeergosNetworkUtils.ensureSignedUp("b-" + random(), random(), network, crypto);
+        b.sendFollowRequest(a.username, SymmetricKey.random()).get();
+        assertTrue(! b.getSocialState().join().getFollowing().contains(a.username));
+        assertTrue(! b.getSocialState().join().getFollowers().contains(a.username));
+
+        List<FollowRequestWithCipherText> aRequests = a.processFollowRequests().get();
+        assertTrue("Receive a follow request", aRequests.size() > 0);
+        a.sendReplyFollowRequest(aRequests.get(0), true, false).get();
+        List<FollowRequestWithCipherText> bFollowRequests = b.processFollowRequests().join();
+        assertTrue(bFollowRequests.isEmpty());
+        List<FollowRequestWithCipherText> aFollowRequests = a.processFollowRequests().join();
+
+        b.unfollow(a.username).join();
+        b.sendFollowRequest(a.username, SymmetricKey.random()).get();
+        SocialState aState = a.getSocialState().join();
+
+        Set<String> followerNames = aState.followerRoots.keySet();
+        Set<String> followeeNames = aState.followingRoots.stream().map(f -> f.getFileProperties().name).collect(Collectors.toSet());
+        Set<String> friendNames = followerNames.stream().filter(x -> followeeNames.contains(x)).collect(Collectors.toSet());
+        assertTrue(friendNames.isEmpty());
     }
 
     @Test
