@@ -961,14 +961,21 @@ public class UserContext {
     }
 
     public CompletableFuture<Map<String, FileWrapper>> getFollowerRoots(boolean filterPending) {
-        return getPendingOutgoingFollowRequests()
-                .thenCompose(pendingOutgoing -> getSharingFolder()
+        return (filterPending ?
+                getPendingOutgoingFollowRequests()
+                        .thenApply(p -> p.pendingOutgoingFollowRequests)
+                : Futures.of(Collections.<String>emptySet()))
+                .thenCompose(pendingOutgoing -> getFollowerRoots(pendingOutgoing));
+    }
+
+    private CompletableFuture<Map<String, FileWrapper>> getFollowerRoots(Set<String> pendingOutgoing) {
+        return getSharingFolder()
                 .thenCompose(sharing -> sharing.getChildren(crypto.hasher, network))
                 .thenApply(children -> children.stream()
                         .filter(c -> ! c.getName().startsWith(".") &&
                                 ! c.getName().startsWith(GROUPS_FILENAME) &&
-                                (!filterPending || ! pendingOutgoing.pendingOutgoingFollowRequests.contains(c.getName())))
-                        .collect(Collectors.toMap(e -> e.getFileProperties().name, e -> e))));
+                                ! pendingOutgoing.contains(c.getName()))
+                        .collect(Collectors.toMap(e -> e.getFileProperties().name, e -> e)));
     }
 
     public CompletableFuture<Set<FriendSourcedTrieNode>> getFollowingNodes() {
@@ -1095,12 +1102,16 @@ public class UserContext {
     @JsMethod
     public CompletableFuture<SocialState> getSocialState() {
         return processFollowRequests()
-                .thenCompose(pending -> getFollowerRoots(true).thenCompose(
-                        followerRoots -> getFriendRoots().thenCompose(
-                                followingRoots -> getFollowerNames().thenCompose(
-                                        followers -> getFriendAnnotations().thenCompose(
-                                                annotations -> getGroupNameMappings().thenApply(
-                                                        groups -> new SocialState(pending, followers, followerRoots, followingRoots, annotations, groups.uidToGroupName)))))));
+                .thenCompose(pendingIncoming -> getPendingOutgoingFollowRequests()
+                        .thenCompose(pendingOutgoing -> getFollowerRoots(pendingOutgoing.pendingOutgoingFollowRequests)
+                                .thenCompose(followerRoots -> getFriendRoots().thenCompose(
+                                        followingRoots -> getFollowerNames().thenCompose(
+                                                followers -> getFriendAnnotations().thenCompose(
+                                                        annotations -> getGroupNameMappings().thenApply(
+                                                                groups -> new SocialState(pendingIncoming,
+                                                                        pendingOutgoing.pendingOutgoingFollowRequests,
+                                                                        followers, followerRoots, followingRoots,
+                                                                        annotations, groups.uidToGroupName))))))));
     }
 
     @JsMethod

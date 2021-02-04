@@ -13,6 +13,7 @@ public class SocialState {
     public static final String FOLLOWERS_GROUP_NAME = "followers";
 
     public final List<FollowRequestWithCipherText> pendingIncoming;
+    public final Set<String> pendingOutgoing;
     public final Map<String, FileWrapper> followerRoots;
     public final Set<FileWrapper> followingRoots;
     public final Map<String, FileWrapper> pendingOutgoingFollowRequests;
@@ -20,12 +21,14 @@ public class SocialState {
     public final Map<String, String> uidToGroupName, groupNameToUid;
 
     public SocialState(List<FollowRequestWithCipherText> pendingIncoming,
+                       Set<String> pendingOutgoing,
                        Set<String> actualFollowers,
                        Map<String, FileWrapper> followerRoots,
                        Set<FileWrapper> followingRoots,
                        Map<String, FriendAnnotation> friendAnnotations,
                        Map<String, String> uidToGroupName) {
         this.pendingIncoming = pendingIncoming;
+        this.pendingOutgoing = pendingOutgoing;
         this.pendingOutgoingFollowRequests = followerRoots.entrySet()
                 .stream()
                 .filter(e -> ! actualFollowers.contains(e.getKey()))
