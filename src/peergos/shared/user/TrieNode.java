@@ -31,6 +31,8 @@ public interface TrieNode {
 
     Collection<TrieNode> getChildNodes();
 
+    TrieNode getChildNode(String name);
+
     boolean isEmpty();
 
     static String canonicalise(String path) {

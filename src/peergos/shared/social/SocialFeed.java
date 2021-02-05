@@ -115,15 +115,12 @@ public class SocialFeed {
 
     private synchronized CompletableFuture<SocialFeed> updateFriend(FriendSourcedTrieNode friend, NetworkAccess network) {
         ProcessedCaps current = currentCapBytesProcessed.getOrDefault(friend.ownerName, ProcessedCaps.empty());
-        return friend.getCaps(current.readCapBytes, current.writeCapBytes, network)
+        return friend.getCaps(current, network)
                 .thenCompose(diff -> {
                     if (diff.isEmpty())
                         return Futures.of(this);
 
-                    return addToFriend(friend.ownerName, current, diff.newCaps.readCaps.getRetrievedCapabilities(),
-                            diff.updatedReadBytes(),
-                            diff.newCaps.writeCaps.getRetrievedCapabilities(),
-                            diff.updatedWriteBytes());
+                    return addToFriend(friend.ownerName, current, diff);
                 });
     }
 
@@ -135,19 +132,12 @@ public class SocialFeed {
 
     private synchronized CompletableFuture<SocialFeed> addToFriend(String friendName,
                                                                    ProcessedCaps current,
-                                                                   List<CapabilityWithPath> readCapsToAdd,
-                                                                   long updatedReadCapBytesTotal,
-                                                                   List<CapabilityWithPath> writeCapsToAdd,
-                                                                   long updateWriteCapBytesTotal) {
-        ProcessedCaps updated = new ProcessedCaps(
-                current.readCaps + readCapsToAdd.size(),
-                current.writeCaps + writeCapsToAdd.size(),
-                updatedReadCapBytesTotal,
-                updateWriteCapBytesTotal);
+                                                                   CapsDiff diff) {
+        ProcessedCaps updated = current.add(diff);
         currentCapBytesProcessed.put(friendName, updated);
-        feedSizeRecords += readCapsToAdd.size() + writeCapsToAdd.size();
-        List<SharedItem> forFeed = Stream.of(readCapsToAdd, writeCapsToAdd)
-                .flatMap(List::stream)
+        List<CapabilityWithPath> newCaps = diff.getNewCaps();
+        feedSizeRecords += newCaps.size();
+        List<SharedItem> forFeed = newCaps.stream()
                 .map(c -> new SharedItem(c.cap, extractOwner(c.path), friendName, c.path))
                 .collect(Collectors.toList());
         ByteArrayOutputStream bout = new ByteArrayOutputStream();
@@ -227,7 +217,7 @@ public class SocialFeed {
             int feedSizeRecords = (int) m.getLong("r");
             long feedSizeBytes = m.getLong("b");
             Map<String, ProcessedCaps> processedBytes = ((CborObject.CborMap)m.get("p"))
-                    .getMap(c -> ((CborObject.CborString) c).value, ProcessedCaps::fromCbor);
+                    .toMap(c -> ((CborObject.CborString) c).value, ProcessedCaps::fromCbor);
             return new FeedState(lastSeenIndex, feedSizeRecords, feedSizeBytes, processedBytes);
         }
     }

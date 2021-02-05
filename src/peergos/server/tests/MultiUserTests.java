@@ -189,6 +189,50 @@ public class MultiUserTests {
     }
 
     @Test
+    public void groupSharing() {
+        PeergosNetworkUtils.groupSharing(network, random);
+    }
+
+    @Test
+    public void groupSharingToFollowers() {
+        PeergosNetworkUtils.groupSharingToFollowers(network, random);
+    }
+
+    @Test
+    public void groupReadIndividualWrite() {
+        PeergosNetworkUtils.groupReadIndividualWrite(network, random);
+    }
+
+    @Test
+    public void groupAwareSharingReadAccess() {
+        TriFunction<UserContext, Path, Set<String>, CompletableFuture<Boolean>> shareFunction =
+                (u1, dirToShare, usersToAdd) ->
+                        u1.shareReadAccessWith(dirToShare, usersToAdd);
+
+        TriFunction<UserContext, Path, Set<String>, CompletableFuture<Boolean>> unshareFunction =
+                (u1, dirToShare, usersToRemove) -> u1.unShareReadAccessWith(dirToShare, usersToRemove);
+
+        TriFunction<UserContext, Path, FileSharedWithState, Integer> resultFunc =
+                (u1, dirToShare, fileSharedWithState) -> u1.sharedWith(dirToShare).join().readAccess.size();
+
+        PeergosNetworkUtils.groupAwareSharing(network, random, shareFunction, unshareFunction, resultFunc);
+    }
+
+    @Test
+    public void groupAwareSharingWriteAccess() {
+        TriFunction<UserContext, Path, Set<String>, CompletableFuture<Boolean>> shareFunction =
+                (u1, dirToShare, usersToAdd) ->
+                        u1.shareWriteAccessWith(dirToShare, usersToAdd);
+        TriFunction<UserContext, Path, Set<String>, CompletableFuture<Boolean>> unshareFunction =
+                (u1, dirToShare, usersToRemove) ->
+                        u1.unShareWriteAccessWith(dirToShare, usersToRemove);
+        TriFunction<UserContext, Path, FileSharedWithState, Integer> resultFunc =
+                (u1, dirToShare, fileSharedWithState) -> u1.sharedWith(dirToShare).join().writeAccess.size();
+
+        PeergosNetworkUtils.groupAwareSharing(network, random, shareFunction, unshareFunction, resultFunc);
+    }
+
+    @Test
     public void safeCopyOfFriendsReadAccess() throws Exception {
         TriFunction<UserContext, UserContext, String, CompletableFuture<Boolean>> readAccessSharingFunction =
                 (u1, u2, filename) ->
@@ -261,10 +305,10 @@ public class MultiUserTests {
                 reader, fileData.length, u1.network, crypto, x -> {}, u1.crypto.random.randomBytes(32)).join();
         Path filePath = Paths.get(u1.username, "subdir", "file.txt");
         FileWrapper file = u1.getByPath(filePath).join().get();
-        u1.shareWriteAccessWith(filePath, Stream.of(u2.username).collect(Collectors.toSet())).join();
-        u1.shareWriteAccessWith(filePath, Stream.of(u3.username).collect(Collectors.toSet())).join();
-        u1.shareReadAccessWith(filePath, Stream.of(u4.username).collect(Collectors.toSet())).join();
-        u1.unShareReadAccess(filePath, Stream.of(u4.username).collect(Collectors.toSet())).join();
+        u1.shareWriteAccessWith(filePath, Collections.singleton(u2.username)).join();
+        u1.shareWriteAccessWith(filePath, Collections.singleton(u3.username)).join();
+        u1.shareReadAccessWith(filePath, Collections.singleton(u4.username)).join();
+        u1.unShareReadAccess(filePath, u4.username).join();
 
         // check u1 can log in
         UserContext freshContext = PeergosNetworkUtils.ensureSignedUp(u1.username, "a", network.clear(), crypto);
@@ -966,7 +1010,7 @@ public class MultiUserTests {
 
         Set<FileWrapper> children = u2ToU1.get().getChildren(crypto.hasher, u2.network).get();
 
-        assertTrue("Browse to friend root", children.isEmpty());
+        assertTrue("Browse to friend root", children.size() == 1);
 
         SocialState u1Social = PeergosNetworkUtils.ensureSignedUp(username1, password1, network.clear(), crypto)
                 .getSocialState().get();
@@ -1029,6 +1073,9 @@ public class MultiUserTests {
         assertTrue("Friend root present after accepted follow request", u1Tou2.isPresent());
         assertTrue("Friend root not present after non reciprocated follow request", !u2Tou1.isPresent());
 
+        Set<String> followers = u1.getFollowerNames().join();
+        assertTrue(followers.contains(u2.username));
+
         // Now test them trying to become full friends after u1 unfollowing u2
         u1.unfollow(u2.username).join();
         u1.sendInitialFollowRequest(u2.username).join();
@@ -1045,32 +1092,107 @@ public class MultiUserTests {
 
     @Test
     public void acceptThenCompleteFollowRequest() throws Exception {
-        UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), random(), network, crypto);
-        UserContext u2 = PeergosNetworkUtils.ensureSignedUp(random(), random(), network, crypto);
-        u2.sendFollowRequest(u1.username, SymmetricKey.random()).get();
-        List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
-        assertTrue("Receive a follow request", u1Requests.size() > 0);
-        u1.sendReplyFollowRequest(u1Requests.get(0), true, false).get();
-        List<FollowRequestWithCipherText> u2FollowRequests = u2.processFollowRequests().get();
-        Optional<FileWrapper> u1Tou2 = u2.getByPath("/" + u1.username).get();
-        Optional<FileWrapper> u2Tou1 = u1.getByPath("/" + u2.username).get();
+        UserContext a = PeergosNetworkUtils.ensureSignedUp(random(), random(), network, crypto);
+        UserContext b = PeergosNetworkUtils.ensureSignedUp(random(), random(), network, crypto);
+        b.sendFollowRequest(a.username, SymmetricKey.random()).get();
+        assertTrue(! b.getSocialState().join().getFollowing().contains(a.username));
+        assertTrue(! b.getSocialState().join().getFollowers().contains(a.username));
 
-        assertTrue("Friend root present after accepted follow request", u1Tou2.isPresent());
-        assertTrue("Friend root not present after non reciprocated follow request", !u2Tou1.isPresent());
+        List<FollowRequestWithCipherText> aRequests = a.processFollowRequests().get();
+        assertTrue("Receive a follow request", aRequests.size() > 0);
+        a.sendReplyFollowRequest(aRequests.get(0), true, false).get();
+        List<FollowRequestWithCipherText> bFollowRequests = b.processFollowRequests().get();
+        Optional<FileWrapper> aTob = b.getByPath("/" + a.username).get();
+        Optional<FileWrapper> bToa = a.getByPath("/" + b.username).get();
+
+        assertTrue("Friend root present after accepted follow request", aTob.isPresent());
+        assertTrue("Friend root not present after non reciprocated follow request", bToa.isEmpty());
+        assertTrue(a.getSocialState().join().getFollowers().contains(b.username));
+        assertTrue(b.getSocialState().join().getFollowing().contains(a.username));
 
         // Now test them trying to become full friends
-        u1.sendInitialFollowRequest(u2.username).join();
-        List<FollowRequestWithCipherText> reqs = u2.processFollowRequests().get();
-        u2.sendReplyFollowRequest(reqs.get(0), true, true).join();
-        SocialState u1Social = u1.getSocialState().join();
-        Assert.assertTrue(u1Social.followerRoots.containsKey(u2.username));
-        Assert.assertTrue(u1Social.followingRoots.stream().anyMatch(f -> f.getName().equals(u2.username)));
+        a.sendInitialFollowRequest(b.username).join();
+        List<FollowRequestWithCipherText> reqs = b.processFollowRequests().get();
+        b.sendReplyFollowRequest(reqs.get(0), true, true).join();
+        SocialState aSocial = a.getSocialState().join();
+        Assert.assertTrue(aSocial.followerRoots.containsKey(b.username));
+        Assert.assertTrue(aSocial.followingRoots.stream().anyMatch(f -> f.getName().equals(b.username)));
 
-        SocialState u2Social = u2.getSocialState().join();
-        Assert.assertTrue(u2Social.followerRoots.containsKey(u1.username));
-        Assert.assertTrue(u2Social.followingRoots.stream().anyMatch(f -> f.getName().equals(u1.username)));
+        SocialState bSocial = b.getSocialState().join();
+        Assert.assertTrue(bSocial.followerRoots.containsKey(a.username));
+        Assert.assertTrue(bSocial.followingRoots.stream().anyMatch(f -> f.getName().equals(a.username)));
+
+        assertTrue(b.getByPath("/" + a.username).join().isPresent());
+        assertTrue(a.getByPath("/" + b.username).join().isPresent());
     }
 
+    @Test
+    public void denyThenSubsequentFollowRequest() throws Exception {
+        UserContext a = PeergosNetworkUtils.ensureSignedUp("a-" + random(), random(), network, crypto);
+        UserContext b = PeergosNetworkUtils.ensureSignedUp("b-" + random(), random(), network, crypto);
+        UserContext c = PeergosNetworkUtils.ensureSignedUp("c-" + random(), random(), network, crypto);
+        b.sendFollowRequest(a.username, SymmetricKey.random()).get();
+        assertTrue(! b.getSocialState().join().getFollowing().contains(a.username));
+        assertTrue(! b.getSocialState().join().getFollowers().contains(a.username));
+
+        List<FollowRequestWithCipherText> aRequests = a.processFollowRequests().get();
+        assertTrue("Receive a follow request", aRequests.size() > 0);
+        a.sendReplyFollowRequest(aRequests.get(0), false, false).get();
+        List<FollowRequestWithCipherText> bFollowRequests = b.processFollowRequests().get();
+        assertTrue(bFollowRequests.isEmpty());
+        //b.sendFollowRequest(a.username, SymmetricKey.random()).get();
+
+        b.sendFollowRequest(c.username, SymmetricKey.random()).get();
+        SocialState bState = b.getSocialState().join();
+        assertTrue(bState.pendingIncoming.size() == 0);
+        aRequests = b.processFollowRequests().get();
+        bState = b.getSocialState().join();
+        assertTrue(bState.pendingIncoming.size() == 0);
+    }
+
+    @Test
+    public void acceptThenSubsequentFollowRequest() throws Exception {
+        UserContext a = PeergosNetworkUtils.ensureSignedUp("a-" + random(), random(), network, crypto);
+        UserContext b = PeergosNetworkUtils.ensureSignedUp("b-" + random(), random(), network, crypto);
+        b.sendFollowRequest(a.username, SymmetricKey.random()).get();
+        assertTrue(! b.getSocialState().join().getFollowing().contains(a.username));
+        assertTrue(! b.getSocialState().join().getFollowers().contains(a.username));
+
+        List<FollowRequestWithCipherText> aRequests = a.processFollowRequests().get();
+        assertTrue("Receive a follow request", aRequests.size() > 0);
+        a.sendReplyFollowRequest(aRequests.get(0), true, false).get();
+        List<FollowRequestWithCipherText> bFollowRequests = b.processFollowRequests().join();
+        assertTrue(bFollowRequests.isEmpty());
+        List<FollowRequestWithCipherText> aFollowRequests = a.processFollowRequests().join();
+
+        b.unfollow(a.username).join();
+        b.sendFollowRequest(a.username, SymmetricKey.random()).get();
+        SocialState aState = a.getSocialState().join();
+
+        Set<String> followerNames = aState.followerRoots.keySet();
+        Set<String> followeeNames = aState.followingRoots.stream().map(f -> f.getFileProperties().name).collect(Collectors.toSet());
+        Set<String> friendNames = followerNames.stream().filter(x -> followeeNames.contains(x)).collect(Collectors.toSet());
+        assertTrue(friendNames.isEmpty());
+    }
+
+    @Test
+    public void concurrentMutualFollowRequests() throws Exception {
+        UserContext a = PeergosNetworkUtils.ensureSignedUp(random(), random(), network, crypto);
+        UserContext b = PeergosNetworkUtils.ensureSignedUp(random(), random(), network, crypto);
+        b.sendFollowRequest(a.username, SymmetricKey.random()).get();
+        a.sendFollowRequest(b.username, SymmetricKey.random()).get();
+
+        // they should be friends now
+        List<FollowRequestWithCipherText> bFollowRequests = b.processFollowRequests().get();
+        List<FollowRequestWithCipherText> aFollowRequests = a.processFollowRequests().get();
+        Optional<FileWrapper> aTob = b.getByPath("/" + a.username).get();
+        Optional<FileWrapper> bToa = a.getByPath("/" + b.username).get();
+
+        assertTrue("Friend root present after accepted follow request", aTob.isPresent());
+        assertTrue("Friend root present after accepted follow request", bToa.isPresent());
+        assertTrue(a.getSocialState().join().getFriends().contains(b.username));
+        assertTrue(b.getSocialState().join().getFriends().contains(a.username));
+    }
 
     @Test
     public void rejectFollowRequest() throws Exception {
