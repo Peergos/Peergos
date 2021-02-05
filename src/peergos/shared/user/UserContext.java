@@ -1721,13 +1721,14 @@ public class UserContext {
 
     private CompletableFuture<List<FollowRequestWithCipherText>> processFollowRequests(List<BlindFollowRequest> all) {
         return getSharingFolder().thenCompose(sharing ->
-                getFollowerRoots(false).thenCompose(followerRoots -> {
+                getFollowerRoots(false).thenCompose(followerRoots -> getPendingOutgoingFollowRequests()
+                        .thenCompose(pendingOut -> {
                     List<FollowRequestWithCipherText> withDecrypted = all.stream()
                             .map(b -> new FollowRequestWithCipherText(b.followRequest.decrypt(boxer.secretBoxingKey, b.dummySource, FollowRequest::fromCbor), b))
                             .collect(Collectors.toList());
 
                     List<FollowRequestWithCipherText> replies = withDecrypted.stream()
-                            .filter(p -> followerRoots.containsKey(p.req.entry.get().ownerName))
+                            .filter(p -> pendingOut.pendingOutgoingFollowRequests.contains(p.req.entry.get().ownerName))
                             .collect(Collectors.toList());
 
                     BiFunction<TrieNode, FollowRequestWithCipherText, CompletableFuture<TrieNode>> addToStatic = (root, p) -> {
@@ -1805,7 +1806,7 @@ public class UserContext {
                                 entrie = newRoot;
                                 return initialRequests;
                             });
-                })
+                }))
         );
     }
 
