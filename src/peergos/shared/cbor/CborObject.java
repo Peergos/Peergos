@@ -261,7 +261,10 @@ public interface CborObject extends Cborable {
         }
 
         public <K,V> Map<K,V> getMap(String key, Function<? super Cborable, K> toKey, Function<? super Cborable, V> toValue) {
-            return ((CborMap)get(key)).toMap(toKey, toValue);
+            CborMap val = (CborMap) get(key);
+            if (val == null)
+                return Collections.emptyMap();
+            return val.toMap(toKey, toValue);
         }
     }
 
