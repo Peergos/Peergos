@@ -312,7 +312,7 @@ public class WriterData implements Cborable {
         Optional<Multihash> owned = m.getOptional("owned", val -> ((CborObject.CborMerkleLink)val).target);
 
         Map<String, OwnerProof> named = m.getOptional("named", c -> (CborObject.CborMap)c)
-                .map(map -> map.getMap(k -> ((CborObject.CborString)k).value, OwnerProof::fromCbor))
+                .map(map -> map.toMap(k -> ((CborObject.CborString)k).value, OwnerProof::fromCbor))
                 .orElseGet(() -> Collections.emptyMap());
 
         Optional<UserStaticData> staticData = m.getOptional("static", UserStaticData::fromCbor);

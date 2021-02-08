@@ -13,6 +13,7 @@ import peergos.shared.user.fs.FileWrapper;
 import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.ArrayOps;
 import peergos.shared.util.Serialize;
+import peergos.shared.util.TriFunction;
 
 import java.io.File;
 import java.io.IOException;
@@ -336,7 +337,7 @@ public class PeergosNetworkUtils {
         sharer.shareWriteAccessWith(dirPath, Collections.singleton(sharee.username)).join();
 
         // no revoke write access to dir
-        sharer.unShareWriteAccess(dirPath, Collections.singleton(sharee.username)).join();
+        sharer.unShareWriteAccess(dirPath, sharee.username).join();
 
         // check sharee can't read the dir
         Optional<FileWrapper> sharedDir = sharee.getByPath(dirPath).join();
@@ -366,7 +367,7 @@ public class PeergosNetworkUtils {
 
         FileWrapper friend = sharee.getByPath(Paths.get(sharer.username)).join().get();
         Set<FileWrapper> friendChildren = friend.getChildren(crypto.hasher, sharee.network).join();
-        Assert.assertEquals(friendChildren.size(), 1);
+        Assert.assertEquals(friendChildren.size(), 2);
     }
 
     public static void sharedwithPermutations(NetworkAccess sharerNode, Random rnd) throws Exception {
@@ -403,11 +404,11 @@ public class PeergosNetworkUtils {
         result = sharer.sharedWith(p).join();
         Assert.assertTrue(result.readAccess.size() == 1 && result.writeAccess.size() == 1);
 
-        sharer.unShareReadAccess(p, Set.of(sharee.username)).join();
+        sharer.unShareReadAccess(p, sharee.username).join();
         result = sharer.sharedWith(p).join();
         Assert.assertTrue(result.readAccess.size() == 0 && result.writeAccess.size() == 1);
 
-        sharer.unShareWriteAccess(p, Set.of(sharee2.username)).join();
+        sharer.unShareWriteAccess(p, sharee2.username).join();
         result = sharer.sharedWith(p).join();
         Assert.assertTrue(result.readAccess.size() == 0 && result.writeAccess.size() == 0);
 
@@ -421,7 +422,7 @@ public class PeergosNetworkUtils {
         result = sharer.sharedWith(p).join();
         Assert.assertTrue(result.readAccess.size() == 1 && result.writeAccess.size() == 1);
 
-        sharer.unShareWriteAccess(p, Set.of(sharee2.username)).join();
+        sharer.unShareWriteAccess(p, sharee2.username).join();
         result = sharer.sharedWith(p).join();
         Assert.assertTrue(result.readAccess.size() == 1 && result.writeAccess.size() == 0);
 
@@ -459,9 +460,8 @@ public class PeergosNetworkUtils {
         FileWrapper file = sharer.getByPath(filePath).join().get();
         long originalfileSize = file.getFileProperties().size;
         System.out.println("filesize=" + originalfileSize);
-        FileWrapper parent = sharer.getByPath(dirPath).join().get();
 
-        sharer.shareWriteAccessWith(file, filePath.toString(), parent, Collections.singletonList(sharee.username).toArray(new String[1])).join();
+        sharer.shareWriteAccessWith(filePath, Collections.singleton(sharee.username)).join();
 
         dir = sharer.getByPath(dirPath).join().get();
         byte[] updatedFileContents = sharer.crypto.random.randomBytes(255);
@@ -508,7 +508,7 @@ public class PeergosNetworkUtils {
         file.rename(renamedFolderName, u1Root, p, sharer).join();
         p = Paths.get(sharerUsername, renamedFolderName);
 
-        sharer.unShareReadAccess(p, Set.of(sharee.username)).join();
+        sharer.unShareReadAccess(p, sharee.username).join();
         result = sharer.sharedWith(p).join();
         Assert.assertTrue(result.readAccess.size() == 0 && result.writeAccess.size() == 0);
 
@@ -556,7 +556,7 @@ public class PeergosNetworkUtils {
                 .collect(Collectors.toSet());
 
         // file is uploaded, do the actual sharing
-        boolean finished = sharer.shareReadAccessWithAll(updatedFolder, Paths.get(path),
+        boolean finished = sharer.shareReadAccessWith(Paths.get(path),
                 shareeUsers.stream()
                         .map(c -> c.username)
                         .collect(Collectors.toSet())).get();
@@ -673,7 +673,7 @@ public class PeergosNetworkUtils {
         }
 
         // file is uploaded, do the actual sharing
-        boolean finished = sharer.shareWriteAccessWithAll(sharer.getByPath(path).join().get(), Paths.get(path), sharer.getUserRoot().join(), shareeUsers.stream()
+        boolean finished = sharer.shareWriteAccessWith(Paths.get(path), shareeUsers.stream()
                 .map(c -> c.username)
                 .collect(Collectors.toSet())).get();
 
@@ -816,8 +816,7 @@ public class PeergosNetworkUtils {
         }
 
         // share /u1/folder with 'a'
-        sharer.shareWriteAccessWithAll(sharer.getByPath(dirPath).join().get(), dirPath,
-                sharer.getUserRoot().join(), Collections.singleton(a.username)).join();
+        sharer.shareWriteAccessWith(dirPath, Collections.singleton(a.username)).join();
 
         // create a directory
         FileWrapper sharedFolderv1 = sharer.getByPath(dirPath).join().get();
@@ -826,8 +825,7 @@ public class PeergosNetworkUtils {
 
         // share /u1/folder with 'b'
         Path subdirPath = Paths.get(sharer.username, folderName, subdirName);
-        sharer.shareWriteAccessWithAll(sharer.getByPath(subdirPath).join().get(), subdirPath,
-                sharer.getByPath(dirPath).join().get(), Collections.singleton(b.username)).join();
+        sharer.shareWriteAccessWith(subdirPath, Collections.singleton(b.username)).join();
 
         // check 'b' can upload a file
         UserContext shareeUploader = shareeUsers.get(0);
@@ -937,12 +935,10 @@ public class PeergosNetworkUtils {
 
         // share /u1/folder/subdir with 'b'
         Path subdirPath = Paths.get(sharer.username, folderName, subdirName);
-        sharer.shareWriteAccessWithAll(sharer.getByPath(subdirPath).join().get(), subdirPath,
-                sharer.getByPath(dirPath).join().get(), Collections.singleton(b.username)).join();
+        sharer.shareWriteAccessWith(subdirPath, Collections.singleton(b.username)).join();
 
         // share /u1/folder with 'a'
-        sharer.shareWriteAccessWithAll(sharer.getByPath(dirPath).join().get(), dirPath,
-                sharer.getUserRoot().join(), Collections.singleton(a.username)).join();
+        sharer.shareWriteAccessWith(dirPath, Collections.singleton(a.username)).join();
 
         // check sharer can still see /u1/folder/subdir
         Assert.assertTrue("subdir still present", sharer.getByPath(subdirPath).join().isPresent());
@@ -993,7 +989,7 @@ public class PeergosNetworkUtils {
 
 
         Path fileToShare = Paths.get(sharer.username, folderName, filename);
-        sharer.shareReadAccessWithAll(sharer.getByPath(fileToShare).join().get(), fileToShare
+        sharer.shareReadAccessWith(fileToShare
                 , Collections.singleton(a.username)).join();
 
         // check 'a' can see the shared file
@@ -1006,7 +1002,7 @@ public class PeergosNetworkUtils {
         // check 'a' can't see the shared directory
         FileWrapper unsharedLocation = a.getByPath(sharer.username).join().get();
         Set<FileWrapper> children = unsharedLocation.getChildren(crypto.hasher, sharer.network).join();
-        Assert.assertTrue("a can't see unshared folder", children.isEmpty());
+        Assert.assertTrue("a can't see unshared folder", children.stream().filter(c -> c.getName().equals(folderName)).findFirst().isEmpty());
     }
 
     public static void grantAndRevokeWriteThenReadAccessToFolder(NetworkAccess network, Random random) throws IOException {
@@ -1030,8 +1026,7 @@ public class PeergosNetworkUtils {
         Path dirPath = Paths.get(sharer.username, folderName);
 
         // share /u1/folder with 'a'
-        sharer.shareWriteAccessWithAll(sharer.getByPath(dirPath).join().get(), dirPath,
-                sharer.getUserRoot().join(), Collections.singleton(a.username)).join();
+        sharer.shareWriteAccessWith(dirPath, Collections.singleton(a.username)).join();
 
         // check 'a' can see the shared file
         FileWrapper sharedFolder = a.getByPath(sharer.username + "/" + folderName).join()
@@ -1043,10 +1038,10 @@ public class PeergosNetworkUtils {
         // check 'a' can't see the shared directory
         FileWrapper unsharedLocation = a.getByPath(sharer.username).join().get();
         Set<FileWrapper> children = unsharedLocation.getChildren(crypto.hasher, sharer.network).join();
-        Assert.assertTrue("a can't see unshared folder", children.isEmpty());
+        Assert.assertTrue("a can't see unshared folder", children.stream().filter(c -> c.getName().equals(folderName)).findFirst().isEmpty());
 
 
-        sharer.shareReadAccessWithAll(sharer.getByPath(dirPath).join().get(), dirPath
+        sharer.shareReadAccessWith(dirPath
                 , Collections.singleton(a.username)).join();
 
         // check 'a' can see the shared file
@@ -1059,7 +1054,7 @@ public class PeergosNetworkUtils {
         // check 'a' can't see the shared directory
         unsharedLocation = a.getByPath(sharer.username).join().get();
         children = unsharedLocation.getChildren(crypto.hasher, sharer.network).join();
-        Assert.assertTrue("a can't see unshared folder", children.isEmpty());
+        Assert.assertTrue("a can't see unshared folder", children.stream().filter(c -> c.getName().equals(folderName)).findFirst().isEmpty());
     }
 
     
@@ -1098,8 +1093,7 @@ public class PeergosNetworkUtils {
         }
 
         // grant write access to a directory to user 'a'
-        sharer.shareWriteAccessWithAll(sharer.getByPath(dirPath).join().get(), dirPath,
-                sharer.getUserRoot().join(), Collections.singleton(a.username)).join();
+        sharer.shareWriteAccessWith(dirPath, Collections.singleton(a.username)).join();
 
         // create another sub-directory
         FileWrapper sharedFolderv1 = sharer.getByPath(dirPath).join().get();
@@ -1108,8 +1102,7 @@ public class PeergosNetworkUtils {
 
         // grant write access to a sub-directory to user 'b'
         Path subdirPath = Paths.get(sharer.username, folderName, subdirName);
-        sharer.shareWriteAccessWithAll(sharer.getByPath(subdirPath).join().get(), subdirPath,
-                sharer.getByPath(dirPath).join().get(), Collections.singleton(b.username)).join();
+        sharer.shareWriteAccessWith(subdirPath, Collections.singleton(b.username)).join();
 
         List<Set<AbsoluteCapability>> childCapsByChunk0 = getAllChildCapsByChunk(sharer.getByPath(dirPath).join().get(), network);
         Assert.assertTrue("Correct links per chunk, without duplicates",
@@ -1210,7 +1203,8 @@ public class PeergosNetworkUtils {
 
         // check 'a' can see the shared file in their social feed
         SocialFeed feed = a.getSocialFeed().join();
-        List<SharedItem> items = feed.getShared(0, 1, a.crypto, a.network).join();
+        int feedSize = 2;
+        List<SharedItem> items = feed.getShared(feedSize, feedSize + 1, a.crypto, a.network).join();
         Assert.assertTrue(items.size() > 0);
         SharedItem item = items.get(0);
         Assert.assertTrue(item.owner.equals(sharer.username));
@@ -1222,7 +1216,7 @@ public class PeergosNetworkUtils {
         // Test the feed after a fresh login
         UserContext freshA = PeergosNetworkUtils.ensureSignedUp(a.username, password, network, crypto);
         SocialFeed freshFeed = freshA.getSocialFeed().join();
-        List<SharedItem> freshItems = freshFeed.getShared(0, 1, a.crypto, a.network).join();
+        List<SharedItem> freshItems = freshFeed.getShared(feedSize, feedSize + 1, a.crypto, a.network).join();
         Assert.assertTrue(freshItems.size() > 0);
         SharedItem freshItem = freshItems.get(0);
         Assert.assertTrue(freshItem.equals(item));
@@ -1232,7 +1226,7 @@ public class PeergosNetworkUtils {
         uploadAndShare(fileData, file2, sharer, a.username);
 
         SocialFeed updatedFeed = freshFeed.update().join();
-        List<SharedItem> items2 = updatedFeed.getShared(1, 2, a.crypto, a.network).join();
+        List<SharedItem> items2 = updatedFeed.getShared(feedSize + 1, feedSize + 2, a.crypto, a.network).join();
         Assert.assertTrue(items2.size() > 0);
         SharedItem item2 = items2.get(0);
         Assert.assertTrue(item2.owner.equals(sharer.username));
@@ -1259,7 +1253,7 @@ public class PeergosNetworkUtils {
 
         // now check feed
         SocialFeed updatedFeed3 = freshFeed.update().join();
-        List<SharedItem> items3 = updatedFeed3.getShared(2, 3, a.crypto, a.network).join();
+        List<SharedItem> items3 = updatedFeed3.getShared(feedSize + 2, feedSize + 3, a.crypto, a.network).join();
         Assert.assertTrue(items3.size() > 0);
         SharedItem item3 = items3.get(0);
         Assert.assertTrue(item3.owner.equals(sharer.username));
@@ -1273,7 +1267,7 @@ public class PeergosNetworkUtils {
         sharer.getByPath(file.getParent()).join().get()
                 .uploadOrReplaceFile(filename, AsyncReader.build(data), data.length,
                         sharer.network, crypto, l -> {}, crypto.random.randomBytes(32)).join();
-        sharer.shareReadAccessWithAll(sharer.getByPath(file).join().get(), file, Set.of(sharee)).join();
+        sharer.shareReadAccessWith(file, Set.of(sharee)).join();
     }
 
     public static void socialFeedVariations2(NetworkAccess network, Random random) {
@@ -1294,12 +1288,12 @@ public class PeergosNetworkUtils {
 
         Path dirToShare1 = Paths.get(sharer.username, dir1);
         Path dirToShare2 = Paths.get(sharer.username, dir2);
-        sharer.shareReadAccessWithAll(sharer.getByPath(dirToShare1).join().get(), dirToShare1, Set.of(sharee.username)).join();
-        sharer.shareReadAccessWithAll(sharer.getByPath(dirToShare2).join().get(), dirToShare2, Set.of(sharee.username)).join();
+        sharer.shareReadAccessWith(dirToShare1, Set.of(sharee.username)).join();
+        sharer.shareReadAccessWith(dirToShare2, Set.of(sharee.username)).join();
 
         SocialFeed feed = sharee.getSocialFeed().join();
         List<SharedItem> items = feed.getShared(0, 1000, sharee.crypto, sharee.network).join();
-        Assert.assertTrue(items.size() == 2);
+        Assert.assertTrue(items.size() == 2 + 2);
 
         sharee.getUserRoot().join().mkdir("mine", sharee.network, false, sharer.crypto).join();
     }
@@ -1322,25 +1316,26 @@ public class PeergosNetworkUtils {
 
         Path dirToShare1 = Paths.get(sharer.username, dir1);
         Path dirToShare2 = Paths.get(sharer.username, dir2);
-        sharer.shareReadAccessWithAll(sharer.getByPath(dirToShare1).join().get(), dirToShare1, Set.of(sharee.username)).join();
-        sharer.shareReadAccessWithAll(sharer.getByPath(dirToShare2).join().get(), dirToShare2, Set.of(sharee.username)).join();
+        sharer.shareReadAccessWith(dirToShare1, Set.of(sharee.username)).join();
+        sharer.shareReadAccessWith(dirToShare2, Set.of(sharee.username)).join();
 
         SocialFeed feed = sharee.getSocialFeed().join();
+        int initialFeedSize = 2;
         List<SharedItem> items = feed.getShared(0, 1000, sharee.crypto, sharee.network).join();
-        Assert.assertTrue(items.size() == 2);
+        Assert.assertTrue(items.size() == initialFeedSize + 2);
 
         sharee = PeergosNetworkUtils.ensureSignedUp(sharee.username, password, network, crypto);
         sharee.getUserRoot().join().mkdir("mine", sharer.network, false, sharer.crypto).join();
 
         feed = sharee.getSocialFeed().join();
         items = feed.getShared(0, 1000, sharee.crypto, sharee.network).join();
-        Assert.assertTrue(items.size() == 2);
+        Assert.assertTrue(items.size() == initialFeedSize + 2);
 
         //When attempting this in the web-ui the below call results in a failure when loading timeline entry
         //Cannot seek to position 680 in file of length 340
         feed = sharee.getSocialFeed().join();
         items = feed.getShared(0, 1000, sharee.crypto, sharee.network).join();
-        Assert.assertTrue(items.size() == 2);
+        Assert.assertTrue(items.size() == initialFeedSize + 2);
     }
 
     public static void socialFeedEmpty(NetworkAccess network, Random random) {
@@ -1373,24 +1368,178 @@ public class PeergosNetworkUtils {
 
         Path dirToShare1 = Paths.get(sharer.username, dir1);
         Path dirToShare2 = Paths.get(sharer.username, dir2);
-        sharer.shareReadAccessWithAll(sharer.getByPath(dirToShare1).join().get(), dirToShare1, Set.of(a.username)).join();
-        sharer.shareReadAccessWithAll(sharer.getByPath(dirToShare2).join().get(), dirToShare2, Set.of(a.username)).join();
+        sharer.shareReadAccessWith(dirToShare1, Set.of(a.username)).join();
+        sharer.shareReadAccessWith(dirToShare2, Set.of(a.username)).join();
 
         SocialFeed feed = a.getSocialFeed().join();
+        int initialFeedSize = 2;
         List<SharedItem> items = feed.getShared(0, 1000, a.crypto, a.network).join();
-        Assert.assertTrue(items.size() == 2);
+        Assert.assertTrue(items.size() == initialFeedSize + 2);
 
         //Add another file and share
         String dir3 = "three";
         sharer.getUserRoot().join().mkdir(dir3, sharer.network, false, sharer.crypto).join();
 
         Path dirToShare3 = Paths.get(sharer.username, dir3);
-        sharer.shareReadAccessWithAll(sharer.getByPath(dirToShare3).join().get(), dirToShare3, Set.of(a.username)).join();
+        sharer.shareReadAccessWith(dirToShare3, Set.of(a.username)).join();
 
         feed = a.getSocialFeed().join().update().join();
         items = feed.getShared(0, 1000, a.crypto, a.network).join();
-        Assert.assertTrue(items.size() == 3);
+        Assert.assertTrue(items.size() == initialFeedSize + 3);
+    }
 
+    public static void groupSharing(NetworkAccess network, Random random) {
+        CryptreeNode.setMaxChildLinkPerBlob(10);
+
+        String password = "notagoodone";
+        UserContext sharer = PeergosNetworkUtils.ensureSignedUp(generateUsername(random), password, network, crypto);
+
+        List<UserContext> shareeUsers = getUserContextsForNode(network.clear(), random, 2, Arrays.asList(password, password));
+        UserContext friend = shareeUsers.get(0);
+
+        // friend sharer with others
+        friendBetweenGroups(Arrays.asList(sharer), shareeUsers);
+        String dirName = "one";
+        sharer.getUserRoot().join().mkdir(dirName, sharer.network, false, sharer.crypto).join();
+
+        Path dirToShare1 = Paths.get(sharer.username, dirName);
+        SocialState social = sharer.getSocialState().join();
+        String friends = social.getFriendsGroupUid();
+        sharer.shareReadAccessWith(dirToShare1, Set.of(friends)).join();
+
+        FileSharedWithState fileSharedWithState = sharer.sharedWith(dirToShare1).join();
+        Assert.assertTrue(fileSharedWithState.readAccess.size() == 1);
+        Assert.assertTrue(fileSharedWithState.readAccess.contains(friends));
+
+        Optional<FileWrapper> dir = friend.getByPath(dirToShare1).join();
+        Assert.assertTrue(dir.isPresent());
+
+        Optional<FileWrapper> home = friend.getByPath(Paths.get(sharer.username)).join();
+        Assert.assertTrue(home.isPresent());
+
+        Optional<FileWrapper> dirViaGetChild = home.get().getChild(dirName, sharer.crypto.hasher, sharer.network).join();
+        Assert.assertTrue(dirViaGetChild.isPresent());
+
+        Set<FileWrapper> children = home.get().getChildren(sharer.crypto.hasher, sharer.network).join();
+        Assert.assertTrue(children.size() > 1);
+
+        // remove friend, which should rotate all keys of things shared with the friends group
+        sharer.removeFollower(friend.username).join();
+
+        Optional<FileWrapper> dir2 = friend.getByPath(dirToShare1).join();
+        Assert.assertTrue(dir2.isEmpty());
+
+        // new friends
+        List<UserContext> newFriends = getUserContextsForNode(network, random, 1, Arrays.asList(password, password));
+        UserContext newFriend = newFriends.get(0);
+
+        // friend sharer with others
+        friendBetweenGroups(Arrays.asList(sharer), newFriends);
+
+        Optional<FileWrapper> dirForNewFriend = newFriend.getByPath(dirToShare1).join();
+        Assert.assertTrue(dirForNewFriend.isPresent());
+    }
+
+    public static void groupSharingToFollowers(NetworkAccess network, Random random) {
+        CryptreeNode.setMaxChildLinkPerBlob(10);
+
+        String password = "notagoodone";
+        UserContext sharer = PeergosNetworkUtils.ensureSignedUp(generateUsername(random), password, network, crypto);
+
+        List<UserContext> shareeUsers = getUserContextsForNode(network, random, 2, Arrays.asList(password, password));
+        UserContext friend = shareeUsers.get(0);
+
+        // make others follow sharer
+        followBetweenGroups(Arrays.asList(sharer), shareeUsers);
+        String dir1 = "one";
+        sharer.getUserRoot().join().mkdir(dir1, sharer.network, false, sharer.crypto).join();
+
+        Path dirToShare1 = Paths.get(sharer.username, dir1);
+        SocialState social = sharer.getSocialState().join();
+        String followers = social.getFollowersGroupUid();
+        sharer.shareReadAccessWith(dirToShare1, Set.of(followers)).join();
+
+        FileSharedWithState fileSharedWithState = sharer.sharedWith(dirToShare1).join();
+        Assert.assertTrue(fileSharedWithState.readAccess.size() == 1);
+        Assert.assertTrue(fileSharedWithState.readAccess.contains(followers));
+
+        Optional<FileWrapper> dir = friend.getByPath(dirToShare1).join();
+        Assert.assertTrue(dir.isPresent());
+
+        // remove friend, which should rotate all keys of things shared with the friends group
+        sharer.removeFollower(friend.username).join();
+
+        Optional<FileWrapper> dir2 = friend.getByPath(dirToShare1).join();
+        Assert.assertTrue(dir2.isEmpty());
+    }
+
+    public static void groupReadIndividualWrite(NetworkAccess network, Random random) {
+        CryptreeNode.setMaxChildLinkPerBlob(10);
+
+        String password = "notagoodone";
+        UserContext sharer = PeergosNetworkUtils.ensureSignedUp(generateUsername(random), password, network, crypto);
+
+        List<UserContext> shareeUsers = getUserContextsForNode(network.clear(), random, 2, Arrays.asList(password, password));
+        UserContext friend = shareeUsers.get(0);
+
+        // friend sharer with others
+        friendBetweenGroups(Arrays.asList(sharer), shareeUsers);
+        String dirName = "one";
+        sharer.getUserRoot().join().mkdir(dirName, sharer.network, false, sharer.crypto).join();
+
+        Path dirToShare1 = Paths.get(sharer.username, dirName);
+        SocialState social = sharer.getSocialState().join();
+        String friends = social.getFriendsGroupUid();
+        sharer.shareReadAccessWith(dirToShare1, Set.of(friends)).join();
+
+        FileSharedWithState fileSharedWithState = sharer.sharedWith(dirToShare1).join();
+        Assert.assertTrue(fileSharedWithState.readAccess.size() == 1);
+        Assert.assertTrue(fileSharedWithState.readAccess.contains(friends));
+
+        sharer.shareWriteAccessWith(dirToShare1, Set.of(friend.username)).join();
+
+        Optional<FileWrapper> dir = friend.getByPath(dirToShare1).join();
+        Assert.assertTrue(dir.isPresent() && dir.get().isWritable());
+
+        Optional<FileWrapper> home = friend.getByPath(Paths.get(sharer.username)).join();
+        Assert.assertTrue(home.isPresent());
+
+        Optional<FileWrapper> dirViaGetChild = home.get().getChild(dirName, sharer.crypto.hasher, sharer.network).join();
+        Assert.assertTrue(dirViaGetChild.isPresent() && dirViaGetChild.get().isWritable());
+    }
+
+    public static void groupAwareSharing(NetworkAccess network, Random random,
+                                         TriFunction<UserContext, Path, Set<String>, CompletableFuture<Boolean>> shareFunction,
+                                         TriFunction<UserContext, Path, Set<String>, CompletableFuture<Boolean>> unshareFunction,
+                                         TriFunction<UserContext, Path, FileSharedWithState, Integer> resultFunc) {
+        CryptreeNode.setMaxChildLinkPerBlob(10);
+        String password = "notagoodone";
+        UserContext sharer = PeergosNetworkUtils.ensureSignedUp(generateUsername(random), password, network, crypto);
+        UserContext shareeFriend = PeergosNetworkUtils.ensureSignedUp(generateUsername(random), password, network, crypto);
+        UserContext shareeFollower = PeergosNetworkUtils.ensureSignedUp(generateUsername(random), password, network, crypto);
+
+        followBetweenGroups(Arrays.asList(sharer), Arrays.asList(shareeFollower));
+        friendBetweenGroups(Arrays.asList(sharer), Arrays.asList(shareeFriend));
+
+        String dir1 = "one";
+        sharer.getUserRoot().join().mkdir(dir1, sharer.network, false, sharer.crypto).join();
+        Path dirToShare1 = Paths.get(sharer.username, dir1);
+        SocialState social = sharer.getSocialState().join();
+        String followers = social.getFollowersGroupUid();
+        String friends = social.getFriendsGroupUid();
+
+        shareFunction.apply(sharer, dirToShare1, Set.of(shareeFriend.username)).join();
+        shareFunction.apply(sharer, dirToShare1, Set.of(shareeFollower.username)).join();
+        shareFunction.apply(sharer, dirToShare1, Set.of(followers)).join();
+        shareFunction.apply(sharer, dirToShare1, Set.of(friends)).join();
+
+        FileSharedWithState fileSharedWithState = sharer.sharedWith(dirToShare1).join();
+        Assert.assertTrue(resultFunc.apply(sharer, dirToShare1, fileSharedWithState) == 4);
+
+        unshareFunction.apply(sharer, dirToShare1, Set.of(friends, followers)).join();
+
+        fileSharedWithState = sharer.sharedWith(dirToShare1).join();
+        Assert.assertTrue(resultFunc.apply(sharer, dirToShare1, fileSharedWithState) == 0);
     }
 
     public static List<Set<AbsoluteCapability>> getAllChildCapsByChunk(FileWrapper dir, NetworkAccess network) {
@@ -1452,10 +1601,9 @@ public class PeergosNetworkUtils {
         u1Root.mkdir(folderName, sharer.network, SymmetricKey.random(), false, crypto).get();
         String path = Paths.get(sharerUsername, folderName).toString();
         System.out.println("PATH "+ path);
-        FileWrapper folder = sharer.getByPath(path).get().get();
 
         // file is uploaded, do the actual sharing
-        boolean finished = sharer.shareWriteAccessWithAll(folder, Paths.get(path), sharer.getUserRoot().join(),
+        boolean finished = sharer.shareWriteAccessWith(Paths.get(path),
                 shareeUsers.stream()
                         .map(c -> c.username)
                         .collect(Collectors.toSet())).get();
@@ -1498,7 +1646,7 @@ public class PeergosNetworkUtils {
     public static void friendBetweenGroups(List<UserContext> a, List<UserContext> b) {
         for (UserContext userA : a) {
             for (UserContext userB : b) {
-                // send intiail request
+                // send intial request
                 userA.sendFollowRequest(userB.username, SymmetricKey.random()).join();
 
                 // make sharer reciprocate all the follow requests
@@ -1513,6 +1661,28 @@ public class PeergosNetworkUtils {
 
                 // complete the friendship connection
                 userA.processFollowRequests().join();
+            }
+        }
+    }
+
+    public static void followBetweenGroups(List<UserContext> sharers, List<UserContext> followers) {
+        for (UserContext userA : sharers) {
+            for (UserContext userB : followers) {
+                // send intial request
+                userB.sendFollowRequest(userA.username, SymmetricKey.random()).join();
+
+                // make sharer reciprocate all the follow requests
+                List<FollowRequestWithCipherText> sharerRequests = userA.processFollowRequests().join();
+                for (FollowRequestWithCipherText u1Request : sharerRequests) {
+                    AbsoluteCapability pointer = u1Request.req.entry.get().pointer;
+                    Assert.assertTrue("Read only capabilities are shared", ! pointer.wBaseKey.isPresent());
+                    boolean accept = true;
+                    boolean reciprocate = false;
+                    userA.sendReplyFollowRequest(u1Request, accept, reciprocate).join();
+                }
+
+                // complete the friendship connection
+                userB.processFollowRequests().join();
             }
         }
     }

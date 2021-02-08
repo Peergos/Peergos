@@ -30,7 +30,7 @@ public class PresignedUrl implements Cborable {
         CborObject.CborMap map = (CborObject.CborMap) cbor;
         String base = map.getString("b");
         Map<String, String> headers = ((CborObject.CborMap)map.get("h"))
-                .getMap(k -> ((CborObject.CborString)k).value, k -> ((CborObject.CborString)k).value);
+                .toMap(k -> ((CborObject.CborString)k).value, k -> ((CborObject.CborString)k).value);
         return new PresignedUrl(base, headers);
     }
 }

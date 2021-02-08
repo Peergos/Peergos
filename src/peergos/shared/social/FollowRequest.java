@@ -44,4 +44,9 @@ public class FollowRequest implements Cborable {
                 .map(SymmetricKey::fromCbor);
         return new FollowRequest(entryPoint, key);
     }
+
+    @Override
+    public String toString() {
+        return entry + " - " + key.isPresent();
+    }
 }

@@ -90,4 +90,9 @@ public class EntryPoint implements Cborable {
         byte[] raw = key.decrypt(Arrays.copyOfRange(input, 24, input.length), nonce);
         return fromCbor(CborObject.fromByteArray(raw));
     }
+
+    @Override
+    public String toString() {
+        return ownerName;
+    }
 }
