@@ -7,11 +7,11 @@ import peergos.shared.user.fs.*;
 import java.util.*;
 import java.util.concurrent.*;
 
-public class FriendDirTrieNode implements TrieNode {
+public class ExternalTrieNode implements TrieNode {
     private final String dirPath; // without owner
-    private final FriendSourcedTrieNode root;
+    private final TrieNode root;
 
-    public FriendDirTrieNode(String dirPath, FriendSourcedTrieNode root) {
+    public ExternalTrieNode(String dirPath, TrieNode root) {
         this.dirPath = dirPath;
         this.root = root;
     }
@@ -59,6 +59,11 @@ public class FriendDirTrieNode implements TrieNode {
     @Override
     public Collection<TrieNode> getChildNodes() {
         throw new IllegalStateException("Invalid operation");
+    }
+
+    @Override
+    public TrieNode getChildNode(String name) {
+        throw new IllegalStateException("Not valid operation on FriendSourcedTrieNode.");
     }
 
     @Override

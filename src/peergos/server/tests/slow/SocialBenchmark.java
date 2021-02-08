@@ -238,6 +238,44 @@ public class SocialBenchmark {
         System.out.println("Took " + (end - start) + "mS");
     }
 
+    @Test
+    public void groupSharing() {
+        String username = generateUsername();
+        String password = "password";
+        Pair<UserContext, Long> initial = time(() -> ensureSignedUp(username, password, network, crypto));
+        UserContext us = initial.left;
+
+        int nFriends = 20;
+        List<Pair<String, String>> otherUsers = IntStream.range(0, nFriends)
+                .mapToObj(x -> new Pair<>(generateUsername(), password))
+                .collect(Collectors.toList());
+        List<UserContext> friends = otherUsers.stream()
+                .map(p -> ensureSignedUp(p.left, p.right, network, crypto))
+                .collect(Collectors.toList());
+
+        PeergosNetworkUtils.friendBetweenGroups(Arrays.asList(us), friends);
+
+        // Share a file with all friends individually\
+        String filename = "File1";
+        byte[] fileData = "dataaaa".getBytes();
+        us.getUserRoot().join().uploadOrReplaceFile(filename, AsyncReader.build(fileData),
+                fileData.length, network, crypto, x -> {}, crypto.random.randomBytes(32)).join();
+        long t0 = System.currentTimeMillis();
+        for (Pair<String, String> sharee : otherUsers) {
+            us.shareReadAccessWith(Paths.get(username, filename), Collections.singleton(sharee.left)).join();
+        }
+        long t1 = System.currentTimeMillis();
+
+        // Share a file with all friend via a group
+        String file2name = "File2";
+        String friendsGroup = us.getSocialState().join().getFriendsGroupUid();
+        us.getUserRoot().join().uploadOrReplaceFile(file2name, AsyncReader.build(fileData),
+                fileData.length, network, crypto, x -> {}, crypto.random.randomBytes(32)).join();
+        long groupShareDuration = time(() -> us.shareReadAccessWith(Paths.get(username, file2name), Collections.singleton(friendsGroup)).join()).right;
+        double ratio = (double) (t1 - t0) / groupShareDuration;
+        Assert.assertTrue(ratio > nFriends - 1);
+    }
+
     private String generateUsername() {
         return "test" + (random.nextInt() % 10000);
     }

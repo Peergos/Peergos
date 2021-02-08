@@ -5,19 +5,20 @@ import peergos.shared.user.*;
 
 import java.util.*;
 
+/** Each of the users you follow have one of these serialized and stored in your cap cache for them and social feed.
+ *
+ */
 public class ProcessedCaps implements Cborable {
     public final int readCaps, writeCaps;
     public final long readCapBytes, writeCapBytes;
+    public final Map<String, ProcessedCaps> groups;
 
-    public ProcessedCaps(int readCaps, int writeCaps, long readCapBytes, long writeCapBytes) {
+    public ProcessedCaps(int readCaps, int writeCaps, long readCapBytes, long writeCapBytes, Map<String, ProcessedCaps> groups) {
         this.readCaps = readCaps;
         this.writeCaps = writeCaps;
         this.readCapBytes = readCapBytes;
         this.writeCapBytes = writeCapBytes;
-    }
-
-    public long totalBytes() {
-        return readCapBytes + writeCapBytes;
+        this.groups = groups;
     }
 
     public ProcessedCaps add(CapsDiff diff) {
@@ -25,16 +26,35 @@ public class ProcessedCaps implements Cborable {
             throw new IllegalStateException("Applying cap diff to wrong base");
         if (writeCapBytes != diff.priorWriteByteOffset)
             throw new IllegalStateException("Applying cap diff to wrong base");
+
+        HashMap<String, ProcessedCaps> updated = new HashMap<>(groups);
+        for (Map.Entry<String, CapsDiff> e : diff.groupDiffs.entrySet()) {
+            ProcessedCaps current = groups.get(e.getKey());
+            CapsDiff gDiff = e.getValue();
+            if (current == null) {
+                updated.put(e.getKey(), new ProcessedCaps(gDiff.readCapCount(),
+                        gDiff.writeCapCount(), gDiff.updatedReadBytes(), gDiff.updatedWriteBytes(), Collections.emptyMap()));
+            } else {
+                updated.put(e.getKey(), current.add(gDiff));
+            }
+        }
         return new ProcessedCaps(
-                readCaps + diff.newCaps.readCaps.getRetrievedCapabilities().size(),
-                writeCaps + diff.newCaps.writeCaps.getRetrievedCapabilities().size(),
+                readCaps + diff.readCapCount(),
+                writeCaps + diff.writeCapCount(),
                 diff.updatedReadBytes(),
-                diff.updatedWriteBytes()
+                diff.updatedWriteBytes(),
+                updated
         );
     }
 
+    public CapsDiff createGroupDiff(String name, CapsDiff diff) {
+        Map<String, CapsDiff> groups = new HashMap<>();
+        groups.put(name, diff);
+        return new CapsDiff(readCapBytes, writeCapBytes, CapsDiff.ReadAndWriteCaps.empty(), groups);
+    }
+
     public static ProcessedCaps empty() {
-        return new ProcessedCaps(0, 0, 0L, 0L);
+        return new ProcessedCaps(0, 0, 0L, 0L, Collections.emptyMap());
     }
 
     @Override
@@ -44,6 +64,12 @@ public class ProcessedCaps implements Cborable {
         state.put("wc", new CborObject.CborLong(writeCaps));
         state.put("rb", new CborObject.CborLong(readCapBytes));
         state.put("wb", new CborObject.CborLong(writeCapBytes));
+
+        SortedMap<String, Cborable> groups = new TreeMap<>();
+        for (Map.Entry<String, ProcessedCaps> e : this.groups.entrySet()) {
+            groups.put(e.getKey(), e.getValue().toCbor());
+        }
+        state.put("g", CborObject.CborMap.build(groups));
         return CborObject.CborMap.build(state);
     }
 
@@ -56,6 +82,8 @@ public class ProcessedCaps implements Cborable {
         int writeCaps = (int) m.getLong("wc");
         long readCapBytes = m.getLong("rb");
         long writeCapBytes = m.getLong("wb");
-        return new ProcessedCaps(readCaps, writeCaps, readCapBytes, writeCapBytes);
+
+        Map<String, ProcessedCaps> groups = m.getMap("g", c -> ((CborObject.CborString) c).value, ProcessedCaps::fromCbor);
+        return new ProcessedCaps(readCaps, writeCaps, readCapBytes, writeCapBytes, groups);
     }
 }

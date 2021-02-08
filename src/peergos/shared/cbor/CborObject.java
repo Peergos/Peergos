@@ -252,12 +252,16 @@ public interface CborObject extends Cborable {
             return fromCbor.apply(get(key));
         }
 
-        public <K,V> Map<K,V> getMap(Function<? super Cborable, K> toKey, Function<? super Cborable, V> toValue) {
+        public <K,V> Map<K,V> toMap(Function<? super Cborable, K> toKey, Function<? super Cborable, V> toValue) {
             return values.entrySet().stream()
                 .collect(Collectors.toMap(
                     e -> toKey.apply(e.getKey()),
                     e -> toValue.apply(e.getValue())
                 ));
+        }
+
+        public <K,V> Map<K,V> getMap(String key, Function<? super Cborable, K> toKey, Function<? super Cborable, V> toValue) {
+            return ((CborMap)get(key)).toMap(toKey, toValue);
         }
     }
 

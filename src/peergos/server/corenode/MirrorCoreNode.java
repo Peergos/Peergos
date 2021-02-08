@@ -146,7 +146,7 @@ public class MirrorCoreNode implements CoreNode {
             Function<? super Cborable, List<UserPublicKeyLink>> chainParser =
                     c -> ((CborObject.CborList) c).map(UserPublicKeyLink::fromCbor);
             Map<String, List<UserPublicKeyLink>> chains = ((CborObject.CborMap)map.get("chains"))
-                    .getMap(fromString, chainParser);
+                    .toMap(fromString, chainParser);
 
             Map<PublicKeyHash, String> reverse = ((CborObject.CborList)map.get("reverse"))
                     .getMap(PublicKeyHash::fromCbor, fromString);

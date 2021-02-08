@@ -39,12 +39,13 @@ public class UserContext {
     private static final Logger LOG = Logger.getGlobal();
 
     public static final String SHARED_DIR_NAME = "shared";
+    public static final String GROUPS_FILENAME = ".groups.cbor"; // no clash possible with usernames possible because of dot
     public static final String FEED_DIR_NAME = ".feed";
     public static final String TRANSACTIONS_DIR_NAME = ".transactions";
     public static final String FRIEND_ANNOTATIONS_FILE_NAME = ".annotations";
 
     public static final String ENTRY_POINTS_FROM_FRIENDS_FILENAME = ".from-friends.cborstream";
-    public static final String ENTRY_POINTS_FROM_US_FILENAME = ".from-us.cborstream";
+    public static final String SOCIAL_STATE_FILENAME = ".social-state.cbor";
     public static final String BLOCKED_USERNAMES_FILE = ".blocked-usernames.txt";
 
     @JsProperty
@@ -120,22 +121,6 @@ public class UserContext {
     @JsMethod
     public TransactionService getTransactionService() {
         return transactions;
-    }
-
-    @JsMethod
-    public CompletableFuture<Boolean> unShareReadAccess(FileWrapper file, String[] readers) {
-        Set<String> readersToUnShare = new HashSet<>(Arrays.asList(readers));
-        return file.getPath(network).thenCompose(pathString ->
-                unShareReadAccess(Paths.get(pathString), readersToUnShare)
-        );
-    }
-
-    @JsMethod
-    public CompletableFuture<Boolean> unShareWriteAccess(FileWrapper file, String[] writers) {
-        Set<String> writersToUnShare = new HashSet<>(Arrays.asList(writers));
-        return file.getPath(network).thenCompose(pathString ->
-                unShareWriteAccess(Paths.get(pathString), writersToUnShare)
-        );
     }
 
     public static CompletableFuture<UserContext> signIn(String username, String password, NetworkAccess network
@@ -957,32 +942,39 @@ public class UserContext {
 
     @JsMethod
     public CompletableFuture<Set<FileWrapper>> getFriendRoots() {
-        List<CompletableFuture<Optional<FileWrapper>>> friendRoots = entrie.getChildNames()
-                .stream()
-                .filter(p -> !p.equals(username))
-                .map(p -> getByPath(p)).collect(Collectors.toList());
-        return Futures.combineAll(friendRoots)
-                .thenApply(set -> set.stream().filter(opt -> opt.isPresent()).map(opt -> opt.get()).collect(Collectors.toSet()));
+        return getChildren("/").thenApply(c -> c.stream()
+                .filter(f -> ! f.getName().equals(username))
+                .collect(Collectors.toSet()));
     }
 
     @JsMethod
     public CompletableFuture<Set<String>> getFollowing() {
         return getFriendRoots()
                 .thenApply(set -> set.stream()
-                        .map(froot -> froot.getOwnerName())
-                        .filter(name -> !name.equals(username))
+                        .map(FileWrapper::getOwnerName)
                         .collect(Collectors.toSet()));
     }
 
     @JsMethod
     public CompletableFuture<Set<String>> getFollowerNames() {
-        return getFollowerRoots().thenApply(m -> m.keySet());
+        return getFollowerRoots(true).thenApply(Map::keySet);
     }
 
-    public CompletableFuture<Map<String, FileWrapper>> getFollowerRoots() {
+    public CompletableFuture<Map<String, FileWrapper>> getFollowerRoots(boolean filterPending) {
+        return (filterPending ?
+                getPendingOutgoingFollowRequests()
+                        .thenApply(p -> p.pendingOutgoingFollowRequests)
+                : Futures.of(Collections.<String>emptySet()))
+                .thenCompose(pendingOutgoing -> getFollowerRoots(pendingOutgoing));
+    }
+
+    private CompletableFuture<Map<String, FileWrapper>> getFollowerRoots(Set<String> pendingOutgoing) {
         return getSharingFolder()
                 .thenCompose(sharing -> sharing.getChildren(crypto.hasher, network))
                 .thenApply(children -> children.stream()
+                        .filter(c -> ! c.getName().startsWith(".") &&
+                                ! c.getName().startsWith(GROUPS_FILENAME) &&
+                                ! pendingOutgoing.contains(c.getName()))
                         .collect(Collectors.toMap(e -> e.getFileProperties().name, e -> e)));
     }
 
@@ -993,20 +985,6 @@ public class UserContext {
                 .map(n -> (FriendSourcedTrieNode)n)
                 .filter(n -> ! n.ownerName.equals(username))
                 .collect(Collectors.toSet()));
-    }
-
-    private CompletableFuture<Set<String>> getFollowers() {
-        return getByPath(Paths.get(username, ENTRY_POINTS_FROM_FRIENDS_FILENAME))
-                .thenCompose(fopt -> fopt
-                        .map(f -> {
-                            Set<EntryPoint> res = new HashSet<>();
-                            return f.getInputStream(network, crypto, x -> {})
-                                    .thenCompose(reader -> reader.parseStream(EntryPoint::fromCbor, res::add, f.getSize())
-                                            .thenApply(x -> res.stream()
-                                                    .map(e -> e.ownerName)
-                                                    .filter(name -> ! name.equals(username))
-                                                    .collect(Collectors.toSet())));
-                        }).orElse(CompletableFuture.completedFuture(Collections.emptySet())));
     }
 
     public CompletableFuture<Map<String, FriendAnnotation>> getFriendAnnotations() {
@@ -1058,14 +1036,82 @@ public class UserContext {
         });
     }
 
+    private CompletableFuture<Groups> getGroupNameMappings() {
+        return FileUtils.getOrCreateObject(this,
+                Paths.get(username, SHARED_DIR_NAME, GROUPS_FILENAME),
+                () -> Groups.generate(crypto.random),
+                this::initialiseGroups,
+                Cborable.parser(Groups::fromCbor));
+    }
+
+    private CompletableFuture<Set<String>> getFriendNames() {
+        return getFriendRoots()
+                .thenApply(dirs -> dirs.stream()
+                        .map(FileWrapper::getName)
+                        .collect(Collectors.toSet()));
+    }
+
+    private CompletableFuture<Boolean> initialiseGroups(Groups g) {
+        return getFollowerNames().thenCompose(followers -> getFriendNames()
+                .thenCompose(friends -> {
+                    return Futures.reduceAll(g.uidToGroupName.entrySet(), true,
+                            (b, e) -> getUserRoot()
+                                    .thenCompose(home -> home.getOrMkdirs(Paths.get(SHARED_DIR_NAME, e.getKey()), network, true, crypto))
+                                    .thenCompose(x -> shareReadAccessWith(Paths.get(username, SHARED_DIR_NAME, e.getKey()),
+                                            e.getValue().equals(SocialState.FOLLOWERS_GROUP_NAME) ? followers : friends))
+                                    .thenApply(x -> true),
+                            (a, b) -> a && b);
+                }));
+    }
+
+    private CompletableFuture<PendingSocialState> getPendingOutgoingFollowRequests() {
+        return getUserRoot()
+                .thenCompose(home -> home.hasChild(SOCIAL_STATE_FILENAME, crypto.hasher, network)
+                        .thenCompose(exists ->  {
+                            if (! exists)
+                                return CompletableFuture.completedFuture(PendingSocialState.empty());
+                            return home.getChild(SOCIAL_STATE_FILENAME, crypto.hasher, network)
+                                    .thenCompose(fileOpt ->
+                                            fileOpt.get().getInputStream(network, crypto, x -> {})
+                                                    .thenCompose(reader -> Serialize.parse(reader, fileOpt.get().getSize(),
+                                                            PendingSocialState::fromCbor)));
+                        }));
+    }
+
+    private CompletableFuture<Boolean> removeFromPendingOutgoing(String usernameToRemove) {
+        return getUserRoot()
+                .thenCompose(home -> home.hasChild(SOCIAL_STATE_FILENAME, crypto.hasher, network)
+                        .thenCompose(exists ->  {
+                            if (! exists)
+                                return CompletableFuture.completedFuture(true);
+                            return home.getChild(SOCIAL_STATE_FILENAME, crypto.hasher, network)
+                                    .thenCompose(fileOpt ->
+                                            fileOpt.get().getInputStream(network, crypto, x -> {})
+                                                    .thenCompose(reader -> Serialize.parse(reader, fileOpt.get().getSize(),
+                                                            PendingSocialState::fromCbor))
+                                                    .thenCompose(current -> {
+                                                        PendingSocialState updated = current.withoutPending(usernameToRemove);
+                                                        byte[] raw = updated.serialize();
+                                                        return fileOpt.get().overwriteFile(AsyncReader.build(raw), raw.length,
+                                                                network, crypto, x -> {})
+                                                                .thenApply(x -> true);
+                                                    }));
+                        }));
+    }
+
     @JsMethod
     public CompletableFuture<SocialState> getSocialState() {
         return processFollowRequests()
-                .thenCompose(pending -> getFollowerRoots()
-                        .thenCompose(followerRoots -> getFriendRoots()
-                                .thenCompose(followingRoots -> getFollowers()
-                                        .thenCompose(followers -> getFriendAnnotations()
-                                        .thenApply(annotations -> new SocialState(pending, followers, followerRoots, followingRoots, annotations))))));
+                .thenCompose(pendingIncoming -> getPendingOutgoingFollowRequests()
+                        .thenCompose(pendingOutgoing -> getFollowerRoots(pendingOutgoing.pendingOutgoingFollowRequests)
+                                .thenCompose(followerRoots -> getFriendRoots().thenCompose(
+                                        followingRoots -> getFollowerNames().thenCompose(
+                                                followers -> getFriendAnnotations().thenCompose(
+                                                        annotations -> getGroupNameMappings().thenApply(
+                                                                groups -> new SocialState(pendingIncoming,
+                                                                        pendingOutgoing.pendingOutgoingFollowRequests,
+                                                                        followers, followerRoots, followingRoots,
+                                                                        annotations, groups.uidToGroupName))))))));
     }
 
     @JsMethod
@@ -1113,20 +1159,24 @@ public class UserContext {
                         .thenCompose(existingOpt -> {
                             if (existingOpt.isPresent())
                                 return Futures.of(existingOpt);
-                            return sharing.mkdir(theirUsername, network, initialRequest.key.get(), true, crypto)
-                                    .thenCompose(updatedSharing -> updatedSharing.getChild(theirUsername, crypto.hasher, network));
+                            return sharing.getChild(theirUsername, crypto.hasher, network)
+                                    .thenCompose(existingFriendDir -> {
+                                        if (existingFriendDir.isEmpty())
+                                            return sharing.mkdir(theirUsername, network, initialRequest.key.get(), true, crypto)
+                                                    .thenCompose(updatedSharing -> updatedSharing.getChild(theirUsername, crypto.hasher, network));
+                                        // If we already have a sharing dir for them, don't rotate the keys
+                                        return Futures.of(existingFriendDir);
+                                    });
                         }).thenCompose(friendRootOpt -> {
                             FileWrapper friendRoot = friendRootOpt.get();
                             // add a note to our entry point store so we know who we sent the read access to
                             EntryPoint entry = new EntryPoint(friendRoot.getPointer().capability.readOnly(),
                                     username);
-
-                            return addExternalEntryPoint(entry)
-                                    .thenCompose(x -> retrieveAndAddEntryPointToTrie(this.entrie, entry))
-                                    .thenApply(trie -> {
-                                        this.entrie = trie;
-                                        return entry;
-                                    });
+                            // add them to our followers group
+                            return getGroupUid(SocialState.FOLLOWERS_GROUP_NAME)
+                                    .thenCompose(followersUidOpt -> shareReadAccessWith(Paths.get(username,
+                                            SHARED_DIR_NAME, followersUidOpt.get()), Collections.singleton(theirUsername)))
+                                    .thenApply(x -> entry);
                         }));
             } else {
                 EntryPoint entry = new EntryPoint(AbsoluteCapability.createNull(), username);
@@ -1143,10 +1193,16 @@ public class UserContext {
             }
             FollowRequest reply = new FollowRequest(Optional.of(entry), baseKey);
 
-            return getPublicKeys(initialRequest.entry.get().ownerName).thenCompose(pair -> {
-                PublicBoxingKey targetUser = pair.get().right;
-                return blindAndSendFollowRequest(initialRequest.entry.get().pointer.owner, targetUser, reply);
-            });
+            return (accept && reciprocate ?
+                    getGroupUid(SocialState.FRIENDS_GROUP_NAME)
+                            .thenCompose(friendsUidOpt -> shareReadAccessWith(Paths.get(username,
+                                    SHARED_DIR_NAME, friendsUidOpt.get()), Collections.singleton(theirUsername))): // put them in our friends group
+                    Futures.of(true))
+                    .thenCompose(x -> getPublicKeys(initialRequest.entry.get().ownerName))
+                    .thenCompose(pair -> {
+                        PublicBoxingKey targetUser = pair.get().right;
+                        return blindAndSendFollowRequest(initialRequest.entry.get().pointer.owner, targetUser, reply);
+                    });
         }).thenCompose(b -> {
             if (reciprocate)
                 return addExternalEntryPoint(initialRequest.entry.get())
@@ -1192,13 +1248,21 @@ public class UserContext {
                     return sharing.getOrMkdirs(Paths.get(targetUsername), network, true, crypto)
                             .thenCompose(friendRoot -> {
 
-                                // if they accept the request we will add a note to our static data so we know who we sent the read access to
                                 EntryPoint entry = new EntryPoint(friendRoot.getPointer().capability.readOnly(), username);
-
                                 FollowRequest followReq = new FollowRequest(Optional.of(entry), Optional.ofNullable(requestedKey));
 
                                 PublicKeyHash targetSigner = targetUserOpt.get().left;
-                                return blindAndSendFollowRequest(targetSigner, targetUser, followReq);
+                                return getPendingOutgoingFollowRequests()
+                                        .thenCompose(pending -> blindAndSendFollowRequest(targetSigner, targetUser, followReq)
+                                                .thenCompose(b -> {
+                                                    // note that we have a pending request sent to them
+                                                    PendingSocialState updated = pending.withPending(targetUsername);
+                                                    byte[] raw = updated.toCbor().serialize();
+                                                    return getUserRoot().thenCompose(home -> home.uploadFileSection(
+                                                            SOCIAL_STATE_FILENAME, AsyncReader.build(raw), true, 0, raw.length, Optional.empty(),
+                                                            true, network, crypto, x -> {}, crypto.random.randomBytes(32)))
+                                                            .thenApply(x -> b);
+                                                }));
                             });
                 });
             });
@@ -1216,35 +1280,11 @@ public class UserContext {
     }
 
     public CompletableFuture<Boolean> unShareReadAccess(Path path, String readerToRemove) {
-        return unShareReadAccess(path, Collections.singleton(readerToRemove));
+        return unShareReadAccessWith(path, Collections.singleton(readerToRemove));
     }
 
     public CompletableFuture<Boolean> unShareWriteAccess(Path path, String writerToRemove) {
-        return unShareWriteAccess(path, Collections.singleton(writerToRemove));
-    }
-
-    public CompletableFuture<Boolean> unShareWriteAccess(Path path, Set<String> writersToRemove) {
-        // 1. Authorise new writer pair as an owned key to parent's writer
-        // 2. Rotate all keys (except data keys which are marked as dirty)
-        // 3. Update link from parent to point ot new rotated child
-        // 4. Delete old file and subtree
-        // 5. Remove old writer from parent owned keys
-        String pathString = path.toString();
-        String absolutePathString = pathString.startsWith("/") ? pathString : "/" + pathString;
-        return getByPath(path).thenCompose(opt -> {
-            FileWrapper toUnshare = opt.orElseThrow(() -> new IllegalStateException("Specified un-shareWith path "
-                    + absolutePathString + " does not exist"));
-            return getByPath(path.getParent().toString())
-                    .thenCompose(parentOpt -> {
-                        FileWrapper parent = parentOpt.get();
-                        return rotateAllKeys(toUnshare, parent, true)
-                                .thenCompose(x ->
-                                        sharedWithCache.removeSharedWith(SharedWithCache.Access.WRITE,
-                                                path, writersToRemove))
-                                .thenCompose(b -> reSendAllWriteAccessRecursive(path))
-                                .thenCompose(b -> reSendAllReadAccessRecursive(path));
-                    });
-        });
+        return unShareWriteAccessWith(path, Collections.singleton(writerToRemove));
     }
 
     private CompletableFuture<Snapshot> rotateAllKeys(FileWrapper file,
@@ -1332,20 +1372,89 @@ public class UserContext {
         );
     }
 
-    public CompletableFuture<Boolean> unShareReadAccess(Path path, Set<String> readersToRemove) {
-        String pathString = path.toString();
-        String absolutePathString = pathString.startsWith("/") ? pathString : "/" + pathString;
-        return getByPath(absolutePathString).thenCompose(opt -> {
-            FileWrapper toUnshare = opt.orElseThrow(() -> new IllegalStateException("Specified un-shareWith path " + absolutePathString + " does not exist"));
-            // now change to new base keys, clean some keys and mark others as dirty
-            return getByPath(path.getParent().toString())
-                    .thenCompose(parent -> rotateAllKeys(toUnshare, parent.get(), false)
-                            .thenCompose(markedDirty -> {
-                                return sharedWithCache.removeSharedWith(SharedWithCache.Access.READ, path, readersToRemove)
-                                        .thenCompose(b -> reSendAllWriteAccessRecursive(path))
-                                        .thenCompose(b -> reSendAllReadAccessRecursive(path));
-                            }));
-        });
+    /**
+     * Remove read access to a file for the supplied readers.
+     * The readers can include the inbuilt friend groupUid and followers groupUid
+     * If the friend group is supplied - in addition to removing read access for the friend group,
+     * all individual friends that currently have read access will lose read access
+     * If the followers group is supplied - in addition to removing read access for the follower group AND friend
+     * group all individual users that currently have read access will lose read access
+     *
+     * @param path - The path to the file/dir to revoke access to
+     * @param initialReadersToRemove - The usernames or groupUids to revoke read access to
+     * @return
+     */
+    @JsMethod
+    public CompletableFuture<Boolean> unShareReadAccessWith(Path path, Set<String> initialReadersToRemove) {
+        //does list of readers include groups?
+        boolean hasGroups = initialReadersToRemove.stream().anyMatch(i -> i.startsWith("."));
+        return (hasGroups ?
+                getSocialState().thenCompose(social -> sharedWith(path)
+                        .thenApply(fileSharingState ->
+                            gatherAllUsernamesToUnshare(social, fileSharingState.readAccess, initialReadersToRemove)
+                        )) :
+                Futures.of(initialReadersToRemove))
+                .thenCompose(readersToRemove -> {
+                    String pathString = path.toString();
+                    String absolutePathString = pathString.startsWith("/") ? pathString : "/" + pathString;
+                    return getByPath(absolutePathString).thenCompose(opt -> {
+                        FileWrapper toUnshare = opt.orElseThrow(() -> new IllegalStateException("Specified un-shareWith path " + absolutePathString + " does not exist"));
+                        // now change to new base keys, clean some keys and mark others as dirty
+                        return getByPath(path.getParent().toString())
+                                .thenCompose(parent -> rotateAllKeys(toUnshare, parent.get(), false)
+                                        .thenCompose(markedDirty -> {
+                                            return sharedWithCache.removeSharedWith(SharedWithCache.Access.READ, path, readersToRemove)
+                                                    .thenCompose(b -> reSendAllWriteAccessRecursive(path))
+                                                    .thenCompose(b -> reSendAllReadAccessRecursive(path));
+                                        }));
+                    });
+                });
+    }
+
+    /**
+     * Remove write access to a file for the supplied writers.
+     * The readers can include the inbuilt friend groupUid and followers groupUid
+     * If the friend group is supplied - in addition to removing write access for the friend group,
+     * all individual friends that currently have write access will lose write access
+     * If the followers group is supplied - in addition to removing write access for the follower group AND friend
+     * group all individual users that currently have write access will lose write access
+     *
+     * @param path - The path to the file/dir to revoke access to
+     * @param initialWritersToRemove - The usernames or groupUids to revoke write access to
+     * @return
+     */
+    @JsMethod
+    public CompletableFuture<Boolean> unShareWriteAccessWith(Path path, Set<String> initialWritersToRemove) {
+        //does list of readers include groups?
+        boolean hasGroups = initialWritersToRemove.stream().anyMatch(i -> i.startsWith("."));
+        return (hasGroups ?
+                getSocialState().thenCompose(social -> sharedWith(path)
+                        .thenApply(fileSharingState ->
+                            gatherAllUsernamesToUnshare(social, fileSharingState.writeAccess, initialWritersToRemove)
+                        )) :
+                Futures.of(initialWritersToRemove))
+                .thenCompose(writersToRemove -> {
+                    // 1. Authorise new writer pair as an owned key to parent's writer
+                    // 2. Rotate all keys (except data keys which are marked as dirty)
+                    // 3. Update link from parent to point to new rotated child
+                    // 4. Delete old file and subtree
+                    // 5. Remove old writer from parent owned keys
+                    String pathString = path.toString();
+                    String absolutePathString = pathString.startsWith("/") ? pathString : "/" + pathString;
+                    return getByPath(absolutePathString).thenCompose(opt -> {
+                        FileWrapper toUnshare = opt.orElseThrow(() -> new IllegalStateException("Specified un-shareWith path " + absolutePathString + " does not exist"));
+                        return getByPath(path.getParent().toString())
+                                .thenCompose(parentOpt -> {
+                                    FileWrapper parent = parentOpt.get();
+                                    return rotateAllKeys(toUnshare, parent, true)
+                                            .thenCompose(x ->
+                                                    sharedWithCache.removeSharedWith(SharedWithCache.Access.WRITE,
+                                                            path, writersToRemove))
+                                            .thenCompose(b -> reSendAllWriteAccessRecursive(path))
+                                            .thenCompose(b -> reSendAllReadAccessRecursive(path));
+                                });
+                    });
+                });
     }
 
     @JsMethod
@@ -1361,27 +1470,63 @@ public class UserContext {
         return sharedWithCache.getDirSharingState(dir);
     }
 
+    @JsMethod
+    public CompletableFuture<Boolean> shareReadAccessWithFriends(Path path) {
+        return getSocialState()
+                .thenApply(s -> s.getFriendsGroupUid())
+                .thenCompose(friendsGroupUid -> getByPath(path.toString())
+                        .thenCompose(file -> shareReadAccessWith(file.orElseThrow(() ->
+                                new IllegalStateException("Could not find path " + path.toString())), path, Collections.singleton(friendsGroupUid))));
+    }
+
+    @JsMethod
+    public CompletableFuture<Boolean> shareReadAccessWithFollowers(Path path) {
+        return getSocialState()
+                .thenApply(s -> s.getFollowersGroupUid())
+                .thenCompose(followersGroupUid -> getByPath(path.toString())
+                        .thenCompose(file -> shareReadAccessWith(file.orElseThrow(() ->
+                                new IllegalStateException("Could not find path " + path.toString())), path, Collections.singleton(followersGroupUid))));
+    }
+
+    /*
+        Taking into account currently shared users/groups and users/groups selected for unsharing, build a list that is group aware
+        Note: Only inbuilt groups of friends and followers are currently handled
+     */
+    private Set<String> gatherAllUsernamesToUnshare(SocialState social,
+                                                    Set<String> currentSharedWithUsernames,
+                                                    Set<String> usernamesToUnshare) {
+
+        Set<String> followers = social.getFollowers();
+        Set<String> friends = social.getFriends();
+
+        String friendGroupUid = social.getFriendsGroupUid();
+        String followersGroupUid = social.getFollowersGroupUid();
+
+        Set<String> usersToUnshare = new HashSet<>(usernamesToUnshare);
+        if (usernamesToUnshare.contains(friendGroupUid)) {
+            HashSet<String> toAdd = new HashSet<>(currentSharedWithUsernames);
+            toAdd.retainAll(friends);
+            usersToUnshare.addAll(toAdd);
+        }
+        if (usernamesToUnshare.contains(followersGroupUid)) {
+            HashSet<String> toAdd = new HashSet<>(currentSharedWithUsernames);
+            toAdd.retainAll(followers);
+            usersToUnshare.addAll(toAdd);
+            if (currentSharedWithUsernames.contains(friendGroupUid)) {
+                usersToUnshare.add(friendGroupUid);
+            }
+        }
+        return usersToUnshare;
+    }
+
+    @JsMethod
     public CompletableFuture<Boolean> shareReadAccessWith(Path path, Set<String> readersToAdd) {
         if (readersToAdd.isEmpty())
             return Futures.of(true);
 
         return getByPath(path.toString())
-                .thenCompose(file -> shareReadAccessWithAll(file.orElseThrow(() ->
+                .thenCompose(file -> shareReadAccessWith(file.orElseThrow(() ->
                         new IllegalStateException("Could not find path " + path.toString())), path, readersToAdd));
-    }
-
-    public CompletableFuture<Boolean> shareWriteAccessWith(Path fileToShare, Set<String> writersToAdd) {
-        return getByPath(fileToShare.getParent().toString())
-                .thenCompose(parent -> {
-                    if (! parent.isPresent())
-                        throw new IllegalStateException("Could not find path " + fileToShare.getParent().toString());
-                    return parent.get().getChild(fileToShare.getFileName().toString(), crypto.hasher, network)
-                            .thenCompose(file -> {
-                                if (! file.isPresent())
-                                    throw new IllegalStateException("Could not find path " + fileToShare.toString());
-                                return shareWriteAccessWithAll(file.get(), fileToShare, parent.get(), writersToAdd);
-                            });
-                });
     }
 
     public CompletableFuture<Boolean> reSendAllWriteAccessRecursive(Path start) {
@@ -1400,7 +1545,7 @@ public class UserContext {
                         (a, b) -> a));
     }
 
-    public CompletableFuture<Boolean> shareReadAccessWithAll(FileWrapper file, Path p, Set<String> readersToAdd) {
+    private CompletableFuture<Boolean> shareReadAccessWith(FileWrapper file, Path p, Set<String> readersToAdd) {
         ensureAllowedToShare(file, username, false);
         BiFunction<FileWrapper, FileWrapper, CompletableFuture<Boolean>> sharingFunction = (sharedDir, fileWrapper) ->
                 CapabilityStore.addReadOnlySharingLinkTo(sharedDir, fileWrapper.getPointer().capability,
@@ -1419,7 +1564,8 @@ public class UserContext {
         });
     }
 
-    public CompletableFuture<Boolean> shareWriteAccessWithAll(Path fileToShare,
+    @JsMethod
+    public CompletableFuture<Boolean> shareWriteAccessWith(Path fileToShare,
                                                                Set<String> writersToAdd) {
         return getByPath(fileToShare.getParent())
                 .thenCompose(parentOpt -> ! parentOpt.isPresent() ?
@@ -1427,10 +1573,10 @@ public class UserContext {
                 parentOpt.get().getChild(fileToShare.getFileName().toString(), crypto.hasher, network)
                         .thenCompose(fileOpt -> ! fileOpt.isPresent() ?
                                 Futures.errored(new IllegalStateException("Unable to read " + fileToShare)) :
-                                shareWriteAccessWithAll(fileOpt.get(), fileToShare, parentOpt.get(), writersToAdd)));
+                                shareWriteAccessWith(fileOpt.get(), fileToShare, parentOpt.get(), writersToAdd)));
     }
 
-    public CompletableFuture<Boolean> shareWriteAccessWithAll(FileWrapper file,
+    private CompletableFuture<Boolean> shareWriteAccessWith(FileWrapper file,
                                                               Path pathToFile,
                                                               FileWrapper parent,
                                                               Set<String> writersToAdd) {
@@ -1503,23 +1649,6 @@ public class UserContext {
         return sharedWithCache.addSharedWith(access, pathToFile, usersToAdd);
     }
 
-    @JsMethod
-    public CompletableFuture<Boolean> shareReadAccessWith(FileWrapper file,
-                                                          String pathToFile,
-                                                          String[] usernamesToGrantReadAccess) {
-        Set<String> usersToGrantReadAccess = new HashSet<>(Arrays.asList(usernamesToGrantReadAccess));
-        return shareReadAccessWithAll(file, Paths.get(pathToFile), usersToGrantReadAccess);
-    }
-
-    @JsMethod
-    public CompletableFuture<Boolean> shareWriteAccessWith(FileWrapper file,
-                                                           String pathToFile,
-                                                           FileWrapper parent,
-                                                           String[] usernamesToGrantWriteAccess) {
-        Set<String> usersToGrantWriteAccess = new HashSet<>(Arrays.asList(usernamesToGrantWriteAccess));
-        return shareWriteAccessWithAll(file, Paths.get(pathToFile), parent, usersToGrantWriteAccess);
-    }
-
     public CompletableFuture<Boolean> shareAccessWith(FileWrapper file, String usernameToGrantAccess,
                                                       BiFunction<FileWrapper, FileWrapper, CompletableFuture<Boolean>> sharingFunction) {
         return getByPath("/" + username + "/shared/" + usernameToGrantAccess)
@@ -1549,7 +1678,9 @@ public class UserContext {
 
     private synchronized CompletableFuture<FileWrapper> addExternalEntryPoint(EntryPoint entry) {
         boolean isOurs = username.equals(entry.ownerName);
-        String filename = isOurs ? ENTRY_POINTS_FROM_US_FILENAME : ENTRY_POINTS_FROM_FRIENDS_FILENAME;
+        if (isOurs)
+            throw new IllegalStateException("Cannot add an entry point to your won filesystem!");
+        String filename = ENTRY_POINTS_FROM_FRIENDS_FILENAME;
         // verify owner before adding
         return entry.isValid("/" + entry.ownerName, network)
                 .thenCompose(valid -> valid ?
@@ -1590,21 +1721,23 @@ public class UserContext {
 
     private CompletableFuture<List<FollowRequestWithCipherText>> processFollowRequests(List<BlindFollowRequest> all) {
         return getSharingFolder().thenCompose(sharing ->
-                getFollowerRoots().thenCompose(followerRoots -> {
+                getFollowerRoots(false).thenCompose(followerRoots -> getPendingOutgoingFollowRequests()
+                        .thenCompose(pendingOut -> {
                     List<FollowRequestWithCipherText> withDecrypted = all.stream()
                             .map(b -> new FollowRequestWithCipherText(b.followRequest.decrypt(boxer.secretBoxingKey, b.dummySource, FollowRequest::fromCbor), b))
                             .collect(Collectors.toList());
 
                     List<FollowRequestWithCipherText> replies = withDecrypted.stream()
-                            .filter(p -> followerRoots.containsKey(p.req.entry.get().ownerName))
+                            .filter(p -> pendingOut.pendingOutgoingFollowRequests.contains(p.req.entry.get().ownerName))
                             .collect(Collectors.toList());
 
                     BiFunction<TrieNode, FollowRequestWithCipherText, CompletableFuture<TrieNode>> addToStatic = (root, p) -> {
                         FollowRequest freq = p.req;
-                        if (!Arrays.equals(freq.entry.get().pointer.rBaseKey.serialize(), SymmetricKey.createNull().serialize())) {
+                        if (! Arrays.equals(freq.entry.get().pointer.rBaseKey.serialize(), SymmetricKey.createNull().serialize())) {
                             CompletableFuture<TrieNode> updatedRoot = freq.entry.get().ownerName.equals(username) ?
                                     CompletableFuture.completedFuture(root) : // ignore responses claiming to be owned by us
                                     addExternalEntryPoint(freq.entry.get())
+                                    .thenCompose(x -> removeFromPendingOutgoing(freq.entry.get().ownerName))
                                     .thenCompose(x -> retrieveAndAddEntryPointToTrie(root, freq.entry.get()));
                             return updatedRoot.thenCompose(newRoot -> {
                                 entrie = newRoot;
@@ -1613,30 +1746,36 @@ public class UserContext {
                                         .thenApply(b -> newRoot);
                             });
                         }
-                        return CompletableFuture.completedFuture(root);
+                        return network.social.removeFollowRequest(signer.publicKeyHash, signer.secret.signMessage(p.cipher.serialize()))
+                                .thenApply(b -> root);
                     };
 
                     BiFunction<TrieNode, FollowRequestWithCipherText, CompletableFuture<TrieNode>> mozart = (trie, p) -> {
                         FollowRequest freq = p.req;
                         // delete our folder if they didn't reciprocate
-                        FileWrapper ourDirForThem = followerRoots.get(freq.entry.get().ownerName);
+                        String theirName = freq.entry.get().ownerName;
+                        FileWrapper ourDirForThem = followerRoots.get(theirName);
                         byte[] ourKeyForThem = ourDirForThem.getKey().serialize();
-                        byte[] keyFromResponse = freq.key.map(k -> k.serialize()).orElse(null);
-                        if (keyFromResponse == null || !Arrays.equals(keyFromResponse, ourKeyForThem)) {
+                        Optional<byte[]> keyFromResponse = freq.key.map(Cborable::serialize);
+                        if (keyFromResponse.isEmpty()) {
                             // They didn't reciprocate (follow us)
                             CompletableFuture<FileWrapper> removeDir = ourDirForThem.remove(sharing,
-                                    Paths.get(username, SHARED_DIR_NAME, freq.entry.get().ownerName), this);
+                                    Paths.get(username, SHARED_DIR_NAME, theirName), this);
 
-                            return removeDir.thenCompose(b -> addToStatic.apply(trie, p));
+                            return removeDir.thenCompose(x -> removeFromPendingOutgoing(freq.entry.get().ownerName))
+                                    .thenCompose(b -> addToStatic.apply(trie, p));
                         } else if (freq.entry.get().pointer.isNull()) {
                             // They reciprocated, but didn't accept (they follow us, but we can't follow them)
                             // add entry point to static data to signify their acceptance
                             // and finally remove the follow request
                             EntryPoint entryWeSentToThem = new EntryPoint(ourDirForThem.getPointer().capability.readOnly(),
                                     username);
-                            return addExternalEntryPoint(entryWeSentToThem)
+                            // add them to followers group
+                            return getGroupUid(SocialState.FOLLOWERS_GROUP_NAME)
+                                    .thenCompose(followersUidOpt -> shareReadAccessWith(Paths.get(username,
+                                            SHARED_DIR_NAME, followersUidOpt.get()), Collections.singleton(theirName)))
                                     .thenCompose(x -> network.social.removeFollowRequest(signer.publicKeyHash, signer.secret.signMessage(p.cipher.serialize())))
-                                    .thenCompose(x -> retrieveAndAddEntryPointToTrie(trie, entryWeSentToThem));
+                                    .thenApply(x -> trie);
                         } else {
                             // they accepted and reciprocated
                             // add entry point to static data to signify their acceptance
@@ -1647,10 +1786,15 @@ public class UserContext {
                             EntryPoint entry = freq.entry.get();
                             if (entry.ownerName.equals(username))
                                 throw new IllegalStateException("Received a follow request claiming to be owned by us!");
-                            return addExternalEntryPoint(entryWeSentToThem)
-                                    .thenCompose(x -> retrieveAndAddEntryPointToTrie(trie, entryWeSentToThem))
-                                    .thenCompose(newRoot -> NetworkAccess.getLatestEntryPoint(entry, network)
-                                            .thenCompose(r -> addToStatic.apply(newRoot.put(r.getPath(), r.entry), p.withEntryPoint(r.entry))))
+                            // add them to followers and friends group
+                            return getGroupUid(SocialState.FOLLOWERS_GROUP_NAME)
+                                    .thenCompose(followersUidOpt -> shareReadAccessWith(Paths.get(username,
+                                            SHARED_DIR_NAME, followersUidOpt.get()), Collections.singleton(theirName)))
+                                    .thenCompose(x -> getGroupUid(SocialState.FRIENDS_GROUP_NAME)
+                                            .thenCompose(friendsUidOpt -> shareReadAccessWith(Paths.get(username,
+                                                    SHARED_DIR_NAME, friendsUidOpt.get()), Collections.singleton(theirName))))
+                                    .thenCompose(x -> NetworkAccess.getLatestEntryPoint(entry, network)
+                                            .thenCompose(r -> addToStatic.apply(trie.put(r.getPath(), r.entry), p.withEntryPoint(r.entry))))
                                     .exceptionally(t -> trie);
                         }
                     };
@@ -1662,7 +1806,7 @@ public class UserContext {
                                 entrie = newRoot;
                                 return initialRequests;
                             });
-                })
+                }))
         );
     }
 
@@ -1691,7 +1835,8 @@ public class UserContext {
         if (path.equals("/"))
             return CompletableFuture.completedFuture(Optional.of(FileWrapper.createRoot(entrie)));
         FileProperties.ensureValidPath(path);
-        return entrie.getByPath(path.startsWith("/") ? path : "/" + path, crypto.hasher, network);
+        String absolutePath = path.startsWith("/") ? path : "/" + path;
+        return entrie.getByPath(absolutePath, crypto.hasher, network);
     }
 
     public CompletableFuture<FileWrapper> getUserRoot() {
@@ -1730,7 +1875,7 @@ public class UserContext {
                                                        String ourName,
                                                        NetworkAccess network,
                                                        Crypto crypto) {
-        // need to to retrieve all the entry points of our friends
+        // need to to retrieve all the entry points of our friends and any of their groups
         return ourRoot.getByPath(ourName, crypto.hasher, network)
                         .thenApply(Optional::get)
                 .thenCompose(homeDir -> time(() -> getFriendsEntryPoints(homeDir), "Get friend's entry points")
@@ -1749,7 +1894,27 @@ public class UserContext {
                                                     .orElse(t)).exceptionally(ex -> t),
                                             (a, b) -> a);
                                 })))
-                .exceptionally(Futures::logAndThrow);
+                .exceptionally(Futures::logAndThrow)
+                .thenCompose(root -> { // now add the groups from each friend
+                    Set<String> friendNames = root.getChildNames()
+                            .stream()
+                            .filter(n -> !n.equals(ourName))
+                            .collect(Collectors.toSet());
+                    return Futures.reduceAll(friendNames, true,
+                            (b, name) -> root.getChildren(name +"/" + SHARED_DIR_NAME, crypto.hasher, network)
+                                    .thenApply(kids -> {
+                                Set<FileWrapper> groupDirs = kids.stream()
+                                        .filter(f -> f.isDirectory() && f.getName().startsWith("."))
+                                        .collect(Collectors.toSet());
+                                FriendSourcedTrieNode friend = (FriendSourcedTrieNode) root.getChildNode(name);
+                                for (FileWrapper group : groupDirs) {
+                                    friend.addGroup(new EntryPoint(group.getPointer().capability, name));
+                                }
+                                return true;
+                            }).exceptionally(t -> b),
+                            (a, b) -> a && b)
+                            .thenApply(x -> root);
+                });
     }
 
     private CompletableFuture<TrieNode> retrieveAndAddEntryPointToTrie(TrieNode root, EntryPoint e) {
@@ -1859,15 +2024,78 @@ public class UserContext {
                 });
     }
 
+    public CompletableFuture<Optional<String>> getGroupUid(String groupName) {
+        return getGroupNameMappings()
+                .thenApply(m -> m.uidToGroupName.entrySet().stream()
+                        .filter(e -> e.getValue().equals(groupName))
+                        .map(e -> e.getKey())
+                        .findFirst());
+    }
+
     @JsMethod
-    public CompletableFuture<Boolean> removeFollower(String username) {
-        LOG.info("Remove follower: " + username);
+    public CompletableFuture<Boolean> removeFollower(String usernameToRemove) {
+        LOG.info("Remove follower: " + usernameToRemove);
         // remove /$us/shared/$them
-        Path sharingDir = Paths.get(this.username, SHARED_DIR_NAME, username);
-        return getSharingFolder()
+        Path sharingDir = Paths.get(this.username, SHARED_DIR_NAME, usernameToRemove);
+        return removeFromFriendGroup(usernameToRemove)
+                .thenCompose(x1 -> removeFromFollowersGroup(usernameToRemove))
+                .thenCompose(x2 -> unshareItemsInSharingFolder(usernameToRemove, usernameToRemove)) // revoke access to everything ever shared with this user!
+                .thenCompose(x3 -> getSharingFolder())
                 .thenCompose(sharing -> getByPath(sharingDir)
                         .thenCompose(dir -> dir.get().remove(sharing, sharingDir, this)))
-                .thenApply(x -> true);
+                .thenApply(x4 -> true);
+    }
+
+    private CompletableFuture<Boolean> removeFromFriendGroup(String usernameToRemove) {
+        return getGroupUid(SocialState.FRIENDS_GROUP_NAME)
+                .thenCompose(friendsUid -> friendsUid.isPresent() ?
+                        removeFromGroup(friendsUid.get(), usernameToRemove) :
+                        Futures.of(true));
+    }
+
+    private CompletableFuture<Boolean> removeFromFollowersGroup(String usernameToRemove) {
+        return getGroupUid(SocialState.FOLLOWERS_GROUP_NAME)
+                .thenCompose(followersUid -> followersUid.isPresent() ?
+                        removeFromGroup(followersUid.get(), usernameToRemove) :
+                        Futures.of(true));
+    }
+
+    /** Remove a user from a group. This involves rotating the keys to the group sharing dir,
+     *  and then also rotating the keys for everything ever shared with the group.
+     *
+     * @param groupUid
+     * @param username
+     * @return
+     */
+    public CompletableFuture<Boolean> removeFromGroup(String groupUid, String username) {
+        return unShareReadAccess(Paths.get(this.username, SHARED_DIR_NAME, groupUid), username)
+                .thenCompose(x -> unshareItemsInSharingFolder(groupUid, username));
+    }
+
+    public CompletableFuture<Boolean> unshareItemsInSharingFolder(String folderName, String usernameToRevoke) {
+        return getByPath(Paths.get(username, SHARED_DIR_NAME, folderName))
+                .thenCompose(opt -> {
+                    if (opt.isEmpty())
+                        return Futures.of(true);
+                    return CapabilityStore.loadReadAccessSharingLinksFromIndex(null, opt.get(), null,
+                            network, crypto, 0, false, false)
+                            .thenCompose(readCaps -> revokeAllReadCaps(readCaps.getRetrievedCapabilities(), usernameToRevoke))
+                            .thenCompose(x -> CapabilityStore.loadWriteAccessSharingLinksFromIndex(null, opt.get(), null,
+                                    network, crypto, 0, false, false)
+                                    .thenCompose(writeCaps -> revokeAllWriteCaps(writeCaps.getRetrievedCapabilities(), usernameToRevoke)));
+                });
+    }
+
+    private CompletableFuture<Boolean> revokeAllReadCaps(List<CapabilityWithPath> caps, String usernameToRevoke) {
+        return Futures.reduceAll(caps, true,
+                (b, c) -> unShareReadAccess(Paths.get(c.path), usernameToRevoke),
+                (a, b) -> a && b);
+    }
+
+    private CompletableFuture<Boolean> revokeAllWriteCaps(List<CapabilityWithPath> caps, String usernameToRevoke) {
+        return Futures.reduceAll(caps, true,
+                (b, c) -> unShareWriteAccess(Paths.get(c.path), usernameToRevoke),
+                (a, b) -> a && b);
     }
 
     public CompletableFuture<Snapshot> cleanPartialUploads() {
