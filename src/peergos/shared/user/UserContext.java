@@ -1919,12 +1919,6 @@ public class UserContext {
                         capCache, this, network, crypto));
     }
 
-    private static Optional<FileWrapper> getChild(Set<FileWrapper> in, String name) {
-        return in.stream()
-                .filter(f -> f.getName().equals(name))
-                .findFirst();
-    }
-
     private CompletableFuture<List<EntryPoint>> getFriendsEntryPoints(FileWrapper homeDir) {
         return homeDir.getChild(ENTRY_POINTS_FROM_FRIENDS_FILENAME, crypto.hasher, network)
                 .thenCompose(fopt -> {
@@ -2007,8 +2001,18 @@ public class UserContext {
         });
     }
 
-    public static CompletableFuture<CommittedWriterData> getWriterData(NetworkAccess network, PublicKeyHash owner, PublicKeyHash writer) {
-        return getWriterDataCbor(network, owner, writer)
+    public static CompletableFuture<CommittedWriterData> getWriterData(NetworkAccess network,
+                                                                       PublicKeyHash owner,
+                                                                       PublicKeyHash writer) {
+        return getWriterDataCbor(network.dhtClient, network.mutable, owner, writer)
+                .thenApply(pair -> new CommittedWriterData(MaybeMultihash.of(pair.left), WriterData.fromCbor(pair.right)));
+    }
+
+    public static CompletableFuture<CommittedWriterData> getWriterData(ContentAddressedStorage ipfs,
+                                                                       MutablePointers mutable,
+                                                                       PublicKeyHash owner,
+                                                                       PublicKeyHash writer) {
+        return getWriterDataCbor(ipfs, mutable, owner, writer)
                 .thenApply(pair -> new CommittedWriterData(MaybeMultihash.of(pair.left), WriterData.fromCbor(pair.right)));
     }
 
@@ -2017,17 +2021,20 @@ public class UserContext {
                 .thenCompose(signer -> {
                     PublicKeyHash owner = signer.orElseThrow(
                             () -> new IllegalStateException("No public-key for user " + username));
-                    return getWriterDataCbor(network, owner, owner);
+                    return getWriterDataCbor(network.dhtClient, network.mutable, owner, owner);
                 });
     }
 
-    private static CompletableFuture<Pair<Multihash, CborObject>> getWriterDataCbor(NetworkAccess network, PublicKeyHash owner, PublicKeyHash writer) {
-        return network.mutable.getPointer(owner, writer)
-                .thenCompose(casOpt -> network.dhtClient.getSigningKey(writer)
+    private static CompletableFuture<Pair<Multihash, CborObject>> getWriterDataCbor(ContentAddressedStorage ipfs,
+                                                                                    MutablePointers mutable,
+                                                                                    PublicKeyHash owner,
+                                                                                    PublicKeyHash writer) {
+        return mutable.getPointer(owner, writer)
+                .thenCompose(casOpt -> ipfs.getSigningKey(writer)
                         .thenApply(signer -> casOpt.map(raw -> HashCasPair.fromCbor(CborObject.fromByteArray(
                                 signer.get().unsignMessage(raw))).updated)
                                 .orElse(MaybeMultihash.empty())))
-                .thenCompose(key -> network.dhtClient.get(key.get())
+                .thenCompose(key -> ipfs.get(key.get())
                         .thenApply(Optional::get)
                         .thenApply(cbor -> new Pair<>(key.get(), cbor))
                 );
