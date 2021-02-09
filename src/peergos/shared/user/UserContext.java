@@ -1975,8 +1975,9 @@ public class UserContext {
                             if (p.right.isPresent())
                                 return p.right.get().overwriteFile(reader, raw.length, network, crypto, x -> {});
 
-                            return home.uploadOrReplaceFile(ENTRY_POINTS_FROM_FRIENDS_GROUPS_FILENAME, reader, raw.length,
-                                    network, crypto, x -> {}, crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH));
+                            return home.uploadFileSection(ENTRY_POINTS_FROM_FRIENDS_GROUPS_FILENAME, reader, true,
+                                    0, raw.length, Optional.empty(), false, network, crypto, x -> {},
+                                    crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH));
                         })).thenApply(x -> true);
     }
 
