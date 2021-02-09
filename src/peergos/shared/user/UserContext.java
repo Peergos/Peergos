@@ -382,8 +382,11 @@ public class UserContext {
                                                                 Crypto crypto) {
         EntryPoint entry = new EntryPoint(cap, "");
         return NetworkAccess.retrieveEntryPoint(entry, network)
-                .thenCompose(r -> addRetrievedEntryPointToTrie(null, currentRoot, entry, r.getPath(),
-                        true, null, null, network, crypto));
+                .thenCompose(r -> entry.isValid(r.getPath(), network).thenApply(valid -> {
+                    if (! valid)
+                        throw new IllegalStateException("Invalid link!");
+                    return currentRoot.put(r.getPath(), entry);
+                }));
     }
 
     public static CompletableFuture<AbsoluteCapability> getPublicCapability(Path originalPath, NetworkAccess network) {
@@ -807,8 +810,7 @@ public class UserContext {
                                                     .thenCompose(x -> addRootEntryPointAndCommit(x.merge(s2), entry, owner, userRootKey, network, tid));
                                         });
                             }));
-        }), network.dhtClient).thenCompose(s -> addRetrievedEntryPointToTrie(directoryName, TrieNodeImpl.empty(),
-                entry, "/" + directoryName, false, null, null, network, crypto));
+        }), network.dhtClient).thenApply(s -> TrieNodeImpl.empty().put("/" + directoryName, entry));
     }
 
     public CompletableFuture<PublicSigningKey> getSigningKey(PublicKeyHash keyhash) {
@@ -1863,8 +1865,7 @@ public class UserContext {
                 .collect(Collectors.toList());
         return Futures.reduceAll(ourFileSystemEntries, root,
                 (t, e) -> NetworkAccess.getLatestEntryPoint(e, network)
-                        .thenCompose(r -> addRetrievedEntryPointToTrie(ourName, t, r.entry, r.getPath(),
-                                false, null, null, network, crypto)),
+                        .thenApply(r -> t.put(r.getPath(), r.entry)),
                 (a, b) -> a)
                 .exceptionally(Futures::logAndThrow);
     }
