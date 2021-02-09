@@ -1987,6 +1987,8 @@ public class UserContext {
         // check entrypoint doesn't forge the owner
         return (fileCap.ownerName.equals(ourName) || ! checkOwner ? CompletableFuture.completedFuture(true) :
                 fileCap.isValid(path, network)).thenCompose(valid -> {
+            if (! valid)
+                return Futures.errored(new IllegalStateException("Capability claims incorrect owner!"));
             String[] parts = path.split("/");
             if (parts.length < 3 || !parts[2].equals(SHARED_DIR_NAME))
                 return CompletableFuture.completedFuture(root.put(path, fileCap));
