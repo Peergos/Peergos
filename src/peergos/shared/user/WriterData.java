@@ -122,13 +122,27 @@ public class WriterData implements Cborable {
                                 Optional.of(newRoot), namedOwnedKeys, staticData, tree)));
     }
 
-    public CompletableFuture<Boolean> ownsKey(PublicKeyHash ownedKey,
+    public CompletableFuture<Boolean> ownsKey(PublicKeyHash identityKey,
+                                              PublicKeyHash ownedKey,
                                               ContentAddressedStorage ipfs,
+                                              MutablePointers mutable,
                                               Hasher hasher) {
-        // TODO do this recursively to handle arbitrary trees of key ownership
         return getOwnedKeyChamp(ipfs, hasher)
-                .thenCompose(champ -> champ.get(ownedKey))
-                .thenApply(Optional::isPresent);
+                .thenCompose(champ -> champ.get(ownedKey)
+                        .thenApply(Optional::isPresent)
+                        .thenCompose(direct -> {
+                            if (direct)
+                                return Futures.of(true);
+                            return champ.applyToAllMappings(false,
+                                    (b, p) -> {
+                                        if (b) // exit early if we find a match
+                                            return Futures.of(b);
+                                        PublicKeyHash childKey = p.left;
+                                        return UserContext.getWriterData(ipfs, mutable, identityKey, childKey)
+                                                .thenCompose(wd -> wd.props.ownsKey(identityKey, ownedKey, ipfs, mutable, hasher));
+                                    },
+                                    ipfs);
+                        }));
     }
 
     public CompletableFuture<OwnedKeyChamp> getOwnedKeyChamp(ContentAddressedStorage ipfs, Hasher hasher) {

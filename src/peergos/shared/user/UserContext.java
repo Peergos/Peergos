@@ -45,6 +45,7 @@ public class UserContext {
     public static final String FRIEND_ANNOTATIONS_FILE_NAME = ".annotations";
 
     public static final String ENTRY_POINTS_FROM_FRIENDS_FILENAME = ".from-friends.cborstream";
+    public static final String ENTRY_POINTS_FROM_FRIENDS_GROUPS_FILENAME = ".groups-from-friends.cborstream";
     public static final String SOCIAL_STATE_FILENAME = ".social-state.cbor";
     public static final String BLOCKED_USERNAMES_FILE = ".blocked-usernames.txt";
 
@@ -381,8 +382,11 @@ public class UserContext {
                                                                 Crypto crypto) {
         EntryPoint entry = new EntryPoint(cap, "");
         return NetworkAccess.retrieveEntryPoint(entry, network)
-                .thenCompose(r -> addRetrievedEntryPointToTrie(null, currentRoot, entry, r.getPath(),
-                        true, null, network, crypto));
+                .thenCompose(r -> entry.isValid(r.getPath(), network).thenApply(valid -> {
+                    if (! valid)
+                        throw new IllegalStateException("Invalid link!");
+                    return currentRoot.put(r.getPath(), entry);
+                }));
     }
 
     public static CompletableFuture<AbsoluteCapability> getPublicCapability(Path originalPath, NetworkAccess network) {
@@ -806,8 +810,7 @@ public class UserContext {
                                                     .thenCompose(x -> addRootEntryPointAndCommit(x.merge(s2), entry, owner, userRootKey, network, tid));
                                         });
                             }));
-        }), network.dhtClient).thenCompose(s -> addRetrievedEntryPointToTrie(directoryName, TrieNodeImpl.empty(),
-                entry, "/" + directoryName, false, null, network, crypto));
+        }), network.dhtClient).thenApply(s -> TrieNodeImpl.empty().put("/" + directoryName, entry));
     }
 
     public CompletableFuture<PublicSigningKey> getSigningKey(PublicKeyHash keyhash) {
@@ -1862,8 +1865,7 @@ public class UserContext {
                 .collect(Collectors.toList());
         return Futures.reduceAll(ourFileSystemEntries, root,
                 (t, e) -> NetworkAccess.getLatestEntryPoint(e, network)
-                        .thenCompose(r -> addRetrievedEntryPointToTrie(ourName, t, r.entry, r.getPath(),
-                                false, null, network, crypto)),
+                        .thenApply(r -> t.put(r.getPath(), r.entry)),
                 (a, b) -> a)
                 .exceptionally(Futures::logAndThrow);
     }
@@ -1887,46 +1889,34 @@ public class UserContext {
 
                                     List<CompletableFuture<Optional<FriendSourcedTrieNode>>> friendNodes = friendsOnly.stream()
                                             .parallel()
-                                            .map(e -> FriendSourcedTrieNode.build(capCache, e, network, crypto))
+                                            .map(e -> FriendSourcedTrieNode.build(capCache, e,
+                                                    (c, o) -> addFriendGroupCap(c, o), network, crypto))
                                             .collect(Collectors.toList());
                                     return Futures.reduceAll(friendNodes, ourRoot,
                                             (t, e) -> e.thenApply(fromUser -> fromUser.map(userEntrie -> t.putNode(userEntrie.ownerName, userEntrie))
                                                     .orElse(t)).exceptionally(ex -> t),
                                             (a, b) -> a);
+                                })).thenCompose(root -> getFriendsGroupCaps(homeDir)
+                                .thenApply(groups -> { // now add the groups from each friend
+                                    Set<String> friendNames = root.getChildNames()
+                                            .stream()
+                                            .filter(n -> !n.equals(ourName))
+                                            .collect(Collectors.toSet());
+                                    for (String friendName : friendNames) {
+                                        FriendSourcedTrieNode friend = (FriendSourcedTrieNode) root.getChildNode(friendName);
+                                        for (EntryPoint group : groups.left.getFriends(friendName)) {
+                                            friend.addGroup(group);
+                                        }
+                                    }
+                                    return root;
                                 })))
-                .exceptionally(Futures::logAndThrow)
-                .thenCompose(root -> { // now add the groups from each friend
-                    Set<String> friendNames = root.getChildNames()
-                            .stream()
-                            .filter(n -> !n.equals(ourName))
-                            .collect(Collectors.toSet());
-                    return Futures.reduceAll(friendNames, true,
-                            (b, name) -> root.getChildren(name +"/" + SHARED_DIR_NAME, crypto.hasher, network)
-                                    .thenApply(kids -> {
-                                Set<FileWrapper> groupDirs = kids.stream()
-                                        .filter(f -> f.isDirectory() && f.getName().startsWith("."))
-                                        .collect(Collectors.toSet());
-                                FriendSourcedTrieNode friend = (FriendSourcedTrieNode) root.getChildNode(name);
-                                for (FileWrapper group : groupDirs) {
-                                    friend.addGroup(new EntryPoint(group.getPointer().capability, name));
-                                }
-                                return true;
-                            }).exceptionally(t -> b),
-                            (a, b) -> a && b)
-                            .thenApply(x -> root);
-                });
+                .exceptionally(Futures::logAndThrow);
     }
 
     private CompletableFuture<TrieNode> retrieveAndAddEntryPointToTrie(TrieNode root, EntryPoint e) {
         return NetworkAccess.retrieveEntryPoint(e, network)
                 .thenCompose(r -> addRetrievedEntryPointToTrie(username, root, r.entry, r.getPath(), false,
-                        capCache, network, crypto));
-    }
-
-    private static Optional<FileWrapper> getChild(Set<FileWrapper> in, String name) {
-        return in.stream()
-                .filter(f -> f.getName().equals(name))
-                .findFirst();
+                        capCache, this, network, crypto));
     }
 
     private CompletableFuture<List<EntryPoint>> getFriendsEntryPoints(FileWrapper homeDir) {
@@ -1961,17 +1951,44 @@ public class UserContext {
                 });
     }
 
+    private CompletableFuture<Pair<FriendsGroups, Optional<FileWrapper>>> getFriendsGroupCaps(FileWrapper homeDir) {
+        return homeDir.getChild(ENTRY_POINTS_FROM_FRIENDS_GROUPS_FILENAME, crypto.hasher, network)
+                .thenCompose(fopt -> fopt.map(f -> f.getInputStream(network, crypto, x -> {})
+                        .thenCompose(reader -> Serialize.parse(reader, f.getSize(), FriendsGroups::fromCbor))
+                        .thenApply(g -> new Pair<>(g, fopt)))
+                        .orElse(CompletableFuture.completedFuture(new Pair<>(FriendsGroups.empty(), Optional.empty()))));
+    }
+
+    public CompletableFuture<Boolean> addFriendGroupCap(CapabilityWithPath group, String owner) {
+        return getUserRoot()
+                .thenCompose(home -> getFriendsGroupCaps(home)
+                        .thenCompose(p -> {
+                            FriendsGroups updated = p.left.addGroup(group, owner);
+                            byte[] raw = updated.serialize();
+                            AsyncReader reader = AsyncReader.build(raw);
+                            if (p.right.isPresent())
+                                return p.right.get().overwriteFile(reader, raw.length, network, crypto, x -> {});
+
+                            return home.uploadFileSection(ENTRY_POINTS_FROM_FRIENDS_GROUPS_FILENAME, reader, true,
+                                    0, raw.length, Optional.empty(), false, network, crypto, x -> {},
+                                    crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH));
+                        })).thenApply(x -> true);
+    }
+
     private static CompletableFuture<TrieNode> addRetrievedEntryPointToTrie(String ourName,
                                                                             TrieNode root,
                                                                             EntryPoint fileCap,
                                                                             String path,
                                                                             boolean checkOwner,
                                                                             IncomingCapCache capCache,
+                                                                            UserContext context,
                                                                             NetworkAccess network,
                                                                             Crypto crypto) {
         // check entrypoint doesn't forge the owner
         return (fileCap.ownerName.equals(ourName) || ! checkOwner ? CompletableFuture.completedFuture(true) :
                 fileCap.isValid(path, network)).thenCompose(valid -> {
+            if (! valid)
+                return Futures.errored(new IllegalStateException("Capability claims incorrect owner!"));
             String[] parts = path.split("/");
             if (parts.length < 3 || !parts[2].equals(SHARED_DIR_NAME))
                 return CompletableFuture.completedFuture(root.put(path, fileCap));
@@ -1981,13 +1998,23 @@ public class UserContext {
             // This is a friend's sharing directory, create a wrapper to read the capabilities lazily from it
             return root.getByPath(Paths.get(ourName, CapabilityStore.CAPABILITY_CACHE_DIR).toString(), crypto.hasher, network)
                     .thenApply(opt -> opt.get())
-                    .thenCompose(cacheDir -> FriendSourcedTrieNode.build(capCache, fileCap, network, crypto))
+                    .thenCompose(cacheDir -> FriendSourcedTrieNode.build(capCache, fileCap, context::addFriendGroupCap, network, crypto))
                     .thenApply(fromUser -> fromUser.map(userEntrie -> root.putNode(username, userEntrie)).orElse(root));
         });
     }
 
-    public static CompletableFuture<CommittedWriterData> getWriterData(NetworkAccess network, PublicKeyHash owner, PublicKeyHash writer) {
-        return getWriterDataCbor(network, owner, writer)
+    public static CompletableFuture<CommittedWriterData> getWriterData(NetworkAccess network,
+                                                                       PublicKeyHash owner,
+                                                                       PublicKeyHash writer) {
+        return getWriterDataCbor(network.dhtClient, network.mutable, owner, writer)
+                .thenApply(pair -> new CommittedWriterData(MaybeMultihash.of(pair.left), WriterData.fromCbor(pair.right)));
+    }
+
+    public static CompletableFuture<CommittedWriterData> getWriterData(ContentAddressedStorage ipfs,
+                                                                       MutablePointers mutable,
+                                                                       PublicKeyHash owner,
+                                                                       PublicKeyHash writer) {
+        return getWriterDataCbor(ipfs, mutable, owner, writer)
                 .thenApply(pair -> new CommittedWriterData(MaybeMultihash.of(pair.left), WriterData.fromCbor(pair.right)));
     }
 
@@ -1996,17 +2023,20 @@ public class UserContext {
                 .thenCompose(signer -> {
                     PublicKeyHash owner = signer.orElseThrow(
                             () -> new IllegalStateException("No public-key for user " + username));
-                    return getWriterDataCbor(network, owner, owner);
+                    return getWriterDataCbor(network.dhtClient, network.mutable, owner, owner);
                 });
     }
 
-    private static CompletableFuture<Pair<Multihash, CborObject>> getWriterDataCbor(NetworkAccess network, PublicKeyHash owner, PublicKeyHash writer) {
-        return network.mutable.getPointer(owner, writer)
-                .thenCompose(casOpt -> network.dhtClient.getSigningKey(writer)
+    private static CompletableFuture<Pair<Multihash, CborObject>> getWriterDataCbor(ContentAddressedStorage ipfs,
+                                                                                    MutablePointers mutable,
+                                                                                    PublicKeyHash owner,
+                                                                                    PublicKeyHash writer) {
+        return mutable.getPointer(owner, writer)
+                .thenCompose(casOpt -> ipfs.getSigningKey(writer)
                         .thenApply(signer -> casOpt.map(raw -> HashCasPair.fromCbor(CborObject.fromByteArray(
                                 signer.get().unsignMessage(raw))).updated)
                                 .orElse(MaybeMultihash.empty())))
-                .thenCompose(key -> network.dhtClient.get(key.get())
+                .thenCompose(key -> ipfs.get(key.get())
                         .thenApply(Optional::get)
                         .thenApply(cbor -> new Pair<>(key.get(), cbor))
                 );

@@ -9,6 +9,7 @@ import peergos.shared.util.*;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.*;
 import java.util.stream.*;
 
 public class FriendSourcedTrieNode implements TrieNode {
@@ -18,16 +19,19 @@ public class FriendSourcedTrieNode implements TrieNode {
     private final EntryPoint sharedDir;
     private final Crypto crypto;
     private final List<EntryPoint> groups;
+    private BiFunction<CapabilityWithPath, String, CompletableFuture<Boolean>> groupAdder;
 
     public FriendSourcedTrieNode(IncomingCapCache cache,
                                  String ownerName,
                                  EntryPoint sharedDir,
+                                 BiFunction<CapabilityWithPath, String, CompletableFuture<Boolean>> groupAdder,
                                  Crypto crypto) {
         this.cache = cache;
         this.ownerName = ownerName;
         this.sharedDir = sharedDir;
         this.crypto = crypto;
         this.groups = new ArrayList<>();
+        this.groupAdder = groupAdder;
     }
 
     public synchronized void addGroup(EntryPoint group) {
@@ -39,7 +43,15 @@ public class FriendSourcedTrieNode implements TrieNode {
                                                                            EntryPoint e,
                                                                            NetworkAccess network,
                                                                            Crypto crypto) {
-        return Futures.of(Optional.of(new FriendSourcedTrieNode(cache, e.ownerName, e, crypto)));
+        return Futures.of(Optional.of(new FriendSourcedTrieNode(cache, e.ownerName, e, null, crypto)));
+    }
+
+    public static CompletableFuture<Optional<FriendSourcedTrieNode>> build(IncomingCapCache cache,
+                                                                           EntryPoint e,
+                                                                           BiFunction<CapabilityWithPath, String, CompletableFuture<Boolean>> groupAdder,
+                                                                           NetworkAccess network,
+                                                                           Crypto crypto) {
+        return Futures.of(Optional.of(new FriendSourcedTrieNode(cache, e.ownerName, e, groupAdder, crypto)));
     }
 
     /**
@@ -90,8 +102,9 @@ public class FriendSourcedTrieNode implements TrieNode {
                     }
                     if (newGroups.isEmpty())
                         return Futures.of(true);
-                    return ensureUptodate(crypto, network)
-                            .thenApply(y -> true);
+                    return Futures.reduceAll(newGroups, true, (b, c) -> groupAdder.apply(c, ownerName), (a, b) -> b)
+                            .thenCompose(y -> ensureUptodate(crypto, network))
+                            .thenApply(z -> true);
                 });
     }
 
