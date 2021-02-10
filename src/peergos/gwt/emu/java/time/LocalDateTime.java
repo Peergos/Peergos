@@ -62,6 +62,14 @@ public class LocalDateTime implements Comparable<LocalDateTime>{
         return now(Clock.systemDefaultZone());
     }
 
+    public int getYear() {
+        return date.getYear();
+    }
+
+    public int getMonthValue() {
+        return date.getMonthValue();
+    }
+
     public LocalDateTime plusNanos(long nanos) {
         return null;
     }
