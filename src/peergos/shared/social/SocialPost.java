@@ -8,6 +8,7 @@ import peergos.shared.user.fs.*;
 import java.time.*;
 import java.util.*;
 
+@JsType
 public class SocialPost implements Cborable {
 
     public final String author;
