@@ -18,5 +18,5 @@ public class NativeScryptJS {
 
     public native byte[] blake2b(byte[] input, int outputBytes);
 
-    public native CompletableFuture<byte[]> streamSha256(AsyncReader stream, long length);
+    public native CompletableFuture<byte[]> streamSha256(AsyncReader stream, int length);
 }
