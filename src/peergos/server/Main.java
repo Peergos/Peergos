@@ -475,7 +475,7 @@ public class Main extends Builder {
             UserService peergos = new UserService(p2pDht, crypto, corePropagator, p2pSocial, p2mMutable, storageAdmin,
                     p2pSpaceUsage, new ServerMessageStore(getDBConnector(a, "server-messages-sql-file", dbConnectionPool),
                     sqlCommands, core, p2pDht), gc);
-            InetSocketAddress localAddress = new InetSocketAddress("localhost", userAPIAddress.getPort());
+            InetSocketAddress localAddress = new InetSocketAddress("0.0.0.0", userAPIAddress.getPort());
             Optional<Path> webroot = a.hasArg("webroot") ?
                     Optional.of(Paths.get(a.getArg("webroot"))) :
                     Optional.empty();
