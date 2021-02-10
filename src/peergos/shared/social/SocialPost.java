@@ -1,5 +1,6 @@
 package peergos.shared.social;
 
+import jsinterop.annotations.*;
 import peergos.shared.cbor.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.user.fs.*;
@@ -18,6 +19,7 @@ public class SocialPost implements Cborable {
     public final List<Ref> references;
     public final List<SocialPost> previousVersions;
 
+    @JsConstructor
     public SocialPost(String author,
                       String body,
                       LocalDateTime postTime,
@@ -76,6 +78,7 @@ public class SocialPost implements Cborable {
         public final AbsoluteCapability cap;
         public final Multihash contentHash;
 
+        @JsConstructor
         public Ref(String path, AbsoluteCapability cap, Multihash contentHash) {
             this.path = path;
             this.cap = cap;
