@@ -51,6 +51,7 @@ public class SocialFeed {
      * @param post
      * @return
      */
+    @JsMethod
     public CompletableFuture<Pair<Path, FileWrapper>> createNewPost(SocialPost post) {
         if (! post.author.equals(context.username))
             throw new IllegalStateException("You can only post as yourself!");
