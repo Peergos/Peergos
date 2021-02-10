@@ -46,6 +46,31 @@ public class SocialFeed {
         this.context = context;
     }
 
+    /** Create a new post file under /username/.posts/$year/$month/#uuid
+     *
+     * @param post
+     * @return
+     */
+    public CompletableFuture<Pair<Path, FileWrapper>> createNewPost(SocialPost post) {
+        if (! post.author.equals(context.username))
+            throw new IllegalStateException("You can only post as yourself!");
+        String uuid = UUID.randomUUID().toString();
+        Path dir = getDirFromHome(post);
+        byte[] raw = post.serialize();
+        AsyncReader reader = AsyncReader.build(raw);
+        return context.getUserRoot()
+                .thenCompose(home -> home.getOrMkdirs(dir, context.network, true, context.crypto))
+                .thenCompose(postDir -> postDir.uploadOrReplaceFile(uuid, reader, raw.length, context.network,
+                        context.crypto, x -> {}, context.crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH)))
+                .thenApply(f -> new Pair<>(Paths.get(post.author).resolve(dir).resolve(uuid), f));
+    }
+
+    public static Path getDirFromHome(SocialPost post) {
+        return Paths.get(UserContext.POSTS_DIR_NAME,
+                Integer.toString(post.postTime.getYear()),
+                Integer.toString(post.postTime.getMonthValue()));
+    }
+
     @JsMethod
     public synchronized boolean hasUnseen() {
         return lastSeenIndex < feedSizeRecords;
