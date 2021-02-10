@@ -3,6 +3,7 @@ package peergos.shared.crypto.hash;
 import jsinterop.annotations.*;
 import peergos.shared.crypto.*;
 import peergos.shared.user.*;
+import peergos.shared.user.fs.*;
 
 import java.util.concurrent.*;
 
@@ -16,4 +17,6 @@ public class NativeScryptJS {
     public native CompletableFuture<byte[]> sha256(byte[] input);
 
     public native byte[] blake2b(byte[] input, int outputBytes);
+
+    public native CompletableFuture<byte[]> streamSha256(AsyncReader stream, long length);
 }
