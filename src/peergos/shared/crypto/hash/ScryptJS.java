@@ -1,7 +1,9 @@
 package peergos.shared.crypto.hash;
 
 import peergos.shared.crypto.*;
+import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.user.*;
+import peergos.shared.user.fs.*;
 
 import java.util.concurrent.CompletableFuture;
 
@@ -27,5 +29,11 @@ public class ScryptJS implements Hasher {
     @Override
     public byte[] blake2b(byte[] input, int outputBytes) {
         return scriptJS.blake2b(input, outputBytes);
+    }
+
+    @Override
+    public CompletableFuture<Multihash> hash(AsyncReader stream, long length) {
+        return scriptJS.streamSha256(stream, length)
+                .thenApply(h -> new Multihash(Multihash.Type.sha2_256, h));
     }
 }

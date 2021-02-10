@@ -9,6 +9,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.inode.*;
+import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.cryptree.*;
@@ -176,6 +177,12 @@ public class FileWrapper {
                 return CompletableFuture.completedFuture("/" + props.name);
             return parent.get().getPath(network).thenApply(parentPath -> parentPath + "/" + props.name);
         });
+    }
+
+    @JsMethod
+    public CompletableFuture<Multihash> getContentHash(NetworkAccess network, Crypto crypto) {
+        return getInputStream(network, crypto, x -> {})
+                .thenCompose(reader -> crypto.hasher.hash(reader, getSize()));
     }
 
     public CompletableFuture<Optional<FileWrapper>> getDescendentByPath(String path,

@@ -4,6 +4,7 @@ import peergos.shared.crypto.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.user.*;
+import peergos.shared.user.fs.*;
 
 import java.util.concurrent.CompletableFuture;
 
@@ -14,6 +15,8 @@ public interface Hasher {
     CompletableFuture<ProofOfWork> generateProofOfWork(int difficulty, byte[] data);
 
     CompletableFuture<byte[]> sha256(byte[] input);
+
+    CompletableFuture<Multihash> hash(AsyncReader stream, long length);
 
     byte[] blake2b(byte[] input, int outputBytes);
 
