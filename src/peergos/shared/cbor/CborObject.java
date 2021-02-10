@@ -166,7 +166,8 @@ public interface CborObject extends Cborable {
         }
 
         public boolean getBoolean(String key) {
-            return ((CborBoolean) get(key)).value;
+            CborBoolean val = (CborBoolean) get(key);
+            return val != null && val.value;
         }
 
         public boolean getBoolean(String key, boolean def) {
@@ -198,6 +199,8 @@ public interface CborObject extends Cborable {
 
         public <T> List<T> getList(String key, Function<Cborable, T> fromCbor) {
             CborList cborList = (CborList) get(key);
+            if (cborList == null)
+                return Collections.emptyList();
             return cborList.value
                     .stream()
                     .map(fromCbor)
