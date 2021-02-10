@@ -67,6 +67,14 @@ public class LocalDate implements Comparable<LocalDate>{
         long epochDay = Math.floorDiv(epochSec, SECONDS_PER_DAY);
         return LocalDate.ofEpochDay(epochDay);
     }
+
+    public int getYear() {
+        return this.year;
+    }
+
+    public int getMonthValue() {
+        return this.month;
+    }
     
     public static LocalDate ofEpochDay(long epochDay) {
         long zeroDay = epochDay + DAYS_0000_TO_1970;

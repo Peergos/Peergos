@@ -39,6 +39,7 @@ public class UserContext {
     private static final Logger LOG = Logger.getGlobal();
 
     public static final String SHARED_DIR_NAME = "shared";
+    public static final String POSTS_DIR_NAME = ".posts";
     public static final String GROUPS_FILENAME = ".groups.cbor"; // no clash possible with usernames possible because of dot
     public static final String FEED_DIR_NAME = ".feed";
     public static final String TRANSACTIONS_DIR_NAME = ".transactions";
