@@ -112,6 +112,10 @@ public class Serialize
         return in.readIntoArray(res, 0, (int) size).thenApply(i -> res);
     }
 
+    public static <T> T parse(byte[] in, Function<Cborable, T> parser) {
+        return Cborable.parser(parser).apply(in);
+    }
+
     public static <T> CompletableFuture<T> parse(AsyncReader in, long size, Function<Cborable, T> parser) {
         byte[] res = new byte[(int)size];
         return in.readIntoArray(res, 0, (int) size)
