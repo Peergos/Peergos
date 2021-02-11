@@ -1252,7 +1252,7 @@ public class PeergosNetworkUtils {
 
         // now check feed
         SocialFeed updatedFeed3 = freshFeed.update().join();
-        List<SharedItem> items3 = updatedFeed3.getShared(feedSize + 2, feedSize + 3, a.crypto, a.network).join();
+        List<SharedItem> items3 = updatedFeed3.getShared(feedSize + 2, feedSize + 4, a.crypto, a.network).join();
         Assert.assertTrue(items3.size() > 0);
         SharedItem item3 = items3.get(0);
         Assert.assertTrue(item3.owner.equals(sharer.username));
@@ -1265,10 +1265,13 @@ public class PeergosNetworkUtils {
                 true, false, Optional.empty(), Collections.emptyList(), Collections.emptyList());
         Pair<Path, FileWrapper> p = sharer.getSocialFeed().join().createNewPost(post).join();
         sharer.shareReadAccessWith(p.left, Set.of(a.username)).join();
-        List<SharedItem> withPost = fresherA.getSocialFeed().join().getShared(0, feedSize + 5, crypto, fresherA.network).join();
+        List<SharedItem> withPost = freshFeed.update().join().getShared(0, feedSize + 5, crypto, fresherA.network).join();
         SharedItem sharedPost = withPost.get(withPost.size() - 1);
         FileWrapper postFile = fresherA.getByPath(sharedPost.path).join().get();
         assertTrue(postFile.getFileProperties().isSocialPost());
+        SocialPost receivedPost = Serialize.parse(postFile.getInputStream(network, crypto, x -> {}).join(),
+                postFile.getSize(), SocialPost::fromCbor).join();
+        assertTrue(receivedPost.body.equals(post.body));
     }
 
     private static void uploadAndShare(byte[] data, Path file, UserContext sharer, String sharee) {
