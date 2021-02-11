@@ -67,6 +67,10 @@ public class SocialPost implements Cborable {
         return new CborObject.CborList(withMimeType);
     }
 
+    public static SocialPost fromByteArray(byte[] arr) {
+        return fromCbor(CborObject.fromByteArray(arr));
+    }
+
     public static SocialPost fromCbor(Cborable cbor) {
         if (!(cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Invalid cbor! " + cbor);
@@ -122,5 +126,6 @@ public class SocialPost implements Cborable {
             Multihash contentHash = m.getMerkleLink("h");
             return new Ref(path, cap, contentHash);
         }
+
     }
 }
