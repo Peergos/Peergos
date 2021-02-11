@@ -44,8 +44,12 @@ public class MimeTypes {
     final static int[] WOFF2 = new int[]{'w','O','F','2'};
 
     // mimetypes for files that are cbor list(mimetype int, map(data)), mimetypes < 24 use a single byte
+    public static final String PEERGOS_TODO = "application/vnd.peergos-todo";
     public static final int CBOR_PEERGOS_TODO_INT = 10;
     final static int[] CBOR_PEERGOS_TODO = new int[]{0x82 /* cbor list with 2 elements*/, CBOR_PEERGOS_TODO_INT};
+    public static final String PEERGOS_POST = "application/vnd.peergos-post";
+    public static final int CBOR_PEERGOS_POST_INT = 17;
+    final static int[] CBOR_PEERGOS_POST = new int[]{0x82 /* cbor list with 2 elements*/, CBOR_PEERGOS_POST_INT};
 
     final static int HEADER_BYTES_TO_IDENTIFY_MIME_TYPE = 40;
 
@@ -144,7 +148,9 @@ public class MimeTypes {
             return "font/woff2";
 
         if (equalArrays(start, CBOR_PEERGOS_TODO))
-            return "application/vnd.peergos-todo";
+            return PEERGOS_TODO;
+        if (equalArrays(start, CBOR_PEERGOS_POST))
+            return PEERGOS_POST;
 
         if (allAscii(start)) {
             if (filename.endsWith(".ics") && equalArrays(start, ICS))

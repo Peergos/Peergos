@@ -375,6 +375,10 @@ public interface CborObject extends Cborable {
                 .collect(Collectors.toList());
         }
 
+        public long getLong(int index) {
+            return ((CborLong)value.get(index)).value;
+        }
+
         public <T> T get(int index, Function<? super Cborable, T> fromCbor) {
             return fromCbor.apply(value.get(index));
         }

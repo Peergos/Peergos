@@ -60,13 +60,23 @@ public class SocialPost implements Cborable {
         if (! previousVersions.isEmpty())
             state.put("v", new CborObject.CborList(previousVersions));
 
-        return CborObject.CborMap.build(state);
+        List<CborObject> withMimeType = new ArrayList<>();
+        withMimeType.add(new CborObject.CborLong(MimeTypes.CBOR_PEERGOS_POST_INT));
+        withMimeType.add(CborObject.CborMap.build(state));
+
+        return new CborObject.CborList(withMimeType);
     }
 
     public static SocialPost fromCbor(Cborable cbor) {
-        if (!(cbor instanceof CborObject.CborMap))
+        if (!(cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Invalid cbor! " + cbor);
-        CborObject.CborMap m = (CborObject.CborMap) cbor;
+        CborObject.CborList withMimeType = (CborObject.CborList) cbor;
+        long mimeType = withMimeType.getLong(0);
+        if (mimeType != MimeTypes.CBOR_PEERGOS_POST_INT)
+            throw new IllegalStateException("Invalid mimetype for SocialPost: " + mimeType);
+
+        CborObject.CborMap m = withMimeType.get(1, c -> (CborObject.CborMap)c);
+
         String author = m.getString("a");
         String body = m.getString("b");
         List<String> tags = m.getList("c", c -> ((CborObject.CborString)c).value);
