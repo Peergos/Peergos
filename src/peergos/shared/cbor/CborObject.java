@@ -331,6 +331,10 @@ public interface CborObject extends Cborable {
                 .collect(Collectors.toList());
         }
 
+        public static <T> CborList build(List<T> in, Function<T, Cborable> toCbor) {
+            return new CborList(in.stream().map(toCbor).collect(Collectors.toList()));
+        }
+
         @Override
         public void serialize(CborEncoder encoder) {
             try {

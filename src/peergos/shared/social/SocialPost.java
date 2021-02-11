@@ -13,6 +13,7 @@ public class SocialPost implements Cborable {
 
     public final String author;
     public final String body;
+    public final List<String> tags;
     public final LocalDateTime postTime;
     public final boolean resharingAllowed;
     public final boolean isPublic;
@@ -23,6 +24,7 @@ public class SocialPost implements Cborable {
     @JsConstructor
     public SocialPost(String author,
                       String body,
+                      List<String> tags,
                       LocalDateTime postTime,
                       boolean resharingAllowed,
                       boolean isPublic,
@@ -31,6 +33,7 @@ public class SocialPost implements Cborable {
                       List<SocialPost> previousVersions) {
         this.author = author;
         this.body = body;
+        this.tags = tags;
         this.postTime = postTime;
         this.resharingAllowed = resharingAllowed;
         this.isPublic = isPublic;
@@ -44,6 +47,8 @@ public class SocialPost implements Cborable {
         SortedMap<String, Cborable> state = new TreeMap<>();
         state.put("a", new CborObject.CborString(author));
         state.put("b", new CborObject.CborString(body));
+        if (! tags.isEmpty())
+            state.put("c", CborObject.CborList.build(tags, CborObject.CborString::new));
         state.put("t", new CborObject.CborLong(postTime.toEpochSecond(ZoneOffset.UTC)));
         if (resharingAllowed)
             state.put("s", new CborObject.CborBoolean(true));
@@ -64,14 +69,15 @@ public class SocialPost implements Cborable {
         CborObject.CborMap m = (CborObject.CborMap) cbor;
         String author = m.getString("a");
         String body = m.getString("b");
+        List<String> tags = m.getList("c", c -> ((CborObject.CborString)c).value);
         LocalDateTime postTime = m.get("t", c -> LocalDateTime.ofEpochSecond(((CborObject.CborLong)c).value, 0, ZoneOffset.UTC));
         boolean sharingAllowed = m.getBoolean("s");
-        boolean isPublic = m.getBoolean("p");
+        boolean isPublic = m.getBoolean("i");
         Optional<Ref> parent = m.getOptional("p", Ref::fromCbor);
         List<Ref> references = m.getList("r", Ref::fromCbor);
         List<SocialPost> previousVersions = m.getList("v", SocialPost::fromCbor);
 
-        return new SocialPost(author, body, postTime, sharingAllowed, isPublic, parent, references, previousVersions);
+        return new SocialPost(author, body, tags, postTime, sharingAllowed, isPublic, parent, references, previousVersions);
     }
 
     public static class Ref implements Cborable {
