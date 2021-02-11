@@ -55,4 +55,9 @@ public class SharedItem implements Cborable {
         String path = m.getString("p");
         return new SharedItem(cap, owner, sharer, path);
     }
+
+    @Override
+    public String toString() {
+        return path + " via " + sharer;
+    }
 }

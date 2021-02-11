@@ -11,13 +11,12 @@ import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.user.fs.FileWrapper;
 import peergos.shared.user.fs.cryptree.*;
-import peergos.shared.util.ArrayOps;
-import peergos.shared.util.Serialize;
-import peergos.shared.util.TriFunction;
+import peergos.shared.util.*;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.*;
+import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.*;
@@ -1260,6 +1259,16 @@ public class PeergosNetworkUtils {
         Assert.assertTrue(item3.sharer.equals(sharer.username));
         AbsoluteCapability readCap3 = sharer.getByPath(file3).join().get().getPointer().capability.readOnly();
         Assert.assertTrue(item3.cap.equals(readCap3));
+
+        // social post
+        SocialPost post = new SocialPost(sharer.username, "G'day, skip!", Arrays.asList("WELCOME"), LocalDateTime.now(),
+                true, false, Optional.empty(), Collections.emptyList(), Collections.emptyList());
+        Pair<Path, FileWrapper> p = sharer.getSocialFeed().join().createNewPost(post).join();
+        sharer.shareReadAccessWith(p.left, Set.of(a.username)).join();
+        List<SharedItem> withPost = fresherA.getSocialFeed().join().getShared(0, feedSize + 5, crypto, fresherA.network).join();
+        SharedItem sharedPost = withPost.get(withPost.size() - 1);
+        FileWrapper postFile = fresherA.getByPath(sharedPost.path).join().get();
+        assertTrue(postFile.getFileProperties().isSocialPost());
     }
 
     private static void uploadAndShare(byte[] data, Path file, UserContext sharer, String sharee) {
