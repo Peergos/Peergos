@@ -61,9 +61,9 @@ public class SocialFeed {
         AsyncReader reader = AsyncReader.build(raw);
         return context.getUserRoot()
                 .thenCompose(home -> home.getOrMkdirs(dir, context.network, true, context.crypto))
-                .thenCompose(postDir -> postDir.uploadOrReplaceFile(uuid, reader, raw.length, context.network,
-                        context.crypto, x -> {}, context.crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH)))
-                .thenApply(f -> new Pair<>(Paths.get(post.author).resolve(dir).resolve(uuid), f));
+                .thenCompose(postDir -> postDir.uploadAndReturnFile(uuid, reader, raw.length, false,
+                        context.network, context.crypto)
+                        .thenApply(f -> new Pair<>(Paths.get(post.author).resolve(dir).resolve(uuid), f)));
     }
 
     public static Path getDirFromHome(SocialPost post) {
