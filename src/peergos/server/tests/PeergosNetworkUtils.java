@@ -1262,7 +1262,8 @@ public class PeergosNetworkUtils {
 
         // social post
         SocialPost post = new SocialPost(sharer.username, "G'day, skip!", Arrays.asList("WELCOME"), LocalDateTime.now(),
-                true, false, Optional.empty(), Collections.emptyList(), Collections.emptyList());
+                true, false, Optional.empty(),
+                Collections.emptyList(), Collections.emptyList(), Collections.emptyList());
         Pair<Path, FileWrapper> p = sharer.getSocialFeed().join().createNewPost(post).join();
         sharer.shareReadAccessWith(p.left, Set.of(a.username)).join();
         List<SharedItem> withPost = freshFeed.update().join().getShared(0, feedSize + 5, crypto, fresherA.network).join();
