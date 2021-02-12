@@ -63,6 +63,19 @@ public class SocialPost implements Cborable {
         return new SocialPost(author, body, tags, postTime, resharingAllowed, isPublic, parent, references, versions, comments);
     }
 
+    /** adding references to comments does not change the version of this comment (the hash ignores the comment refs)
+     *
+     * @param comment
+     * @return
+     */
+    public SocialPost addComment(MutableRef comment) {
+        ArrayList<MutableRef> updatedComments = new ArrayList<>(comments);
+        if (! comments.contains(comment))
+            updatedComments.add(comment);
+        return new SocialPost(author, body, tags, postTime, resharingAllowed, isPublic, parent, references,
+                previousVersions, updatedComments);
+    }
+
     private byte[] serializeWithoutComments() {
         return new SocialPost(author, body, tags, postTime, resharingAllowed, isPublic, parent, references,
                 previousVersions, Collections.emptyList()).serialize();
@@ -184,6 +197,19 @@ public class SocialPost implements Cborable {
             String path = m.getString("p");
             AbsoluteCapability cap = m.get("c", AbsoluteCapability::fromCbor);
             return new MutableRef(path, cap);
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            MutableRef that = (MutableRef) o;
+            return path.equals(that.path) && cap.equals(that.cap);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(path, cap);
         }
     }
 }
