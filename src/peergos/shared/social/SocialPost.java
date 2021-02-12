@@ -49,6 +49,11 @@ public class SocialPost implements Cborable {
         this.comments = comments;
     }
 
+    public static SocialPost createInitialPost(String author, String body, List<String> tags) {
+        return new SocialPost(author, body, tags, LocalDateTime.now(), true, false,
+                Optional.empty(), Collections.emptyList(), Collections.emptyList(), Collections.emptyList());
+    }
+
     public SocialPost edit(String body,
                            List<String> tags,
                            LocalDateTime postTime,
