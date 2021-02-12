@@ -2,11 +2,13 @@ package peergos.shared.social;
 
 import jsinterop.annotations.*;
 import peergos.shared.cbor.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.user.fs.*;
 
 import java.time.*;
 import java.util.*;
+import java.util.concurrent.*;
 
 @JsType
 public class SocialPost implements Cborable {
@@ -49,6 +51,10 @@ public class SocialPost implements Cborable {
         ArrayList<SocialPost> versions = new ArrayList<>(previousVersions);
         versions.add(this);
         return new SocialPost(author, body, tags, postTime, resharingAllowed, isPublic, parent, references, versions);
+    }
+
+    public CompletableFuture<Multihash> contentHash(Hasher h) {
+        return h.bareHash(serialize());
     }
 
     @Override
