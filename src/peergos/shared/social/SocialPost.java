@@ -22,6 +22,9 @@ public class SocialPost implements Cborable {
     public final Optional<Ref> parent;
     public final List<Ref> references;
     public final List<SocialPost> previousVersions;
+    // this is excluded from hash calculation when replying
+    public final List<MutableRef> comments;
+
 
     @JsConstructor
     public SocialPost(String author,
@@ -32,7 +35,8 @@ public class SocialPost implements Cborable {
                       boolean isPublic,
                       Optional<Ref> parent,
                       List<Ref> references,
-                      List<SocialPost> previousVersions) {
+                      List<SocialPost> previousVersions,
+                      List<MutableRef> comments) {
         this.author = author;
         this.body = body;
         this.tags = tags;
@@ -42,6 +46,7 @@ public class SocialPost implements Cborable {
         this.parent = parent;
         this.references = references;
         this.previousVersions = previousVersions;
+        this.comments = comments;
     }
 
     public SocialPost edit(String body,
@@ -50,11 +55,16 @@ public class SocialPost implements Cborable {
                            List<Ref> references) {
         ArrayList<SocialPost> versions = new ArrayList<>(previousVersions);
         versions.add(this);
-        return new SocialPost(author, body, tags, postTime, resharingAllowed, isPublic, parent, references, versions);
+        return new SocialPost(author, body, tags, postTime, resharingAllowed, isPublic, parent, references, versions, comments);
+    }
+
+    private byte[] serializeWithoutComments() {
+        return new SocialPost(author, body, tags, postTime, resharingAllowed, isPublic, parent, references,
+                previousVersions, Collections.emptyList()).serialize();
     }
 
     public CompletableFuture<Multihash> contentHash(Hasher h) {
-        return h.bareHash(serialize());
+        return h.bareHash(serializeWithoutComments());
     }
 
     @Override
@@ -74,6 +84,8 @@ public class SocialPost implements Cborable {
             state.put("r", new CborObject.CborList(references));
         if (! previousVersions.isEmpty())
             state.put("v", new CborObject.CborList(previousVersions));
+        if (! comments.isEmpty())
+            state.put("d", new CborObject.CborList(comments));
 
         List<CborObject> withMimeType = new ArrayList<>();
         withMimeType.add(new CborObject.CborLong(MimeTypes.CBOR_PEERGOS_POST_INT));
@@ -101,8 +113,10 @@ public class SocialPost implements Cborable {
         Optional<Ref> parent = m.getOptional("p", Ref::fromCbor);
         List<Ref> references = m.getList("r", Ref::fromCbor);
         List<SocialPost> previousVersions = m.getList("v", SocialPost::fromCbor);
+        List<MutableRef> comments = m.getList("d", MutableRef::fromCbor);
 
-        return new SocialPost(author, body, tags, postTime, sharingAllowed, isPublic, parent, references, previousVersions);
+        return new SocialPost(author, body, tags, postTime, sharingAllowed, isPublic, parent, references,
+                previousVersions, comments);
     }
 
     public static class Ref implements Cborable {
@@ -137,6 +151,34 @@ public class SocialPost implements Cborable {
             Multihash contentHash = m.getMerkleLink("h");
             return new Ref(path, cap, contentHash);
         }
+    }
 
+    public static class MutableRef implements Cborable {
+        public final String path;
+        public final AbsoluteCapability cap;
+
+        @JsConstructor
+        public MutableRef(String path, AbsoluteCapability cap) {
+            this.path = path;
+            this.cap = cap;
+        }
+
+        @Override
+        public CborObject toCbor() {
+            SortedMap<String, Cborable> state = new TreeMap<>();
+            state.put("p", new CborObject.CborString(path));
+            state.put("c", cap);
+            return CborObject.CborMap.build(state);
+        }
+
+        public static MutableRef fromCbor(Cborable cbor) {
+            if (!(cbor instanceof CborObject.CborMap))
+                throw new IllegalStateException("Invalid cbor! " + cbor);
+            CborObject.CborMap m = (CborObject.CborMap) cbor;
+
+            String path = m.getString("p");
+            AbsoluteCapability cap = m.get("c", AbsoluteCapability::fromCbor);
+            return new MutableRef(path, cap);
+        }
     }
 }
