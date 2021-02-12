@@ -42,6 +42,15 @@ public class SocialPost implements Cborable {
         this.previousVersions = previousVersions;
     }
 
+    public SocialPost edit(String body,
+                           List<String> tags,
+                           LocalDateTime postTime,
+                           List<Ref> references) {
+        ArrayList<SocialPost> versions = new ArrayList<>(previousVersions);
+        versions.add(this);
+        return new SocialPost(author, body, tags, postTime, resharingAllowed, isPublic, parent, references, versions);
+    }
+
     @Override
     public CborObject toCbor() {
         SortedMap<String, Cborable> state = new TreeMap<>();
