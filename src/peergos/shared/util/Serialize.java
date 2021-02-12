@@ -112,6 +112,7 @@ public class Serialize
         return in.readIntoArray(res, 0, (int) size).thenApply(i -> res);
     }
 
+    @JsMethod
     public static <T> T parse(byte[] in, Function<Cborable, T> parser) {
         return Cborable.parser(parser).apply(in);
     }
