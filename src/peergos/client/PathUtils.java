@@ -11,6 +11,11 @@ import java.util.stream.Stream;
 public class PathUtils {
 
     @JsMethod
+    public static Path getParent(Path another) {
+        return another.getParent();
+    }
+
+    @JsMethod
     public static Path directoryToPath(String[] parts) {
         if (parts == null || parts.length == 0) {
             throw new IllegalArgumentException("Invalid params");
