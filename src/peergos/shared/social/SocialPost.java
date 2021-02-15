@@ -23,7 +23,7 @@ public class SocialPost implements Cborable {
     public final List<Ref> references;
     public final List<SocialPost> previousVersions;
     // this is excluded from hash calculation when replying
-    public final List<MutableRef> comments;
+    public final List<Ref> comments;
 
 
     @JsConstructor
@@ -36,7 +36,7 @@ public class SocialPost implements Cborable {
                       Optional<Ref> parent,
                       List<Ref> references,
                       List<SocialPost> previousVersions,
-                      List<MutableRef> comments) {
+                      List<Ref> comments) {
         this.author = author;
         this.body = body;
         this.tags = tags;
@@ -68,8 +68,8 @@ public class SocialPost implements Cborable {
      * @param comment
      * @return
      */
-    public SocialPost addComment(MutableRef comment) {
-        ArrayList<MutableRef> updatedComments = new ArrayList<>(comments);
+    public SocialPost addComment(Ref comment) {
+        ArrayList<Ref> updatedComments = new ArrayList<>(comments);
         if (! comments.contains(comment))
             updatedComments.add(comment);
         return new SocialPost(author, body, tags, postTime, resharingAllowed, isPublic, parent, references,
@@ -131,7 +131,7 @@ public class SocialPost implements Cborable {
         Optional<Ref> parent = m.getOptional("p", Ref::fromCbor);
         List<Ref> references = m.getList("r", Ref::fromCbor);
         List<SocialPost> previousVersions = m.getList("v", SocialPost::fromCbor);
-        List<MutableRef> comments = m.getList("d", MutableRef::fromCbor);
+        List<Ref> comments = m.getList("d", Ref::fromCbor);
 
         return new SocialPost(author, body, tags, postTime, sharingAllowed, isPublic, parent, references,
                 previousVersions, comments);
