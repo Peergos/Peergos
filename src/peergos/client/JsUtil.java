@@ -30,6 +30,13 @@ public class JsUtil {
     public static <T> Optional<T> emptyOptional() {
         return Optional.empty();
     }
+
+    @JsMethod
+    public static <T> Optional<T> optionalOf(T of) {
+        return Optional.of(of);
+    }
+
+
     @JsMethod
     public static LocalDateTime now() {
         return LocalDateTime.now();
