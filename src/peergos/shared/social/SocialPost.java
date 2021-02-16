@@ -64,6 +64,11 @@ public class SocialPost implements Cborable {
                 Optional.empty(), Collections.emptyList(), Collections.emptyList(), Collections.emptyList());
     }
 
+    public static SocialPost createComment(Ref parent, Type type, String author, String body, List<String> tags) {
+        return new SocialPost(type, author, body, tags, LocalDateTime.now(), true, false,
+                Optional.of(parent), Collections.emptyList(), Collections.emptyList(), Collections.emptyList());
+    }
+
     public SocialPost edit(String body,
                            List<String> tags,
                            LocalDateTime postTime,
