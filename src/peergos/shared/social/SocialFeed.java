@@ -68,7 +68,7 @@ public class SocialFeed {
     }
 
     @JsMethod
-    public CompletableFuture<SocialPost.MutableRef> uploadMediaForPost(String mediaType,
+    public CompletableFuture<SocialPost.Ref> uploadMediaForPost(String mediaType,
                                                                        AsyncReader media,
                                                                        long length,
                                                                        LocalDateTime postTime) {
@@ -78,7 +78,9 @@ public class SocialFeed {
         return getOrMkdirToStoreMedia(mediaType, postTime)
                 .thenCompose(p -> p.right.uploadAndReturnFile(uuid, media, length, false,
                         context.network, context.crypto)
-                        .thenApply(f -> new SocialPost.MutableRef(p.left.resolve(uuid).toString(), f.getMinimalReadPointer())));
+                        .thenCompose(f -> f.getInputStream(f.version.get(f.writer()).props, context.network, context.crypto, c -> {})
+                                .thenCompose(reader -> context.crypto.hasher.hash(reader, f.getSize()))
+                                .thenApply(hash -> new SocialPost.Ref(p.left.resolve(uuid).toString(), f.getMinimalReadPointer(), hash))));
     }
 
     private CompletableFuture<Pair<Path, FileWrapper>> getOrMkdirToStoreMedia(String mediaType, LocalDateTime postTime) {
