@@ -1261,7 +1261,7 @@ public class PeergosNetworkUtils {
         Assert.assertTrue(item3.cap.equals(readCap3));
 
         // social post
-        SocialPost post = new SocialPost(sharer.username, "G'day, skip!", Arrays.asList("WELCOME"), LocalDateTime.now(),
+        SocialPost post = new SocialPost(SocialPost.Type.Text, sharer.username, "G'day, skip!", Arrays.asList("WELCOME"), LocalDateTime.now(),
                 true, false, Optional.empty(),
                 Collections.emptyList(), Collections.emptyList(), Collections.emptyList());
         Pair<Path, FileWrapper> p = sharer.getSocialFeed().join().createNewPost(post).join();
