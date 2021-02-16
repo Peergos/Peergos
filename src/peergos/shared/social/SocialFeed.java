@@ -9,6 +9,7 @@ import peergos.shared.util.*;
 
 import java.io.*;
 import java.nio.file.*;
+import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.*;
@@ -64,6 +65,29 @@ public class SocialFeed {
                 .thenCompose(postDir -> postDir.uploadAndReturnFile(uuid, reader, raw.length, false,
                         context.network, context.crypto)
                         .thenApply(f -> new Pair<>(Paths.get(post.author).resolve(dir).resolve(uuid), f)));
+    }
+
+    @JsMethod
+    public CompletableFuture<SocialPost.MutableRef> uploadMediaForPost(String mediaType,
+                                                                       AsyncReader media,
+                                                                       long length,
+                                                                       LocalDateTime postTime) {
+        if (! mediaType.equals("images") && ! mediaType.equals("videos") && ! mediaType.equals("audio"))
+            throw new IllegalStateException("Unknown media type: " + mediaType);
+        String uuid = UUID.randomUUID().toString();
+        return getOrMkdirToStoreMedia(mediaType, postTime)
+                .thenCompose(p -> p.right.uploadAndReturnFile(uuid, media, length, false,
+                        context.network, context.crypto)
+                        .thenApply(f -> new SocialPost.MutableRef(p.left.resolve(uuid).toString(), f.getMinimalReadPointer())));
+    }
+
+    private CompletableFuture<Pair<Path, FileWrapper>> getOrMkdirToStoreMedia(String mediaType, LocalDateTime postTime) {
+        Path dirFromHome = Paths.get(UserContext.POSTS_DIR_NAME,
+                Integer.toString(postTime.getYear()),
+                mediaType);
+        return context.getUserRoot()
+                .thenCompose(home -> home.getOrMkdirs(dirFromHome, context.network, true, context.crypto)
+                .thenApply(dir -> new Pair<>(Paths.get(context.username).resolve(dirFromHome), dir)));
     }
 
     public static Path getDirFromHome(SocialPost post) {
