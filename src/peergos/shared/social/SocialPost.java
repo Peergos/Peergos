@@ -29,7 +29,7 @@ public class SocialPost implements Cborable {
     public final boolean resharingAllowed;
     public final boolean isPublic;
     public final Optional<Ref> parent;
-    public final List<MutableRef> references;
+    public final List<Ref> references;
     public final List<SocialPost> previousVersions;
     // this is excluded from hash calculation when replying
     public final List<Ref> comments;
@@ -43,7 +43,7 @@ public class SocialPost implements Cborable {
                       boolean resharingAllowed,
                       boolean isPublic,
                       Optional<Ref> parent,
-                      List<MutableRef> references,
+                      List<Ref> references,
                       List<SocialPost> previousVersions,
                       List<Ref> comments) {
         this.kind = kind;
@@ -72,7 +72,7 @@ public class SocialPost implements Cborable {
     public SocialPost edit(String body,
                            List<String> tags,
                            LocalDateTime postTime,
-                           List<MutableRef> references) {
+                           List<Ref> references) {
         ArrayList<SocialPost> versions = new ArrayList<>(previousVersions);
         versions.add(this);
         return new SocialPost(kind, author, body, tags, postTime, resharingAllowed, isPublic, parent, references, versions, comments);
@@ -146,7 +146,7 @@ public class SocialPost implements Cborable {
         boolean sharingAllowed = m.getBoolean("s");
         boolean isPublic = m.getBoolean("i");
         Optional<Ref> parent = m.getOptional("p", Ref::fromCbor);
-        List<MutableRef> references = m.getList("r", MutableRef::fromCbor);
+        List<Ref> references = m.getList("r", Ref::fromCbor);
         List<SocialPost> previousVersions = m.getList("v", SocialPost::fromCbor);
         List<Ref> comments = m.getList("d", Ref::fromCbor);
 
