@@ -1262,7 +1262,7 @@ public class PeergosNetworkUtils {
 
         // social post
         SocialPost post = new SocialPost(SocialPost.Type.Text, sharer.username, "G'day, skip!", Arrays.asList("WELCOME"), LocalDateTime.now(),
-                true, false, Optional.empty(),
+                SocialPost.Resharing.Friends, Optional.empty(),
                 Collections.emptyList(), Collections.emptyList(), Collections.emptyList());
         Pair<Path, FileWrapper> p = sharer.getSocialFeed().join().createNewPost(post).join();
         sharer.shareReadAccessWith(p.left, Set.of(a.username)).join();

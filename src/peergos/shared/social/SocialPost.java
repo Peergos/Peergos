@@ -21,13 +21,22 @@ public class SocialPost implements Cborable {
         Poll // votes are merged in as comments, options are in body
     }
 
+    /** This enum describes the audience that a post is allowed to be shared with.
+     *
+     */
+    public enum Resharing {
+        Author,
+        Friends,
+        Followers,
+        Public
+    }
+
     public final Type kind;
     public final String author;
     public final String body;
     public final List<String> tags;
     public final LocalDateTime postTime;
-    public final boolean resharingAllowed;
-    public final boolean isPublic;
+    public final Resharing shareTo;
     public final Optional<Ref> parent;
     public final List<Ref> references;
     public final List<SocialPost> previousVersions;
@@ -40,8 +49,7 @@ public class SocialPost implements Cborable {
                       String body,
                       List<String> tags,
                       LocalDateTime postTime,
-                      boolean resharingAllowed,
-                      boolean isPublic,
+                      Resharing shareTo,
                       Optional<Ref> parent,
                       List<Ref> references,
                       List<SocialPost> previousVersions,
@@ -51,8 +59,7 @@ public class SocialPost implements Cborable {
         this.body = body;
         this.tags = tags;
         this.postTime = postTime;
-        this.resharingAllowed = resharingAllowed;
-        this.isPublic = isPublic;
+        this.shareTo = shareTo;
         this.parent = parent;
         this.references = references;
         this.previousVersions = previousVersions;
@@ -60,12 +67,12 @@ public class SocialPost implements Cborable {
     }
 
     public static SocialPost createInitialPost(Type type, String author, String body, List<String> tags) {
-        return new SocialPost(type, author, body, tags, LocalDateTime.now(), true, false,
+        return new SocialPost(type, author, body, tags, LocalDateTime.now(), Resharing.Followers,
                 Optional.empty(), Collections.emptyList(), Collections.emptyList(), Collections.emptyList());
     }
 
-    public static SocialPost createComment(Ref parent, Type type, String author, String body, List<String> tags) {
-        return new SocialPost(type, author, body, tags, LocalDateTime.now(), true, false,
+    public static SocialPost createComment(Ref parent, Resharing fromParent, Type type, String author, String body, List<String> tags) {
+        return new SocialPost(type, author, body, tags, LocalDateTime.now(), fromParent,
                 Optional.of(parent), Collections.emptyList(), Collections.emptyList(), Collections.emptyList());
     }
 
@@ -75,7 +82,7 @@ public class SocialPost implements Cborable {
                            List<Ref> references) {
         ArrayList<SocialPost> versions = new ArrayList<>(previousVersions);
         versions.add(this);
-        return new SocialPost(kind, author, body, tags, postTime, resharingAllowed, isPublic, parent, references, versions, comments);
+        return new SocialPost(kind, author, body, tags, postTime, shareTo, parent, references, versions, comments);
     }
 
     /** adding references to comments does not change the version of this comment (the hash ignores the comment refs)
@@ -87,12 +94,12 @@ public class SocialPost implements Cborable {
         ArrayList<Ref> updatedComments = new ArrayList<>(comments);
         if (! comments.contains(comment))
             updatedComments.add(comment);
-        return new SocialPost(kind, author, body, tags, postTime, resharingAllowed, isPublic, parent, references,
+        return new SocialPost(kind, author, body, tags, postTime, shareTo, parent, references,
                 previousVersions, updatedComments);
     }
 
     private byte[] serializeWithoutComments() {
-        return new SocialPost(kind, author, body, tags, postTime, resharingAllowed, isPublic, parent, references,
+        return new SocialPost(kind, author, body, tags, postTime, shareTo, parent, references,
                 previousVersions, Collections.emptyList()).serialize();
     }
 
@@ -109,10 +116,7 @@ public class SocialPost implements Cborable {
         if (! tags.isEmpty())
             state.put("c", CborObject.CborList.build(tags, CborObject.CborString::new));
         state.put("t", new CborObject.CborLong(postTime.toEpochSecond(ZoneOffset.UTC)));
-        if (resharingAllowed)
-            state.put("s", new CborObject.CborBoolean(true));
-        if (isPublic)
-            state.put("i", new CborObject.CborBoolean(true));
+        state.put("s", new CborObject.CborString(shareTo.name()));
         parent.ifPresent(r -> state.put("p", r));
         if (! references.isEmpty())
             state.put("r", new CborObject.CborList(references));
@@ -143,15 +147,13 @@ public class SocialPost implements Cborable {
         String body = m.getString("b");
         List<String> tags = m.getList("c", c -> ((CborObject.CborString)c).value);
         LocalDateTime postTime = m.get("t", c -> LocalDateTime.ofEpochSecond(((CborObject.CborLong)c).value, 0, ZoneOffset.UTC));
-        boolean sharingAllowed = m.getBoolean("s");
-        boolean isPublic = m.getBoolean("i");
+        Resharing shareTo = Resharing.valueOf(m.getString("s"));
         Optional<Ref> parent = m.getOptional("p", Ref::fromCbor);
         List<Ref> references = m.getList("r", Ref::fromCbor);
         List<SocialPost> previousVersions = m.getList("v", SocialPost::fromCbor);
         List<Ref> comments = m.getList("d", Ref::fromCbor);
 
-        return new SocialPost(type, author, body, tags, postTime, sharingAllowed, isPublic, parent, references,
-                previousVersions, comments);
+        return new SocialPost(type, author, body, tags, postTime, shareTo, parent, references, previousVersions, comments);
     }
 
     public static class Ref implements Cborable {
