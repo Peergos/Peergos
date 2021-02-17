@@ -25,6 +25,7 @@ public class SocialPost implements Cborable {
     /** This enum describes the audience that a post is allowed to be shared with.
      *
      */
+    @JsType
     public enum Resharing {
         Author,
         Friends,
