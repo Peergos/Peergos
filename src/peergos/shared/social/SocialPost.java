@@ -12,6 +12,7 @@ import java.util.concurrent.*;
 
 @JsType
 public class SocialPost implements Cborable {
+    @JsType
     public enum Type {
         Text, // body is just text
         Image, // 1 image in references
