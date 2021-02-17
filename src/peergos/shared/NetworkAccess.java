@@ -345,6 +345,7 @@ public class NetworkAccess {
                 });
     }
 
+    @JsMethod
     public CompletableFuture<Optional<FileWrapper>> getFile(AbsoluteCapability cap, String owner) {
         return synchronizer.getValue(cap.owner, cap.writer)
                 .thenCompose(version -> getFile(version, cap, Optional.empty(), owner))
