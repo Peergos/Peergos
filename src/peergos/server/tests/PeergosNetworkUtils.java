@@ -1193,9 +1193,6 @@ public class PeergosNetworkUtils {
 
         // friends are now connected
         // share a file from u1 to u2
-        FileWrapper u1Root = sharer.getUserRoot().join();
-
-        String filename = "somefile.txt";
         byte[] fileData = sharer.crypto.random.randomBytes(1*1024*1024);
         Path file1 = Paths.get(sharer.username, "first-file.txt");
         uploadAndShare(fileData, file1, sharer, a.username);
