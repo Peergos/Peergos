@@ -68,8 +68,8 @@ public class SocialPost implements Cborable {
         this.comments = comments;
     }
 
-    public static SocialPost createInitialPost(Type type, String author, String body, List<String> tags) {
-        return new SocialPost(type, author, body, tags, LocalDateTime.now(), Resharing.Followers,
+    public static SocialPost createInitialPost(Type type, String author, String body, List<String> tags, Resharing resharing) {
+        return new SocialPost(type, author, body, tags, LocalDateTime.now(), resharing,
                 Optional.empty(), Collections.emptyList(), Collections.emptyList(), Collections.emptyList());
     }
 
