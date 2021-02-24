@@ -1301,8 +1301,8 @@ public class PeergosNetworkUtils {
         SocialState state = sharer.getSocialState().join();
         String groupUid = state.groupNameToUid.get(friendGroup);
         // was Set.of(groupUid)
-        boolean res = sharer.shareReadAccessWith(result.left, Set.of(sharee.username)).join();
-        //boolean res = sharer.shareReadAccessWith(result.left, Set.of(groupUid)).join();
+        //boolean res = sharer.shareReadAccessWith(result.left, Set.of(sharee.username)).join();
+        boolean res = sharer.shareReadAccessWith(result.left, Set.of(groupUid)).join();
 
         SocialFeed receiverFeed = sharee.getSocialFeed().join();
         receiverFeed = receiverFeed.update().join();
