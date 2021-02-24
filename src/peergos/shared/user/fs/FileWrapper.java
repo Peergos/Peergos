@@ -1299,15 +1299,8 @@ public class FileWrapper {
                 .thenApply(fa -> true);
     }
 
-    /**
-     *
-     * @return A capability based on the parent key
-     */
-    public AbsoluteCapability getMinimalReadPointer() {
-        if (isDirectory()) {
-            return pointer.capability.withBaseKey(getParentKey());
-        }
-        return pointer.capability;
+    public AbsoluteCapability readOnlyPointer() {
+        return pointer.capability.readOnly();
     }
 
     public WritableAbsoluteCapability writableFilePointer() {

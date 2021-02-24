@@ -96,7 +96,7 @@ public class SocialFeed {
                         context.network, context.crypto)
                         .thenCompose(f -> f.getInputStream(f.version.get(f.writer()).props, context.network, context.crypto, c -> {})
                                 .thenCompose(reader -> context.crypto.hasher.hash(reader, f.getSize()))
-                                .thenApply(hash -> new SocialPost.Ref(p.left.resolve(uuid).toString(), f.getMinimalReadPointer(), hash))));
+                                .thenApply(hash -> new SocialPost.Ref(p.left.resolve(uuid).toString(), f.readOnlyPointer(), hash))));
     }
 
     private CompletableFuture<Pair<Path, FileWrapper>> getOrMkdirToStoreMedia(String mediaType, LocalDateTime postTime) {
