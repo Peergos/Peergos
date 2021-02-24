@@ -64,7 +64,10 @@ public class SocialFeed {
                 .thenCompose(home -> home.getOrMkdirs(dir, context.network, true, context.crypto))
                 .thenCompose(postDir -> postDir.uploadAndReturnFile(uuid, reader, raw.length, false,
                         context.network, context.crypto)
-                        .thenApply(f -> new Pair<>(Paths.get(post.author).resolve(dir).resolve(uuid), f)));
+                        .thenApply(f -> new Pair<>(Paths.get(post.author).resolve(dir).resolve(uuid), f)))
+                .thenCompose(p -> addToFeed(Arrays.asList(new SharedItem(p.right.getMinimalReadPointer(),
+                        context.username, context.username, p.left.toString())))
+                        .thenApply(f -> p));
     }
 
     @JsMethod
@@ -188,12 +191,17 @@ public class SocialFeed {
         ProcessedCaps updated = current.add(diff);
         currentCapBytesProcessed.put(friendName, updated);
         List<CapabilityWithPath> newCaps = diff.getNewCaps();
-        feedSizeRecords += newCaps.size();
         List<SharedItem> forFeed = newCaps.stream()
                 .map(c -> new SharedItem(c.cap, extractOwner(c.path), friendName, c.path))
                 .collect(Collectors.toList());
+        return addToFeed(forFeed);
+    }
+
+    private synchronized CompletableFuture<SocialFeed> addToFeed(List<SharedItem> newItems) {
+        feedSizeRecords += newItems.size();
+
         ByteArrayOutputStream bout = new ByteArrayOutputStream();
-        for (SharedItem item : forFeed) {
+        for (SharedItem item : newItems) {
             try {
                 bout.write(item.serialize());
             } catch (IOException e) {
