@@ -86,7 +86,7 @@ public class SocialFeed {
     @JsMethod
     public CompletableFuture<SocialPost.Ref> uploadMediaForPost(String mediaType,
                                                                        AsyncReader media,
-                                                                       long length,
+                                                                       int length,
                                                                        LocalDateTime postTime) {
         if (! mediaType.equals("images") && ! mediaType.equals("videos") && ! mediaType.equals("audio"))
             throw new IllegalStateException("Unknown media type: " + mediaType);
