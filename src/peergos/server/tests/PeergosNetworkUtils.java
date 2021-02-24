@@ -1302,12 +1302,13 @@ public class PeergosNetworkUtils {
         String groupUid = state.groupNameToUid.get(friendGroup);
         // was Set.of(groupUid)
         boolean res = sharer.shareReadAccessWith(result.left, Set.of(sharee.username)).join();
+        //boolean res = sharer.shareReadAccessWith(result.left, Set.of(groupUid)).join();
 
         SocialFeed receiverFeed = sharee.getSocialFeed().join();
         receiverFeed = receiverFeed.update().join();
         List<SharedItem> items = receiverFeed.getShared(0, 100, sharee.crypto, sharee.network).join();
         List<Pair<SharedItem, FileWrapper>> files = sharee.getFiles(items).join();
-
+        assertTrue(files.size() == 3);
         FileWrapper socialFile = files.get(files.size() -1).right;
 
         FileProperties props = socialFile.getFileProperties();
