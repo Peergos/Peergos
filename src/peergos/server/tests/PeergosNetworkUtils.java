@@ -1272,6 +1272,55 @@ public class PeergosNetworkUtils {
         assertTrue(receivedPost.body.equals(post.body));
     }
 
+    public static void socialFeedBug(NetworkAccess network, Random random) {
+        CryptreeNode.setMaxChildLinkPerBlob(10);
+
+        String password = "notagoodone";
+
+        UserContext sharer = PeergosNetworkUtils.ensureSignedUp(generateUsername(random), password, network, crypto);
+
+        List<UserContext> shareeUsers = getUserContextsForNode(network, random, 1, Arrays.asList(password, password));
+        UserContext sharee = shareeUsers.get(0);
+
+        // friend sharer with others
+        friendBetweenGroups(Arrays.asList(sharer), shareeUsers);
+
+
+        byte[] fileData = sharer.crypto.random.randomBytes(1*1024*1024);
+        AsyncReader reader = new AsyncReader.ArrayBacked(fileData);
+
+        SocialFeed feed = sharer.getSocialFeed().join();
+        SocialPost.Ref ref = feed.uploadMediaForPost("images", reader, fileData.length, LocalDateTime.now()).join();
+        SocialPost.Resharing resharingType = SocialPost.Resharing.Friends;
+        SocialPost.Type commentType = SocialPost.Type.Image;
+        List media = Arrays.asList(ref);
+        SocialPost socialPost = SocialPost.createInitialPost(commentType, sharer.username, "aaaa", Collections.emptyList(), media, resharingType);
+
+        Pair<Path, FileWrapper> result = feed.createNewPost(socialPost).join();
+        String friendGroup = SocialState.FRIENDS_GROUP_NAME;
+        SocialState state = sharer.getSocialState().join();
+        String groupUid = state.groupNameToUid.get(friendGroup);
+        // was Set.of(groupUid)
+        boolean res = sharer.shareReadAccessWith(result.left, Set.of(sharee.username)).join();
+
+        SocialFeed receiverFeed = sharee.getSocialFeed().join();
+        receiverFeed = receiverFeed.update().join();
+        List<SharedItem> items = receiverFeed.getShared(0, 100, sharee.crypto, sharee.network).join();
+        List<Pair<SharedItem, FileWrapper>> files = sharee.getFiles(items).join();
+
+        FileWrapper socialFile = files.get(files.size() -1).right;
+
+        FileProperties props = socialFile.getFileProperties();
+        AsyncReader reader2 = socialFile.getInputStream(sharee.network, sharee.crypto, props.sizeHigh(), props.sizeLow(), l -> {}).join();
+        int size = props.sizeLow();
+        byte[] data = new byte[size];
+        int read = reader2.readIntoArray(data, 0, data.length).join();
+        SocialPost loadedSocialPost = Serialize.parse(data, c -> SocialPost.fromCbor(c));
+        SocialPost.Ref mediaRef = loadedSocialPost.references.get(0);
+        Optional<FileWrapper> optFile = sharee.network.getFile(mediaRef.cap, sharer.username).join();
+        assertTrue(optFile.isPresent());
+    }
+
     private static void uploadAndShare(byte[] data, Path file, UserContext sharer, String sharee) {
         String filename = file.getFileName().toString();
         sharer.getByPath(file.getParent()).join().get()

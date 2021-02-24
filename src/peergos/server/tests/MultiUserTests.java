@@ -169,6 +169,11 @@ public class MultiUserTests {
     }
 
     @Test
+    public void socialFeedBug() {
+        PeergosNetworkUtils.socialFeedBug(network, random);
+    }
+
+    @Test
     public void socialFeedVariations() {
         PeergosNetworkUtils.socialFeedVariations(network, random);
     }
