@@ -91,7 +91,7 @@ public class FriendSourcedTrieNode implements TrieNode {
         return file.withTrieNode(new ExternalTrieNode(path, this));
     }
 
-    private CompletableFuture<Boolean> updateIncludingGroups(NetworkAccess network) {
+    public CompletableFuture<Boolean> updateIncludingGroups(NetworkAccess network) {
         return ensureUptodate(crypto, network)
                 .thenCompose(x -> {
                     List<CapabilityWithPath> newGroups = x.getNewCaps().stream()

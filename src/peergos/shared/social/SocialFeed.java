@@ -177,13 +177,13 @@ public class SocialFeed {
     public synchronized CompletableFuture<SocialFeed> update() {
         return context.getFollowingNodes()
                 .thenCompose(friends -> Futures.reduceAll(friends, this,
-                        (s, f) -> s.updateFriend(f, context.network), (a, b) -> b))
-                .thenCompose(x -> x.commit().thenApply(b -> x));
+                        (s, f) -> s.updateFriend(f, context.network), (a, b) -> b));
     }
 
     private synchronized CompletableFuture<SocialFeed> updateFriend(FriendSourcedTrieNode friend, NetworkAccess network) {
         ProcessedCaps current = currentCapBytesProcessed.getOrDefault(friend.ownerName, ProcessedCaps.empty());
-        return friend.getCaps(current, network)
+        return friend.updateIncludingGroups(network)
+                .thenCompose(x -> friend.getCaps(current, network))
                 .thenCompose(diff -> {
                     if (diff.isEmpty())
                         return Futures.of(this);
