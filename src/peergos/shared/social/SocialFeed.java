@@ -65,7 +65,7 @@ public class SocialFeed {
                 .thenCompose(postDir -> postDir.uploadAndReturnFile(uuid, reader, raw.length, false,
                         context.network, context.crypto)
                         .thenApply(f -> new Pair<>(Paths.get(post.author).resolve(dir).resolve(uuid), f)))
-                .thenCompose(p -> addToFeed(Arrays.asList(new SharedItem(p.right.getMinimalReadPointer(),
+                .thenCompose(p -> addToFeed(Arrays.asList(new SharedItem(p.right.readOnlyPointer(),
                         context.username, context.username, p.left.toString())))
                         .thenApply(f -> p));
     }
