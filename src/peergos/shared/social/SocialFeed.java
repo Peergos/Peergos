@@ -105,7 +105,7 @@ public class SocialFeed {
                 mediaType);
         return context.getUserRoot()
                 .thenCompose(home -> home.getOrMkdirs(dirFromHome, context.network, true, context.crypto)
-                .thenApply(dir -> new Pair<>(Paths.get(context.username).resolve(dirFromHome), dir)));
+                .thenApply(dir -> new Pair<>(Paths.get("/" + context.username).resolve(dirFromHome), dir)));
     }
 
     public static Path getDirFromHome(SocialPost post) {
