@@ -33,6 +33,8 @@ public class SocialFeed {
     private long feedSizeBytes;
     private Map<String, ProcessedCaps> currentCapBytesProcessed;
     private final UserContext context;
+    private final NetworkAccess network;
+    private final Crypto crypto;
 
     public SocialFeed(FileWrapper dataDir,
                       FileWrapper stateFile,
@@ -45,6 +47,8 @@ public class SocialFeed {
         this.feedSizeBytes = state.feedSizeBytes;
         this.currentCapBytesProcessed = new HashMap<>(state.currentCapBytesProcessed);
         this.context = context;
+        this.network = context.network;
+        this.crypto = context.crypto;
     }
 
     /** Create a new post file under /username/.posts/$year/$month/#uuid
@@ -61,9 +65,9 @@ public class SocialFeed {
         byte[] raw = post.serialize();
         AsyncReader reader = AsyncReader.build(raw);
         return context.getUserRoot()
-                .thenCompose(home -> home.getOrMkdirs(dir, context.network, true, context.crypto))
+                .thenCompose(home -> home.getOrMkdirs(dir, network, true, crypto))
                 .thenCompose(postDir -> postDir.uploadAndReturnFile(uuid, reader, raw.length, false,
-                        context.network, context.crypto)
+                        network, crypto)
                         .thenApply(f -> new Pair<>(Paths.get(post.author).resolve(dir).resolve(uuid), f)))
                 .thenCompose(p -> addToFeed(Arrays.asList(new SharedItem(p.right.readOnlyPointer(),
                         context.username, context.username, p.left.toString())))
@@ -78,9 +82,9 @@ public class SocialFeed {
         byte[] raw = post.serialize();
         AsyncReader reader = AsyncReader.build(raw);
         return context.getUserRoot()
-                .thenCompose(home -> home.getOrMkdirs(dir, context.network, true, context.crypto))
+                .thenCompose(home -> home.getOrMkdirs(dir, network, true, crypto))
                 .thenCompose(postDir -> postDir.uploadAndReturnFile(uuid, reader, raw.length, false,
-                        context.network, context.crypto)
+                        network, crypto)
                         .thenApply(f -> new Pair<>(Paths.get(post.author).resolve(dir).resolve(uuid), f)));
     }
     @JsMethod
@@ -93,9 +97,9 @@ public class SocialFeed {
         String uuid = UUID.randomUUID().toString();
         return getOrMkdirToStoreMedia(mediaType, postTime)
                 .thenCompose(p -> p.right.uploadAndReturnFile(uuid, media, length, false,
-                        context.network, context.crypto)
-                        .thenCompose(f -> f.getInputStream(f.version.get(f.writer()).props, context.network, context.crypto, c -> {})
-                                .thenCompose(reader -> context.crypto.hasher.hash(reader, f.getSize()))
+                        network, crypto)
+                        .thenCompose(f -> f.getInputStream(f.version.get(f.writer()).props, network, crypto, c -> {})
+                                .thenCompose(reader -> crypto.hasher.hash(reader, f.getSize()))
                                 .thenApply(hash -> new SocialPost.Ref(p.left.resolve(uuid).toString(), f.readOnlyPointer(), hash))));
     }
 
@@ -104,7 +108,7 @@ public class SocialFeed {
                 Integer.toString(postTime.getYear()),
                 mediaType);
         return context.getUserRoot()
-                .thenCompose(home -> home.getOrMkdirs(dirFromHome, context.network, true, context.crypto)
+                .thenCompose(home -> home.getOrMkdirs(dirFromHome, network, true, crypto)
                 .thenApply(dir -> new Pair<>(Paths.get("/" + context.username).resolve(dirFromHome), dir)));
     }
 
@@ -136,7 +140,7 @@ public class SocialFeed {
      * @return the byte offset and corresponding index of a prior object boundary, which ideally should be in the same chunk
      */
     private CompletableFuture<Pair<Long, Integer>> getPriorByteOffset(int index) {
-        return dataDir.getChild(FEED_INDEX, context.crypto.hasher, context.network)
+        return dataDir.getChild(FEED_INDEX, crypto.hasher, network)
                 .thenCompose(fopt -> {
                     //TODO
 //                    if (fopt.isEmpty())
@@ -159,10 +163,54 @@ public class SocialFeed {
                                 })).orElse(Futures.of(Collections.emptyList()))));
     }
 
+    @JsMethod
+    public CompletableFuture<List<Pair<SharedItem, FileWrapper>>> getSharedFiles(int from, int to) {
+        return getShared(from, to, crypto, network)
+                .thenCompose(context::getFiles);
+    }
+
+    private CompletableFuture<List<Pair<SharedItem, FileWrapper>>> mergeCommentReferences(List<Pair<SharedItem, FileWrapper>> items) {
+        List<Pair<SharedItem, FileWrapper>> posts = items.stream()
+                .filter(p -> p.right.getFileProperties().isSocialPost())
+                .collect(Collectors.toList());
+
+        return Futures.combineAllInOrder(posts.stream()
+                .map(p -> Serialize.parse(p.right, SocialPost::fromCbor, network, crypto)
+                        .thenApply(sp -> new Triple<>(p.left, p.right, sp)))
+                .collect(Collectors.toList()))
+                .thenCompose(retrieved -> {
+                    Map<String, List<Triple<SharedItem, FileWrapper, SocialPost>>> commentsOnOurs = retrieved.stream()
+                            .filter(t -> t.right.parent.map(p -> p.path.startsWith("/" + context.username)).orElse(false))
+                            .collect(Collectors.groupingBy(t -> t.right.parent.get().path));
+                    return Futures.combineAllInOrder(commentsOnOurs.entrySet().stream()
+                    .map(e -> mergeCommentsIntoParent(e.getKey(), e.getValue()))
+                    .collect(Collectors.toList()));
+                }).thenApply(x -> items);
+    }
+
+    private CompletableFuture<Boolean> mergeCommentsIntoParent(String parentPath,
+                                                               List<Triple<SharedItem, FileWrapper, SocialPost>> comments) {
+        return Futures.combineAllInOrder(comments.stream().map(t -> t.middle.getInputStream(network, crypto, x -> {})
+                .thenCompose(reader -> crypto.hasher.hash(reader, t.middle.getSize())
+                        .thenApply(h -> new SocialPost.Ref(t.left.path, t.left.cap, h))))
+                .collect(Collectors.toList())).thenCompose(refs ->
+                context.getByPath(parentPath).thenCompose(fopt -> {
+                    if (fopt.isEmpty())
+                        return Futures.of(false);
+                    return Serialize.parse(fopt.get(), SocialPost::fromCbor, network, crypto)
+                            .thenCompose(parent -> {
+                                SocialPost withComments = parent.addComments(refs);
+                                byte[] raw = withComments.serialize();
+                                return fopt.get().overwriteFile(AsyncReader.build(raw), raw.length, network, crypto, x -> {})
+                                        .thenApply(x -> true);
+                            });
+                }));
+    }
+
     private synchronized CompletableFuture<Boolean> commit() {
         byte[] raw = new FeedState(lastSeenIndex, feedSizeRecords, feedSizeBytes, currentCapBytesProcessed).serialize();
         return stateFile.overwriteFile(AsyncReader.build(raw), raw.length,
-                context.network, context.crypto, x -> {})
+                network, crypto, x -> {})
                 .thenApply(f -> {
                     this.stateFile = f;
                     return true;
@@ -177,7 +225,7 @@ public class SocialFeed {
     public synchronized CompletableFuture<SocialFeed> update() {
         return context.getFollowingNodes()
                 .thenCompose(friends -> Futures.reduceAll(friends, this,
-                        (s, f) -> s.updateFriend(f, context.network), (a, b) -> b));
+                        (s, f) -> s.updateFriend(f, network), (a, b) -> b));
     }
 
     private synchronized CompletableFuture<SocialFeed> updateFriend(FriendSourcedTrieNode friend, NetworkAccess network) {
@@ -190,6 +238,11 @@ public class SocialFeed {
 
                     return addToFriend(friend.ownerName, current, diff);
                 });
+    }
+
+    private CompletableFuture<List<Pair<SharedItem, FileWrapper>>> mergeInComments(List<SharedItem> shared) {
+        return context.getFiles(shared)
+                .thenCompose(this::mergeCommentReferences);
     }
 
     private static String extractOwner(String path) {
@@ -211,24 +264,27 @@ public class SocialFeed {
     }
 
     private synchronized CompletableFuture<SocialFeed> addToFeed(List<SharedItem> newItems) {
-        feedSizeRecords += newItems.size();
+        return mergeInComments(newItems).thenCompose(b -> {
+            feedSizeRecords += newItems.size();
 
-        ByteArrayOutputStream bout = new ByteArrayOutputStream();
-        for (SharedItem item : newItems) {
-            try {
-                bout.write(item.serialize());
-            } catch (IOException e) {
-                throw new RuntimeException(e);
+            ByteArrayOutputStream bout = new ByteArrayOutputStream();
+            for (SharedItem item : newItems) {
+                try {
+                    bout.write(item.serialize());
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
             }
-        }
-        byte[] data = bout.toByteArray();
-        feedSizeBytes += data.length;
-        return dataDir.appendToChild(FEED_FILE, data, false, context.network, context.crypto, x -> {})
-                .thenCompose(dir -> {
-                    this.dataDir = dir;
-                    return commit();
-                })
-                .thenApply(x -> this);
+            byte[] data = bout.toByteArray();
+            feedSizeBytes += data.length;
+            return dataDir.appendToChild(FEED_FILE, data, false, network, crypto, x -> {
+            })
+                    .thenCompose(dir -> {
+                        this.dataDir = dir;
+                        return commit();
+                    })
+                    .thenApply(x -> this);
+        });
     }
 
     public static CompletableFuture<SocialFeed> load(FileWrapper dataDir, UserContext context) {
