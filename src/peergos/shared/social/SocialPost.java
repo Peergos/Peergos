@@ -100,6 +100,16 @@ public class SocialPost implements Cborable {
                 previousVersions, updatedComments);
     }
 
+    public SocialPost addComments(List<Ref> newComments) {
+        ArrayList<Ref> updatedComments = new ArrayList<>(comments);
+        for (Ref comment : newComments) {
+            if (!updatedComments.contains(comment))
+                updatedComments.add(comment);
+        }
+        return new SocialPost(kind, author, body, tags, postTime, shareTo, parent, references,
+                previousVersions, updatedComments);
+    }
+
     private byte[] serializeWithoutComments() {
         return new SocialPost(kind, author, body, tags, postTime, shareTo, parent, references,
                 previousVersions, Collections.emptyList()).serialize();
