@@ -60,15 +60,15 @@ public class SocialFeed {
     public CompletableFuture<Pair<Path, FileWrapper>> createNewPost(SocialPost post) {
         if (! post.author.equals(context.username))
             throw new IllegalStateException("You can only post as yourself!");
-        String uuid = UUID.randomUUID().toString();
+        String postFilename = UUID.randomUUID().toString() + ".cbor";
         Path dir = getDirFromHome(post);
         byte[] raw = post.serialize();
         AsyncReader reader = AsyncReader.build(raw);
         return context.getUserRoot()
                 .thenCompose(home -> home.getOrMkdirs(dir, network, true, crypto))
-                .thenCompose(postDir -> postDir.uploadAndReturnFile(uuid, reader, raw.length, false,
+                .thenCompose(postDir -> postDir.uploadAndReturnFile(postFilename, reader, raw.length, false,
                         network, crypto)
-                        .thenApply(f -> new Pair<>(Paths.get(post.author).resolve(dir).resolve(uuid), f)))
+                        .thenApply(f -> new Pair<>(Paths.get(post.author).resolve(dir).resolve(postFilename), f)))
                 .thenCompose(p -> addToFeed(Arrays.asList(new SharedItem(p.right.readOnlyPointer(),
                         context.username, context.username, p.left.toString())))
                         .thenApply(f -> p));
