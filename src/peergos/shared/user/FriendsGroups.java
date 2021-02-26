@@ -16,7 +16,7 @@ public class FriendsGroups implements Cborable {
 
     public Set<EntryPoint> getFriends(String friend) {
         return pathToGroup.entrySet().stream()
-                .filter(e -> e.getKey().startsWith(friend))
+                .filter(e -> e.getKey().startsWith(friend) || e.getKey().startsWith("/" + friend))
                 .map(e -> e.getValue())
                 .collect(Collectors.toSet());
     }
