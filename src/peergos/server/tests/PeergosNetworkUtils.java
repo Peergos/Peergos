@@ -1311,7 +1311,7 @@ public class PeergosNetworkUtils {
         FileWrapper socialFile = files.get(files.size() -1).right;
         SharedItem sharedItem = files.get(files.size() -1).left;
         FileProperties props = socialFile.getFileProperties();
-        SocialPost loadedSocialPost = Serialize.parse(socialFile, c -> SocialPost.fromCbor(c), sharee.network, crypto).join();
+        SocialPost loadedSocialPost = Serialize.parse(socialFile, SocialPost::fromCbor, sharee.network, crypto).join();
         SocialPost.Ref mediaRef = loadedSocialPost.references.get(0);
         Optional<FileWrapper> optFile = sharee.network.getFile(mediaRef.cap, sharer.username).join();
         assertTrue(optFile.isPresent());
@@ -1323,7 +1323,7 @@ public class PeergosNetworkUtils {
         SocialPost.Ref parent = new SocialPost.Ref(sharedItem.path, sharedItem.cap, hash);
         SocialPost replySocialPost = SocialPost.createComment(parent, resharingType, type, sharee.username, replyText, Collections.emptyList());
         result = receiverFeed.createNewPost(replySocialPost).join();
-        String receiverGroupUid = sharer.getSocialState().join().groupNameToUid.get(friendGroup);
+        String receiverGroupUid = sharee.getSocialState().join().groupNameToUid.get(friendGroup);
         res = sharee.shareReadAccessWith(result.left, Set.of(receiverGroupUid)).join();
 
         //now sharer should see the reply
@@ -1331,9 +1331,9 @@ public class PeergosNetworkUtils {
 //        sharer = UserContext.signIn(sharer.username, password, sharer.network, sharer.crypto, c -> {}).join();
         feed = sharer.getSocialFeed().join().update().join();
         files = feed.getSharedFiles(0, 100).join();
-        assertTrue(files.size() == 4);
+        assertTrue(files.size() == 5);
         socialFile = files.get(files.size() -1).right;
-        loadedSocialPost = Serialize.parse(socialFile, c -> SocialPost.fromCbor(c), sharer.network, crypto).join();
+        loadedSocialPost = Serialize.parse(socialFile, SocialPost::fromCbor, sharer.network, crypto).join();
         assertTrue(loadedSocialPost.body.equals(replyText));
     }
 
