@@ -175,6 +175,11 @@ public class MultiUserTests {
     }
 
     @Test
+    public void socialFeedCommentOnSharedFile() throws Exception {
+        PeergosNetworkUtils.socialFeedCommentOnSharedFile(network, network, random);
+    }
+
+    @Test
     public void socialFeedVariations() {
         PeergosNetworkUtils.socialFeedVariations(network, random);
     }

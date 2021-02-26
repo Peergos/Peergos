@@ -177,6 +177,64 @@ public class PeergosNetworkUtils {
         Assert.assertTrue(Arrays.equals(newFileContents, ArrayOps.concat(originalFileContents, suffix)));
     }
 
+    public static void socialFeedCommentOnSharedFile(NetworkAccess sharerNode, NetworkAccess shareeNode, Random random) throws Exception {
+        //sign up a user on sharerNode
+
+        String sharerUsername = generateUsername(random);
+        String sharerPassword = generatePassword();
+        UserContext sharer = ensureSignedUp(sharerUsername, sharerPassword, sharerNode.clear(), crypto);
+
+        //sign up some users on shareeNode
+        int shareeCount = 1;
+        List<String> shareePasswords = IntStream.range(0, shareeCount)
+                .mapToObj(i -> generatePassword())
+                .collect(Collectors.toList());
+        List<UserContext> shareeUsers = getUserContextsForNode(shareeNode, random, shareeCount, shareePasswords);
+        UserContext sharee = shareeUsers.get(0);
+
+        // friend sharer with others
+        friendBetweenGroups(Arrays.asList(sharer), shareeUsers);
+
+        // upload a file to "a"'s space
+        FileWrapper u1Root = sharer.getUserRoot().get();
+        String filename = "somefile.txt";
+        File f = File.createTempFile("peergos", "");
+        byte[] originalFileContents = sharer.crypto.random.randomBytes(10*1024*1024);
+        Files.write(f.toPath(), originalFileContents);
+        ResetableFileInputStream resetableFileInputStream = new ResetableFileInputStream(f);
+        FileWrapper uploaded = u1Root.uploadOrReplaceFile(filename, resetableFileInputStream, f.length(),
+                sharer.network, crypto, l -> {}, crypto.random.randomBytes(32)).get();
+
+        // share the file from sharer to each of the sharees
+        Set<String> shareeNames = shareeUsers.stream()
+                .map(u -> u.username)
+                .collect(Collectors.toSet());
+            sharer.shareReadAccessWith(Paths.get(sharer.username, filename), shareeNames).join();
+
+            SocialFeed receiverFeed = sharee.getSocialFeed().join().update().join();
+            List<Pair<SharedItem, FileWrapper>> files = receiverFeed.getSharedFiles(0, 100).join();
+            assertTrue(files.size() == 3);
+            FileWrapper sharedFile = files.get(files.size() -1).right;
+            SharedItem sharedItem = files.get(files.size() -1).left;
+
+            Multihash hash = sharedFile.getContentHash(sharee.network, sharee.crypto).join();
+            String replyText = "reply";
+            SocialPost.Type type = peergos.shared.social.SocialPost.Type.Text;
+            SocialPost.Resharing resharingType = SocialPost.Resharing.Friends;
+            SocialPost.Ref parent = new SocialPost.Ref(sharedItem.path, sharedItem.cap, hash);
+            SocialPost replySocialPost = SocialPost.createComment(parent, resharingType, type, sharee.username, replyText, Collections.emptyList());
+            Pair<Path, FileWrapper> result = receiverFeed.createNewPost(replySocialPost).join();
+            String friendGroup = SocialState.FRIENDS_GROUP_NAME;
+            String receiverGroupUid = sharee.getSocialState().join().groupNameToUid.get(friendGroup);
+            Boolean res = sharee.shareReadAccessWith(result.left, Set.of(receiverGroupUid)).join();
+
+            //now sharer should see the reply
+            SocialFeed feed = sharer.getSocialFeed().join().update().join();
+            files = feed.getSharedFiles(0, 100).join();
+            //assertTrue(files.size() == 5);
+
+    }
+
     public static void grantAndRevokeFileWriteAccess(NetworkAccess sharerNode, NetworkAccess shareeNode, int shareeCount, Random random) throws Exception {
         Assert.assertTrue(0 < shareeCount);
         //sign up a user on sharerNode
