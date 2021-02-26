@@ -1673,7 +1673,7 @@ public class UserContext {
         return getByPath("/" + username + "/shared/" + usernameToGrantAccess)
                 .thenCompose(shared -> {
                     if (!shared.isPresent())
-                        return CompletableFuture.completedFuture(false);
+                        return Futures.errored(new IllegalStateException("Unknown recipient for sharing: " + usernameToGrantAccess));
                     FileWrapper sharedDir = shared.get();
                     return sharingFunction.apply(sharedDir, file);
                 });
