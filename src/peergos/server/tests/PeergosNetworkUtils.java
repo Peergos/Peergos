@@ -1327,6 +1327,7 @@ public class PeergosNetworkUtils {
         res = sharee.shareReadAccessWith(result.left, Set.of(receiverGroupUid)).join();
 
         //now sharer should see the reply
+        sharer = UserContext.signIn(sharer.username, password, sharer.network, sharer.crypto, c -> {}).join();
         feed = sharer.getSocialFeed().join().update().join();
         files = feed.getSharedFiles(0, 100).join();
         assertTrue(files.size() == 5);
