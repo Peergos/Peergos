@@ -6,6 +6,7 @@ import peergos.server.storage.ResetableFileInputStream;
 import peergos.shared.Crypto;
 import peergos.shared.NetworkAccess;
 import peergos.shared.crypto.symmetric.SymmetricKey;
+import peergos.shared.io.ipfs.multihash.Multihash;
 import peergos.shared.social.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
@@ -1310,7 +1311,7 @@ public class PeergosNetworkUtils {
         List<Pair<SharedItem, FileWrapper>> files = sharee.getFiles(items).join();
         assertTrue(files.size() == 3);
         FileWrapper socialFile = files.get(files.size() -1).right;
-
+        SharedItem sharedItem = files.get(files.size() -1).left;
         FileProperties props = socialFile.getFileProperties();
         AsyncReader reader2 = socialFile.getInputStream(sharee.network, sharee.crypto, props.sizeHigh(), props.sizeLow(), l -> {}).join();
         int size = props.sizeLow();
@@ -1320,7 +1321,34 @@ public class PeergosNetworkUtils {
         SocialPost.Ref mediaRef = loadedSocialPost.references.get(0);
         Optional<FileWrapper> optFile = sharee.network.getFile(mediaRef.cap, sharer.username).join();
         assertTrue(optFile.isPresent());
+
+        //create a reply
+        String replyText = "reply";
+        Multihash hash = loadedSocialPost.contentHash(sharee.crypto.hasher).join();
+        SocialPost.Type type = peergos.shared.social.SocialPost.Type.Text;
+        SocialPost.Ref parent = new SocialPost.Ref(sharedItem.path, sharedItem.cap, hash);
+        SocialPost replySocialPost = SocialPost.createComment(parent, resharingType, type, sharee.username, replyText, Collections.emptyList());
+        result = receiverFeed.createNewPost(replySocialPost).join();
+        res = sharee.shareReadAccessWith(result.left, Set.of(groupUid)).join();
+
+        //now sharer should see the reply
+        //this works sharer = PeergosNetworkUtils.ensureSignedUp(sharer.username, password, sharer.network, sharer.crypto);
+        sharer = UserContext.signIn(sharer.username, password, sharer.network, sharer.crypto, c -> {}).join();
+        feed = sharer.getSocialFeed().join();
+        feed = feed.update().join();
+        items = feed.getShared(0, 100, sharer.crypto, sharer.network).join();
+        files = sharer.getFiles(items).join();
+        assertTrue(files.size() == 4);
+        socialFile = files.get(files.size() -1).right;
+        props = socialFile.getFileProperties();
+        reader2 = socialFile.getInputStream(sharer.network, sharer.crypto, props.sizeHigh(), props.sizeLow(), l -> {}).join();
+        size = props.sizeLow();
+        data = new byte[size];
+        read = reader2.readIntoArray(data, 0, data.length).join();
+        loadedSocialPost = Serialize.parse(data, c -> SocialPost.fromCbor(c));
+        assertTrue(loadedSocialPost.body.equals(replyText));
     }
+
 
     private static void uploadAndShare(byte[] data, Path file, UserContext sharer, String sharee) {
         String filename = file.getFileName().toString();
