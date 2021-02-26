@@ -179,8 +179,7 @@ public class PeergosNetworkUtils {
 
     public static void socialFeedCommentOnSharedFile(NetworkAccess sharerNode, NetworkAccess shareeNode, Random random) throws Exception {
         //sign up a user on sharerNode
-
-        String sharerUsername = generateUsername(random);
+        String sharerUsername = randomUsername("sharer-", random);
         String sharerPassword = generatePassword();
         UserContext sharer = ensureSignedUp(sharerUsername, sharerPassword, sharerNode.clear(), crypto);
 
@@ -209,29 +208,29 @@ public class PeergosNetworkUtils {
         Set<String> shareeNames = shareeUsers.stream()
                 .map(u -> u.username)
                 .collect(Collectors.toSet());
-            sharer.shareReadAccessWith(Paths.get(sharer.username, filename), shareeNames).join();
+        sharer.shareReadAccessWith(Paths.get(sharer.username, filename), shareeNames).join();
 
-            SocialFeed receiverFeed = sharee.getSocialFeed().join().update().join();
-            List<Pair<SharedItem, FileWrapper>> files = receiverFeed.getSharedFiles(0, 100).join();
-            assertTrue(files.size() == 3);
-            FileWrapper sharedFile = files.get(files.size() -1).right;
-            SharedItem sharedItem = files.get(files.size() -1).left;
+        SocialFeed receiverFeed = sharee.getSocialFeed().join().update().join();
+        List<Pair<SharedItem, FileWrapper>> files = receiverFeed.getSharedFiles(0, 100).join();
+        assertTrue(files.size() == 3);
+        FileWrapper sharedFile = files.get(files.size() -1).right;
+        SharedItem sharedItem = files.get(files.size() -1).left;
 
-            Multihash hash = sharedFile.getContentHash(sharee.network, sharee.crypto).join();
-            String replyText = "reply";
-            SocialPost.Type type = peergos.shared.social.SocialPost.Type.Text;
-            SocialPost.Resharing resharingType = SocialPost.Resharing.Friends;
-            SocialPost.Ref parent = new SocialPost.Ref(sharedItem.path, sharedItem.cap, hash);
-            SocialPost replySocialPost = SocialPost.createComment(parent, resharingType, type, sharee.username, replyText, Collections.emptyList());
-            Pair<Path, FileWrapper> result = receiverFeed.createNewPost(replySocialPost).join();
-            String friendGroup = SocialState.FRIENDS_GROUP_NAME;
-            String receiverGroupUid = sharee.getSocialState().join().groupNameToUid.get(friendGroup);
-            Boolean res = sharee.shareReadAccessWith(result.left, Set.of(receiverGroupUid)).join();
+        Multihash hash = sharedFile.getContentHash(sharee.network, sharee.crypto).join();
+        String replyText = "reply";
+        SocialPost.Type type = peergos.shared.social.SocialPost.Type.Text;
+        SocialPost.Resharing resharingType = SocialPost.Resharing.Friends;
+        SocialPost.Ref parent = new SocialPost.Ref(sharedItem.path, sharedItem.cap, hash);
+        SocialPost replySocialPost = SocialPost.createComment(parent, resharingType, type, sharee.username, replyText, Collections.emptyList());
+        Pair<Path, FileWrapper> result = receiverFeed.createNewPost(replySocialPost).join();
+        String friendGroup = SocialState.FRIENDS_GROUP_NAME;
+        String receiverGroupUid = sharee.getSocialState().join().groupNameToUid.get(friendGroup);
+        Boolean res = sharee.shareReadAccessWith(result.left, Set.of(receiverGroupUid)).join();
 
-            //now sharer should see the reply
-            SocialFeed feed = sharer.getSocialFeed().join().update().join();
-            files = feed.getSharedFiles(0, 100).join();
-            //assertTrue(files.size() == 5);
+        //now sharer should see the reply
+        SocialFeed feed = sharer.getSocialFeed().join().update().join();
+        files = feed.getSharedFiles(0, 100).join();
+        //assertTrue(files.size() == 5);
 
     }
 

@@ -197,6 +197,8 @@ public class SocialFeed {
                 context.getByPath(parentPath).thenCompose(fopt -> {
                     if (fopt.isEmpty())
                         return Futures.of(false);
+                    if (! fopt.get().getFileProperties().isSocialPost())
+                        return Futures.of(true);
                     return Serialize.parse(fopt.get(), SocialPost::fromCbor, network, crypto)
                             .thenCompose(parent -> {
                                 SocialPost withComments = parent.addComments(refs);
