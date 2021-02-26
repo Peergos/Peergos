@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<head>
+    <title>Simple decentralized web hosting on Peergos</title>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta charset="utf-8">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <link rel="shortcut icon" href="/theme/vendor/peergos-styles/dist/img/icons/favicon.ico"/>
+    <link rel="stylesheet" href="/theme/css/material-icons.css">
+    <link rel="stylesheet" href="/theme/css/montserrat.css" type="text/css">
+    <link rel="stylesheet" href="/theme/vendor/materialize/css/materialize.min.css" type="text/css"/>
+    <link rel="stylesheet" href="/theme/css/peergos.css" type="text/css"/>
+
+    <link rel="alternate" href="https://peergos.org/feeds/posts.atom.xml" type="application/atom+xml">
+ </head>
+<body class="blog" style="overflow-y: scroll;">
+<nav>
+    <div class="nav-wrapper">
+
+
+        <a href="/" class="brand-logo"><img src="/theme/img/peergos/logo-main.svg" width="200"/></a>
+        <a href="#" data-activates="mobile" class="button-collapse"><i class="material-icons">menu</i></a>
+            <ul class="right hide-on-med-and-down">
+                    <li >
+                        <a href="../features"
+>
+                            Features
+                        </a>
+                    </li>
+                    <li >
+                        <a href="../security"
+>
+                            Security
+                        </a>
+                    </li>
+                    <li class="active">
+                        <a href="../blog"
+>
+                            Blog
+                        </a>
+                    </li>
+                    <li >
+                        <a href="../about"
+>
+                            About
+                        </a>
+                    </li>
+                        <li>
+                            <a href="https://beta.peergos.net/?signup=true" target="_new" class="btn">
+                                                        <span>
+                                                               SIGN UP 
+                                                        </span>
+                            </a>
+                        </li>
+
+            </ul>
+
+
+        <ul class="side-nav" id="mobile">
+            <li class="side-nav-header">
+                <a href="/" class="brand-logo"><img src="/theme/img/peergos/logo-tower-only-green.svg" width="180"/></a>
+            </li>
+                <li >
+                    <a href="../features"
+>
+                        Features
+                    </a>
+                </li>
+                <li >
+                    <a href="../security"
+>
+                        Security
+                    </a>
+                </li>
+                <li class="active">
+                    <a href="../blog"
+>
+                        Blog
+                    </a>
+                </li>
+                    <li class="hidden-md hidden-lg nav_bar_grey_li">
+                        <a href="https://demo.peergos.net" class="nav_bar_grey_lnk">
+                                                        <span class="nav_bar_grey_span">
+                                                                Demo
+                                                        </span>
+                        </a>
+                    </li>
+                <li >
+                    <a href="../about"
+>
+                        About
+                    </a>
+                </li>
+        </ul>
+
+    </div>
+</nav>
+    <div class="container bs-docs-container">
+    <div class="row">
+    <div class="col m3 col s4">
+    </div>
+    <div class="col m9 col s8" role="main" style="overflow-x:auto; padding-bottom: 10px;">
+    <h1 class="page-header main-title">Simple decentralized web hosting on Peergos</h1>
+    <div class="bs-docs-section">
+    <p>You already know that Peergos lets you store and share files securely and privately. Now, you can also host your own website on it!</p>
+<p>We always thought getting a website up and running should be one of the easiest things to do on the web. There are plenty of options available for website hosting, but with Peergos there's no need to buy a domain name, arrange TLS certificates, or run a server to host the content. You also don't need any cryptocurrency to post or update your website, so you can get free instantaneous updates and peer-to-peer authenticated delivery. You can sign up to <a href="https://beta.peergos.net?signup=true">our beta</a> today and get started right away in just two easy steps:</p>
+<ol>
+<li>
+Upload your website files to a directory in Peergos.
+</li>
+<li>
+Go to your profile, set that directory as your website and click publish.
+</li>
+</ol>
+
+<p>Your personal website will now be available at <tt>https://&lt;your-user-name&gt;.peergos.me</tt>. It doesn't get any simpler than that. Let's see this in action!</p>
+<p><center>
+<img alt="www" class="class" id="id" src="/theme/img/blog/p2p-webhosting.gif" width="90%" />
+<br/>
+Host your decentralized website directly from Peergos.
+</center></p>
+<p>Any changes made to your website files are automatically and instantly reflected in your website. When we say instantaneous, we mean it. Check it out below!</p>
+<p><center>
+<img alt="www-update" class="class" id="id" src="/theme/img/blog/p2p-web-update.gif" width="90%" />
+<br/>
+Instantaneous and free updates to your decentralized website.
+</center></p>
+<p>When you publish a website from Peergos, you can view it through any Peergos gateway. We're running one at <tt>peergos.me</tt>, so your website will be available at <tt>https://&lt;your-user-name&gt;.peergos.me</tt>, and viewable in any browser today. Bear in mind that viewing through a public gateway like that still relies on DNS and the TLS certificate authorities, which are both single points of failure that are vulnerable to attack. However, we can actually get around both of these by viewing someone's site through a local Peergos gateway. To visit someone's site in this way, you just run a local Peergos instance and browse to <tt>http://&lt;username&gt;.peergos.localhost:9000</tt>. The gateway looks up the public key of the username provided in the localhost subdomain via the Peergos PKI, then retrieves the website and serves it. All this is done without relying on DNS or TLS certificates anywhere. We are thus able to use localhost subdomains to achieve isolation and security between different sites served from one local gateway. </p>
+<p>Websites hosted on Peergos benefit from our resilient and reliable decentralized architecture. Most of the heavy lifting is done by <a href="https://ipfs.io">IPFS</a> through content addressing and public key based routing. With our architecture, we add fast mutable pointers and human-readable names. Therefore, you can trust that the content of your website will be readily available without having to rely on a single-point-of-failure-server anywhere. </p>
+<p>In the future, we will enable viewing such websites directly inside the Peergos web interface. At that point, Peergos will really start to look like a new web.</p>
+<p>There are still a few free accounts available on <a href="https://beta.peergos.net?signup=true">our beta</a>. Let us know what you think. We're always looking for feedback, so either <a href="mailto://peergos@peergos.org">drop us a line</a> or come say hi in our <a href="https://app.element.io/#/room/#peergos-chat:matrix.org">Matrix chatroom</a>.</p>
+<p>Stay tuned for introductions to a few other new features and apps we're building as part of our <a href="/posts/next-generation-internet">grant</a> from the Next Generation Internet program (<a href="https://pointer.ngi.eu/">NGI POINTER</a>).</p>
+<p><br/><br/></p>
+<hr />
+<p><center>
+<img alt="NGI Pointer" class="class" height="65px" id="id" src="/theme/img/ngi-logo.png" />
+<img alt="NGI Pointer" class="class" height="65" id="id" src="/theme/img/eu.png" />
+</center>
+<br/>
+This project has received funding from the European Union’s Horizon 2020 research and innovation programme within the framework of the NGI-POINTER Project funded under grant agreement No 871528</p>
+<p><br/><br/><br/></p>
+<h4>RECENT POSTS</h4>
+<ul id="recent-posts">
+    <li>
+      <a href="../posts/p2p-web-hosting">Simple decentralized web hosting on Peergos</a>
+    </li>
+    <li>
+      <a href="../posts/calendar">Encrypted shareable calendar</a>
+    </li>
+    <li>
+      <a href="../posts/file-search">Fast Encrypted File Search</a>
+    </li>
+    <li>
+      <a href="../posts/private-kanban">Private Planning Boards in Peergos</a>
+    </li>
+    <li>
+      <a href="../posts/the-social-dilemma">How to solve the social dilemma and fix social media</a>
+    </li>
+    <li>
+      <a href="../posts/next-generation-internet">Peergos wins EU Next Generation Internet grant</a>
+    </li>
+    <li>
+      <a href="../posts/direct-s3">Direct S3 access</a>
+    </li>
+    <li>
+      <a href="../posts/release-v0.3.0">Peergos release v0.3.0</a>
+    </li>
+    <li>
+      <a href="../posts/keybase-left-building">Keybase has left the building</a>
+    </li>
+    <li>
+      <a href="../posts/perfect-social-network">The perfect social network</a>
+    </li>
+    <li>
+      <a href="../posts/atomic-access-control">Atomic access control</a>
+    </li>
+    <li>
+      <a href="../posts/release-v0.1.3">Peergos release v0.1.3</a>
+    </li>
+    <li>
+      <a href="../posts/applications">Applications on Peergos</a>
+    </li>
+    <li>
+      <a href="../posts/fast-seeking">Fast seeking and encrypted history</a>
+    </li>
+    <li>
+      <a href="../posts/ipfs-camp">IPFS Camp, new features</a>
+    </li>
+    <li>
+      <a href="../posts/alpha-release">Alpha Release</a>
+    </li>
+    <li>
+      <a href="../posts/security-audit">Security Audit</a>
+    </li>
+    <li>
+      <a href="../posts/dev-update">Development update</a>
+    </li>
+</ul>    </div>
+    <span class="pull-right">
+                                        <a class="btn btn-default" role="button"
+                                           href="javascript:window.scrollTo(0,0);">Back to Top</a>
+                                </span>
+    </div>
+    </div>
+    </div>
+    <div class="index">
+
+
+<footer class="page-footer">
+    <div class="">
+        <div class="row">
+            <div class="col l6 m6 s12 footer-logo">
+                <img src="/theme/img/peergos/logo-dark-bg.svg" width="230">
+            </div>
+
+            <div class="col l3 m4 s12">
+                <h5 class="white-text">About Us</h5>
+                <ul>
+                    <li><a href="https://book.peergos.org/" target="_new">Tech book</a></li>
+                    <li><a href="/about" >About</a></li>
+                    <li><a href="/contact" >Contact</a></li>
+                    <li><a href="/faq" >FAQ</a></li>
+                </ul>
+            </div>
+
+            <div class="col l3 m3 s12">
+                <h5 class="white-text">Community</h5>
+                <ul>
+                    <!--<li><a href="http://blog.peergos.org" target="_new">Blog</a></li>-->
+                    <a href="https://github.com/peergos/peergos" target="_new">
+                      <img src="/theme/img/contact/github.svg" width="100">
+                    </a>
+                    <a href="https://app.element.io/#/room/#peergos-chat:matrix.org" target="_new">
+                      <img src="/theme/img/contact/matrix.png" width="100">
+                    </a>
+                    <a href="https://twitter.com/peergos" target="_new">
+                    <img src="/theme/img/contact/twitter.svg" width="100">
+                    </a>
+                    <a href="https://reddit.com/r/peergos" target="_new">
+                    <img src="/theme/img/contact/reddit.png" width="100">
+                    </a>
+                </ul>
+            </div>
+        </div>
+
+        <div class="footer-copyright">
+            <div class="row">
+                <div class="col s12">
+                    © PEERGOS | Designed by <a href="http://www.antarctic-design.co.uk" target="_blank"> Eamonn
+                    Maguire</a>.
+                </div>
+
+            </div>
+        </div>
+
+</footer>
+
+    </div>
+</div>
+<script src="/theme/vendor/jquery/dist/jquery.min.js"></script>
+<script src="/theme/vendor/materialize/js/materialize.min.js"></script>
+<script>
+    $(".button-collapse").sideNav();
+
+
+</script>
+
+</body>
+</html>
