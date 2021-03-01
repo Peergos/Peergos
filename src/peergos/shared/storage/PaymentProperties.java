@@ -39,6 +39,16 @@ public final class PaymentProperties  implements Cborable {
     }
 
     @JsMethod
+    public int freeMb() {
+        return (int)(freeQuota / (1024 * 1024));
+    }
+
+    @JsMethod
+    public int desiredMb() {
+        return (int)(desiredQuota / (1024 * 1024));
+    }
+
+    @JsMethod
     public boolean hasError() {
         return error.isPresent();
     }
@@ -69,7 +79,7 @@ public final class PaymentProperties  implements Cborable {
     @Override
     public CborObject toCbor() {
         SortedMap<String, Cborable> state = new TreeMap<>();
-        state.put("freeQuota", new CborObject.CborLong(desiredQuota));
+        state.put("freeQuota", new CborObject.CborLong(freeQuota));
         state.put("desiredQuota", new CborObject.CborLong(desiredQuota));
         paymentServerUrl.ifPresent(url -> state.put("url", new CborObject.CborString(url)));
         error.ifPresent(err -> state.put("err", new CborObject.CborString(err)));
