@@ -88,19 +88,16 @@ public class SocialFeed {
                         .thenApply(f -> new Pair<>(Paths.get(post.author).resolve(dir).resolve(uuid), f)));
     }
     @JsMethod
-    public CompletableFuture<SocialPost.Ref> uploadMediaForPost(String mediaType,
-                                                                       AsyncReader media,
+    public CompletableFuture<Pair<String, SocialPost.Ref>> uploadMediaForPost(AsyncReader media,
                                                                        int length,
                                                                        LocalDateTime postTime) {
-        if (! mediaType.equals("images") && ! mediaType.equals("videos") && ! mediaType.equals("audio"))
-            throw new IllegalStateException("Unknown media type: " + mediaType);
         String uuid = UUID.randomUUID().toString();
-        return getOrMkdirToStoreMedia(mediaType, postTime)
+        return getOrMkdirToStoreMedia("media", postTime)
                 .thenCompose(p -> p.right.uploadAndReturnFile(uuid, media, length, false,
                         network, crypto)
                         .thenCompose(f -> f.getInputStream(f.version.get(f.writer()).props, network, crypto, c -> {})
                                 .thenCompose(reader -> crypto.hasher.hash(reader, f.getSize()))
-                                .thenApply(hash -> new SocialPost.Ref(p.left.resolve(uuid).toString(), f.readOnlyPointer(), hash))));
+                                .thenApply(hash -> new Pair<>(f.getFileProperties().getType(), new SocialPost.Ref(p.left.resolve(uuid).toString(), f.readOnlyPointer(), hash)))));
     }
 
     private CompletableFuture<Pair<Path, FileWrapper>> getOrMkdirToStoreMedia(String mediaType, LocalDateTime postTime) {
