@@ -1299,6 +1299,7 @@ public class FileWrapper {
                 .thenApply(fa -> true);
     }
 
+    @JsMethod
     public AbsoluteCapability readOnlyPointer() {
         return pointer.capability.readOnly();
     }
