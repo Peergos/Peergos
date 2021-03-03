@@ -80,12 +80,11 @@ public class SocialFeed {
             throw new IllegalStateException("You can only post as yourself!");
         Path dir = getDirFromHome(post.previousVersions.get(0));
         byte[] raw = post.serialize();
-        AsyncReader reader = AsyncReader.build(raw);
-        return context.getUserRoot()
-                .thenCompose(home -> home.getOrMkdirs(dir, network, true, crypto))
-                .thenCompose(postDir -> postDir.uploadAndReturnFile(uuid, reader, raw.length, false,
-                        network, crypto)
-                        .thenApply(f -> new Pair<>(Paths.get(post.author).resolve(dir).resolve(uuid), f)));
+        String completePath = context.username + "/" + dir.resolve(uuid).toString();
+        return context.getByPath(completePath).thenCompose(fopt ->
+            fopt.get().overwriteFile(AsyncReader.build(raw), raw.length, network, crypto, x -> {})
+                    .thenApply(f -> new Pair<>(Paths.get(post.author).resolve(dir).resolve(uuid), f))
+        );
     }
     @JsMethod
     public CompletableFuture<Pair<String, SocialPost.Ref>> uploadMediaForPost(AsyncReader media,

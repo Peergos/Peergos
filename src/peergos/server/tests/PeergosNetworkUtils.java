@@ -1355,6 +1355,16 @@ public class PeergosNetworkUtils {
         SocialPost socialPost = SocialPost.createInitialPost(commentType, sharer.username, "aaaa", Collections.emptyList(), media, resharingType);
 
         Pair<Path, FileWrapper> result = feed.createNewPost(socialPost).join();
+
+        List<String> tags = Collections.emptyList();
+        LocalDateTime postTime = LocalDateTime.now();
+        List<SocialPost.Ref> references = new ArrayList<>(socialPost.references);
+        String updatedBody = "bbbbb";
+        socialPost = socialPost.edit(updatedBody, tags, postTime, references);
+
+        String uuid = result.left.getFileName().toString();
+        result = feed.updatePost(uuid, socialPost).join();
+
         String friendGroup = SocialState.FRIENDS_GROUP_NAME;
         SocialState state = sharer.getSocialState().join();
         String groupUid = state.groupNameToUid.get(friendGroup);
@@ -1369,6 +1379,8 @@ public class PeergosNetworkUtils {
         SharedItem sharedItem = files.get(files.size() -1).left;
         FileProperties props = socialFile.getFileProperties();
         SocialPost loadedSocialPost = Serialize.parse(socialFile, SocialPost::fromCbor, sharee.network, crypto).join();
+        assertTrue(loadedSocialPost.body.equals(updatedBody));
+
         SocialPost.Ref mediaRef = loadedSocialPost.references.get(0);
         Optional<FileWrapper> optFile = sharee.network.getFile(mediaRef.cap, sharer.username).join();
         assertTrue(optFile.isPresent());
