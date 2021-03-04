@@ -1045,6 +1045,7 @@ public class FileWrapper {
 
     @JsMethod
     public CompletableFuture<FileWrapper> appendToChild(String filename,
+                                                        long expectedSize,
                                                         byte[] fileData,
                                                         boolean isHidden,
                                                         NetworkAccess network,
@@ -1057,11 +1058,16 @@ public class FileWrapper {
                                 child.get().getLocation().getMapKey(),
                                 child.get().getFileProperties().size, crypto.hasher))
                         .orElseGet(() -> Futures.of(crypto.random.randomBytes(32)))
-                        .thenCompose(x -> uploadFileSection(filename, AsyncReader.build(fileData), isHidden,
-                                child.map(f -> f.getSize()).orElse(0L),
-                                fileData.length + child.map(f -> f.getSize()).orElse(0L),
-                                child.map(f -> f.getPointer().capability.rBaseKey), true, network, crypto,
-                                monitor, x)));
+                        .thenCompose(x -> {
+                            long size = child.map(f -> f.getSize()).orElse(0L);
+                            if (size != expectedSize)
+                                throw new IllegalStateException("File has been concurrently modified!");
+                            return uploadFileSection(filename, AsyncReader.build(fileData), isHidden,
+                                    size,
+                                    fileData.length + size,
+                                    child.map(f -> f.getPointer().capability.rBaseKey), true, network, crypto,
+                                    monitor, x);
+                        }));
     }
 
     /**

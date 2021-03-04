@@ -2062,8 +2062,10 @@ public class UserContext {
     public CompletableFuture<Boolean> unfollow(String friendName) {
         LOG.info("Unfollowing: " + friendName);
         return getUserRoot()
-                .thenCompose(home -> home.appendToChild(BLOCKED_USERNAMES_FILE, (friendName + "\n").getBytes(), true,
-                        network, crypto, x -> {}))
+                .thenCompose(home -> home.getChild(BLOCKED_USERNAMES_FILE, crypto.hasher, network)
+                        .thenCompose(fopt -> home.appendToChild(BLOCKED_USERNAMES_FILE,
+                                fopt.map(f -> f.getSize()).orElse(0L), (friendName + "\n").getBytes(), true,
+                                network, crypto, x -> {})))
                 .thenApply(b -> {
                     entrie = entrie.removeEntry("/" + friendName + "/");
                     return true;

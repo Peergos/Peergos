@@ -267,8 +267,6 @@ public class SocialFeed {
 
     private synchronized CompletableFuture<SocialFeed> addToFeed(List<SharedItem> newItems) {
         return mergeInComments(newItems).thenCompose(b -> {
-            feedSizeRecords += newItems.size();
-
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
             for (SharedItem item : newItems) {
                 try {
@@ -278,10 +276,11 @@ public class SocialFeed {
                 }
             }
             byte[] data = bout.toByteArray();
-            feedSizeBytes += data.length;
-            return dataDir.appendToChild(FEED_FILE, data, false, network, crypto, x -> {
+            return dataDir.appendToChild(FEED_FILE, feedSizeBytes, data, false, network, crypto, x -> {
             })
                     .thenCompose(dir -> {
+                        feedSizeRecords += newItems.size();
+                        feedSizeBytes += data.length;
                         this.dataDir = dir;
                         return commit();
                     })
