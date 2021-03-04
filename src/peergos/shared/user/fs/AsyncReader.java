@@ -106,12 +106,14 @@ public interface AsyncReader extends AutoCloseable {
                                                                   int objectsToSkip,
                                                                   int maxObjectsToRead,
                                                                   long maxBytesToRead) {
-        if (maxObjectsToRead == 0)
+        if (maxObjectsToRead == 0 || maxBytesToRead == 0)
             return CompletableFuture.completedFuture(0L);
-        byte[] buf = new byte[Chunk.MAX_SIZE];
+        int toRead = (int) Math.min(Chunk.MAX_SIZE - prefix.length, maxBytesToRead);
+        byte[] buf = new byte[prefix.length + toRead];
         System.arraycopy(prefix, 0, buf, 0, prefix.length);
         ByteArrayInputStream in = new ByteArrayInputStream(buf);
-        return readIntoArray(buf, prefix.length, (int) Math.min((long)(buf.length - prefix.length), maxBytesToRead))
+
+        return readIntoArray(buf, prefix.length, toRead)
                 .thenCompose(bytesRead -> {
                     int toSkip = objectsToSkip;
                     int objectsToRead = maxObjectsToRead;
