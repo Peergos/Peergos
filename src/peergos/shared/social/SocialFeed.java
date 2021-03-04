@@ -87,14 +87,13 @@ public class SocialFeed {
         );
     }
     @JsMethod
-    public CompletableFuture<Pair<String, SocialPost.Ref>> uploadMediaForPost(AsyncReader media,
-                                                                       int length,
-                                                                       LocalDateTime postTime) {
+    public CompletableFuture<Pair<String, SocialPost.Ref>> uploadMediaForPost(AsyncReader media, int length,
+                                                                       LocalDateTime postTime, ProgressConsumer<Long> monitor) {
         String uuid = UUID.randomUUID().toString();
         return getOrMkdirToStoreMedia("media", postTime)
                 .thenCompose(p -> p.right.uploadAndReturnFile(uuid, media, length, false,
                         network, crypto)
-                        .thenCompose(f -> f.getInputStream(f.version.get(f.writer()).props, network, crypto, c -> {})
+                        .thenCompose(f -> f.getInputStream(f.version.get(f.writer()).props, network, crypto, monitor)
                                 .thenCompose(reader -> crypto.hasher.hash(reader, f.getSize()))
                                 .thenApply(hash -> new Pair<>(f.getFileProperties().getType(), new SocialPost.Ref(p.left.resolve(uuid).toString(), f.readOnlyPointer(), hash)))));
     }

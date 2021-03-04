@@ -1348,7 +1348,7 @@ public class PeergosNetworkUtils {
         AsyncReader reader = new AsyncReader.ArrayBacked(fileData);
 
         SocialFeed feed = sharer.getSocialFeed().join();
-        SocialPost.Ref ref = feed.uploadMediaForPost(reader, fileData.length, LocalDateTime.now()).join().right;
+        SocialPost.Ref ref = feed.uploadMediaForPost(reader, fileData.length, LocalDateTime.now(), c -> {}).join().right;
         SocialPost.Resharing resharingType = SocialPost.Resharing.Friends;
         SocialPost.Type commentType = SocialPost.Type.Image;
         List media = Arrays.asList(ref);
