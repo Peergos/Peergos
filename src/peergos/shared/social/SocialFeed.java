@@ -119,6 +119,11 @@ public class SocialFeed {
     }
 
     @JsMethod
+    public synchronized int getFeedSize() {
+        return feedSizeRecords;
+    }
+
+    @JsMethod
     public synchronized int getLastSeenIndex() {
         return lastSeenIndex;
     }
