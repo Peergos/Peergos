@@ -1405,6 +1405,72 @@ public class PeergosNetworkUtils {
         assertTrue(loadedSocialPost.body.equals(replyText));
     }
 
+    public static void socialFeedAndUnfriending(NetworkAccess network, Random random) {
+        CryptreeNode.setMaxChildLinkPerBlob(10);
+
+        String password = "notagoodone";
+
+        UserContext sharer = PeergosNetworkUtils.ensureSignedUp(randomUsername("sharer-", random), password, network, crypto);
+
+        List<UserContext> shareeUsers = getUserContextsForNode(network, random, 1, Arrays.asList(password, password));
+        UserContext sharee = shareeUsers.get(0);
+
+        // friend sharer with others
+        friendBetweenGroups(Arrays.asList(sharer), shareeUsers);
+
+
+        SocialFeed feed = sharer.getSocialFeed().join();
+        SocialPost.Resharing resharingType = SocialPost.Resharing.Friends;
+        SocialPost.Type commentType = SocialPost.Type.Text;
+        List media = Collections.emptyList();
+        String bodyText = "aaaa";
+        SocialPost socialPost = SocialPost.createInitialPost(commentType, sharer.username, bodyText, Collections.emptyList(), media, resharingType);
+        Pair<Path, FileWrapper> result = feed.createNewPost(socialPost).join();
+
+        String friendGroup = SocialState.FRIENDS_GROUP_NAME;
+        SocialState state = sharer.getSocialState().join();
+        String groupUid = state.groupNameToUid.get(friendGroup);
+        boolean res = sharer.shareReadAccessWith(result.left, Set.of(groupUid)).join();
+
+        SocialFeed receiverFeed = sharee.getSocialFeed().join().update().join();
+        List<Pair<SharedItem, FileWrapper>> files = receiverFeed.getSharedFiles(0, 100).join();
+        assertTrue(files.size() == 3);
+        FileWrapper socialFile = files.get(files.size() -1).right;
+        SharedItem sharedItem = files.get(files.size() -1).left;
+        FileProperties props = socialFile.getFileProperties();
+        SocialPost loadedSocialPost = Serialize.parse(socialFile, SocialPost::fromCbor, sharee.network, crypto).join();
+        assertTrue(loadedSocialPost.body.equals(bodyText));
+
+        //create a reply
+        String replyText = "reply";
+        Multihash hash = loadedSocialPost.contentHash(sharee.crypto.hasher).join();
+        SocialPost.Type type = peergos.shared.social.SocialPost.Type.Text;
+        SocialPost.Ref parent = new SocialPost.Ref(sharedItem.path, sharedItem.cap, hash);
+        SocialPost replySocialPost = SocialPost.createComment(parent, resharingType, type, sharee.username, replyText, Collections.emptyList(), Collections.emptyList());
+        result = receiverFeed.createNewPost(replySocialPost).join();
+        String receiverGroupUid = sharee.getSocialState().join().groupNameToUid.get(friendGroup);
+        res = sharee.shareReadAccessWith(result.left, Set.of(receiverGroupUid)).join();
+
+        //now sharer should see the reply
+        feed = sharer.getSocialFeed().join().update().join();
+        files = feed.getSharedFiles(0, 100).join();
+        assertTrue(files.size() == 5);
+        FileWrapper original = files.get(files.size() -2).right;
+        FileWrapper reply = files.get(files.size() -1).right;
+        SocialPost originalPost = Serialize.parse(original, SocialPost::fromCbor, sharer.network, crypto).join();
+        SocialPost replyPost = Serialize.parse(reply, SocialPost::fromCbor, sharer.network, crypto).join();
+        assertTrue(originalPost.body.equals(bodyText));
+        assertTrue(replyPost.body.equals(replyText));
+
+        sharer.removeFollower(sharee.username).join();
+        feed = sharer.getSocialFeed().join().update().join();
+        files = feed.getSharedFiles(0, 100).join();
+        assertTrue(files.size() == 4);
+        FileWrapper post = files.get(files.size() -1).right;
+        SocialPost remainingSocialPost = Serialize.parse(post, SocialPost::fromCbor, sharer.network, crypto).join();
+        assertTrue(remainingSocialPost.body.equals(bodyText));
+
+    }
 
     private static void uploadAndShare(byte[] data, Path file, UserContext sharer, String sharee) {
         String filename = file.getFileName().toString();
