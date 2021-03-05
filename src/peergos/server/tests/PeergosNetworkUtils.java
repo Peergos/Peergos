@@ -1435,8 +1435,8 @@ public class PeergosNetworkUtils {
         SocialFeed receiverFeed = sharee.getSocialFeed().join().update().join();
         List<Pair<SharedItem, FileWrapper>> files = receiverFeed.getSharedFiles(0, 100).join();
         assertTrue(files.size() == 3);
-        FileWrapper socialFile = files.get(files.size() -1).right;
-        SharedItem sharedItem = files.get(files.size() -1).left;
+        FileWrapper socialFile = files.get(files.size() - 1).right;
+        SharedItem sharedItem = files.get(files.size() - 1).left;
         FileProperties props = socialFile.getFileProperties();
         SocialPost loadedSocialPost = Serialize.parse(socialFile, SocialPost::fromCbor, sharee.network, crypto).join();
         assertTrue(loadedSocialPost.body.equals(bodyText));
@@ -1455,8 +1455,8 @@ public class PeergosNetworkUtils {
         feed = sharer.getSocialFeed().join().update().join();
         files = feed.getSharedFiles(0, 100).join();
         assertTrue(files.size() == 5);
-        FileWrapper original = files.get(files.size() -2).right;
-        FileWrapper reply = files.get(files.size() -1).right;
+        FileWrapper original = files.get(files.size() - 2).right;
+        FileWrapper reply = files.get(files.size() - 1).right;
         SocialPost originalPost = Serialize.parse(original, SocialPost::fromCbor, sharer.network, crypto).join();
         SocialPost replyPost = Serialize.parse(reply, SocialPost::fromCbor, sharer.network, crypto).join();
         assertTrue(originalPost.body.equals(bodyText));
@@ -1465,8 +1465,8 @@ public class PeergosNetworkUtils {
         sharer.removeFollower(sharee.username).join();
         feed = sharer.getSocialFeed().join().update().join();
         files = feed.getSharedFiles(0, 100).join();
-        assertTrue(files.size() == 4);
-        FileWrapper post = files.get(files.size() -1).right;
+        assertTrue(files.size() == 5);
+        FileWrapper post = files.get(files.size() - 2).right;
         SocialPost remainingSocialPost = Serialize.parse(post, SocialPost::fromCbor, sharer.network, crypto).join();
         assertTrue(remainingSocialPost.body.equals(bodyText));
 

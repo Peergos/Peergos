@@ -1832,7 +1832,10 @@ public class UserContext {
     @JsMethod
     public CompletableFuture<List<Pair<SharedItem, FileWrapper>>> getFiles(List<SharedItem> pointers) {
         return Futures.combineAllInOrder(pointers.stream()
-                .map(s -> network.getFile(s.cap, s.owner)
+                .map(s -> Futures.asyncExceptionally(() -> network.getFile(s.cap, s.owner)
+                                .thenCompose(fopt -> fopt.map(f -> Futures.of(Optional.of(f)))
+                                        .orElseGet(() -> getByPath(s.path))),
+                        t -> getByPath(s.path))
                         .thenApply(opt -> opt.map(f -> new Pair<>(s, f))))
                 .collect(Collectors.toList()))
                 .thenApply(res -> res.stream()
