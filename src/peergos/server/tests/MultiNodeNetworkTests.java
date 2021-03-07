@@ -200,14 +200,20 @@ public class MultiNodeNetworkTests {
         try {
             node1.coreNode.migrateUser(username, existing, newStorageNodeId).join();
             throw new RuntimeException("Shouldn't get here!");
-        } catch (CompletionException e) {}
+        } catch (CompletionException e) {
+            if (! e.getCause().getMessage().startsWith("Migration+claim+has+earlier+expiry+than+current+one"))
+                throw new RuntimeException(e.getCause());
+        }
 
         try { // check a direct update call with old chain also fails
             ProofOfWork work = crypto.hasher.generateProofOfWork(ProofOfWork.DEFAULT_DIFFICULTY,
                     new CborObject.CborList(existing).serialize()).join();
             node1.coreNode.updateChain(username, existing, work, "").join();
             throw new RuntimeException("Shouldn't get here!");
-        } catch (CompletionException e) {}
+        } catch (CompletionException e) {
+            if (! e.getCause().getMessage().startsWith("New%2Bclaim%2Bchain%2Bexpiry%2Bbefore%2Bexisting"))
+                throw new RuntimeException(e.getCause());
+        }
     }
 
     @Test
