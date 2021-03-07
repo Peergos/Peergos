@@ -1,5 +1,7 @@
 package peergos.server.corenode;
 
+import peergos.server.*;
+import peergos.server.space.*;
 import peergos.server.storage.*;
 import peergos.server.util.*;
 import peergos.shared.*;
@@ -8,7 +10,9 @@ import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.hamt.*;
+import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.mutable.*;
+import peergos.shared.social.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
@@ -25,10 +29,14 @@ public class MirrorCoreNode implements CoreNode {
 
     private final CoreNode writeTarget;
     private final MutablePointers p2pMutable;
-    private final ContentAddressedStorage ipfs;
+    private final DeletableContentAddressedStorage ipfs;
     private final JdbcIpnsAndSocial localPointers;
     private final TransactionStore transactions;
+    private final JdbcIpnsAndSocial localSocial;
+    private final UsageStore usageStore;
     private final PublicKeyHash pkiOwnerIdentity;
+    private final Multihash ourNodeId;
+    private final Hasher hasher;
 
     private volatile CorenodeState state;
     private final Path statePath;
@@ -36,18 +44,25 @@ public class MirrorCoreNode implements CoreNode {
 
     public MirrorCoreNode(CoreNode writeTarget,
                           MutablePointers p2pMutable,
-                          ContentAddressedStorage ipfs,
+                          DeletableContentAddressedStorage ipfs,
                           JdbcIpnsAndSocial localPointers,
                           TransactionStore transactions,
+                          JdbcIpnsAndSocial localSocial,
+                          UsageStore usageStore,
                           PublicKeyHash pkiOwnerIdentity,
-                          Path statePath) {
+                          Path statePath,
+                          Hasher hasher) {
         this.writeTarget = writeTarget;
         this.p2pMutable = p2pMutable;
         this.ipfs = ipfs;
         this.localPointers = localPointers;
         this.transactions = transactions;
+        this.localSocial = localSocial;
+        this.usageStore = usageStore;
         this.pkiOwnerIdentity = pkiOwnerIdentity;
         this.statePath = statePath;
+        this.ourNodeId = ipfs.id().join();
+        this.hasher = hasher;
         try {
             this.state = load(statePath);
         } catch (IOException e) {
@@ -274,6 +289,73 @@ public class MirrorCoreNode implements CoreNode {
                         this.update();
                     return x;
                 });
+    }
+
+    private UserSnapshot update(UserSnapshot in) {
+        return new UserSnapshot(in.pointerState.entrySet().stream()
+                .flatMap(e -> localPointers.getPointer(e.getKey()).join()
+                        .map(v -> new Pair<>(e.getKey(), v))
+                        .stream())
+                .collect(Collectors.toMap(p -> p.left, p -> p.right)),
+                in.pendingFollowReqs);
+    }
+
+    @Override
+    public CompletableFuture<UserSnapshot> migrateUser(String username,
+                                                       List<UserPublicKeyLink> newChain,
+                                                       Multihash currentStorageId) {
+        // check chain validity before proceeding further
+        List<UserPublicKeyLink> existingChain = getChain(username).join();
+        UserPublicKeyLink currentLast = existingChain.get(existingChain.size() - 1);
+        UserPublicKeyLink newLast = newChain.get(newChain.size() - 1);
+        if (currentLast.claim.expiry.isAfter(newLast.claim.expiry))
+            throw new IllegalStateException("Migration claim has earlier expiry than current one!");
+        UserPublicKeyLink.merge(existingChain, newChain, ipfs).join();
+        Multihash migrationTargetNode = newLast.claim.storageProviders.get(0);
+        PublicKeyHash owner = newLast.owner;
+
+        if (currentStorageId.equals(ourNodeId)) {
+            // a user is migrating away from this server
+            ProofOfWork work = ProofOfWork.empty();
+
+            UserSnapshot snapshot = WriterData.getUserSnapshot(username, this, p2pMutable, ipfs, hasher)
+                    .thenApply(pointers -> new UserSnapshot(pointers, localSocial.getAndParseFollowRequests(owner))).join();
+            updateChain(username, newChain, work, "").join();
+            // from this point on new writes are proxied to the new storage server
+            return Futures.of(update(snapshot));
+        }
+
+        if (migrationTargetNode.equals(ourNodeId)) {
+            // We are copying data to this node
+            // Mirror all the data locally
+            Mirror.mirrorUser(username, this, p2pMutable, ipfs, localPointers, transactions, hasher);
+            Map<PublicKeyHash, byte[]> mirrored = Mirror.mirrorUser(username, this, p2pMutable, ipfs,
+                    localPointers, transactions, hasher);
+
+            // Proxy call to their current storage server
+            UserSnapshot res = writeTarget.migrateUser(username, newChain, currentStorageId).join();
+            // pick up the new pki data locally
+            update();
+
+            // commit diff since our mirror above
+            for (Map.Entry<PublicKeyHash, byte[]> e : res.pointerState.entrySet()) {
+                byte[] existingVal = mirrored.get(e.getKey());
+                if (! Arrays.equals(existingVal, e.getValue())) {
+                    Mirror.mirrorMerkleTree(owner, e.getKey(), e.getValue(), ipfs, localPointers, transactions);
+                }
+            }
+
+            // Copy pending follow requests to local server
+            for (BlindFollowRequest req : res.pendingFollowReqs) {
+                // write directly to local social database to avoid being redirected to user's current node
+                localSocial.addFollowRequest(owner, req.serialize()).join();
+            }
+
+            // Make sure usage is updated
+            SpaceCheckingKeyFilter.processCorenodeEvent(username, owner, usageStore, ipfs, p2pMutable, hasher);
+            return Futures.of(res);
+        } else // Proxy call to their target storage server
+            return writeTarget.migrateUser(username, newChain, migrationTargetNode);
     }
 
     @Override

@@ -159,5 +159,27 @@ public class HTTPCoreNode implements CoreNode {
                 .thenApply(raw -> (List) JSONParser.parse(new String(raw)));
     }
 
+    @Override
+    public CompletableFuture<UserSnapshot> migrateUser(String username,
+                                                       List<UserPublicKeyLink> newChain,
+                                                       Multihash currentStorageId) {
+        String modifiedPrefix = urlPrefix.isEmpty() ? "" : getProxyUrlPrefix(currentStorageId);
+        try {
+            ByteArrayOutputStream bout = new ByteArrayOutputStream();
+            DataOutputStream dout = new DataOutputStream(bout);
+
+            Serialize.serialize(username, dout);
+            Serialize.serialize(new CborObject.CborList(newChain).serialize(), dout);
+            Serialize.serialize(currentStorageId.toBytes(), dout);
+            dout.flush();
+
+            return poster.postUnzip(modifiedPrefix + Constants.CORE_URL + "migrateUser", bout.toByteArray())
+                    .thenApply(res -> UserSnapshot.fromCbor(CborObject.fromByteArray(res)));
+        } catch (IOException ioe) {
+            LOG.log(Level.WARNING, ioe.getMessage(), ioe);
+            return Futures.errored(ioe);
+        }
+    }
+
     @Override public void close() {}
 }

@@ -238,6 +238,12 @@ public class IpfsCoreNode implements CoreNode {
     }
 
     @Override
-    public void close() throws IOException {}
+    public CompletableFuture<UserSnapshot> migrateUser(String username,
+                                                       List<UserPublicKeyLink> newChain,
+                                                       Multihash currentStorageId) {
+        throw new IllegalStateException("Migration from pki node unimplemented!");
+    }
 
+    @Override
+    public void close() throws IOException {}
 }

@@ -213,10 +213,9 @@ public abstract class UserTests {
     public void expiredSignin() {
         String username = generateUsername();
         String password = "password";
-        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
-
         // set username claim to an expiry in the past
-        context.renewUsernameClaim(LocalDate.now().minusDays(1)).join();
+        UserContext context = UserContext.signUpGeneral(username, password, "", LocalDate.now().minusDays(1),
+                network, crypto, SecretGenerationAlgorithm.getDefault(crypto.random), t -> {}).join();
 
         LocalDate expiry = context.getUsernameClaimExpiry().join();
         Assert.assertTrue(expiry.isBefore(LocalDate.now()));
@@ -233,10 +232,11 @@ public abstract class UserTests {
         String password = "password";
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         String newPassword = "G'day mate!";
-        context = context.changePassword(password, newPassword).join();
 
-        // set username claim to an expiry in the past
-        context.renewUsernameClaim(LocalDate.now().minusDays(1)).join();
+        // change password and set username claim to an expiry in the past
+        SecretGenerationAlgorithm alg = context.getKeyGenAlgorithm().join();
+        SecretGenerationAlgorithm newAlg = SecretGenerationAlgorithm.withNewSalt(alg, crypto.random);
+        context = context.changePassword(password, newPassword, alg, newAlg, LocalDate.now().minusDays(1)).join();
 
         LocalDate expiry = context.getUsernameClaimExpiry().join();
         Assert.assertTrue(expiry.isBefore(LocalDate.now()));
@@ -348,7 +348,7 @@ public abstract class UserTests {
         UserContext userContext = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         SecretGenerationAlgorithm algo = userContext.getKeyGenAlgorithm().get();
         ScryptGenerator newAlgo = new ScryptGenerator(19, 8, 1, 96, algo.getExtraSalt());
-        userContext.changePassword(password, password, algo, newAlgo).get();
+        userContext.changePassword(password, password, algo, newAlgo, LocalDate.now().plusMonths(2)).get();
         PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
     }
 

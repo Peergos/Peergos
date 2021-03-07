@@ -61,4 +61,8 @@ public class ProofOfWork implements Cborable {
         }
         return true;
     }
+
+    public static ProofOfWork empty() {
+        return new ProofOfWork(new byte[0], Multihash.Type.sha2_256);
+    }
 }

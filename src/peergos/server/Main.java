@@ -32,6 +32,7 @@ import java.io.*;
 import java.net.*;
 import java.nio.file.*;
 import java.sql.*;
+import java.time.*;
 import java.util.*;
 import java.util.function.*;
 import java.util.stream.Collectors;
@@ -45,6 +46,13 @@ public class Main extends Builder {
     static {
         PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, initCrypto().signer);
     }
+
+    public static final Command.Arg ARG_TRANSACTIONS_SQL_FILE =
+        new Command.Arg("transactions-sql-file", "The filename for the transactions datastore", false, "transactions.sql");
+    public static final Command.Arg ARG_USE_IPFS =
+        new Command.Arg("useIPFS", "Use IPFS for storage or a local disk store if not", false, "true");
+    public static final Command.Arg ARG_IPFS_API_ADDRESS =
+        new Command.Arg("ipfs-api-address", "IPFS API address", true, "/ip4/127.0.0.1/tcp/5001");
 
     public static Command<Boolean> ENSURE_IPFS_INSTALLED = new Command<>("install-ipfs",
             "Download/update IPFS binary. Does nothing if current IPFS binary is up-to-date.",
@@ -118,14 +126,14 @@ public class Main extends Builder {
                     new Command.Arg("pki.node.swarm.port", "Swarm port of the pki node", true, "5001"),
                     new Command.Arg("domain", "Domain name to bind to,", false, "localhost"),
                     new Command.Arg("max-users", "The maximum number of local users", false, "1"),
-                    new Command.Arg("useIPFS", "Use IPFS for storage or a local disk store", false, "true"),
+                    ARG_USE_IPFS,
                     new Command.Arg("mutable-pointers-file", "The filename for the mutable pointers datastore", true, "mutable.sql"),
                     new Command.Arg("social-sql-file", "The filename for the follow requests datastore", true, "social.sql"),
                     new Command.Arg("space-requests-sql-file", "The filename for the space requests datastore", true, "space-requests.sql"),
                     new Command.Arg("quotas-sql-file", "The filename for the quotas datastore", true, "quotas.sql"),
                     new Command.Arg("space-usage-sql-file", "The filename for the space usage datastore", true, "space-usage.sql"),
                     new Command.Arg("server-messages-sql-file", "The filename for the server messages datastore", true, "server-messages.sql"),
-                    new Command.Arg("transactions-sql-file", "The filename for the transactions datastore", false, "transactions.sql"),
+                    ARG_TRANSACTIONS_SQL_FILE,
                     new Command.Arg("webroot", "the path to the directory to serve as the web root", false),
                     new Command.Arg("default-quota", "default maximum storage per user", false, Long.toString(1024L * 1024 * 1024)),
                     new Command.Arg("mirror.node.id", "Mirror a server's data locally", false),
@@ -216,7 +224,8 @@ public class Main extends Builder {
 
             // sign up peergos user
             SecretGenerationAlgorithm algorithm = SecretGenerationAlgorithm.getDefaultWithoutExtraSalt();
-            UserContext context = UserContext.signUpGeneral(pkiUsername, password, "", network, crypto, algorithm, x -> {}).get();
+            LocalDate expiry = LocalDate.now().plusMonths(2);
+            UserContext context = UserContext.signUpGeneral(pkiUsername, password, "", expiry, network, crypto, algorithm, x -> {}).get();
             Optional<PublicKeyHash> existingPkiKey = context.getNamedKey("pki").get();
             if (!existingPkiKey.isPresent() || existingPkiKey.get().equals(pkiPublicHash)) {
                 SigningPrivateKeyAndPublicHash pkiKeyPair = new SigningPrivateKeyAndPublicHash(pkiPublicHash, pkiSecret);
@@ -339,7 +348,7 @@ public class Main extends Builder {
                     new Command.Arg("transactions-sql-file", "The filename for the open transactions datastore", true, "transactions.sql"),
                     new Command.Arg("space-requests-sql-file", "The filename for the space requests datastore", true, "space-requests.sql"),
                     new Command.Arg("space-usage-sql-file", "The filename for the space usage datastore", true, "space-usage.sql"),
-                    new Command.Arg("ipfs-api-address", "ipfs api port", true, "/ip4/127.0.0.1/tcp/5001"),
+                    ARG_IPFS_API_ADDRESS,
                     new Command.Arg("ipfs-gateway-address", "ipfs gateway port", true, "/ip4/127.0.0.1/tcp/8080"),
                     new Command.Arg("pki.secret.key.path", "The path to the pki secret key file", true, "test.pki.secret.key"),
                     new Command.Arg("pki.public.key.path", "The path to the pki public key file", true, "test.pki.public.key"),
@@ -380,9 +389,18 @@ public class Main extends Builder {
             Collections.emptyList()
     );
 
+    public static final Command<Boolean> MIGRATE = new Command<>("migrate",
+            "Move a Peergos account to this server.",
+            Main::migrate,
+            Stream.of(
+                      new Command.Arg("peergos-url", "Address of the Peergos server to migrate to", false, "http://localhost:8000")
+            ).collect(Collectors.toList())
+    );
+
     public static UserService startPeergos(Args a) {
         try {
             Crypto crypto = initCrypto();
+            Hasher hasher = crypto.hasher;
             PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, crypto.signer);
             int webPort = a.getInt("port");
             MultiAddress localPeergosApi = getLocalMultiAddress(webPort);
@@ -430,16 +448,19 @@ public class Main extends Builder {
             MutablePointers localPointers = UserRepository.build(localStorage, rawPointers);
             MutablePointersProxy proxingMutable = new HttpMutablePointers(p2pHttpProxy, pkiServerNodeId);
 
-            CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable);
+            Supplier<Connection> usageDb = getDBConnector(a, "space-usage-sql-file", dbConnectionPool);
+            UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
+            JdbcIpnsAndSocial rawSocial = new JdbcIpnsAndSocial(getDBConnector(a, "social-sql-file", dbConnectionPool), sqlCommands);
+            HttpSpaceUsage httpSpaceUsage = new HttpSpaceUsage(p2pHttpProxy, p2pHttpProxy);
+
+            CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable,
+                    rawSocial, usageStore, hasher);
 
             QuotaAdmin userQuotas = buildSpaceQuotas(a, localStorage, core,
                     getDBConnector(a, "space-requests-sql-file", dbConnectionPool),
                     getDBConnector(a, "quotas-sql-file", dbConnectionPool));
-            CoreNode signupFilter = new SignUpFilter(core, userQuotas, nodeId);
+            CoreNode signupFilter = new SignUpFilter(core, userQuotas, nodeId, userQuotas, httpSpaceUsage);
 
-            Supplier<Connection> usageDb = getDBConnector(a, "space-usage-sql-file", dbConnectionPool);
-            UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
-            Hasher hasher = crypto.hasher;
             SpaceCheckingKeyFilter.update(usageStore, userQuotas, core, localPointers, localStorage, hasher);
             SpaceCheckingKeyFilter spaceChecker = new SpaceCheckingKeyFilter(core, localPointers, localStorage,
                     hasher, userQuotas, usageStore);
@@ -459,9 +480,6 @@ public class Main extends Builder {
 
             SocialNetworkProxy httpSocial = new HttpSocialNetwork(p2pHttpProxy, p2pHttpProxy);
 
-            Supplier<Connection> socialDatabase = getDBConnector(a, "social-sql-file", dbConnectionPool);
-
-            JdbcIpnsAndSocial rawSocial = new JdbcIpnsAndSocial(socialDatabase, sqlCommands);
             SocialNetwork local = UserRepository.build(p2pDht, rawSocial);
             SocialNetwork p2pSocial = new ProxyingSocialNetwork(nodeId, core, local, httpSocial);
 
@@ -470,7 +488,6 @@ public class Main extends Builder {
                     .collect(Collectors.toSet());
             boolean enableWaitlist = a.getBoolean("enable-wait-list", false);
             Admin storageAdmin = new Admin(adminUsernames, userQuotas, core, localStorage, enableWaitlist);
-            HttpSpaceUsage httpSpaceUsage = new HttpSpaceUsage(p2pHttpProxy, p2pHttpProxy);
             ProxyingSpaceUsage p2pSpaceUsage = new ProxyingSpaceUsage(nodeId, corePropagator, spaceChecker, httpSpaceUsage);
             UserService peergos = new UserService(p2pDht, crypto, corePropagator, p2pSocial, p2mMutable, storageAdmin,
                     p2pSpaceUsage, new ServerMessageStore(getDBConnector(a, "server-messages-sql-file", dbConnectionPool),
@@ -500,11 +517,10 @@ public class Main extends Builder {
 
             if (a.hasArg("mirror.node.id")) {
                 Multihash nodeToMirrorId = Cid.decode(a.getArg("mirror.node.id"));
-                NetworkAccess localApi = Builder.buildLocalJavaNetworkAccess(webPort).join();
                 new Thread(() -> {
                     while (true) {
                         try {
-                            Mirror.mirrorNode(nodeToMirrorId, localApi, rawPointers, localStorage);
+                            Mirror.mirrorNode(nodeToMirrorId, core, p2mMutable, localStorage, rawPointers, transactions, hasher);
                             try {
                                 Thread.sleep(60_000);
                             } catch (InterruptedException f) {}
@@ -518,11 +534,11 @@ public class Main extends Builder {
                 }).start();
             }
             if (a.hasArg("mirror.username")) {
-                NetworkAccess localApi = Builder.buildLocalJavaNetworkAccess(webPort).join();
                 new Thread(() -> {
                     while (true) {
                         try {
-                            Mirror.mirrorUser(a.getArg("mirror.username"), localApi, rawPointers, localStorage);
+                            Mirror.mirrorUser(a.getArg("mirror.username"), core, p2mMutable, localStorage,
+                                    rawPointers, transactions, hasher);
                             try {
                                 Thread.sleep(60_000);
                             } catch (InterruptedException f) {}
@@ -645,6 +661,33 @@ public class Main extends Builder {
         return true;
     }
 
+    /** This should be run on a Peergos server to which a user will be migrated
+     *
+     * @param a
+     * @return
+     */
+    public static boolean migrate(Args a) {
+        Crypto crypto = initCrypto();
+        String peergosUrl = a.getArg("peergos-url");
+        try {
+            URL api = new URL(peergosUrl);
+            NetworkAccess network = buildJavaNetworkAccess(api, ! peergosUrl.startsWith("http://localhost")).join();
+            Console console = System.console();
+            String username = console.readLine("Enter username to migrate to this server: ");
+            String password = new String(console.readPassword("Enter password for " + username + ": "));
+
+            UserContext user = UserContext.signIn(username, password, network, crypto).join();
+            List<UserPublicKeyLink> existing = user.network.coreNode.getChain(username).join();
+            Multihash currentStorageNodeId = existing.get(existing.size() - 1).claim.storageProviders.stream().findFirst().get();
+            Multihash newStorageNodeId = network.dhtClient.id().join();
+            List<UserPublicKeyLink> newChain = Migrate.buildMigrationChain(existing, newStorageNodeId, user.signer.secret);
+            user.network.coreNode.migrateUser(username, newChain, currentStorageNodeId).join();
+            return true;
+        } catch (Exception ex) {
+            throw new RuntimeException(ex);
+        }
+    }
+
     public static final Command<Void> MAIN = new Command<>("Main",
             "Run a Peergos command",
             args -> {
@@ -659,6 +702,7 @@ public class Main extends Builder {
                     QuotaCLI.QUOTA,
                     ServerMessages.SERVER_MESSAGES,
                     GATEWAY,
+                    MIGRATE,
                     INSTALL_AND_RUN_IPFS,
                     PKI,
                     PKI_INIT

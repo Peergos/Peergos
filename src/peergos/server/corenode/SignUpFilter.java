@@ -6,6 +6,8 @@ import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.util.*;
+import peergos.shared.storage.*;
+import peergos.shared.user.*;
 
 import java.io.*;
 import java.util.*;
@@ -16,11 +18,20 @@ public class SignUpFilter implements CoreNode {
     private final CoreNode target;
     private final QuotaAdmin judge;
     private final Multihash ourNodeId;
+    private final QuotaAdmin quotaStore;
+    private final HttpSpaceUsage space;
 
-    public SignUpFilter(CoreNode target, QuotaAdmin judge, Multihash ourNodeId) {
+
+    public SignUpFilter(CoreNode target,
+                        QuotaAdmin judge,
+                        Multihash ourNodeId,
+                        QuotaAdmin quotaStore,
+                        HttpSpaceUsage space) {
         this.target = target;
         this.judge = judge;
         this.ourNodeId = ourNodeId;
+        this.quotaStore = quotaStore;
+        this.space = space;
     }
 
     @Override
@@ -33,8 +44,7 @@ public class SignUpFilter implements CoreNode {
                                                                        List<UserPublicKeyLink> chain,
                                                                        ProofOfWork proof,
                                                                        String token) {
-        boolean forUs = chain.get(chain.size() - 1).claim.storageProviders.contains(ourNodeId);
-        if (! forUs)
+        if (! forUs(chain))
             return target.updateChain(username, chain, proof, token);
 
         if (judge.allowSignupOrUpdate(username, token)) {
@@ -50,6 +60,10 @@ public class SignUpFilter implements CoreNode {
         return Futures.errored(new IllegalStateException("This server is not currently accepting new sign ups. Please try again later"));
     }
 
+    private boolean forUs(List<UserPublicKeyLink> chain) {
+        return chain.get(chain.size() - 1).claim.storageProviders.contains(ourNodeId);
+    }
+
     @Override
     public CompletableFuture<String> getUsername(PublicKeyHash key) {
         return target.getUsername(key);
@@ -58,6 +72,25 @@ public class SignUpFilter implements CoreNode {
     @Override
     public CompletableFuture<List<String>> getUsernames(String prefix) {
         return target.getUsernames(prefix);
+    }
+
+    @Override
+    public CompletableFuture<UserSnapshot> migrateUser(String username,
+                                                       List<UserPublicKeyLink> newChain,
+                                                       Multihash currentStorageId) {
+        if (forUs(newChain)) {
+            if (! judge.allowSignupOrUpdate(username, ""))
+                throw new IllegalStateException("This server is not currently accepting new user migrations.");
+            PublicKeyHash owner = newChain.get(newChain.size() - 1).owner;
+
+            // check we have enough local quota to mirror all user's data
+            long currentUsage = space.getUsage(currentStorageId, owner).join();
+            long localQuota = quotaStore.getQuota(username);
+            if (localQuota < currentUsage)
+                throw new IllegalStateException("Not enough space for user to migrate user to this server!");
+        }
+
+        return target.migrateUser(username, newChain, currentStorageId);
     }
 
     @Override

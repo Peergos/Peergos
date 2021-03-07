@@ -14,7 +14,6 @@ import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.util.*;
 
 import java.io.*;
-import java.net.*;
 import java.nio.file.*;
 import java.sql.*;
 import java.time.*;
@@ -168,6 +167,41 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         } finally {
             readTimer.observeDuration();
         }
+    }
+
+    @Override
+    public CompletableFuture<List<Multihash>> mirror(PublicKeyHash owner,
+                                                     Optional<Multihash> existing,
+                                                     Optional<Multihash> updated,
+                                                     TransactionId tid) {
+        if (updated.isEmpty())
+            return Futures.of(Collections.emptyList());
+        Multihash newRoot = updated.get();
+        if (existing.equals(updated))
+            return Futures.of(Collections.singletonList(newRoot));
+        boolean isRaw = (newRoot instanceof Cid) && ((Cid) newRoot).codec == Cid.Codec.Raw;
+        Optional<byte[]> newVal = p2pFallback.getRaw(newRoot).join();
+        if (newVal.isEmpty())
+            throw new IllegalStateException("Couldn't retrieve block: " + newRoot);
+
+        byte[] newBlock = newVal.get();
+        put(newBlock, isRaw, tid, owner);
+        if (isRaw)
+            return Futures.of(Collections.singletonList(newRoot));
+
+        List<Multihash> newLinks = CborObject.fromByteArray(newBlock).links();
+        List<Multihash> existingLinks = existing.map(h -> get(h).join())
+                .flatMap(copt -> copt.map(CborObject::links))
+                .orElse(Collections.emptyList());
+
+        for (int i=0; i < newLinks.size(); i++) {
+            Optional<Multihash> existingLink = i < existingLinks.size() ?
+                    Optional.of(existingLinks.get(i)) :
+                    Optional.empty();
+            Optional<Multihash> updatedLink = Optional.of(newLinks.get(i));
+            mirror(owner, existingLink, updatedLink, tid);
+        }
+        return Futures.of(Collections.singletonList(newRoot));
     }
 
     @Override
