@@ -20,7 +20,7 @@ public class Migrate {
      * @param network
      * @return
      */
-    public static boolean migrateToLocal(UserContext user,
+    public static void migrateToLocal(UserContext user,
                                          DeletableContentAddressedStorage localStorage,
                                          NetworkAccess network) {
         List<UserPublicKeyLink> existing = network.coreNode.getChain(user.username).join();
@@ -28,7 +28,6 @@ public class Migrate {
 
         Multihash currentStorageNodeId = existing.get(existing.size() - 1).claim.storageProviders.get(0);
         network.coreNode.migrateUser(user.username, updatedChain, currentStorageNodeId).join();
-        return true;
     }
 
     public static List<UserPublicKeyLink> buildMigrationChain(List<UserPublicKeyLink> existing,

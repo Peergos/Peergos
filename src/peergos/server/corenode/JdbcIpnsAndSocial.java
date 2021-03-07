@@ -164,6 +164,16 @@ public class JdbcIpnsAndSocial {
         return CompletableFuture.completedFuture(resp.serialize());
     }
 
+    public List<BlindFollowRequest> getAndParseFollowRequests(PublicKeyHash owner) {
+        byte[] reqs = getFollowRequests(owner).join();
+        CborObject cbor = CborObject.fromByteArray(reqs);
+        if (!(cbor instanceof CborObject.CborList))
+            throw new IllegalStateException("Invalid cbor for list of follow requests: " + cbor);
+        return ((CborObject.CborList) cbor).value.stream()
+                .map(BlindFollowRequest::fromCbor)
+                .collect(Collectors.toList());
+    }
+
     public CompletableFuture<Boolean> setPointer(PublicKeyHash writingKey, Optional<byte[]> existingCas, byte[] newCas) {
         if (existingCas.isPresent()) {
             try (Connection conn = getConnection();

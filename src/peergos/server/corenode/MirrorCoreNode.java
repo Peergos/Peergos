@@ -312,12 +312,14 @@ public class MirrorCoreNode implements CoreNode {
             throw new IllegalStateException("Migration claim has earlier expiry than current one!");
         UserPublicKeyLink.merge(existingChain, newChain, ipfs).join();
         Multihash migrationTargetNode = newLast.claim.storageProviders.get(0);
+        PublicKeyHash owner = newLast.owner;
 
         if (currentStorageId.equals(ourNodeId)) {
             // a user is migrating away from this server
             ProofOfWork work = ProofOfWork.empty();
+
             UserSnapshot snapshot = WriterData.getUserSnapshot(username, this, p2pMutable, ipfs, hasher)
-                    .thenApply(pointers -> new UserSnapshot(pointers, Collections.emptyList())).join();
+                    .thenApply(pointers -> new UserSnapshot(pointers, localSocial.getAndParseFollowRequests(owner))).join();
             updateChain(username, newChain, work, "").join();
             // from this point on new writes are proxied to the new storage server
             return Futures.of(update(snapshot));
@@ -325,9 +327,7 @@ public class MirrorCoreNode implements CoreNode {
 
         if (migrationTargetNode.equals(ourNodeId)) {
             // We are copying data to this node
-            PublicKeyHash owner = newLast.owner;
-
-            // Mirror all the data to local
+            // Mirror all the data locally
             Mirror.mirrorUser(username, this, p2pMutable, ipfs, localPointers, transactions, hasher);
             Map<PublicKeyHash, byte[]> mirrored = Mirror.mirrorUser(username, this, p2pMutable, ipfs,
                     localPointers, transactions, hasher);

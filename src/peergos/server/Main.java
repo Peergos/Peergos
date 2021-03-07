@@ -453,7 +453,7 @@ public class Main extends Builder {
 
             Supplier<Connection> usageDb = getDBConnector(a, "space-usage-sql-file", dbConnectionPool);
             UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
-            JdbcIpnsAndSocial rawSocial = new JdbcIpnsAndSocial(getDBConnector(a, "social-sql-file"), sqlCommands);
+            JdbcIpnsAndSocial rawSocial = new JdbcIpnsAndSocial(getDBConnector(a, "social-sql-file", dbConnectionPool), sqlCommands);
             HttpSpaceUsage httpSpaceUsage = new HttpSpaceUsage(p2pHttpProxy, p2pHttpProxy);
 
             CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable,
