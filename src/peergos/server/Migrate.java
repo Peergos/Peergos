@@ -13,23 +13,6 @@ import java.util.stream.*;
 
 public class Migrate {
 
-    /** Privileged version of migrate that requires the user's keys, for running locally by the user
-     *
-     * @param user
-     * @param localStorage
-     * @param network
-     * @return
-     */
-    public static void migrateToLocal(UserContext user,
-                                         DeletableContentAddressedStorage localStorage,
-                                         NetworkAccess network) {
-        List<UserPublicKeyLink> existing = network.coreNode.getChain(user.username).join();
-        List<UserPublicKeyLink> updatedChain = buildMigrationChain(existing, localStorage.id().join(), user.signer.secret);
-
-        Multihash currentStorageNodeId = existing.get(existing.size() - 1).claim.storageProviders.get(0);
-        network.coreNode.migrateUser(user.username, updatedChain, currentStorageNodeId).join();
-    }
-
     public static List<UserPublicKeyLink> buildMigrationChain(List<UserPublicKeyLink> existing,
                                                               Multihash newStorageId,
                                                               SecretSigningKey signer) {

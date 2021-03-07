@@ -393,10 +393,7 @@ public class Main extends Builder {
             "Move a Peergos account to this server.",
             Main::migrate,
             Stream.of(
-                      new Command.Arg("peergos-url", "Address of the Peergos server to migrate to", false, "http://localhost:8000"),
-                      ARG_USE_IPFS,
-                      ARG_IPFS_API_ADDRESS,
-                      ARG_TRANSACTIONS_SQL_FILE
+                      new Command.Arg("peergos-url", "Address of the Peergos server to migrate to", false, "http://localhost:8000")
             ).collect(Collectors.toList())
     );
 
@@ -679,13 +676,12 @@ public class Main extends Builder {
             String username = console.readLine("Enter username to migrate to this server: ");
             String password = new String(console.readPassword("Enter password for " + username + ": "));
 
-            Supplier<Connection> dbConnectionPool = getDBConnector(a, "transactions-sql-file");
-            TransactionStore transactions = buildTransactionStore(a, dbConnectionPool);
-            DeletableContentAddressedStorage localStorage = buildLocalStorage(a, transactions);
-
             UserContext user = UserContext.signIn(username, password, network, crypto).join();
-
-            Migrate.migrateToLocal(user, localStorage, network);
+            List<UserPublicKeyLink> existing = user.network.coreNode.getChain(username).join();
+            Multihash currentStorageNodeId = existing.get(existing.size() - 1).claim.storageProviders.stream().findFirst().get();
+            Multihash newStorageNodeId = network.dhtClient.id().join();
+            List<UserPublicKeyLink> newChain = Migrate.buildMigrationChain(existing, newStorageNodeId, user.signer.secret);
+            user.network.coreNode.migrateUser(username, newChain, currentStorageNodeId).join();
             return true;
         } catch (Exception ex) {
             throw new RuntimeException(ex);
