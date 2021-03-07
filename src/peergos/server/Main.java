@@ -47,6 +47,13 @@ public class Main extends Builder {
         PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, initCrypto().signer);
     }
 
+    public static final Command.Arg ARG_TRANSACTIONS_SQL_FILE =
+        new Command.Arg("transactions-sql-file", "The filename for the transactions datastore", false, "transactions.sql");
+    public static final Command.Arg ARG_USE_IPFS =
+        new Command.Arg("useIPFS", "Use IPFS for storage or a local disk store if not", false, "true");
+    public static final Command.Arg ARG_IPFS_API_ADDRESS =
+        new Command.Arg("ipfs-api-address", "IPFS API address", true, "/ip4/127.0.0.1/tcp/5001");
+
     public static Command<Boolean> ENSURE_IPFS_INSTALLED = new Command<>("install-ipfs",
             "Download/update IPFS binary. Does nothing if current IPFS binary is up-to-date.",
             args -> {
@@ -119,14 +126,14 @@ public class Main extends Builder {
                     new Command.Arg("pki.node.swarm.port", "Swarm port of the pki node", true, "5001"),
                     new Command.Arg("domain", "Domain name to bind to,", false, "localhost"),
                     new Command.Arg("max-users", "The maximum number of local users", false, "1"),
-                    new Command.Arg("useIPFS", "Use IPFS for storage or a local disk store", false, "true"),
+                    ARG_USE_IPFS,
                     new Command.Arg("mutable-pointers-file", "The filename for the mutable pointers datastore", true, "mutable.sql"),
                     new Command.Arg("social-sql-file", "The filename for the follow requests datastore", true, "social.sql"),
                     new Command.Arg("space-requests-sql-file", "The filename for the space requests datastore", true, "space-requests.sql"),
                     new Command.Arg("quotas-sql-file", "The filename for the quotas datastore", true, "quotas.sql"),
                     new Command.Arg("space-usage-sql-file", "The filename for the space usage datastore", true, "space-usage.sql"),
                     new Command.Arg("server-messages-sql-file", "The filename for the server messages datastore", true, "server-messages.sql"),
-                    new Command.Arg("transactions-sql-file", "The filename for the transactions datastore", false, "transactions.sql"),
+                    ARG_TRANSACTIONS_SQL_FILE,
                     new Command.Arg("webroot", "the path to the directory to serve as the web root", false),
                     new Command.Arg("default-quota", "default maximum storage per user", false, Long.toString(1024L * 1024 * 1024)),
                     new Command.Arg("mirror.node.id", "Mirror a server's data locally", false),
@@ -341,7 +348,7 @@ public class Main extends Builder {
                     new Command.Arg("transactions-sql-file", "The filename for the open transactions datastore", true, "transactions.sql"),
                     new Command.Arg("space-requests-sql-file", "The filename for the space requests datastore", true, "space-requests.sql"),
                     new Command.Arg("space-usage-sql-file", "The filename for the space usage datastore", true, "space-usage.sql"),
-                    new Command.Arg("ipfs-api-address", "ipfs api port", true, "/ip4/127.0.0.1/tcp/5001"),
+                    ARG_IPFS_API_ADDRESS,
                     new Command.Arg("ipfs-gateway-address", "ipfs gateway port", true, "/ip4/127.0.0.1/tcp/8080"),
                     new Command.Arg("pki.secret.key.path", "The path to the pki secret key file", true, "test.pki.secret.key"),
                     new Command.Arg("pki.public.key.path", "The path to the pki public key file", true, "test.pki.public.key"),
@@ -385,7 +392,12 @@ public class Main extends Builder {
     public static final Command<Boolean> MIGRATE = new Command<>("migrate",
             "Move a Peergos account to this server.",
             Main::migrate,
-            Collections.emptyList()
+            Stream.of(
+                      new Command.Arg("peergos-url", "Address of the Peergos server to migrate to", false, "http://localhost:8000"),
+                      ARG_USE_IPFS,
+                      ARG_IPFS_API_ADDRESS,
+                      ARG_TRANSACTIONS_SQL_FILE
+            ).collect(Collectors.toList())
     );
 
     public static UserService startPeergos(Args a) {
@@ -445,7 +457,7 @@ public class Main extends Builder {
             HttpSpaceUsage httpSpaceUsage = new HttpSpaceUsage(p2pHttpProxy, p2pHttpProxy);
 
             CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable,
-                    rawSocial, usageStore, crypto.hasher);
+                    rawSocial, usageStore, hasher);
 
             QuotaAdmin userQuotas = buildSpaceQuotas(a, localStorage, core,
                     getDBConnector(a, "space-requests-sql-file", dbConnectionPool),
@@ -662,10 +674,10 @@ public class Main extends Builder {
         String peergosUrl = a.getArg("peergos-url");
         try {
             URL api = new URL(peergosUrl);
-            NetworkAccess network = Builder.buildJavaNetworkAccess(api, ! peergosUrl.startsWith("http://localhost")).join();
+            NetworkAccess network = buildJavaNetworkAccess(api, ! peergosUrl.startsWith("http://localhost")).join();
             Console console = System.console();
-            String username = console.readLine("Enter username to migrate to this server:");
-            String password = new String(console.readPassword("Enter password for " + username + ":"));
+            String username = console.readLine("Enter username to migrate to this server: ");
+            String password = new String(console.readPassword("Enter password for " + username + ": "));
 
             Supplier<Connection> dbConnectionPool = getDBConnector(a, "transactions-sql-file");
             TransactionStore transactions = buildTransactionStore(a, dbConnectionPool);
