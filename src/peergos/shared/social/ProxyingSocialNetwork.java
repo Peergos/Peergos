@@ -44,13 +44,12 @@ public class ProxyingSocialNetwork implements SocialNetwork {
                 targetServer -> p2p.removeFollowRequest(targetServer, owner, signedRequest));
     }
 
-    public <V> CompletableFuture<V> redirectCall(PublicKeyHash writer, Supplier<CompletableFuture<V>> direct, Function<Multihash, CompletableFuture<V>> proxied) {
-        return core.getUsername(writer)
-                .thenCompose(owner -> core.getChain(owner)
+    public <V> CompletableFuture<V> redirectCall(PublicKeyHash owner, Supplier<CompletableFuture<V>> direct, Function<Multihash, CompletableFuture<V>> proxied) {
+        return core.getUsername(owner)
+                .thenCompose(username -> core.getChain(username)
                         .thenCompose(chain -> {
                             if (chain.isEmpty()) {
-                                // This happens during sign-up, before we have a chain yet
-                                return direct.get();
+                                throw new IllegalStateException("Attempt to redirect call for non existent user!");
                             }
                             List<Multihash> storageIds = chain.get(chain.size() - 1).claim.storageProviders;
                             Multihash target = storageIds.get(0);
