@@ -177,6 +177,8 @@ public class MultiNodeNetworkTests {
             user = ensureSignedUp(username, password, node2, crypto).changePassword(password, newPassword).join();
             password = newPassword;
         }
+        UserContext friend = ensureSignedUp(generateUsername(random), password, node1, crypto);
+        friend.sendInitialFollowRequest(username).join();
         long usageVia1 = user.getSpaceUsage().join();
 
         // migrate to node2
@@ -195,6 +197,10 @@ public class MultiNodeNetworkTests {
         // Note we currently don't remove the old pointer after changing password,
         // so there is a 5kib reduction after migration per password change
         Assert.assertTrue(usageVia2 == usageVia1 || (nPasswordChanges > 0 && usageVia2 < usageVia1));
+
+        // check pending followRequest was transferred
+        List<FollowRequestWithCipherText> followRequests = postMigration.processFollowRequests().join();
+        Assert.assertTrue(followRequests.size() == 1);
 
         // check a reverse migration can't be triggered by anyone else
         try {
