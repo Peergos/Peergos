@@ -62,11 +62,11 @@ public class Mirror {
         Optional<PublicKeyHash> identity = core.getPublicKeyHash(username).join();
         if (! identity.isPresent())
             return Collections.emptyMap();
+        PublicKeyHash owner = identity.get();
         Map<PublicKeyHash, byte[]> versions = new HashMap<>();
-        Set<PublicKeyHash> ownedKeys = WriterData.getOwnedKeysRecursive(username, core, p2pPointers,
-                storage, hasher).join();
+        Set<PublicKeyHash> ownedKeys = WriterData.getOwnedKeysRecursive(owner, owner, p2pPointers, storage, hasher).join();
         for (PublicKeyHash ownedKey : ownedKeys) {
-            Optional<byte[]> version = mirrorMutableSubspace(identity.get(), ownedKey, p2pPointers, storage,
+            Optional<byte[]> version = mirrorMutableSubspace(owner, ownedKey, p2pPointers, storage,
                     targetPointers, transactions);
             if (version.isPresent())
                 versions.put(ownedKey, version.get());
