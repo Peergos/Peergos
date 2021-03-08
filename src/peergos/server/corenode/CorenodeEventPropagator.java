@@ -37,7 +37,7 @@ public class CorenodeEventPropagator implements CoreNode {
         return target.signup(username, chain, setupOperations, proof, token)
                 .thenApply(res -> {
                     if (res.isEmpty()) {
-                        processEvent(Arrays.asList(chain));
+                        processEvent(Arrays.asList(chain)).join();
                     }
                     return res;
                 });
