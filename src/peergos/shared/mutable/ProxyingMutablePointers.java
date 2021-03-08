@@ -41,8 +41,7 @@ public class ProxyingMutablePointers implements MutablePointers {
                 .thenCompose(owner -> core.getChain(owner)
                             .thenCompose(chain -> {
                                 if (chain.isEmpty()) {
-                                    // This happens during sign-up, before we have a chain yet
-                                    return direct.get();
+                                    throw new IllegalStateException("Attempt to redirect call for non existent user!");
                                 }
                                 List<Multihash> storageIds = chain.get(chain.size() - 1).claim.storageProviders;
                                 Multihash target = storageIds.get(0);
