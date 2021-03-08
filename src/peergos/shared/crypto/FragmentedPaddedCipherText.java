@@ -132,9 +132,13 @@ public class FragmentedPaddedCipherText implements Cborable {
                                                   NetworkAccess network,
                                                   ProgressConsumer<Long> monitor) {
         if (inlinedCipherText.isPresent()) {
-            if (header.isPresent())
-                return Futures.of(new CipherText(nonce, ArrayOps.concat(header.get(), inlinedCipherText.get())).decrypt(from, fromCbor));
-            return Futures.of(new CipherText(nonce, inlinedCipherText.get()).decrypt(from, fromCbor));
+            T cipherText = header.isPresent() ?
+                    new CipherText(nonce, ArrayOps.concat(header.get(), inlinedCipherText.get())).decrypt(from, fromCbor)
+                    : new CipherText(nonce, inlinedCipherText.get()).decrypt(from, fromCbor);
+            if (cipherText instanceof byte[]) {
+                monitor.accept((long) ((byte[]) (cipherText)).length);
+            }
+            return Futures.of(cipherText);
         }
         return network.dhtClient.downloadFragments(cipherTextFragments, monitor, 1.0)
                 .thenApply(fargs -> new CipherText(nonce, recombine(header, fargs)).decrypt(from, fromCbor));
