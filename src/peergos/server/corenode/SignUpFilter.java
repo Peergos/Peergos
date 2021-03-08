@@ -1,6 +1,5 @@
 package peergos.server.corenode;
 
-import peergos.server.space.*;
 import peergos.server.storage.admin.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
@@ -20,7 +19,6 @@ public class SignUpFilter implements CoreNode {
     private final QuotaAdmin quotaStore;
     private final Multihash ourNodeId;
     private final HttpSpaceUsage space;
-
 
     public SignUpFilter(CoreNode target,
                         QuotaAdmin quotaStore,
@@ -64,20 +62,7 @@ public class SignUpFilter implements CoreNode {
                                                                        List<UserPublicKeyLink> chain,
                                                                        ProofOfWork proof,
                                                                        String token) {
-        if (! forUs(chain))
-            return target.updateChain(username, chain, proof, token);
-
-        if (quotaStore.allowSignupOrUpdate(username, token)) {
-            return target.updateChain(username, chain, proof, token).thenApply(res -> {
-                if (res.isEmpty())
-                    quotaStore.consumeToken(username, token);
-                return res;
-            });
-        }
-        if (! token.isEmpty())
-            return Futures.errored(new IllegalStateException("Invalid signup token."));
-
-        return Futures.errored(new IllegalStateException("This server is not currently accepting new sign ups. Please try again later"));
+        return target.updateChain(username, chain, proof, token);
     }
 
     private boolean forUs(List<UserPublicKeyLink> chain) {
