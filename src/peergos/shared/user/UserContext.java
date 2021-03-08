@@ -232,7 +232,7 @@ public class UserContext {
         OpLog opLog = new OpLog(new ArrayList<>());
         NetworkAccess network = NetworkAccess.nonCommittingForSignup(opLog, opLog, crypto.hasher);
         progressCallback.accept("Generating keys");
-        return network.coreNode.getChain(username)
+        return initialNetwork.coreNode.getChain(username)
                 .thenApply(existing -> {
                     if (existing.size() > 0)
                         throw new IllegalStateException("User already exists!");
