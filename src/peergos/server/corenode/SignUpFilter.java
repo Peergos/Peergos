@@ -1,5 +1,6 @@
 package peergos.server.corenode;
 
+import peergos.server.space.*;
 import peergos.server.storage.admin.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
@@ -16,22 +17,41 @@ import java.util.concurrent.*;
 public class SignUpFilter implements CoreNode {
 
     private final CoreNode target;
-    private final QuotaAdmin judge;
-    private final Multihash ourNodeId;
     private final QuotaAdmin quotaStore;
+    private final Multihash ourNodeId;
     private final HttpSpaceUsage space;
 
 
     public SignUpFilter(CoreNode target,
-                        QuotaAdmin judge,
-                        Multihash ourNodeId,
                         QuotaAdmin quotaStore,
+                        Multihash ourNodeId,
                         HttpSpaceUsage space) {
         this.target = target;
-        this.judge = judge;
-        this.ourNodeId = ourNodeId;
         this.quotaStore = quotaStore;
+        this.ourNodeId = ourNodeId;
         this.space = space;
+    }
+
+    @Override
+    public CompletableFuture<Optional<RequiredDifficulty>> signup(String username,
+                                                                  UserPublicKeyLink chain,
+                                                                  OpLog setupOperations,
+                                                                  ProofOfWork proof,
+                                                                  String token) {
+        if (! forUs(Arrays.asList(chain)))
+            return target.signup(username, chain, setupOperations, proof, token);
+
+        if (quotaStore.allowSignupOrUpdate(username, token)) {
+            return target.signup(username, chain, setupOperations, proof, token).thenApply(res -> {
+                if (res.isEmpty())
+                    quotaStore.consumeToken(username, token);
+                return res;
+            });
+        }
+        if (! token.isEmpty())
+            return Futures.errored(new IllegalStateException("Invalid signup token."));
+
+        return Futures.errored(new IllegalStateException("This server is not currently accepting new sign ups. Please try again later"));
     }
 
     @Override
@@ -47,10 +67,10 @@ public class SignUpFilter implements CoreNode {
         if (! forUs(chain))
             return target.updateChain(username, chain, proof, token);
 
-        if (judge.allowSignupOrUpdate(username, token)) {
+        if (quotaStore.allowSignupOrUpdate(username, token)) {
             return target.updateChain(username, chain, proof, token).thenApply(res -> {
                 if (res.isEmpty())
-                    judge.consumeToken(username, token);
+                    quotaStore.consumeToken(username, token);
                 return res;
             });
         }
@@ -79,7 +99,7 @@ public class SignUpFilter implements CoreNode {
                                                        List<UserPublicKeyLink> newChain,
                                                        Multihash currentStorageId) {
         if (forUs(newChain)) {
-            if (! judge.allowSignupOrUpdate(username, ""))
+            if (! quotaStore.allowSignupOrUpdate(username, ""))
                 throw new IllegalStateException("This server is not currently accepting new user migrations.");
             PublicKeyHash owner = newChain.get(newChain.size() - 1).owner;
 

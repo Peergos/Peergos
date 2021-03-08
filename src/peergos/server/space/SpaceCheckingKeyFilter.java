@@ -154,10 +154,10 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         Logging.LOG().info(LocalDateTime.now() + " Finished updating space usage for all usernames in " + (t2 - t1)/1000 + " s");
     }
 
-    public void accept(CorenodeEvent event) {
+    public CompletableFuture<Boolean> accept(CorenodeEvent event) {
         usageStore.addUserIfAbsent(event.username);
         usageStore.addWriter(event.username, event.keyHash);
-        ForkJoinPool.commonPool().submit(() -> processCorenodeEvent(event.username, event.keyHash));
+        return CompletableFuture.supplyAsync(() -> processCorenodeEvent(event.username, event.keyHash), ForkJoinPool.commonPool());
     }
 
     /** Update our view of the world because a user has changed their public key (or registered)
@@ -165,12 +165,14 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
      * @param username
      * @param writer
      */
-    private void processCorenodeEvent(String username, PublicKeyHash writer) {
+    private boolean processCorenodeEvent(String username, PublicKeyHash writer) {
         try {
             processCorenodeEvent(username, writer, usageStore, dht, mutable, hasher);
+            return true;
         } catch (Throwable e) {
             LOG.severe("Error loading storage for user: " + username);
             Exceptions.getRootCause(e).printStackTrace();
+            return false;
         }
     }
 

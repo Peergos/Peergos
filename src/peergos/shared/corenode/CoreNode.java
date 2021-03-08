@@ -12,6 +12,12 @@ import java.util.concurrent.*;
 public interface CoreNode {
     int MAX_USERNAME_SIZE = 64;
 
+    CompletableFuture<Optional<RequiredDifficulty>> signup(String username,
+                                                           UserPublicKeyLink chain,
+                                                           OpLog setupOperations,
+                                                           ProofOfWork proof,
+                                                           String token);
+
     /**
      *
      * @param username

@@ -89,6 +89,15 @@ public class NetworkAccess {
                 spaceUsage, serverMessager, hasher, usernames, isJavascript);
     }
 
+    public static NetworkAccess nonCommittingForSignup(ContentAddressedStorage directDht,
+                                                       MutablePointers mutable,
+                                                       Hasher hasher) {
+        WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, directDht, hasher);
+        MutableTree tree = new MutableTreeImpl(mutable, directDht, hasher, synchronizer);
+        return new NetworkAccess(null, null, directDht, mutable, tree, synchronizer, null,
+                null, null, hasher, Collections.emptyList(), false);
+    }
+
     @JsMethod
     public CompletableFuture<Optional<String>> otherDomain() {
         return dhtClient.blockStoreProperties()

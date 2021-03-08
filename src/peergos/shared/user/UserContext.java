@@ -228,7 +228,9 @@ public class UserContext {
                                                                Crypto crypto,
                                                                SecretGenerationAlgorithm algorithm,
                                                                Consumer<String> progressCallback) {
-        NetworkAccess network = initialNetwork.withoutS3BlockStore();
+        // Using a local OpLog that doesn't commit anything allows us to group all the updates into a single atomic call
+        OpLog opLog = new OpLog(new ArrayList<>());
+        NetworkAccess network = NetworkAccess.nonCommittingForSignup(opLog, opLog, crypto.hasher);
         progressCallback.accept("Generating keys");
         return UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer, algorithm)
                 .thenCompose(userWithRoot -> {
@@ -237,48 +239,46 @@ public class UserContext {
                     PublicKeyHash signerHash = ContentAddressedStorage.hashKey(publicSigningKey);
                     SigningPrivateKeyAndPublicHash signer = new SigningPrivateKeyAndPublicHash(signerHash, secretSigningKey);
                     progressCallback.accept("Registering username");
-                    return UserContext.register(username, signer, token, expiry, crypto.hasher, network, progressCallback).thenApply(registered -> {
-                        if (!registered) {
-                            throw new IllegalStateException("Couldn't register username: " + username);
-                        }
-                        return true;
-                    }).thenCompose(x -> IpfsTransaction.call(signerHash, tid -> network.dhtClient.putSigningKey(
-                            secretSigningKey.signMessage(publicSigningKey.serialize()),
-                            signerHash,
-                            publicSigningKey, tid).thenCompose(returnedSignerHash -> {
-                        PublicBoxingKey publicBoxingKey = userWithRoot.getBoxingPair().publicBoxingKey;
-                        return crypto.hasher.sha256(publicBoxingKey.serialize())
-                                .thenCompose(boxerHash -> network.dhtClient.putBoxingKey(signerHash,
-                                        secretSigningKey.signMessage(boxerHash), publicBoxingKey, tid));
-                    }).thenCompose(boxerHash -> {
-                        progressCallback.accept("Creating filesystem");
-                        return WriterData.createEmptyWithStaticData(signerHash,
-                                signer,
-                                Optional.of(new PublicKeyHash(boxerHash)),
-                                userWithRoot.getRoot(),
-                                algorithm,
-                                network.dhtClient, network.hasher, tid).thenCompose(newUserData -> {
+                    return initialNetwork.dhtClient.id()
+                            .thenApply(id -> UserPublicKeyLink.createInitial(signer, username, expiry, Arrays.asList(id)))
+                            .thenCompose(chain -> IpfsTransaction.call(signerHash, tid -> network.dhtClient.putSigningKey(
+                                    secretSigningKey.signMessage(publicSigningKey.serialize()),
+                                    signerHash,
+                                    publicSigningKey, tid).thenCompose(returnedSignerHash -> {
+                                PublicBoxingKey publicBoxingKey = userWithRoot.getBoxingPair().publicBoxingKey;
+                                return crypto.hasher.sha256(publicBoxingKey.serialize())
+                                        .thenCompose(boxerHash -> network.dhtClient.putBoxingKey(signerHash,
+                                                secretSigningKey.signMessage(boxerHash), publicBoxingKey, tid));
+                            }).thenCompose(boxerHash -> {
+                                progressCallback.accept("Creating filesystem");
+                                return WriterData.createEmptyWithStaticData(signerHash,
+                                        signer,
+                                        Optional.of(new PublicKeyHash(boxerHash)),
+                                        userWithRoot.getRoot(),
+                                        algorithm,
+                                        network.dhtClient, network.hasher, tid).thenCompose(newUserData -> {
 
-                            CommittedWriterData notCommitted = new CommittedWriterData(MaybeMultihash.empty(), newUserData);
-                            network.synchronizer.put(signer.publicKeyHash, signer.publicKeyHash, notCommitted);
-                            return network.synchronizer.applyComplexUpdate(signerHash, signer,
-                                    (s, committer) -> newUserData.commit(signerHash, signer, MaybeMultihash.empty(), network, tid));
-                        });
-                    }), network.dhtClient)
-                            .thenCompose(snapshot -> {
-                                LOG.info("Creating user's root directory");
-                                long t1 = System.currentTimeMillis();
-                                return createEntryDirectory(signer, username, userWithRoot.getRoot(), network, crypto)
-                                        .thenCompose(globalRoot -> {
-                                            LOG.info("Creating root directory took " + (System.currentTimeMillis() - t1) + " mS");
-                                            return createSpecialDirectory(globalRoot, username, SHARED_DIR_NAME, network, crypto);
-                                        })
-                                        .thenCompose(globalRoot -> createSpecialDirectory(globalRoot, username,
-                                                TRANSACTIONS_DIR_NAME, network, crypto))
-                                        .thenCompose(globalRoot -> createSpecialDirectory(globalRoot, username,
-                                                CapabilityStore.CAPABILITY_CACHE_DIR, network, crypto))
-                                        .thenCompose(y -> signIn(username, userWithRoot, initialNetwork, crypto, progressCallback));
-                            }));
+                                    CommittedWriterData notCommitted = new CommittedWriterData(MaybeMultihash.empty(), newUserData);
+                                    network.synchronizer.put(signer.publicKeyHash, signer.publicKeyHash, notCommitted);
+                                    return network.synchronizer.applyComplexUpdate(signerHash, signer,
+                                            (s, committer) -> newUserData.commit(signerHash, signer, MaybeMultihash.empty(), network, tid));
+                                });
+                            }), network.dhtClient)
+                                    .thenCompose(snapshot -> {
+                                        LOG.info("Creating user's root directory");
+                                        long t1 = System.currentTimeMillis();
+                                        return createEntryDirectory(signer, username, userWithRoot.getRoot(), network, crypto)
+                                                .thenCompose(globalRoot -> {
+                                                    LOG.info("Creating root directory took " + (System.currentTimeMillis() - t1) + " mS");
+                                                    return createSpecialDirectory(globalRoot, username, SHARED_DIR_NAME, network, crypto);
+                                                })
+                                                .thenCompose(globalRoot -> createSpecialDirectory(globalRoot, username,
+                                                        TRANSACTIONS_DIR_NAME, network, crypto))
+                                                .thenCompose(globalRoot -> createSpecialDirectory(globalRoot, username,
+                                                        CapabilityStore.CAPABILITY_CACHE_DIR, network, crypto))
+                                                .thenCompose(x -> signupWithRetry(username, chain.get(0), token, opLog, crypto.hasher, initialNetwork, p -> {}))
+                                                .thenCompose(y -> signIn(username, userWithRoot, initialNetwork, crypto, progressCallback));
+                                    }));
                 }).exceptionally(Futures::logAndThrow);
     }
 
@@ -577,19 +577,18 @@ public class UserContext {
                                                       SigningPrivateKeyAndPublicHash signer,
                                                       String token,
                                                       LocalDate expiry,
+                                                      Multihash id,
                                                       Hasher hasher,
                                                       NetworkAccess network,
                                                       Consumer<String> progressCallback) {
         LOG.info("claiming username: " + username + " with expiry " + expiry);
-        return network.dhtClient.id()
-                .thenCompose(id -> {
-                    List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createInitial(signer, username, expiry, Arrays.asList(id));
-                    return network.coreNode.getChain(username).thenCompose(existing -> {
-                        if (existing.size() > 0)
-                            throw new IllegalStateException("User already exists!");
-                        return updateChainWithRetry(username, claimChain, token, hasher, network, progressCallback);
-                    });
-                });
+
+        List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createInitial(signer, username, expiry, Arrays.asList(id));
+        return network.coreNode.getChain(username).thenCompose(existing -> {
+            if (existing.size() > 0)
+                throw new IllegalStateException("User already exists!");
+            return updateChainWithRetry(username, claimChain, token, hasher, network, progressCallback);
+        });
     }
 
     public CompletableFuture<LocalDate> getUsernameClaimExpiry() {
@@ -604,6 +603,31 @@ public class UserContext {
 
     public CompletableFuture<Boolean> renewUsernameClaim(LocalDate expiry) {
         return renewUsernameClaim(username, signer, expiry, crypto.hasher, network);
+    }
+
+    private static CompletableFuture<Boolean> signupWithRetry(String username,
+                                                              UserPublicKeyLink chain,
+                                                              String token,
+                                                              OpLog operations,
+                                                              Hasher hasher,
+                                                              NetworkAccess network,
+                                                              Consumer<String> progressCallback) {
+        byte[] data = new CborObject.CborList(Arrays.asList(chain)).serialize();
+        return time(() -> hasher.generateProofOfWork(ProofOfWork.MIN_DIFFICULTY, data), "Proof of work")
+                .thenCompose(proof -> network.coreNode.signup(username, chain, operations, proof, token))
+                .thenCompose(diff -> {
+                    if (diff.isPresent()) {
+                        progressCallback.accept("The server is currently under load, retrying...");
+                        return time(() -> hasher.generateProofOfWork(diff.get().requiredDifficulty, data), "Proof of work")
+                                .thenCompose(proof -> network.coreNode.signup(username, chain, operations, proof, token))
+                                .thenApply(d -> {
+                                    if (d.isPresent())
+                                        throw new IllegalStateException("Server is under load please try again later");
+                                    return true;
+                                });
+                    }
+                    return Futures.of(true);
+                });
     }
 
     private static CompletableFuture<Boolean> updateChainWithRetry(String username,
