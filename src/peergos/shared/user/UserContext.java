@@ -232,7 +232,14 @@ public class UserContext {
         OpLog opLog = new OpLog(new ArrayList<>());
         NetworkAccess network = NetworkAccess.nonCommittingForSignup(opLog, opLog, crypto.hasher);
         progressCallback.accept("Generating keys");
-        return UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer, algorithm)
+        return network.coreNode.getChain(username)
+                .thenApply(existing -> {
+                    if (existing.size() > 0)
+                        throw new IllegalStateException("User already exists!");
+                    return true;
+                })
+                .thenCompose(x -> UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider,
+                        crypto.random, crypto.signer, crypto.boxer, algorithm))
                 .thenCompose(userWithRoot -> {
                     PublicSigningKey publicSigningKey = userWithRoot.getUser().publicSigningKey;
                     SecretSigningKey secretSigningKey = userWithRoot.getUser().secretSigningKey;
