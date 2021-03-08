@@ -580,24 +580,6 @@ public class UserContext {
                 .thenApply(publicKey -> !publicKey.isPresent());
     }
 
-    public static CompletableFuture<Boolean> register(String username,
-                                                      SigningPrivateKeyAndPublicHash signer,
-                                                      String token,
-                                                      LocalDate expiry,
-                                                      Multihash id,
-                                                      Hasher hasher,
-                                                      NetworkAccess network,
-                                                      Consumer<String> progressCallback) {
-        LOG.info("claiming username: " + username + " with expiry " + expiry);
-
-        List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createInitial(signer, username, expiry, Arrays.asList(id));
-        return network.coreNode.getChain(username).thenCompose(existing -> {
-            if (existing.size() > 0)
-                throw new IllegalStateException("User already exists!");
-            return updateChainWithRetry(username, claimChain, token, hasher, network, progressCallback);
-        });
-    }
-
     public CompletableFuture<LocalDate> getUsernameClaimExpiry() {
         return network.coreNode.getChain(username)
                 .thenApply(chain -> chain.get(chain.size() - 1).claim.expiry);
