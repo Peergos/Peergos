@@ -49,7 +49,7 @@ public class CipherText implements Cborable {
         byte[] secret = from.decrypt(cipherText, nonce);
         T res = fromCbor.apply(CborObject.fromByteArray(secret));
         if (res instanceof byte[]) {
-            monitor.accept((long) cipherText.length);
+            monitor.accept((long) ((byte[])(res)).length);
         }
         return res;
     }
