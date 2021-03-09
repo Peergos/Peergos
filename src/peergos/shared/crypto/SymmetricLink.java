@@ -22,7 +22,7 @@ public class SymmetricLink implements Cborable
     }
 
     public SymmetricKey target(SymmetricKey from) {
-        return cipherText.decrypt(from, SymmetricKey::fromCbor);
+        return cipherText.decrypt(from, SymmetricKey::fromCbor, c -> {});
     }
 
     public static SymmetricLink fromCbor(Cborable cbor) {

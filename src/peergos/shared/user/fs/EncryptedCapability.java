@@ -18,7 +18,7 @@ public class EncryptedCapability implements Cborable {
     }
 
     public RelativeCapability toCapability(SymmetricKey baseKey) {
-        return cipherText.decrypt(baseKey, RelativeCapability::fromCbor);
+        return cipherText.decrypt(baseKey, RelativeCapability::fromCbor, c -> {});
     }
 
     @Override

@@ -41,6 +41,6 @@ public class PaddedCipherText implements Cborable {
     }
 
     public <T> T decrypt(SymmetricKey from, Function<CborObject, T> fromCbor) {
-        return cipherText.decrypt(from, fromCbor);
+        return cipherText.decrypt(from, fromCbor, c -> {});
     }
 }
