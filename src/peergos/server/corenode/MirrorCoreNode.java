@@ -275,9 +275,10 @@ public class MirrorCoreNode implements CoreNode {
                                                                   ProofOfWork proof,
                                                                   String token) {
         Optional<RequiredDifficulty> pkiResult = writeTarget.updateChain(username, Arrays.asList(chain), proof, token).join();
-        if (pkiResult.isPresent())
+        if (pkiResult.isPresent()) // signup rejected
             return Futures.of(pkiResult);
 
+        update();
         IpfsCoreNode.applyOpLog(chain.owner, setupOperations, ipfs, p2pMutable);
         return Futures.of(Optional.empty());
     }
