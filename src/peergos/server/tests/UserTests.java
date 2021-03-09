@@ -136,6 +136,7 @@ public abstract class UserTests {
         String extraSalt = ArrayOps.bytesToHex(crypto.random.randomBytes(32));
         List<ScryptGenerator> params = Arrays.asList(
                 new ScryptGenerator(17, 8, 1, 96, extraSalt),
+                new ScryptGenerator(17, 8, 1, 64, extraSalt),
                 new ScryptGenerator(18, 8, 1, 96, extraSalt),
                 new ScryptGenerator(19, 8, 1, 96, extraSalt),
                 new ScryptGenerator(17, 9, 1, 96, extraSalt)
@@ -156,7 +157,7 @@ public abstract class UserTests {
 
         SafeRandomJava random = new SafeRandomJava();
         UserUtil.generateUser(username, password, new ScryptJava(), new Salsa20Poly1305Java(),
-                random, new Ed25519Java(), new Curve25519Java(), SecretGenerationAlgorithm.getDefault(random)).thenAccept(userWithRoot -> {
+                random, new Ed25519Java(), new Curve25519Java(), SecretGenerationAlgorithm.getLegacy(random)).thenAccept(userWithRoot -> {
 		    PublicSigningKey expected = PublicSigningKey.fromString("7HvEWP6yd1UD8rOorfFrieJ8S7yC8+l3VisV9kXNiHmI7Eav7+3GTRSVBRCymItrzebUUoCi39M6rdgeOU9sXXFD");
 		    if (! expected.equals(userWithRoot.getUser().publicSigningKey))
 		        throw new IllegalStateException("Generated user different from the Javascript! \n"+userWithRoot.getUser().publicSigningKey + " != \n"+expected);
