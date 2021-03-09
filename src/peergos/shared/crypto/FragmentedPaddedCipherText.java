@@ -137,7 +137,7 @@ public class FragmentedPaddedCipherText implements Cborable {
             return Futures.of(new CipherText(nonce, inlinedCipherText.get()).decrypt(from, fromCbor, monitor));
         }
         return network.dhtClient.downloadFragments(cipherTextFragments, monitor, 1.0)
-                .thenApply(fargs -> new CipherText(nonce, recombine(header, fargs)).decrypt(from, fromCbor, monitor));
+                .thenApply(fargs -> new CipherText(nonce, recombine(header, fargs)).decrypt(from, fromCbor));
     }
 
     private static byte[][] generateCache() {
