@@ -25,6 +25,11 @@ public class ScryptGenerator implements SecretGenerationAlgorithm {
     }
 
     @Override
+    public boolean includesBoxerGeneration() {
+        return outputBytes == 96;
+    }
+
+    @Override
     public String getExtraSalt() {
         return extraSalt;
     }

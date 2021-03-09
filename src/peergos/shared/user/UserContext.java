@@ -176,9 +176,10 @@ public class UserContext {
                                 return buildTransactionService(root, username, network, crypto)
                                         .thenCompose(transactions -> buildCapCache(root, username, network, crypto)
                                                 .thenCompose(capCache -> {
+                                                    UserStaticData.EntryPoints staticData = userData.staticData.get().getData(userWithRoot.getRoot());
                                                     UserContext result = new UserContext(username,
                                                             signer,
-                                                            userWithRoot.getBoxingPair(),
+                                                            staticData.boxer.orElse(userWithRoot.getBoxingPair()),
                                                             userWithRoot.getRoot(),
                                                             network.withCorenode(tofuCorenode),
                                                             crypto,
@@ -262,6 +263,7 @@ public class UserContext {
                                         signer,
                                         Optional.of(new PublicKeyHash(boxerHash)),
                                         userWithRoot.getRoot(),
+                                        algorithm.includesBoxerGeneration() ? Optional.empty() : Optional.of(userWithRoot.getBoxingPair()),
                                         algorithm,
                                         network.dhtClient, network.hasher, tid).thenCompose(newUserData -> {
 
@@ -1687,9 +1689,10 @@ public class UserContext {
         CommittedWriterData cwd = version.get(owner.publicKeyHash);
         WriterData wd = cwd.props;
         Optional<UserStaticData> updated = wd.staticData.map(sd -> {
-            List<EntryPoint> entryPoints = sd.getEntryPoints(rootKey);
+            UserStaticData.EntryPoints data = sd.getData(rootKey);
+            List<EntryPoint> entryPoints = data.entries;
             entryPoints.add(entry);
-            return new UserStaticData(entryPoints, rootKey);
+            return new UserStaticData(entryPoints, rootKey, data.boxer);
         });
         return wd.withStaticData(updated).commit(owner.publicKeyHash, owner, cwd.hash, network, tid);
     }
@@ -1873,7 +1876,7 @@ public class UserContext {
         if (!userData.staticData.isPresent())
             throw new IllegalStateException("Cannot retrieve file tree for a filesystem without entrypoints!");
         List<EntryPoint> ourFileSystemEntries = userData.staticData.get()
-                .getEntryPoints(rootKey)
+                .getData(rootKey).entries
                 .stream()
                 .filter(e -> e.ownerName.equals(ourName))
                 .map(e -> e.withOwner(userData.controller))
