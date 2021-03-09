@@ -25,40 +25,28 @@ public class ProxyingSocialNetwork implements SocialNetwork {
 
     @Override
     public CompletableFuture<Boolean> sendFollowRequest(PublicKeyHash targetUser, byte[] encryptedPermission) {
-        return redirectCall(targetUser,
+        return Proxy.redirectCall(core,
+                serverId,
+                targetUser,
                 () -> local.sendFollowRequest(targetUser, encryptedPermission),
                 targetServer -> p2p.sendFollowRequest(targetServer, targetUser, encryptedPermission));
     }
 
     @Override
     public CompletableFuture<byte[]> getFollowRequests(PublicKeyHash owner, byte[] signedTime) {
-        return redirectCall(owner,
+        return Proxy.redirectCall(core,
+                serverId,
+                owner,
                 () -> local.getFollowRequests(owner, signedTime),
                 targetServer -> p2p.getFollowRequests(targetServer, owner, signedTime));
     }
 
     @Override
     public CompletableFuture<Boolean> removeFollowRequest(PublicKeyHash owner, byte[] signedRequest) {
-        return redirectCall(owner,
+        return Proxy.redirectCall(core,
+                serverId,
+                owner,
                 () -> local.removeFollowRequest(owner, signedRequest),
                 targetServer -> p2p.removeFollowRequest(targetServer, owner, signedRequest));
-    }
-
-    public <V> CompletableFuture<V> redirectCall(PublicKeyHash owner, Supplier<CompletableFuture<V>> direct, Function<Multihash, CompletableFuture<V>> proxied) {
-        return core.getUsername(owner)
-                .thenCompose(username -> core.getChain(username)
-                        .thenCompose(chain -> {
-                            if (chain.isEmpty()) {
-                                throw new IllegalStateException("Attempt to redirect call for non existent user!");
-                            }
-                            List<Multihash> storageIds = chain.get(chain.size() - 1).claim.storageProviders;
-                            Multihash target = storageIds.get(0);
-                            if (target.equals(serverId)) { // don't proxy
-                                return direct.get();
-                            } else {
-                                return proxied.apply(target);
-                            }
-                        }));
-
     }
 }

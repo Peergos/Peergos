@@ -269,6 +269,20 @@ public class MirrorCoreNode implements CoreNode {
     }
 
     @Override
+    public CompletableFuture<Optional<RequiredDifficulty>> signup(String username,
+                                                                  UserPublicKeyLink chain,
+                                                                  OpLog setupOperations,
+                                                                  ProofOfWork proof,
+                                                                  String token) {
+        Optional<RequiredDifficulty> pkiResult = writeTarget.updateChain(username, Arrays.asList(chain), proof, token).join();
+        if (pkiResult.isPresent())
+            return Futures.of(pkiResult);
+
+        IpfsCoreNode.applyOpLog(chain.owner, setupOperations, ipfs, p2pMutable);
+        return Futures.of(Optional.empty());
+    }
+
+    @Override
     public CompletableFuture<List<UserPublicKeyLink>> getChain(String username) {
         List<UserPublicKeyLink> chain = state.chains.get(username);
         if (chain != null)

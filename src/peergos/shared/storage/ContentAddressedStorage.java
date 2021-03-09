@@ -3,6 +3,7 @@ package peergos.shared.storage;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
+import peergos.shared.corenode.Proxy;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
@@ -648,14 +649,18 @@ public interface ContentAddressedStorage {
 
         @Override
         public CompletableFuture<TransactionId> startTransaction(PublicKeyHash owner) {
-            return redirectCall(owner,
+            return Proxy.redirectCall(core,
+                    ourNodeId,
+                    owner,
                     () -> local.startTransaction(owner),
                     target -> p2p.startTransaction(target, owner));
         }
 
         @Override
         public CompletableFuture<Boolean> closeTransaction(PublicKeyHash owner, TransactionId tid) {
-            return redirectCall(owner,
+            return Proxy.redirectCall(core,
+                    ourNodeId,
+                    owner,
                     () -> local.closeTransaction(owner, tid),
                     target -> p2p.closeTransaction(target, owner, tid));
         }
@@ -687,9 +692,11 @@ public interface ContentAddressedStorage {
 
         @Override
         public CompletableFuture<List<Multihash>> put(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signedHashes, List<byte[]> blocks, TransactionId tid) {
-            return redirectCall(owner,
-                () -> local.put(owner, writer, signedHashes, blocks, tid),
-                target -> p2p.put(target, owner, writer, signedHashes, blocks, tid));
+            return Proxy.redirectCall(core,
+                    ourNodeId,
+                    owner,
+                    () -> local.put(owner, writer, signedHashes, blocks, tid),
+                    target -> p2p.put(target, owner, writer, signedHashes, blocks, tid));
         }
 
         @Override
@@ -699,49 +706,38 @@ public interface ContentAddressedStorage {
                                                          List<byte[]> blocks,
                                                          TransactionId tid,
                                                          ProgressConsumer<Long> progressConsumer) {
-            return redirectCall(owner,
+            return Proxy.redirectCall(core,
+                    ourNodeId,
+                    owner,
                     () -> local.putRaw(owner, writer, signatures, blocks, tid, progressConsumer),
                     target -> p2p.putRaw(target, owner, writer, signatures, blocks, tid, progressConsumer));
         }
 
         @Override
         public CompletableFuture<List<Multihash>> pinUpdate(PublicKeyHash owner, Multihash existing, Multihash updated) {
-            return redirectCall(owner,
+            return Proxy.redirectCall(core,
+                    ourNodeId,
+                    owner,
                     () -> local.pinUpdate(owner, existing, updated),
                     target -> p2p.pinUpdate(target, owner,  existing, updated));
         }
 
         @Override
         public CompletableFuture<List<Multihash>> recursivePin(PublicKeyHash owner, Multihash h) {
-            return redirectCall(owner,
+            return Proxy.redirectCall(core,
+                    ourNodeId,
+                    owner,
                     () -> local.recursivePin(owner, h),
                     target -> p2p.recursivePin(target, owner,  h));
         }
 
         @Override
         public CompletableFuture<List<Multihash>> recursiveUnpin(PublicKeyHash owner, Multihash h) {
-            return redirectCall(owner,
+            return Proxy.redirectCall(core,
+                    ourNodeId,
+                    owner,
                     () -> local.recursiveUnpin(owner, h),
                     target -> p2p.recursiveUnpin(target, owner,  h));
         }
-
-        public <V> CompletableFuture<V> redirectCall(PublicKeyHash ownerKey, Supplier<CompletableFuture<V>> direct, Function<Multihash, CompletableFuture<V>> proxied) {
-        return core.getUsername(ownerKey)
-                .thenCompose(owner -> core.getChain(owner)
-                        .thenCompose(chain -> {
-                            if (chain.isEmpty()) {
-                                // This happens during sign-up, before we have a chain yet
-                                return direct.get();
-                            }
-                            List<Multihash> storageIds = chain.get(chain.size() - 1).claim.storageProviders;
-                            Multihash target = storageIds.get(0);
-                            if (target.equals(ourNodeId)) { // don't proxy
-                                return direct.get();
-                            } else {
-                                return proxied.apply(target);
-                            }
-                        }));
-
-    }
     }
 }

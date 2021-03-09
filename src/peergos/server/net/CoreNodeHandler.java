@@ -57,6 +57,10 @@ public class CoreNodeHandler implements HttpHandler
                     AggregatedMetrics.GET_PUBLIC_KEY_CHAIN.inc();
                     getChain(din, dout);
                     break;
+                case "signup":
+                    AggregatedMetrics.SIGNUP.inc();
+                    signup(din, dout);
+                    break;
                 case "updateChain":
                     AggregatedMetrics.UPDATE_PUBLIC_KEY_CHAIN.inc();
                     updateChain(din, dout);
@@ -103,6 +107,20 @@ public class CoreNodeHandler implements HttpHandler
 
         List<UserPublicKeyLink> chain = coreNode.getChain(username).get();
         dout.write(new CborObject.CborList(chain).serialize());
+    }
+
+    void signup(DataInputStream din, DataOutputStream dout) throws Exception
+    {
+        String username = CoreNodeUtils.deserializeString(din);
+        byte[] raw = Serialize.deserializeByteArray(din, 2 * UserPublicKeyLink.MAX_SIZE);
+        UserPublicKeyLink res = UserPublicKeyLink.fromCbor(CborObject.fromByteArray(raw));
+        OpLog ops = OpLog.fromCbor(CborObject.fromByteArray(Serialize.deserializeByteArray(din, 64*1024)));
+        ProofOfWork proof = ProofOfWork.fromCbor(CborObject.fromByteArray(Serialize.deserializeByteArray(din, 100)));
+        String token = CoreNodeUtils.deserializeString(din);
+        Optional<RequiredDifficulty> err = coreNode.signup(username, res, ops, proof, token).get();
+        dout.writeBoolean(err.isEmpty());
+        if (err.isPresent())
+            dout.writeInt(err.get().requiredDifficulty);
     }
 
     void updateChain(DataInputStream din, DataOutputStream dout) throws Exception

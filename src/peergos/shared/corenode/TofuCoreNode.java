@@ -127,6 +127,15 @@ public class TofuCoreNode implements CoreNode {
     }
 
     @Override
+    public CompletableFuture<Optional<RequiredDifficulty>> signup(String username,
+                                                                  UserPublicKeyLink chain,
+                                                                  OpLog setupOperations,
+                                                                  ProofOfWork proof,
+                                                                  String token) {
+        throw new IllegalStateException("Unsupported operation!");
+    }
+
+    @Override
     public CompletableFuture<Optional<RequiredDifficulty>> updateChain(String username,
                                                                        List<UserPublicKeyLink> chain,
                                                                        ProofOfWork proof,

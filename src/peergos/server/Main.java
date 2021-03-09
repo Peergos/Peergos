@@ -459,7 +459,7 @@ public class Main extends Builder {
             QuotaAdmin userQuotas = buildSpaceQuotas(a, localStorage, core,
                     getDBConnector(a, "space-requests-sql-file", dbConnectionPool),
                     getDBConnector(a, "quotas-sql-file", dbConnectionPool));
-            CoreNode signupFilter = new SignUpFilter(core, userQuotas, nodeId, userQuotas, httpSpaceUsage);
+            CoreNode signupFilter = new SignUpFilter(core, userQuotas, nodeId, httpSpaceUsage);
 
             SpaceCheckingKeyFilter.update(usageStore, userQuotas, core, localPointers, localStorage, hasher);
             SpaceCheckingKeyFilter spaceChecker = new SpaceCheckingKeyFilter(core, localPointers, localStorage,
