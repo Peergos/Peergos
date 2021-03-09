@@ -22,7 +22,7 @@ public class SymmetricLinkToSigner implements Cborable
     }
 
     public SigningPrivateKeyAndPublicHash target(SymmetricKey from) {
-        return cipherText.decrypt(from, SigningPrivateKeyAndPublicHash::fromCbor, c -> {});
+        return cipherText.decrypt(from, SigningPrivateKeyAndPublicHash::fromCbor);
     }
 
     public static SymmetricLinkToSigner fromCbor(Cborable cbor) {

@@ -40,11 +40,16 @@ public class CipherText implements Cborable {
         return new CipherText(nonce, cipherText);
     }
 
+    public <T> T decrypt(SymmetricKey from, Function<CborObject, T> fromCbor) {
+        byte[] secret = from.decrypt(cipherText, nonce);
+        return fromCbor.apply(CborObject.fromByteArray(secret));
+    }
+
     public <T> T decrypt(SymmetricKey from, Function<CborObject, T> fromCbor, ProgressConsumer<Long> monitor) {
         byte[] secret = from.decrypt(cipherText, nonce);
         T res = fromCbor.apply(CborObject.fromByteArray(secret));
         if (res instanceof byte[]) {
-            monitor.accept((long) ((byte[]) (cipherText)).length);
+            monitor.accept((long) cipherText.length);
         }
         return res;
     }
