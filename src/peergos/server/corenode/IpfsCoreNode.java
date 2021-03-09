@@ -164,6 +164,7 @@ public class IpfsCoreNode implements CoreNode {
                     ipfs.put(owner, block.writer, block.signature, block.block, tid).join();
             }
         }
+        ipfs.closeTransaction(owner, tid).join();
     }
 
     @Override
