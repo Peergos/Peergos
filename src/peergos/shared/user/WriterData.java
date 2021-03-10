@@ -209,7 +209,7 @@ public class WriterData implements Cborable {
 
     public CompletableFuture<WriterData> changeKeys(SigningPrivateKeyAndPublicHash oldSigner,
                                                     SigningPrivateKeyAndPublicHash signer,
-                                                    PublicBoxingKey followRequestReceiver,
+                                                    BoxingKeyPair followRequestReceiver,
                                                     SymmetricKey currentKey,
                                                     SymmetricKey newKey,
                                                     SecretGenerationAlgorithm newAlgorithm,
@@ -220,11 +220,15 @@ public class WriterData implements Cborable {
         return network.synchronizer.applyUpdate(oldSigner.publicKeyHash, signer,
                 (wd, tid) -> {
                     Optional<UserStaticData> newEntryPoints = staticData
-                            .map(sd -> new UserStaticData(sd.getData(currentKey).entries, newKey, sd.getData(currentKey).boxer));
+                            .map(sd -> {
+                                UserStaticData.EntryPoints staticData = sd.getData(currentKey);
+                                Optional<BoxingKeyPair> boxer = Optional.of(staticData.boxer.orElse(followRequestReceiver));
+                                return new UserStaticData(staticData.entries, newKey, boxer);
+                            });
                     return network.hasher.sha256(followRequestReceiver.serialize())
                             .thenCompose(boxerHash -> network.dhtClient.putBoxingKey(oldSigner.publicKeyHash,
                             oldSigner.secret.signMessage(boxerHash),
-                            followRequestReceiver, tid
+                            followRequestReceiver.publicBoxingKey, tid
                     )).thenCompose(boxerHash -> OwnedKeyChamp.createEmpty(oldSigner.publicKeyHash, oldSigner,
                             network.dhtClient, network.hasher, tid)
                             .thenCompose(ownedRoot -> {

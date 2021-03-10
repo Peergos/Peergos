@@ -35,6 +35,8 @@ public interface SecretGenerationAlgorithm extends Cborable {
 
     boolean includesBoxerGeneration();
 
+    SecretGenerationAlgorithm withoutBoxer();
+
     static SecretGenerationAlgorithm getDefault(SafeRandom rnd) {
         return new ScryptGenerator(ScryptGenerator.MIN_MEMORY_COST, 8, 1, 64, generateSalt(rnd));
     }
