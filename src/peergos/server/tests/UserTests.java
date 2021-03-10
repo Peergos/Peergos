@@ -312,6 +312,25 @@ public abstract class UserTests {
     }
 
     @Test
+    public void legacyLogin() throws Exception {
+        String username = generateUsername();
+        String password = "password";
+        UserContext userContext = UserContext.signUpGeneral(username, password, "", LocalDate.now().plusMonths(2),
+                network, crypto, SecretGenerationAlgorithm.getLegacy(crypto.random), x -> {}).join();
+        PublicBoxingKey initialBoxer = userContext.getPublicKeys(username).join().get().right;
+
+        UserContext login = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+
+        String newPassword = "newPassword";
+        userContext.changePassword(password, newPassword).get();
+        MultiUserTests.checkUserValidity(network, username);
+
+        UserContext changedPassword = PeergosNetworkUtils.ensureSignedUp(username, newPassword, network, crypto);
+        PublicBoxingKey newBoxer = changedPassword.getPublicKeys(username).join().get().right;
+        Assert.assertTrue(newBoxer.equals(initialBoxer));
+    }
+
+    @Test
     public void ownerUpdateAfterPasswordChange() throws Exception {
         String username = generateUsername();
         String password = "password";

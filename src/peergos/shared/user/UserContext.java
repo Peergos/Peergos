@@ -702,7 +702,8 @@ public class UserContext {
     @JsMethod
     public CompletableFuture<UserContext> changePassword(String oldPassword, String newPassword) {
         return getKeyGenAlgorithm().thenCompose(alg -> {
-            SecretGenerationAlgorithm newAlgorithm = SecretGenerationAlgorithm.withNewSalt(alg, crypto.random);
+            // Use a new salt, and if this is a legacy account with generated boxer, remove it from generation
+            SecretGenerationAlgorithm newAlgorithm = SecretGenerationAlgorithm.withNewSalt(alg, crypto.random).withoutBoxer();
             // set claim expiry to two months from now
             return changePassword(oldPassword, newPassword, alg, newAlgorithm, LocalDate.now().plusMonths(2));
         });
@@ -749,7 +750,7 @@ public class UserContext {
                                                 wd.addOwnedKey(signer.publicKeyHash, signer, proof, network.dhtClient, network.hasher))
                                                 .thenCompose(version -> version.get(signer).props.changeKeys(signer,
                                                         newSigner,
-                                                        newBoxingKeypair.publicBoxingKey,
+                                                        newBoxingKeypair,
                                                         existingUser.getRoot(),
                                                         updatedUser.getRoot(),
                                                         newAlgorithm,
