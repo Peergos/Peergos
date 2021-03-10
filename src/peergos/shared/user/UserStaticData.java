@@ -41,7 +41,7 @@ public class UserStaticData implements Cborable {
 
         private final long version;
         public final List<EntryPoint> entries;
-        public final Optional<BoxingKeyPair> boxer;
+        public final Optional<BoxingKeyPair> boxer; // this is only absent on legacy accounts
 
         public EntryPoints(long version, List<EntryPoint> entries, Optional<BoxingKeyPair> boxer) {
             this.version = version;

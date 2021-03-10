@@ -724,6 +724,8 @@ public class UserContext {
                             .thenCompose(updatedUser -> {
                                 PublicSigningKey newPublicSigningKey = updatedUser.getUser().publicSigningKey;
                                 PublicKeyHash existingOwner = ContentAddressedStorage.hashKey(existingUser.getUser().publicSigningKey);
+
+                                BoxingKeyPair newBoxingKeypair = newAlgorithm.includesBoxerGeneration() ? updatedUser.getBoxingPair() : boxer;
                                 return IpfsTransaction.call(existingOwner,
                                         tid -> network.dhtClient.putSigningKey(
                                                 existingUser.getUser().secretSigningKey.signMessage(newPublicSigningKey.serialize()),
@@ -747,7 +749,7 @@ public class UserContext {
                                                 wd.addOwnedKey(signer.publicKeyHash, signer, proof, network.dhtClient, network.hasher))
                                                 .thenCompose(version -> version.get(signer).props.changeKeys(signer,
                                                         newSigner,
-                                                        updatedUser.getBoxingPair().publicBoxingKey,
+                                                        newBoxingKeypair.publicBoxingKey,
                                                         existingUser.getRoot(),
                                                         updatedUser.getRoot(),
                                                         newAlgorithm,
