@@ -295,10 +295,13 @@ public abstract class UserTests {
         String username = generateUsername();
         String password = "password";
         UserContext userContext = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        PublicBoxingKey initialBoxer = userContext.getPublicKeys(username).join().get().right;
         String newPassword = "newPassword";
         userContext.changePassword(password, newPassword).get();
         MultiUserTests.checkUserValidity(network, username);
 
+        PublicBoxingKey newBoxer = userContext.getPublicKeys(username).join().get().right;
+        Assert.assertTrue(newBoxer.equals(initialBoxer));
         UserContext changedPassword = PeergosNetworkUtils.ensureSignedUp(username, newPassword, network, crypto);
 
         // change it again
