@@ -157,7 +157,7 @@ public class Builder {
         if (useIPFS) {
             DeletableContentAddressedStorage.HTTP ipfs = new DeletableContentAddressedStorage.HTTP(ipfsApi, false);
             if (enableGC) {
-                return new TransactionalIpfs(ipfs, transactions);
+                return new TransactionalIpfs(ipfs, transactions, hasher);
             } else
                 return ipfs;
         } else {
