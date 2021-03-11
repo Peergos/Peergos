@@ -18,7 +18,7 @@ public class FixedContentAddressedStorage implements ContentAddressedStorage {
     }
 
     public static CompletableFuture<FixedContentAddressedStorage> build(List<byte[]> blocks, Hasher hasher) {
-        return Futures.combineAll(blocks.stream()
+        return Futures.combineAllInOrder(blocks.stream()
                 .map(b -> hasher.hash(b, false)
                         .thenApply(h -> new Pair<>(h, b)))
                 .collect(Collectors.toList()))
