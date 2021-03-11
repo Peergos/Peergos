@@ -424,7 +424,14 @@ public class NetworkAccess {
                 });
     }
 
+    private final LRUCache<Pair<Multihash, ByteArrayWrapper>, Optional<CryptreeNode>> cache = new LRUCache<>(100);
+
     public CompletableFuture<Optional<CryptreeNode>> getMetadata(WriterData base, AbsoluteCapability cap) {
+        if (base.tree.isPresent()) {
+            Pair<Multihash, ByteArrayWrapper> cacheKey = new Pair<>(base.tree.get(), new ByteArrayWrapper(cap.getMapKey()));
+            if (cache.containsKey(cacheKey))
+                return Futures.of(cache.get(cacheKey));
+        }
         return base.tree.map(root -> dhtClient.getChampLookup(cap.owner, root, cap.getMapKey())).orElse(Futures.of(Collections.emptyList()))
                 .thenCompose(blocks -> FixedContentAddressedStorage.build(blocks, hasher)
                         .thenCompose(fixedDht -> ChampWrapper.create(base.tree.get(), x -> Futures.of(x.data), fixedDht, hasher, c -> (CborObject.CborMerkleLink) c)
@@ -433,7 +440,11 @@ public class NetworkAccess {
                                 .thenCompose(btreeValue -> {
                                     if (btreeValue.isPresent())
                                         return fixedDht.get(btreeValue.get())
-                                                .thenApply(value -> value.map(cbor -> CryptreeNode.fromCbor(cbor, cap.rBaseKey, btreeValue.get())));
+                                                .thenApply(value -> value.map(cbor -> CryptreeNode.fromCbor(cbor, cap.rBaseKey, btreeValue.get())))
+                                                .thenApply(res -> {
+                                                    cache.put(new Pair<>(base.tree.get(), new ByteArrayWrapper(cap.getMapKey())), res);
+                                                    return res;
+                                                });
                                     return CompletableFuture.completedFuture(Optional.empty());
                                 })));
     }
