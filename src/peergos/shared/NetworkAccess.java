@@ -230,8 +230,8 @@ public class NetworkAccess {
                     ContentAddressedStorage storage = isPeergosServer ?
                             localDht :
                             new ContentAddressedStorage.Proxying(localDht, proxingDht, nodeId, core);
-                    HashVerifyingStorage verifyingStorage = new HashVerifyingStorage(new RetryStorage(storage, 3), hasher);
-                    ContentAddressedStorage p2pDht = new CachingStorage(verifyingStorage, 1_000, 50 * 1024);
+                    ContentAddressedStorage p2pDht = new CachingVerifyingStorage(new RetryStorage(storage, 3),
+                            1_000, 50 * 1024, hasher);
                     MutablePointersProxy httpMutable = new HttpMutablePointers(apiPoster, p2pPoster);
                     MutablePointers p2pMutable =
                             isPeergosServer ?
