@@ -101,6 +101,11 @@ public class OpLog implements Cborable, MutablePointers, ContentAddressedStorage
     }
 
     @Override
+    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey) {
+        return Futures.of(new ArrayList<>(storage.values()));
+    }
+
+    @Override
     public CompletableFuture<List<Multihash>> pinUpdate(PublicKeyHash owner, Multihash existing, Multihash updated) {
         throw new IllegalStateException("Unsupported operation!");
     }

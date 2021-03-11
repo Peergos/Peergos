@@ -44,7 +44,7 @@ public class EfficiencyComparison {
     public static void calculateChampOverhead(Map<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>> state) throws Exception {
         for (int bitWidth = 2; bitWidth <= 8; bitWidth++) {
             for (int maxCollisions = 1; maxCollisions <= 6; maxCollisions++) {
-                RAMStorage champStorage = new RAMStorage();
+                RAMStorage champStorage = new RAMStorage(crypto.hasher);
                 SigningPrivateKeyAndPublicHash champUser = ChampTests.createUser(champStorage, crypto);
                 Pair<Champ<CborObject.CborMerkleLink>, Multihash> current = new Pair<>(Champ.empty(c -> (CborObject.CborMerkleLink)c), champStorage.put(champUser.publicKeyHash,
                         champUser, Champ.empty(c -> (CborObject.CborMerkleLink)c).serialize(), crypto.hasher,

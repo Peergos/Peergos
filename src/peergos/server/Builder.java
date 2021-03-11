@@ -149,7 +149,8 @@ public class Builder {
     }
 
     public static DeletableContentAddressedStorage buildLocalStorage(Args a,
-                                                                      TransactionStore transactions) {
+                                                                     TransactionStore transactions,
+                                                                     Hasher hasher) {
         boolean useIPFS = a.getBoolean("useIPFS");
         boolean enableGC = a.getBoolean("enable-gc", false);
         JavaPoster ipfsApi = buildIpfsApi(a);
@@ -172,9 +173,9 @@ public class Builder {
                 S3Config config = S3Config.build(a);
                 Optional<String> authedUrl = Optional.of("https://" + config.getHost() + "/");
                 BlockStoreProperties props = new BlockStoreProperties(directWrites, publicReads, authedReads, publicReadUrl, authedUrl);
-                return new S3BlockStorage(config, Cid.decode(a.getArg("ipfs.id")), props, transactions, ipfs);
+                return new S3BlockStorage(config, Cid.decode(a.getArg("ipfs.id")), props, transactions, hasher, ipfs);
             } else {
-                return new FileContentAddressedStorage(blockstorePath(a), transactions);
+                return new FileContentAddressedStorage(blockstorePath(a), transactions, hasher);
             }
         }
     }

@@ -1,5 +1,6 @@
 package peergos.shared.storage;
 
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.api.*;
 import peergos.shared.io.ipfs.cid.*;
@@ -19,6 +20,8 @@ public interface ContentAddressedStorageProxy {
     CompletableFuture<TransactionId> startTransaction(Multihash targetServerId, PublicKeyHash owner);
 
     CompletableFuture<Boolean> closeTransaction(Multihash targetServerId, PublicKeyHash owner, TransactionId tid);
+
+    CompletableFuture<List<byte[]>> getChampLookup(Multihash targetServerId, PublicKeyHash owner, Multihash root, byte[] champKey);
 
     CompletableFuture<List<Multihash>> put(Multihash targetServerId,
                                            PublicKeyHash owner,
@@ -93,6 +96,18 @@ public interface ContentAddressedStorageProxy {
             return poster.get(getProxyUrlPrefix(targetServerId) + apiPrefix
                     + "transaction/close?arg=" + tid.toString() + "&owner=" + encode(owner.toString()))
                     .thenApply(raw -> new String(raw).equals("1"));
+        }
+
+        @Override
+        public CompletableFuture<List<byte[]>> getChampLookup(Multihash targetServerId,
+                                                              PublicKeyHash owner,
+                                                              Multihash root,
+                                                              byte[] champKey) {
+            return poster.get(getProxyUrlPrefix(targetServerId) + apiPrefix
+                    + "champ/get?arg=" + root.toString() + "&arg=" + ArrayOps.bytesToHex(champKey) + "&owner=" + encode(owner.toString()))
+                    .thenApply(CborObject::fromByteArray)
+                    .thenApply(c -> (CborObject.CborList)c)
+                    .thenApply(res -> res.map(c -> ((CborObject.CborByteArray)c).value));
         }
 
         @Override

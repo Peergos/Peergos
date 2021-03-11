@@ -312,6 +312,11 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey) {
+        return fallback.getChampLookup(owner, root, champKey);
+    }
+
+    @Override
     public CompletableFuture<Boolean> gc() {
         return Futures.errored(new IllegalStateException("S3 doesn't implement GC!"));
     }

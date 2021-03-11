@@ -5,6 +5,7 @@ import peergos.server.*;
 import peergos.server.corenode.*;
 import peergos.server.sql.*;
 import peergos.server.util.*;
+import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
@@ -50,12 +51,14 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     private final String accessKeyId, secretKey;
     private final BlockStoreProperties props;
     private final TransactionStore transactions;
+    private final Hasher hasher;
     private final ContentAddressedStorage p2pFallback;
 
     public S3BlockStorage(S3Config config,
                           Multihash id,
                           BlockStoreProperties props,
                           TransactionStore transactions,
+                          Hasher hasher,
                           ContentAddressedStorage p2pFallback) {
         this.id = id;
         this.region = config.region;
@@ -68,6 +71,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         LOG.info("Using S3 Block Storage at " + config.regionEndpoint + ", bucket " + config.bucket + ", path: " + config.path);
         this.props = props;
         this.transactions = transactions;
+        this.hasher = hasher;
         this.p2pFallback = p2pFallback;
     }
 
@@ -217,6 +221,11 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     @Override
     public CompletableFuture<List<Multihash>> recursiveUnpin(PublicKeyHash owner, Multihash hash) {
         return Futures.of(Collections.singletonList(hash));
+    }
+
+    @Override
+    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey) {
+        return getChampLookup(root, champKey, hasher);
     }
 
     @Override
@@ -452,6 +461,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     public static void main(String[] args) throws Exception {
         System.out.println("Performing GC on block store...");
         Args a = Args.parse(args);
+        Crypto crypto = Main.initCrypto();
+        Hasher hasher = crypto.hasher;
         S3Config config = S3Config.build(a);
         boolean usePostgres = a.getBoolean("use-postgres", false);
         SqlSupplier sqlCommands = usePostgres ?
@@ -460,18 +471,21 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         Supplier<Connection> database = Main.getDBConnector(a, "mutable-pointers-file");
         Supplier<Connection> transactionsDb = Main.getDBConnector(a, "transactions-sql-file");
         TransactionStore transactions = JdbcTransactionStore.build(transactionsDb, sqlCommands);
-        S3BlockStorage s3 = new S3BlockStorage(config, Cid.decode(a.getArg("ipfs.id")), BlockStoreProperties.empty(), transactions, new RAMStorage());
+        S3BlockStorage s3 = new S3BlockStorage(config, Cid.decode(a.getArg("ipfs.id")),
+                BlockStoreProperties.empty(), transactions, hasher, new RAMStorage(hasher));
         JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(database, sqlCommands);
         s3.collectGarbage(rawPointers);
     }
 
     public static void test(String[] args) throws Exception {
         // Use this method to test access to a bucket
+        Crypto crypto = Main.initCrypto();
+        Hasher hasher = crypto.hasher;
         S3Config config = S3Config.build(Args.parse(args));
         System.out.println("Testing S3 bucket: " + config.bucket + " in region " + config.region + " with base dir: " + config.path);
         Multihash id = new Multihash(Multihash.Type.sha2_256, RAMStorage.hash("S3Storage".getBytes()));
         TransactionStore transactions = JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands());
-        S3BlockStorage s3 = new S3BlockStorage(config, id, BlockStoreProperties.empty(), transactions, new RAMStorage());
+        S3BlockStorage s3 = new S3BlockStorage(config, id, BlockStoreProperties.empty(), transactions, hasher, new RAMStorage(hasher));
 
         System.out.println("***** Testing ls and read");
         System.out.println("Testing ls...");

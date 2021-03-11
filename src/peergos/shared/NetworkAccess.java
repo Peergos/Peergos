@@ -7,6 +7,7 @@ import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.hamt.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.mutable.*;
@@ -424,12 +425,17 @@ public class NetworkAccess {
     }
 
     public CompletableFuture<Optional<CryptreeNode>> getMetadata(WriterData base, AbsoluteCapability cap) {
-        return tree.get(base, cap.owner, cap.writer, cap.getMapKey()).thenCompose(btreeValue -> {
-            if (btreeValue.isPresent())
-                return dhtClient.get(btreeValue.get())
-                        .thenApply(value -> value.map(cbor -> CryptreeNode.fromCbor(cbor,  cap.rBaseKey, btreeValue.get())));
-            return CompletableFuture.completedFuture(Optional.empty());
-        });
+        return base.tree.map(root -> dhtClient.getChampLookup(cap.owner, root, cap.getMapKey())).orElse(Futures.of(Collections.emptyList()))
+                .thenCompose(blocks -> FixedContentAddressedStorage.build(blocks, hasher)
+                        .thenCompose(fixedDht -> ChampWrapper.create(base.tree.get(), x -> Futures.of(x.data), fixedDht, hasher, c -> (CborObject.CborMerkleLink) c)
+                                .thenCompose(tree -> tree.get(cap.getMapKey()))
+                                .thenApply(c -> c.map(x -> x.target).map(MaybeMultihash::of).orElse(MaybeMultihash.empty()))
+                                .thenCompose(btreeValue -> {
+                                    if (btreeValue.isPresent())
+                                        return fixedDht.get(btreeValue.get())
+                                                .thenApply(value -> value.map(cbor -> CryptreeNode.fromCbor(cbor, cap.rBaseKey, btreeValue.get())));
+                                    return CompletableFuture.completedFuture(Optional.empty());
+                                })));
     }
 
     private CompletableFuture<List<Multihash>> bulkUploadFragments(List<Fragment> fragments,
