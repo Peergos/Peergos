@@ -377,6 +377,28 @@ public abstract class UserTests {
     }
 
     @Test
+    public void downloadSmallFile() throws Exception {
+        String username = generateUsername();
+        String password = "test";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        FileWrapper userRoot = context.getUserRoot().get();
+
+        String filename = "somedata.txt";
+        Path filePath = Paths.get(username, filename);
+        byte[] data = new byte[3];
+        userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
+                context.crypto, l -> {
+                }, context.crypto.random.randomBytes(32)).get();
+        checkFileContents(data, context.getByPath(filePath).join().get(), context);
+        FileWrapper file = context.getByPath(filePath).join().get();
+        FileProperties props = file.getFileProperties();
+        List<Boolean> progressUpdate = new ArrayList<>();
+        file.getInputStream(context.network, context.crypto, props.sizeHigh(), props.sizeLow(), read -> {
+            progressUpdate.add(true);
+        }).join();
+        assertTrue(progressUpdate.size() == 1 && progressUpdate.get(0));
+    }
+    @Test
     public void concurrentFileModificationFailure() throws Exception {
         String username = generateUsername();
         String password = "test";
