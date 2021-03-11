@@ -394,7 +394,6 @@ public abstract class UserTests {
         FileProperties props = file.getFileProperties();
         List<Boolean> progressUpdate = new ArrayList<>();
         file.getInputStream(context.network, context.crypto, props.sizeHigh(), props.sizeLow(), read -> {
-            assertTrue(read == props.size);
             progressUpdate.add(true);
         }).join();
         assertTrue(progressUpdate.size() == 1 && progressUpdate.get(0));

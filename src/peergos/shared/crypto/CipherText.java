@@ -47,10 +47,7 @@ public class CipherText implements Cborable {
 
     public <T> T decrypt(SymmetricKey from, Function<CborObject, T> fromCbor, ProgressConsumer<Long> monitor) {
         byte[] secret = from.decrypt(cipherText, nonce);
-        T res = fromCbor.apply(CborObject.fromByteArray(secret));
-        if (res instanceof byte[]) {
-            monitor.accept((long) ((byte[])(res)).length);
-        }
-        return res;
+        monitor.accept((long)secret.length); //note: this is not accurate at all
+        return fromCbor.apply(CborObject.fromByteArray(secret));
     }
 }
