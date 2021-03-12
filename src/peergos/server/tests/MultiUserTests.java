@@ -5,6 +5,7 @@ import peergos.server.storage.ResetableFileInputStream;
 import peergos.server.util.Args;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.fingerprint.*;
+import peergos.shared.storage.*;
 import peergos.shared.util.TriFunction;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
@@ -40,7 +41,7 @@ public class MultiUserTests {
         this.userCount = 2;
         WriteSynchronizer synchronizer = new WriteSynchronizer(service.mutable, service.storage, crypto.hasher);
         MutableTree mutableTree = new MutableTreeImpl(service.mutable, service.storage, crypto.hasher, synchronizer);
-        this.network = new NetworkAccess(service.coreNode, service.social, service.storage,
+        this.network = new NetworkAccess(service.coreNode, service.social, new CachingStorage(service.storage, 1_000, 50 * 1024),
                 service.mutable, mutableTree, synchronizer, service.controller, service.usage, service.serverMessages,
                 crypto.hasher, Arrays.asList("peergos"), false);
     }

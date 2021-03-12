@@ -7,6 +7,7 @@ import peergos.server.*;
 import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.social.*;
+import peergos.shared.storage.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
@@ -32,7 +33,7 @@ public class RamUserTests extends UserTests {
         MutableTree mutableTree = new MutableTreeImpl(service.mutable, service.storage, crypto.hasher, synchronizer);
         // use actual http messager
         ServerMessager.HTTP serverMessager = new ServerMessager.HTTP(new JavaPoster(new URI("http://localhost:" + args.getArg("port")).toURL(), false));
-        NetworkAccess network = new NetworkAccess(service.coreNode, service.social, service.storage,
+        NetworkAccess network = new NetworkAccess(service.coreNode, service.social, new CachingStorage(service.storage, 1_000, 50 * 1024),
                 service.mutable, mutableTree, synchronizer, service.controller, service.usage,
                 serverMessager, service.crypto.hasher,
                 Arrays.asList("peergos"), false);
