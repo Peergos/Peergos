@@ -433,20 +433,19 @@ public class NetworkAccess {
                 return Futures.of(cache.get(cacheKey));
         }
         return base.tree.map(root -> dhtClient.getChampLookup(cap.owner, root, cap.getMapKey())).orElse(Futures.of(Collections.emptyList()))
-                .thenCompose(blocks -> FixedContentAddressedStorage.build(blocks, hasher)
-                        .thenCompose(fixedDht -> ChampWrapper.create(base.tree.get(), x -> Futures.of(x.data), fixedDht, hasher, c -> (CborObject.CborMerkleLink) c)
-                                .thenCompose(tree -> tree.get(cap.getMapKey()))
-                                .thenApply(c -> c.map(x -> x.target).map(MaybeMultihash::of).orElse(MaybeMultihash.empty()))
-                                .thenCompose(btreeValue -> {
-                                    if (btreeValue.isPresent())
-                                        return fixedDht.get(btreeValue.get())
-                                                .thenApply(value -> value.map(cbor -> CryptreeNode.fromCbor(cbor, cap.rBaseKey, btreeValue.get())))
-                                                .thenApply(res -> {
-                                                    cache.put(new Pair<>(base.tree.get(), new ByteArrayWrapper(cap.getMapKey())), res);
-                                                    return res;
-                                                });
-                                    return CompletableFuture.completedFuture(Optional.empty());
-                                })));
+                .thenCompose(blocks -> ChampWrapper.create(base.tree.get(), x -> Futures.of(x.data), dhtClient, hasher, c -> (CborObject.CborMerkleLink) c)
+                        .thenCompose(tree -> tree.get(cap.getMapKey()))
+                        .thenApply(c -> c.map(x -> x.target).map(MaybeMultihash::of).orElse(MaybeMultihash.empty()))
+                        .thenCompose(btreeValue -> {
+                            if (btreeValue.isPresent())
+                                return dhtClient.get(btreeValue.get())
+                                        .thenApply(value -> value.map(cbor -> CryptreeNode.fromCbor(cbor, cap.rBaseKey, btreeValue.get())))
+                                        .thenApply(res -> {
+                                            cache.put(new Pair<>(base.tree.get(), new ByteArrayWrapper(cap.getMapKey())), res);
+                                            return res;
+                                        });
+                            return CompletableFuture.completedFuture(Optional.empty());
+                        }));
     }
 
     private CompletableFuture<List<Multihash>> bulkUploadFragments(List<Fragment> fragments,
