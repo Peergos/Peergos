@@ -71,19 +71,16 @@ public class RequestCountTests {
         // check 'a' can see the shared file in their social feed
         storageCounter.reset();
         SocialFeed feed = a.getSocialFeed().join();
-        Assert.assertTrue(storageCounter.requestTotal() <= 71);
+        Assert.assertTrue(storageCounter.requestTotal() <= 82);
         int feedSize = 2;
 
         storageCounter.reset();
         List<SharedItem> items = feed.getShared(feedSize, feedSize + 1, a.crypto, a.network).join();
         Assert.assertTrue(storageCounter.requestTotal() <= 1);
-        Assert.assertTrue(items.size() > 0);
 
-        // Test the feed after a fresh login
-        UserContext freshA = PeergosNetworkUtils.ensureSignedUp(a.username, password, network, crypto);
-        SocialFeed freshFeed = freshA.getSocialFeed().join();
-        List<SharedItem> freshItems = freshFeed.getShared(feedSize, feedSize + 1, a.crypto, a.network).join();
-        Assert.assertTrue(freshItems.size() > 0);
+        storageCounter.reset();
+        a.getFiles(items).join();
+        Assert.assertTrue(storageCounter.requestTotal() <= 1);
     }
 
     private static void uploadAndShare(byte[] data, Path file, UserContext sharer, String sharee) {
