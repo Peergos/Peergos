@@ -124,7 +124,7 @@ public class DHTHandler implements HttpHandler {
                     byte[] champKey = ArrayOps.hexToBytes(args.get(1));
                     dht.getChampLookup(ownerHash, root, champKey).thenAccept(blocks -> {
                         replyBytes(httpExchange, new CborObject.CborList(blocks.stream()
-                                .map(CborObject.CborByteArray::new).collect(Collectors.toList())).serialize(), Optional.empty());
+                                .map(CborObject.CborByteArray::new).collect(Collectors.toList())).serialize(), Optional.of(root));
                     }).exceptionally(Futures::logAndThrow).get();
                     break;
                 }
