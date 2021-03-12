@@ -91,7 +91,7 @@ public class RequestCountTests {
 
         storageCounter.reset();
         SocialFeed feed2 = a.getSocialFeed().join().update().join();
-        Assert.assertTrue(storageCounter.requestTotal() <= 37);
+        Assert.assertTrue(storageCounter.requestTotal() <= 39);
 
         storageCounter.reset();
         List<SharedItem> items2 = feed2.getShared(feedSize + 1, feedSize + 6, a.crypto, a.network).join();
