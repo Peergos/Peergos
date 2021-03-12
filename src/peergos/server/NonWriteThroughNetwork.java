@@ -32,7 +32,7 @@ public class NonWriteThroughNetwork extends NetworkAccess {
     }
 
     public static NetworkAccess build(NetworkAccess source) {
-        ContentAddressedStorage nonWriteThroughIpfs = new NonWriteThroughStorage(source.dhtClient);
+        ContentAddressedStorage nonWriteThroughIpfs = new NonWriteThroughStorage(source.dhtClient, source.hasher);
         MutablePointers nonWriteThroughPointers = new NonWriteThroughMutablePointers(source.mutable, nonWriteThroughIpfs);
         NonWriteThroughCoreNode nonWriteThroughCoreNode = new NonWriteThroughCoreNode(source.coreNode, nonWriteThroughIpfs);
         NonWriteThroughSocialNetwork nonWriteThroughSocial = new NonWriteThroughSocialNetwork(source.social, nonWriteThroughIpfs);

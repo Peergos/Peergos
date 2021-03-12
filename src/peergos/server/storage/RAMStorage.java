@@ -1,11 +1,14 @@
 package peergos.server.storage;
 
+import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.hamt.*;
 import peergos.shared.io.ipfs.multiaddr.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.storage.*;
+import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.*;
 
 import java.security.*;
@@ -19,6 +22,11 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     private Map<Multihash, byte[]> storage = new EfficientHashMap<>();
     private Map<TransactionId, List<Multihash>> openTransactions = new ConcurrentHashMap<>();
     private final Set<Multihash> pinnedRoots = new HashSet<>();
+    private final Hasher hasher;
+
+    public RAMStorage(Hasher hasher) {
+        this.hasher = hasher;
+    }
 
     @Override
     public ContentAddressedStorage directToOrigin() {
@@ -41,6 +49,11 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     public CompletableFuture<Boolean> closeTransaction(PublicKeyHash owner, TransactionId tid) {
         openTransactions.remove(tid);
         return CompletableFuture.completedFuture(true);
+    }
+
+    @Override
+    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey) {
+        return getChampLookup(root, champKey, hasher);
     }
 
     @Override
@@ -203,10 +216,5 @@ public class RAMStorage implements DeletableContentAddressedStorage {
 
     public int totalSize() {
         return storage.values().stream().mapToInt(a -> a.length).sum();
-    }
-
-    private static RAMStorage singleton = new RAMStorage();
-    public static RAMStorage getSingleton() {
-        return singleton;
     }
 }

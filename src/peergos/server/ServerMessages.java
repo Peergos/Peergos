@@ -8,6 +8,7 @@ import peergos.server.storage.*;
 import peergos.server.storage.admin.*;
 import peergos.server.util.*;
 import peergos.shared.corenode.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.mutable.*;
 import peergos.shared.user.*;
 
@@ -97,14 +98,15 @@ public class ServerMessages extends Builder {
     private static QuotaAdmin buildQuotaStore(Args a) {
         Supplier<Connection> dbConnectionPool = getDBConnector(a, "transactions-sql-file");
         TransactionStore transactions = buildTransactionStore(a, dbConnectionPool);
-        DeletableContentAddressedStorage localStorage = buildLocalStorage(a, transactions);
+        Hasher hasher = Main.initCrypto().hasher;
+        DeletableContentAddressedStorage localStorage = buildLocalStorage(a, transactions, hasher);
         JdbcIpnsAndSocial rawPointers = buildRawPointers(a, getDBConnector(a, "mutable-pointers-file", dbConnectionPool));
         MutablePointers localPointers = UserRepository.build(localStorage, rawPointers);
         MutablePointersProxy proxingMutable = new HttpMutablePointers(buildP2pHttpProxy(a), getPkiServerId(a));
         JdbcIpnsAndSocial rawSocial = new JdbcIpnsAndSocial(getDBConnector(a, "social-sql-file", dbConnectionPool), getSqlCommands(a));
         UsageStore usageStore = new JdbcUsageStore(getDBConnector(a, "space-usage-sql-file", dbConnectionPool), getSqlCommands(a));
         CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable,
-                rawSocial, usageStore, Main.initCrypto().hasher);
+                rawSocial, usageStore, hasher);
         return buildSpaceQuotas(a, localStorage, core,
                 getDBConnector(a, "space-requests-sql-file", dbConnectionPool),
                 getDBConnector(a, "quotas-sql-file", dbConnectionPool));

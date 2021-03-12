@@ -7,6 +7,7 @@ import peergos.shared.corenode.Proxy;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.hamt.*;
 import peergos.shared.io.ipfs.api.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
@@ -176,6 +177,20 @@ public interface ContentAddressedStorage {
      */
     CompletableFuture<List<Multihash>> recursiveUnpin(PublicKeyHash owner, Multihash hash);
 
+    CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey);
+
+    default CompletableFuture<List<byte[]>> getChampLookup(Multihash root, byte[] champKey, Hasher hasher) {
+        CachingStorage cache = new CachingStorage(this, 100, 100 * 1024);
+        return ChampWrapper.create(root, x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c)
+                .thenCompose(tree -> tree.get(champKey))
+                .thenApply(c -> c.map(x -> x.target).map(MaybeMultihash::of).orElse(MaybeMultihash.empty()))
+                .thenApply(btreeValue -> {
+                    if (btreeValue.isPresent())
+                        return cache.get(btreeValue.get());
+                    return Optional.empty();
+                }).thenApply(x -> new ArrayList<>(cache.getCached()));
+    }
+
     /** Run a garbage collection on the ipfs block store. This is only callable internally to a Peergos server.
      *
      * @return true
@@ -332,6 +347,7 @@ public interface ContentAddressedStorage {
         public static final String AUTH_WRITES = "blockstore/auth";
         public static final String TRANSACTION_START = "transaction/start";
         public static final String TRANSACTION_CLOSE = "transaction/close";
+        public static final String CHAMP_GET = "champ/get";
         public static final String GC = "repo/gc";
         public static final String BLOCK_PUT = "block/put";
         public static final String BLOCK_GET = "block/get";
@@ -442,6 +458,14 @@ public interface ContentAddressedStorage {
                 return CompletableFuture.completedFuture(true);
             return poster.get(apiPrefix + TRANSACTION_CLOSE + "?arg=" + tid.toString() + "&owner=" + encode(owner.toString()))
                     .thenApply(raw -> new String(raw).equals("1"));
+        }
+
+        @Override
+        public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey) {
+            return poster.get(apiPrefix + CHAMP_GET + "?arg=" + root.toString() + "&arg=" + ArrayOps.bytesToHex(champKey) + "&owner=" + encode(owner.toString()))
+                    .thenApply(CborObject::fromByteArray)
+                    .thenApply(c -> (CborObject.CborList)c)
+                    .thenApply(res -> res.map(c -> ((CborObject.CborByteArray)c).value));
         }
 
         @Override
@@ -663,6 +687,15 @@ public interface ContentAddressedStorage {
                     owner,
                     () -> local.closeTransaction(owner, tid),
                     target -> p2p.closeTransaction(target, owner, tid));
+        }
+
+        @Override
+        public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey) {
+            return Proxy.redirectCall(core,
+                    ourNodeId,
+                    owner,
+                    () -> local.getChampLookup(owner, root, champKey),
+                    target -> p2p.getChampLookup(target, owner, root, champKey));
         }
 
         @Override

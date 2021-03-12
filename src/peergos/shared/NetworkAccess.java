@@ -7,6 +7,7 @@ import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.hamt.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.mutable.*;
@@ -229,8 +230,8 @@ public class NetworkAccess {
                     ContentAddressedStorage storage = isPeergosServer ?
                             localDht :
                             new ContentAddressedStorage.Proxying(localDht, proxingDht, nodeId, core);
-                    HashVerifyingStorage verifyingStorage = new HashVerifyingStorage(new RetryStorage(storage, 3), hasher);
-                    ContentAddressedStorage p2pDht = new CachingStorage(verifyingStorage, 1_000, 50 * 1024);
+                    ContentAddressedStorage p2pDht = new CachingVerifyingStorage(new RetryStorage(storage, 3),
+                            50 * 1024, 1_000, hasher);
                     MutablePointersProxy httpMutable = new HttpMutablePointers(apiPoster, p2pPoster);
                     MutablePointers p2pMutable =
                             isPeergosServer ?
@@ -423,13 +424,28 @@ public class NetworkAccess {
                 });
     }
 
+    private final LRUCache<Pair<Multihash, ByteArrayWrapper>, Optional<CryptreeNode>> cache = new LRUCache<>(100);
+
     public CompletableFuture<Optional<CryptreeNode>> getMetadata(WriterData base, AbsoluteCapability cap) {
-        return tree.get(base, cap.owner, cap.writer, cap.getMapKey()).thenCompose(btreeValue -> {
-            if (btreeValue.isPresent())
-                return dhtClient.get(btreeValue.get())
-                        .thenApply(value -> value.map(cbor -> CryptreeNode.fromCbor(cbor,  cap.rBaseKey, btreeValue.get())));
-            return CompletableFuture.completedFuture(Optional.empty());
-        });
+        if (base.tree.isPresent()) {
+            Pair<Multihash, ByteArrayWrapper> cacheKey = new Pair<>(base.tree.get(), new ByteArrayWrapper(cap.getMapKey()));
+            if (cache.containsKey(cacheKey))
+                return Futures.of(cache.get(cacheKey));
+        }
+        return base.tree.map(root -> dhtClient.getChampLookup(cap.owner, root, cap.getMapKey())).orElse(Futures.of(Collections.emptyList()))
+                .thenCompose(blocks -> ChampWrapper.create(base.tree.get(), x -> Futures.of(x.data), dhtClient, hasher, c -> (CborObject.CborMerkleLink) c)
+                        .thenCompose(tree -> tree.get(cap.getMapKey()))
+                        .thenApply(c -> c.map(x -> x.target).map(MaybeMultihash::of).orElse(MaybeMultihash.empty()))
+                        .thenCompose(btreeValue -> {
+                            if (btreeValue.isPresent())
+                                return dhtClient.get(btreeValue.get())
+                                        .thenApply(value -> value.map(cbor -> CryptreeNode.fromCbor(cbor, cap.rBaseKey, btreeValue.get())))
+                                        .thenApply(res -> {
+                                            cache.put(new Pair<>(base.tree.get(), new ByteArrayWrapper(cap.getMapKey())), res);
+                                            return res;
+                                        });
+                            return CompletableFuture.completedFuture(Optional.empty());
+                        }));
     }
 
     private CompletableFuture<List<Multihash>> bulkUploadFragments(List<Fragment> fragments,
@@ -487,7 +503,11 @@ public class NetworkAccess {
                             writer.secret.signMessage(blobSha), metaBlob, tid))
                     .thenCompose(blobHash -> tree.put(version.props, owner, writer, mapKey,
                             metadata.committedHash(), blobHash, tid)
-                            .thenCompose(wd -> committer.commit(owner, writer, wd, version, tid)))
+                            .thenCompose(wd -> committer.commit(owner, writer, wd, version, tid)
+                                    .thenApply(s -> {
+                                        cache.put(new Pair<>(wd.tree.get(), new ByteArrayWrapper(mapKey)), Optional.of(metadata.withHash(blobHash)));
+                                        return s;
+                                    })))
                     .thenApply(committed -> current.withVersion(writer.publicKeyHash, committed.get(writer)));
         } catch (Exception e) {
             LOG.severe(e.getMessage());

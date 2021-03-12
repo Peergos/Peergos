@@ -162,7 +162,8 @@ public class Main extends Builder {
             ContentAddressedStorage dht = useIPFS ?
                     new IpfsDHT(new MultiAddress(ipfsApiAddress)) :
                     new FileContentAddressedStorage(blockstorePath(args),
-                            JdbcTransactionStore.build(getDBConnector(args, "transactions-sql-file"), new SqliteCommands()));
+                            JdbcTransactionStore.build(getDBConnector(args, "transactions-sql-file"), new SqliteCommands()),
+                            crypto.hasher);
 
             SigningKeyPair peergosIdentityKeys = peergos.getUser();
             PublicKeyHash peergosPublicHash = ContentAddressedStorage.hashKey(peergosIdentityKeys.publicSigningKey);
@@ -255,6 +256,7 @@ public class Main extends Builder {
             "Bootstrap and start the Peergos PKI Server",
             args -> {
                 try {
+                    Crypto crypto = initCrypto();
                     int peergosPort = args.getInt("port");
                     args = args.setIfAbsent("proxy-target", getLocalMultiAddress(peergosPort).toString());
                     MultiAddress ipfsApi = new MultiAddress(args.getArg("ipfs-api-address"));
@@ -271,7 +273,8 @@ public class Main extends Builder {
                     Multihash pkiIpfsNodeId = useIPFS ?
                             new IpfsDHT(ipfsApi).id().get() :
                             new FileContentAddressedStorage(blockstorePath(args),
-                                    JdbcTransactionStore.build(getDBConnector(args, "transactions-sql-file"), new SqliteCommands())).id().get();
+                                    JdbcTransactionStore.build(getDBConnector(args, "transactions-sql-file"), new SqliteCommands()),
+                                    crypto.hasher).id().get();
 
                     if (ipfs != null)
                         ipfs.stop();
@@ -307,6 +310,7 @@ public class Main extends Builder {
             "Start the Peergos PKI Server that has already been bootstrapped",
             args -> {
                 try {
+                    Crypto crypto = initCrypto();
                     int peergosPort = args.getInt("port");
                     args = args.setIfAbsent("proxy-target", getLocalMultiAddress(peergosPort).toString());
 
@@ -325,9 +329,9 @@ public class Main extends Builder {
                             new IpfsDHT(ipfsApi) :
                             S3Config.useS3(args) ?
                                     new S3BlockStorage(S3Config.build(args), Cid.decode(args.getArg("ipfs.id")),
-                                            BlockStoreProperties.empty(), transactions, new IpfsDHT(ipfsApi)) :
+                                            BlockStoreProperties.empty(), transactions, crypto.hasher, new IpfsDHT(ipfsApi)) :
                                     new FileContentAddressedStorage(blockstorePath(args),
-                                            transactions);
+                                            transactions, crypto.hasher);
                     Multihash pkiIpfsNodeId = storage.id().get();
 
                     if (ipfs != null)
@@ -430,7 +434,7 @@ public class Main extends Builder {
             Supplier<Connection> dbConnectionPool = getDBConnector(a, "transactions-sql-file");
             TransactionStore transactions = buildTransactionStore(a, dbConnectionPool);
 
-            DeletableContentAddressedStorage localStorage = buildLocalStorage(a, transactions);
+            DeletableContentAddressedStorage localStorage = buildLocalStorage(a, transactions, crypto.hasher);
             JdbcIpnsAndSocial rawPointers = buildRawPointers(a,
                     getDBConnector(a, "mutable-pointers-file", dbConnectionPool));
             boolean enableGC = a.getBoolean("enable-gc", false);

@@ -14,11 +14,15 @@ public class TransactionalIpfs extends DelegatingStorage implements DeletableCon
 
     private final TransactionStore transactions;
     private final DeletableContentAddressedStorage target;
+    private final Hasher hasher;
 
-    public TransactionalIpfs(DeletableContentAddressedStorage target, TransactionStore transactions) {
+    public TransactionalIpfs(DeletableContentAddressedStorage target,
+                             TransactionStore transactions,
+                             Hasher hasher) {
         super(target);
         this.target = target;
         this.transactions = transactions;
+        this.hasher = hasher;
     }
 
     @Override
@@ -35,6 +39,11 @@ public class TransactionalIpfs extends DelegatingStorage implements DeletableCon
     public CompletableFuture<Boolean> closeTransaction(PublicKeyHash owner, TransactionId tid) {
         transactions.closeTransaction(owner, tid);
         return Futures.of(true);
+    }
+
+    @Override
+    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey) {
+        return getChampLookup(root, champKey, hasher);
     }
 
     @Override

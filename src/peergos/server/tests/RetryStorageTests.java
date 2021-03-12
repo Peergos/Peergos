@@ -2,6 +2,7 @@ package peergos.server.tests;
 
 import org.junit.Assert;
 import org.junit.Test;
+import peergos.server.*;
 import peergos.server.storage.RAMStorage;
 import peergos.shared.cbor.CborObject;
 import peergos.shared.crypto.hash.PublicKeyHash;
@@ -148,6 +149,16 @@ public class RetryStorageTests {
         }
 
         @Override
+        public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey) {
+            if(counter++ % retryLimit != 0) {
+                return CompletableFuture.failedFuture(new Error("failure!"));
+            }else {
+                counter=1;
+                return CompletableFuture.completedFuture(Collections.emptyList());
+            }
+        }
+
+        @Override
         public CompletableFuture<List<Multihash>> getLinks(Multihash root) {
             if(counter++ % retryLimit != 0) {
                 return CompletableFuture.failedFuture(new Error("failure!"));
@@ -170,7 +181,7 @@ public class RetryStorageTests {
 
     @Test
     public void callMethod() {
-        ContentAddressedStorage storage = new RetryStorage(new RAMStorage(), 3);
+        ContentAddressedStorage storage = new RetryStorage(new RAMStorage(Main.initCrypto().hasher), 3);
 
         BlockStoreProperties props = storage.blockStoreProperties().join();
         Assert.assertNotNull("props should not be null", props);

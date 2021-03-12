@@ -1,6 +1,8 @@
 package peergos.server.storage;
 
+import peergos.server.*;
 import peergos.server.util.*;
+import peergos.shared.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
@@ -13,6 +15,7 @@ import java.util.*;
 
 class S3Exploration {
     public static void main(String[] a) throws Exception {
+        Crypto crypto = Main.initCrypto();
         String accessKey = a[0];
         String secretKey = a[1];
         String bucketName = a[2];
@@ -21,7 +24,7 @@ class S3Exploration {
         String host = bucketName + "." + regionEndpoint;
 
         byte[] payload = "Hi Linode2!".getBytes();
-        Multihash content = new RAMStorage().put(null, null, null, Arrays.asList(payload), null).join().get(0);
+        Multihash content = new RAMStorage(crypto.hasher).put(null, null, null, Arrays.asList(payload), null).join().get(0);
         String s3Key = DirectS3BlockStore.hashToKey(content);// "AFYREIBF5Y4OUJXNGRCHBAR2ZMPQBSW62SZDHFNX2GA6V4J3W7I63LA4UQ"
         {
             // test an authed PUT

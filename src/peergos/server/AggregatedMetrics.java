@@ -29,6 +29,7 @@ public class AggregatedMetrics {
     public static final Counter DHT_BLOCK_REFS  = build("dht_block_refs", "Total DHT block refs.");
     public static final Counter DHT_TRANSACTION_START  = build("dht_transaction_start", "Total DHT transaction starts.");
     public static final Counter DHT_TRANSACTION_CLOSE  = build("dht_transaction_close", "Total DHT transaction closes.");
+    public static final Counter DHT_CHAMP_GET  = build("dht_champ_get", "Total champ gets");
 
     public static final Counter MUTABLE_POINTERS_SET  = build("mutable_pointers_set", "Total mutable-pointers set calls.");
     public static final Counter MUTABLE_POINTERS_GET  = build("mutable_pointers_get", "Total mutable-pointers get calls.");
