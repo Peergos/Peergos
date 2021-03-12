@@ -504,10 +504,11 @@ public class NetworkAccess {
                             writer.secret.signMessage(blobSha), metaBlob, tid))
                     .thenCompose(blobHash -> tree.put(version.props, owner, writer, mapKey,
                             metadata.committedHash(), blobHash, tid)
-                            .thenCompose(wd -> {
-                                cache.put(new Pair<>(wd.tree.get(), new ByteArrayWrapper(mapKey)), Optional.of(metadata));
-                                return committer.commit(owner, writer, wd, version, tid);
-                            }))
+                            .thenCompose(wd -> committer.commit(owner, writer, wd, version, tid)
+                                    .thenApply(s -> {
+                                        cache.put(new Pair<>(wd.tree.get(), new ByteArrayWrapper(mapKey)), Optional.of(metadata.withHash(blobHash)));
+                                        return s;
+                                    })))
                     .thenApply(committed -> current.withVersion(writer.publicKeyHash, committed.get(writer)));
         } catch (Exception e) {
             LOG.severe(e.getMessage());
