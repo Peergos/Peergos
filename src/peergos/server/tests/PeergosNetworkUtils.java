@@ -1646,7 +1646,7 @@ public class PeergosNetworkUtils {
     public static void friendBetweenGroups(List<UserContext> a, List<UserContext> b) {
         for (UserContext userA : a) {
             for (UserContext userB : b) {
-                // send intial request
+                // send initial request
                 userA.sendFollowRequest(userB.username, SymmetricKey.random()).join();
 
                 // make sharer reciprocate all the follow requests
