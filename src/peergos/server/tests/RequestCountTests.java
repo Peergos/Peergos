@@ -60,7 +60,7 @@ public class RequestCountTests {
         // friend sharer with other user
         storageCounter.reset();
         friendBetweenGroups(Arrays.asList(sharer), shareeUsers);
-        Assert.assertTrue(storageCounter.requestTotal() <= 473);
+        Assert.assertTrue(storageCounter.requestTotal() <= 500);
 
         // friends are now connected
         // share a file from u1 to u2
@@ -80,6 +80,21 @@ public class RequestCountTests {
 
         storageCounter.reset();
         a.getFiles(items).join();
+        Assert.assertTrue(storageCounter.requestTotal() <= 1);
+
+        // share more items
+        for (int i=0; i < 5; i++) {
+            byte[] data = sharer.crypto.random.randomBytes(1*1024*1024);
+            Path file = Paths.get(sharer.username, random.nextInt() + "first-file.txt");
+            uploadAndShare(data, file, sharer, a.username);
+        }
+
+        storageCounter.reset();
+        SocialFeed feed2 = a.getSocialFeed().join().update().join();
+        Assert.assertTrue(storageCounter.requestTotal() <= 37);
+
+        storageCounter.reset();
+        List<SharedItem> items2 = feed2.getShared(feedSize + 1, feedSize + 6, a.crypto, a.network).join();
         Assert.assertTrue(storageCounter.requestTotal() <= 1);
     }
 
