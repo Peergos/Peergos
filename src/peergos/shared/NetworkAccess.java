@@ -424,7 +424,7 @@ public class NetworkAccess {
                 });
     }
 
-    private final LRUCache<Pair<Multihash, ByteArrayWrapper>, Optional<CryptreeNode>> cache = new LRUCache<>(100);
+    private final LRUCache<Pair<Multihash, ByteArrayWrapper>, Optional<CryptreeNode>> cache = new LRUCache<>(1_000);
 
     public CompletableFuture<Optional<CryptreeNode>> getMetadata(WriterData base, AbsoluteCapability cap) {
         if (base.tree.isPresent()) {
