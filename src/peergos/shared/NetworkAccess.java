@@ -285,29 +285,15 @@ public class NetworkAccess {
 
     public CompletableFuture<List<RetrievedCapability>> retrieveAllMetadata(List<AbsoluteCapability> links, Snapshot current) {
         List<CompletableFuture<Optional<RetrievedCapability>>> all = links.stream()
-                .map(link -> {
-                    PublicKeyHash owner = link.owner;
-                    PublicKeyHash writer = link.writer;
-                    byte[] mapKey = link.getMapKey();
-                    return current.withWriter(owner, writer, this).thenCompose(version ->
-                            tree.get(version.get(writer).props, owner, writer, mapKey))
-                            .thenCompose(key -> {
-                                if (key.isPresent())
-                                    return dhtClient.get(key.get())
-                                            .thenApply(dataOpt ->  dataOpt
-                                                    .map(cbor -> new RetrievedCapability(
-                                                            link,
-                                                            CryptreeNode.fromCbor(cbor, link.rBaseKey, key.get()))));
-                                LOG.severe("Couldn't download link at: " + new Location(owner, writer, mapKey));
-                                Optional<RetrievedCapability> result = Optional.empty();
-                                return CompletableFuture.completedFuture(result);
-                            });
-                }).collect(Collectors.toList());
+                .map(link -> current.withWriter(link.owner, link.writer, this)
+                        .thenCompose(version -> getMetadata(version.get(link.writer).props, link)
+                                .thenApply(copt -> copt.map(c -> new RetrievedCapability(link, c)))))
+                .collect(Collectors.toList());
 
-        return Futures.combineAll(all).thenApply(optSet -> optSet.stream()
-                .filter(Optional::isPresent)
-                .map(Optional::get)
-                .collect(Collectors.toList()));
+        return Futures.combineAll(all)
+                .thenApply(optSet -> optSet.stream()
+                        .flatMap(Optional::stream)
+                        .collect(Collectors.toList()));
     }
 
     public CompletableFuture<Set<FileWrapper>> retrieveAll(List<EntryPoint> entries) {
@@ -431,8 +417,9 @@ public class NetworkAccess {
             Pair<Multihash, ByteArrayWrapper> cacheKey = new Pair<>(base.tree.get(), new ByteArrayWrapper(cap.getMapKey()));
             if (cache.containsKey(cacheKey))
                 return Futures.of(cache.get(cacheKey));
-        }
-        return base.tree.map(root -> dhtClient.getChampLookup(cap.owner, root, cap.getMapKey())).orElse(Futures.of(Collections.emptyList()))
+        } else
+            return Futures.of(Optional.empty());
+        return dhtClient.getChampLookup(cap.owner, base.tree.get(), cap.getMapKey())
                 .thenCompose(blocks -> ChampWrapper.create(base.tree.get(), x -> Futures.of(x.data), dhtClient, hasher, c -> (CborObject.CborMerkleLink) c)
                         .thenCompose(tree -> tree.get(cap.getMapKey()))
                         .thenApply(c -> c.map(x -> x.target).map(MaybeMultihash::of).orElse(MaybeMultihash.empty()))
