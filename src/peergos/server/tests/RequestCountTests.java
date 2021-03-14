@@ -48,11 +48,11 @@ public class RequestCountTests {
 
         storageCounter.reset();
         UserContext sharer = PeergosNetworkUtils.ensureSignedUp(generateUsername(random), password, network, crypto);
-        Assert.assertTrue("signup request count", storageCounter.requestTotal() <= 30);
+        Assert.assertTrue("signup request count", storageCounter.requestTotal() <= 25);
 
         storageCounter.reset();
         PeergosNetworkUtils.ensureSignedUp(sharer.username, password, network, crypto);
-        Assert.assertTrue("login request count", storageCounter.requestTotal() <= 5);
+        Assert.assertTrue("login request count", storageCounter.requestTotal() <= 3);
 
         List<UserContext> shareeUsers = getUserContextsForNode(network, random, 1, Arrays.asList(password, password));
         UserContext a = shareeUsers.get(0);
@@ -60,7 +60,7 @@ public class RequestCountTests {
         // friend sharer with other user
         storageCounter.reset();
         friendBetweenGroups(Arrays.asList(sharer), shareeUsers);
-        Assert.assertTrue(storageCounter.requestTotal() <= 510);
+        Assert.assertTrue(storageCounter.requestTotal() <= 400);
 
         // friends are now connected
         // share a file from u1 to u2

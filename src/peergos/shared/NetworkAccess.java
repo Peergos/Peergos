@@ -43,7 +43,7 @@ public class NetworkAccess {
 
     @JsProperty
     public final List<String> usernames;
-    private final LRUCache<Pair<Multihash, ByteArrayWrapper>, Optional<CryptreeNode>> cache;
+    private final CryptreeCache cache;
     private final LocalDateTime creationTime;
     private final boolean isJavascript;
 
@@ -58,7 +58,7 @@ public class NetworkAccess {
                          ServerMessager serverMessager,
                          Hasher hasher,
                          List<String> usernames,
-                         LRUCache<Pair<Multihash, ByteArrayWrapper>, Optional<CryptreeNode>> cache,
+                         CryptreeCache cache,
                          boolean isJavascript) {
         this.coreNode = coreNode;
         this.social = social;
@@ -89,7 +89,7 @@ public class NetworkAccess {
                          List<String> usernames,
                          boolean isJavascript) {
         this(coreNode, social, dhtClient, mutable, tree, synchronizer, instanceAdmin, spaceUsage, serverMessager,
-                hasher, usernames, new LRUCache<>(1_000), isJavascript);
+                hasher, usernames, new CryptreeCache(), isJavascript);
     }
 
     public boolean isJavascript() {
@@ -430,12 +430,11 @@ public class NetworkAccess {
     }
 
     public CompletableFuture<Optional<CryptreeNode>> getMetadata(WriterData base, AbsoluteCapability cap) {
-        if (base.tree.isPresent()) {
-            Pair<Multihash, ByteArrayWrapper> cacheKey = new Pair<>(base.tree.get(), new ByteArrayWrapper(cap.getMapKey()));
-            if (cache.containsKey(cacheKey))
-                return Futures.of(cache.get(cacheKey));
-        } else
+        if (base.tree.isEmpty())
             return Futures.of(Optional.empty());
+        Pair<Multihash, ByteArrayWrapper> cacheKey = new Pair<>(base.tree.get(), new ByteArrayWrapper(cap.getMapKey()));
+        if (cache.containsKey(cacheKey))
+            return Futures.of(cache.get(cacheKey));
         return dhtClient.getChampLookup(cap.owner, base.tree.get(), cap.getMapKey())
                 .thenCompose(blocks -> ChampWrapper.create(base.tree.get(), x -> Futures.of(x.data), dhtClient, hasher, c -> (CborObject.CborMerkleLink) c)
                         .thenCompose(tree -> tree.get(cap.getMapKey()))
@@ -445,7 +444,7 @@ public class NetworkAccess {
                                 return dhtClient.get(btreeValue.get())
                                         .thenApply(value -> value.map(cbor -> CryptreeNode.fromCbor(cbor, cap.rBaseKey, btreeValue.get())))
                                         .thenApply(res -> {
-                                            cache.put(new Pair<>(base.tree.get(), new ByteArrayWrapper(cap.getMapKey())), res);
+                                            cache.put(cacheKey, res);
                                             return res;
                                         });
                             return CompletableFuture.completedFuture(Optional.empty());
@@ -509,7 +508,7 @@ public class NetworkAccess {
                             metadata.committedHash(), blobHash, tid)
                             .thenCompose(wd -> committer.commit(owner, writer, wd, version, tid)
                                     .thenApply(s -> {
-                                        cache.put(new Pair<>(wd.tree.get(), new ByteArrayWrapper(mapKey)), Optional.of(metadata.withHash(blobHash)));
+                                        cache.update(version.props.tree, new Pair<>(wd.tree.get(), new ByteArrayWrapper(mapKey)), Optional.of(metadata.withHash(blobHash)));
                                         return s;
                                     })))
                     .thenApply(committed -> current.withVersion(writer.publicKeyHash, committed.get(writer)));
