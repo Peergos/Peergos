@@ -48,11 +48,11 @@ public class RequestCountTests {
 
         storageCounter.reset();
         UserContext sharer = PeergosNetworkUtils.ensureSignedUp(generateUsername(random), password, network, crypto);
-        Assert.assertTrue("signup request count", storageCounter.requestTotal() <= 25);
+        Assert.assertTrue("signup request count: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 25);
 
         storageCounter.reset();
         PeergosNetworkUtils.ensureSignedUp(sharer.username, password, network, crypto);
-        Assert.assertTrue("login request count", storageCounter.requestTotal() <= 3);
+        Assert.assertTrue("login request count: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 3);
 
         List<UserContext> shareeUsers = getUserContextsForNode(network, random, 1, Arrays.asList(password, password));
         UserContext a = shareeUsers.get(0);
@@ -60,7 +60,7 @@ public class RequestCountTests {
         // friend sharer with other user
         storageCounter.reset();
         friendBetweenGroups(Arrays.asList(sharer), shareeUsers);
-        Assert.assertTrue(storageCounter.requestTotal() <= 400);
+        Assert.assertTrue("friending 2 users: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 400);
 
         // friends are now connected
         // share a file from u1 to u2
@@ -71,7 +71,7 @@ public class RequestCountTests {
         // check 'a' can see the shared file in their social feed
         storageCounter.reset();
         SocialFeed feed = a.getSocialFeed().join();
-        Assert.assertTrue(storageCounter.requestTotal() <= 85);
+        Assert.assertTrue("initialise social feed: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 85);
         int feedSize = 2;
 
         storageCounter.reset();
@@ -91,7 +91,7 @@ public class RequestCountTests {
 
         storageCounter.reset();
         SocialFeed feed2 = a.getSocialFeed().join().update().join();
-        Assert.assertTrue(storageCounter.requestTotal() <= 40);
+        Assert.assertTrue("load 5 items in social feed: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 40);
 
         storageCounter.reset();
         List<SharedItem> items2 = feed2.getShared(feedSize + 1, feedSize + 6, a.crypto, a.network).join();
