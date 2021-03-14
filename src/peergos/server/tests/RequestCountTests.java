@@ -60,7 +60,7 @@ public class RequestCountTests {
         // friend sharer with other user
         storageCounter.reset();
         friendBetweenGroups(Arrays.asList(sharer), shareeUsers);
-        Assert.assertTrue(storageCounter.requestTotal() <= 528);
+        Assert.assertTrue(storageCounter.requestTotal() <= 550);
 
         // friends are now connected
         // share a file from u1 to u2
