@@ -52,7 +52,7 @@ public class RequestCountTests {
 
         storageCounter.reset();
         PeergosNetworkUtils.ensureSignedUp(sharer.username, password, network, crypto);
-        Assert.assertTrue("login request count", storageCounter.requestTotal() <= 5);
+        Assert.assertTrue("login request count", storageCounter.requestTotal() <= 8);
 
         List<UserContext> shareeUsers = getUserContextsForNode(network, random, 1, Arrays.asList(password, password));
         UserContext a = shareeUsers.get(0);
@@ -60,7 +60,7 @@ public class RequestCountTests {
         // friend sharer with other user
         storageCounter.reset();
         friendBetweenGroups(Arrays.asList(sharer), shareeUsers);
-        Assert.assertTrue(storageCounter.requestTotal() <= 500);
+        Assert.assertTrue(storageCounter.requestTotal() <= 528);
 
         // friends are now connected
         // share a file from u1 to u2
@@ -71,7 +71,7 @@ public class RequestCountTests {
         // check 'a' can see the shared file in their social feed
         storageCounter.reset();
         SocialFeed feed = a.getSocialFeed().join();
-        Assert.assertTrue(storageCounter.requestTotal() <= 82);
+        Assert.assertTrue(storageCounter.requestTotal() <= 85);
         int feedSize = 2;
 
         storageCounter.reset();
@@ -80,7 +80,7 @@ public class RequestCountTests {
 
         storageCounter.reset();
         a.getFiles(items).join();
-        Assert.assertTrue(storageCounter.requestTotal() <= 1);
+        Assert.assertTrue(storageCounter.requestTotal() <= 0);
 
         // share more items
         for (int i=0; i < 5; i++) {
@@ -91,7 +91,7 @@ public class RequestCountTests {
 
         storageCounter.reset();
         SocialFeed feed2 = a.getSocialFeed().join().update().join();
-        Assert.assertTrue(storageCounter.requestTotal() <= 39);
+        Assert.assertTrue(storageCounter.requestTotal() <= 42);
 
         storageCounter.reset();
         List<SharedItem> items2 = feed2.getShared(feedSize + 1, feedSize + 6, a.crypto, a.network).join();
