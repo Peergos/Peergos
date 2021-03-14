@@ -43,6 +43,7 @@ public class NetworkAccess {
 
     @JsProperty
     public final List<String> usernames;
+    private final LRUCache<Pair<Multihash, ByteArrayWrapper>, Optional<CryptreeNode>> cache;
     private final LocalDateTime creationTime;
     private final boolean isJavascript;
 
@@ -57,6 +58,7 @@ public class NetworkAccess {
                          ServerMessager serverMessager,
                          Hasher hasher,
                          List<String> usernames,
+                         LRUCache<Pair<Multihash, ByteArrayWrapper>, Optional<CryptreeNode>> cache,
                          boolean isJavascript) {
         this.coreNode = coreNode;
         this.social = social;
@@ -69,8 +71,25 @@ public class NetworkAccess {
         this.serverMessager = serverMessager;
         this.hasher = hasher;
         this.usernames = usernames;
+        this.cache = cache;
         this.creationTime = LocalDateTime.now();
         this.isJavascript = isJavascript;
+    }
+
+    public NetworkAccess(CoreNode coreNode,
+                         SocialNetwork social,
+                         ContentAddressedStorage dhtClient,
+                         MutablePointers mutable,
+                         MutableTree tree,
+                         WriteSynchronizer synchronizer,
+                         InstanceAdmin instanceAdmin,
+                         SpaceUsage spaceUsage,
+                         ServerMessager serverMessager,
+                         Hasher hasher,
+                         List<String> usernames,
+                         boolean isJavascript) {
+        this(coreNode, social, dhtClient, mutable, tree, synchronizer, instanceAdmin, spaceUsage, serverMessager,
+                hasher, usernames, new LRUCache<>(1_000), isJavascript);
     }
 
     public boolean isJavascript() {
@@ -79,7 +98,7 @@ public class NetworkAccess {
 
     public NetworkAccess withCorenode(CoreNode newCore) {
         return new NetworkAccess(newCore, social, dhtClient, mutable, tree, synchronizer, instanceAdmin,
-                spaceUsage, serverMessager, hasher, usernames, isJavascript);
+                spaceUsage, serverMessager, hasher, usernames, cache, isJavascript);
     }
 
     public NetworkAccess withoutS3BlockStore() {
@@ -409,8 +428,6 @@ public class NetworkAccess {
                                     }));
                 });
     }
-
-    private final LRUCache<Pair<Multihash, ByteArrayWrapper>, Optional<CryptreeNode>> cache = new LRUCache<>(1_000);
 
     public CompletableFuture<Optional<CryptreeNode>> getMetadata(WriterData base, AbsoluteCapability cap) {
         if (base.tree.isPresent()) {
