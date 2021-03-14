@@ -925,7 +925,7 @@ public class MultiUserTests {
         List<UserContext> updatedUserContexts = friends.stream()
                 .map(e -> {
                     try {
-                        return ensureSignedUp(e.username, shareePasswords.get(friends.indexOf(e)), network, crypto);
+                        return ensureSignedUp(e.username, shareePasswords.get(friends.indexOf(e)), network.clear(), crypto);
                     } catch (Exception ex) {
                         throw new IllegalStateException(ex.getMessage(), ex);
                     }
