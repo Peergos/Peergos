@@ -154,8 +154,8 @@ public class NetworkAccess {
         return new HTTPCoreNode(poster);
     }
 
-    public static ContentAddressedStorage buildLocalDht(HttpPoster apiPoster, boolean isPeergosServer) {
-        return new ContentAddressedStorage.HTTP(apiPoster, isPeergosServer);
+    public static ContentAddressedStorage buildLocalDht(HttpPoster apiPoster, boolean isPeergosServer, Hasher hasher) {
+        return new ContentAddressedStorage.HTTP(apiPoster, isPeergosServer, hasher);
     }
 
     public static CompletableFuture<ContentAddressedStorage> buildDirectS3Blockstore(ContentAddressedStorage localDht,
@@ -177,10 +177,11 @@ public class NetworkAccess {
         System.setErr(new ConsolePrintStream());
         JavaScriptPoster relative = new JavaScriptPoster(false, isPublic);
         JavaScriptPoster absolute = new JavaScriptPoster(true, true);
+        ScryptJS hasher = new ScryptJS();
 
         return isPeergosServer(relative)
                 .thenApply(isPeergosServer -> new Pair<>(isPeergosServer ? relative : absolute, isPeergosServer))
-                .thenCompose(p -> build(p.left, p.left, pkiServerNodeId, buildLocalDht(p.left, p.right), new ScryptJS(), true))
+                .thenCompose(p -> build(p.left, p.left, pkiServerNodeId, buildLocalDht(p.left, p.right, hasher), hasher, true))
                 .thenApply(e -> e.withMutablePointerCache(7_000));
     }
 
@@ -220,7 +221,7 @@ public class NetworkAccess {
                     }
 
                     // We are not on a Peergos server, hopefully an IPFS gateway
-                    ContentAddressedStorage localIpfs = buildLocalDht(apiPoster, false);
+                    ContentAddressedStorage localIpfs = buildLocalDht(apiPoster, false, hasher);
                     CoreNode core = buildProxyingCorenode(p2pPoster, pkiServerNodeId);
                     core.getUsernames("").thenCompose(usernames ->
                             build(core, localIpfs, apiPoster, p2pPoster, hasher, usernames, false, isJavascript)

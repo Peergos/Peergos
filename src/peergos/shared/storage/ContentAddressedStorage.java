@@ -360,11 +360,13 @@ public interface ContentAddressedStorage {
         public static final String REFS_LOCAL = "refs/local";
 
         private final boolean isPeergosServer;
+        private final Hasher hasher;
         private final Random r = new Random();
 
-        public HTTP(HttpPoster poster, boolean isPeergosServer) {
+        public HTTP(HttpPoster poster, boolean isPeergosServer, Hasher hasher) {
             this.poster = poster;
             this.isPeergosServer = isPeergosServer;
+            this.hasher = hasher;
         }
 
         @Override
@@ -462,6 +464,9 @@ public interface ContentAddressedStorage {
 
         @Override
         public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey) {
+            if (! isPeergosServer) {
+                return getChampLookup(root, champKey, hasher);
+            }
             return poster.get(apiPrefix + CHAMP_GET + "?arg=" + root.toString() + "&arg=" + ArrayOps.bytesToHex(champKey) + "&owner=" + encode(owner.toString()))
                     .thenApply(CborObject::fromByteArray)
                     .thenApply(c -> (CborObject.CborList)c)
