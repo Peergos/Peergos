@@ -30,7 +30,7 @@ public class RequestCountTests {
         MutableTree mutableTree = new MutableTreeImpl(service.mutable, service.storage, crypto.hasher, synchronizer);
         RequestCountingStorage requestCounter = new RequestCountingStorage(service.storage);
         this.storageCounter = requestCounter;
-        CachingStorage dhtClient = new CachingStorage(requestCounter, 1_000, 50 * 1024);
+        CachingVerifyingStorage dhtClient = new CachingVerifyingStorage(requestCounter, 50 * 1024, 1_000, crypto.hasher);
         this.network = new NetworkAccess(service.coreNode, service.social, dhtClient,
                 service.mutable, mutableTree, synchronizer, service.controller, service.usage, service.serverMessages,
                 crypto.hasher, Arrays.asList("peergos"), false);
@@ -48,11 +48,11 @@ public class RequestCountTests {
 
         storageCounter.reset();
         UserContext sharer = PeergosNetworkUtils.ensureSignedUp(generateUsername(random), password, network, crypto);
-        Assert.assertTrue("signup request count", storageCounter.requestTotal() <= 33);
+        Assert.assertTrue("signup request count: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 25);
 
         storageCounter.reset();
         PeergosNetworkUtils.ensureSignedUp(sharer.username, password, network, crypto);
-        Assert.assertTrue("login request count", storageCounter.requestTotal() <= 5);
+        Assert.assertTrue("login request count: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 3);
 
         List<UserContext> shareeUsers = getUserContextsForNode(network, random, 1, Arrays.asList(password, password));
         UserContext a = shareeUsers.get(0);
@@ -60,7 +60,7 @@ public class RequestCountTests {
         // friend sharer with other user
         storageCounter.reset();
         friendBetweenGroups(Arrays.asList(sharer), shareeUsers);
-        Assert.assertTrue(storageCounter.requestTotal() <= 500);
+        Assert.assertTrue("friending 2 users: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 400);
 
         // friends are now connected
         // share a file from u1 to u2
@@ -71,7 +71,7 @@ public class RequestCountTests {
         // check 'a' can see the shared file in their social feed
         storageCounter.reset();
         SocialFeed feed = a.getSocialFeed().join();
-        Assert.assertTrue(storageCounter.requestTotal() <= 82);
+        Assert.assertTrue("initialise social feed: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 85);
         int feedSize = 2;
 
         storageCounter.reset();
@@ -80,7 +80,7 @@ public class RequestCountTests {
 
         storageCounter.reset();
         a.getFiles(items).join();
-        Assert.assertTrue(storageCounter.requestTotal() <= 1);
+        Assert.assertTrue(storageCounter.requestTotal() <= 0);
 
         // share more items
         for (int i=0; i < 5; i++) {
@@ -91,7 +91,7 @@ public class RequestCountTests {
 
         storageCounter.reset();
         SocialFeed feed2 = a.getSocialFeed().join().update().join();
-        Assert.assertTrue(storageCounter.requestTotal() <= 39);
+        Assert.assertTrue("load 5 items in social feed: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 40);
 
         storageCounter.reset();
         List<SharedItem> items2 = feed2.getShared(feedSize + 1, feedSize + 6, a.crypto, a.network).join();

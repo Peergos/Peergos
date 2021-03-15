@@ -43,6 +43,7 @@ public class NetworkAccess {
 
     @JsProperty
     public final List<String> usernames;
+    private final CryptreeCache cache;
     private final LocalDateTime creationTime;
     private final boolean isJavascript;
 
@@ -57,6 +58,7 @@ public class NetworkAccess {
                          ServerMessager serverMessager,
                          Hasher hasher,
                          List<String> usernames,
+                         CryptreeCache cache,
                          boolean isJavascript) {
         this.coreNode = coreNode;
         this.social = social;
@@ -69,8 +71,25 @@ public class NetworkAccess {
         this.serverMessager = serverMessager;
         this.hasher = hasher;
         this.usernames = usernames;
+        this.cache = cache;
         this.creationTime = LocalDateTime.now();
         this.isJavascript = isJavascript;
+    }
+
+    public NetworkAccess(CoreNode coreNode,
+                         SocialNetwork social,
+                         ContentAddressedStorage dhtClient,
+                         MutablePointers mutable,
+                         MutableTree tree,
+                         WriteSynchronizer synchronizer,
+                         InstanceAdmin instanceAdmin,
+                         SpaceUsage spaceUsage,
+                         ServerMessager serverMessager,
+                         Hasher hasher,
+                         List<String> usernames,
+                         boolean isJavascript) {
+        this(coreNode, social, dhtClient, mutable, tree, synchronizer, instanceAdmin, spaceUsage, serverMessager,
+                hasher, usernames, new CryptreeCache(), isJavascript);
     }
 
     public boolean isJavascript() {
@@ -79,7 +98,7 @@ public class NetworkAccess {
 
     public NetworkAccess withCorenode(CoreNode newCore) {
         return new NetworkAccess(newCore, social, dhtClient, mutable, tree, synchronizer, instanceAdmin,
-                spaceUsage, serverMessager, hasher, usernames, isJavascript);
+                spaceUsage, serverMessager, hasher, usernames, cache, isJavascript);
     }
 
     public NetworkAccess withoutS3BlockStore() {
@@ -285,29 +304,15 @@ public class NetworkAccess {
 
     public CompletableFuture<List<RetrievedCapability>> retrieveAllMetadata(List<AbsoluteCapability> links, Snapshot current) {
         List<CompletableFuture<Optional<RetrievedCapability>>> all = links.stream()
-                .map(link -> {
-                    PublicKeyHash owner = link.owner;
-                    PublicKeyHash writer = link.writer;
-                    byte[] mapKey = link.getMapKey();
-                    return current.withWriter(owner, writer, this).thenCompose(version ->
-                            tree.get(version.get(writer).props, owner, writer, mapKey))
-                            .thenCompose(key -> {
-                                if (key.isPresent())
-                                    return dhtClient.get(key.get())
-                                            .thenApply(dataOpt ->  dataOpt
-                                                    .map(cbor -> new RetrievedCapability(
-                                                            link,
-                                                            CryptreeNode.fromCbor(cbor, link.rBaseKey, key.get()))));
-                                LOG.severe("Couldn't download link at: " + new Location(owner, writer, mapKey));
-                                Optional<RetrievedCapability> result = Optional.empty();
-                                return CompletableFuture.completedFuture(result);
-                            });
-                }).collect(Collectors.toList());
+                .map(link -> current.withWriter(link.owner, link.writer, this)
+                        .thenCompose(version -> getMetadata(version.get(link.writer).props, link)
+                                .thenApply(copt -> copt.map(c -> new RetrievedCapability(link, c)))))
+                .collect(Collectors.toList());
 
-        return Futures.combineAll(all).thenApply(optSet -> optSet.stream()
-                .filter(Optional::isPresent)
-                .map(Optional::get)
-                .collect(Collectors.toList()));
+        return Futures.combineAll(all)
+                .thenApply(optSet -> optSet.stream()
+                        .flatMap(Optional::stream)
+                        .collect(Collectors.toList()));
     }
 
     public CompletableFuture<Set<FileWrapper>> retrieveAll(List<EntryPoint> entries) {
@@ -424,15 +429,13 @@ public class NetworkAccess {
                 });
     }
 
-    private final LRUCache<Pair<Multihash, ByteArrayWrapper>, Optional<CryptreeNode>> cache = new LRUCache<>(1_000);
-
     public CompletableFuture<Optional<CryptreeNode>> getMetadata(WriterData base, AbsoluteCapability cap) {
-        if (base.tree.isPresent()) {
-            Pair<Multihash, ByteArrayWrapper> cacheKey = new Pair<>(base.tree.get(), new ByteArrayWrapper(cap.getMapKey()));
-            if (cache.containsKey(cacheKey))
-                return Futures.of(cache.get(cacheKey));
-        }
-        return base.tree.map(root -> dhtClient.getChampLookup(cap.owner, root, cap.getMapKey())).orElse(Futures.of(Collections.emptyList()))
+        if (base.tree.isEmpty())
+            return Futures.of(Optional.empty());
+        Pair<Multihash, ByteArrayWrapper> cacheKey = new Pair<>(base.tree.get(), new ByteArrayWrapper(cap.getMapKey()));
+        if (cache.containsKey(cacheKey))
+            return Futures.of(cache.get(cacheKey));
+        return dhtClient.getChampLookup(cap.owner, base.tree.get(), cap.getMapKey())
                 .thenCompose(blocks -> ChampWrapper.create(base.tree.get(), x -> Futures.of(x.data), dhtClient, hasher, c -> (CborObject.CborMerkleLink) c)
                         .thenCompose(tree -> tree.get(cap.getMapKey()))
                         .thenApply(c -> c.map(x -> x.target).map(MaybeMultihash::of).orElse(MaybeMultihash.empty()))
@@ -441,7 +444,7 @@ public class NetworkAccess {
                                 return dhtClient.get(btreeValue.get())
                                         .thenApply(value -> value.map(cbor -> CryptreeNode.fromCbor(cbor, cap.rBaseKey, btreeValue.get())))
                                         .thenApply(res -> {
-                                            cache.put(new Pair<>(base.tree.get(), new ByteArrayWrapper(cap.getMapKey())), res);
+                                            cache.put(cacheKey, res);
                                             return res;
                                         });
                             return CompletableFuture.completedFuture(Optional.empty());
@@ -505,7 +508,7 @@ public class NetworkAccess {
                             metadata.committedHash(), blobHash, tid)
                             .thenCompose(wd -> committer.commit(owner, writer, wd, version, tid)
                                     .thenApply(s -> {
-                                        cache.put(new Pair<>(wd.tree.get(), new ByteArrayWrapper(mapKey)), Optional.of(metadata.withHash(blobHash)));
+                                        cache.update(version.props.tree, new Pair<>(wd.tree.get(), new ByteArrayWrapper(mapKey)), Optional.of(metadata.withHash(blobHash)));
                                         return s;
                                     })))
                     .thenApply(committed -> current.withVersion(writer.publicKeyHash, committed.get(writer)));
