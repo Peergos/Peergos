@@ -49,8 +49,8 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
 
         private final HttpPoster poster;
 
-        public HTTP(HttpPoster poster, boolean isPeergosServer) {
-            super(poster, isPeergosServer);
+        public HTTP(HttpPoster poster, boolean isPeergosServer, Hasher hasher) {
+            super(poster, isPeergosServer, hasher);
             this.poster = poster;
         }
 
