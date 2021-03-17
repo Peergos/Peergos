@@ -5,6 +5,7 @@ import peergos.server.*;
 import peergos.server.storage.*;
 import peergos.server.util.*;
 import peergos.shared.*;
+import peergos.shared.crypto.symmetric.*;
 import peergos.shared.social.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
@@ -57,10 +58,32 @@ public class RequestCountTests {
         List<UserContext> shareeUsers = getUserContextsForNode(network, random, 1, Arrays.asList(password, password));
         UserContext a = shareeUsers.get(0);
 
+        // initialize friend and follower groups
+        a.getGroupNameMappings().join();
         // friend sharer with other user
         storageCounter.reset();
-        friendBetweenGroups(Arrays.asList(sharer), shareeUsers);
-        Assert.assertTrue("friending 2 users: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 400);
+        // send initial request
+        sharer.sendFollowRequest(a.username, SymmetricKey.random()).join();
+        Assert.assertTrue("send initial followrequest: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 30);
+
+        // make sharer reciprocate all the follow requests
+        storageCounter.reset();
+        List<FollowRequestWithCipherText> sharerRequests = a.processFollowRequests().join();
+        Assert.assertTrue("friending 2 users: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 3);
+        storageCounter.reset();
+        for (FollowRequestWithCipherText u1Request : sharerRequests) {
+            AbsoluteCapability pointer = u1Request.req.entry.get().pointer;
+            Assert.assertTrue("Read only capabilities are shared", ! pointer.wBaseKey.isPresent());
+            boolean accept = true;
+            boolean reciprocate = true;
+            a.sendReplyFollowRequest(u1Request, accept, reciprocate).join();
+        }
+        Assert.assertTrue("send reply follow request: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 170);
+
+        // complete the friendship connection
+        storageCounter.reset();
+        sharer.processFollowRequests().join();
+        Assert.assertTrue("friending complete: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 140);
 
         // friends are now connected
         // share a file from u1 to u2

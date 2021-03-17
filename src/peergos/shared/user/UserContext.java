@@ -1054,7 +1054,7 @@ public class UserContext {
         });
     }
 
-    private CompletableFuture<Groups> getGroupNameMappings() {
+    public CompletableFuture<Groups> getGroupNameMappings() {
         return FileUtils.getOrCreateObject(this,
                 Paths.get(username, SHARED_DIR_NAME, GROUPS_FILENAME),
                 () -> Groups.generate(crypto.random),
