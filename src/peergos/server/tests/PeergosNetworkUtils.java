@@ -5,6 +5,7 @@ import peergos.server.*;
 import peergos.server.storage.ResetableFileInputStream;
 import peergos.shared.Crypto;
 import peergos.shared.NetworkAccess;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.SymmetricKey;
 import peergos.shared.io.ipfs.multihash.Multihash;
 import peergos.shared.social.*;
@@ -36,6 +37,7 @@ public class PeergosNetworkUtils {
     }
 
     public static final Crypto crypto = Main.initCrypto();
+    public static final Hasher hasher = crypto.hasher;
 
     public static String randomString() {
         return UUID.randomUUID().toString();
@@ -1328,6 +1330,55 @@ public class PeergosNetworkUtils {
         SocialPost receivedPost = Serialize.parse(postFile.getInputStream(network, crypto, x -> {}).join(),
                 postFile.getSize(), SocialPost::fromCbor).join();
         assertTrue(receivedPost.body.equals(post.body));
+    }
+
+    public static void socialPostPropagation(NetworkAccess network, Random random) {
+        CryptreeNode.setMaxChildLinkPerBlob(10);
+
+        String password = "notagoodone";
+
+        UserContext a = PeergosNetworkUtils.ensureSignedUp("a"+generateUsername(random), password, network, crypto);
+
+        List<UserContext> shareeUsers = getUserContextsForNode(network, random, 2, Arrays.asList(password, password));
+        UserContext b = shareeUsers.get(0);
+        UserContext c = shareeUsers.get(1);
+
+        // friend a with others, b and c are not friends
+        friendBetweenGroups(Arrays.asList(a), shareeUsers);
+
+        // friends are now connected
+        // test social post propagation (comment from b on post from a gets to c)
+        SocialPost post = new SocialPost(SocialPost.Type.Text, a.username, "G'day, skip!", Arrays.asList("WELCOME"), LocalDateTime.now(),
+                SocialPost.Resharing.Friends, Optional.empty(),
+                Collections.emptyList(), Collections.emptyList(), Collections.emptyList());
+        Pair<Path, FileWrapper> p = a.getSocialFeed().join().createNewPost(post).join();
+        String aFriendsUid = a.getGroupUid(SocialState.FRIENDS_GROUP_NAME).join().get();
+        a.shareReadAccessWith(p.left, Set.of(aFriendsUid)).join();
+
+        // b receives the post
+        SocialFeed bFeed = b.getSocialFeed().join().update().join();
+        List<Pair<SharedItem, FileWrapper>> bPosts = bFeed.getSharedFiles(0, 25).join();
+        Pair<SharedItem, FileWrapper> sharedPost = bPosts.get(bPosts.size() - 1);
+
+        // b now comments on post from a
+        SocialPost reply = new SocialPost(SocialPost.Type.Text, b.username, "What an entrance!", Arrays.asList(), LocalDateTime.now(),
+                SocialPost.Resharing.Friends,
+                Optional.of(new SocialPost.Ref(sharedPost.left.path, sharedPost.left.cap, post.contentHash(hasher).join())),
+                Collections.emptyList(), Collections.emptyList(), Collections.emptyList());
+        Pair<Path, FileWrapper> replyFromB = bFeed.createNewPost(reply).join();
+        String bFriendsUid = b.getGroupUid(SocialState.FRIENDS_GROUP_NAME).join().get();
+        b.shareReadAccessWith(replyFromB.left, Set.of(bFriendsUid)).join();
+
+        // make sure a includes a ref to the comment on the original
+        a.getSocialFeed().join().update().join();
+
+        // check c gets the post and it references the comment
+        List<Pair<SharedItem, FileWrapper>> cPosts = c.getSocialFeed().join().update().join().getSharedFiles(0, 25).join();
+        Pair<SharedItem, FileWrapper> cPost = cPosts.get(cPosts.size() - 1);
+        SocialPost receivedPost = Serialize.parse(cPost.right.getInputStream(network, crypto, x -> {}).join(),
+                cPost.right.getSize(), SocialPost::fromCbor).join();
+        Assert.assertTrue(receivedPost.author.equals(a.username));
+        Assert.assertTrue(receivedPost.comments.get(0).cap.equals(replyFromB.right.readOnlyPointer()));
     }
 
     public static void socialFeedBug(NetworkAccess network, Random random) {

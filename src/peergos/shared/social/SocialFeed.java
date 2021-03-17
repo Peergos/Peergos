@@ -86,6 +86,7 @@ public class SocialFeed {
                     .thenApply(f -> new Pair<>(Paths.get(post.author).resolve(dir).resolve(uuid), f))
         );
     }
+
     @JsMethod
     public CompletableFuture<Pair<String, SocialPost.Ref>> uploadMediaForPost(AsyncReader media, int length,
                                                                        LocalDateTime postTime, ProgressConsumer<Long> monitor) {
