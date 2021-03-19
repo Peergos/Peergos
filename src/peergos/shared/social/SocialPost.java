@@ -13,15 +13,6 @@ import java.util.stream.*;
 
 @JsType
 public class SocialPost implements Cborable {
-    @JsType
-    public enum Type {
-        Text, // body is just text
-        Image, // 1 image in references
-        Video, // 1 video in references
-        Audio, // 1 audio file in references
-        Media, // several images/video/audio files in references
-        Poll // votes are merged in as comments, options are in body
-    }
 
     /** This enum describes the audience that a post is allowed to be shared with.
      *
@@ -108,7 +99,6 @@ public class SocialPost implements Cborable {
         }
     }
 
-    public final Type kind;
     public final String author;
     public final List<? extends Content> body;
     public final LocalDateTime postTime;
@@ -119,15 +109,13 @@ public class SocialPost implements Cborable {
     public final List<Ref> comments;
 
     @JsConstructor
-    public SocialPost(Type kind,
-                      String author,
+    public SocialPost(String author,
                       List<? extends Content> body,
                       LocalDateTime postTime,
                       Resharing shareTo,
                       Optional<Ref> parent,
                       List<SocialPost> previousVersions,
                       List<Ref> comments) {
-        this.kind = kind;
         this.author = author;
         this.body = body;
         this.postTime = postTime;
@@ -144,13 +132,13 @@ public class SocialPost implements Cborable {
                 .collect(Collectors.toList());
     }
 
-    public static SocialPost createInitialPost(Type type, String author, List<? extends Content> body, Resharing resharing) {
-        return new SocialPost(type, author, body, LocalDateTime.now(), resharing,
+    public static SocialPost createInitialPost(String author, List<? extends Content> body, Resharing resharing) {
+        return new SocialPost(author, body, LocalDateTime.now(), resharing,
                 Optional.empty(), Collections.emptyList(), Collections.emptyList());
     }
 
-    public static SocialPost createComment(Ref parent, Resharing fromParent, Type type, String author, List<? extends Content> body) {
-        return new SocialPost(type, author, body, LocalDateTime.now(), fromParent,
+    public static SocialPost createComment(Ref parent, Resharing fromParent, String author, List<? extends Content> body) {
+        return new SocialPost(author, body, LocalDateTime.now(), fromParent,
                 Optional.of(parent), Collections.emptyList(), Collections.emptyList());
     }
 
@@ -158,7 +146,7 @@ public class SocialPost implements Cborable {
                            LocalDateTime postTime) {
         ArrayList<SocialPost> versions = new ArrayList<>(previousVersions);
         versions.add(this);
-        return new SocialPost(kind, author, body, postTime, shareTo, parent, versions, comments);
+        return new SocialPost(author, body, postTime, shareTo, parent, versions, comments);
     }
 
     /** adding references to comments does not change the version of this comment (the hash ignores the comment refs)
@@ -170,7 +158,7 @@ public class SocialPost implements Cborable {
         ArrayList<Ref> updatedComments = new ArrayList<>(comments);
         if (! comments.contains(comment))
             updatedComments.add(comment);
-        return new SocialPost(kind, author, body, postTime, shareTo, parent, previousVersions, updatedComments);
+        return new SocialPost(author, body, postTime, shareTo, parent, previousVersions, updatedComments);
     }
 
     public SocialPost addComments(List<Ref> newComments) {
@@ -179,11 +167,11 @@ public class SocialPost implements Cborable {
             if (!updatedComments.contains(comment))
                 updatedComments.add(comment);
         }
-        return new SocialPost(kind, author, body, postTime, shareTo, parent, previousVersions, updatedComments);
+        return new SocialPost(author, body, postTime, shareTo, parent, previousVersions, updatedComments);
     }
 
     private byte[] serializeWithoutComments() {
-        return new SocialPost(kind, author, body, postTime, shareTo, parent,
+        return new SocialPost(author, body, postTime, shareTo, parent,
                 previousVersions, Collections.emptyList()).serialize();
     }
 
@@ -194,7 +182,6 @@ public class SocialPost implements Cborable {
     @Override
     public CborObject toCbor() {
         SortedMap<String, Cborable> state = new TreeMap<>();
-        state.put("k", new CborObject.CborString(kind.name()));
         state.put("a", new CborObject.CborString(author));
         state.put("b", new CborObject.CborList(body));
         state.put("t", new CborObject.CborLong(postTime.toEpochSecond(ZoneOffset.UTC)));
@@ -222,7 +209,6 @@ public class SocialPost implements Cborable {
 
         CborObject.CborMap m = withMimeType.get(1, c -> (CborObject.CborMap)c);
 
-        Type type = Type.valueOf(m.getString("k"));
         String author = m.getString("a");
         List<Content> body = m.getList("b", Content::fromCbor);
         LocalDateTime postTime = m.get("t", c -> LocalDateTime.ofEpochSecond(((CborObject.CborLong)c).value, 0, ZoneOffset.UTC));
@@ -231,7 +217,7 @@ public class SocialPost implements Cborable {
         List<SocialPost> previousVersions = m.getList("v", SocialPost::fromCbor);
         List<Ref> comments = m.getList("d", Ref::fromCbor);
 
-        return new SocialPost(type, author, body, postTime, shareTo, parent, previousVersions, comments);
+        return new SocialPost(author, body, postTime, shareTo, parent, previousVersions, comments);
     }
 
     public static class Ref implements Cborable {
