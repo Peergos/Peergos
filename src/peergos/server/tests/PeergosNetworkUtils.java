@@ -223,7 +223,8 @@ public class PeergosNetworkUtils {
         SocialPost.Type type = peergos.shared.social.SocialPost.Type.Text;
         SocialPost.Resharing resharingType = SocialPost.Resharing.Friends;
         SocialPost.Ref parent = new SocialPost.Ref(sharedItem.path, sharedItem.cap, hash);
-        SocialPost replySocialPost = SocialPost.createComment(parent, resharingType, type, sharee.username, replyText, Collections.emptyList(), Collections.emptyList());
+        SocialPost replySocialPost = SocialPost.createComment(parent, resharingType, type, sharee.username,
+                Arrays.asList(new SocialPost.Content.Text(replyText)));
         Pair<Path, FileWrapper> result = receiverFeed.createNewPost(replySocialPost).join();
         String friendGroup = SocialState.FRIENDS_GROUP_NAME;
         String receiverGroupUid = sharee.getSocialState().join().groupNameToUid.get(friendGroup);
@@ -1318,9 +1319,9 @@ public class PeergosNetworkUtils {
         Assert.assertTrue(item3.cap.equals(readCap3));
 
         // social post
-        SocialPost post = new SocialPost(SocialPost.Type.Text, sharer.username, "G'day, skip!", Arrays.asList("WELCOME"), LocalDateTime.now(),
-                SocialPost.Resharing.Friends, Optional.empty(),
-                Collections.emptyList(), Collections.emptyList(), Collections.emptyList());
+        List<SocialPost.Content.Text> postBody = Arrays.asList(new SocialPost.Content.Text("G'day, skip!"));
+        SocialPost post = new SocialPost(SocialPost.Type.Text, sharer.username, postBody, LocalDateTime.now(),
+                SocialPost.Resharing.Friends, Optional.empty(), Collections.emptyList(), Collections.emptyList());
         Pair<Path, FileWrapper> p = sharer.getSocialFeed().join().createNewPost(post).join();
         sharer.shareReadAccessWith(p.left, Set.of(a.username)).join();
         List<SharedItem> withPost = freshFeed.update().join().getShared(0, feedSize + 5, crypto, fresherA.network).join();
@@ -1348,9 +1349,10 @@ public class PeergosNetworkUtils {
 
         // friends are now connected
         // test social post propagation (comment from b on post from a gets to c)
-        SocialPost post = new SocialPost(SocialPost.Type.Text, a.username, "G'day, skip!", Arrays.asList("WELCOME"), LocalDateTime.now(),
+        SocialPost post = new SocialPost(SocialPost.Type.Text, a.username,
+                Arrays.asList(new SocialPost.Content.Text("G'day, skip!")), LocalDateTime.now(),
                 SocialPost.Resharing.Friends, Optional.empty(),
-                Collections.emptyList(), Collections.emptyList(), Collections.emptyList());
+                Collections.emptyList(), Collections.emptyList());
         Pair<Path, FileWrapper> p = a.getSocialFeed().join().createNewPost(post).join();
         String aFriendsUid = a.getGroupUid(SocialState.FRIENDS_GROUP_NAME).join().get();
         a.shareReadAccessWith(p.left, Set.of(aFriendsUid)).join();
@@ -1361,10 +1363,11 @@ public class PeergosNetworkUtils {
         Pair<SharedItem, FileWrapper> sharedPost = bPosts.get(bPosts.size() - 1);
 
         // b now comments on post from a
-        SocialPost reply = new SocialPost(SocialPost.Type.Text, b.username, "What an entrance!", Arrays.asList(), LocalDateTime.now(),
+        SocialPost reply = new SocialPost(SocialPost.Type.Text, b.username,
+                Arrays.asList(new SocialPost.Content.Text("What an entrance!")), LocalDateTime.now(),
                 SocialPost.Resharing.Friends,
                 Optional.of(new SocialPost.Ref(sharedPost.left.path, sharedPost.left.cap, post.contentHash(hasher).join())),
-                Collections.emptyList(), Collections.emptyList(), Collections.emptyList());
+                Collections.emptyList(), Collections.emptyList());
         Pair<Path, FileWrapper> replyFromB = bFeed.createNewPost(reply).join();
         String bFriendsUid = b.getGroupUid(SocialState.FRIENDS_GROUP_NAME).join().get();
         b.shareReadAccessWith(replyFromB.left, Set.of(bFriendsUid)).join();
@@ -1402,16 +1405,14 @@ public class PeergosNetworkUtils {
         SocialPost.Ref ref = feed.uploadMediaForPost(reader, fileData.length, LocalDateTime.now(), c -> {}).join().right;
         SocialPost.Resharing resharingType = SocialPost.Resharing.Friends;
         SocialPost.Type commentType = SocialPost.Type.Image;
-        List media = Arrays.asList(ref);
-        SocialPost socialPost = SocialPost.createInitialPost(commentType, sharer.username, "aaaa", Collections.emptyList(), media, resharingType);
+        List<? extends SocialPost.Content> body = Arrays.asList(new SocialPost.Content.Text("aaaa"), new SocialPost.Content.Reference(ref));
+        SocialPost socialPost = SocialPost.createInitialPost(commentType, sharer.username, body, resharingType);
 
         Pair<Path, FileWrapper> result = feed.createNewPost(socialPost).join();
 
-        List<String> tags = Collections.emptyList();
         LocalDateTime postTime = LocalDateTime.now();
-        List<SocialPost.Ref> references = new ArrayList<>(socialPost.references);
         String updatedBody = "bbbbb";
-        socialPost = socialPost.edit(updatedBody, tags, postTime, references);
+        socialPost = socialPost.edit(Arrays.asList(new SocialPost.Content.Text(updatedBody)), postTime);
 
         String uuid = result.left.getFileName().toString();
         result = feed.updatePost(uuid, socialPost).join();
@@ -1432,7 +1433,7 @@ public class PeergosNetworkUtils {
         SocialPost loadedSocialPost = Serialize.parse(socialFile, SocialPost::fromCbor, sharee.network, crypto).join();
         assertTrue(loadedSocialPost.body.equals(updatedBody));
 
-        SocialPost.Ref mediaRef = loadedSocialPost.references.get(0);
+        SocialPost.Ref mediaRef = ((SocialPost.Content.Reference)loadedSocialPost.body.get(1)).ref;
         Optional<FileWrapper> optFile = sharee.network.getFile(mediaRef.cap, sharer.username).join();
         assertTrue(optFile.isPresent());
 
@@ -1441,7 +1442,7 @@ public class PeergosNetworkUtils {
         Multihash hash = loadedSocialPost.contentHash(sharee.crypto.hasher).join();
         SocialPost.Type type = peergos.shared.social.SocialPost.Type.Text;
         SocialPost.Ref parent = new SocialPost.Ref(sharedItem.path, sharedItem.cap, hash);
-        SocialPost replySocialPost = SocialPost.createComment(parent, resharingType, type, sharee.username, replyText, Collections.emptyList(), Collections.emptyList());
+        SocialPost replySocialPost = SocialPost.createComment(parent, resharingType, type, sharee.username, Arrays.asList(new SocialPost.Content.Text(replyText)));
         result = receiverFeed.createNewPost(replySocialPost).join();
         String receiverGroupUid = sharee.getSocialState().join().groupNameToUid.get(friendGroup);
         res = sharee.shareReadAccessWith(result.left, Set.of(receiverGroupUid)).join();
@@ -1473,9 +1474,9 @@ public class PeergosNetworkUtils {
         SocialFeed feed = sharer.getSocialFeed().join();
         SocialPost.Resharing resharingType = SocialPost.Resharing.Friends;
         SocialPost.Type commentType = SocialPost.Type.Text;
-        List media = Collections.emptyList();
         String bodyText = "aaaa";
-        SocialPost socialPost = SocialPost.createInitialPost(commentType, sharer.username, bodyText, Collections.emptyList(), media, resharingType);
+        List<SocialPost.Content.Text> body = Arrays.asList(new SocialPost.Content.Text(bodyText));
+        SocialPost socialPost = SocialPost.createInitialPost(commentType, sharer.username, body, resharingType);
         Pair<Path, FileWrapper> result = feed.createNewPost(socialPost).join();
 
         String friendGroup = SocialState.FRIENDS_GROUP_NAME;
@@ -1497,7 +1498,8 @@ public class PeergosNetworkUtils {
         Multihash hash = loadedSocialPost.contentHash(sharee.crypto.hasher).join();
         SocialPost.Type type = peergos.shared.social.SocialPost.Type.Text;
         SocialPost.Ref parent = new SocialPost.Ref(sharedItem.path, sharedItem.cap, hash);
-        SocialPost replySocialPost = SocialPost.createComment(parent, resharingType, type, sharee.username, replyText, Collections.emptyList(), Collections.emptyList());
+        SocialPost replySocialPost = SocialPost.createComment(parent, resharingType, type, sharee.username,
+                Arrays.asList(new SocialPost.Content.Text(replyText)));
         result = receiverFeed.createNewPost(replySocialPost).join();
         String receiverGroupUid = sharee.getSocialState().join().groupNameToUid.get(friendGroup);
         res = sharee.shareReadAccessWith(result.left, Set.of(receiverGroupUid)).join();
