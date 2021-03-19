@@ -66,6 +66,7 @@ public class SocialPost implements Cborable {
             }
         }
 
+        @JsType
         class Reference implements Content {
             public final Ref ref;
 
