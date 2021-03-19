@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <head>
-    <title>Fast seeking and encrypted history</title>
+    <title>Private and customizable profiles</title>
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta charset="utf-8">
     <meta name="viewport"
@@ -114,39 +114,33 @@
     <div class="col m3 col s4">
     </div>
     <div class="col m9 col s8" role="main" style="overflow-x:auto; padding-bottom: 10px;">
-    <h1 class="page-header main-title">Fast seeking and encrypted history</h1>
+    <h1 class="page-header main-title">Private and customizable profiles</h1>
     <div class="bs-docs-section">
-    <p>Another week, another set of cool new Peergos features. We've been hard at work and wanted to tell you about our latest new features: super fast seeking within a file, encrypted history (fix the back button), and storage usage and quota display. </p>
-<p>Imagine you were watching a long movie in Peergos using our built in streaming video player, and wanted to skip ahead to where you left off last time, around two hours in. Previously this involved downloading the encrypted metadata for every 5MiB chunk of the file (a few network requests), decrypting the location of the next chunk, and repeating this until you reach the desired offset. The links between the chunks are encrypted so that the outside world (or the server) can't deduce the size of your files. This was SLOOOOOW. To seek a gigabyte or so in took about 5 minutes, or more depending on your internet connection latency! No one wants to wait around that long. so we came up with a new scheme for deterministic, but still private subsequent chunk locations. Before this change each chunk location was 32 random bytes. In the new scheme we calculate the location of a subsequent chunk as the following, where the secret is 32 random bytes that are stored in the encrypted metadata of the first chunk of the file:</p>
+    <p>Our latest feature is another step towards making it easier to connect with your real life friends, family and colleagues on Peergos - social profiles! It goes without saying that we've put quite a bit of thought into how we can make sure you're able to keep certain pieces of personal information private and secure, while making other pieces public. Our solution: profiles that display only the information you choose to share with your friends on Peergos. </p>
+<p>You can now create a profile and set an image, status, bio and all the usual fields like email, phone, first name and last name. What you choose to fill in is up to you! What's more, you control who can see each of these fields by granting read access to each field to individual users or groups such as your friends or followers on Peergos. As you'd expect from Team Peergos, everything is end-to-end encrypted and the server can't see anything. </p>
+<p>To get started, <a href="https://beta.peergos.net/?signup=true">request an account</a> or <a href="https://beta.peergos.net">log in</a> to your existing account, click on the settings button in the top right hand corner and select "Profile". This will bring up the profile screen. Simply fill in some details, click "Save Profile", and then you'll be able to select who gets to see which parts of your profile. It's like having a fully customizable business card!</p>
 <p><center>
-<b>next location = sha256 hash(current location + secret)</b><br/>
-How we now calculate the locations of later parts of a file
-</center></p>
-<p>This means that to seek ahead we don't need to do <em>any</em> IO at all. We just do a bunch of hashing locally. This is ridiculously fast and doesn't leak to the world the connections between your chunks. We can now seek many gigabytes into a file in about 5s, which is mostly the time to retrive the eventual chunk of the file.</p>
-<p><center>
-<video src="theme/video/mind-blown.mp4" width="400px" controls="true"></video>
-</center></p>
-<p><center>
-http://localhost:8000/#{%22nonce%22:%22hl6U6X/ytjRGT+pi5wmJFq...,%22ciphertext%22:%22oK9JAGotzDOELvIon...}
+<img alt="profile" class="class" id="id" src="/theme/img/blog/profile.png" width="60%" />
 <br/>
-A URL with the encrypted path in the fragment.
+Setup your private profile and control who can see which parts.
 </center></p>
-<p>The second feature this week is encrypted history. Until now, if you press the browser back button you get logged out of Peergos. Super annoying! Now, every time you change directory we store the path, padded and encrypted, in the url fragment. If we didn't encrypt it then there'd be a log of every directory you visited in your browser history. The other requirement is that we catch changes to the url (e.g. caused by pressing the back button) and try to decrypt and interpet the resulting path. This makes navigation much more intuitive.</p>
-<p>We also add to the history if you open a file in Peergos, and if you log in through one of these links then we will restore you to the correct directory, and open any file you had open. This allows you to store "deep bookmarks" to things in Peergos which don't reveal anything to someone who get's access you your bookmarks!</p>
+<p>How does this work, you ask? Under the hood, each field on your profile ends up as a file in Peergos, which means we can leverage our built-in access control easily. We just agree a convention on the path, e.g. <tt>/username/.profile/firstname</tt>. Then, anyone trying to view your profile can only see the parts you've shared with them.</p>
 <p><center>
-<img alt="Space usage display" class="class" height="20%" id="id" src="/theme/img/peergos-usage.png" width="400px" />
+<img alt="robin hood" class="class" id="id" src="/theme/img/blog/robinhood.png" width="40%" />
 <br/>
-Space usage display
+A friend viewing Robin Hood's profile. They've only been granted access to a few fields.
 </center></p>
-<p>The third feature is a display of your current space usage and allowance. This lets you see at a glance how close to your limit you are, and you can request more from the admin for your storage node. That could be a friend who's running a Peergos server for you and gives you more storage for free. Or later down the line we will add the ability for a hosting provider to charge money for storage. After you've requested more storage an admin can approve it next time they log in.</p>
+<p>Like what you see? Claim your username by joining the waiting list for <a href="https://beta.peergos.net?signup=true">our beta</a>. In the meantime, you can try it out on our <a href="https://demo.peergos.net">demo server</a>. Don't forget to let us know what you think. We're always looking for feedback, so either <a href="mailto://peergos@peergos.org">drop us a line</a> or come say hi in our <a href="https://app.element.io/#/room/#peergos-chat:matrix.org">Matrix chatroom</a>.</p>
+<p>We have some exciting announcements coming soon so stay tuned! This work was built as part of our <a href="/posts/next-generation-internet">grant</a> from the Next Generation Internet program (<a href="https://pointer.ngi.eu/">NGI POINTER</a>).</p>
+<p><br/><br/></p>
+<hr />
 <p><center>
-<img alt="Request more space" class="class" height="20%" id="id" src="/theme/img/peergos-request-storage.png" width="400px" />
+<img alt="NGI Pointer" class="class" height="65px" id="id" src="/theme/img/ngi-logo.png" />
+<img alt="NGI Pointer" class="class" height="65" id="id" src="/theme/img/eu.png" />
+</center>
 <br/>
-Request more space
-</center></p>
-<p>These features are already live on the <a href="https://alpha.peergos.net">alpha server</a>, and in the <a href="https://alpha.peergos.net/public/peergos/releases/v0.1.0/">latest release</a> so go check it out!</p>
-<p>Happy Peergossing!</p>
-<p>-The Peergos team</p>
+This project has received funding from the European Union’s Horizon 2020 research and innovation programme within the framework of the NGI-POINTER Project funded under grant agreement No 871528</p>
+<p><br/><br/><br/></p>
 <h4>RECENT POSTS</h4>
 <ul id="recent-posts">
     <li>
