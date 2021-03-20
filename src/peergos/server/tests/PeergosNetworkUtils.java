@@ -1429,7 +1429,7 @@ public class PeergosNetworkUtils {
         SharedItem sharedItem = files.get(files.size() -1).left;
         FileProperties props = socialFile.getFileProperties();
         SocialPost loadedSocialPost = Serialize.parse(socialFile, SocialPost::fromCbor, sharee.network, crypto).join();
-        assertTrue(loadedSocialPost.body.equals(updatedBody));
+        assertTrue(loadedSocialPost.body.get(0).inlineText().equals(updatedBody));
 
         SocialPost.Ref mediaRef = ((SocialPost.Content.Reference)loadedSocialPost.body.get(1)).ref;
         Optional<FileWrapper> optFile = sharee.network.getFile(mediaRef.cap, sharer.username).join();
@@ -1451,7 +1451,7 @@ public class PeergosNetworkUtils {
         assertTrue(files.size() == 5);
         socialFile = files.get(files.size() -1).right;
         loadedSocialPost = Serialize.parse(socialFile, SocialPost::fromCbor, sharer.network, crypto).join();
-        assertTrue(loadedSocialPost.body.equals(replyText));
+        assertTrue(loadedSocialPost.body.get(0).inlineText().equals(replyText));
     }
 
     public static void socialFeedAndUnfriending(NetworkAccess network, Random random) {
