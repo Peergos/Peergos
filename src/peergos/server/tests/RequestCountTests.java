@@ -78,7 +78,7 @@ public class RequestCountTests {
             boolean reciprocate = true;
             a.sendReplyFollowRequest(u1Request, accept, reciprocate).join();
         }
-        Assert.assertTrue("send reply follow request: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 170);
+        Assert.assertTrue("send reply follow request: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 175);
 
         // complete the friendship connection
         storageCounter.reset();
