@@ -1410,7 +1410,7 @@ public class PeergosNetworkUtils {
 
         LocalDateTime postTime = LocalDateTime.now();
         String updatedBody = "bbbbb";
-        socialPost = socialPost.edit(Arrays.asList(new SocialPost.Content.Text(updatedBody)), postTime);
+        socialPost = socialPost.edit(Arrays.asList(new SocialPost.Content.Text(updatedBody), new SocialPost.Content.Reference(ref)), postTime);
 
         String uuid = result.left.getFileName().toString();
         result = feed.updatePost(uuid, socialPost).join();
