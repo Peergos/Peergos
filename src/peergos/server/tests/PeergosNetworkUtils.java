@@ -1467,7 +1467,6 @@ public class PeergosNetworkUtils {
         // friend sharer with others
         friendBetweenGroups(Arrays.asList(sharer), shareeUsers);
 
-
         SocialFeed feed = sharer.getSocialFeed().join();
         SocialPost.Resharing resharingType = SocialPost.Resharing.Friends;
         String bodyText = "aaaa";
@@ -1487,7 +1486,7 @@ public class PeergosNetworkUtils {
         SharedItem sharedItem = files.get(files.size() - 1).left;
         FileProperties props = socialFile.getFileProperties();
         SocialPost loadedSocialPost = Serialize.parse(socialFile, SocialPost::fromCbor, sharee.network, crypto).join();
-        assertTrue(loadedSocialPost.body.equals(bodyText));
+        assertTrue(loadedSocialPost.body.get(0).inlineText().equals(bodyText));
 
         //create a reply
         String replyText = "reply";
@@ -1507,8 +1506,8 @@ public class PeergosNetworkUtils {
         FileWrapper reply = files.get(files.size() - 1).right;
         SocialPost originalPost = Serialize.parse(original, SocialPost::fromCbor, sharer.network, crypto).join();
         SocialPost replyPost = Serialize.parse(reply, SocialPost::fromCbor, sharer.network, crypto).join();
-        assertTrue(originalPost.body.equals(bodyText));
-        assertTrue(replyPost.body.equals(replyText));
+        assertTrue(originalPost.body.get(0).inlineText().equals(bodyText));
+        assertTrue(replyPost.body.get(0).inlineText().equals(replyText));
 
         sharer.removeFollower(sharee.username).join();
         feed = sharer.getSocialFeed().join().update().join();
@@ -1516,7 +1515,7 @@ public class PeergosNetworkUtils {
         assertTrue(files.size() == 5);
         FileWrapper post = files.get(files.size() - 2).right;
         SocialPost remainingSocialPost = Serialize.parse(post, SocialPost::fromCbor, sharer.network, crypto).join();
-        assertTrue(remainingSocialPost.body.equals(bodyText));
+        assertTrue(remainingSocialPost.body.get(0).inlineText().equals(bodyText));
 
     }
 
