@@ -55,6 +55,19 @@ public class SocialPost implements Cborable {
             public CborObject toCbor() {
                 return new CborObject.CborString(content);
             }
+
+            @Override
+            public boolean equals(Object o) {
+                if (this == o) return true;
+                if (o == null || getClass() != o.getClass()) return false;
+                Text text = (Text) o;
+                return Objects.equals(content, text.content);
+            }
+
+            @Override
+            public int hashCode() {
+                return Objects.hash(content);
+            }
         }
 
         @JsType
@@ -81,6 +94,19 @@ public class SocialPost implements Cborable {
             @Override
             public Optional<Ref> reference() {
                 return Optional.of(ref);
+            }
+
+            @Override
+            public boolean equals(Object o) {
+                if (this == o) return true;
+                if (o == null || getClass() != o.getClass()) return false;
+                Reference reference = (Reference) o;
+                return Objects.equals(ref, reference.ref);
+            }
+
+            @Override
+            public int hashCode() {
+                return Objects.hash(ref);
             }
         }
 
@@ -251,6 +277,19 @@ public class SocialPost implements Cborable {
             AbsoluteCapability cap = m.get("c", AbsoluteCapability::fromCbor);
             Multihash contentHash = m.getMerkleLink("h");
             return new Ref(path, cap, contentHash);
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            Ref ref = (Ref) o;
+            return Objects.equals(path, ref.path) && Objects.equals(cap, ref.cap) && Objects.equals(contentHash, ref.contentHash);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(path, cap, contentHash);
         }
     }
 

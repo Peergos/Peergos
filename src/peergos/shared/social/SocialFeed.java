@@ -205,7 +205,10 @@ public class SocialFeed {
                                 SocialPost withComments = parent.addComments(refs);
                                 byte[] raw = withComments.serialize();
                                 return fopt.get().overwriteFile(AsyncReader.build(raw), raw.length, network, crypto, x -> {})
-                                        .thenApply(x -> true);
+                                        .thenApply(x -> {
+                                            dataDir = dataDir.withVersion(x.version);
+                                            return true;
+                                        });
                             });
                 }));
     }
@@ -277,8 +280,8 @@ public class SocialFeed {
                 }
             }
             byte[] data = bout.toByteArray();
-            return dataDir.appendToChild(FEED_FILE, feedSizeBytes, data, false, network, crypto, x -> {
-            })
+            return Futures.asyncExceptionally(() -> dataDir.appendToChild(FEED_FILE, feedSizeBytes, data, false, network, crypto, x -> {}),
+                    t -> ensureFeedUptodate().thenCompose(x -> dataDir.appendToChild(FEED_FILE, feedSizeBytes, data, false, network, crypto, y -> {})))
                     .thenCompose(dir -> {
                         feedSizeRecords += newItems.size();
                         feedSizeBytes += data.length;
@@ -286,6 +289,16 @@ public class SocialFeed {
                         return commit();
                     })
                     .thenApply(x -> this);
+        });
+    }
+
+    private CompletableFuture<Boolean> ensureFeedUptodate() {
+        return getUpdatedState(dataDir).thenApply(p -> {
+            this.dataDir = p.left;
+            this.feedSizeBytes = p.right.feedSizeBytes;
+            this.feedSizeRecords = p.right.feedSizeRecords;
+            this.lastSeenIndex = p.right.lastSeenIndex;
+            return true;
         });
     }
 
@@ -298,6 +311,17 @@ public class SocialFeed {
                             .thenApply(arr -> FeedState.fromCbor(CborObject.fromByteArray(arr)))
                             .thenApply(s -> new SocialFeed(dataDir, fopt.get(), s, context));
                 });
+    }
+
+    private CompletableFuture<Pair<FileWrapper, FeedState>> getUpdatedState(FileWrapper dataDir) {
+        return dataDir.getUpdated(network)
+                .thenCompose(updatedDataDir -> updatedDataDir.getChild(FEED_STATE, context.crypto.hasher, context.network)
+                .thenCompose(fopt -> {
+                    if (fopt.isEmpty())
+                        throw new IllegalStateException("Social feed state file not present!");
+                    return Serialize.readFully(fopt.get(), context.crypto, context.network)
+                            .thenApply(arr -> new Pair<>(updatedDataDir, FeedState.fromCbor(CborObject.fromByteArray(arr))));
+                }));
     }
 
     public static CompletableFuture<SocialFeed> create(UserContext c) {

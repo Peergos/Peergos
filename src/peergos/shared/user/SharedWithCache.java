@@ -69,21 +69,24 @@ public class SharedWithCache {
                         .thenCompose(children ->
                                 Futures.reduceAll(children,
                                         true,
-                                        (x, friendDirectory) -> {
-                                            return CapabilityStore.loadReadOnlyLinks(cacheDirOpt.get(), friendDirectory,
-                                                    ourname, network, crypto, false)
-                                                    .thenCompose(readCaps -> {
-                                                        readCaps.getRetrievedCapabilities().stream()
-                                                                .forEach(rc -> addSharedWith(Access.READ, Paths.get(rc.path), Collections.singleton(friendDirectory.getName())));
-                                                        return CapabilityStore.loadWriteableLinks(cacheDirOpt.get(), friendDirectory,
-                                                                ourname, network, crypto, false)
+                                        (x, friendDirectory) ->
+                                                friendDirectory.getUpdated(network)
+                                                        .thenCompose(updatedFriendDir -> CapabilityStore.loadReadOnlyLinks(cacheDirOpt.get(), updatedFriendDir,
+                                                                ourname, network, crypto, false))
+                                                        .thenCompose(readCaps ->
+                                                                Futures.reduceAll(readCaps.getRetrievedCapabilities(),
+                                                                        true,
+                                                                        (y, rc) -> addSharedWith(Access.READ, Paths.get(rc.path), Collections.singleton(friendDirectory.getName())),
+                                                                        (a, b) -> b))
+                                                        .thenCompose(b -> friendDirectory.getUpdated(network)
+                                                                .thenCompose(updatedFriendDir -> CapabilityStore.loadWriteableLinks(cacheDirOpt.get(), updatedFriendDir,
+                                                                        ourname, network, crypto, false))
                                                                 .thenApply(writeCaps -> {
                                                                     writeCaps.getRetrievedCapabilities().stream()
                                                                             .forEach(rc -> addSharedWith(Access.WRITE, Paths.get(rc.path), Collections.singleton(friendDirectory.getName())));
                                                                     return true;
-                                                                });
-                                                    });
-                                        }, (a, b) -> a && b)));
+                                                                })),
+                                        (a, b) -> a && b)));
     }
 
     /**
