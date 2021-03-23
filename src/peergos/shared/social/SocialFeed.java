@@ -94,9 +94,9 @@ public class SocialFeed {
         return getOrMkdirToStoreMedia("media", postTime)
                 .thenCompose(p -> p.right.uploadAndReturnFile(uuid, media, length, false,
                         network, crypto)
-                        .thenCompose(f -> f.getInputStream(f.version.get(f.writer()).props, network, crypto, monitor)
-                                .thenCompose(reader -> media.reset().thenCompose(r -> crypto.hasher.hash(r, length)))
-                                .thenApply(hash -> new Pair<>(f.getFileProperties().getType(), new SocialPost.Ref(p.left.resolve(uuid).toString(), f.readOnlyPointer(), hash)))));
+                        .thenCompose(f ->  media.reset().thenCompose(r -> crypto.hasher.hash(r, length))
+                                .thenApply(hash -> new Pair<>(f.getFileProperties().getType(),
+                                        new SocialPost.Ref(p.left.resolve(uuid).toString(), f.readOnlyPointer(), hash)))));
     }
 
     private CompletableFuture<Pair<Path, FileWrapper>> getOrMkdirToStoreMedia(String mediaType, LocalDateTime postTime) {
