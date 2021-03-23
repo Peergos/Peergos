@@ -170,6 +170,26 @@ public class MultiUserTests {
     }
 
     @Test
+    public void socialPostPropagation() {
+        PeergosNetworkUtils.socialPostPropagation(network, random);
+    }
+
+    @Test
+    public void socialFeedBug() {
+        PeergosNetworkUtils.socialFeedBug(network, random);
+    }
+
+    @Test
+    public void socialFeedAndUnfriending() {
+        PeergosNetworkUtils.socialFeedAndUnfriending(network, random);
+    }
+
+    @Test
+    public void socialFeedCommentOnSharedFile() throws Exception {
+        PeergosNetworkUtils.socialFeedCommentOnSharedFile(network, network, random);
+    }
+
+    @Test
     public void socialFeedVariations() {
         PeergosNetworkUtils.socialFeedVariations(network, random);
     }

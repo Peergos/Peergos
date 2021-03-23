@@ -39,6 +39,7 @@ public class UserContext {
     private static final Logger LOG = Logger.getGlobal();
 
     public static final String SHARED_DIR_NAME = "shared";
+    public static final String POSTS_DIR_NAME = ".posts";
     public static final String GROUPS_FILENAME = ".groups.cbor"; // no clash possible with usernames possible because of dot
     public static final String FEED_DIR_NAME = ".feed";
     public static final String TRANSACTIONS_DIR_NAME = ".transactions";
@@ -1672,7 +1673,7 @@ public class UserContext {
         return getByPath("/" + username + "/shared/" + usernameToGrantAccess)
                 .thenCompose(shared -> {
                     if (!shared.isPresent())
-                        return CompletableFuture.completedFuture(false);
+                        return Futures.errored(new IllegalStateException("Unknown recipient for sharing: " + usernameToGrantAccess));
                     FileWrapper sharedDir = shared.get();
                     return sharingFunction.apply(sharedDir, file);
                 });
@@ -1831,7 +1832,10 @@ public class UserContext {
     @JsMethod
     public CompletableFuture<List<Pair<SharedItem, FileWrapper>>> getFiles(List<SharedItem> pointers) {
         return Futures.combineAllInOrder(pointers.stream()
-                .map(s -> network.getFile(s.cap, s.owner)
+                .map(s -> Futures.asyncExceptionally(() -> network.getFile(s.cap, s.owner)
+                                .thenCompose(fopt -> fopt.map(f -> Futures.of(Optional.of(f)))
+                                        .orElseGet(() -> getByPath(s.path))),
+                        t -> getByPath(s.path))
                         .thenApply(opt -> opt.map(f -> new Pair<>(s, f))))
                 .collect(Collectors.toList()))
                 .thenApply(res -> res.stream()
@@ -2061,8 +2065,10 @@ public class UserContext {
     public CompletableFuture<Boolean> unfollow(String friendName) {
         LOG.info("Unfollowing: " + friendName);
         return getUserRoot()
-                .thenCompose(home -> home.appendToChild(BLOCKED_USERNAMES_FILE, (friendName + "\n").getBytes(), true,
-                        network, crypto, x -> {}))
+                .thenCompose(home -> home.getChild(BLOCKED_USERNAMES_FILE, crypto.hasher, network)
+                        .thenCompose(fopt -> home.appendToChild(BLOCKED_USERNAMES_FILE,
+                                fopt.map(f -> f.getSize()).orElse(0L), (friendName + "\n").getBytes(), true,
+                                network, crypto, x -> {})))
                 .thenApply(b -> {
                     entrie = entrie.removeEntry("/" + friendName + "/");
                     return true;
