@@ -95,7 +95,7 @@ public class SocialFeed {
                 .thenCompose(p -> p.right.uploadAndReturnFile(uuid, media, length, false,
                         network, crypto)
                         .thenCompose(f -> f.getInputStream(f.version.get(f.writer()).props, network, crypto, monitor)
-                                .thenCompose(reader -> crypto.hasher.hash(reader, f.getSize()))
+                                .thenCompose(reader -> media.reset().thenCompose(r -> crypto.hasher.hash(r, length)))
                                 .thenApply(hash -> new Pair<>(f.getFileProperties().getType(), new SocialPost.Ref(p.left.resolve(uuid).toString(), f.readOnlyPointer(), hash)))));
     }
 
