@@ -123,6 +123,7 @@ public class RequestCountTests {
             sharer.shareReadAccessWith(p.left, Set.of(friends)).join();
         }
         Assert.assertTrue("Adding a post to social feed: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 40);
+        a.getSocialFeed().join().update().join();
 
         // share more items
         for (int i=0; i < 5; i++) {
