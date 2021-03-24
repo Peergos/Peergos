@@ -11,6 +11,7 @@ import peergos.shared.storage.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.user.fs.cryptree.*;
+import peergos.shared.util.*;
 
 import java.nio.file.*;
 import java.util.*;
@@ -104,6 +105,24 @@ public class RequestCountTests {
         storageCounter.reset();
         a.getFiles(items).join();
         Assert.assertTrue(storageCounter.requestTotal() <= 0);
+
+        SocialState social = sharer.getSocialState().join();
+        String friends = social.getFriendsGroupUid();
+        SocialFeed sharerFeed = sharer.getSocialFeed().join().update().join();
+        { // Do an initial post to ensure all directories are created
+            List<SocialPost.Content.Text> postBody = Arrays.asList(new SocialPost.Content.Text("Initial post."));
+            SocialPost post = SocialPost.createInitialPost(sharer.username, postBody, SocialPost.Resharing.Friends);
+            Pair<Path, FileWrapper> p = sharerFeed.createNewPost(post).join();
+            sharer.shareReadAccessWith(p.left, Set.of(friends)).join();
+        }
+        storageCounter.reset();
+        {
+            List<SocialPost.Content.Text> postBody = Arrays.asList(new SocialPost.Content.Text("G'day, skip!"));
+            SocialPost post = SocialPost.createInitialPost(sharer.username, postBody, SocialPost.Resharing.Friends);
+            Pair<Path, FileWrapper> p = sharerFeed.createNewPost(post).join();
+            sharer.shareReadAccessWith(p.left, Set.of(friends)).join();
+        }
+        Assert.assertTrue("Adding a post to social feed: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 40);
 
         // share more items
         for (int i=0; i < 5; i++) {
