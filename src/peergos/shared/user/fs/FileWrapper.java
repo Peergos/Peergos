@@ -790,17 +790,7 @@ public class FileWrapper {
                                     });
                         };
 
-                        return Futures.reduceAll(startIndexes, base, composer, (a, b) -> b)
-                                .thenCompose(updatedBase -> {
-                                    // update file size
-                                    if (props.size >= endIndex)
-                                        return CompletableFuture.completedFuture(updatedBase);
-                                    WritableAbsoluteCapability cap = us.writableFilePointer();
-                                    return network.getFile(updatedBase, cap, entryWriter, ownername)
-                                            .thenCompose(updatedChild -> updatedChild.get()
-                                                    .getPointer().fileAccess.updateProperties(updatedBase, committer, cap,
-                                                            entryWriter, updatedChild.get().props.withSize(endIndex), network));
-                                });
+                        return Futures.reduceAll(startIndexes, base, composer, (a, b) -> b);
                     });
                 });
     }
