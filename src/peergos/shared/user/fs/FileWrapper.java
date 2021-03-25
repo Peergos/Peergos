@@ -943,15 +943,12 @@ public class FileWrapper {
                                                     return child.truncate(current, committer, endIndex, network, crypto).thenCompose( updatedSnapshot ->
                                                         getUpdated(updatedSnapshot, network).thenCompose( updatedParent ->
                                                                 child.getUpdated(updatedSnapshot, network).thenCompose( updatedChild ->
-                                                                    updateExistingChild(updatedSnapshot, committer, updatedChild, fileData,
+                                                                    updatedParent.updateExistingChild(updatedSnapshot, committer, updatedChild, fileData,
                                                                         startIndex, endIndex, network, crypto, monitor)
                                                                             .thenCompose(latestSnapshot ->  updatePropsIfNecessary.apply(updatedChild, latestSnapshot, endIndex)))));
                                                 } else {
                                                     return updateExistingChild(current, committer, child, fileData,
-                                                            startIndex, endIndex, network, crypto, monitor)
-                                                            .thenCompose( updatedSnapshot -> child.getUpdated(updatedSnapshot, network)
-                                                                    .thenCompose(updatedChild ->
-                                                                            updatePropsIfNecessary.apply(updatedChild, updatedSnapshot, endIndex)));
+                                                            startIndex, endIndex, network, crypto, monitor);
                                                 }
                                             }
                                             if (startIndex > 0) {
