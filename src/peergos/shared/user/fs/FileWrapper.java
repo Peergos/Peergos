@@ -1021,6 +1021,8 @@ public class FileWrapper {
                                                                    Optional<byte[]> streamSecret) {
         return generateThumbnail(network, fileData, (int) Math.min(fileSize, Integer.MAX_VALUE), fileName, mimeType)
                 .thenCompose(thumbData -> {
+                    if (thumbData.isEmpty())
+                        return Futures.of(base);
                     FileProperties fileProps = new FileProperties(fileName, false, props.isLink, mimeType, fileSize,
                             updatedDateTime, isHidden, thumbData, streamSecret);
 
