@@ -9,6 +9,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.inode.*;
+import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.cryptree.*;
@@ -176,6 +177,12 @@ public class FileWrapper {
                 return CompletableFuture.completedFuture("/" + props.name);
             return parent.get().getPath(network).thenApply(parentPath -> parentPath + "/" + props.name);
         });
+    }
+
+    @JsMethod
+    public CompletableFuture<Multihash> getContentHash(NetworkAccess network, Crypto crypto) {
+        return getInputStream(network, crypto, x -> {})
+                .thenCompose(reader -> crypto.hasher.hash(reader, getSize()));
     }
 
     public CompletableFuture<Optional<FileWrapper>> getDescendentByPath(String path,
@@ -601,8 +608,18 @@ public class FileWrapper {
                                                               boolean isHidden,
                                                               NetworkAccess network,
                                                               Crypto crypto) {
+        return uploadAndReturnFile(filename, fileData, length, isHidden, x -> {}, network, crypto);
+    }
+
+    public CompletableFuture<FileWrapper> uploadAndReturnFile(String filename,
+                                                              AsyncReader fileData,
+                                                              long length,
+                                                              boolean isHidden,
+                                                              ProgressConsumer<Long> progressMonitor,
+                                                              NetworkAccess network,
+                                                              Crypto crypto) {
         return uploadFileSection(filename, fileData, isHidden, 0, length, Optional.empty(),
-                true, network, crypto, x -> {}, crypto.random.randomBytes(32))
+                true, network, crypto, progressMonitor, crypto.random.randomBytes(32))
                 .thenCompose(f -> f.getChild(filename, crypto.hasher, network)
                         .thenCompose(childOpt -> childOpt.get().truncate(length, network, crypto)));
     }
@@ -773,17 +790,7 @@ public class FileWrapper {
                                     });
                         };
 
-                        return Futures.reduceAll(startIndexes, base, composer, (a, b) -> b)
-                                .thenCompose(updatedBase -> {
-                                    // update file size
-                                    if (props.size >= endIndex)
-                                        return CompletableFuture.completedFuture(updatedBase);
-                                    WritableAbsoluteCapability cap = us.writableFilePointer();
-                                    return network.getFile(updatedBase, cap, entryWriter, ownername)
-                                            .thenCompose(updatedChild -> updatedChild.get()
-                                                    .getPointer().fileAccess.updateProperties(updatedBase, committer, cap,
-                                                            entryWriter, updatedChild.get().props.withSize(endIndex), network));
-                                });
+                        return Futures.reduceAll(startIndexes, base, composer, (a, b) -> b);
                     });
                 });
     }
@@ -926,15 +933,12 @@ public class FileWrapper {
                                                     return child.truncate(current, committer, endIndex, network, crypto).thenCompose( updatedSnapshot ->
                                                         getUpdated(updatedSnapshot, network).thenCompose( updatedParent ->
                                                                 child.getUpdated(updatedSnapshot, network).thenCompose( updatedChild ->
-                                                                    updateExistingChild(updatedSnapshot, committer, updatedChild, fileData,
+                                                                    updatedParent.updateExistingChild(updatedSnapshot, committer, updatedChild, fileData,
                                                                         startIndex, endIndex, network, crypto, monitor)
                                                                             .thenCompose(latestSnapshot ->  updatePropsIfNecessary.apply(updatedChild, latestSnapshot, endIndex)))));
                                                 } else {
                                                     return updateExistingChild(current, committer, child, fileData,
-                                                            startIndex, endIndex, network, crypto, monitor)
-                                                            .thenCompose( updatedSnapshot -> child.getUpdated(updatedSnapshot, network)
-                                                                    .thenCompose(updatedChild ->
-                                                                            updatePropsIfNecessary.apply(updatedChild, updatedSnapshot, endIndex)));
+                                                            startIndex, endIndex, network, crypto, monitor);
                                                 }
                                             }
                                             if (startIndex > 0) {
@@ -1004,6 +1008,8 @@ public class FileWrapper {
                                                                    Optional<byte[]> streamSecret) {
         return generateThumbnail(network, fileData, (int) Math.min(fileSize, Integer.MAX_VALUE), fileName, mimeType)
                 .thenCompose(thumbData -> {
+                    if (thumbData.isEmpty())
+                        return Futures.of(base);
                     FileProperties fileProps = new FileProperties(fileName, false, props.isLink, mimeType, fileSize,
                             updatedDateTime, isHidden, thumbData, streamSecret);
 
@@ -1038,6 +1044,7 @@ public class FileWrapper {
 
     @JsMethod
     public CompletableFuture<FileWrapper> appendToChild(String filename,
+                                                        long expectedSize,
                                                         byte[] fileData,
                                                         boolean isHidden,
                                                         NetworkAccess network,
@@ -1050,11 +1057,16 @@ public class FileWrapper {
                                 child.get().getLocation().getMapKey(),
                                 child.get().getFileProperties().size, crypto.hasher))
                         .orElseGet(() -> Futures.of(crypto.random.randomBytes(32)))
-                        .thenCompose(x -> uploadFileSection(filename, AsyncReader.build(fileData), isHidden,
-                                child.map(f -> f.getSize()).orElse(0L),
-                                fileData.length + child.map(f -> f.getSize()).orElse(0L),
-                                child.map(f -> f.getPointer().capability.rBaseKey), true, network, crypto,
-                                monitor, x)));
+                        .thenCompose(x -> {
+                            long size = child.map(f -> f.getSize()).orElse(0L);
+                            if (size != expectedSize)
+                                throw new IllegalStateException("File has been concurrently modified!");
+                            return uploadFileSection(filename, AsyncReader.build(fileData), isHidden,
+                                    size,
+                                    fileData.length + size,
+                                    child.map(f -> f.getPointer().capability.rBaseKey), true, network, crypto,
+                                    monitor, x);
+                        }));
     }
 
     /**
@@ -1292,15 +1304,9 @@ public class FileWrapper {
                 .thenApply(fa -> true);
     }
 
-    /**
-     *
-     * @return A capability based on the parent key
-     */
-    public AbsoluteCapability getMinimalReadPointer() {
-        if (isDirectory()) {
-            return pointer.capability.withBaseKey(getParentKey());
-        }
-        return pointer.capability;
+    @JsMethod
+    public AbsoluteCapability readOnlyPointer() {
+        return pointer.capability.readOnly();
     }
 
     public WritableAbsoluteCapability writableFilePointer() {

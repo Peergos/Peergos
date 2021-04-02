@@ -82,6 +82,11 @@ public abstract class DelegatingStorage implements ContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey) {
+        return target.getChampLookup(owner, root, champKey);
+    }
+
+    @Override
     public CompletableFuture<Boolean> gc() {
         return target.gc();
     }

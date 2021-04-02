@@ -448,7 +448,6 @@ public class IncomingCapCache {
                                                                     ProcessedCaps current,
                                                                     Crypto crypto,
                                                                     NetworkAccess network) {
-        System.out.println("***** ICC.ensureUptodate(" + groups.size());
         // check there are no new capabilities in the friend's shared directory, or any of their groups
         return getCapsFrom(friend, originalSharedDir, groups, current, network)
                 .thenCompose(diff -> addNewCapsToMirror(friend, current, diff, network))

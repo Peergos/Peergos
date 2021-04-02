@@ -27,10 +27,12 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     private static final int DIRECTORY_DEPTH = 5;
     private final Path root;
     private final TransactionStore transactions;
+    private final Hasher hasher;
 
-    public FileContentAddressedStorage(Path root, TransactionStore transactions) {
+    public FileContentAddressedStorage(Path root, TransactionStore transactions, Hasher hasher) {
         this.root = root;
         this.transactions = transactions;
+        this.hasher = hasher;
         File rootDir = root.toFile();
         if (!rootDir.exists()) {
             final boolean mkdirs = root.toFile().mkdirs();
@@ -60,6 +62,11 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     public CompletableFuture<Boolean> closeTransaction(PublicKeyHash owner, TransactionId tid) {
         transactions.closeTransaction(owner, tid);
         return CompletableFuture.completedFuture(true);
+    }
+
+    @Override
+    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey) {
+        return getChampLookup(root, champKey, hasher);
     }
 
     @Override

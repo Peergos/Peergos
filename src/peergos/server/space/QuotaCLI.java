@@ -19,19 +19,6 @@ import java.util.function.*;
 
 public class QuotaCLI extends Builder {
 
-    private static QuotaAdmin buildQuotaStore(Args a) {
-        Supplier<Connection> dbConnectionPool = getDBConnector(a, "transactions-sql-file");
-        TransactionStore transactions = buildTransactionStore(a, dbConnectionPool);
-        DeletableContentAddressedStorage localStorage = buildLocalStorage(a, transactions);
-        JdbcIpnsAndSocial rawPointers = buildRawPointers(a, getDBConnector(a, "mutable-pointers-file", dbConnectionPool));
-        MutablePointers localPointers = UserRepository.build(localStorage, rawPointers);
-        MutablePointersProxy proxingMutable = new HttpMutablePointers(buildP2pHttpProxy(a), getPkiServerId(a));
-        CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable);
-        return buildSpaceQuotas(a, localStorage, core,
-                getDBConnector(a, "space-requests-sql-file", dbConnectionPool),
-                getDBConnector(a, "quotas-sql-file", dbConnectionPool));
-    }
-
     private static void printQuota(String name, long quota) {
         System.out.println(name + " " + formatQuota(quota));
     }
@@ -119,6 +106,34 @@ public class QuotaCLI extends Builder {
             )
     );
 
+    public static final Command<Boolean> LOCAL = new Command<>("local",
+            "Show all users with a space quota on this server",
+            a -> {
+                boolean paidStorage = a.hasArg("quota-admin-address");
+                if (paidStorage) {
+                    QuotaAdmin quotaAdmin = Builder.buildPaidQuotas(a);
+                    quotaAdmin.getLocalUsernames().stream()
+                            .sorted()
+                            .forEach(System.out::println);
+                    return true;
+                }
+                SqlSupplier sqlCommands = getSqlCommands(a);
+                Supplier<Connection> quotasDb = getDBConnector(a, "quotas-sql-file");
+                JdbcQuotas quotas = JdbcQuotas.build(quotasDb, sqlCommands);
+
+                quotas.getQuotas()
+                        .keySet()
+                        .stream()
+                        .sorted()
+                        .forEach(System.out::println);
+                return true;
+            },
+            Arrays.asList(
+                    new Command.Arg("username", "The user whose quota to show (or all users are shown)", false),
+                    new Command.Arg("quotas-sql-file", "The filename for the quotas datastore", true, "quotas.sql")
+            )
+    );
+
     public static final Command<Boolean> TOKEN_CREATE = new Command<>("create",
             "Create tokens for signups",
             a -> {
@@ -181,7 +196,7 @@ public class QuotaCLI extends Builder {
     );
 
     public static final Command<Boolean> QUOTA = new Command<>("quota",
-            "Manage free quota of users on this server",
+            "Manage quota of users on this server",
             args -> {
                 System.out.println("Run with -help to show options");
                 return null;
@@ -191,6 +206,6 @@ public class QuotaCLI extends Builder {
                     new Command.Arg("log-to-file", "Whether to log to a file", false, "false"),
                     new Command.Arg("log-to-console", "Whether to log to the console", false, "false")
             ),
-            Arrays.asList(SHOW, SET, REQUESTS, TOKEN)
+            Arrays.asList(LOCAL, SHOW, SET, REQUESTS, TOKEN)
     );
 }

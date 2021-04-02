@@ -121,6 +121,41 @@ public class HTTPCoreNode implements CoreNode {
     }
 
     @Override
+    public CompletableFuture<Optional<RequiredDifficulty>> signup(String username,
+                                                                  UserPublicKeyLink chain,
+                                                                  OpLog ops,
+                                                                  ProofOfWork proof,
+                                                                  String token) {
+        try {
+            ByteArrayOutputStream bout = new ByteArrayOutputStream();
+            DataOutputStream dout = new DataOutputStream(bout);
+
+            Serialize.serialize(username, dout);
+            Serialize.serialize(chain.serialize(), dout);
+            Serialize.serialize(ops.serialize(), dout);
+            Serialize.serialize(proof.serialize(), dout);
+            Serialize.serialize(token, dout);
+            dout.flush();
+
+            return poster.postUnzip(urlPrefix + Constants.CORE_URL + "signup", bout.toByteArray())
+                    .thenApply(res -> {
+                        DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
+                        try {
+                            boolean success = din.readBoolean();
+                            if (success)
+                                return Optional.empty();
+                            return Optional.of(new RequiredDifficulty(din.readInt()));
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
+                    });
+        } catch (IOException ioe) {
+            LOG.log(Level.WARNING, ioe.getMessage(), ioe);
+            return Futures.errored(ioe);
+        }
+    }
+
+    @Override
     public CompletableFuture<Optional<RequiredDifficulty>> updateChain(String username,
                                                                        List<UserPublicKeyLink> chain,
                                                                        ProofOfWork proof,
@@ -157,6 +192,28 @@ public class HTTPCoreNode implements CoreNode {
     public CompletableFuture<List<String>> getUsernames(String prefix) {
         return poster.postUnzip(urlPrefix + Constants.CORE_URL + "getUsernamesGzip/"+prefix, new byte[0])
                 .thenApply(raw -> (List) JSONParser.parse(new String(raw)));
+    }
+
+    @Override
+    public CompletableFuture<UserSnapshot> migrateUser(String username,
+                                                       List<UserPublicKeyLink> newChain,
+                                                       Multihash currentStorageId) {
+        String modifiedPrefix = urlPrefix.isEmpty() ? "" : getProxyUrlPrefix(currentStorageId);
+        try {
+            ByteArrayOutputStream bout = new ByteArrayOutputStream();
+            DataOutputStream dout = new DataOutputStream(bout);
+
+            Serialize.serialize(username, dout);
+            Serialize.serialize(new CborObject.CborList(newChain).serialize(), dout);
+            Serialize.serialize(currentStorageId.toBytes(), dout);
+            dout.flush();
+
+            return poster.postUnzip(modifiedPrefix + Constants.CORE_URL + "migrateUser", bout.toByteArray())
+                    .thenApply(res -> UserSnapshot.fromCbor(CborObject.fromByteArray(res)));
+        } catch (IOException ioe) {
+            LOG.log(Level.WARNING, ioe.getMessage(), ioe);
+            return Futures.errored(ioe);
+        }
     }
 
     @Override public void close() {}

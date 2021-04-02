@@ -113,6 +113,11 @@ public class FileProperties implements Cborable {
         return FileWrapper.getNumberOfChunks(size);
     }
 
+    @JsMethod
+    public boolean isSocialPost() {
+        return MimeTypes.PEERGOS_POST.equals(mimeType);
+    }
+
     @Override
     @SuppressWarnings("unusable-by-js")
     public CborObject toCbor() {

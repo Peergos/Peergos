@@ -112,7 +112,7 @@ public class GatewayHandler implements HttpHandler {
             if (cached != null) {
                 FileWrapper updated = cached.source.getUpdated(network).join();
                 if (updated.version.equals(cached.source.version)) {
-                    serveAsset(cached.data, path, httpExchange);
+                    serveAsset(AsyncReader.build(cached.data), cached.source.getFileProperties(), cached.data.length, path, httpExchange);
                     return;
                 }
             }
@@ -122,8 +122,9 @@ public class GatewayHandler implements HttpHandler {
                 serve404(httpExchange, webRootEntry.webRoot);
                 return;
             }
-            if (assetOpt.get().isDirectory()) {
-                Optional<FileWrapper> index = assetOpt.get().getChild("index.html", crypto.hasher, network).join();
+            FileWrapper asset = assetOpt.get();
+            if (asset.isDirectory()) {
+                Optional<FileWrapper> index = asset.getChild("index.html", crypto.hasher, network).join();
                 if (index.isPresent())
                     assetOpt = index;
                 else {
@@ -131,10 +132,11 @@ public class GatewayHandler implements HttpHandler {
                     return;
                 }
             }
-            byte[] body = Serialize.readFully(assetOpt.get(), crypto, network).join();
-            serveAsset(body, path, httpExchange);
-            if (body.length < MAX_ASSET_SIZE_CACHE) {
-                cacheAsset(owner, path, new Asset(assetOpt.get(), body));
+            AsyncReader reader = asset.getInputStream(network, crypto, x -> {}).join();
+            long size = asset.getSize();
+            Optional<byte[]> bodyToCache = serveAsset(reader, asset.getFileProperties(), size, path, httpExchange);
+            if (bodyToCache.isPresent()) {
+                cacheAsset(owner, path, new Asset(asset, bodyToCache.get()));
             }
         } catch (Exception e) {
             LOG.severe("Error handling " +httpExchange.getRequestURI());
@@ -148,7 +150,13 @@ public class GatewayHandler implements HttpHandler {
         }
     }
 
-    private void serveAsset(byte[] body, String path, HttpExchange httpExchange) throws IOException {
+    private ThreadLocal<byte[]> buffer = ThreadLocal.withInitial(() -> new byte[MAX_ASSET_SIZE_CACHE]);
+
+    private Optional<byte[]> serveAsset(AsyncReader reader,
+                                        FileProperties props,
+                                        long size,
+                                        String path,
+                                        HttpExchange httpExchange) throws IOException {
 //            if (isGzip)
 //                httpExchange.getResponseHeaders().set("Content-Encoding", "gzip");
         if (path.endsWith(".js"))
@@ -167,9 +175,10 @@ public class GatewayHandler implements HttpHandler {
             httpExchange.getResponseHeaders().set("Content-Type", "image/svg+xml");
 
         if (httpExchange.getRequestMethod().equals("HEAD")) {
-            httpExchange.getResponseHeaders().set("Content-Length", "" + body.length);
+            httpExchange.getResponseHeaders().set("Content-Length", "" + size);
+            httpExchange.getResponseHeaders().set("Content-Type", props.mimeType);
             httpExchange.sendResponseHeaders(200, -1);
-            return;
+            return Optional.empty();
         }
 
         // Only allow assets to be loaded from the original host
@@ -181,9 +190,24 @@ public class GatewayHandler implements HttpHandler {
         // Don't send Peergos referrer to anyone
         httpExchange.getResponseHeaders().set("referrer-policy", "no-referrer");
 
-        httpExchange.sendResponseHeaders(200, body.length);
-        httpExchange.getResponseBody().write(body);
+        httpExchange.sendResponseHeaders(200, size);
+        OutputStream resp = httpExchange.getResponseBody();
+        if (size < MAX_ASSET_SIZE_CACHE) {
+            byte[] body = Serialize.readFully(reader, size).join();
+            resp.write(body);
+            httpExchange.close();
+            return Optional.of(body);
+        }
+
+        byte[] buf = buffer.get();
+        int read;
+        long offset = 0;
+        while ((read = reader.readIntoArray(buf, 0, (int) Math.min(size - offset, buf.length)).join()) >= 0) {
+            resp.write(buf, 0, read);
+            offset += read;
+        }
         httpExchange.close();
+        return Optional.empty();
     }
 
     private void serve404(HttpExchange httpExchange, FileWrapper webroot) throws IOException {

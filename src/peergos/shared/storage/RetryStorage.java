@@ -53,6 +53,8 @@ public class RetryStorage implements ContentAddressedStorage {
                     .exceptionally(e -> {
                         if (retriesLeft == 1) {
                             res.completeExceptionally(e);
+                        } else if (e instanceof StorageQuotaExceededException) {
+                            res.completeExceptionally(e);
                         } else if (e instanceof HttpFileNotFoundException) {
                             res.completeExceptionally(e);
                         } else {
@@ -128,6 +130,11 @@ public class RetryStorage implements ContentAddressedStorage {
     @Override
     public CompletableFuture<List<Multihash>> recursiveUnpin(PublicKeyHash owner, Multihash hash) {
         return runWithRetry(() -> target.recursiveUnpin(owner, hash));
+    }
+
+    @Override
+    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey) {
+        return target.getChampLookup(owner, root, champKey);
     }
 
     @Override

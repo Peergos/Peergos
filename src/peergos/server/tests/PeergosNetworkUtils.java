@@ -5,19 +5,20 @@ import peergos.server.*;
 import peergos.server.storage.ResetableFileInputStream;
 import peergos.shared.Crypto;
 import peergos.shared.NetworkAccess;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.SymmetricKey;
+import peergos.shared.io.ipfs.multihash.Multihash;
 import peergos.shared.social.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.user.fs.FileWrapper;
 import peergos.shared.user.fs.cryptree.*;
-import peergos.shared.util.ArrayOps;
-import peergos.shared.util.Serialize;
-import peergos.shared.util.TriFunction;
+import peergos.shared.util.*;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.*;
+import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.*;
@@ -36,6 +37,7 @@ public class PeergosNetworkUtils {
     }
 
     public static final Crypto crypto = Main.initCrypto();
+    public static final Hasher hasher = crypto.hasher;
 
     public static String randomString() {
         return UUID.randomUUID().toString();
@@ -175,6 +177,63 @@ public class PeergosNetworkUtils {
         byte[] newFileContents = Serialize.readFully(extendedContents, originalFileContents.length + suffix.length).get();
 
         Assert.assertTrue(Arrays.equals(newFileContents, ArrayOps.concat(originalFileContents, suffix)));
+    }
+
+    public static void socialFeedCommentOnSharedFile(NetworkAccess sharerNode, NetworkAccess shareeNode, Random random) throws Exception {
+        //sign up a user on sharerNode
+        String sharerUsername = randomUsername("sharer-", random);
+        String sharerPassword = generatePassword();
+        UserContext sharer = ensureSignedUp(sharerUsername, sharerPassword, sharerNode.clear(), crypto);
+
+        //sign up some users on shareeNode
+        int shareeCount = 1;
+        List<String> shareePasswords = IntStream.range(0, shareeCount)
+                .mapToObj(i -> generatePassword())
+                .collect(Collectors.toList());
+        List<UserContext> shareeUsers = getUserContextsForNode(shareeNode, random, shareeCount, shareePasswords);
+        UserContext sharee = shareeUsers.get(0);
+
+        // friend sharer with others
+        friendBetweenGroups(Arrays.asList(sharer), shareeUsers);
+
+        // upload a file to "a"'s space
+        FileWrapper u1Root = sharer.getUserRoot().get();
+        String filename = "somefile.txt";
+        File f = File.createTempFile("peergos", "");
+        byte[] originalFileContents = sharer.crypto.random.randomBytes(10*1024*1024);
+        Files.write(f.toPath(), originalFileContents);
+        ResetableFileInputStream resetableFileInputStream = new ResetableFileInputStream(f);
+        FileWrapper uploaded = u1Root.uploadOrReplaceFile(filename, resetableFileInputStream, f.length(),
+                sharer.network, crypto, l -> {}, crypto.random.randomBytes(32)).get();
+
+        // share the file from sharer to each of the sharees
+        Set<String> shareeNames = shareeUsers.stream()
+                .map(u -> u.username)
+                .collect(Collectors.toSet());
+        sharer.shareReadAccessWith(Paths.get(sharer.username, filename), shareeNames).join();
+
+        SocialFeed receiverFeed = sharee.getSocialFeed().join().update().join();
+        List<Pair<SharedItem, FileWrapper>> files = receiverFeed.getSharedFiles(0, 100).join();
+        assertTrue(files.size() == 3);
+        FileWrapper sharedFile = files.get(files.size() -1).right;
+        SharedItem sharedItem = files.get(files.size() -1).left;
+
+        Multihash hash = sharedFile.getContentHash(sharee.network, sharee.crypto).join();
+        String replyText = "reply";
+        SocialPost.Resharing resharingType = SocialPost.Resharing.Friends;
+        SocialPost.Ref parent = new SocialPost.Ref(sharedItem.path, sharedItem.cap, hash);
+        SocialPost replySocialPost = SocialPost.createComment(parent, resharingType, sharee.username,
+                Arrays.asList(new SocialPost.Content.Text(replyText)));
+        Pair<Path, FileWrapper> result = receiverFeed.createNewPost(replySocialPost).join();
+        String friendGroup = SocialState.FRIENDS_GROUP_NAME;
+        String receiverGroupUid = sharee.getSocialState().join().groupNameToUid.get(friendGroup);
+        Boolean res = sharee.shareReadAccessWith(result.left, Set.of(receiverGroupUid)).join();
+
+        //now sharer should see the reply
+        SocialFeed feed = sharer.getSocialFeed().join().update().join();
+        files = feed.getSharedFiles(0, 100).join();
+        //assertTrue(files.size() == 5);
+
     }
 
     public static void grantAndRevokeFileWriteAccess(NetworkAccess sharerNode, NetworkAccess shareeNode, int shareeCount, Random random) throws Exception {
@@ -1194,9 +1253,6 @@ public class PeergosNetworkUtils {
 
         // friends are now connected
         // share a file from u1 to u2
-        FileWrapper u1Root = sharer.getUserRoot().join();
-
-        String filename = "somefile.txt";
         byte[] fileData = sharer.crypto.random.randomBytes(1*1024*1024);
         Path file1 = Paths.get(sharer.username, "first-file.txt");
         uploadAndShare(fileData, file1, sharer, a.username);
@@ -1253,13 +1309,214 @@ public class PeergosNetworkUtils {
 
         // now check feed
         SocialFeed updatedFeed3 = freshFeed.update().join();
-        List<SharedItem> items3 = updatedFeed3.getShared(feedSize + 2, feedSize + 3, a.crypto, a.network).join();
+        List<SharedItem> items3 = updatedFeed3.getShared(feedSize + 2, feedSize + 4, a.crypto, a.network).join();
         Assert.assertTrue(items3.size() > 0);
         SharedItem item3 = items3.get(0);
         Assert.assertTrue(item3.owner.equals(sharer.username));
         Assert.assertTrue(item3.sharer.equals(sharer.username));
         AbsoluteCapability readCap3 = sharer.getByPath(file3).join().get().getPointer().capability.readOnly();
         Assert.assertTrue(item3.cap.equals(readCap3));
+
+        // social post
+        List<SocialPost.Content.Text> postBody = Arrays.asList(new SocialPost.Content.Text("G'day, skip!"));
+        SocialPost post = new SocialPost(sharer.username, postBody, LocalDateTime.now(),
+                SocialPost.Resharing.Friends, Optional.empty(), Collections.emptyList(), Collections.emptyList());
+        Pair<Path, FileWrapper> p = sharer.getSocialFeed().join().createNewPost(post).join();
+        sharer.shareReadAccessWith(p.left, Set.of(a.username)).join();
+        List<SharedItem> withPost = freshFeed.update().join().getShared(0, feedSize + 5, crypto, fresherA.network).join();
+        SharedItem sharedPost = withPost.get(withPost.size() - 1);
+        FileWrapper postFile = fresherA.getByPath(sharedPost.path).join().get();
+        assertTrue(postFile.getFileProperties().isSocialPost());
+        SocialPost receivedPost = Serialize.parse(postFile.getInputStream(network, crypto, x -> {}).join(),
+                postFile.getSize(), SocialPost::fromCbor).join();
+        assertTrue(receivedPost.body.equals(post.body));
+    }
+
+    public static void socialPostPropagation(NetworkAccess network, Random random) {
+        CryptreeNode.setMaxChildLinkPerBlob(10);
+
+        String password = "notagoodone";
+
+        UserContext a = PeergosNetworkUtils.ensureSignedUp("a"+generateUsername(random), password, network, crypto);
+
+        List<UserContext> shareeUsers = getUserContextsForNode(network, random, 2, Arrays.asList(password, password));
+        UserContext b = shareeUsers.get(0);
+        UserContext c = shareeUsers.get(1);
+
+        // friend a with others, b and c are not friends
+        friendBetweenGroups(Arrays.asList(a), shareeUsers);
+
+        // friends are now connected
+        // test social post propagation (comment from b on post from a gets to c)
+        SocialPost post = new SocialPost(a.username,
+                Arrays.asList(new SocialPost.Content.Text("G'day, skip!")), LocalDateTime.now(),
+                SocialPost.Resharing.Friends, Optional.empty(),
+                Collections.emptyList(), Collections.emptyList());
+        Pair<Path, FileWrapper> p = a.getSocialFeed().join().createNewPost(post).join();
+        String aFriendsUid = a.getGroupUid(SocialState.FRIENDS_GROUP_NAME).join().get();
+        a.shareReadAccessWith(p.left, Set.of(aFriendsUid)).join();
+
+        // b receives the post
+        SocialFeed bFeed = b.getSocialFeed().join().update().join();
+        List<Pair<SharedItem, FileWrapper>> bPosts = bFeed.getSharedFiles(0, 25).join();
+        Pair<SharedItem, FileWrapper> sharedPost = bPosts.get(bPosts.size() - 1);
+
+        // b now comments on post from a
+        SocialPost reply = new SocialPost(b.username,
+                Arrays.asList(new SocialPost.Content.Text("What an entrance!")), LocalDateTime.now(),
+                SocialPost.Resharing.Friends,
+                Optional.of(new SocialPost.Ref(sharedPost.left.path, sharedPost.left.cap, post.contentHash(hasher).join())),
+                Collections.emptyList(), Collections.emptyList());
+        Pair<Path, FileWrapper> replyFromB = bFeed.createNewPost(reply).join();
+        String bFriendsUid = b.getGroupUid(SocialState.FRIENDS_GROUP_NAME).join().get();
+        b.shareReadAccessWith(replyFromB.left, Set.of(bFriendsUid)).join();
+
+        // make sure a includes a ref to the comment on the original
+        a.getSocialFeed().join().update().join();
+
+        // check c gets the post and it references the comment
+        List<Pair<SharedItem, FileWrapper>> cPosts = c.getSocialFeed().join().update().join().getSharedFiles(0, 25).join();
+        Pair<SharedItem, FileWrapper> cPost = cPosts.get(cPosts.size() - 1);
+        SocialPost receivedPost = Serialize.parse(cPost.right.getInputStream(network, crypto, x -> {}).join(),
+                cPost.right.getSize(), SocialPost::fromCbor).join();
+        Assert.assertTrue(receivedPost.author.equals(a.username));
+        Assert.assertTrue(receivedPost.comments.get(0).cap.equals(replyFromB.right.readOnlyPointer()));
+    }
+
+    public static void socialFeedBug(NetworkAccess network, Random random) {
+        CryptreeNode.setMaxChildLinkPerBlob(10);
+
+        String password = "notagoodone";
+
+        UserContext sharer = PeergosNetworkUtils.ensureSignedUp(randomUsername("sharer-", random), password, network, crypto);
+
+        List<UserContext> shareeUsers = getUserContextsForNode(network, random, 1, Arrays.asList(password, password));
+        UserContext sharee = shareeUsers.get(0);
+
+        // friend sharer with others
+        friendBetweenGroups(Arrays.asList(sharer), shareeUsers);
+
+
+        byte[] fileData = sharer.crypto.random.randomBytes(1*1024*1024);
+        AsyncReader reader = new AsyncReader.ArrayBacked(fileData);
+
+        SocialFeed feed = sharer.getSocialFeed().join();
+        SocialPost.Ref ref = feed.uploadMediaForPost(reader, fileData.length, LocalDateTime.now(), c -> {}).join().right;
+        SocialPost.Resharing resharingType = SocialPost.Resharing.Friends;
+        List<? extends SocialPost.Content> body = Arrays.asList(new SocialPost.Content.Text("aaaa"), new SocialPost.Content.Reference(ref));
+        SocialPost socialPost = SocialPost.createInitialPost(sharer.username, body, resharingType);
+
+        Pair<Path, FileWrapper> result = feed.createNewPost(socialPost).join();
+
+        LocalDateTime postTime = LocalDateTime.now();
+        String updatedBody = "bbbbb";
+        socialPost = socialPost.edit(Arrays.asList(new SocialPost.Content.Text(updatedBody), new SocialPost.Content.Reference(ref)), postTime);
+
+        String uuid = result.left.getFileName().toString();
+        result = feed.updatePost(uuid, socialPost).join();
+
+        String friendGroup = SocialState.FRIENDS_GROUP_NAME;
+        SocialState state = sharer.getSocialState().join();
+        String groupUid = state.groupNameToUid.get(friendGroup);
+        // was Set.of(groupUid)
+        //boolean res = sharer.shareReadAccessWith(result.left, Set.of(sharee.username)).join();
+        boolean res = sharer.shareReadAccessWith(result.left, Set.of(groupUid)).join();
+
+        SocialFeed receiverFeed = sharee.getSocialFeed().join().update().join();
+        List<Pair<SharedItem, FileWrapper>> files = receiverFeed.getSharedFiles(0, 100).join();
+        assertTrue(files.size() == 3);
+        FileWrapper socialFile = files.get(files.size() -1).right;
+        SharedItem sharedItem = files.get(files.size() -1).left;
+        FileProperties props = socialFile.getFileProperties();
+        SocialPost loadedSocialPost = Serialize.parse(socialFile, SocialPost::fromCbor, sharee.network, crypto).join();
+        assertTrue(loadedSocialPost.body.get(0).inlineText().equals(updatedBody));
+
+        SocialPost.Ref mediaRef = ((SocialPost.Content.Reference)loadedSocialPost.body.get(1)).ref;
+        Optional<FileWrapper> optFile = sharee.network.getFile(mediaRef.cap, sharer.username).join();
+        assertTrue(optFile.isPresent());
+
+        //create a reply
+        String replyText = "reply";
+        Multihash hash = loadedSocialPost.contentHash(sharee.crypto.hasher).join();
+        SocialPost.Ref parent = new SocialPost.Ref(sharedItem.path, sharedItem.cap, hash);
+        SocialPost replySocialPost = SocialPost.createComment(parent, resharingType, sharee.username, Arrays.asList(new SocialPost.Content.Text(replyText)));
+        result = receiverFeed.createNewPost(replySocialPost).join();
+        String receiverGroupUid = sharee.getSocialState().join().groupNameToUid.get(friendGroup);
+        res = sharee.shareReadAccessWith(result.left, Set.of(receiverGroupUid)).join();
+
+        //now sharer should see the reply
+        sharer = UserContext.signIn(sharer.username, password, sharer.network, sharer.crypto, c -> {}).join();
+        feed = sharer.getSocialFeed().join().update().join();
+        files = feed.getSharedFiles(0, 100).join();
+        assertTrue(files.size() == 5);
+        socialFile = files.get(files.size() -1).right;
+        loadedSocialPost = Serialize.parse(socialFile, SocialPost::fromCbor, sharer.network, crypto).join();
+        assertTrue(loadedSocialPost.body.get(0).inlineText().equals(replyText));
+    }
+
+    public static void socialFeedAndUnfriending(NetworkAccess network, Random random) {
+        CryptreeNode.setMaxChildLinkPerBlob(10);
+
+        String password = "notagoodone";
+
+        UserContext sharer = PeergosNetworkUtils.ensureSignedUp(randomUsername("sharer-", random), password, network, crypto);
+
+        List<UserContext> shareeUsers = getUserContextsForNode(network, random, 1, Arrays.asList(password, password));
+        UserContext sharee = shareeUsers.get(0);
+
+        // friend sharer with others
+        friendBetweenGroups(Arrays.asList(sharer), shareeUsers);
+
+        SocialFeed feed = sharer.getSocialFeed().join();
+        SocialPost.Resharing resharingType = SocialPost.Resharing.Friends;
+        String bodyText = "aaaa";
+        List<SocialPost.Content.Text> body = Arrays.asList(new SocialPost.Content.Text(bodyText));
+        SocialPost socialPost = SocialPost.createInitialPost(sharer.username, body, resharingType);
+        Pair<Path, FileWrapper> result = feed.createNewPost(socialPost).join();
+
+        String friendGroup = SocialState.FRIENDS_GROUP_NAME;
+        SocialState state = sharer.getSocialState().join();
+        String groupUid = state.groupNameToUid.get(friendGroup);
+        boolean res = sharer.shareReadAccessWith(result.left, Set.of(groupUid)).join();
+
+        SocialFeed receiverFeed = sharee.getSocialFeed().join().update().join();
+        List<Pair<SharedItem, FileWrapper>> files = receiverFeed.getSharedFiles(0, 100).join();
+        assertTrue(files.size() == 3);
+        FileWrapper socialFile = files.get(files.size() - 1).right;
+        SharedItem sharedItem = files.get(files.size() - 1).left;
+        FileProperties props = socialFile.getFileProperties();
+        SocialPost loadedSocialPost = Serialize.parse(socialFile, SocialPost::fromCbor, sharee.network, crypto).join();
+        assertTrue(loadedSocialPost.body.get(0).inlineText().equals(bodyText));
+
+        //create a reply
+        String replyText = "reply";
+        Multihash hash = loadedSocialPost.contentHash(sharee.crypto.hasher).join();
+        SocialPost.Ref parent = new SocialPost.Ref(sharedItem.path, sharedItem.cap, hash);
+        SocialPost replySocialPost = SocialPost.createComment(parent, resharingType, sharee.username,
+                Arrays.asList(new SocialPost.Content.Text(replyText)));
+        result = receiverFeed.createNewPost(replySocialPost).join();
+        String receiverGroupUid = sharee.getSocialState().join().groupNameToUid.get(friendGroup);
+        res = sharee.shareReadAccessWith(result.left, Set.of(receiverGroupUid)).join();
+
+        //now sharer should see the reply
+        feed = sharer.getSocialFeed().join().update().join();
+        files = feed.getSharedFiles(0, 100).join();
+        assertTrue(files.size() == 5);
+        FileWrapper original = files.get(files.size() - 2).right;
+        FileWrapper reply = files.get(files.size() - 1).right;
+        SocialPost originalPost = Serialize.parse(original, SocialPost::fromCbor, sharer.network, crypto).join();
+        SocialPost replyPost = Serialize.parse(reply, SocialPost::fromCbor, sharer.network, crypto).join();
+        assertTrue(originalPost.body.get(0).inlineText().equals(bodyText));
+        assertTrue(replyPost.body.get(0).inlineText().equals(replyText));
+
+        sharer.removeFollower(sharee.username).join();
+        feed = sharer.getSocialFeed().join().update().join();
+        files = feed.getSharedFiles(0, 100).join();
+        assertTrue(files.size() == 5);
+        FileWrapper post = files.get(files.size() - 2).right;
+        SocialPost remainingSocialPost = Serialize.parse(post, SocialPost::fromCbor, sharer.network, crypto).join();
+        assertTrue(remainingSocialPost.body.get(0).inlineText().equals(bodyText));
+
     }
 
     private static void uploadAndShare(byte[] data, Path file, UserContext sharer, String sharee) {
@@ -1646,7 +1903,7 @@ public class PeergosNetworkUtils {
     public static void friendBetweenGroups(List<UserContext> a, List<UserContext> b) {
         for (UserContext userA : a) {
             for (UserContext userB : b) {
-                // send intial request
+                // send initial request
                 userA.sendFollowRequest(userB.username, SymmetricKey.random()).join();
 
                 // make sharer reciprocate all the follow requests

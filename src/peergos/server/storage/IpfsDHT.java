@@ -65,6 +65,11 @@ public class IpfsDHT implements ContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey) {
+        throw new IllegalStateException("Unsupported operation!");
+    }
+
+    @Override
     public CompletableFuture<Boolean> gc() {
         return CompletableFuture.completedFuture(true);
     }

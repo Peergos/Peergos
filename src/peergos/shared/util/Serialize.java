@@ -112,6 +112,21 @@ public class Serialize
         return in.readIntoArray(res, 0, (int) size).thenApply(i -> res);
     }
 
+    @JsMethod
+    public static <T> T parse(byte[] in, Function<Cborable, T> parser) {
+        return Cborable.parser(parser).apply(in);
+    }
+
+    public static <T> CompletableFuture<T> parse(FileWrapper f,
+                                                 Function<Cborable, T> parser,
+                                                 NetworkAccess network,
+                                                 Crypto crypto) {
+        byte[] res = new byte[(int)f.getSize()];
+        return f.getInputStream(network, crypto, x -> {})
+                .thenCompose(reader -> reader.readIntoArray(res, 0, (int) f.getSize()))
+                .thenApply(i -> Cborable.parser(parser).apply(res));
+    }
+
     public static <T> CompletableFuture<T> parse(AsyncReader in, long size, Function<Cborable, T> parser) {
         byte[] res = new byte[(int)size];
         return in.readIntoArray(res, 0, (int) size)

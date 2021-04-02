@@ -24,7 +24,7 @@ public class UserPublicKeyLinkTests {
 
     {
         ipfs = new FileContentAddressedStorage(Paths.get("blockstore"),
-                    JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()));
+                    JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()), Main.initCrypto().hasher);
     }
 
     private final List<Multihash> id;

@@ -52,7 +52,7 @@ public class ChampTests {
     @Test
     public void insertAndRetrieve() throws Exception {
         ContentAddressedStorage storage = new FileContentAddressedStorage(Files.createTempDirectory("peergos-tmp"),
-                JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()));
+                JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()), crypto.hasher);
         SigningPrivateKeyAndPublicHash user = createUser(storage, crypto);
         Random r = new Random(28);
 
@@ -167,7 +167,7 @@ public class ChampTests {
     @Test
     public void diff() throws Exception {
         ContentAddressedStorage storage = new FileContentAddressedStorage(Files.createTempDirectory("peergos-tmp"),
-                JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()));
+                JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()), crypto.hasher);
         SigningPrivateKeyAndPublicHash user = createUser(storage, crypto);
         Random r = new Random(28);
 
@@ -249,7 +249,7 @@ public class ChampTests {
 
     @Test
     public void canonicalDelete() throws Exception {
-        RAMStorage storage = new RAMStorage();
+        RAMStorage storage = new RAMStorage(crypto.hasher);
         int bitWidth = 5;
         int maxCollisions = 3;
         SigningPrivateKeyAndPublicHash user = createUser(storage, crypto);
@@ -285,7 +285,7 @@ public class ChampTests {
     @Test
     public void correctDelete() throws Exception {
         ContentAddressedStorage storage = new FileContentAddressedStorage(Files.createTempDirectory("peergos-tmp"),
-                JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()));
+                JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()), crypto.hasher);
         SigningPrivateKeyAndPublicHash user = createUser(storage, crypto);
         Random r = new Random(28);
 

@@ -2,6 +2,8 @@ package peergos.shared.corenode;
 
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.user.*;
 
 import java.io.*;
 import java.util.*;
@@ -9,6 +11,12 @@ import java.util.concurrent.*;
 
 public interface CoreNode {
     int MAX_USERNAME_SIZE = 64;
+
+    CompletableFuture<Optional<RequiredDifficulty>> signup(String username,
+                                                           UserPublicKeyLink chain,
+                                                           OpLog setupOperations,
+                                                           ProofOfWork proof,
+                                                           String token);
 
     /**
      *
@@ -43,6 +51,10 @@ public interface CoreNode {
      * @return All usernames starting with prefix
      */
     CompletableFuture<List<String>> getUsernames(String prefix);
+
+    CompletableFuture<UserSnapshot> migrateUser(String username,
+                                                List<UserPublicKeyLink> newChain,
+                                                Multihash currentStorageId);
 
     /** This is only implemented by caching corenodes
      *
