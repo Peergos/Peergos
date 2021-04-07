@@ -122,13 +122,27 @@ public class WriterData implements Cborable {
                                 Optional.of(newRoot), namedOwnedKeys, staticData, tree)));
     }
 
-    public CompletableFuture<Boolean> ownsKey(PublicKeyHash ownedKey,
+    public CompletableFuture<Boolean> ownsKey(PublicKeyHash identityKey,
+                                              PublicKeyHash ownedKey,
                                               ContentAddressedStorage ipfs,
+                                              MutablePointers mutable,
                                               Hasher hasher) {
-        // TODO do this recursively to handle arbitrary trees of key ownership
         return getOwnedKeyChamp(ipfs, hasher)
-                .thenCompose(champ -> champ.get(ownedKey))
-                .thenApply(Optional::isPresent);
+                .thenCompose(champ -> champ.get(ownedKey)
+                        .thenApply(Optional::isPresent)
+                        .thenCompose(direct -> {
+                            if (direct)
+                                return Futures.of(true);
+                            return champ.applyToAllMappings(false,
+                                    (b, p) -> {
+                                        if (b) // exit early if we find a match
+                                            return Futures.of(b);
+                                        PublicKeyHash childKey = p.left;
+                                        return UserContext.getWriterData(ipfs, mutable, identityKey, childKey)
+                                                .thenCompose(wd -> wd.props.ownsKey(identityKey, ownedKey, ipfs, mutable, hasher));
+                                    },
+                                    ipfs);
+                        }));
     }
 
     public CompletableFuture<OwnedKeyChamp> getOwnedKeyChamp(ContentAddressedStorage ipfs, Hasher hasher) {
@@ -318,6 +332,50 @@ public class WriterData implements Cborable {
         Optional<UserStaticData> staticData = m.getOptional("static", UserStaticData::fromCbor);
         Optional<Multihash> tree = m.getOptional("tree", val -> ((CborObject.CborMerkleLink)val).target);
         return new WriterData(controller, algo, publicData, followRequestReceiver, owned, named, staticData, tree);
+    }
+
+    public static CompletableFuture<Map<PublicKeyHash, byte[]>> getUserSnapshot(String username,
+                                                                                CoreNode core,
+                                                                                MutablePointers mutable,
+                                                                                ContentAddressedStorage dht,
+                                                                                Hasher hasher) {
+        return core.getPublicKeyHash(username)
+                .thenCompose(publicKeyHash -> publicKeyHash
+                        .map(h -> getUserSnapshotRecursive(h, h, Collections.emptyMap(), mutable, dht, hasher))
+                        .orElseGet(() -> CompletableFuture.completedFuture(Collections.emptyMap())));
+    }
+
+    public static CompletableFuture<Map<PublicKeyHash, byte[]>> getUserSnapshotRecursive(PublicKeyHash owner,
+                                                                                         PublicKeyHash writer,
+                                                                                         Map<PublicKeyHash, byte[]> alreadyDone,
+                                                                                         MutablePointers mutable,
+                                                                                         ContentAddressedStorage ipfs,
+                                                                                         Hasher hasher) {
+        return getDirectOwnedKeys(owner, writer, mutable, ipfs, hasher)
+                .thenCompose(directOwned -> {
+                    Set<PublicKeyHash> newKeys = directOwned.stream().
+                            filter(h -> ! alreadyDone.containsKey(h))
+                            .collect(Collectors.toSet());
+                    Map<PublicKeyHash, byte[]> done = new HashMap<>(alreadyDone);
+                    return mutable.getPointer(owner, writer).thenCompose(val -> {
+                        if (val.isPresent())
+                            done.put(writer, val.get());
+                        BiFunction<Map<PublicKeyHash, byte[]>, PublicKeyHash,
+                                CompletableFuture<Map<PublicKeyHash, byte[]>>> composer =
+                                (a, w) -> getUserSnapshotRecursive(owner, w, a, mutable, ipfs, hasher)
+                                        .thenApply(ws ->
+                                                Stream.concat(
+                                                        ws.entrySet().stream().filter(e -> ! a.containsKey(e.getKey())),
+                                                        a.entrySet().stream())
+                                                        .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue())));
+                        return Futures.reduceAll(newKeys, done,
+                                composer,
+                                (a, b) -> Stream.concat(
+                                        a.entrySet().stream().filter(e -> ! b.containsKey(e.getKey())),
+                                        b.entrySet().stream())
+                                        .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue())));
+                    });
+                });
     }
 
     public static CompletableFuture<Set<PublicKeyHash>> getOwnedKeysRecursive(String username,

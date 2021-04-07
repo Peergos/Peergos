@@ -9,6 +9,9 @@ import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.api.*;
+import peergos.shared.io.ipfs.cid.*;
+import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.user.*;
 import peergos.shared.util.*;
 
 import java.io.*;
@@ -58,6 +61,10 @@ public class CoreNodeHandler implements HttpHandler
                     AggregatedMetrics.GET_PUBLIC_KEY_CHAIN.inc();
                     getChain(din, dout);
                     break;
+                case "signup":
+                    AggregatedMetrics.SIGNUP.inc();
+                    signup(din, dout);
+                    break;
                 case "updateChain":
                     AggregatedMetrics.UPDATE_PUBLIC_KEY_CHAIN.inc();
                     updateChain(din, dout);
@@ -75,6 +82,10 @@ public class CoreNodeHandler implements HttpHandler
                     exchange.getResponseHeaders().set("Content-Encoding", "gzip");
                     exchange.getResponseHeaders().set("Content-Type", "application/json");
                     getAllUsernamesGzip(subComponents.length > 1 ? subComponents[1] : "", din, dout);
+                    break;
+                case "migrateUser":
+                    AggregatedMetrics.MIGRATE_USER.inc();
+                    migrateUser(din, dout);
                     break;
                 default:
                     throw new IOException("Unknown pkinode method!");
@@ -102,6 +113,20 @@ public class CoreNodeHandler implements HttpHandler
         dout.write(new CborObject.CborList(chain).serialize());
     }
 
+    void signup(DataInputStream din, DataOutputStream dout) throws Exception
+    {
+        String username = CoreNodeUtils.deserializeString(din);
+        byte[] raw = Serialize.deserializeByteArray(din, 2 * UserPublicKeyLink.MAX_SIZE);
+        UserPublicKeyLink res = UserPublicKeyLink.fromCbor(CborObject.fromByteArray(raw));
+        OpLog ops = OpLog.fromCbor(CborObject.fromByteArray(Serialize.deserializeByteArray(din, 64*1024)));
+        ProofOfWork proof = ProofOfWork.fromCbor(CborObject.fromByteArray(Serialize.deserializeByteArray(din, 100)));
+        String token = CoreNodeUtils.deserializeString(din);
+        Optional<RequiredDifficulty> err = coreNode.signup(username, res, ops, proof, token).get();
+        dout.writeBoolean(err.isEmpty());
+        if (err.isPresent())
+            dout.writeInt(err.get().requiredDifficulty);
+    }
+
     void updateChain(DataInputStream din, DataOutputStream dout) throws Exception
     {
         String username = CoreNodeUtils.deserializeString(din);
@@ -113,6 +138,16 @@ public class CoreNodeHandler implements HttpHandler
         dout.writeBoolean(err.isEmpty());
         if (err.isPresent())
             dout.writeInt(err.get().requiredDifficulty);
+    }
+
+    void migrateUser(DataInputStream din, DataOutputStream dout) throws Exception
+    {
+        String username = CoreNodeUtils.deserializeString(din);
+        byte[] raw = Serialize.deserializeByteArray(din, 4096);
+        List<UserPublicKeyLink> newChain = ((CborObject.CborList)CborObject.fromByteArray(raw)).map(UserPublicKeyLink::fromCbor);
+        Multihash currentStorageId = Cid.cast(Serialize.deserializeByteArray(din, 128));
+        UserSnapshot state = coreNode.migrateUser(username, newChain, currentStorageId).get();
+        dout.write(state.serialize());
     }
 
     void getPublicKey(DataInputStream din, DataOutputStream dout) throws Exception

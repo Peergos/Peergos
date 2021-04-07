@@ -2,6 +2,7 @@ package peergos.shared.crypto;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.symmetric.*;
+import peergos.shared.util.ProgressConsumer;
 
 import java.util.*;
 import java.util.function.*;
@@ -41,6 +42,12 @@ public class CipherText implements Cborable {
 
     public <T> T decrypt(SymmetricKey from, Function<CborObject, T> fromCbor) {
         byte[] secret = from.decrypt(cipherText, nonce);
+        return fromCbor.apply(CborObject.fromByteArray(secret));
+    }
+
+    public <T> T decrypt(SymmetricKey from, Function<CborObject, T> fromCbor, ProgressConsumer<Long> monitor) {
+        byte[] secret = from.decrypt(cipherText, nonce);
+        monitor.accept((long)secret.length); //note: this is not accurate at all
         return fromCbor.apply(CborObject.fromByteArray(secret));
     }
 }

@@ -24,34 +24,19 @@ public class ProxyingMutablePointers implements MutablePointers {
 
     @Override
     public CompletableFuture<Boolean> setPointer(PublicKeyHash owner, PublicKeyHash writer, byte[] writerSignedBtreeRootHash) {
-        return redirectCall(owner,
+        return Proxy.redirectCall(core,
+                serverId,
+                owner,
                 () -> local.setPointer(owner, writer, writerSignedBtreeRootHash),
                 target -> p2p.setPointer(target, owner, writer, writerSignedBtreeRootHash));
     }
 
     @Override
     public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash owner, PublicKeyHash writer) {
-        return redirectCall(owner,
+        return Proxy.redirectCall(core,
+                serverId,
+                owner,
                 () -> local.getPointer(owner, writer),
                 target -> p2p.getPointer(target, owner, writer));
-    }
-
-    public <V> CompletableFuture<V> redirectCall(PublicKeyHash ownerKey, Supplier<CompletableFuture<V>> direct, Function<Multihash, CompletableFuture<V>> proxied) {
-        return core.getUsername(ownerKey)
-                .thenCompose(owner -> core.getChain(owner)
-                            .thenCompose(chain -> {
-                                if (chain.isEmpty()) {
-                                    // This happens during sign-up, before we have a chain yet
-                                    return direct.get();
-                                }
-                                List<Multihash> storageIds = chain.get(chain.size() - 1).claim.storageProviders;
-                                Multihash target = storageIds.get(0);
-                                if (target.equals(serverId)) { // don't proxy
-                                    return direct.get();
-                                } else {
-                                    return proxied.apply(target);
-                                }
-                            }));
-
     }
 }

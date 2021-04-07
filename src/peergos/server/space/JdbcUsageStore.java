@@ -241,7 +241,8 @@ public class JdbcUsageStore implements UsageStore {
              PreparedStatement search = conn.prepareStatement("SELECT u.name FROM users u, writerusage wu WHERE u.id = wu.user_id AND wu.writer_id = ?;")) {
             search.setInt(1, writerId);
             ResultSet resultSet = search.executeQuery();
-            resultSet.next();
+            if (! resultSet.next())
+                throw new IllegalStateException("Unknown writer on this server!");
             return resultSet.getString(1);
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);

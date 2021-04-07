@@ -67,7 +67,6 @@ public class CapabilityStore {
      * @param friendName
      * @param network
      * @param crypto
-     * @param saveCache
      * @return the current byte index, and the valid capabilities
      */
     public static CompletableFuture<CapabilitiesFromUser> loadReadOnlyLinks(FileWrapper cacheDir,

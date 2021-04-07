@@ -39,12 +39,14 @@ public class UserContext {
     private static final Logger LOG = Logger.getGlobal();
 
     public static final String SHARED_DIR_NAME = "shared";
+    public static final String POSTS_DIR_NAME = ".posts";
     public static final String GROUPS_FILENAME = ".groups.cbor"; // no clash possible with usernames possible because of dot
     public static final String FEED_DIR_NAME = ".feed";
     public static final String TRANSACTIONS_DIR_NAME = ".transactions";
     public static final String FRIEND_ANNOTATIONS_FILE_NAME = ".annotations";
 
     public static final String ENTRY_POINTS_FROM_FRIENDS_FILENAME = ".from-friends.cborstream";
+    public static final String ENTRY_POINTS_FROM_FRIENDS_GROUPS_FILENAME = ".groups-from-friends.cborstream";
     public static final String SOCIAL_STATE_FILENAME = ".social-state.cbor";
     public static final String BLOCKED_USERNAMES_FILE = ".blocked-usernames.txt";
 
@@ -202,8 +204,10 @@ public class UserContext {
                                                         NetworkAccess network,
                                                         Crypto crypto,
                                                         Consumer<String> progressCallback) {
+        // set claim expiry to two months from now
+        LocalDate expiry = LocalDate.now().plusMonths(2);
         SecretGenerationAlgorithm algorithm = SecretGenerationAlgorithm.getDefault(crypto.random);
-        return signUpGeneral(username, password, token, network, crypto, algorithm, progressCallback);
+        return signUpGeneral(username, password, token, expiry, network, crypto, algorithm, progressCallback);
     }
 
     public static CompletableFuture<UserContext> signUp(String username,
@@ -211,69 +215,78 @@ public class UserContext {
                                                         String token,
                                                         NetworkAccess network,
                                                         Crypto crypto) {
+        // set claim expiry to two months from now
+        LocalDate expiry = LocalDate.now().plusMonths(2);
         SecretGenerationAlgorithm algorithm = SecretGenerationAlgorithm.getDefault(crypto.random);
-        return signUpGeneral(username, password, token, network, crypto, algorithm, t -> {});
+        return signUpGeneral(username, password, token, expiry, network, crypto, algorithm, t -> {});
     }
 
     public static CompletableFuture<UserContext> signUpGeneral(String username,
                                                                String password,
                                                                String token,
+                                                               LocalDate expiry,
                                                                NetworkAccess initialNetwork,
                                                                Crypto crypto,
                                                                SecretGenerationAlgorithm algorithm,
                                                                Consumer<String> progressCallback) {
-        NetworkAccess network = initialNetwork.withoutS3BlockStore();
+        // Using a local OpLog that doesn't commit anything allows us to group all the updates into a single atomic call
+        OpLog opLog = new OpLog(new ArrayList<>());
+        NetworkAccess network = NetworkAccess.nonCommittingForSignup(opLog, opLog, crypto.hasher);
         progressCallback.accept("Generating keys");
-        return UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer, algorithm)
+        return initialNetwork.coreNode.getChain(username)
+                .thenApply(existing -> {
+                    if (existing.size() > 0)
+                        throw new IllegalStateException("User already exists!");
+                    return true;
+                })
+                .thenCompose(x -> UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider,
+                        crypto.random, crypto.signer, crypto.boxer, algorithm))
                 .thenCompose(userWithRoot -> {
                     PublicSigningKey publicSigningKey = userWithRoot.getUser().publicSigningKey;
                     SecretSigningKey secretSigningKey = userWithRoot.getUser().secretSigningKey;
                     PublicKeyHash signerHash = ContentAddressedStorage.hashKey(publicSigningKey);
                     SigningPrivateKeyAndPublicHash signer = new SigningPrivateKeyAndPublicHash(signerHash, secretSigningKey);
-
                     progressCallback.accept("Registering username");
-                    return UserContext.register(username, signer, token, crypto.hasher, network, progressCallback).thenApply(registered -> {
-                        if (!registered) {
-                            throw new IllegalStateException("Couldn't register username: " + username);
-                        }
-                        return true;
-                    }).thenCompose(x -> IpfsTransaction.call(signerHash, tid -> network.dhtClient.putSigningKey(
-                            secretSigningKey.signMessage(publicSigningKey.serialize()),
-                            signerHash,
-                            publicSigningKey, tid).thenCompose(returnedSignerHash -> {
-                        PublicBoxingKey publicBoxingKey = userWithRoot.getBoxingPair().publicBoxingKey;
-                        return crypto.hasher.sha256(publicBoxingKey.serialize())
-                                .thenCompose(boxerHash -> network.dhtClient.putBoxingKey(signerHash,
-                                        secretSigningKey.signMessage(boxerHash), publicBoxingKey, tid));
-                    }).thenCompose(boxerHash -> {
-                        progressCallback.accept("Creating filesystem");
-                        return WriterData.createEmptyWithStaticData(signerHash,
-                                signer,
-                                Optional.of(new PublicKeyHash(boxerHash)),
-                                userWithRoot.getRoot(),
-                                algorithm,
-                                network.dhtClient, network.hasher, tid).thenCompose(newUserData -> {
+                    return initialNetwork.dhtClient.id()
+                            .thenApply(id -> UserPublicKeyLink.createInitial(signer, username, expiry, Arrays.asList(id)))
+                            .thenCompose(chain -> IpfsTransaction.call(signerHash, tid -> network.dhtClient.putSigningKey(
+                                    secretSigningKey.signMessage(publicSigningKey.serialize()),
+                                    signerHash,
+                                    publicSigningKey, tid).thenCompose(returnedSignerHash -> {
+                                PublicBoxingKey publicBoxingKey = userWithRoot.getBoxingPair().publicBoxingKey;
+                                return crypto.hasher.sha256(publicBoxingKey.serialize())
+                                        .thenCompose(boxerHash -> network.dhtClient.putBoxingKey(signerHash,
+                                                secretSigningKey.signMessage(boxerHash), publicBoxingKey, tid));
+                            }).thenCompose(boxerHash -> {
+                                progressCallback.accept("Creating filesystem");
+                                return WriterData.createEmptyWithStaticData(signerHash,
+                                        signer,
+                                        Optional.of(new PublicKeyHash(boxerHash)),
+                                        userWithRoot.getRoot(),
+                                        algorithm,
+                                        network.dhtClient, network.hasher, tid).thenCompose(newUserData -> {
 
-                            CommittedWriterData notCommitted = new CommittedWriterData(MaybeMultihash.empty(), newUserData);
-                            network.synchronizer.put(signer.publicKeyHash, signer.publicKeyHash, notCommitted);
-                            return network.synchronizer.applyComplexUpdate(signerHash, signer,
-                                    (s, committer) -> newUserData.commit(signerHash, signer, MaybeMultihash.empty(), network, tid));
-                        });
-                    }), network.dhtClient)
-                            .thenCompose(snapshot -> {
-                                LOG.info("Creating user's root directory");
-                                long t1 = System.currentTimeMillis();
-                                return createEntryDirectory(signer, username, userWithRoot.getRoot(), network, crypto)
-                                        .thenCompose(globalRoot -> {
-                                            LOG.info("Creating root directory took " + (System.currentTimeMillis() - t1) + " mS");
-                                            return createSpecialDirectory(globalRoot, username, SHARED_DIR_NAME, network, crypto);
-                                        })
-                                        .thenCompose(globalRoot -> createSpecialDirectory(globalRoot, username,
-                                                TRANSACTIONS_DIR_NAME, network, crypto))
-                                        .thenCompose(globalRoot -> createSpecialDirectory(globalRoot, username,
-                                                CapabilityStore.CAPABILITY_CACHE_DIR, network, crypto))
-                                        .thenCompose(y -> signIn(username, userWithRoot, initialNetwork, crypto, progressCallback));
-                            }));
+                                    CommittedWriterData notCommitted = new CommittedWriterData(MaybeMultihash.empty(), newUserData);
+                                    network.synchronizer.put(signer.publicKeyHash, signer.publicKeyHash, notCommitted);
+                                    return network.synchronizer.applyComplexUpdate(signerHash, signer,
+                                            (s, committer) -> newUserData.commit(signerHash, signer, MaybeMultihash.empty(), network, tid));
+                                });
+                            }), network.dhtClient)
+                                    .thenCompose(snapshot -> {
+                                        LOG.info("Creating user's root directory");
+                                        long t1 = System.currentTimeMillis();
+                                        return createEntryDirectory(signer, username, userWithRoot.getRoot(), network, crypto)
+                                                .thenCompose(globalRoot -> {
+                                                    LOG.info("Creating root directory took " + (System.currentTimeMillis() - t1) + " mS");
+                                                    return createSpecialDirectory(globalRoot, username, SHARED_DIR_NAME, network, crypto);
+                                                })
+                                                .thenCompose(globalRoot -> createSpecialDirectory(globalRoot, username,
+                                                        TRANSACTIONS_DIR_NAME, network, crypto))
+                                                .thenCompose(globalRoot -> createSpecialDirectory(globalRoot, username,
+                                                        CapabilityStore.CAPABILITY_CACHE_DIR, network, crypto))
+                                                .thenCompose(x -> signupWithRetry(username, chain.get(0), token, opLog, crypto.hasher, initialNetwork, p -> {}))
+                                                .thenCompose(y -> signIn(username, userWithRoot, initialNetwork, crypto, progressCallback));
+                                    }));
                 }).exceptionally(Futures::logAndThrow);
     }
 
@@ -381,8 +394,11 @@ public class UserContext {
                                                                 Crypto crypto) {
         EntryPoint entry = new EntryPoint(cap, "");
         return NetworkAccess.retrieveEntryPoint(entry, network)
-                .thenCompose(r -> addRetrievedEntryPointToTrie(null, currentRoot, entry, r.getPath(),
-                        true, null, network, crypto));
+                .thenCompose(r -> entry.isValid(r.getPath(), network).thenApply(valid -> {
+                    if (! valid)
+                        throw new IllegalStateException("Invalid link!");
+                    return currentRoot.put(r.getPath(), entry);
+                }));
     }
 
     public static CompletableFuture<AbsoluteCapability> getPublicCapability(Path originalPath, NetworkAccess network) {
@@ -565,27 +581,6 @@ public class UserContext {
                 .thenApply(publicKey -> !publicKey.isPresent());
     }
 
-    public static CompletableFuture<Boolean> register(String username,
-                                                      SigningPrivateKeyAndPublicHash signer,
-                                                      String token,
-                                                      Hasher hasher,
-                                                      NetworkAccess network,
-                                                      Consumer<String> progressCallback) {
-        LocalDate now = LocalDate.now();
-        // set claim expiry to two months from now
-        LocalDate expiry = now.plusMonths(2);
-        LOG.info("claiming username: " + username + " with expiry " + expiry);
-        return network.dhtClient.id()
-                .thenCompose(id -> {
-                    List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createInitial(signer, username, expiry, Arrays.asList(id));
-                    return network.coreNode.getChain(username).thenCompose(existing -> {
-                        if (existing.size() > 0)
-                            throw new IllegalStateException("User already exists!");
-                        return updateChainWithRetry(username, claimChain, token, hasher, network, progressCallback);
-                    });
-                });
-    }
-
     public CompletableFuture<LocalDate> getUsernameClaimExpiry() {
         return network.coreNode.getChain(username)
                 .thenApply(chain -> chain.get(chain.size() - 1).claim.expiry);
@@ -598,6 +593,31 @@ public class UserContext {
 
     public CompletableFuture<Boolean> renewUsernameClaim(LocalDate expiry) {
         return renewUsernameClaim(username, signer, expiry, crypto.hasher, network);
+    }
+
+    private static CompletableFuture<Boolean> signupWithRetry(String username,
+                                                              UserPublicKeyLink chain,
+                                                              String token,
+                                                              OpLog operations,
+                                                              Hasher hasher,
+                                                              NetworkAccess network,
+                                                              Consumer<String> progressCallback) {
+        byte[] data = new CborObject.CborList(Arrays.asList(chain)).serialize();
+        return time(() -> hasher.generateProofOfWork(ProofOfWork.MIN_DIFFICULTY, data), "Proof of work")
+                .thenCompose(proof -> network.coreNode.signup(username, chain, operations, proof, token))
+                .thenCompose(diff -> {
+                    if (diff.isPresent()) {
+                        progressCallback.accept("The server is currently under load, retrying...");
+                        return time(() -> hasher.generateProofOfWork(diff.get().requiredDifficulty, data), "Proof of work")
+                                .thenCompose(proof -> network.coreNode.signup(username, chain, operations, proof, token))
+                                .thenApply(d -> {
+                                    if (d.isPresent())
+                                        throw new IllegalStateException("Server is under load please try again later");
+                                    return true;
+                                });
+                    }
+                    return Futures.of(true);
+                });
     }
 
     private static CompletableFuture<Boolean> updateChainWithRetry(String username,
@@ -678,16 +698,16 @@ public class UserContext {
     public CompletableFuture<UserContext> changePassword(String oldPassword, String newPassword) {
         return getKeyGenAlgorithm().thenCompose(alg -> {
             SecretGenerationAlgorithm newAlgorithm = SecretGenerationAlgorithm.withNewSalt(alg, crypto.random);
-            return changePassword(oldPassword, newPassword, alg, newAlgorithm);
+            // set claim expiry to two months from now
+            return changePassword(oldPassword, newPassword, alg, newAlgorithm, LocalDate.now().plusMonths(2));
         });
     }
 
     public CompletableFuture<UserContext> changePassword(String oldPassword,
                                                          String newPassword,
                                                          SecretGenerationAlgorithm existingAlgorithm,
-                                                         SecretGenerationAlgorithm newAlgorithm) {
-        // set claim expiry to two months from now
-        LocalDate expiry = LocalDate.now().plusMonths(2);
+                                                         SecretGenerationAlgorithm newAlgorithm,
+                                                         LocalDate expiry) {
         LOG.info("Changing password and setting expiry to: " + expiry);
 
         return UserUtil.generateUser(username, oldPassword, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer, existingAlgorithm)
@@ -806,8 +826,7 @@ public class UserContext {
                                                     .thenCompose(x -> addRootEntryPointAndCommit(x.merge(s2), entry, owner, userRootKey, network, tid));
                                         });
                             }));
-        }), network.dhtClient).thenCompose(s -> addRetrievedEntryPointToTrie(directoryName, TrieNodeImpl.empty(),
-                entry, "/" + directoryName, false, null, network, crypto));
+        }), network.dhtClient).thenApply(s -> TrieNodeImpl.empty().put("/" + directoryName, entry));
     }
 
     public CompletableFuture<PublicSigningKey> getSigningKey(PublicKeyHash keyhash) {
@@ -1036,7 +1055,7 @@ public class UserContext {
         });
     }
 
-    private CompletableFuture<Groups> getGroupNameMappings() {
+    public CompletableFuture<Groups> getGroupNameMappings() {
         return FileUtils.getOrCreateObject(this,
                 Paths.get(username, SHARED_DIR_NAME, GROUPS_FILENAME),
                 () -> Groups.generate(crypto.random),
@@ -1654,7 +1673,7 @@ public class UserContext {
         return getByPath("/" + username + "/shared/" + usernameToGrantAccess)
                 .thenCompose(shared -> {
                     if (!shared.isPresent())
-                        return CompletableFuture.completedFuture(false);
+                        return Futures.errored(new IllegalStateException("Unknown recipient for sharing: " + usernameToGrantAccess));
                     FileWrapper sharedDir = shared.get();
                     return sharingFunction.apply(sharedDir, file);
                 });
@@ -1698,7 +1717,7 @@ public class UserContext {
                 });
     }
 
-    private CompletableFuture<List<BlindFollowRequest>> getFollowRequests() {
+    public CompletableFuture<List<BlindFollowRequest>> getFollowRequests() {
         byte[] auth = TimeLimitedClient.signNow(signer.secret);
         return network.social.getFollowRequests(signer.publicKeyHash, auth).thenApply(reqs -> {
             CborObject cbor = CborObject.fromByteArray(reqs);
@@ -1813,7 +1832,10 @@ public class UserContext {
     @JsMethod
     public CompletableFuture<List<Pair<SharedItem, FileWrapper>>> getFiles(List<SharedItem> pointers) {
         return Futures.combineAllInOrder(pointers.stream()
-                .map(s -> network.getFile(s.cap, s.owner)
+                .map(s -> Futures.asyncExceptionally(() -> network.getFile(s.cap, s.owner)
+                                .thenCompose(fopt -> fopt.map(f -> Futures.of(Optional.of(f)))
+                                        .orElseGet(() -> getByPath(s.path))),
+                        t -> getByPath(s.path))
                         .thenApply(opt -> opt.map(f -> new Pair<>(s, f))))
                 .collect(Collectors.toList()))
                 .thenApply(res -> res.stream()
@@ -1862,8 +1884,7 @@ public class UserContext {
                 .collect(Collectors.toList());
         return Futures.reduceAll(ourFileSystemEntries, root,
                 (t, e) -> NetworkAccess.getLatestEntryPoint(e, network)
-                        .thenCompose(r -> addRetrievedEntryPointToTrie(ourName, t, r.entry, r.getPath(),
-                                false, null, network, crypto)),
+                        .thenApply(r -> t.put(r.getPath(), r.entry)),
                 (a, b) -> a)
                 .exceptionally(Futures::logAndThrow);
     }
@@ -1887,46 +1908,34 @@ public class UserContext {
 
                                     List<CompletableFuture<Optional<FriendSourcedTrieNode>>> friendNodes = friendsOnly.stream()
                                             .parallel()
-                                            .map(e -> FriendSourcedTrieNode.build(capCache, e, network, crypto))
+                                            .map(e -> FriendSourcedTrieNode.build(capCache, e,
+                                                    (c, o) -> addFriendGroupCap(c, o), network, crypto))
                                             .collect(Collectors.toList());
                                     return Futures.reduceAll(friendNodes, ourRoot,
                                             (t, e) -> e.thenApply(fromUser -> fromUser.map(userEntrie -> t.putNode(userEntrie.ownerName, userEntrie))
                                                     .orElse(t)).exceptionally(ex -> t),
                                             (a, b) -> a);
+                                })).thenCompose(root -> getFriendsGroupCaps(homeDir)
+                                .thenApply(groups -> { // now add the groups from each friend
+                                    Set<String> friendNames = root.getChildNames()
+                                            .stream()
+                                            .filter(n -> !n.equals(ourName))
+                                            .collect(Collectors.toSet());
+                                    for (String friendName : friendNames) {
+                                        FriendSourcedTrieNode friend = (FriendSourcedTrieNode) root.getChildNode(friendName);
+                                        for (EntryPoint group : groups.left.getFriends(friendName)) {
+                                            friend.addGroup(group);
+                                        }
+                                    }
+                                    return root;
                                 })))
-                .exceptionally(Futures::logAndThrow)
-                .thenCompose(root -> { // now add the groups from each friend
-                    Set<String> friendNames = root.getChildNames()
-                            .stream()
-                            .filter(n -> !n.equals(ourName))
-                            .collect(Collectors.toSet());
-                    return Futures.reduceAll(friendNames, true,
-                            (b, name) -> root.getChildren(name +"/" + SHARED_DIR_NAME, crypto.hasher, network)
-                                    .thenApply(kids -> {
-                                Set<FileWrapper> groupDirs = kids.stream()
-                                        .filter(f -> f.isDirectory() && f.getName().startsWith("."))
-                                        .collect(Collectors.toSet());
-                                FriendSourcedTrieNode friend = (FriendSourcedTrieNode) root.getChildNode(name);
-                                for (FileWrapper group : groupDirs) {
-                                    friend.addGroup(new EntryPoint(group.getPointer().capability, name));
-                                }
-                                return true;
-                            }).exceptionally(t -> b),
-                            (a, b) -> a && b)
-                            .thenApply(x -> root);
-                });
+                .exceptionally(Futures::logAndThrow);
     }
 
     private CompletableFuture<TrieNode> retrieveAndAddEntryPointToTrie(TrieNode root, EntryPoint e) {
         return NetworkAccess.retrieveEntryPoint(e, network)
                 .thenCompose(r -> addRetrievedEntryPointToTrie(username, root, r.entry, r.getPath(), false,
-                        capCache, network, crypto));
-    }
-
-    private static Optional<FileWrapper> getChild(Set<FileWrapper> in, String name) {
-        return in.stream()
-                .filter(f -> f.getName().equals(name))
-                .findFirst();
+                        capCache, this, network, crypto));
     }
 
     private CompletableFuture<List<EntryPoint>> getFriendsEntryPoints(FileWrapper homeDir) {
@@ -1961,17 +1970,44 @@ public class UserContext {
                 });
     }
 
+    private CompletableFuture<Pair<FriendsGroups, Optional<FileWrapper>>> getFriendsGroupCaps(FileWrapper homeDir) {
+        return homeDir.getChild(ENTRY_POINTS_FROM_FRIENDS_GROUPS_FILENAME, crypto.hasher, network)
+                .thenCompose(fopt -> fopt.map(f -> f.getInputStream(network, crypto, x -> {})
+                        .thenCompose(reader -> Serialize.parse(reader, f.getSize(), FriendsGroups::fromCbor))
+                        .thenApply(g -> new Pair<>(g, fopt)))
+                        .orElse(CompletableFuture.completedFuture(new Pair<>(FriendsGroups.empty(), Optional.empty()))));
+    }
+
+    public CompletableFuture<Boolean> addFriendGroupCap(CapabilityWithPath group, String owner) {
+        return getUserRoot()
+                .thenCompose(home -> getFriendsGroupCaps(home)
+                        .thenCompose(p -> {
+                            FriendsGroups updated = p.left.addGroup(group, owner);
+                            byte[] raw = updated.serialize();
+                            AsyncReader reader = AsyncReader.build(raw);
+                            if (p.right.isPresent())
+                                return p.right.get().overwriteFile(reader, raw.length, network, crypto, x -> {});
+
+                            return home.uploadFileSection(ENTRY_POINTS_FROM_FRIENDS_GROUPS_FILENAME, reader, true,
+                                    0, raw.length, Optional.empty(), false, network, crypto, x -> {},
+                                    crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH));
+                        })).thenApply(x -> true);
+    }
+
     private static CompletableFuture<TrieNode> addRetrievedEntryPointToTrie(String ourName,
                                                                             TrieNode root,
                                                                             EntryPoint fileCap,
                                                                             String path,
                                                                             boolean checkOwner,
                                                                             IncomingCapCache capCache,
+                                                                            UserContext context,
                                                                             NetworkAccess network,
                                                                             Crypto crypto) {
         // check entrypoint doesn't forge the owner
         return (fileCap.ownerName.equals(ourName) || ! checkOwner ? CompletableFuture.completedFuture(true) :
                 fileCap.isValid(path, network)).thenCompose(valid -> {
+            if (! valid)
+                return Futures.errored(new IllegalStateException("Capability claims incorrect owner!"));
             String[] parts = path.split("/");
             if (parts.length < 3 || !parts[2].equals(SHARED_DIR_NAME))
                 return CompletableFuture.completedFuture(root.put(path, fileCap));
@@ -1981,13 +2017,23 @@ public class UserContext {
             // This is a friend's sharing directory, create a wrapper to read the capabilities lazily from it
             return root.getByPath(Paths.get(ourName, CapabilityStore.CAPABILITY_CACHE_DIR).toString(), crypto.hasher, network)
                     .thenApply(opt -> opt.get())
-                    .thenCompose(cacheDir -> FriendSourcedTrieNode.build(capCache, fileCap, network, crypto))
+                    .thenCompose(cacheDir -> FriendSourcedTrieNode.build(capCache, fileCap, context::addFriendGroupCap, network, crypto))
                     .thenApply(fromUser -> fromUser.map(userEntrie -> root.putNode(username, userEntrie)).orElse(root));
         });
     }
 
-    public static CompletableFuture<CommittedWriterData> getWriterData(NetworkAccess network, PublicKeyHash owner, PublicKeyHash writer) {
-        return getWriterDataCbor(network, owner, writer)
+    public static CompletableFuture<CommittedWriterData> getWriterData(NetworkAccess network,
+                                                                       PublicKeyHash owner,
+                                                                       PublicKeyHash writer) {
+        return getWriterDataCbor(network.dhtClient, network.mutable, owner, writer)
+                .thenApply(pair -> new CommittedWriterData(MaybeMultihash.of(pair.left), WriterData.fromCbor(pair.right)));
+    }
+
+    public static CompletableFuture<CommittedWriterData> getWriterData(ContentAddressedStorage ipfs,
+                                                                       MutablePointers mutable,
+                                                                       PublicKeyHash owner,
+                                                                       PublicKeyHash writer) {
+        return getWriterDataCbor(ipfs, mutable, owner, writer)
                 .thenApply(pair -> new CommittedWriterData(MaybeMultihash.of(pair.left), WriterData.fromCbor(pair.right)));
     }
 
@@ -1996,17 +2042,20 @@ public class UserContext {
                 .thenCompose(signer -> {
                     PublicKeyHash owner = signer.orElseThrow(
                             () -> new IllegalStateException("No public-key for user " + username));
-                    return getWriterDataCbor(network, owner, owner);
+                    return getWriterDataCbor(network.dhtClient, network.mutable, owner, owner);
                 });
     }
 
-    private static CompletableFuture<Pair<Multihash, CborObject>> getWriterDataCbor(NetworkAccess network, PublicKeyHash owner, PublicKeyHash writer) {
-        return network.mutable.getPointer(owner, writer)
-                .thenCompose(casOpt -> network.dhtClient.getSigningKey(writer)
+    private static CompletableFuture<Pair<Multihash, CborObject>> getWriterDataCbor(ContentAddressedStorage ipfs,
+                                                                                    MutablePointers mutable,
+                                                                                    PublicKeyHash owner,
+                                                                                    PublicKeyHash writer) {
+        return mutable.getPointer(owner, writer)
+                .thenCompose(casOpt -> ipfs.getSigningKey(writer)
                         .thenApply(signer -> casOpt.map(raw -> HashCasPair.fromCbor(CborObject.fromByteArray(
                                 signer.get().unsignMessage(raw))).updated)
                                 .orElse(MaybeMultihash.empty())))
-                .thenCompose(key -> network.dhtClient.get(key.get())
+                .thenCompose(key -> ipfs.get(key.get())
                         .thenApply(Optional::get)
                         .thenApply(cbor -> new Pair<>(key.get(), cbor))
                 );
@@ -2016,8 +2065,10 @@ public class UserContext {
     public CompletableFuture<Boolean> unfollow(String friendName) {
         LOG.info("Unfollowing: " + friendName);
         return getUserRoot()
-                .thenCompose(home -> home.appendToChild(BLOCKED_USERNAMES_FILE, (friendName + "\n").getBytes(), true,
-                        network, crypto, x -> {}))
+                .thenCompose(home -> home.getChild(BLOCKED_USERNAMES_FILE, crypto.hasher, network)
+                        .thenCompose(fopt -> home.appendToChild(BLOCKED_USERNAMES_FILE,
+                                fopt.map(f -> f.getSize()).orElse(0L), (friendName + "\n").getBytes(), true,
+                                network, crypto, x -> {})))
                 .thenApply(b -> {
                     entrie = entrie.removeEntry("/" + friendName + "/");
                     return true;

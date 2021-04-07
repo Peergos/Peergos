@@ -166,7 +166,8 @@ public interface CborObject extends Cborable {
         }
 
         public boolean getBoolean(String key) {
-            return ((CborBoolean) get(key)).value;
+            CborBoolean val = (CborBoolean) get(key);
+            return val != null && val.value;
         }
 
         public boolean getBoolean(String key, boolean def) {
@@ -198,6 +199,8 @@ public interface CborObject extends Cborable {
 
         public <T> List<T> getList(String key, Function<Cborable, T> fromCbor) {
             CborList cborList = (CborList) get(key);
+            if (cborList == null)
+                return Collections.emptyList();
             return cborList.value
                     .stream()
                     .map(fromCbor)
@@ -261,7 +264,10 @@ public interface CborObject extends Cborable {
         }
 
         public <K,V> Map<K,V> getMap(String key, Function<? super Cborable, K> toKey, Function<? super Cborable, V> toValue) {
-            return ((CborMap)get(key)).toMap(toKey, toValue);
+            CborMap val = (CborMap) get(key);
+            if (val == null)
+                return Collections.emptyMap();
+            return val.toMap(toKey, toValue);
         }
     }
 
@@ -325,6 +331,10 @@ public interface CborObject extends Cborable {
                 .collect(Collectors.toList());
         }
 
+        public static <T> CborList build(List<T> in, Function<T, Cborable> toCbor) {
+            return new CborList(in.stream().map(toCbor).collect(Collectors.toList()));
+        }
+
         @Override
         public void serialize(CborEncoder encoder) {
             try {
@@ -363,6 +373,10 @@ public interface CborObject extends Cborable {
             return value.stream()
                 .map(fromCbor)
                 .collect(Collectors.toList());
+        }
+
+        public long getLong(int index) {
+            return ((CborLong)value.get(index)).value;
         }
 
         public <T> T get(int index, Function<? super Cborable, T> fromCbor) {

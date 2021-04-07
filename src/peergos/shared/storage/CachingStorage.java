@@ -25,6 +25,10 @@ public class CachingStorage extends DelegatingStorage {
         this.pendingRaw = new LRUCache<>(100);
     }
 
+    public Collection<byte[]> getCached() {
+        return cache.values();
+    }
+
     @Override
     public CompletableFuture<BlockStoreProperties> blockStoreProperties() {
         return target.blockStoreProperties();

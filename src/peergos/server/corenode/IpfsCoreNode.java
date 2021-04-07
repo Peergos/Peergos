@@ -143,6 +143,45 @@ public class IpfsCoreNode implements CoreNode {
         }
     }
 
+    /** Replay a series of block writes and pointer updates that form a signup
+     *
+     * @param owner
+     * @param ops
+     * @param ipfs
+     * @param mutable
+     */
+    public static void applyOpLog(PublicKeyHash owner, OpLog ops, ContentAddressedStorage ipfs, MutablePointers mutable) {
+        TransactionId tid = ipfs.startTransaction(owner).join();
+        for (Either<OpLog.PointerWrite, OpLog.BlockWrite> op : ops.operations) {
+            if (op.isA()) {
+                OpLog.PointerWrite pointerUpdate = op.a();
+                mutable.setPointer(owner, pointerUpdate.writer, pointerUpdate.writerSignedChampRootCas).join();
+            } else {
+                OpLog.BlockWrite block = op.b();
+                if (block.isRaw)
+                    ipfs.putRaw(owner, block.writer, block.signature, block.block, tid, x -> {}).join();
+                else
+                    ipfs.put(owner, block.writer, block.signature, block.block, tid).join();
+            }
+        }
+        ipfs.closeTransaction(owner, tid).join();
+    }
+
+    @Override
+    public CompletableFuture<Optional<RequiredDifficulty>> signup(String username,
+                                                                  UserPublicKeyLink chain,
+                                                                  OpLog setupOperations,
+                                                                  ProofOfWork proof,
+                                                                  String token) {
+        Optional<RequiredDifficulty> pkiResult = updateChain(username, Arrays.asList(chain), proof, token).join();
+        if (pkiResult.isPresent())
+            return Futures.of(pkiResult);
+
+        applyOpLog(chain.owner, setupOperations, ipfs, mutable);
+
+        return Futures.of(Optional.empty());
+    }
+
     /** Update a user's public key chain, keeping the in memory mappings correct and committing the new pki root
      *
      * @param username
@@ -238,6 +277,12 @@ public class IpfsCoreNode implements CoreNode {
     }
 
     @Override
-    public void close() throws IOException {}
+    public CompletableFuture<UserSnapshot> migrateUser(String username,
+                                                       List<UserPublicKeyLink> newChain,
+                                                       Multihash currentStorageId) {
+        throw new IllegalStateException("Migration from pki node unimplemented!");
+    }
 
+    @Override
+    public void close() throws IOException {}
 }

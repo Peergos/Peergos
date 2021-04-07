@@ -13,9 +13,9 @@ public class NonWriteThroughStorage implements ContentAddressedStorage {
     private final ContentAddressedStorage source;
     private final ContentAddressedStorage modifications;
 
-    public NonWriteThroughStorage(ContentAddressedStorage source) {
+    public NonWriteThroughStorage(ContentAddressedStorage source, Hasher hasher) {
         this.source = source;
-        this.modifications = new RAMStorage();
+        this.modifications = new RAMStorage(hasher);
     }
 
     @Override
@@ -36,6 +36,11 @@ public class NonWriteThroughStorage implements ContentAddressedStorage {
     @Override
     public CompletableFuture<Boolean> closeTransaction(PublicKeyHash owner, TransactionId tid) {
         return modifications.closeTransaction(owner, tid);
+    }
+
+    @Override
+    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey) {
+        return modifications.getChampLookup(owner, root, champKey);
     }
 
     @Override

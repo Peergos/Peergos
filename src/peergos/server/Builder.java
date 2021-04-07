@@ -149,14 +149,15 @@ public class Builder {
     }
 
     public static DeletableContentAddressedStorage buildLocalStorage(Args a,
-                                                                      TransactionStore transactions) {
+                                                                     TransactionStore transactions,
+                                                                     Hasher hasher) {
         boolean useIPFS = a.getBoolean("useIPFS");
         boolean enableGC = a.getBoolean("enable-gc", false);
         JavaPoster ipfsApi = buildIpfsApi(a);
         if (useIPFS) {
-            DeletableContentAddressedStorage.HTTP ipfs = new DeletableContentAddressedStorage.HTTP(ipfsApi, false);
+            DeletableContentAddressedStorage.HTTP ipfs = new DeletableContentAddressedStorage.HTTP(ipfsApi, false, hasher);
             if (enableGC) {
-                return new TransactionalIpfs(ipfs, transactions);
+                return new TransactionalIpfs(ipfs, transactions, hasher);
             } else
                 return ipfs;
         } else {
@@ -164,7 +165,7 @@ public class Builder {
             if (S3Config.useS3(a)) {
                 if (enableGC)
                     throw new IllegalStateException("GC should be run separately when using S3!");
-                ContentAddressedStorage.HTTP ipfs = new ContentAddressedStorage.HTTP(ipfsApi, false);
+                ContentAddressedStorage.HTTP ipfs = new ContentAddressedStorage.HTTP(ipfsApi, false, hasher);
                 Optional<String> publicReadUrl = Optional.ofNullable(a.getArg("blockstore-url", null));
                 boolean directWrites = a.getBoolean("direct-s3-writes", false);
                 boolean publicReads = a.getBoolean("public-s3-reads", false);
@@ -172,9 +173,9 @@ public class Builder {
                 S3Config config = S3Config.build(a);
                 Optional<String> authedUrl = Optional.of("https://" + config.getHost() + "/");
                 BlockStoreProperties props = new BlockStoreProperties(directWrites, publicReads, authedReads, publicReadUrl, authedUrl);
-                return new S3BlockStorage(config, Cid.decode(a.getArg("ipfs.id")), props, transactions, ipfs);
+                return new S3BlockStorage(config, Cid.decode(a.getArg("ipfs.id")), props, transactions, hasher, ipfs);
             } else {
-                return new FileContentAddressedStorage(blockstorePath(a), transactions);
+                return new FileContentAddressedStorage(blockstorePath(a), transactions, hasher);
             }
         }
     }
@@ -256,11 +257,14 @@ public class Builder {
     }
 
     public static CoreNode buildCorenode(Args a,
-                                          DeletableContentAddressedStorage localStorage,
-                                          TransactionStore transactions,
-                                          JdbcIpnsAndSocial rawPointers,
-                                          MutablePointers localPointers,
-                                          MutablePointersProxy proxingMutable) {
+                                         DeletableContentAddressedStorage localStorage,
+                                         TransactionStore transactions,
+                                         JdbcIpnsAndSocial rawPointers,
+                                         MutablePointers localPointers,
+                                         MutablePointersProxy proxingMutable,
+                                         JdbcIpnsAndSocial localSocial,
+                                         UsageStore usageStore,
+                                         Hasher hasher) {
         Multihash nodeId = localStorage.id().join();
         PublicKeyHash peergosId = PublicKeyHash.fromString(a.getArg("peergos.identity.hash"));
         Multihash pkiServerId = getPkiServerId(a);
@@ -269,8 +273,8 @@ public class Builder {
         return isPkiNode ?
                 buildPkiCorenode(new PinningMutablePointers(localPointers, localStorage), localStorage, a) :
                 new MirrorCoreNode(new HTTPCoreNode(buildP2pHttpProxy(a), pkiServerId), proxingMutable, localStorage,
-                        rawPointers, transactions, peergosId,
-                        a.fromPeergosDir("pki-mirror-state-path","pki-state.cbor"));
+                        rawPointers, transactions, localSocial, usageStore, peergosId,
+                        a.fromPeergosDir("pki-mirror-state-path","pki-state.cbor"), hasher);
     }
 
     public static JdbcIpnsAndSocial buildRawPointers(Args a, Supplier<Connection> dbConnectionPool) {
@@ -282,7 +286,8 @@ public class Builder {
         Multihash pkiServerNodeId = Cid.decode(pkiNodeId);
         JavaPoster p2pPoster = new JavaPoster(proxyAddress, false);
         JavaPoster apiPoster = new JavaPoster(apiAddress, false);
-        return NetworkAccess.build(apiPoster, p2pPoster, pkiServerNodeId, NetworkAccess.buildLocalDht(apiPoster, true), new ScryptJava(), false);
+        ScryptJava hasher = new ScryptJava();
+        return NetworkAccess.build(apiPoster, p2pPoster, pkiServerNodeId, NetworkAccess.buildLocalDht(apiPoster, true, hasher), hasher, false);
     }
 
     public static CompletableFuture<NetworkAccess> buildJavaNetworkAccess(URL target,
@@ -302,8 +307,9 @@ public class Builder {
                                                                                     Optional<String> basicAuth) {
         JavaPoster poster = new JavaPoster(target, isPublicServer, basicAuth);
         Multihash pkiNodeId = null; // This is not required when talking to a Peergos server
-        ContentAddressedStorage localDht = NetworkAccess.buildLocalDht(poster, true);
-        return NetworkAccess.build(poster, poster, pkiNodeId, localDht, new ScryptJava(), false);
+        ScryptJava hasher = new ScryptJava();
+        ContentAddressedStorage localDht = NetworkAccess.buildLocalDht(poster, true, hasher);
+        return NetworkAccess.build(poster, poster, pkiNodeId, localDht, hasher, false);
     }
 
     public static CompletableFuture<NetworkAccess> buildLocalJavaNetworkAccess(int targetPort) {

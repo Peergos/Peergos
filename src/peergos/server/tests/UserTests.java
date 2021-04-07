@@ -213,10 +213,9 @@ public abstract class UserTests {
     public void expiredSignin() {
         String username = generateUsername();
         String password = "password";
-        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
-
         // set username claim to an expiry in the past
-        context.renewUsernameClaim(LocalDate.now().minusDays(1)).join();
+        UserContext context = UserContext.signUpGeneral(username, password, "", LocalDate.now().minusDays(1),
+                network, crypto, SecretGenerationAlgorithm.getDefault(crypto.random), t -> {}).join();
 
         LocalDate expiry = context.getUsernameClaimExpiry().join();
         Assert.assertTrue(expiry.isBefore(LocalDate.now()));
@@ -233,10 +232,11 @@ public abstract class UserTests {
         String password = "password";
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         String newPassword = "G'day mate!";
-        context = context.changePassword(password, newPassword).join();
 
-        // set username claim to an expiry in the past
-        context.renewUsernameClaim(LocalDate.now().minusDays(1)).join();
+        // change password and set username claim to an expiry in the past
+        SecretGenerationAlgorithm alg = context.getKeyGenAlgorithm().join();
+        SecretGenerationAlgorithm newAlg = SecretGenerationAlgorithm.withNewSalt(alg, crypto.random);
+        context = context.changePassword(password, newPassword, alg, newAlg, LocalDate.now().minusDays(1)).join();
 
         LocalDate expiry = context.getUsernameClaimExpiry().join();
         Assert.assertTrue(expiry.isBefore(LocalDate.now()));
@@ -348,7 +348,7 @@ public abstract class UserTests {
         UserContext userContext = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         SecretGenerationAlgorithm algo = userContext.getKeyGenAlgorithm().get();
         ScryptGenerator newAlgo = new ScryptGenerator(19, 8, 1, 96, algo.getExtraSalt());
-        userContext.changePassword(password, password, algo, newAlgo).get();
+        userContext.changePassword(password, password, algo, newAlgo, LocalDate.now().plusMonths(2)).get();
         PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
     }
 
@@ -376,6 +376,28 @@ public abstract class UserTests {
         Assert.assertTrue("Malicious pointer update failed", updated.equals(current));
     }
 
+    @Test
+    public void downloadSmallFile() throws Exception {
+        String username = generateUsername();
+        String password = "test";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        FileWrapper userRoot = context.getUserRoot().get();
+
+        String filename = "somedata.txt";
+        Path filePath = Paths.get(username, filename);
+        byte[] data = new byte[3];
+        userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
+                context.crypto, l -> {
+                }, context.crypto.random.randomBytes(32)).get();
+        checkFileContents(data, context.getByPath(filePath).join().get(), context);
+        FileWrapper file = context.getByPath(filePath).join().get();
+        FileProperties props = file.getFileProperties();
+        List<Boolean> progressUpdate = new ArrayList<>();
+        file.getInputStream(context.network, context.crypto, props.sizeHigh(), props.sizeLow(), read -> {
+            progressUpdate.add(true);
+        }).join();
+        assertTrue(progressUpdate.size() == 1 && progressUpdate.get(0));
+    }
     @Test
     public void concurrentFileModificationFailure() throws Exception {
         String username = generateUsername();

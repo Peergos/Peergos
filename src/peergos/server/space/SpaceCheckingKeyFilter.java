@@ -154,10 +154,10 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         Logging.LOG().info(LocalDateTime.now() + " Finished updating space usage for all usernames in " + (t2 - t1)/1000 + " s");
     }
 
-    public void accept(CorenodeEvent event) {
+    public CompletableFuture<Boolean> accept(CorenodeEvent event) {
         usageStore.addUserIfAbsent(event.username);
         usageStore.addWriter(event.username, event.keyHash);
-        ForkJoinPool.commonPool().submit(() -> processCorenodeEvent(event.username, event.keyHash));
+        return CompletableFuture.supplyAsync(() -> processCorenodeEvent(event.username, event.keyHash), ForkJoinPool.commonPool());
     }
 
     /** Update our view of the world because a user has changed their public key (or registered)
@@ -165,40 +165,55 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
      * @param username
      * @param writer
      */
-    private void processCorenodeEvent(String username, PublicKeyHash writer) {
+    private boolean processCorenodeEvent(String username, PublicKeyHash writer) {
         try {
-            usageStore.addUserIfAbsent(username);
-            Set<PublicKeyHash> childrenKeys = WriterData.getDirectOwnedKeys(writer, writer, mutable, dht, hasher)
-                    .join()
-                    .stream()
-                    .filter(k -> ! k.equals(writer))
-                    .collect(Collectors.toSet());
-            WriterUsage current = usageStore.getUsage(writer);
-            MaybeMultihash updatedRoot = mutable.getPointerTarget(writer, writer, dht).get();
-            processMutablePointerEvent(usageStore, writer, writer, current.target(), updatedRoot, mutable, dht, hasher);
-            for (PublicKeyHash childKey : childrenKeys) {
-                processCorenodeEvent(username, childKey);
-            }
+            processCorenodeEvent(username, writer, usageStore, dht, mutable, hasher);
+            return true;
         } catch (Throwable e) {
             LOG.severe("Error loading storage for user: " + username);
             Exceptions.getRootCause(e).printStackTrace();
+            return false;
         }
     }
 
     public void accept(MutableEvent event) {
         mutableQueue.add(event);
         try {
-            HashCasPair hashCasPair = dht.getSigningKey(event.writer)
-                    .thenApply(signer -> HashCasPair.fromCbor(CborObject.fromByteArray(signer.get()
-                            .unsignMessage(event.writerSignedBtreeRootHash)))).get();
-            Set<PublicKeyHash> updatedOwned =
-                    WriterData.getDirectOwnedKeys(event.writer, hashCasPair.updated, dht, hasher).join();
-            WriterUsage current = usageStore.getUsage(event.writer);
-            for (PublicKeyHash owned : updatedOwned) {
-                usageStore.addWriter(current.owner, owned);
-            }
+            prepareMutablePointerChange(event, dht, usageStore, hasher);
         } catch (Exception e) {
             e.printStackTrace();
+        }
+    }
+
+    public static void processCorenodeEvent(String username,
+                                            PublicKeyHash owner,
+                                            UsageStore usageStore,
+                                            ContentAddressedStorage dht,
+                                            MutablePointers mutable,
+                                            Hasher hasher) {
+        usageStore.addUserIfAbsent(username);
+        Set<PublicKeyHash> allUserKeys = WriterData.getOwnedKeysRecursive(owner, owner, mutable, dht, hasher).join();
+
+        for (PublicKeyHash writerKey : allUserKeys) {
+            usageStore.addWriter(username, writerKey);
+            WriterUsage current = usageStore.getUsage(writerKey);
+            MaybeMultihash updatedRoot = mutable.getPointerTarget(owner, writerKey, dht).join();
+            processMutablePointerEvent(usageStore, owner, writerKey, current.target(), updatedRoot, mutable, dht, hasher);
+        }
+    }
+
+    private static void prepareMutablePointerChange(MutableEvent event,
+                                                    ContentAddressedStorage dht,
+                                                    UsageStore usageStore,
+                                                    Hasher hasher) {
+        HashCasPair hashCasPair = dht.getSigningKey(event.writer)
+                .thenApply(signer -> HashCasPair.fromCbor(CborObject.fromByteArray(signer.get()
+                        .unsignMessage(event.writerSignedBtreeRootHash)))).join();
+        Set<PublicKeyHash> updatedOwned =
+                WriterData.getDirectOwnedKeys(event.writer, hashCasPair.updated, dht, hasher).join();
+        WriterUsage current = usageStore.getUsage(event.writer);
+        for (PublicKeyHash owned : updatedOwned) {
+            usageStore.addWriter(current.owner, owned);
         }
     }
 
@@ -206,7 +221,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         try {
             HashCasPair hashCasPair = dht.getSigningKey(event.writer)
                     .thenApply(signer -> HashCasPair.fromCbor(CborObject.fromByteArray(signer.get()
-                            .unsignMessage(event.writerSignedBtreeRootHash)))).get();
+                            .unsignMessage(event.writerSignedBtreeRootHash)))).join();
             processMutablePointerEvent(usageStore, event.owner, event.writer, hashCasPair.original, hashCasPair.updated,
                     mutable, dht, hasher);
         } catch (Exception e) {

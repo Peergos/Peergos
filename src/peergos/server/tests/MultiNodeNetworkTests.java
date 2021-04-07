@@ -7,6 +7,9 @@ import peergos.server.*;
 import peergos.server.storage.*;
 import peergos.server.util.*;
 import peergos.shared.*;
+import peergos.shared.cbor.*;
+import peergos.shared.corenode.*;
+import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.multihash.*;
@@ -17,7 +20,9 @@ import peergos.shared.util.*;
 
 import java.net.*;
 import java.nio.file.*;
+import java.time.*;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.stream.*;
 
 import static org.junit.Assert.*;
@@ -25,6 +30,7 @@ import static peergos.server.tests.UserTests.deleteFiles;
 import static peergos.server.tests.UserTests.randomString;
 import static peergos.server.tests.PeergosNetworkUtils.ensureSignedUp;
 import static peergos.server.tests.PeergosNetworkUtils.generateUsername;
+import static peergos.server.tests.PeergosNetworkUtils.*;
 
 @RunWith(Parameterized.class)
 public class MultiNodeNetworkTests {
@@ -79,6 +85,10 @@ public class MultiNodeNetworkTests {
 
     private NetworkAccess getNode(int i)  {
         return nodes.get(i);
+    }
+
+    private UserService getService(int i)  {
+        return services.get(i);
     }
 
     @BeforeClass
@@ -142,6 +152,108 @@ public class MultiNodeNetworkTests {
             long quota = node.spaceUsage.getQuota(context.signer.publicKeyHash, signedTime).join();
             Assert.assertTrue(usage >0 && quota > 0);
         }
+    }
+
+    @Test
+    public void migrate() {
+        migrate(0);
+        migrate(1);
+        migrate(2);
+    }
+
+    public void migrate(int nPasswordChanges) {
+        if (iNode1 == 0 || iNode2 == 0)
+            return; // Don't test migration to/from pki node
+        String username = generateUsername(random);
+        String password = randomString();
+        NetworkAccess node1 = getNode(iNode1);
+        Multihash originalNodeId = node1.dhtClient.id().join();
+        NetworkAccess node2 = getNode(iNode2);
+        Multihash newStorageNodeId = node2.dhtClient.id().join();
+
+        UserContext user = ensureSignedUp(username, password, node1, crypto);
+        for (int i=0; i < nPasswordChanges; i++) {
+            String newPassword = randomString();
+            user = ensureSignedUp(username, password, node2, crypto).changePassword(password, newPassword).join();
+            password = newPassword;
+        }
+        UserContext friend = ensureSignedUp(generateUsername(random), password, node1, crypto);
+        friend.sendInitialFollowRequest(username).join();
+        long usageVia1 = user.getSpaceUsage().join();
+
+        // migrate to node2
+        List<UserPublicKeyLink> existing = user.network.coreNode.getChain(username).join();
+        List<UserPublicKeyLink> newChain = Migrate.buildMigrationChain(existing, newStorageNodeId, user.signer.secret);
+        UserContext userViaNewServer = ensureSignedUp(username, password, node2, crypto);
+        userViaNewServer.network.coreNode.migrateUser(username, newChain, originalNodeId).join();
+
+        List<UserPublicKeyLink> chain = userViaNewServer.network.coreNode.getChain(username).join();
+        Multihash storageNode = chain.get(chain.size() - 1).claim.storageProviders.stream().findFirst().get();
+        Assert.assertTrue(storageNode.equals(newStorageNodeId));
+
+        // test a fresh login on the new storage node
+        UserContext postMigration = ensureSignedUp(username, password, node2.clear(), crypto);
+        long usageVia2 = postMigration.getSpaceUsage().join();
+        // Note we currently don't remove the old pointer after changing password,
+        // so there is a 5kib reduction after migration per password change
+        Assert.assertTrue(usageVia2 == usageVia1 || (nPasswordChanges > 0 && usageVia2 < usageVia1));
+
+        // check pending followRequest was transferred
+        List<FollowRequestWithCipherText> followRequests = postMigration.processFollowRequests().join();
+        Assert.assertTrue(followRequests.size() == 1);
+
+        // check a reverse migration can't be triggered by anyone else
+        try {
+            node1.coreNode.migrateUser(username, existing, newStorageNodeId).join();
+            throw new RuntimeException("Shouldn't get here!");
+        } catch (CompletionException e) {
+            if (! e.getCause().getMessage().startsWith("Migration+claim+has+earlier+expiry+than+current+one"))
+                throw new RuntimeException(e.getCause());
+        }
+
+        try { // check a direct update call with old chain also fails
+            ProofOfWork work = crypto.hasher.generateProofOfWork(ProofOfWork.DEFAULT_DIFFICULTY,
+                    new CborObject.CborList(existing).serialize()).join();
+            node1.coreNode.updateChain(username, existing, work, "").join();
+            throw new RuntimeException("Shouldn't get here!");
+        } catch (CompletionException e) {
+            if (! e.getCause().getMessage().startsWith("New%2Bclaim%2Bchain%2Bexpiry%2Bbefore%2Bexisting"))
+                throw new RuntimeException(e.getCause());
+        }
+    }
+
+    @Test
+    public void invalidMigrate() {
+        if (iNode1 == 0 || iNode2 == 0)
+            return; // Don't test migration to/from pki node
+        String username = generateUsername(random);
+        String password = randomString();
+        NetworkAccess node1 = getNode(iNode1);
+        Multihash originalNodeId = node1.dhtClient.id().join();
+        UserContext user = ensureSignedUp(username, password, node1, crypto);
+        String evilusername = randomUsername("evil", new Random());
+        UserContext evil = ensureSignedUp(evilusername, password, node1, crypto);
+
+        // try to migrate with an invalid claim chain
+        UserService node2 = getService(iNode2);
+        List<UserPublicKeyLink> existing = user.network.coreNode.getChain(username).join();
+        Multihash newStorageNodeId = node2.storage.id().join();
+
+        List<UserPublicKeyLink> evilChain = evil.network.coreNode.getChain(evilusername).join();
+        UserPublicKeyLink evilLast = evilChain.get(0);
+        UserPublicKeyLink.Claim newClaim = UserPublicKeyLink.Claim.build(username, evil.signer.secret,
+                LocalDate.now().plusMonths(2), Arrays.asList(newStorageNodeId));
+        UserPublicKeyLink evilUpdate = evilLast.withClaim(newClaim);
+        List<UserPublicKeyLink> newChain = Arrays.asList(evilUpdate);
+        UserContext userViaNewServer = ensureSignedUp(username, password, getNode(iNode2), crypto);
+        try {
+            userViaNewServer.network.coreNode.migrateUser(username, newChain, originalNodeId).join();
+            throw new RuntimeException("Shouldn't get here!");
+        } catch (CompletionException e) {}
+
+        List<UserPublicKeyLink> chain = userViaNewServer.network.coreNode.getChain(username).join();
+        Multihash storageNode = chain.get(chain.size() - 1).claim.storageProviders.stream().findFirst().get();
+        Assert.assertTrue(storageNode.equals(originalNodeId));
     }
 
     @Test

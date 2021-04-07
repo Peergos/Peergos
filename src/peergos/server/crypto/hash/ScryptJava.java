@@ -10,6 +10,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.server.crypto.hash.lambdaworks.crypto.SCrypt;
 import peergos.shared.user.*;
+import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
 public class ScryptJava implements Hasher {
@@ -73,5 +74,11 @@ public class ScryptJava implements Hasher {
     @Override
     public byte[] blake2b(byte[] input, int outputBytes) {
         return Blake2b.Digest.newInstance(outputBytes).digest(input);
+    }
+
+    @Override
+    public CompletableFuture<Multihash> hash(AsyncReader stream, long length) {
+        return Hash.sha256(stream, length)
+                .thenApply(h -> new Multihash(Multihash.Type.sha2_256, h));
     }
 }
