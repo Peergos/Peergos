@@ -37,7 +37,7 @@ public final class Id implements Comparable<Id> {
 
     @Override
     public int compareTo(Id other) {
-        return Arrays.compare(id, other.id);
+        return compare(id, other.id);
     }
 
     @Override
@@ -55,5 +55,29 @@ public final class Id implements Comparable<Id> {
         if (! (obj instanceof Id))
             return false;
         return Arrays.equals(id, ((Id) obj).id);
+    }
+
+    private static int compare(int[] a, int[] b) {
+        if (a == b) {
+            return 0;
+        } else if (a != null && b != null) {
+            int i = mismatch(a, b, Math.min(a.length, b.length));
+            return i >= 0 ? Integer.compare(a[i], b[i]) : a.length - b.length;
+        } else {
+            return a == null ? -1 : 1;
+        }
+    }
+
+    private static int mismatch(int[] a, int[] b, int length) {
+        int i=0;
+        while (i < length) {
+            if (a[i] != b[i]) {
+                return i;
+            }
+
+            ++i;
+        }
+
+        return -1;
     }
 }
