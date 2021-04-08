@@ -2,8 +2,10 @@ package peergos.shared.messaging;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.storage.*;
+import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.stream.*;
@@ -13,9 +15,9 @@ public class Chat {
     public final Member us;
     public TreeClock current;
     public final Map<Id, Member> members;
-    public final List<Message> messages;
+    public final List<SignedMessage> messages;
 
-    public Chat(Member us, TreeClock current, Map<Id, Member> members, List<Message> messages) {
+    public Chat(Member us, TreeClock current, Map<Id, Member> members, List<SignedMessage> messages) {
         this.us = us;
         this.current = current;
         this.members = members;
@@ -30,29 +32,36 @@ public class Chat {
         return members.get(id);
     }
 
-    public List<Message> getMessagesFrom(long index) {
+    public List<SignedMessage> getMessagesFrom(long index) {
         return messages.subList((int) index, messages.size());
     }
 
-    public Message addMessage(byte[] body) {
+    public Message addMessage(byte[] body, SigningPrivateKeyAndPublicHash signer) {
         TreeClock msgTime = current.increment(us.id);
         Message msg = new Message(us.id, msgTime, body);
         current = msgTime;
-        messages.add(msg);
+        byte[] signature = signer.secret.signatureOnly(msg.serialize());
+        messages.add(new SignedMessage(signature, msg));
         return msg;
     }
 
     public void merge(Chat mirror, ContentAddressedStorage ipfs) {
         Member host = getMember(mirror.us.id);
-        List<Message> newMessages = mirror.getMessagesFrom(host.messagesMergedUpto);
+        List<SignedMessage> newMessages = mirror.getMessagesFrom(host.messagesMergedUpto);
 
-        for (Message msg : newMessages) {
+        for (SignedMessage msg : newMessages) {
             mergeMessage(msg, host, ipfs);
         }
     }
 
-    private void mergeMessage(Message msg, Member host, ContentAddressedStorage ipfs) {
+    private void mergeMessage(SignedMessage signed, Member host, ContentAddressedStorage ipfs) {
+        Member author = members.get(signed.msg.author);
+        Message msg = signed.msg;
         if (! msg.timestamp.isBeforeOrEqual(current)) {
+            // check signature
+            PublicSigningKey signer = ipfs.getSigningKey(author.chatIdentity.map(p -> p.getOwner(ipfs).join()).orElse(author.identity)).join().get();
+            signer.unsignMessage(ArrayOps.concat(signed.signature, signed.msg.serialize()));
+
             Set<Id> newMembers = current.newMembersFrom(msg.timestamp);
             for (Id newMember : newMembers) {
                 long indexIntoParent = getMember(newMember.parent()).messagesMergedUpto;
@@ -61,7 +70,6 @@ public class Chat {
                 PublicKeyHash identity = invite.identity;
                 members.put(newMember, new Member(username, newMember, identity, indexIntoParent, 0));
             }
-            Member author = members.get(msg.author);
             if (author.chatIdentity.isEmpty()) {
                 // This is a Join message from a new member
                 Message.Join join = Message.Join.fromCbor(CborObject.fromByteArray(msg.payload));
@@ -72,15 +80,15 @@ public class Chat {
                 PublicKeyHash chatId = chatIdentity.getOwner(ipfs).join();
                 members.put(author.id, author.withChatId(chatIdentity));
             }
-            messages.add(msg);
+            messages.add(signed);
             current = current.merge(msg.timestamp);
         }
         host.messagesMergedUpto++;
     }
 
-    public void join(Member host, OwnerProof chatId) {
+    public void join(Member host, OwnerProof chatId, SigningPrivateKeyAndPublicHash identity) {
         Message.Join joinMsg = new Message.Join(host.username, host.identity, chatId);
-        addMessage(joinMsg.serialize());
+        addMessage(joinMsg.serialize(), identity);
         us.chatIdentity = Optional.of(chatId);
         members.put(us.id, us);
     }
@@ -90,16 +98,17 @@ public class Chat {
             throw new IllegalStateException("Only an invited member can mirror a conversation!");
         Map<Id, Member> clonedMembers = members.entrySet().stream()
                 .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue().copy()));
-        return new Chat(host, current, clonedMembers, new ArrayList<>(messages));
+        return new Chat(host.copy(), current, clonedMembers, new ArrayList<>(messages));
     }
 
-    public Member inviteMember(String username, PublicKeyHash identity) {
+    public Member inviteMember(String username, PublicKeyHash identity, SigningPrivateKeyAndPublicHash ourChatIdentity) {
         Id newMember = us.id.fork(us.membersInvited);
         Member member = new Member(username, newMember, identity, us.messagesMergedUpto, 0);
+//        us.membersInvited++;
         members.put(newMember, member);
-        current = current.withMember(newMember).increment(us.id);
+        current = current.withMember(newMember);
         Message.Invite invite = new Message.Invite(username, identity);
-        messages.add(new Message(us.id, current, invite.serialize()));
+        addMessage(invite.serialize(), ourChatIdentity);
         return member;
     }
 

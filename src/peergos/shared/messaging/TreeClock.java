@@ -1,12 +1,14 @@
 package peergos.shared.messaging;
 
+import peergos.shared.cbor.*;
+
 import java.util.*;
 import java.util.stream.*;
 
 /** A generalization of a vector clock that allows changing group membership
  *
  */
-public class TreeClock {
+public class TreeClock implements Cborable {
 
     public final SortedMap<Id, Long> time;
 
@@ -67,6 +69,29 @@ public class TreeClock {
             res.put(member, 0L);
         }
         return new TreeClock(res);
+    }
+
+    @Override
+    public CborObject toCbor() {
+        List<List<Long>> res = new ArrayList<>();
+        for (Map.Entry<Id, Long> e : time.entrySet()) {
+            List<Long> mapping = Stream.concat(Arrays.stream(e.getKey().id).mapToObj(i -> (long) i), Stream.of(e.getValue()))
+                    .collect(Collectors.toList());
+            res.add(mapping);
+        }
+        return CborObject.CborList.build(res, m -> CborObject.CborList.build(m, CborObject.CborLong::new));
+    }
+
+    public static TreeClock fromCbor(Cborable cbor) {
+        if (! (cbor instanceof CborObject.CborList))
+            throw new IllegalStateException("Incorrect cbor: " + cbor);
+        SortedMap<Id, Long> mappings = new TreeMap<>();
+        ((CborObject.CborList) cbor)
+                .map(m -> ((CborObject.CborList)m).map(i -> ((CborObject.CborLong)i).value))
+                .forEach(m -> mappings.put(
+                        new Id(m.subList(0, m.size() - 1).stream().mapToInt(Long::intValue).toArray()),
+                        m.get(m.size() - 1)));
+        return new TreeClock(mappings);
     }
 
     @Override

@@ -1,5 +1,7 @@
 package peergos.shared.messaging;
 
+import peergos.shared.cbor.*;
+
 import java.util.*;
 import java.util.stream.*;
 
@@ -8,7 +10,7 @@ import java.util.stream.*;
  *
  *  In the simple case of a fixed group know at creation time these are the same as the indices in a vector clock.
  */
-public final class Id implements Comparable<Id> {
+public final class Id implements Comparable<Id>, Cborable {
 
     public final int[] id;
 
@@ -38,6 +40,23 @@ public final class Id implements Comparable<Id> {
     @Override
     public int compareTo(Id other) {
         return compare(id, other.id);
+    }
+
+    @Override
+    public CborObject toCbor() {
+        return new CborObject.CborList(Arrays.stream(id)
+                .mapToObj(CborObject.CborLong::new)
+                .collect(Collectors.toList()));
+    }
+
+    public static Id fromCbor(Cborable cbor) {
+        if (! (cbor instanceof CborObject.CborList))
+            throw new IllegalStateException("Incorrect cbor: " + cbor);
+        return new Id(((CborObject.CborList) cbor)
+                .map(e -> (int) ((CborObject.CborLong)e).value)
+                .stream()
+                .mapToInt(i -> i)
+                .toArray());
     }
 
     @Override

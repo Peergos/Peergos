@@ -6,7 +6,7 @@ import peergos.shared.crypto.hash.*;
 
 import java.util.*;
 
-public class Message {
+public class Message implements Cborable {
     public final Id author;
     public final TreeClock timestamp;
     public final byte[] payload;
@@ -73,6 +73,25 @@ public class Message {
             OwnerProof chatIdentity = m.get("c", OwnerProof::fromCbor);
             return new Join(username, identity, chatIdentity);
         }
+    }
+
+    @Override
+    public CborObject toCbor() {
+        Map<String, Cborable> result = new TreeMap<>();
+        result.put("a", author);
+        result.put("t", timestamp);
+        result.put("p", new CborObject.CborByteArray(payload));
+        return CborObject.CborMap.build(result);
+    }
+
+    public static Message fromCbor(Cborable cbor) {
+        if (! (cbor instanceof CborObject.CborMap))
+            throw new IllegalStateException("Incorrect cbor: " + cbor);
+        CborObject.CborMap map = (CborObject.CborMap) cbor;
+        Id author = map.get("a", Id::fromCbor);
+        TreeClock timestamp = map.get("t", TreeClock::fromCbor);
+        byte[] payload = map.get("p", c -> ((CborObject.CborByteArray) c).value);
+        return new Message(author, timestamp, payload);
     }
 
     @Override
