@@ -23,18 +23,18 @@ public class MessagingTests {
         OwnerProof user1ChatId = OwnerProof.build(identities.get(0), chatIdentities.get(0).publicKeyHash);
         chat1.join(chat1.us, user1ChatId, identities.get(0));
 
-        Member user2 = chat1.inviteMember("user2", identities.get(1).publicKeyHash, chatIdentities.get(0));
+        Member user2 = chat1.inviteMember("user2", identities.get(1).publicKeyHash, chatIdentities.get(0)).join();
         Chat chat2 = chat1.copy(user2);
         OwnerProof user2ChatId = OwnerProof.build(identities.get(1), chatIdentities.get(1).publicKeyHash);
         chat2.join(user2, user2ChatId, identities.get(1));
 
-        Message msg1 = chat1.addMessage("Welcome!".getBytes(), chatIdentities.get(0));
-        chat2.merge(chat1, ipfs);
+        Message msg1 = chat1.addMessage("Welcome!".getBytes(), chatIdentities.get(0)).join();
+        chat2.merge(chat1, ipfs).join();
         Assert.assertTrue(chat2.messages.get(3).msg.equals(msg1));
 
-        Message msg2 = chat2.addMessage("This is cool!".getBytes(), chatIdentities.get(1));
+        Message msg2 = chat2.addMessage("This is cool!".getBytes(), chatIdentities.get(1)).join();
 
-        chat1.merge(chat2, ipfs);
+        chat1.merge(chat2, ipfs).join();
         Assert.assertTrue(chat1.messages.get(4).msg.equals(msg2));
     }
 
@@ -46,12 +46,12 @@ public class MessagingTests {
         OwnerProof user1ChatId = OwnerProof.build(identities.get(0), chatIdentities.get(0).publicKeyHash);
         chat1.join(chat1.us, user1ChatId, identities.get(0));
 
-        Member user2 = chat1.inviteMember("user2", identities.get(1).publicKeyHash, chatIdentities.get(0));
+        Member user2 = chat1.inviteMember("user2", identities.get(1).publicKeyHash, chatIdentities.get(0)).join();
         Chat chat2 = chat1.copy(user2);
         OwnerProof user2ChatId = OwnerProof.build(identities.get(1), chatIdentities.get(1).publicKeyHash);
         chat2.join(user2, user2ChatId, identities.get(1));
 
-        Member user3 = chat1.inviteMember("user3", identities.get(2).publicKeyHash, chatIdentities.get(0));
+        Member user3 = chat1.inviteMember("user3", identities.get(2).publicKeyHash, chatIdentities.get(0)).join();
         Chat chat3 = chat1.copy(user3);
         OwnerProof user3ChatId = OwnerProof.build(identities.get(2), chatIdentities.get(2).publicKeyHash);
         chat3.join(user3, user3ChatId, identities.get(2));
@@ -67,21 +67,21 @@ public class MessagingTests {
         OwnerProof user1ChatId = OwnerProof.build(identities.get(0), chatIdentities.get(0).publicKeyHash);
         chat1.join(chat1.us, user1ChatId, identities.get(0));
 
-        Member user2 = chat1.inviteMember("user2", identities.get(1).publicKeyHash, chatIdentities.get(0));
+        Member user2 = chat1.inviteMember("user2", identities.get(1).publicKeyHash, chatIdentities.get(0)).join();
         Chat chat2 = chat1.copy(user2);
         OwnerProof user2ChatId = OwnerProof.build(identities.get(1), chatIdentities.get(1).publicKeyHash);
         chat2.join(user2, user2ChatId, identities.get(1));
 
-        Member user3 = chat2.inviteMember("user3", identities.get(2).publicKeyHash, chatIdentities.get(1));
+        Member user3 = chat2.inviteMember("user3", identities.get(2).publicKeyHash, chatIdentities.get(1)).join();
         Chat chat3 = chat2.copy(user3);
         OwnerProof user3ChatId = OwnerProof.build(identities.get(2), chatIdentities.get(2).publicKeyHash);
         chat3.join(user3, user3ChatId, identities.get(2));
 
-        Message msg1 = chat3.addMessage("Hey All!".getBytes(), chatIdentities.get(2));
-        chat2.merge(chat3, ipfs);
+        Message msg1 = chat3.addMessage("Hey All!".getBytes(), chatIdentities.get(2)).join();
+        chat2.merge(chat3, ipfs).join();
         Assert.assertTrue(chat2.messages.get(5).msg.equals(msg1));
 
-        chat1.merge(chat2, ipfs);
+        chat1.merge(chat2, ipfs).join();
         Assert.assertTrue(chat1.messages.get(5).msg.equals(msg1));
     }
 
@@ -109,33 +109,33 @@ public class MessagingTests {
         chat4.join(chat4.us, user4ChatId, identities.get(3));
 
         // partition and chat between user1 and user2
-        Message msg1 = chat1.addMessage("Hey All, I'm user1!".getBytes(), chatIdentities.get(0));
-        chat2.merge(chat1, ipfs);
-        Message msg2 = chat2.addMessage("Hey user1! I'm user2.".getBytes(), chatIdentities.get(1));
-        chat1.merge(chat2, ipfs);
-        Message msg3 = chat1.addMessage("Hey user2, whats up?".getBytes(), chatIdentities.get(0));
-        chat2.merge(chat1, ipfs);
-        Message msg4 = chat2.addMessage("Just saving the world one decentralized chat at a time..".getBytes(), chatIdentities.get(1));
-        chat1.merge(chat2, ipfs);
+        Message msg1 = chat1.addMessage("Hey All, I'm user1!".getBytes(), chatIdentities.get(0)).join();
+        chat2.merge(chat1, ipfs).join();
+        Message msg2 = chat2.addMessage("Hey user1! I'm user2.".getBytes(), chatIdentities.get(1)).join();
+        chat1.merge(chat2, ipfs).join();
+        Message msg3 = chat1.addMessage("Hey user2, whats up?".getBytes(), chatIdentities.get(0)).join();
+        chat2.merge(chat1, ipfs).join();
+        Message msg4 = chat2.addMessage("Just saving the world one decentralized chat at a time..".getBytes(), chatIdentities.get(1)).join();
+        chat1.merge(chat2, ipfs).join();
         Assert.assertTrue(chat2.messages.containsAll(chat1.messages));
-        Assert.assertTrue(chat2.messages.size() == 6);
+        Assert.assertEquals(chat2.messages.size(), 6);
 
         // also between user3 and user4
-        Message msg5 = chat3.addMessage("Hey All, I'm user3!".getBytes(), chatIdentities.get(2));
-        chat4.merge(chat3, ipfs);
-        Message msg6 = chat4.addMessage("Hey user3! I'm user4.".getBytes(), chatIdentities.get(3));
-        chat3.merge(chat4, ipfs);
-        Message msg7 = chat3.addMessage("Hey user4, whats up?".getBytes(), chatIdentities.get(2));
-        chat4.merge(chat3, ipfs);
-        Message msg8 = chat4.addMessage("Just saving the world one encrypted chat at a time..".getBytes(), chatIdentities.get(3));
-        chat3.merge(chat4, ipfs);
+        Message msg5 = chat3.addMessage("Hey All, I'm user3!".getBytes(), chatIdentities.get(2)).join();
+        chat4.merge(chat3, ipfs).join();
+        Message msg6 = chat4.addMessage("Hey user3! I'm user4.".getBytes(), chatIdentities.get(3)).join();
+        chat3.merge(chat4, ipfs).join();
+        Message msg7 = chat3.addMessage("Hey user4, whats up?".getBytes(), chatIdentities.get(2)).join();
+        chat4.merge(chat3, ipfs).join();
+        Message msg8 = chat4.addMessage("Just saving the world one encrypted chat at a time..".getBytes(), chatIdentities.get(3)).join();
+        chat3.merge(chat4, ipfs).join();
         Assert.assertTrue(chat4.messages.containsAll(chat3.messages));
-        Assert.assertTrue(chat4.messages.size() == 6);
+        Assert.assertEquals(chat4.messages.size(), 6);
 
         // now resolve the partition and merge states
-        chat1.merge(chat4, ipfs);
-        Assert.assertTrue(chat1.messages.size() == 12);
-        chat2.merge(chat1, ipfs);
+        chat1.merge(chat4, ipfs).join();
+        Assert.assertEquals(chat1.messages.size(), 12);
+        chat2.merge(chat1, ipfs).join();
         Assert.assertTrue(chat2.messages.containsAll(chat1.messages));
     }
 

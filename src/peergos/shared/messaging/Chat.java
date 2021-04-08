@@ -2,12 +2,12 @@ package peergos.shared.messaging;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
-import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.stream.*;
 
 public class Chat {
@@ -24,66 +24,69 @@ public class Chat {
         this.messages = messages;
     }
 
-    public Collection<Member> getMembers() {
-        return members.values();
-    }
-
     public Member getMember(Id id) {
         return members.get(id);
     }
 
-    public List<SignedMessage> getMessagesFrom(long index) {
-        return messages.subList((int) index, messages.size());
+    public CompletableFuture<List<SignedMessage>> getMessagesFrom(long index) {
+        return Futures.of(messages.subList((int) index, messages.size()));
     }
 
-    public Message addMessage(byte[] body, SigningPrivateKeyAndPublicHash signer) {
+    public CompletableFuture<Message> addMessage(byte[] body, SigningPrivateKeyAndPublicHash signer) {
         TreeClock msgTime = current.increment(us.id);
         Message msg = new Message(us.id, msgTime, body);
         current = msgTime;
         byte[] signature = signer.secret.signatureOnly(msg.serialize());
         messages.add(new SignedMessage(signature, msg));
-        return msg;
+        return Futures.of(msg);
     }
 
-    public void merge(Chat mirror, ContentAddressedStorage ipfs) {
+    public CompletableFuture<Boolean> merge(Chat mirror, ContentAddressedStorage ipfs) {
         Member host = getMember(mirror.us.id);
-        List<SignedMessage> newMessages = mirror.getMessagesFrom(host.messagesMergedUpto);
-
-        for (SignedMessage msg : newMessages) {
-            mergeMessage(msg, host, ipfs);
-        }
+        return mirror.getMessagesFrom(host.messagesMergedUpto)
+                .thenCompose(newMessages -> Futures.reduceAll(newMessages, true,
+                        (b, msg) -> mergeMessage(msg, host, ipfs), (a, b) -> a && b));
     }
 
-    private void mergeMessage(SignedMessage signed, Member host, ContentAddressedStorage ipfs) {
+    private CompletableFuture<Boolean> mergeMessage(SignedMessage signed, Member host, ContentAddressedStorage ipfs) {
         Member author = members.get(signed.msg.author);
         Message msg = signed.msg;
         if (! msg.timestamp.isBeforeOrEqual(current)) {
             // check signature
-            PublicSigningKey signer = ipfs.getSigningKey(author.chatIdentity.map(p -> p.getOwner(ipfs).join()).orElse(author.identity)).join().get();
-            signer.unsignMessage(ArrayOps.concat(signed.signature, signed.msg.serialize()));
+            return (author.chatIdentity.isPresent() ?
+                    author.chatIdentity.get().getOwner(ipfs) :
+                    Futures.of(author.identity))
+                    .thenCompose(ipfs::getSigningKey)
+                    .thenCompose(signerOpt -> {
+                        if (signerOpt.isEmpty())
+                            throw new IllegalStateException("Couldn't retrieve public siging key!");
+                        signerOpt.get().unsignMessage(ArrayOps.concat(signed.signature, signed.msg.serialize()));
 
-            Set<Id> newMembers = current.newMembersFrom(msg.timestamp);
-            for (Id newMember : newMembers) {
-                long indexIntoParent = getMember(newMember.parent()).messagesMergedUpto;
-                Message.Invite invite = Message.Invite.fromCbor(CborObject.fromByteArray(msg.payload));
-                String username = invite.username;
-                PublicKeyHash identity = invite.identity;
-                members.put(newMember, new Member(username, newMember, identity, indexIntoParent, 0));
-            }
-            if (author.chatIdentity.isEmpty()) {
-                // This is a Join message from a new member
-                Message.Join join = Message.Join.fromCbor(CborObject.fromByteArray(msg.payload));
-                OwnerProof chatIdentity = join.chatIdentity;
-                if (! chatIdentity.ownedKey.equals(author.identity))
-                    throw new IllegalStateException("Identity keys don't match!");
-                // verify signature
-                PublicKeyHash chatId = chatIdentity.getOwner(ipfs).join();
-                members.put(author.id, author.withChatId(chatIdentity));
-            }
-            messages.add(signed);
-            current = current.merge(msg.timestamp);
+                        Set<Id> newMembers = current.newMembersFrom(msg.timestamp);
+                        for (Id newMember : newMembers) {
+                            long indexIntoParent = getMember(newMember.parent()).messagesMergedUpto;
+                            Message.Invite invite = Message.Invite.fromCbor(CborObject.fromByteArray(msg.payload));
+                            String username = invite.username;
+                            PublicKeyHash identity = invite.identity;
+                            members.put(newMember, new Member(username, newMember, identity, indexIntoParent, 0));
+                        }
+                        if (author.chatIdentity.isEmpty()) {
+                            // This is a Join message from a new member
+                            Message.Join join = Message.Join.fromCbor(CborObject.fromByteArray(msg.payload));
+                            OwnerProof chatIdentity = join.chatIdentity;
+                            if (!chatIdentity.ownedKey.equals(author.identity))
+                                throw new IllegalStateException("Identity keys don't match!");
+                            // verify signature
+                            PublicKeyHash chatId = chatIdentity.getOwner(ipfs).join();
+                            members.put(author.id, author.withChatId(chatIdentity));
+                        }
+                        messages.add(signed);
+                        current = current.merge(msg.timestamp);
+                        return Futures.of(true);
+                    });
         }
         host.messagesMergedUpto++;
+        return Futures.of(true);
     }
 
     public void join(Member host, OwnerProof chatId, SigningPrivateKeyAndPublicHash identity) {
@@ -101,15 +104,15 @@ public class Chat {
         return new Chat(host.copy(), current, clonedMembers, new ArrayList<>(messages));
     }
 
-    public Member inviteMember(String username, PublicKeyHash identity, SigningPrivateKeyAndPublicHash ourChatIdentity) {
+    public CompletableFuture<Member> inviteMember(String username, PublicKeyHash identity, SigningPrivateKeyAndPublicHash ourChatIdentity) {
         Id newMember = us.id.fork(us.membersInvited);
         Member member = new Member(username, newMember, identity, us.messagesMergedUpto, 0);
         us.membersInvited++;
         members.put(newMember, member);
         current = current.withMember(newMember);
         Message.Invite invite = new Message.Invite(username, identity);
-        addMessage(invite.serialize(), ourChatIdentity);
-        return member;
+        return addMessage(invite.serialize(), ourChatIdentity)
+                .thenApply(x -> member);
     }
 
     public static Chat createNew(String username, PublicKeyHash identity) {
