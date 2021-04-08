@@ -139,6 +139,14 @@ public class MessagingTests {
         Assert.assertTrue(chat2.messages.containsAll(chat1.messages));
     }
 
+    @Test
+    public void clockSize() {
+        List<Id> ids = IntStream.range(0, 100).mapToObj(Id::new).collect(Collectors.toList());
+        TreeClock clock = TreeClock.init(ids);
+        byte[] raw = clock.serialize();
+        Assert.assertTrue(raw.length < 400);
+    }
+
     private static List<SigningPrivateKeyAndPublicHash> generateUsers(int count) {
         return IntStream.range(0, count)
                 .mapToObj(i -> SigningKeyPair.random(crypto.random, crypto.signer))
