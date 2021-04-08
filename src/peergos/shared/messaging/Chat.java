@@ -104,7 +104,7 @@ public class Chat {
     public Member inviteMember(String username, PublicKeyHash identity, SigningPrivateKeyAndPublicHash ourChatIdentity) {
         Id newMember = us.id.fork(us.membersInvited);
         Member member = new Member(username, newMember, identity, us.messagesMergedUpto, 0);
-//        us.membersInvited++;
+        us.membersInvited++;
         members.put(newMember, member);
         current = current.withMember(newMember);
         Message.Invite invite = new Message.Invite(username, identity);

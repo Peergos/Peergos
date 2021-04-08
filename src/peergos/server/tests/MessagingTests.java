@@ -39,6 +39,27 @@ public class MessagingTests {
     }
 
     @Test
+    public void multipleInvites() {
+        List<SigningPrivateKeyAndPublicHash> identities = generateUsers(3);
+        List<SigningPrivateKeyAndPublicHash> chatIdentities = generateUsers(3);
+        Chat chat1 = Chat.createNew("user1", identities.get(0).publicKeyHash);
+        OwnerProof user1ChatId = OwnerProof.build(identities.get(0), chatIdentities.get(0).publicKeyHash);
+        chat1.join(chat1.us, user1ChatId, identities.get(0));
+
+        Member user2 = chat1.inviteMember("user2", identities.get(1).publicKeyHash, chatIdentities.get(0));
+        Chat chat2 = chat1.copy(user2);
+        OwnerProof user2ChatId = OwnerProof.build(identities.get(1), chatIdentities.get(1).publicKeyHash);
+        chat2.join(user2, user2ChatId, identities.get(1));
+
+        Member user3 = chat1.inviteMember("user3", identities.get(2).publicKeyHash, chatIdentities.get(0));
+        Chat chat3 = chat1.copy(user3);
+        OwnerProof user3ChatId = OwnerProof.build(identities.get(2), chatIdentities.get(2).publicKeyHash);
+        chat3.join(user3, user3ChatId, identities.get(2));
+
+        Assert.assertTrue(! user2.id.equals(user3.id));
+    }
+
+    @Test
     public void messagePropagation() {
         List<SigningPrivateKeyAndPublicHash> identities = generateUsers(3);
         List<SigningPrivateKeyAndPublicHash> chatIdentities = generateUsers(3);
