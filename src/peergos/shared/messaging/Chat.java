@@ -121,7 +121,7 @@ public class Chat {
         return new Chat(us, zero, members, new ArrayList<>());
     }
 
-    public static Chat createNew(List<String> usernames, List<PublicKeyHash> identities) {
+    public static List<Chat> createNew(List<String> usernames, List<PublicKeyHash> identities) {
         HashMap<Id, Member> members = new HashMap<>();
         List<Id> initialMembers = new ArrayList<>();
 
@@ -132,6 +132,10 @@ public class Chat {
             members.put(id, member);
         }
         TreeClock genesis = TreeClock.init(initialMembers);
-        return new Chat(members.get(initialMembers.get(0)), genesis, members, new ArrayList<>());
+
+        return initialMembers.stream()
+                .map(id -> new Chat(members.get(id), genesis, members.entrySet().stream()
+                        .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue().copy())), new ArrayList<>()))
+                .collect(Collectors.toList());
     }
 }

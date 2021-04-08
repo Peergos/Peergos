@@ -89,27 +89,24 @@ public class MessagingTests {
     public void partitionAndJoin() {
         List<SigningPrivateKeyAndPublicHash> identities = generateUsers(4);
         List<SigningPrivateKeyAndPublicHash> chatIdentities = generateUsers(4);
-        Chat chat1 = Chat.createNew(
+        List<Chat> chats = Chat.createNew(
                 Arrays.asList("user1", "user2", "user3", "user4"),
                 identities.stream().map(p -> p.publicKeyHash).collect(Collectors.toList()));
+        Chat chat1 = chats.get(0);
+        Chat chat2 = chats.get(1);
+        Chat chat3 = chats.get(2);
+        Chat chat4 = chats.get(3);
         OwnerProof user1ChatId = OwnerProof.build(identities.get(0), chatIdentities.get(0).publicKeyHash);
         chat1.join(chat1.us, user1ChatId, identities.get(0));
 
-        Collection<Member> members = chat1.getMembers();
-        Member user2 = members.stream().filter(m -> m.username.equals("user2")).findFirst().get();
-        Chat chat2 = chat1.copy(user2);
         OwnerProof user2ChatId = OwnerProof.build(identities.get(1), chatIdentities.get(1).publicKeyHash);
-        chat2.join(user2, user2ChatId, identities.get(1));
+        chat2.join(chat2.us, user2ChatId, identities.get(1));
 
-        Member user3 = members.stream().filter(m -> m.username.equals("user3")).findFirst().get();
-        Chat chat3 = chat1.copy(user3);
         OwnerProof user3ChatId = OwnerProof.build(identities.get(2), chatIdentities.get(2).publicKeyHash);
-        chat3.join(user3, user3ChatId, identities.get(2));
+        chat3.join(chat3.us, user3ChatId, identities.get(2));
 
-        Member user4 = members.stream().filter(m -> m.username.equals("user4")).findFirst().get();
-        Chat chat4 = chat1.copy(user4);
         OwnerProof user4ChatId = OwnerProof.build(identities.get(3), chatIdentities.get(3).publicKeyHash);
-        chat4.join(user4, user4ChatId, identities.get(3));
+        chat4.join(chat4.us, user4ChatId, identities.get(3));
 
         // partition and chat between user1 and user2
         Message msg1 = chat1.addMessage("Hey All, I'm user1!".getBytes(), chatIdentities.get(0));
@@ -133,7 +130,7 @@ public class MessagingTests {
         Message msg8 = chat4.addMessage("Just saving the world one encrypted chat at a time..".getBytes(), chatIdentities.get(3));
         chat3.merge(chat4, ipfs);
         Assert.assertTrue(chat4.messages.containsAll(chat3.messages));
-        Assert.assertTrue(chat4.messages.size() == 7);
+        Assert.assertTrue(chat4.messages.size() == 6);
 
         // now resolve the partition and merge states
         chat1.merge(chat4, ipfs);
