@@ -33,6 +33,13 @@ public class TreeClock implements Cborable {
         return true;
     }
 
+    public TreeClock removeMember(Id remover, Id toRemove) {
+        TreeMap<Id, Long> res = new TreeMap<>(time);
+        res.remove(toRemove);
+        res.put(remover, res.get(remover) + 1);
+        return new TreeClock(res);
+    }
+
     public Set<Id> newMembersFrom(TreeClock other) {
         HashSet<Id> ids = new HashSet<>(other.time.keySet());
         ids.removeAll(time.keySet());
