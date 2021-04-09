@@ -1,5 +1,6 @@
 package peergos.shared.messaging;
 
+import jsinterop.annotations.*;
 import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
@@ -35,6 +36,7 @@ public class Messager {
     private final Crypto crypto;
     private final Hasher hasher;
 
+    @JsConstructor
     public Messager(UserContext context) {
         this.context = context;
         this.network = context.network;
@@ -50,6 +52,7 @@ public class Messager {
         return new PrivateChatState(chatIdWithHash, chatIdentity.publicSigningKey);
     }
 
+    @JsMethod
     public CompletableFuture<ChatController> createChat() {
         String uuid = UUID.randomUUID().toString();
         Chat chat = Chat.createNew(context.username, context.signer.publicKeyHash);
@@ -85,6 +88,7 @@ public class Messager {
         return Paths.get(hostUsername, MESSAGING_BASE_DIR, uuid);
     }
 
+    @JsMethod
     public CompletableFuture<Boolean> invite(ChatController chat, String username, PublicKeyHash identity) {
         Path chatSharedDir = Paths.get(context.username, MESSAGING_BASE_DIR, chat.chatUuid, "shared");
         return chat.invite(username, identity, c -> overwriteState(c, chat.chatUuid))
@@ -104,6 +108,7 @@ public class Messager {
      * @param sourceChatRoot
      * @return
      */
+    @JsMethod
     public CompletableFuture<ChatController> cloneLocallyAndJoin(FileWrapper sourceChatRoot) {
         PrivateChatState privateChatState = generateChatIdentity();
         byte[] rawPrivateChatState = privateChatState.serialize();
@@ -131,6 +136,7 @@ public class Messager {
                 .thenCompose(controller -> controller.join(context.signer, c -> overwriteState(c, uuid)));
     }
 
+    @JsMethod
     public CompletableFuture<ChatController> mergeMessages(ChatController current, String mirrorUsername) {
         return getMessageStoreMirror(mirrorUsername, current.chatUuid)
                 .thenCompose(mirrorStore -> current.mergeMessages(mirrorUsername, mirrorStore, network.dhtClient,
@@ -143,6 +149,7 @@ public class Messager {
                 .thenCompose(this::getChatController);
     }
 
+    @JsMethod
     public CompletableFuture<Set<ChatController>> listChats() {
         return context.getUserRoot()
                 .thenCompose(home -> home.getOrMkdirs(Paths.get(MESSAGING_BASE_DIR), network, true, crypto))
