@@ -70,15 +70,30 @@ public class Messager {
                 .thenCompose(controller -> controller.join(context.signer));
     }
 
-    public CompletableFuture<Map<String, Chat>> listChats() {
+    public CompletableFuture<Set<ChatController>> listChats() {
         return context.getUserRoot()
                 .thenCompose(home -> home.getOrMkdirs(Paths.get(MESSAGE_BASE_DIR), network, true, crypto))
                 .thenCompose(chatsRoot -> chatsRoot.getChildren(hasher, network))
                 .thenCompose(chatDirs -> Futures.combineAll(chatDirs.stream()
-                .map(dir -> dir.getDescendentByPath("shared/" + SHARED_CHAT_STATE_FILE, hasher, network)
-                        .thenCompose(chatStateOpt -> Serialize.parse(chatStateOpt.get(), Chat::fromCbor, network, crypto))
-                        .thenApply(chat -> new Pair<>(dir.getName(), chat)))
-                .collect(Collectors.toList())))
-                .thenApply(pairs -> pairs.stream().collect(Collectors.toMap(p -> p.left, p -> p.right)));
+                        .map(dir -> getChatState(dir)
+                                .thenCompose(chat -> getPrivateChatState(dir)
+                                        .thenCompose(priv -> getChatMessageStore(dir)
+                                                .thenApply(msgStore -> new ChatController(dir.getName(), chat, msgStore, priv)))))
+                        .collect(Collectors.toList())));
+    }
+
+    private CompletableFuture<Chat> getChatState(FileWrapper chatRoot) {
+        return chatRoot.getDescendentByPath("shared/" + SHARED_CHAT_STATE_FILE, hasher, network)
+                .thenCompose(chatStateOpt -> Serialize.parse(chatStateOpt.get(), Chat::fromCbor, network, crypto));
+    }
+
+    private CompletableFuture<PrivateChatState> getPrivateChatState(FileWrapper chatRoot) {
+        return chatRoot.getChild(PRIVATE_CHAT_STATE_FILE, hasher, network)
+                .thenCompose(priv -> Serialize.parse(priv.get(), PrivateChatState::fromCbor, network, crypto));
+    }
+
+    private CompletableFuture<MessageStore> getChatMessageStore(FileWrapper chatRoot) {
+        return chatRoot.getDescendentByPath("shared/" + SHARED_CHAT_FILE, hasher, network)
+                .thenApply(msgFile -> new FileBackedMessageStore(msgFile.get(), network, crypto));
     }
 }
