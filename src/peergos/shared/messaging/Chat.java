@@ -27,6 +27,10 @@ public class Chat implements Cborable {
         return members.get(id);
     }
 
+    public Member getMember(String username) {
+        return members.values().stream().filter(m -> m.username.equals(username)).findFirst().get();
+    }
+
     public CompletableFuture<Message> addMessage(byte[] body, SigningPrivateKeyAndPublicHash signer, MessageStore store) {
         TreeClock msgTime = current.increment(host.id);
         Message msg = new Message(host.id, msgTime, body);
@@ -35,11 +39,11 @@ public class Chat implements Cborable {
         return store.addMessage(new SignedMessage(signature, msg)).thenApply(x -> msg);
     }
 
-    public CompletableFuture<Boolean> merge(Chat mirror,
+    public CompletableFuture<Boolean> merge(Id mirrorHostId,
                                             MessageStore mirrorStore,
                                             MessageStore ourStore,
                                             ContentAddressedStorage ipfs) {
-        Member host = getMember(mirror.host.id);
+        Member host = getMember(mirrorHostId);
         return mirrorStore.getMessagesFrom(host.messagesMergedUpto)
                 .thenCompose(newMessages -> Futures.reduceAll(newMessages, true,
                         (b, msg) -> mergeMessage(msg, host, ourStore, ipfs), (a, b) -> a && b));

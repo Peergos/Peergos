@@ -2,8 +2,11 @@ package peergos.shared.messaging;
 
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.storage.*;
 
+import java.util.*;
 import java.util.concurrent.*;
+import java.util.stream.*;
 
 public class ChatController {
 
@@ -19,6 +22,15 @@ public class ChatController {
         this.privateChatState = privateChatState;
     }
 
+    public Member getMember(String username) {
+        return state.getMember(username);
+    }
+
+    public CompletableFuture<List<Message>> getMessages(long from, long to) {
+        return store.getMessages(from, to)
+                .thenApply(signed -> signed.stream().map(s -> s.msg).collect(Collectors.toList()));
+    }
+
     public CompletableFuture<ChatController> join(SigningPrivateKeyAndPublicHash identity) {
         OwnerProof chatId = OwnerProof.build(identity, privateChatState.chatIdentity.publicKeyHash);
         return state.join(state.host, chatId, privateChatState.chatIdPublic, identity, store)
@@ -32,6 +44,13 @@ public class ChatController {
 
     public CompletableFuture<ChatController> sendMessage(byte[] message) {
         return state.addMessage(message, privateChatState.chatIdentity, store)
+                .thenApply(x -> this);
+    }
+    public CompletableFuture<ChatController> mergeMessages(String username,
+                                                           MessageStore mirrorStore,
+                                                           ContentAddressedStorage ipfs) {
+        Member mirrorHost = state.getMember(username);
+        return state.merge(mirrorHost.id, mirrorStore, store, ipfs)
                 .thenApply(x -> this);
     }
 }

@@ -34,12 +34,12 @@ public class MessagingTests {
         chat2.join(user2, user2ChatId, chatIdentities.get(1).chatIdPublic, identities.get(1), stores.get(1)).join();
 
         Message msg1 = chat1.addMessage("Welcome!".getBytes(), chatIdentities.get(0).chatIdentity, stores.get(0)).join();
-        chat2.merge(chat1, stores.get(0), stores.get(1), ipfs).join();
+        chat2.merge(chat1.host.id, stores.get(0), stores.get(1), ipfs).join();
         Assert.assertTrue(stores.get(1).messages.get(3).msg.equals(msg1));
 
         Message msg2 = chat2.addMessage("This is cool!".getBytes(), chatIdentities.get(1).chatIdentity, stores.get(1)).join();
 
-        chat1.merge(chat2, stores.get(1), stores.get(0), ipfs).join();
+        chat1.merge(chat2.host.id, stores.get(1), stores.get(0), ipfs).join();
         Assert.assertTrue(stores.get(0).messages.get(4).msg.equals(msg2));
     }
 
@@ -91,10 +91,10 @@ public class MessagingTests {
         chat3.join(user3, user3ChatId, chatIdentities.get(2).chatIdPublic, identities.get(2), stores.get(2)).join();
 
         Message msg1 = chat3.addMessage("Hey All!".getBytes(), chatIdentities.get(2).chatIdentity, stores.get(2)).join();
-        chat2.merge(chat3, stores.get(2), stores.get(1), ipfs).join();
+        chat2.merge(chat3.host.id, stores.get(2), stores.get(1), ipfs).join();
         Assert.assertTrue(stores.get(1).messages.get(5).msg.equals(msg1));
 
-        chat1.merge(chat2, stores.get(1), stores.get(0), ipfs).join();
+        chat1.merge(chat2.host.id, stores.get(1), stores.get(0), ipfs).join();
         Assert.assertTrue(stores.get(0).messages.get(5).msg.equals(msg1));
     }
 
@@ -125,32 +125,32 @@ public class MessagingTests {
 
         // partition and chat between user1 and user2
         Message msg1 = chat1.addMessage("Hey All, I'm user1!".getBytes(), chatIdentities.get(0).chatIdentity, stores.get(0)).join();
-        chat2.merge(chat1, stores.get(0), stores.get(1), ipfs).join();
+        chat2.merge(chat1.host.id, stores.get(0), stores.get(1), ipfs).join();
         Message msg2 = chat2.addMessage("Hey user1! I'm user2.".getBytes(), chatIdentities.get(1).chatIdentity, stores.get(1)).join();
-        chat1.merge(chat2, stores.get(1), stores.get(0), ipfs).join();
+        chat1.merge(chat2.host.id, stores.get(1), stores.get(0), ipfs).join();
         Message msg3 = chat1.addMessage("Hey user2, whats up?".getBytes(), chatIdentities.get(0).chatIdentity, stores.get(0)).join();
-        chat2.merge(chat1, stores.get(0), stores.get(1), ipfs).join();
+        chat2.merge(chat1.host.id, stores.get(0), stores.get(1), ipfs).join();
         Message msg4 = chat2.addMessage("Just saving the world one decentralized chat at a time..".getBytes(), chatIdentities.get(1).chatIdentity, stores.get(1)).join();
-        chat1.merge(chat2, stores.get(1), stores.get(0), ipfs).join();
+        chat1.merge(chat2.host.id, stores.get(1), stores.get(0), ipfs).join();
         Assert.assertTrue(stores.get(1).messages.containsAll(stores.get(0).messages));
         Assert.assertEquals(stores.get(1).messages.size(), 6);
 
         // also between user3 and user4
         Message msg5 = chat3.addMessage("Hey All, I'm user3!".getBytes(), chatIdentities.get(2).chatIdentity, stores.get(2)).join();
-        chat4.merge(chat3, stores.get(2), stores.get(3), ipfs).join();
+        chat4.merge(chat3.host.id, stores.get(2), stores.get(3), ipfs).join();
         Message msg6 = chat4.addMessage("Hey user3! I'm user4.".getBytes(), chatIdentities.get(3).chatIdentity, stores.get(3)).join();
-        chat3.merge(chat4, stores.get(3), stores.get(2), ipfs).join();
+        chat3.merge(chat4.host.id, stores.get(3), stores.get(2), ipfs).join();
         Message msg7 = chat3.addMessage("Hey user4, whats up?".getBytes(), chatIdentities.get(2).chatIdentity, stores.get(2)).join();
-        chat4.merge(chat3, stores.get(2), stores.get(3), ipfs).join();
+        chat4.merge(chat3.host.id, stores.get(2), stores.get(3), ipfs).join();
         Message msg8 = chat4.addMessage("Just saving the world one encrypted chat at a time..".getBytes(), chatIdentities.get(3).chatIdentity, stores.get(3)).join();
-        chat3.merge(chat4, stores.get(3), stores.get(2), ipfs).join();
+        chat3.merge(chat4.host.id, stores.get(3), stores.get(2), ipfs).join();
         Assert.assertTrue(stores.get(3).messages.containsAll(stores.get(2).messages));
         Assert.assertEquals(stores.get(3).messages.size(), 6);
 
         // now resolve the partition and merge states
-        chat1.merge(chat4, stores.get(3), stores.get(0), ipfs).join();
+        chat1.merge(chat4.host.id, stores.get(3), stores.get(0), ipfs).join();
         Assert.assertEquals(stores.get(0).messages.size(), 12);
-        chat2.merge(chat1, stores.get(0), stores.get(1), ipfs).join();
+        chat2.merge(chat1.host.id, stores.get(0), stores.get(1), ipfs).join();
         Assert.assertTrue(stores.get(1).messages.containsAll(stores.get(0).messages));
     }
 
@@ -172,6 +172,11 @@ public class MessagingTests {
         @Override
         public CompletableFuture<List<SignedMessage>> getMessagesFrom(long index) {
             return Futures.of(messages.subList((int) index, messages.size()));
+        }
+
+        @Override
+        public CompletableFuture<List<SignedMessage>> getMessages(long fromIndex, long toIndex) {
+            return Futures.of(messages.subList((int) fromIndex, (int) toIndex));
         }
 
         @Override

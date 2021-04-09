@@ -7,5 +7,7 @@ public interface MessageStore {
 
     CompletableFuture<List<SignedMessage>> getMessagesFrom(long index);
 
+    CompletableFuture<List<SignedMessage>> getMessages(long fromIndex, long toIndex);
+
     CompletableFuture<Boolean> addMessage(SignedMessage msg);
 }

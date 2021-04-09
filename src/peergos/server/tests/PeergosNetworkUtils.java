@@ -8,6 +8,7 @@ import peergos.shared.NetworkAccess;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.SymmetricKey;
 import peergos.shared.io.ipfs.multihash.Multihash;
+import peergos.shared.messaging.*;
 import peergos.shared.social.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
@@ -1643,6 +1644,40 @@ public class PeergosNetworkUtils {
         feed = a.getSocialFeed().join().update().join();
         items = feed.getShared(0, 1000, a.crypto, a.network).join();
         Assert.assertTrue(items.size() == initialFeedSize + 3);
+    }
+
+    public static void messaging(NetworkAccess network, Random random) {
+        CryptreeNode.setMaxChildLinkPerBlob(10);
+
+        String password = "notagoodone";
+
+        UserContext a = PeergosNetworkUtils.ensureSignedUp(generateUsername(random), password, network, crypto);
+
+        List<UserContext> shareeUsers = getUserContextsForNode(network, random, 1, Arrays.asList(password, password));
+        UserContext b = shareeUsers.get(0);
+
+        // friend sharer with others
+        friendBetweenGroups(Arrays.asList(a), shareeUsers);
+
+        Messager msgA = new Messager(a);
+        ChatController controllerA = msgA.createChat().join();
+        controllerA.invite(b.username, b.signer.publicKeyHash).join();
+        msgA.invite(controllerA, b.username, b.signer.publicKeyHash).join();
+        Path chatPath = msgA.getChatPath(a.username, controllerA.chatUuid);
+        FileWrapper chatRoot = b.getByPath(chatPath).join().get();
+
+        Messager msgB = new Messager(b);
+        ChatController controllerB = msgB.cloneLocallyAndJoin(chatRoot).join();
+
+        List<Message> initialMessages = controllerB.getMessages(0, 10).join();
+        Assert.assertEquals(initialMessages.size(), 3);
+
+        byte[] msg1 = "G'day mate!".getBytes();
+        controllerA.sendMessage(msg1).join();
+        controllerB = msgB.mergeMessages(controllerB, a.username).join();
+        List<Message> messages = controllerB.getMessages(0, 10).join();
+        Assert.assertEquals(messages.size(), 4);
+        Assert.assertEquals(messages.get(messages.size() - 1).payload, msg1);
     }
 
     public static void groupSharing(NetworkAccess network, Random random) {

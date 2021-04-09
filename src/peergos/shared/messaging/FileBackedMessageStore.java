@@ -2,7 +2,6 @@ package peergos.shared.messaging;
 
 import peergos.shared.*;
 import peergos.shared.user.fs.*;
-import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
@@ -26,6 +25,16 @@ public class FileBackedMessageStore implements MessageStore {
                 .thenCompose(updated -> updated.getInputStream(network, crypto, x -> {})
                         .thenCompose(reader -> reader.parseLimitedStream(SignedMessage::fromCbor,
                                 res::add, (int) index, Integer.MAX_VALUE, updated.getSize()))
+                        .thenApply(x -> res));
+    }
+
+    @Override
+    public CompletableFuture<List<SignedMessage>> getMessages(long fromIndex, long toIndex) {
+        List<SignedMessage> res = new ArrayList<>();
+        return messages.getUpdated(network)
+                .thenCompose(updated -> updated.getInputStream(network, crypto, x -> {})
+                        .thenCompose(reader -> reader.parseLimitedStream(SignedMessage::fromCbor,
+                                res::add, (int) fromIndex, (int) (toIndex - fromIndex), updated.getSize()))
                         .thenApply(x -> res));
     }
 
