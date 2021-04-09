@@ -1661,7 +1661,6 @@ public class PeergosNetworkUtils {
 
         Messager msgA = new Messager(a);
         ChatController controllerA = msgA.createChat().join();
-        controllerA.invite(b.username, b.signer.publicKeyHash).join();
         msgA.invite(controllerA, b.username, b.signer.publicKeyHash).join();
         Path chatPath = msgA.getChatPath(a.username, controllerA.chatUuid);
         FileWrapper chatRoot = b.getByPath(chatPath).join().get();
@@ -1677,7 +1676,7 @@ public class PeergosNetworkUtils {
         controllerB = msgB.mergeMessages(controllerB, a.username).join();
         List<Message> messages = controllerB.getMessages(0, 10).join();
         Assert.assertEquals(messages.size(), 4);
-        Assert.assertEquals(messages.get(messages.size() - 1).payload, msg1);
+        Assert.assertArrayEquals(messages.get(messages.size() - 1).payload, msg1);
     }
 
     public static void groupSharing(NetworkAccess network, Random random) {

@@ -72,7 +72,7 @@ public class Messager {
                 .thenCompose(chatRoot -> chatRoot.getDescendentByPath("shared/" + SHARED_MSG_LOG, hasher, network))
                 .thenApply(messageFile -> new ChatController(uuid, chat,
                         new FileBackedMessageStore(messageFile.get(), network, crypto), privateChatState))
-                .thenCompose(controller -> controller.join(context.signer));
+                .thenCompose(controller -> controller.join(context.signer, c -> overwriteState(c, uuid)));
     }
 
     private CompletableFuture<FileWrapper> getOrCreateChatRoot(String uuid) {
@@ -87,8 +87,16 @@ public class Messager {
 
     public CompletableFuture<Boolean> invite(ChatController chat, String username, PublicKeyHash identity) {
         Path chatSharedDir = Paths.get(context.username, MESSAGING_BASE_DIR, chat.chatUuid, "shared");
-        return chat.invite(username, identity)
+        return chat.invite(username, identity, c -> overwriteState(c, chat.chatUuid))
                 .thenCompose(x -> context.shareReadAccessWith(chatSharedDir, Collections.singleton(username)));
+    }
+
+    private CompletableFuture<Boolean> overwriteState(Chat c, String uuid) {
+        Path stateFile = Paths.get(context.username, MESSAGING_BASE_DIR, uuid, "shared", SHARED_CHAT_STATE);
+        byte[] raw = c.serialize();
+        return context.getByPath(stateFile)
+                .thenCompose(file -> file.get().overwriteFile(AsyncReader.build(raw), raw.length, network, crypto, x -> {}))
+                .thenApply(f -> true);
     }
 
     /** Copy a chat to our space to join it.
@@ -120,7 +128,7 @@ public class Messager {
                                         AsyncReader.build(rawPrivateChatState), rawPrivateChatState.length, network,
                                         crypto, y -> {}, crypto.random.randomBytes(32)))
                         )).thenCompose(b -> getChat(uuid))
-                .thenCompose(controller -> controller.join(context.signer));
+                .thenCompose(controller -> controller.join(context.signer, c -> overwriteState(c, uuid)));
     }
 
     public CompletableFuture<ChatController> mergeMessages(ChatController current, String mirrorUsername) {

@@ -216,7 +216,7 @@ public class MultiUserTests {
 
     @Test
     public void messaging() {
-//        PeergosNetworkUtils.messaging(network, random);
+        PeergosNetworkUtils.messaging(network, random);
     }
 
     @Test

@@ -25,13 +25,14 @@ public class MessagingTests {
 
         Chat chat1 = Chat.createNew("user1", identities.get(0).publicKeyHash);
         OwnerProof user1ChatId = OwnerProof.build(identities.get(0), chatIdentities.get(0).chatIdentity.publicKeyHash);
-        chat1.join(chat1.host, user1ChatId, chatIdentities.get(0).chatIdPublic, identities.get(0), stores.get(0)).join();
+        chat1.join(chat1.host, user1ChatId, chatIdentities.get(0).chatIdPublic, identities.get(0), stores.get(0), x -> Futures.of(true)).join();
 
-        Member user2 = chat1.inviteMember("user2", identities.get(1).publicKeyHash, chatIdentities.get(0).chatIdentity, stores.get(0)).join();
+        Member user2 = chat1.inviteMember("user2", identities.get(1).publicKeyHash,
+                chatIdentities.get(0).chatIdentity, stores.get(0), x -> Futures.of(true)).join();
         Chat chat2 = chat1.copy(user2);
         stores.get(1).mirror(stores.get(0));
         OwnerProof user2ChatId = OwnerProof.build(identities.get(1), chatIdentities.get(1).chatIdentity.publicKeyHash);
-        chat2.join(user2, user2ChatId, chatIdentities.get(1).chatIdPublic, identities.get(1), stores.get(1)).join();
+        chat2.join(user2, user2ChatId, chatIdentities.get(1).chatIdPublic, identities.get(1), stores.get(1), x -> Futures.of(true)).join();
 
         Message msg1 = chat1.addMessage("Welcome!".getBytes(), chatIdentities.get(0).chatIdentity, stores.get(0)).join();
         chat2.merge(chat1.host.id, stores.get(0), stores.get(1), ipfs).join();
@@ -51,19 +52,21 @@ public class MessagingTests {
 
         Chat chat1 = Chat.createNew("user1", identities.get(0).publicKeyHash);
         OwnerProof user1ChatId = OwnerProof.build(identities.get(0), chatIdentities.get(0).chatIdentity.publicKeyHash);
-        chat1.join(chat1.host, user1ChatId, chatIdentities.get(0).chatIdPublic, identities.get(0), stores.get(0)).join();
+        chat1.join(chat1.host, user1ChatId, chatIdentities.get(0).chatIdPublic, identities.get(0), stores.get(0), x -> Futures.of(true)).join();
 
-        Member user2 = chat1.inviteMember("user2", identities.get(1).publicKeyHash, chatIdentities.get(0).chatIdentity, stores.get(0)).join();
+        Member user2 = chat1.inviteMember("user2", identities.get(1).publicKeyHash,
+                chatIdentities.get(0).chatIdentity, stores.get(0), x -> Futures.of(true)).join();
         Chat chat2 = chat1.copy(user2);
         stores.get(1).mirror(stores.get(0));
         OwnerProof user2ChatId = OwnerProof.build(identities.get(1), chatIdentities.get(1).chatIdentity.publicKeyHash);
-        chat2.join(user2, user2ChatId, chatIdentities.get(1).chatIdPublic, identities.get(1), stores.get(1)).join();
+        chat2.join(user2, user2ChatId, chatIdentities.get(1).chatIdPublic, identities.get(1), stores.get(1), x -> Futures.of(true)).join();
 
-        Member user3 = chat1.inviteMember("user3", identities.get(2).publicKeyHash, chatIdentities.get(0).chatIdentity, stores.get(0)).join();
+        Member user3 = chat1.inviteMember("user3", identities.get(2).publicKeyHash,
+                chatIdentities.get(0).chatIdentity, stores.get(0), x -> Futures.of(true)).join();
         Chat chat3 = chat1.copy(user3);
         stores.get(2).mirror(stores.get(0));
         OwnerProof user3ChatId = OwnerProof.build(identities.get(2), chatIdentities.get(2).chatIdentity.publicKeyHash);
-        chat3.join(user3, user3ChatId, chatIdentities.get(2).chatIdPublic, identities.get(2), stores.get(0)).join();
+        chat3.join(user3, user3ChatId, chatIdentities.get(2).chatIdPublic, identities.get(2), stores.get(0), x -> Futures.of(true)).join();
 
         Assert.assertTrue(! user2.id.equals(user3.id));
     }
@@ -76,19 +79,21 @@ public class MessagingTests {
 
         Chat chat1 = Chat.createNew("user1", identities.get(0).publicKeyHash);
         OwnerProof user1ChatId = OwnerProof.build(identities.get(0), chatIdentities.get(0).chatIdentity.publicKeyHash);
-        chat1.join(chat1.host, user1ChatId, chatIdentities.get(0).chatIdPublic, identities.get(0), stores.get(0)).join();
+        chat1.join(chat1.host, user1ChatId, chatIdentities.get(0).chatIdPublic, identities.get(0), stores.get(0), x -> Futures.of(true)).join();
 
-        Member user2 = chat1.inviteMember("user2", identities.get(1).publicKeyHash, chatIdentities.get(0).chatIdentity, stores.get(0)).join();
+        Member user2 = chat1.inviteMember("user2", identities.get(1).publicKeyHash,
+                chatIdentities.get(0).chatIdentity, stores.get(0), x -> Futures.of(true)).join();
         Chat chat2 = chat1.copy(user2);
         stores.get(1).mirror(stores.get(0));
         OwnerProof user2ChatId = OwnerProof.build(identities.get(1), chatIdentities.get(1).chatIdentity.publicKeyHash);
-        chat2.join(user2, user2ChatId, chatIdentities.get(1).chatIdPublic, identities.get(1), stores.get(1)).join();
+        chat2.join(user2, user2ChatId, chatIdentities.get(1).chatIdPublic, identities.get(1), stores.get(1), x -> Futures.of(true)).join();
 
-        Member user3 = chat2.inviteMember("user3", identities.get(2).publicKeyHash, chatIdentities.get(1).chatIdentity, stores.get(1)).join();
+        Member user3 = chat2.inviteMember("user3", identities.get(2).publicKeyHash,
+                chatIdentities.get(1).chatIdentity, stores.get(1), x -> Futures.of(true)).join();
         Chat chat3 = chat2.copy(user3);
         stores.get(2).mirror(stores.get(1));
         OwnerProof user3ChatId = OwnerProof.build(identities.get(2), chatIdentities.get(2).chatIdentity.publicKeyHash);
-        chat3.join(user3, user3ChatId, chatIdentities.get(2).chatIdPublic, identities.get(2), stores.get(2)).join();
+        chat3.join(user3, user3ChatId, chatIdentities.get(2).chatIdPublic, identities.get(2), stores.get(2), x -> Futures.of(true)).join();
 
         Message msg1 = chat3.addMessage("Hey All!".getBytes(), chatIdentities.get(2).chatIdentity, stores.get(2)).join();
         chat2.merge(chat3.host.id, stores.get(2), stores.get(1), ipfs).join();
@@ -112,16 +117,16 @@ public class MessagingTests {
         Chat chat3 = chats.get(2);
         Chat chat4 = chats.get(3);
         OwnerProof user1ChatId = OwnerProof.build(identities.get(0), chatIdentities.get(0).chatIdentity.publicKeyHash);
-        chat1.join(chat1.host, user1ChatId, chatIdentities.get(0).chatIdPublic, identities.get(0), stores.get(0)).join();
+        chat1.join(chat1.host, user1ChatId, chatIdentities.get(0).chatIdPublic, identities.get(0), stores.get(0), x -> Futures.of(true)).join();
 
         OwnerProof user2ChatId = OwnerProof.build(identities.get(1), chatIdentities.get(1).chatIdentity.publicKeyHash);
-        chat2.join(chat2.host, user2ChatId, chatIdentities.get(1).chatIdPublic, identities.get(1), stores.get(1)).join();
+        chat2.join(chat2.host, user2ChatId, chatIdentities.get(1).chatIdPublic, identities.get(1), stores.get(1), x -> Futures.of(true)).join();
 
         OwnerProof user3ChatId = OwnerProof.build(identities.get(2), chatIdentities.get(2).chatIdentity.publicKeyHash);
-        chat3.join(chat3.host, user3ChatId, chatIdentities.get(2).chatIdPublic, identities.get(2), stores.get(2)).join();
+        chat3.join(chat3.host, user3ChatId, chatIdentities.get(2).chatIdPublic, identities.get(2), stores.get(2), x -> Futures.of(true)).join();
 
         OwnerProof user4ChatId = OwnerProof.build(identities.get(3), chatIdentities.get(3).chatIdentity.publicKeyHash);
-        chat4.join(chat4.host, user4ChatId, chatIdentities.get(3).chatIdPublic, identities.get(3), stores.get(3)).join();
+        chat4.join(chat4.host, user4ChatId, chatIdentities.get(3).chatIdPublic, identities.get(3), stores.get(3), x -> Futures.of(true)).join();
 
         // partition and chat between user1 and user2
         Message msg1 = chat1.addMessage("Hey All, I'm user1!".getBytes(), chatIdentities.get(0).chatIdentity, stores.get(0)).join();

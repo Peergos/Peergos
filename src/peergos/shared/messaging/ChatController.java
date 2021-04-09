@@ -6,6 +6,7 @@ import peergos.shared.storage.*;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.*;
 import java.util.stream.*;
 
 public class ChatController {
@@ -31,14 +32,17 @@ public class ChatController {
                 .thenApply(signed -> signed.stream().map(s -> s.msg).collect(Collectors.toList()));
     }
 
-    public CompletableFuture<ChatController> join(SigningPrivateKeyAndPublicHash identity) {
+    public CompletableFuture<ChatController> join(SigningPrivateKeyAndPublicHash identity,
+                                                  Function<Chat, CompletableFuture<Boolean>> committer) {
         OwnerProof chatId = OwnerProof.build(identity, privateChatState.chatIdentity.publicKeyHash);
-        return state.join(state.host, chatId, privateChatState.chatIdPublic, identity, store)
+        return state.join(state.host, chatId, privateChatState.chatIdPublic, identity, store, committer)
                 .thenApply(x -> this);
     }
 
-    public CompletableFuture<ChatController> invite(String username, PublicKeyHash identity) {
-        return state.inviteMember(username, identity, privateChatState.chatIdentity, store)
+    public CompletableFuture<ChatController> invite(String username,
+                                                    PublicKeyHash identity,
+                                                    Function<Chat, CompletableFuture<Boolean>> committer) {
+        return state.inviteMember(username, identity, privateChatState.chatIdentity, store, committer)
                 .thenApply(x -> this);
     }
 

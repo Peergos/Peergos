@@ -9,6 +9,7 @@ import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.*;
 import java.util.stream.*;
 
 public class Chat implements Cborable {
@@ -98,14 +99,15 @@ public class Chat implements Cborable {
                                            OwnerProof chatId,
                                            PublicSigningKey chatIdPublic,
                                            SigningPrivateKeyAndPublicHash identity,
-                                           MessageStore ourStore) {
+                                           MessageStore ourStore,
+                                           Function<Chat, CompletableFuture<Boolean>> committer) {
         Message.Join joinMsg = new Message.Join(host.username, host.identity, chatId, chatIdPublic);
         return addMessage(joinMsg.serialize(), identity, ourStore)
                 .thenApply(x -> {
                     this.host.chatIdentity = Optional.of(chatId);
                     members.put(this.host.id, this.host);
                     return true;
-                });
+                }).thenCompose(x -> committer.apply(this));
     }
 
     public Chat copy(Member host) {
@@ -119,7 +121,8 @@ public class Chat implements Cborable {
     public CompletableFuture<Member> inviteMember(String username,
                                                   PublicKeyHash identity,
                                                   SigningPrivateKeyAndPublicHash ourChatIdentity,
-                                                  MessageStore ourStore) {
+                                                  MessageStore ourStore,
+                                                  Function<Chat, CompletableFuture<Boolean>> committer) {
         Id newMember = host.id.fork(host.membersInvited);
         Member member = new Member(username, newMember, identity, host.messagesMergedUpto, 0);
         host.membersInvited++;
@@ -127,6 +130,7 @@ public class Chat implements Cborable {
         current = current.withMember(newMember);
         Message.Invite invite = new Message.Invite(username, identity);
         return addMessage(invite.serialize(), ourChatIdentity, ourStore)
+                .thenCompose(x -> committer.apply(this))
                 .thenApply(x -> member);
     }
 
