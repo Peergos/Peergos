@@ -2,6 +2,7 @@ package peergos.shared.messaging;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
@@ -89,8 +90,12 @@ public class Chat implements Cborable {
         return Futures.of(true);
     }
 
-    public CompletableFuture<Boolean> join(Member host, OwnerProof chatId, SigningPrivateKeyAndPublicHash identity, MessageStore ourStore) {
-        Message.Join joinMsg = new Message.Join(host.username, host.identity, chatId);
+    public CompletableFuture<Boolean> join(Member host,
+                                           OwnerProof chatId,
+                                           PublicSigningKey chatIdPublic,
+                                           SigningPrivateKeyAndPublicHash identity,
+                                           MessageStore ourStore) {
+        Message.Join joinMsg = new Message.Join(host.username, host.identity, chatId, chatIdPublic);
         return addMessage(joinMsg.serialize(), identity, ourStore)
                 .thenApply(x -> {
                     this.host.chatIdentity = Optional.of(chatId);

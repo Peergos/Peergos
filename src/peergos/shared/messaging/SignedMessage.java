@@ -18,7 +18,7 @@ public final class SignedMessage implements Cborable {
         return new CborObject.CborList(Arrays.asList(new CborObject.CborByteArray(signature), new CborObject.CborByteArray(msg.serialize())));
     }
 
-    public SignedMessage fromCbor(Cborable cbor) {
+    public static SignedMessage fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Incorrect cbor: " + cbor);
         CborObject.CborList list = (CborObject.CborList) cbor;
