@@ -133,7 +133,8 @@ public class Messager {
 
     public CompletableFuture<ChatController> mergeMessages(ChatController current, String mirrorUsername) {
         return getMessageStoreMirror(mirrorUsername, current.chatUuid)
-                .thenCompose(mirrorStore -> current.mergeMessages(mirrorUsername, mirrorStore, network.dhtClient));
+                .thenCompose(mirrorStore -> current.mergeMessages(mirrorUsername, mirrorStore, network.dhtClient,
+                        c -> overwriteState(c, current.chatUuid)));
     }
 
     public CompletableFuture<ChatController> getChat(String uuid) {

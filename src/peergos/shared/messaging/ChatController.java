@@ -52,9 +52,10 @@ public class ChatController {
     }
     public CompletableFuture<ChatController> mergeMessages(String username,
                                                            MessageStore mirrorStore,
-                                                           ContentAddressedStorage ipfs) {
+                                                           ContentAddressedStorage ipfs,
+                                                           Function<Chat, CompletableFuture<Boolean>> committer) {
         Member mirrorHost = state.getMember(username);
-        return state.merge(mirrorHost.id, mirrorStore, store, ipfs)
+        return state.merge(mirrorHost.id, mirrorStore, store, ipfs, committer)
                 .thenApply(x -> this);
     }
 }

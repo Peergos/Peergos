@@ -43,17 +43,19 @@ public class Chat implements Cborable {
     public CompletableFuture<Boolean> merge(Id mirrorHostId,
                                             MessageStore mirrorStore,
                                             MessageStore ourStore,
-                                            ContentAddressedStorage ipfs) {
+                                            ContentAddressedStorage ipfs,
+                                            Function<Chat, CompletableFuture<Boolean>> committer) {
         Member host = getMember(mirrorHostId);
         return mirrorStore.getMessagesFrom(host.messagesMergedUpto)
                 .thenCompose(newMessages -> Futures.reduceAll(newMessages, true,
-                        (b, msg) -> mergeMessage(msg, host, ourStore, ipfs), (a, b) -> a && b));
+                        (b, msg) -> mergeMessage(msg, host, ourStore, ipfs, committer), (a, b) -> a && b));
     }
 
     private CompletableFuture<Boolean> mergeMessage(SignedMessage signed,
                                                     Member host,
                                                     MessageStore ourStore,
-                                                    ContentAddressedStorage ipfs) {
+                                                    ContentAddressedStorage ipfs,
+                                                    Function<Chat, CompletableFuture<Boolean>> committer) {
         Member author = members.get(signed.msg.author);
         Message msg = signed.msg;
         if (! msg.timestamp.isBeforeOrEqual(current)) {
@@ -85,14 +87,14 @@ public class Chat implements Cborable {
                             PublicKeyHash chatId = chatIdentity.getOwner(ipfs).join();
                             members.put(author.id, author.withChatId(chatIdentity));
                         }
-                        return ourStore.addMessage(signed).thenApply(x -> {
+                        return ourStore.addMessage(signed).thenCompose(x -> {
                             current = current.merge(msg.timestamp);
-                            return true;
+                            return committer.apply(this);
                         });
                     });
         }
         host.messagesMergedUpto++;
-        return Futures.of(true);
+        return committer.apply(this);
     }
 
     public CompletableFuture<Boolean> join(Member host,
