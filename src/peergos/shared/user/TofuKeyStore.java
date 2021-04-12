@@ -48,6 +48,13 @@ public class TofuKeyStore implements Cborable {
         return chains.getOrDefault(username, expired.getOrDefault(username, Collections.emptyList()));
     }
 
+    /**
+     *
+     * @param username
+     * @param tail
+     * @param ipfs
+     * @return if there was any change
+     */
     public CompletableFuture<Boolean> updateChain(String username, List<UserPublicKeyLink> tail, ContentAddressedStorage ipfs) {
         return UserPublicKeyLink.validChain(tail, username, ipfs)
                 .thenCompose(valid -> {
@@ -57,6 +64,8 @@ public class TofuKeyStore implements Cborable {
                     // we are allowing expired chains to be stored
 
                     List<UserPublicKeyLink> existing = getChain(username);
+                    if (! existing.isEmpty() && existing.get(existing.size() - 1).equals(tail.get(tail.size() - 1)))
+                        return Futures.of(false);
                     boolean isExpired =
                             (existing.size() > 0 && UserPublicKeyLink.isExpiredClaim(existing.get(existing.size() - 1)));
 
