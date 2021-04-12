@@ -1653,7 +1653,7 @@ public class PeergosNetworkUtils {
 
         UserContext a = PeergosNetworkUtils.ensureSignedUp(generateUsername(random), password, network, crypto);
 
-        List<UserContext> shareeUsers = getUserContextsForNode(network, random, 1, Arrays.asList(password, password));
+        List<UserContext> shareeUsers = getUserContextsForNode(network, random, 1, Arrays.asList(password));
         UserContext b = shareeUsers.get(0);
 
         // friend sharer with others
