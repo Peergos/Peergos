@@ -405,14 +405,19 @@ public class IncomingCapCache {
                                                    ProcessedCaps current,
                                                    NetworkAccess network) {
         return retrieveNewCaps(originalSharedDir, current, network, crypto)
-                .thenCompose(direct -> Futures.reduceAll(groups,
-                        direct,
-                        (d, e) -> NetworkAccess.getLatestEntryPoint(e, network)
-                                .thenCompose(sharedDir -> retrieveNewCaps(e,
+                .thenCompose(direct -> Futures.combineAll(groups.stream()
+                        .parallel()
+                        .map(e -> NetworkAccess.getLatestEntryPoint(e, network)
+                                .thenCompose(sharedDir -> retrieveNewCaps(sharedDir,
                                         current.groups.getOrDefault(sharedDir.file.getName(), ProcessedCaps.empty()), network, crypto)
-                                        .thenApply(diff -> d.mergeGroups(current.createGroupDiff(sharedDir.file.getName(), diff))))
-                                .exceptionally(t -> d),
-                        (a, b) -> a.mergeGroups(b)));
+                                        .thenApply(diff -> Optional.of(new Pair<>(sharedDir.file.getName(), diff))))
+                                .exceptionally(t -> Optional.empty()))
+                        .collect(Collectors.toList()))
+                        .thenApply(groupDiffs -> groupDiffs.stream()
+                                .flatMap(Optional::stream)
+                                .reduce(direct,
+                                        (a, p) -> a.mergeGroups(current.createGroupDiff(p.left, p.right)),
+                                        CapsDiff::mergeGroups)));
     }
 
     private static CompletableFuture<CapsDiff> retrieveNewCaps(EntryPoint sharingDir,
@@ -421,6 +426,18 @@ public class IncomingCapCache {
                                                                Crypto crypto) {
         return NetworkAccess.getLatestEntryPoint(sharingDir, network)
                 .thenCompose(sharedDir ->retrieveNewCaps(sharedDir, current.readCapBytes, current.writeCapBytes, network, crypto))
+                .exceptionally(t -> {
+                    // we might have been removed from a group or similar
+                    t.printStackTrace();
+                    return CapsDiff.empty();
+                });
+    }
+
+    private static CompletableFuture<CapsDiff> retrieveNewCaps(RetrievedEntryPoint sharedDir,
+                                                               ProcessedCaps current,
+                                                               NetworkAccess network,
+                                                               Crypto crypto) {
+        return retrieveNewCaps(sharedDir, current.readCapBytes, current.writeCapBytes, network, crypto)
                 .exceptionally(t -> {
                     // we might have been removed from a group or similar
                     t.printStackTrace();

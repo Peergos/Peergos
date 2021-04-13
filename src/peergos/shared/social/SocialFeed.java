@@ -232,8 +232,37 @@ public class SocialFeed {
     @JsMethod
     public synchronized CompletableFuture<SocialFeed> update() {
         return context.getFollowingNodes()
-                .thenCompose(friends -> Futures.reduceAll(friends, this,
-                        (s, f) -> s.updateFriend(f, network), (a, b) -> b));
+                .thenCompose(friends -> Futures.combineAll(friends.stream()
+                        .parallel()
+                        .map(this::getFriendUpdate)
+                        .collect(Collectors.toList())))
+                .thenCompose(updates -> mergeUpdates(updates.stream()
+                        .flatMap(Optional::stream)
+                        .collect(Collectors.toList())));
+    }
+
+    private CompletableFuture<Optional<Triple<String, ProcessedCaps, CapsDiff>>> getFriendUpdate(FriendSourcedTrieNode friend) {
+        ProcessedCaps current = currentCapBytesProcessed.getOrDefault(friend.ownerName, ProcessedCaps.empty());
+        return friend.updateIncludingGroups(network)
+                .thenCompose(x -> friend.getCaps(current, network))
+                .thenApply(diff -> {
+                    if (diff.isEmpty())
+                        return Optional.empty();
+                    return Optional.of(new Triple<>(friend.ownerName, current, diff));
+                });
+    }
+
+    private synchronized CompletableFuture<SocialFeed> mergeUpdates(Collection<Triple<String, ProcessedCaps, CapsDiff>> updates) {
+        List<SharedItem> forFeed = new ArrayList<>();
+        for (Triple<String, ProcessedCaps, CapsDiff> update : updates) {
+            ProcessedCaps updated = update.middle.add(update.right);
+            currentCapBytesProcessed.put(update.left, updated);
+            List<CapabilityWithPath> newCaps = update.right.getNewCaps();
+            newCaps.stream()
+                    .map(c -> new SharedItem(c.cap, extractOwner(c.path), update.left, c.path))
+                    .forEach(forFeed::add);
+        }
+        return addToFeed(forFeed);
     }
 
     private synchronized CompletableFuture<SocialFeed> updateFriend(FriendSourcedTrieNode friend, NetworkAccess network) {
@@ -272,6 +301,8 @@ public class SocialFeed {
     }
 
     private synchronized CompletableFuture<SocialFeed> addToFeed(List<SharedItem> newItems) {
+        if (newItems.isEmpty())
+            return Futures.of(this);
         return mergeInComments(newItems).thenCompose(b -> {
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
             for (SharedItem item : newItems) {

@@ -7,7 +7,6 @@ import peergos.server.*;
 import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.social.*;
-import peergos.shared.storage.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;

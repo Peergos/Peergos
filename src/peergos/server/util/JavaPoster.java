@@ -1,6 +1,7 @@
-package peergos.shared.user;
+package peergos.server.util;
 
 import peergos.shared.io.ipfs.api.*;
+import peergos.shared.user.*;
 import peergos.shared.util.*;
 
 import java.io.*;
@@ -153,34 +154,31 @@ public class JavaPoster implements HttpPoster {
     }
 
     private CompletableFuture<byte[]> publicGet(String url, Map<String, String> headers) {
-        HttpURLConnection conn = null;
-        try
-        {
-            conn = (HttpURLConnection) buildURL(url).openConnection();
-            conn.setReadTimeout(15000);
-            conn.setDoInput(true);
-            for (Map.Entry<String, String> e : headers.entrySet()) {
-                conn.setRequestProperty(e.getKey(), e.getValue());
-            }
-            if (basicAuth.isPresent())
-                conn.setRequestProperty("Authorization", basicAuth.get());
+        return CompletableFuture.supplyAsync(() -> {
+            HttpURLConnection conn = null;
+            try {
+                conn = (HttpURLConnection) buildURL(url).openConnection();
+                conn.setReadTimeout(15000);
+                conn.setDoInput(true);
+                for (Map.Entry<String, String> e : headers.entrySet()) {
+                    conn.setRequestProperty(e.getKey(), e.getValue());
+                }
+                if (basicAuth.isPresent())
+                    conn.setRequestProperty("Authorization", basicAuth.get());
 
-            String contentEncoding = conn.getContentEncoding();
-            boolean isGzipped = "gzip".equals(contentEncoding);
-            DataInputStream din = new DataInputStream(isGzipped ? new GZIPInputStream(conn.getInputStream()) : conn.getInputStream());
-            return CompletableFuture.completedFuture(Serialize.readFully(din));
-        } catch (SocketTimeoutException e) {
-            CompletableFuture<byte[]> res = new CompletableFuture<>();
-            res.completeExceptionally(new RuntimeException("Timeout retrieving: " + url, e));
-            return res;
-        } catch (IOException e) {
-            CompletableFuture<byte[]> res = new CompletableFuture<>();
-            res.completeExceptionally(e);
-            return res;
-        } finally {
-            if (conn != null)
-                conn.disconnect();
-        }
+                String contentEncoding = conn.getContentEncoding();
+                boolean isGzipped = "gzip".equals(contentEncoding);
+                DataInputStream din = new DataInputStream(isGzipped ? new GZIPInputStream(conn.getInputStream()) : conn.getInputStream());
+                return Serialize.readFully(din);
+            } catch (SocketTimeoutException e) {
+                throw new RuntimeException("Timeout retrieving: " + url, e);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            } finally {
+                if (conn != null)
+                    conn.disconnect();
+            }
+        }, ForkJoinPool.commonPool());
     }
 
     @Override
