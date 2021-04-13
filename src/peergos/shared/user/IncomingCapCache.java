@@ -410,9 +410,11 @@ public class IncomingCapCache {
                         .map(e -> NetworkAccess.getLatestEntryPoint(e, network)
                                 .thenCompose(sharedDir -> retrieveNewCaps(sharedDir,
                                         current.groups.getOrDefault(sharedDir.file.getName(), ProcessedCaps.empty()), network, crypto)
-                                        .thenApply(diff -> new Pair<>(sharedDir.file.getName(), diff))))
+                                        .thenApply(diff -> Optional.of(new Pair<>(sharedDir.file.getName(), diff))))
+                                .exceptionally(t -> Optional.empty()))
                         .collect(Collectors.toList()))
                         .thenApply(groupDiffs -> groupDiffs.stream()
+                                .flatMap(Optional::stream)
                                 .reduce(direct,
                                         (a, p) -> a.mergeGroups(current.createGroupDiff(p.left, p.right)),
                                         CapsDiff::mergeGroups)));
