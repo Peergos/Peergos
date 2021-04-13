@@ -4,7 +4,6 @@ import org.junit.*;
 import org.junit.runner.*;
 import org.junit.runners.*;
 import peergos.server.*;
-import peergos.server.storage.*;
 import peergos.server.storage.admin.*;
 import peergos.server.util.*;
 import peergos.shared.*;
