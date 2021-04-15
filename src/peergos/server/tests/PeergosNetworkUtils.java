@@ -1662,21 +1662,28 @@ public class PeergosNetworkUtils {
         Messager msgA = new Messager(a);
         ChatController controllerA = msgA.createChat().join();
         msgA.invite(controllerA, b.username, b.signer.publicKeyHash).join();
-        Path chatPath = msgA.getChatPath(a.username, controllerA.chatUuid);
-        FileWrapper chatRoot = b.getByPath(chatPath).join().get();
+        List<Pair<SharedItem, FileWrapper>> feed = b.getSocialFeed().join().update().join().getSharedFiles(0, 10).join();
+        FileWrapper chatSharedDir = feed.get(feed.size() - 1).right;
 
         Messager msgB = new Messager(b);
-        ChatController controllerB = msgB.cloneLocallyAndJoin(chatRoot).join();
+        ChatController controllerB = msgB.cloneLocallyAndJoin(chatSharedDir).join();
 
         List<Message> initialMessages = controllerB.getMessages(0, 10).join();
         Assert.assertEquals(initialMessages.size(), 3);
 
         byte[] msg1 = "G'day mate!".getBytes();
-        controllerA.sendMessage(msg1).join();
+        controllerA = controllerA.sendMessage(msg1).join();
         controllerB = msgB.mergeMessages(controllerB, a.username).join();
         List<Message> messages = controllerB.getMessages(0, 10).join();
         Assert.assertEquals(messages.size(), 4);
         Assert.assertArrayEquals(messages.get(messages.size() - 1).payload, msg1);
+
+        byte[] msg2 = "Isn't this cool!!".getBytes();
+        controllerB.sendMessage(msg2).join();
+        controllerA = msgA.mergeMessages(controllerA, b.username).join();
+        List<Message> messagesA = controllerA.getMessages(0, 10).join();
+        Assert.assertEquals(messagesA.size(), 5);
+        Assert.assertArrayEquals(messagesA.get(messagesA.size() - 1).payload, msg2);
     }
 
     public static void groupSharing(NetworkAccess network, Random random) {
