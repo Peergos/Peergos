@@ -114,6 +114,7 @@ public class MessagingTests {
         List<Chat> chats = Chat.createNew(
                 Arrays.asList("user1", "user2", "user3", "user4"),
                 identities.stream().map(p -> p.publicKeyHash).collect(Collectors.toList()));
+        TreeClock genesis = chats.get(0).current;
         Chat chat1 = chats.get(0);
         Chat chat2 = chats.get(1);
         Chat chat3 = chats.get(2);
@@ -159,6 +160,22 @@ public class MessagingTests {
         Assert.assertEquals(stores.get(0).messages.size(), 12);
         chat2.merge(chat1.host.id, stores.get(0), stores.get(1), ipfs, NO_OP).join();
         Assert.assertTrue(stores.get(1).messages.containsAll(stores.get(0).messages));
+
+        // check ordering
+        for (int i=0; i < stores.size(); i++)
+            validateMessageLog(stores.get(i).getMessagesFrom(0).join(), genesis);
+    }
+
+    private static void validateMessageLog(List<SignedMessage> msgs, TreeClock genesis) {
+        TreeClock current = genesis;
+        for (int i=0; i < msgs.size(); i++) {
+            SignedMessage signed = msgs.get(i);
+            Message msg = signed.msg;
+            TreeClock t = msg.timestamp;
+            if (t.isBeforeOrEqual(current))
+                throw new IllegalStateException("Invalid timestamp ordering!");
+            current = current.merge(t);
+        }
     }
 
     @Test
