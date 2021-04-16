@@ -63,6 +63,30 @@ public class TreeClock implements Cborable {
         return res;
     }
 
+    public boolean isIncrementOf(TreeClock parent) {
+        // We can add or remove a single member per event
+        if (Math.abs(parent.time.size() - time.size()) > 1)
+            return false;
+        HashSet<Id> common = new HashSet<>(time.keySet());
+        common.retainAll(parent.time.keySet());
+        if (Math.abs(common.size() - time.size()) > 1 || Math.abs(common.size() - parent.time.size()) > 1)
+            return false;
+        // apart from an added or removed member, exactly 1 counter should increment
+        List<Id> changed = common.stream()
+                .filter(k -> ! time.get(k).equals(parent.time.get(k)))
+                .collect(Collectors.toList());
+        if (changed.size() != 1)
+            return false;
+        Id changeAuthor = changed.get(0);
+        if (! time.get(changeAuthor).equals(1 + parent.time.get(changeAuthor)))
+            return false;
+        HashSet<Id> added = new HashSet<>(time.keySet());
+        added.removeAll(parent.time.keySet());
+        if (! added.isEmpty() && ! added.stream().allMatch(id -> time.get(id).equals(0L)))
+            return false;
+        return true;
+    }
+
     public TreeClock increment(Id member) {
         Long counter = time.get(member);
         TreeMap<Id, Long> res = new TreeMap<>(time);

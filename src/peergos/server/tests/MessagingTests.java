@@ -132,13 +132,26 @@ public class MessagingTests {
         chat4.join(chat4.host, user4ChatId, chatIdentities.get(3).chatIdPublic, identities.get(3), stores.get(3), NO_OP).join();
 
         // partition and chat between user1 and user2
+        TreeClock t1_0 = chat1.current;
         Message msg1 = chat1.addMessage("Hey All, I'm user1!".getBytes(), chatIdentities.get(0).chatIdentity, stores.get(0)).join();
+        Assert.assertTrue(msg1.timestamp.isIncrementOf(t1_0));
+
         chat2.merge(chat1.host.id, stores.get(0), stores.get(1), ipfs, NO_OP).join();
+        TreeClock t2_0 = chat2.current;
         Message msg2 = chat2.addMessage("Hey user1! I'm user2.".getBytes(), chatIdentities.get(1).chatIdentity, stores.get(1)).join();
+        Assert.assertTrue(msg2.timestamp.isIncrementOf(t2_0));
+
         chat1.merge(chat2.host.id, stores.get(1), stores.get(0), ipfs, NO_OP).join();
+        TreeClock t1_1 = chat1.current;
         Message msg3 = chat1.addMessage("Hey user2, whats up?".getBytes(), chatIdentities.get(0).chatIdentity, stores.get(0)).join();
+        Assert.assertTrue(msg3.timestamp.isIncrementOf(t1_1));
+
         chat2.merge(chat1.host.id, stores.get(0), stores.get(1), ipfs, NO_OP).join();
-        Message msg4 = chat2.addMessage("Just saving the world one decentralized chat at a time..".getBytes(), chatIdentities.get(1).chatIdentity, stores.get(1)).join();
+        TreeClock t2_1 = chat2.current;
+        Message msg4 = chat2.addMessage("Just saving the world one decentralized chat at a time..".getBytes(),
+                chatIdentities.get(1).chatIdentity, stores.get(1)).join();
+        Assert.assertTrue(msg4.timestamp.isIncrementOf(t2_1));
+
         chat1.merge(chat2.host.id, stores.get(1), stores.get(0), ipfs, NO_OP).join();
         Assert.assertTrue(stores.get(1).messages.containsAll(stores.get(0).messages));
         Assert.assertEquals(stores.get(1).messages.size(), 6);
