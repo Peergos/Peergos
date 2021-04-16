@@ -145,9 +145,13 @@ public class Messager {
 
     @JsMethod
     public CompletableFuture<ChatController> mergeMessages(ChatController current, String mirrorUsername) {
+        if (mirrorUsername.equals(this.context.username)) {
+            return Futures.of(current);
+        }
         return getMessageStoreMirror(mirrorUsername, current.chatUuid)
                 .thenCompose(mirrorStore -> current.mergeMessages(mirrorUsername, mirrorStore, network.dhtClient,
-                        c -> overwriteState(c, current.chatUuid)));
+                        c -> overwriteState(c, current.chatUuid)))
+                .exceptionally(e -> current);
     }
 
     @JsMethod

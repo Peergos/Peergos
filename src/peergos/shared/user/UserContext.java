@@ -853,6 +853,7 @@ public class UserContext {
                 });
     }
 
+    @JsMethod
     public CompletableFuture<Optional<Pair<PublicKeyHash, PublicBoxingKey>>> getPublicKeys(String username) {
         return network.coreNode.getPublicKeyHash(username)
                 .thenCompose(signerOpt ->

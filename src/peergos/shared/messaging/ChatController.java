@@ -1,9 +1,11 @@
 package peergos.shared.messaging;
 
 import jsinterop.annotations.*;
+import peergos.shared.cbor.CborObject;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.storage.*;
+import peergos.shared.util.Pair;
 
 import java.util.*;
 import java.util.concurrent.*;
@@ -31,6 +33,29 @@ public class ChatController {
     @JsMethod
     public Set<String> getMemberNames() {
         return state.members.values().stream().map(m -> m.username).collect(Collectors.toSet());
+    }
+
+    //Temporary method...
+    @JsMethod
+    public CompletableFuture<Pair<Integer, List<Message.ChatMessage>>> getFilteredMessages(int from, int to) {
+        return getMessages(from, to).thenApply(messages -> {
+            List<Message.ChatMessage> filteredMessages = new ArrayList<>();
+            for (Message message : messages) {
+                try {
+                    filteredMessages.add(Message.TextMessage.fromCbor(CborObject.fromByteArray(message.payload)));
+                } catch (Exception e) {
+                    try {
+                        filteredMessages.add(Message.ConversationTitleMessage.fromCbor(CborObject.fromByteArray(message.payload)));
+                    } catch (Exception e2) {
+                        try {
+                            filteredMessages.add(Message.StatusMessage.fromCbor(CborObject.fromByteArray(message.payload)));
+                        } catch (Exception e3) {
+                        }
+                    }
+                }
+            }
+            return new Pair<>(messages.size(), filteredMessages);
+        });
     }
 
     @JsMethod
