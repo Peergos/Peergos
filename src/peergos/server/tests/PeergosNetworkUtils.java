@@ -1659,13 +1659,13 @@ public class PeergosNetworkUtils {
         // friend sharer with others
         friendBetweenGroups(Arrays.asList(a), shareeUsers);
 
-        Messager msgA = new Messager(a);
+        Messenger msgA = new Messenger(a);
         ChatController controllerA = msgA.createChat().join();
         controllerA = msgA.invite(controllerA, b.username, b.signer.publicKeyHash).join();
         List<Pair<SharedItem, FileWrapper>> feed = b.getSocialFeed().join().update().join().getSharedFiles(0, 10).join();
         FileWrapper chatSharedDir = feed.get(feed.size() - 1).right;
 
-        Messager msgB = new Messager(b);
+        Messenger msgB = new Messenger(b);
         ChatController controllerB = msgB.cloneLocallyAndJoin(chatSharedDir).join();
 
         List<Message> initialMessages = controllerB.getMessages(0, 10).join();
@@ -1699,7 +1699,7 @@ public class PeergosNetworkUtils {
         // friend sharer with others
         friendBetweenGroups(Arrays.asList(a), shareeUsers);
 
-        Messager msgA = new Messager(a);
+        Messenger msgA = new Messenger(a);
         ChatController controllerA = msgA.createChat().join();
         controllerA = msgA.invite(controllerA, b.username, b.signer.publicKeyHash).join();
 
@@ -1715,7 +1715,7 @@ public class PeergosNetworkUtils {
         List<Pair<SharedItem, FileWrapper>> feed = b.getSocialFeed().join().update().join().getSharedFiles(0, 10).join();
         FileWrapper chatSharedDir = feed.get(feed.size() - 1).right;
 
-        Messager msgB = new Messager(b);
+        Messenger msgB = new Messenger(b);
         ChatController controllerB = msgB.cloneLocallyAndJoin(chatSharedDir).join();
 
         //not needed, but should not cause an issue

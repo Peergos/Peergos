@@ -25,7 +25,7 @@ import java.util.stream.*;
  *  To join they copy our state and message log, add a join message to their log,
  *  and share their shared directory with us.
  */
-public class Messager {
+public class Messenger {
     private static final String MESSAGING_BASE_DIR = ".messaging";
     private static final String SHARED_CHAT_STATE = "peergos-chat-state.cbor";
     private static final String SHARED_MSG_LOG = "peergos-chat-messages.cborstream";
@@ -37,7 +37,7 @@ public class Messager {
     private final Hasher hasher;
 
     @JsConstructor
-    public Messager(UserContext context) {
+    public Messenger(UserContext context) {
         this.context = context;
         this.network = context.network;
         this.crypto = context.crypto;
