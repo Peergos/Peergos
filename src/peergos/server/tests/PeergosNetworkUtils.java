@@ -1667,6 +1667,7 @@ public class PeergosNetworkUtils {
 
         Messenger msgB = new Messenger(b);
         ChatController controllerB = msgB.cloneLocallyAndJoin(chatSharedDir).join();
+        controllerB = msgB.mergeMessages(controllerB, a.username).join();
 
         List<Message> initialMessages = controllerB.getMessages(0, 10).join();
         Assert.assertEquals(initialMessages.size(), 3);
@@ -1684,47 +1685,6 @@ public class PeergosNetworkUtils {
         List<Message> messagesA = controllerA.getMessages(0, 10).join();
         Assert.assertEquals(messagesA.size(), 5);
         Assert.assertArrayEquals(messagesA.get(messagesA.size() - 1).payload, msg2);
-    }
-
-    public static void messagingScenarios(NetworkAccess network, Random random) {
-        CryptreeNode.setMaxChildLinkPerBlob(10);
-
-        String password = "notagoodone";
-
-        UserContext a = PeergosNetworkUtils.ensureSignedUp(generateUsername(random), password, network, crypto);
-
-        List<UserContext> shareeUsers = getUserContextsForNode(network, random, 1, Arrays.asList(password));
-        UserContext b = shareeUsers.get(0);
-
-        // friend sharer with others
-        friendBetweenGroups(Arrays.asList(a), shareeUsers);
-
-        Messenger msgA = new Messenger(a);
-        ChatController controllerA = msgA.createChat().join();
-        controllerA = msgA.invite(controllerA, b.username, b.signer.publicKeyHash).join();
-
-        byte[] msg1 = "message 1".getBytes();
-        controllerA = msgA.sendMessage(controllerA, msg1).join();
-
-        byte[] msg2 = "message 2".getBytes();
-        controllerA = msgA.sendMessage(controllerA, msg2).join();
-
-        // not needed, but should not lead to issues
-        controllerA = msgA.mergeMessages(controllerA, b.username).join();
-
-        List<Pair<SharedItem, FileWrapper>> feed = b.getSocialFeed().join().update().join().getSharedFiles(0, 10).join();
-        FileWrapper chatSharedDir = feed.get(feed.size() - 1).right;
-
-        Messenger msgB = new Messenger(b);
-        ChatController controllerB = msgB.cloneLocallyAndJoin(chatSharedDir).join();
-
-        //not needed, but should not cause an issue
-        controllerB = msgB.mergeMessages(controllerB, a.username).join();
-        List<Message> messages = controllerB.getMessages(0, 10).join();
-        Assert.assertEquals(messages.size(), 5);
-        Assert.assertArrayEquals(messages.get(messages.size() - 3).payload, msg1);
-        Assert.assertArrayEquals(messages.get(messages.size() - 2).payload, msg2);
-
     }
 
     public static void groupSharing(NetworkAccess network, Random random) {
