@@ -65,8 +65,10 @@ public class ChatController {
     }
 
     @JsMethod
-    public CompletableFuture<ChatController> sendMessage(byte[] message) {
+    public CompletableFuture<ChatController> sendMessage(byte[] message,
+                                                         Function<Chat, CompletableFuture<Boolean>> committer) {
         return state.addMessage(message, privateChatState.chatIdentity, store)
+                .thenCompose(x -> committer.apply(this.state))
                 .thenApply(x -> this);
     }
 

@@ -1661,7 +1661,7 @@ public class PeergosNetworkUtils {
 
         Messager msgA = new Messager(a);
         ChatController controllerA = msgA.createChat().join();
-        msgA.invite(controllerA, b.username, b.signer.publicKeyHash).join();
+        controllerA = msgA.invite(controllerA, b.username, b.signer.publicKeyHash).join();
         List<Pair<SharedItem, FileWrapper>> feed = b.getSocialFeed().join().update().join().getSharedFiles(0, 10).join();
         FileWrapper chatSharedDir = feed.get(feed.size() - 1).right;
 
@@ -1672,14 +1672,14 @@ public class PeergosNetworkUtils {
         Assert.assertEquals(initialMessages.size(), 3);
 
         byte[] msg1 = "G'day mate!".getBytes();
-        controllerA = controllerA.sendMessage(msg1).join();
+        controllerA = msgA.sendMessage(controllerA, msg1).join();
         controllerB = msgB.mergeMessages(controllerB, a.username).join();
         List<Message> messages = controllerB.getMessages(0, 10).join();
         Assert.assertEquals(messages.size(), 4);
         Assert.assertArrayEquals(messages.get(messages.size() - 1).payload, msg1);
 
         byte[] msg2 = "Isn't this cool!!".getBytes();
-        controllerB.sendMessage(msg2).join();
+        controllerB = msgB.sendMessage(controllerB, msg2).join();
         controllerA = msgA.mergeMessages(controllerA, b.username).join();
         List<Message> messagesA = controllerA.getMessages(0, 10).join();
         Assert.assertEquals(messagesA.size(), 5);
@@ -1701,13 +1701,13 @@ public class PeergosNetworkUtils {
 
         Messager msgA = new Messager(a);
         ChatController controllerA = msgA.createChat().join();
-        msgA.invite(controllerA, b.username, b.signer.publicKeyHash).join();
+        controllerA = msgA.invite(controllerA, b.username, b.signer.publicKeyHash).join();
 
         byte[] msg1 = "message 1".getBytes();
-        controllerA = controllerA.sendMessage(msg1).join();
+        controllerA = msgA.sendMessage(controllerA, msg1).join();
 
         byte[] msg2 = "message 2".getBytes();
-        controllerA = controllerA.sendMessage(msg2).join();
+        controllerA = msgA.sendMessage(controllerA, msg2).join();
 
         // not needed, but should not lead to issues
         controllerA = msgA.mergeMessages(controllerA, b.username).join();
@@ -1722,8 +1722,8 @@ public class PeergosNetworkUtils {
         controllerB = msgB.mergeMessages(controllerB, a.username).join();
         List<Message> messages = controllerB.getMessages(0, 10).join();
         Assert.assertEquals(messages.size(), 5);
-        Assert.assertArrayEquals(messages.get(messages.size() - 2).payload, msg1);
-        Assert.assertArrayEquals(messages.get(messages.size() - 1).payload, msg2);
+        Assert.assertArrayEquals(messages.get(messages.size() - 3).payload, msg1);
+        Assert.assertArrayEquals(messages.get(messages.size() - 2).payload, msg2);
 
     }
 

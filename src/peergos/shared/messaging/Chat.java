@@ -37,6 +37,7 @@ public class Chat implements Cborable {
         Message msg = new Message(host.id, msgTime, body);
         current = msgTime;
         byte[] signature = signer.secret.signatureOnly(msg.serialize());
+        members.get(host.id).messagesMergedUpto++;
         return store.addMessage(new SignedMessage(signature, msg)).thenApply(x -> msg);
     }
 
@@ -89,6 +90,7 @@ public class Chat implements Cborable {
                         }
                         return ourStore.addMessage(signed).thenCompose(x -> {
                             current = current.merge(msg.timestamp);
+                            host.messagesMergedUpto++;
                             return committer.apply(this);
                         });
                     });

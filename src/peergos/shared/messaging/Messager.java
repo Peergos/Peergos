@@ -91,10 +91,11 @@ public class Messager {
     }
 
     @JsMethod
-    public CompletableFuture<Boolean> invite(ChatController chat, String username, PublicKeyHash identity) {
+    public CompletableFuture<ChatController> invite(ChatController chat, String username, PublicKeyHash identity) {
         Path chatSharedDir = Paths.get(context.username, MESSAGING_BASE_DIR, chat.chatUuid, "shared");
         return chat.invite(username, identity, c -> overwriteState(c, chat.chatUuid))
-                .thenCompose(x -> context.shareReadAccessWith(chatSharedDir, Collections.singleton(username)));
+                .thenCompose(res -> context.shareReadAccessWith(chatSharedDir, Collections.singleton(username))
+                        .thenApply(x -> res));
     }
 
     private CompletableFuture<Boolean> overwriteState(Chat c, String uuid) {
@@ -163,6 +164,11 @@ public class Messager {
         return Futures.reduceAll(toPullFrom, current,
                 (c, n) -> mergeMessages(c, n),
                 (a, b) -> {throw new IllegalStateException();});
+    }
+
+    @JsMethod
+    public CompletableFuture<ChatController> sendMessage(ChatController current, byte[] message) {
+        return current.sendMessage(message, c -> overwriteState(c, current.chatUuid));
     }
 
     public CompletableFuture<ChatController> getChat(String uuid) {
