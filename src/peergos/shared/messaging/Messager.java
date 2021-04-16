@@ -150,6 +150,17 @@ public class Messager {
                         c -> overwriteState(c, current.chatUuid)));
     }
 
+    @JsMethod
+    public CompletableFuture<ChatController> mergeAllUpdates(ChatController current, SocialState soc) {
+        Set<String> following = soc.getFollowing();
+        List<String> toPullFrom = current.getMemberNames().stream()
+                .filter(following::contains)
+                .collect(Collectors.toList());
+        return Futures.reduceAll(toPullFrom, current,
+                (c, n) -> mergeMessages(c, n),
+                (a, b) -> {throw new IllegalStateException();});
+    }
+
     public CompletableFuture<ChatController> getChat(String uuid) {
         return context.getByPath(getChatPath(context.username, uuid))
                 .thenApply(Optional::get)
