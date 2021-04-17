@@ -4,6 +4,7 @@ import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.messaging.messages.*;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
@@ -32,9 +33,17 @@ public class Chat implements Cborable {
         return members.values().stream().filter(m -> m.username.equals(username)).findFirst().get();
     }
 
-    public CompletableFuture<Message> addMessage(byte[] body, SigningPrivateKeyAndPublicHash signer, MessageStore store) {
+    public CompletableFuture<MessageEnvelope> addApplicationMessage(ApplicationMessage body,
+                                                                    SigningPrivateKeyAndPublicHash signer,
+                                                                    MessageStore store) {
+        return addMessage(body, signer, store);
+    }
+
+    public CompletableFuture<MessageEnvelope> addMessage(Message body,
+                                                         SigningPrivateKeyAndPublicHash signer,
+                                                         MessageStore store) {
         TreeClock msgTime = current.increment(host.id);
-        Message msg = new Message(host.id, msgTime, body);
+        MessageEnvelope msg = new MessageEnvelope(host.id, msgTime, body);
         current = msgTime;
         byte[] signature = signer.secret.signatureOnly(msg.serialize());
         members.get(host.id).messagesMergedUpto++;
@@ -58,7 +67,7 @@ public class Chat implements Cborable {
                                                     ContentAddressedStorage ipfs,
                                                     Function<Chat, CompletableFuture<Boolean>> committer) {
         Member author = members.get(signed.msg.author);
-        Message msg = signed.msg;
+        MessageEnvelope msg = signed.msg;
         if (! msg.timestamp.isBeforeOrEqual(current)) {
             // check signature
             return (author.chatIdentity.isPresent() ?
@@ -70,23 +79,31 @@ public class Chat implements Cborable {
                             throw new IllegalStateException("Couldn't retrieve public siging key!");
                         signerOpt.get().unsignMessage(ArrayOps.concat(signed.signature, signed.msg.serialize()));
 
-                        Set<Id> newMembers = current.newMembersFrom(msg.timestamp);
-                        for (Id newMember : newMembers) {
-                            long indexIntoParent = getMember(newMember.parent()).messagesMergedUpto;
-                            Message.Invite invite = Message.Invite.fromCbor(CborObject.fromByteArray(msg.payload));
-                            String username = invite.username;
-                            PublicKeyHash identity = invite.identity;
-                            members.put(newMember, new Member(username, newMember, identity, indexIntoParent, 0));
-                        }
-                        if (author.chatIdentity.isEmpty()) {
-                            // This is a Join message from a new member
-                            Message.Join join = Message.Join.fromCbor(CborObject.fromByteArray(msg.payload));
-                            OwnerProof chatIdentity = join.chatIdentity;
-                            if (!chatIdentity.ownedKey.equals(author.identity))
-                                throw new IllegalStateException("Identity keys don't match!");
-                            // verify signature
-                            PublicKeyHash chatId = chatIdentity.getOwner(ipfs).join();
-                            members.put(author.id, author.withChatId(chatIdentity));
+                        switch(msg.payload.type()) {
+                            case Invite:
+                                Set<Id> newMembers = current.newMembersFrom(msg.timestamp);
+                                for (Id newMember : newMembers) {
+                                    long indexIntoParent = getMember(newMember.parent()).messagesMergedUpto;
+                                    Invite invite = (Invite)msg.payload;
+                                    String username = invite.username;
+                                    PublicKeyHash identity = invite.identity;
+                                    members.put(newMember, new Member(username, newMember, identity, indexIntoParent, 0));
+                                }
+                                break;
+                            case Join:
+                                if (author.chatIdentity.isEmpty()) {
+                                    // This is a Join message from a new member
+                                    Join join = (Join)msg.payload;
+                                    OwnerProof chatIdentity = join.chatIdentity;
+                                    if (!chatIdentity.ownedKey.equals(author.identity))
+                                        throw new IllegalStateException("Identity keys don't match!");
+                                    // verify signature
+                                    PublicKeyHash chatId = chatIdentity.getOwner(ipfs).join();
+                                    members.put(author.id, author.withChatId(chatIdentity));
+                                }
+                                break;
+                            case Application:
+                                break;
                         }
                         return ourStore.addMessage(signed).thenCompose(x -> {
                             current = current.merge(msg.timestamp);
@@ -105,8 +122,8 @@ public class Chat implements Cborable {
                                            SigningPrivateKeyAndPublicHash identity,
                                            MessageStore ourStore,
                                            Function<Chat, CompletableFuture<Boolean>> committer) {
-        Message.Join joinMsg = new Message.Join(host.username, host.identity, chatId, chatIdPublic);
-        return addMessage(joinMsg.serialize(), identity, ourStore)
+        Join joinMsg = new Join(host.username, host.identity, chatId, chatIdPublic);
+        return addMessage(joinMsg, identity, ourStore)
                 .thenApply(x -> {
                     this.host.chatIdentity = Optional.of(chatId);
                     members.put(this.host.id, this.host);
@@ -132,8 +149,8 @@ public class Chat implements Cborable {
         host.membersInvited++;
         members.put(newMember, member);
         current = current.withMember(newMember);
-        Message.Invite invite = new Message.Invite(username, identity);
-        return addMessage(invite.serialize(), ourChatIdentity, ourStore)
+        Invite invite = new Invite(username, identity);
+        return addMessage(invite, ourChatIdentity, ourStore)
                 .thenCompose(x -> committer.apply(this))
                 .thenApply(x -> member);
     }

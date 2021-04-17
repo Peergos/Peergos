@@ -3,6 +3,7 @@ package peergos.shared.social;
 import jsinterop.annotations.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.display.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.user.fs.*;
 
@@ -23,106 +24,6 @@ public class SocialPost implements Cborable {
         Friends,
         Followers,
         Public
-    }
-
-    public interface Content extends Cborable {
-
-        @JsMethod
-        String inlineText();
-
-        @JsMethod
-        Optional<Ref> reference();
-
-        @JsType
-        class Text implements Content {
-            public final String content;
-
-            public Text(String content) {
-                this.content = content;
-            }
-
-            @Override
-            public String inlineText() {
-                return content;
-            }
-
-            @Override
-            public Optional<Ref> reference() {
-                return Optional.empty();
-            }
-
-            @Override
-            public CborObject toCbor() {
-                return new CborObject.CborString(content);
-            }
-
-            @Override
-            public boolean equals(Object o) {
-                if (this == o) return true;
-                if (o == null || getClass() != o.getClass()) return false;
-                Text text = (Text) o;
-                return Objects.equals(content, text.content);
-            }
-
-            @Override
-            public int hashCode() {
-                return Objects.hash(content);
-            }
-        }
-
-        @JsType
-        class Reference implements Content {
-            public final Ref ref;
-
-            public Reference(Ref ref) {
-                this.ref = ref;
-            }
-
-            @Override
-            public CborObject toCbor() {
-                SortedMap<String, Cborable> state = new TreeMap<>();
-                state.put("t", new CborObject.CborString("Ref"));
-                state.put("r", ref);
-                return CborObject.CborMap.build(state);
-            }
-
-            @Override
-            public String inlineText() {
-                return "";
-            }
-
-            @Override
-            public Optional<Ref> reference() {
-                return Optional.of(ref);
-            }
-
-            @Override
-            public boolean equals(Object o) {
-                if (this == o) return true;
-                if (o == null || getClass() != o.getClass()) return false;
-                Reference reference = (Reference) o;
-                return Objects.equals(ref, reference.ref);
-            }
-
-            @Override
-            public int hashCode() {
-                return Objects.hash(ref);
-            }
-        }
-
-        static Content fromCbor(Cborable cbor) {
-            if (cbor instanceof CborObject.CborString)
-                return new Text(((CborObject.CborString) cbor).value);
-            if (cbor instanceof CborObject.CborMap) {
-                CborObject.CborMap m = (CborObject.CborMap) cbor;
-                String type = m.getString("t");
-                switch (type) {
-                    case "Ref": return new Reference(m.get("r", Ref::fromCbor));
-                    default: throw new IllegalStateException("Unknown content type in Social Post: " + type);
-                }
-            }
-            throw new IllegalStateException("Unknown Content type in Social Post");
-        }
     }
 
     public final String author;

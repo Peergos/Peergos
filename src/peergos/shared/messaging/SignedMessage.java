@@ -6,9 +6,9 @@ import java.util.*;
 
 public final class SignedMessage implements Cborable {
     public final byte[] signature;
-    public final Message msg;
+    public final MessageEnvelope msg;
 
-    public SignedMessage(byte[] signature, Message msg) {
+    public SignedMessage(byte[] signature, MessageEnvelope msg) {
         this.signature = signature;
         this.msg = msg;
     }
@@ -23,7 +23,7 @@ public final class SignedMessage implements Cborable {
             throw new IllegalStateException("Incorrect cbor: " + cbor);
         CborObject.CborList list = (CborObject.CborList) cbor;
         byte[] signature = list.get(0, c -> ((CborObject.CborByteArray) c).value);
-        Message msg = Message.fromCbor(CborObject.fromByteArray(list.get(1, c -> ((CborObject.CborByteArray) c).value)));
+        MessageEnvelope msg = MessageEnvelope.fromCbor(CborObject.fromByteArray(list.get(1, c -> ((CborObject.CborByteArray) c).value)));
         return new SignedMessage(signature, msg);
     }
 

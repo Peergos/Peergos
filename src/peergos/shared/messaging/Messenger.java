@@ -4,6 +4,7 @@ import jsinterop.annotations.*;
 import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.messaging.messages.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
@@ -167,7 +168,7 @@ public class Messenger {
     }
 
     @JsMethod
-    public CompletableFuture<ChatController> sendMessage(ChatController current, byte[] message) {
+    public CompletableFuture<ChatController> sendMessage(ChatController current, Message message) {
         return current.sendMessage(message, c -> overwriteState(c, current.chatUuid));
     }
 

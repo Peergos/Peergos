@@ -1,11 +1,10 @@
 package peergos.shared.messaging;
 
 import jsinterop.annotations.*;
-import peergos.shared.cbor.CborObject;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.messaging.messages.*;
 import peergos.shared.storage.*;
-import peergos.shared.util.Pair;
 
 import java.util.*;
 import java.util.concurrent.*;
@@ -35,37 +34,14 @@ public class ChatController {
         return state.members.values().stream().map(m -> m.username).collect(Collectors.toSet());
     }
 
-    //Temporary method...
     @JsMethod
-    public CompletableFuture<Pair<Integer, List<Message.ChatMessage>>> getFilteredMessages(int from, int to) {
-        return getMessages(from, to).thenApply(messages -> {
-            List<Message.ChatMessage> filteredMessages = new ArrayList<>();
-            for (Message message : messages) {
-                try {
-                    filteredMessages.add(Message.TextMessage.fromCbor(CborObject.fromByteArray(message.payload)));
-                } catch (Exception e) {
-                    try {
-                        filteredMessages.add(Message.ConversationTitleMessage.fromCbor(CborObject.fromByteArray(message.payload)));
-                    } catch (Exception e2) {
-                        try {
-                            filteredMessages.add(Message.StatusMessage.fromCbor(CborObject.fromByteArray(message.payload)));
-                        } catch (Exception e3) {
-                        }
-                    }
-                }
-            }
-            return new Pair<>(messages.size(), filteredMessages);
-        });
-    }
-
-    @JsMethod
-    public CompletableFuture<List<Message>> getMessages(long from, long to) {
+    public CompletableFuture<List<MessageEnvelope>> getMessages(long from, long to) {
         return store.getMessages(from, to)
                 .thenApply(signed -> signed.stream().map(s -> s.msg).collect(Collectors.toList()));
     }
 
     @JsMethod
-    public CompletableFuture<ChatController> sendMessage(byte[] message,
+    public CompletableFuture<ChatController> sendMessage(Message message,
                                                          Function<Chat, CompletableFuture<Boolean>> committer) {
         return state.addMessage(message, privateChatState.chatIdentity, store)
                 .thenCompose(x -> committer.apply(this.state))

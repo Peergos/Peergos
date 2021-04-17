@@ -13,6 +13,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
 import java.util.stream.*;
+import static peergos.shared.messaging.messages.ApplicationMessage.text;
 
 public class MessagingTests {
     private static final Crypto crypto = Main.initCrypto();
@@ -36,11 +37,11 @@ public class MessagingTests {
         OwnerProof user2ChatId = OwnerProof.build(identities.get(1), chatIdentities.get(1).chatIdentity.publicKeyHash);
         chat2.join(user2, user2ChatId, chatIdentities.get(1).chatIdPublic, identities.get(1), stores.get(1), NO_OP).join();
 
-        Message msg1 = chat1.addMessage("Welcome!".getBytes(), chatIdentities.get(0).chatIdentity, stores.get(0)).join();
+        MessageEnvelope msg1 = chat1.addApplicationMessage(text("Welcome!"), chatIdentities.get(0).chatIdentity, stores.get(0)).join();
         chat2.merge(chat1.host.id, stores.get(0), stores.get(1), ipfs, NO_OP).join();
         Assert.assertTrue(stores.get(1).messages.get(3).msg.equals(msg1));
 
-        Message msg2 = chat2.addMessage("This is cool!".getBytes(), chatIdentities.get(1).chatIdentity, stores.get(1)).join();
+        MessageEnvelope msg2 = chat2.addApplicationMessage(text("This is cool!"), chatIdentities.get(1).chatIdentity, stores.get(1)).join();
 
         chat1.merge(chat2.host.id, stores.get(1), stores.get(0), ipfs, NO_OP).join();
         Assert.assertTrue(stores.get(0).messages.get(4).msg.equals(msg2));
@@ -97,7 +98,7 @@ public class MessagingTests {
         OwnerProof user3ChatId = OwnerProof.build(identities.get(2), chatIdentities.get(2).chatIdentity.publicKeyHash);
         chat3.join(user3, user3ChatId, chatIdentities.get(2).chatIdPublic, identities.get(2), stores.get(2), NO_OP).join();
 
-        Message msg1 = chat3.addMessage("Hey All!".getBytes(), chatIdentities.get(2).chatIdentity, stores.get(2)).join();
+        MessageEnvelope msg1 = chat3.addApplicationMessage(text("Hey All!"), chatIdentities.get(2).chatIdentity, stores.get(2)).join();
         chat2.merge(chat3.host.id, stores.get(2), stores.get(1), ipfs, NO_OP).join();
         Assert.assertTrue(stores.get(1).messages.get(5).msg.equals(msg1));
 
@@ -133,22 +134,22 @@ public class MessagingTests {
 
         // partition and chat between user1 and user2
         TreeClock t1_0 = chat1.current;
-        Message msg1 = chat1.addMessage("Hey All, I'm user1!".getBytes(), chatIdentities.get(0).chatIdentity, stores.get(0)).join();
+        MessageEnvelope msg1 = chat1.addApplicationMessage(text("Hey All, I'm user1!"), chatIdentities.get(0).chatIdentity, stores.get(0)).join();
         Assert.assertTrue(msg1.timestamp.isIncrementOf(t1_0));
 
         chat2.merge(chat1.host.id, stores.get(0), stores.get(1), ipfs, NO_OP).join();
         TreeClock t2_0 = chat2.current;
-        Message msg2 = chat2.addMessage("Hey user1! I'm user2.".getBytes(), chatIdentities.get(1).chatIdentity, stores.get(1)).join();
+        MessageEnvelope msg2 = chat2.addApplicationMessage(text("Hey user1! I'm user2."), chatIdentities.get(1).chatIdentity, stores.get(1)).join();
         Assert.assertTrue(msg2.timestamp.isIncrementOf(t2_0));
 
         chat1.merge(chat2.host.id, stores.get(1), stores.get(0), ipfs, NO_OP).join();
         TreeClock t1_1 = chat1.current;
-        Message msg3 = chat1.addMessage("Hey user2, whats up?".getBytes(), chatIdentities.get(0).chatIdentity, stores.get(0)).join();
+        MessageEnvelope msg3 = chat1.addApplicationMessage(text("Hey user2, whats up?"), chatIdentities.get(0).chatIdentity, stores.get(0)).join();
         Assert.assertTrue(msg3.timestamp.isIncrementOf(t1_1));
 
         chat2.merge(chat1.host.id, stores.get(0), stores.get(1), ipfs, NO_OP).join();
         TreeClock t2_1 = chat2.current;
-        Message msg4 = chat2.addMessage("Just saving the world one decentralized chat at a time..".getBytes(),
+        MessageEnvelope msg4 = chat2.addApplicationMessage(text("Just saving the world one decentralized chat at a time.."),
                 chatIdentities.get(1).chatIdentity, stores.get(1)).join();
         Assert.assertTrue(msg4.timestamp.isIncrementOf(t2_1));
 
@@ -157,13 +158,13 @@ public class MessagingTests {
         Assert.assertEquals(stores.get(1).messages.size(), 6);
 
         // also between user3 and user4
-        Message msg5 = chat3.addMessage("Hey All, I'm user3!".getBytes(), chatIdentities.get(2).chatIdentity, stores.get(2)).join();
+        MessageEnvelope msg5 = chat3.addApplicationMessage(text("Hey All, I'm user3!"), chatIdentities.get(2).chatIdentity, stores.get(2)).join();
         chat4.merge(chat3.host.id, stores.get(2), stores.get(3), ipfs, NO_OP).join();
-        Message msg6 = chat4.addMessage("Hey user3! I'm user4.".getBytes(), chatIdentities.get(3).chatIdentity, stores.get(3)).join();
+        MessageEnvelope msg6 = chat4.addApplicationMessage(text("Hey user3! I'm user4."), chatIdentities.get(3).chatIdentity, stores.get(3)).join();
         chat3.merge(chat4.host.id, stores.get(3), stores.get(2), ipfs, NO_OP).join();
-        Message msg7 = chat3.addMessage("Hey user4, whats up?".getBytes(), chatIdentities.get(2).chatIdentity, stores.get(2)).join();
+        MessageEnvelope msg7 = chat3.addApplicationMessage(text("Hey user4, whats up?"), chatIdentities.get(2).chatIdentity, stores.get(2)).join();
         chat4.merge(chat3.host.id, stores.get(2), stores.get(3), ipfs, NO_OP).join();
-        Message msg8 = chat4.addMessage("Just saving the world one encrypted chat at a time..".getBytes(), chatIdentities.get(3).chatIdentity, stores.get(3)).join();
+        MessageEnvelope msg8 = chat4.addApplicationMessage(text("Just saving the world one encrypted chat at a time.."), chatIdentities.get(3).chatIdentity, stores.get(3)).join();
         chat3.merge(chat4.host.id, stores.get(3), stores.get(2), ipfs, NO_OP).join();
         Assert.assertTrue(stores.get(3).messages.containsAll(stores.get(2).messages));
         Assert.assertEquals(stores.get(3).messages.size(), 6);
@@ -183,7 +184,7 @@ public class MessagingTests {
         TreeClock current = genesis;
         for (int i=0; i < msgs.size(); i++) {
             SignedMessage signed = msgs.get(i);
-            Message msg = signed.msg;
+            MessageEnvelope msg = signed.msg;
             TreeClock t = msg.timestamp;
             if (t.isBeforeOrEqual(current))
                 throw new IllegalStateException("Invalid timestamp ordering!");
