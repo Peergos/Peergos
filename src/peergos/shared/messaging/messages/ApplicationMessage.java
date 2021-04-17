@@ -34,6 +34,19 @@ public class ApplicationMessage implements Message {
         return new ApplicationMessage(body);
     }
 
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        ApplicationMessage that = (ApplicationMessage) o;
+        return Objects.equals(body, that.body);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(body);
+    }
+
     public static ApplicationMessage text(String text) {
         return new ApplicationMessage(new Text(text));
     }
