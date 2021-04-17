@@ -27,11 +27,12 @@ public class Join implements Message {
     }
 
     @Override
-    public CborObject toCbor() {
+    public CborObject.CborMap toCbor() {
         SortedMap<String, Cborable> state = new TreeMap<>();
+        state.put("c", new CborObject.CborLong(type().value));
         state.put("u", new CborObject.CborString(username));
         state.put("i", identity);
-        state.put("c", chatIdentity);
+        state.put("ci", chatIdentity);
         state.put("p", chatIdPublic);
         return CborObject.CborMap.build(state);
     }
@@ -42,7 +43,7 @@ public class Join implements Message {
         CborObject.CborMap m = (CborObject.CborMap) cbor;
         String username = m.getString("u");
         PublicKeyHash identity = m.get("i", PublicKeyHash::fromCbor);
-        OwnerProof chatIdentity = m.get("c", OwnerProof::fromCbor);
+        OwnerProof chatIdentity = m.get("ci", OwnerProof::fromCbor);
         PublicSigningKey chatIdPublic = m.get("p", PublicSigningKey::fromCbor);
         return new Join(username, identity, chatIdentity, chatIdPublic);
     }

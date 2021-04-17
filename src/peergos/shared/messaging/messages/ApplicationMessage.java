@@ -18,8 +18,9 @@ public class ApplicationMessage implements Message {
     }
 
     @Override
-    public CborObject toCbor() {
+    public CborObject.CborMap toCbor() {
         SortedMap<String, Cborable> state = new TreeMap<>();
+        state.put("c", new CborObject.CborLong(type().value));
         state.put("b", body);
         return CborObject.CborMap.build(state);
     }

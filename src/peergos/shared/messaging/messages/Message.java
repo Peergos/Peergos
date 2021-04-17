@@ -8,7 +8,6 @@ public interface Message extends Cborable {
 
     Type type();
 
-
     static Message fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("Incorrect cbor: " + cbor);
@@ -16,9 +15,9 @@ public interface Message extends Cborable {
 
         Type category = map.get("c", c -> Type.byValue((int) ((CborObject.CborLong) c).value));
         switch (category) {
-            case Join: return map.get("p", Join::fromCbor);
-            case Invite: return map.get("p", Invite::fromCbor);
-            case Application: return map.get("p", ApplicationMessage::fromCbor);
+            case Join: return Join.fromCbor(cbor);
+            case Invite: return Invite.fromCbor(cbor);
+            case Application: return ApplicationMessage.fromCbor(cbor);
             default: throw new IllegalStateException("Invalid message type!");
         }
     }
