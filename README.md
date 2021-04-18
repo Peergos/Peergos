@@ -128,6 +128,41 @@ Architecture
  - a link can be generated to a file or a folder which can be shared with anyone through any medium. A link is of the form https://demo.peergos.net/#KEY_MATERIAL which has the property that even the link doesn't leak the file contents to the network, as the key material after the # is not sent to the server, but interpreted locally in the browser.
  - a user can publish a capability to a file or folder they control which makes it publicly visible
 
+Usage
+-----
+Instructions for self hosting will be updated once it is supported. 
+
+In the meantime you can experiment (BEWARE: we occasionally need to delete the data on this test network, so don't use it as your only copy of anything) with running your own Peergos server in our demo network by downloading a release from https://beta.peergos.net/public/peergos/releases
+
+You will need Java >= 11 installed. 
+
+Run Peergos with:
+```
+java -jar Peergos.jar daemon -pki-node-id QmdM1TrjBJnYzzESATtrrMNPAtjJdqfcV2vF1kM39DY7cc -peergos.identity.hash z59vuwzfFDoqvC6R5QBV4tXx6ZK3SytpvvcjKnWD2VXZXhxDbFq7Fuu -log-to-console true
+```
+You can then access the web interface over http:/localhost:8000/
+
+Note that whichever Peergos server you sign up through will be storing your data (we plan to enable migration later), so if you don't intend on leaving your Peergos server running permanently, then we recommend signing up on https://demo.peergos.net and then you can log in through a local Peergos instance and all your data will magically end up on the demo.peergos.net server. 
+
+### CLI
+There are a range of commands available from a command line. You can run -help to find the available commands or details on any command. Most users should only need the *daemon* and *shell* commands, and maybe *fuse*. You can use the *migrate* command to move all your data to a new server (where the command is run). 
+
+```
+>> java -Djava.library.path=native-lib -jar Peergos.jar -help
+Main: Run a Peergos command
+Sub commands:
+	daemon: The user facing Peergos server
+	shell: An interactive command-line-interface to a Peergos server.
+	fuse: Mount a Peergos user's filesystem natively
+	quota: Manage quota of users on this server
+	server-msg: Send and receive messages to/from users of this server
+	gateway: Serve websites directly from Peergos
+	migrate: Move a Peergos account to this server.
+	ipfs: Install, configure and start IPFS daemon
+	pki: Start the Peergos PKI Server that has already been bootstrapped
+	pki-init: Bootstrap and start the Peergos PKI Server
+```
+
 Development
 --------
 ### Dependencies
@@ -165,22 +200,6 @@ Running tests will install and configure the correct version of IPFS automatical
 ```shell
 ant test
 ```
-
-Usage
------
-Instructions for self hosting will be updated once it is supported. 
-
-In the meantime you can experiment (BEWARE: we occasionally need to delete the data on this test network, so don't use it as your only copy of anything) with running your own Peergos server in our demo network by downloading a release from https://alpha.peergos.net/public/peergos/releases
-
-You will need Java >= 11 installed. 
-
-Run Peergos with:
-```
-java -jar Peergos.jar daemon -pki-node-id QmdM1TrjBJnYzzESATtrrMNPAtjJdqfcV2vF1kM39DY7cc -peergos.identity.hash z59vuwzfFDoqvC6R5QBV4tXx6ZK3SytpvvcjKnWD2VXZXhxDbFq7Fuu -log-to-console true
-```
-You can then access the web interface over http:/localhost:8000/
-
-Note that whichever Peergos server you sign up through will be storing your data (we plan to enable migration later), so if you don't intend on leaving your Peergos server running permanently, then we recommend signing up on https://demo.peergos.net and then you can log in through a local Peergos instance and all your data will magically end up on the demo.peergos.net server. 
 
 ### Development Notes
 The ``ant compile`` target will only compile sources in src/peergos/{client,server,shared} folders.
