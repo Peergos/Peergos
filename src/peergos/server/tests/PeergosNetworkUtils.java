@@ -1690,7 +1690,7 @@ public class PeergosNetworkUtils {
 
         // test setting group properties
         String random_chat = "Random chat";
-        controllerA = msgA.sendMessage(controllerA, new SetGroupState("name", random_chat)).join();
+        controllerA = msgA.setGroupProperty(controllerA, "name", random_chat).join();
         controllerB = msgB.mergeMessages(controllerB, a.username).join();
         String groupName = controllerB.getGroupProperty("name");
         Assert.assertTrue(groupName.equals(random_chat));

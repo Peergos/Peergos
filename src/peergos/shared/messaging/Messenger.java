@@ -172,6 +172,11 @@ public class Messenger {
         return current.sendMessage(message, c -> overwriteState(c, current.chatUuid));
     }
 
+    @JsMethod
+    public CompletableFuture<ChatController> setGroupProperty(ChatController current, String key, String value) {
+        return current.sendMessage(new SetGroupState(key, value), c -> overwriteState(c, current.chatUuid));
+    }
+
     public CompletableFuture<ChatController> getChat(String uuid) {
         return context.getByPath(getChatPath(context.username, uuid))
                 .thenApply(Optional::get)
