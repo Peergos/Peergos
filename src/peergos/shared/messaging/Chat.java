@@ -101,8 +101,10 @@ public class Chat implements Cborable {
                                     if (!chatIdentity.ownedKey.equals(author.identity))
                                         throw new IllegalStateException("Identity keys don't match!");
                                     // verify signature
-                                    //PublicKeyHash chatId = chatIdentity.getOwner(ipfs).join();
-                                    members.put(author.id, author.withChatId(chatIdentity));
+                                    return chatIdentity.getOwner(ipfs).thenApply(x -> {
+                                        members.put(author.id, author.withChatId(chatIdentity));
+                                        return true;
+                                    });
                                 }
                                 break;
                             case GroupState: {
@@ -119,12 +121,13 @@ public class Chat implements Cborable {
                             case Application:
                                 break;
                         }
-                        return ourStore.addMessage(signed).thenCompose(x -> {
-                            current = current.merge(msg.timestamp);
-                            host.messagesMergedUpto++;
-                            return committer.apply(this);
-                        });
-                    });
+                        return Futures.of(true);
+                    }).thenCompose(b -> ourStore.addMessage(signed)
+                            .thenCompose(x -> {
+                                current = current.merge(msg.timestamp);
+                                host.messagesMergedUpto++;
+                                return committer.apply(this);
+                            }));
         }
         host.messagesMergedUpto++;
         return committer.apply(this);
