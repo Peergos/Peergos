@@ -30,6 +30,11 @@ public class ChatController {
     }
 
     @JsMethod
+    public String getAuthorUsername(MessageEnvelope m) {
+        return state.getMember(m.author).username;
+    }
+
+    @JsMethod
     public Set<String> getMemberNames() {
         return state.members.values().stream().map(m -> m.username).collect(Collectors.toSet());
     }
