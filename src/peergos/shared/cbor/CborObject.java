@@ -560,6 +560,10 @@ public interface CborObject extends Cborable {
                     value +
                     "\"}";
         }
+
+        public static String getString(Cborable cbor) {
+            return ((CborString)cbor).value;
+        }
     }
 
     final class CborLong implements CborObject, Comparable<CborLong> {

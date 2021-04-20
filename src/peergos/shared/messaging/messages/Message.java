@@ -18,6 +18,7 @@ public interface Message extends Cborable {
             case Join: return Join.fromCbor(cbor);
             case Invite: return Invite.fromCbor(cbor);
             case Application: return ApplicationMessage.fromCbor(cbor);
+            case GroupState: return SetGroupState.fromCbor(cbor);
             default: throw new IllegalStateException("Invalid message type!");
         }
     }
@@ -26,7 +27,8 @@ public interface Message extends Cborable {
     enum Type {
         Join(0),
         Invite(1),
-        Application(2);
+        Application(2),
+        GroupState(3);
 
         public final int value;
 

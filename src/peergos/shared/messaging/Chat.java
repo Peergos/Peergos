@@ -18,11 +18,13 @@ public class Chat implements Cborable {
     public final Member host;
     public TreeClock current;
     public final Map<Id, Member> members;
+    public final Map<String, GroupProperty> groupState;
 
-    public Chat(Member host, TreeClock current, Map<Id, Member> members) {
+    public Chat(Member host, TreeClock current, Map<Id, Member> members, Map<String, GroupProperty> groupState) {
         this.host = host;
         this.current = current;
         this.members = members;
+        this.groupState = groupState;
     }
 
     public Member getMember(Id id) {
@@ -80,16 +82,17 @@ public class Chat implements Cborable {
                         signerOpt.get().unsignMessage(ArrayOps.concat(signed.signature, signed.msg.serialize()));
 
                         switch(msg.payload.type()) {
-                            case Invite:
+                            case Invite: {
                                 Set<Id> newMembers = current.newMembersFrom(msg.timestamp);
                                 for (Id newMember : newMembers) {
                                     long indexIntoParent = getMember(newMember.parent()).messagesMergedUpto;
-                                    Invite invite = (Invite)msg.payload;
+                                    Invite invite = (Invite) msg.payload;
                                     String username = invite.username;
                                     PublicKeyHash identity = invite.identity;
                                     members.put(newMember, new Member(username, newMember, identity, indexIntoParent, 0));
                                 }
                                 break;
+                            }
                             case Join:
                                 if (author.chatIdentity.isEmpty()) {
                                     // This is a Join message from a new member
@@ -102,6 +105,17 @@ public class Chat implements Cborable {
                                     members.put(author.id, author.withChatId(chatIdentity));
                                 }
                                 break;
+                            case GroupState: {
+                                SetGroupState update = (SetGroupState) msg.payload;
+                                GroupProperty existing = groupState.get(update.key);
+                                if (existing == null ||
+                                        existing.updateTimestamp.isBeforeOrEqual(msg.timestamp) ||
+                                        (existing.updateTimestamp.isConcurrentWith(msg.timestamp) &&
+                                                msg.author.compareTo(existing.author) < 0)) {
+                                    groupState.put(update.key, new GroupProperty(msg.author, msg.timestamp, update.value));
+                                }
+                                break;
+                            }
                             case Application:
                                 break;
                         }
@@ -136,7 +150,7 @@ public class Chat implements Cborable {
             throw new IllegalStateException("Only an invited member can mirror a conversation!");
         Map<Id, Member> clonedMembers = members.entrySet().stream()
                 .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue().copy()));
-        return new Chat(host.copy(), current, clonedMembers);
+        return new Chat(host.copy(), current, clonedMembers, new HashMap<>(groupState));
     }
 
     public CompletableFuture<Member> inviteMember(String username,
@@ -162,6 +176,9 @@ public class Chat implements Cborable {
         result.put("h", host);
         result.put("c", current);
         result.put("m", new CborObject.CborList(members));
+        result.put("g", CborObject.CborMap.build(groupState.entrySet()
+                .stream()
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue))));
         return CborObject.CborMap.build(result);
     }
 
@@ -173,7 +190,8 @@ public class Chat implements Cborable {
         Member host = m.get("h", Member::fromCbor);
         TreeClock current = m.get("c", TreeClock::fromCbor);
         Map<Id, Member> members = m.getListMap("m", Id::fromCbor, Member::fromCbor);
-        return new Chat(host, current, members);
+        Map<String, GroupProperty> group = m.getMap("g", CborObject.CborString::getString, GroupProperty::fromCbor);
+        return new Chat(host, current, members, group);
     }
 
     public static Chat createNew(String username, PublicKeyHash identity) {
@@ -182,7 +200,7 @@ public class Chat implements Cborable {
         HashMap<Id, Member> members = new HashMap<>();
         members.put(creator, us);
         TreeClock zero = TreeClock.init(Arrays.asList(us.id));
-        return new Chat(us, zero, members);
+        return new Chat(us, zero, members, new HashMap<>());
     }
 
     public static List<Chat> createNew(List<String> usernames, List<PublicKeyHash> identities) {
@@ -199,7 +217,7 @@ public class Chat implements Cborable {
 
         return initialMembers.stream()
                 .map(id -> new Chat(members.get(id), genesis, members.entrySet().stream()
-                        .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue().copy()))))
+                        .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue().copy())), new HashMap<>()))
                 .collect(Collectors.toList());
     }
 }

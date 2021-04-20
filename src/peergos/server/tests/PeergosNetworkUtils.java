@@ -1687,6 +1687,13 @@ public class PeergosNetworkUtils {
         List<MessageEnvelope> messagesA = controllerA.getMessages(0, 10).join();
         Assert.assertEquals(messagesA.size(), 5);
         Assert.assertEquals(messagesA.get(messagesA.size() - 1).payload, msg2);
+
+        // test setting group properties
+        String random_chat = "Random chat";
+        controllerA = msgA.sendMessage(controllerA, new SetGroupState("name", random_chat)).join();
+        controllerB = msgB.mergeMessages(controllerB, a.username).join();
+        String groupName = controllerB.getGroupProperty("name");
+        Assert.assertTrue(groupName.equals(random_chat));
     }
 
     public static void groupSharing(NetworkAccess network, Random random) {

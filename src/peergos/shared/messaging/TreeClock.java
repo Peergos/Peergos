@@ -33,6 +33,18 @@ public class TreeClock implements Cborable {
         return true;
     }
 
+    public boolean hasGreaterCounterThan(TreeClock b) {
+        for (Map.Entry<Id, Long> e : time.entrySet()) {
+            if (b.hasId(e.getKey()) && e.getValue() > b.getEventCounter(e.getKey()))
+                return true;
+        }
+        return false;
+    }
+
+    public boolean isConcurrentWith(TreeClock b) {
+        return hasGreaterCounterThan(b) && b.hasGreaterCounterThan(this);
+    }
+
     public TreeClock removeMember(Id remover, Id toRemove) {
         TreeMap<Id, Long> res = new TreeMap<>(time);
         res.remove(toRemove);

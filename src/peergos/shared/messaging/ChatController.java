@@ -48,6 +48,11 @@ public class ChatController {
                 .thenApply(x -> this);
     }
 
+    @JsMethod
+    public String getGroupProperty(String key) {
+        return state.groupState.get(key).value;
+    }
+
     public CompletableFuture<ChatController> join(SigningPrivateKeyAndPublicHash identity,
                                                   Function<Chat, CompletableFuture<Boolean>> committer) {
         OwnerProof chatId = OwnerProof.build(identity, privateChatState.chatIdentity.publicKeyHash);
