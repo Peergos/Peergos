@@ -1,9 +1,10 @@
 package peergos.shared.messaging.messages;
 
+import jsinterop.annotations.JsType;
 import peergos.shared.cbor.*;
 
 import java.util.*;
-
+@JsType
 public interface Message extends Cborable {
 
     Type type();

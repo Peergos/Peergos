@@ -1,5 +1,6 @@
 package peergos.shared.messaging.messages;
 
+import jsinterop.annotations.JsType;
 import peergos.shared.cbor.*;
 
 import java.util.*;
@@ -9,6 +10,7 @@ import java.util.*;
  * Concurrent sets are tie-broken by Id thus forming a CRDT.
  *
  */
+@JsType
 public class SetGroupState implements Message {
 
     public final String key, value;

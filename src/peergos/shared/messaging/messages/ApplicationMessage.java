@@ -1,10 +1,11 @@
 package peergos.shared.messaging.messages;
 
+import jsinterop.annotations.JsType;
 import peergos.shared.cbor.*;
 import peergos.shared.display.*;
 
 import java.util.*;
-
+@JsType
 public class ApplicationMessage implements Message {
     public final MsgContent body;
 

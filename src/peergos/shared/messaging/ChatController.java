@@ -35,7 +35,7 @@ public class ChatController {
     }
 
     @JsMethod
-    public CompletableFuture<List<MessageEnvelope>> getMessages(long from, long to) {
+    public CompletableFuture<List<MessageEnvelope>> getMessages(int from, int to) {
         return store.getMessages(from, to)
                 .thenApply(signed -> signed.stream().map(s -> s.msg).collect(Collectors.toList()));
     }

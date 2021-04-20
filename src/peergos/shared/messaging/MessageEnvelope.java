@@ -1,10 +1,12 @@
 package peergos.shared.messaging;
 
+import jsinterop.annotations.JsType;
 import peergos.shared.cbor.*;
 import peergos.shared.messaging.messages.*;
 
 import java.util.*;
 
+@JsType
 public class MessageEnvelope implements Cborable {
 
     public final Id author;
