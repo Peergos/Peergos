@@ -98,7 +98,7 @@ public class Chat implements Cborable {
                                     if (!chatIdentity.ownedKey.equals(author.identity))
                                         throw new IllegalStateException("Identity keys don't match!");
                                     // verify signature
-                                    PublicKeyHash chatId = chatIdentity.getOwner(ipfs).join();
+                                    //PublicKeyHash chatId = chatIdentity.getOwner(ipfs).join();
                                     members.put(author.id, author.withChatId(chatIdentity));
                                 }
                                 break;
