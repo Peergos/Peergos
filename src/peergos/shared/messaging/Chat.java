@@ -8,6 +8,7 @@ import peergos.shared.messaging.messages.*;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
+import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
@@ -45,7 +46,7 @@ public class Chat implements Cborable {
                                                          SigningPrivateKeyAndPublicHash signer,
                                                          MessageStore store) {
         TreeClock msgTime = current.increment(host.id);
-        MessageEnvelope msg = new MessageEnvelope(host.id, msgTime, body);
+        MessageEnvelope msg = new MessageEnvelope(host.id, msgTime, LocalDateTime.now(ZoneOffset.UTC), body);
         current = msgTime;
         byte[] signature = signer.secret.signatureOnly(msg.serialize());
         members.get(host.id).messagesMergedUpto++;
@@ -78,9 +79,10 @@ public class Chat implements Cborable {
                     .thenCompose(ipfs::getSigningKey)
                     .thenCompose(signerOpt -> {
                         if (signerOpt.isEmpty())
-                            throw new IllegalStateException("Couldn't retrieve public siging key!");
+                            throw new IllegalStateException("Couldn't retrieve public signing key!");
                         signerOpt.get().unsignMessage(ArrayOps.concat(signed.signature, signed.msg.serialize()));
-
+                        if (msg.creationTime.isAfter(LocalDateTime.now().plusMinutes(1)))
+                            throw new IllegalStateException("Message claims to be created in the future!");
                         switch(msg.payload.type()) {
                             case Invite: {
                                 Set<Id> newMembers = current.newMembersFrom(msg.timestamp);
@@ -127,7 +129,11 @@ public class Chat implements Cborable {
                                 current = current.merge(msg.timestamp);
                                 host.messagesMergedUpto++;
                                 return committer.apply(this);
-                            }));
+                            }))
+                    .exceptionally(t -> {
+                        t.printStackTrace();
+                        return true;
+                    });
         }
         host.messagesMergedUpto++;
         return committer.apply(this);
