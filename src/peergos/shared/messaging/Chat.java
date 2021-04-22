@@ -81,8 +81,6 @@ public class Chat implements Cborable {
                         if (signerOpt.isEmpty())
                             throw new IllegalStateException("Couldn't retrieve public signing key!");
                         signerOpt.get().unsignMessage(ArrayOps.concat(signed.signature, signed.msg.serialize()));
-                        if (msg.creationTime.isAfter(LocalDateTime.now().plusMinutes(1)))
-                            throw new IllegalStateException("Message claims to be created in the future!");
                         switch(msg.payload.type()) {
                             case Invite: {
                                 Set<Id> newMembers = current.newMembersFrom(msg.timestamp);
