@@ -5,6 +5,7 @@ import peergos.server.*;
 import peergos.server.storage.*;
 import peergos.shared.*;
 import peergos.shared.crypto.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.messaging.*;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
@@ -17,6 +18,7 @@ import static peergos.shared.messaging.messages.ApplicationMessage.text;
 
 public class MessagingTests {
     private static final Crypto crypto = Main.initCrypto();
+    private static final Hasher hasher = crypto.hasher;
     private static final ContentAddressedStorage ipfs = new RAMStorage(crypto.hasher);
     private static final Function<Chat, CompletableFuture<Boolean>> NO_OP = c -> Futures.of(true);
 
@@ -28,20 +30,20 @@ public class MessagingTests {
 
         Chat chat1 = Chat.createNew("user1", identities.get(0).publicKeyHash);
         OwnerProof user1ChatId = OwnerProof.build(identities.get(0), chatIdentities.get(0).chatIdentity.publicKeyHash);
-        chat1.join(chat1.host, user1ChatId, chatIdentities.get(0).chatIdPublic, identities.get(0), stores.get(0), NO_OP).join();
+        chat1.join(chat1.host, user1ChatId, chatIdentities.get(0).chatIdPublic, identities.get(0), stores.get(0), NO_OP, hasher).join();
 
         Member user2 = chat1.inviteMember("user2", identities.get(1).publicKeyHash,
-                chatIdentities.get(0).chatIdentity, stores.get(0), NO_OP).join();
+                chatIdentities.get(0).chatIdentity, stores.get(0), NO_OP, hasher).join();
         Chat chat2 = chat1.copy(user2);
         stores.get(1).mirror(stores.get(0));
         OwnerProof user2ChatId = OwnerProof.build(identities.get(1), chatIdentities.get(1).chatIdentity.publicKeyHash);
-        chat2.join(user2, user2ChatId, chatIdentities.get(1).chatIdPublic, identities.get(1), stores.get(1), NO_OP).join();
+        chat2.join(user2, user2ChatId, chatIdentities.get(1).chatIdPublic, identities.get(1), stores.get(1), NO_OP, hasher).join();
 
-        MessageEnvelope msg1 = chat1.addApplicationMessage(text("Welcome!"), chatIdentities.get(0).chatIdentity, stores.get(0)).join();
+        MessageEnvelope msg1 = chat1.addApplicationMessage(text("Welcome!"), chatIdentities.get(0).chatIdentity, stores.get(0), hasher).join();
         chat2.merge(chat1.host.id, stores.get(0), stores.get(1), ipfs, NO_OP).join();
         Assert.assertTrue(stores.get(1).messages.get(3).msg.equals(msg1));
 
-        MessageEnvelope msg2 = chat2.addApplicationMessage(text("This is cool!"), chatIdentities.get(1).chatIdentity, stores.get(1)).join();
+        MessageEnvelope msg2 = chat2.addApplicationMessage(text("This is cool!"), chatIdentities.get(1).chatIdentity, stores.get(1), hasher).join();
 
         chat1.merge(chat2.host.id, stores.get(1), stores.get(0), ipfs, NO_OP).join();
         Assert.assertTrue(stores.get(0).messages.get(4).msg.equals(msg2));
@@ -55,21 +57,21 @@ public class MessagingTests {
 
         Chat chat1 = Chat.createNew("user1", identities.get(0).publicKeyHash);
         OwnerProof user1ChatId = OwnerProof.build(identities.get(0), chatIdentities.get(0).chatIdentity.publicKeyHash);
-        chat1.join(chat1.host, user1ChatId, chatIdentities.get(0).chatIdPublic, identities.get(0), stores.get(0), NO_OP).join();
+        chat1.join(chat1.host, user1ChatId, chatIdentities.get(0).chatIdPublic, identities.get(0), stores.get(0), NO_OP, hasher).join();
 
         Member user2 = chat1.inviteMember("user2", identities.get(1).publicKeyHash,
-                chatIdentities.get(0).chatIdentity, stores.get(0), NO_OP).join();
+                chatIdentities.get(0).chatIdentity, stores.get(0), NO_OP, hasher).join();
         Chat chat2 = chat1.copy(user2);
         stores.get(1).mirror(stores.get(0));
         OwnerProof user2ChatId = OwnerProof.build(identities.get(1), chatIdentities.get(1).chatIdentity.publicKeyHash);
-        chat2.join(user2, user2ChatId, chatIdentities.get(1).chatIdPublic, identities.get(1), stores.get(1), NO_OP).join();
+        chat2.join(user2, user2ChatId, chatIdentities.get(1).chatIdPublic, identities.get(1), stores.get(1), NO_OP, hasher).join();
 
         Member user3 = chat1.inviteMember("user3", identities.get(2).publicKeyHash,
-                chatIdentities.get(0).chatIdentity, stores.get(0), NO_OP).join();
+                chatIdentities.get(0).chatIdentity, stores.get(0), NO_OP, hasher).join();
         Chat chat3 = chat1.copy(user3);
         stores.get(2).mirror(stores.get(0));
         OwnerProof user3ChatId = OwnerProof.build(identities.get(2), chatIdentities.get(2).chatIdentity.publicKeyHash);
-        chat3.join(user3, user3ChatId, chatIdentities.get(2).chatIdPublic, identities.get(2), stores.get(0), NO_OP).join();
+        chat3.join(user3, user3ChatId, chatIdentities.get(2).chatIdPublic, identities.get(2), stores.get(0), NO_OP, hasher).join();
 
         Assert.assertTrue(! user2.id.equals(user3.id));
     }
@@ -82,23 +84,23 @@ public class MessagingTests {
 
         Chat chat1 = Chat.createNew("user1", identities.get(0).publicKeyHash);
         OwnerProof user1ChatId = OwnerProof.build(identities.get(0), chatIdentities.get(0).chatIdentity.publicKeyHash);
-        chat1.join(chat1.host, user1ChatId, chatIdentities.get(0).chatIdPublic, identities.get(0), stores.get(0), NO_OP).join();
+        chat1.join(chat1.host, user1ChatId, chatIdentities.get(0).chatIdPublic, identities.get(0), stores.get(0), NO_OP, hasher).join();
 
         Member user2 = chat1.inviteMember("user2", identities.get(1).publicKeyHash,
-                chatIdentities.get(0).chatIdentity, stores.get(0), NO_OP).join();
+                chatIdentities.get(0).chatIdentity, stores.get(0), NO_OP, hasher).join();
         Chat chat2 = chat1.copy(user2);
         stores.get(1).mirror(stores.get(0));
         OwnerProof user2ChatId = OwnerProof.build(identities.get(1), chatIdentities.get(1).chatIdentity.publicKeyHash);
-        chat2.join(user2, user2ChatId, chatIdentities.get(1).chatIdPublic, identities.get(1), stores.get(1), NO_OP).join();
+        chat2.join(user2, user2ChatId, chatIdentities.get(1).chatIdPublic, identities.get(1), stores.get(1), NO_OP, hasher).join();
 
         Member user3 = chat2.inviteMember("user3", identities.get(2).publicKeyHash,
-                chatIdentities.get(1).chatIdentity, stores.get(1), NO_OP).join();
+                chatIdentities.get(1).chatIdentity, stores.get(1), NO_OP, hasher).join();
         Chat chat3 = chat2.copy(user3);
         stores.get(2).mirror(stores.get(1));
         OwnerProof user3ChatId = OwnerProof.build(identities.get(2), chatIdentities.get(2).chatIdentity.publicKeyHash);
-        chat3.join(user3, user3ChatId, chatIdentities.get(2).chatIdPublic, identities.get(2), stores.get(2), NO_OP).join();
+        chat3.join(user3, user3ChatId, chatIdentities.get(2).chatIdPublic, identities.get(2), stores.get(2), NO_OP, hasher).join();
 
-        MessageEnvelope msg1 = chat3.addApplicationMessage(text("Hey All!"), chatIdentities.get(2).chatIdentity, stores.get(2)).join();
+        MessageEnvelope msg1 = chat3.addApplicationMessage(text("Hey All!"), chatIdentities.get(2).chatIdentity, stores.get(2), hasher).join();
         chat2.merge(chat3.host.id, stores.get(2), stores.get(1), ipfs, NO_OP).join();
         Assert.assertTrue(stores.get(1).messages.get(5).msg.equals(msg1));
 
@@ -121,36 +123,36 @@ public class MessagingTests {
         Chat chat3 = chats.get(2);
         Chat chat4 = chats.get(3);
         OwnerProof user1ChatId = OwnerProof.build(identities.get(0), chatIdentities.get(0).chatIdentity.publicKeyHash);
-        chat1.join(chat1.host, user1ChatId, chatIdentities.get(0).chatIdPublic, identities.get(0), stores.get(0), NO_OP).join();
+        chat1.join(chat1.host, user1ChatId, chatIdentities.get(0).chatIdPublic, identities.get(0), stores.get(0), NO_OP, hasher).join();
 
         OwnerProof user2ChatId = OwnerProof.build(identities.get(1), chatIdentities.get(1).chatIdentity.publicKeyHash);
-        chat2.join(chat2.host, user2ChatId, chatIdentities.get(1).chatIdPublic, identities.get(1), stores.get(1), NO_OP).join();
+        chat2.join(chat2.host, user2ChatId, chatIdentities.get(1).chatIdPublic, identities.get(1), stores.get(1), NO_OP, hasher).join();
 
         OwnerProof user3ChatId = OwnerProof.build(identities.get(2), chatIdentities.get(2).chatIdentity.publicKeyHash);
-        chat3.join(chat3.host, user3ChatId, chatIdentities.get(2).chatIdPublic, identities.get(2), stores.get(2), NO_OP).join();
+        chat3.join(chat3.host, user3ChatId, chatIdentities.get(2).chatIdPublic, identities.get(2), stores.get(2), NO_OP, hasher).join();
 
         OwnerProof user4ChatId = OwnerProof.build(identities.get(3), chatIdentities.get(3).chatIdentity.publicKeyHash);
-        chat4.join(chat4.host, user4ChatId, chatIdentities.get(3).chatIdPublic, identities.get(3), stores.get(3), NO_OP).join();
+        chat4.join(chat4.host, user4ChatId, chatIdentities.get(3).chatIdPublic, identities.get(3), stores.get(3), NO_OP, hasher).join();
 
         // partition and chat between user1 and user2
         TreeClock t1_0 = chat1.current;
-        MessageEnvelope msg1 = chat1.addApplicationMessage(text("Hey All, I'm user1!"), chatIdentities.get(0).chatIdentity, stores.get(0)).join();
+        MessageEnvelope msg1 = chat1.addApplicationMessage(text("Hey All, I'm user1!"), chatIdentities.get(0).chatIdentity, stores.get(0), hasher).join();
         Assert.assertTrue(msg1.timestamp.isIncrementOf(t1_0));
 
         chat2.merge(chat1.host.id, stores.get(0), stores.get(1), ipfs, NO_OP).join();
         TreeClock t2_0 = chat2.current;
-        MessageEnvelope msg2 = chat2.addApplicationMessage(text("Hey user1! I'm user2."), chatIdentities.get(1).chatIdentity, stores.get(1)).join();
+        MessageEnvelope msg2 = chat2.addApplicationMessage(text("Hey user1! I'm user2."), chatIdentities.get(1).chatIdentity, stores.get(1), hasher).join();
         Assert.assertTrue(msg2.timestamp.isIncrementOf(t2_0));
 
         chat1.merge(chat2.host.id, stores.get(1), stores.get(0), ipfs, NO_OP).join();
         TreeClock t1_1 = chat1.current;
-        MessageEnvelope msg3 = chat1.addApplicationMessage(text("Hey user2, whats up?"), chatIdentities.get(0).chatIdentity, stores.get(0)).join();
+        MessageEnvelope msg3 = chat1.addApplicationMessage(text("Hey user2, whats up?"), chatIdentities.get(0).chatIdentity, stores.get(0), hasher).join();
         Assert.assertTrue(msg3.timestamp.isIncrementOf(t1_1));
 
         chat2.merge(chat1.host.id, stores.get(0), stores.get(1), ipfs, NO_OP).join();
         TreeClock t2_1 = chat2.current;
         MessageEnvelope msg4 = chat2.addApplicationMessage(text("Just saving the world one decentralized chat at a time.."),
-                chatIdentities.get(1).chatIdentity, stores.get(1)).join();
+                chatIdentities.get(1).chatIdentity, stores.get(1), hasher).join();
         Assert.assertTrue(msg4.timestamp.isIncrementOf(t2_1));
 
         chat1.merge(chat2.host.id, stores.get(1), stores.get(0), ipfs, NO_OP).join();
@@ -158,13 +160,13 @@ public class MessagingTests {
         Assert.assertEquals(stores.get(1).messages.size(), 6);
 
         // also between user3 and user4
-        MessageEnvelope msg5 = chat3.addApplicationMessage(text("Hey All, I'm user3!"), chatIdentities.get(2).chatIdentity, stores.get(2)).join();
+        MessageEnvelope msg5 = chat3.addApplicationMessage(text("Hey All, I'm user3!"), chatIdentities.get(2).chatIdentity, stores.get(2), hasher).join();
         chat4.merge(chat3.host.id, stores.get(2), stores.get(3), ipfs, NO_OP).join();
-        MessageEnvelope msg6 = chat4.addApplicationMessage(text("Hey user3! I'm user4."), chatIdentities.get(3).chatIdentity, stores.get(3)).join();
+        MessageEnvelope msg6 = chat4.addApplicationMessage(text("Hey user3! I'm user4."), chatIdentities.get(3).chatIdentity, stores.get(3), hasher).join();
         chat3.merge(chat4.host.id, stores.get(3), stores.get(2), ipfs, NO_OP).join();
-        MessageEnvelope msg7 = chat3.addApplicationMessage(text("Hey user4, whats up?"), chatIdentities.get(2).chatIdentity, stores.get(2)).join();
+        MessageEnvelope msg7 = chat3.addApplicationMessage(text("Hey user4, whats up?"), chatIdentities.get(2).chatIdentity, stores.get(2), hasher).join();
         chat4.merge(chat3.host.id, stores.get(2), stores.get(3), ipfs, NO_OP).join();
-        MessageEnvelope msg8 = chat4.addApplicationMessage(text("Just saving the world one encrypted chat at a time.."), chatIdentities.get(3).chatIdentity, stores.get(3)).join();
+        MessageEnvelope msg8 = chat4.addApplicationMessage(text("Just saving the world one encrypted chat at a time.."), chatIdentities.get(3).chatIdentity, stores.get(3), hasher).join();
         chat3.merge(chat4.host.id, stores.get(3), stores.get(2), ipfs, NO_OP).join();
         Assert.assertTrue(stores.get(3).messages.containsAll(stores.get(2).messages));
         Assert.assertEquals(stores.get(3).messages.size(), 6);

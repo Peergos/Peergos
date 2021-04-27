@@ -21,7 +21,10 @@ public class Chat implements Cborable {
     public final Map<Id, Member> members;
     public final Map<String, GroupProperty> groupState;
 
-    public Chat(Member host, TreeClock current, Map<Id, Member> members, Map<String, GroupProperty> groupState) {
+    public Chat(Member host,
+                TreeClock current,
+                Map<Id, Member> members,
+                Map<String, GroupProperty> groupState) {
         this.host = host;
         this.current = current;
         this.members = members;
@@ -38,19 +41,31 @@ public class Chat implements Cborable {
 
     public CompletableFuture<MessageEnvelope> addApplicationMessage(ApplicationMessage body,
                                                                     SigningPrivateKeyAndPublicHash signer,
-                                                                    MessageStore store) {
-        return addMessage(body, signer, store);
+                                                                    MessageStore store,
+                                                                    Hasher hasher) {
+        return addMessage(body, signer, store, hasher);
     }
 
     public CompletableFuture<MessageEnvelope> addMessage(Message body,
                                                          SigningPrivateKeyAndPublicHash signer,
-                                                         MessageStore store) {
+                                                         MessageStore store,
+                                                         Hasher hasher) {
         TreeClock msgTime = current.increment(host.id);
-        MessageEnvelope msg = new MessageEnvelope(host.id, msgTime, LocalDateTime.now(ZoneOffset.UTC), body);
-        current = msgTime;
-        byte[] signature = signer.secret.signatureOnly(msg.serialize());
-        members.get(host.id).messagesMergedUpto++;
-        return store.addMessage(new SignedMessage(signature, msg)).thenApply(x -> msg);
+        boolean nonEmpty = host.messagesMergedUpto > 0;
+        return (nonEmpty ?
+                store.getMessages(host.messagesMergedUpto - 1, host.messagesMergedUpto) :
+                Futures.of(Collections.<SignedMessage>emptyList()))
+                .thenCompose(recent -> Futures.combineAllInOrder(recent.stream()
+                        .map(s -> hasher.bareHash(s.msg.serialize())
+                                .thenApply(MessageRef::new))
+                        .collect(Collectors.toList())))
+                .thenCompose(recentRefs -> {
+                    MessageEnvelope msg = new MessageEnvelope(host.id, msgTime, LocalDateTime.now(ZoneOffset.UTC), recentRefs, body);
+                    current = msgTime;
+                    byte[] signature = signer.secret.signatureOnly(msg.serialize());
+                    members.get(host.id).messagesMergedUpto++;
+                    return store.addMessage(new SignedMessage(signature, msg)).thenApply(x -> msg);
+                });
     }
 
     public CompletableFuture<Boolean> merge(Id mirrorHostId,
@@ -142,9 +157,10 @@ public class Chat implements Cborable {
                                            PublicSigningKey chatIdPublic,
                                            SigningPrivateKeyAndPublicHash identity,
                                            MessageStore ourStore,
-                                           Function<Chat, CompletableFuture<Boolean>> committer) {
+                                           Function<Chat, CompletableFuture<Boolean>> committer,
+                                           Hasher hasher) {
         Join joinMsg = new Join(host.username, host.identity, chatId, chatIdPublic);
-        return addMessage(joinMsg, identity, ourStore)
+        return addMessage(joinMsg, identity, ourStore, hasher)
                 .thenApply(x -> {
                     this.host.chatIdentity = Optional.of(chatId);
                     members.put(this.host.id, this.host);
@@ -164,14 +180,15 @@ public class Chat implements Cborable {
                                                   PublicKeyHash identity,
                                                   SigningPrivateKeyAndPublicHash ourChatIdentity,
                                                   MessageStore ourStore,
-                                                  Function<Chat, CompletableFuture<Boolean>> committer) {
+                                                  Function<Chat, CompletableFuture<Boolean>> committer,
+                                                  Hasher hasher) {
         Id newMember = host.id.fork(host.membersInvited);
         Member member = new Member(username, newMember, identity, host.messagesMergedUpto, 0);
         host.membersInvited++;
         members.put(newMember, member);
         current = current.withMember(newMember);
         Invite invite = new Invite(username, identity);
-        return addMessage(invite, ourChatIdentity, ourStore)
+        return addMessage(invite, ourChatIdentity, ourStore, hasher)
                 .thenCompose(x -> committer.apply(this))
                 .thenApply(x -> member);
     }

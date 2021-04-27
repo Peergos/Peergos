@@ -17,12 +17,18 @@ public class ChatController {
     private final Chat state;
     private final MessageStore store;
     private final PrivateChatState privateChatState;
+    private final Hasher hasher;
 
-    public ChatController(String chatUuid, Chat state, MessageStore store, PrivateChatState privateChatState) {
+    public ChatController(String chatUuid,
+                          Chat state,
+                          MessageStore store,
+                          PrivateChatState privateChatState,
+                          Hasher hasher) {
         this.chatUuid = chatUuid;
         this.state = state;
         this.store = store;
         this.privateChatState = privateChatState;
+        this.hasher = hasher;
     }
 
     public Member getMember(String username) {
@@ -48,7 +54,7 @@ public class ChatController {
     @JsMethod
     public CompletableFuture<ChatController> sendMessage(Message message,
                                                          Function<Chat, CompletableFuture<Boolean>> committer) {
-        return state.addMessage(message, privateChatState.chatIdentity, store)
+        return state.addMessage(message, privateChatState.chatIdentity, store, hasher)
                 .thenCompose(x -> committer.apply(this.state))
                 .thenApply(x -> this);
     }
@@ -61,14 +67,14 @@ public class ChatController {
     public CompletableFuture<ChatController> join(SigningPrivateKeyAndPublicHash identity,
                                                   Function<Chat, CompletableFuture<Boolean>> committer) {
         OwnerProof chatId = OwnerProof.build(identity, privateChatState.chatIdentity.publicKeyHash);
-        return state.join(state.host, chatId, privateChatState.chatIdPublic, identity, store, committer)
+        return state.join(state.host, chatId, privateChatState.chatIdPublic, identity, store, committer, hasher)
                 .thenApply(x -> this);
     }
 
     public CompletableFuture<ChatController> invite(String username,
                                                     PublicKeyHash identity,
                                                     Function<Chat, CompletableFuture<Boolean>> committer) {
-        return state.inviteMember(username, identity, privateChatState.chatIdentity, store, committer)
+        return state.inviteMember(username, identity, privateChatState.chatIdentity, store, committer, hasher)
                 .thenApply(x -> this);
     }
 

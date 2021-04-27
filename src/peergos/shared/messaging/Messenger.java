@@ -75,7 +75,7 @@ public class Messenger {
                                 AsyncReader.build(rawPrivateChatState), rawPrivateChatState.length, network, crypto, x -> {}, crypto.random.randomBytes(32))))
                 .thenCompose(chatRoot -> chatRoot.getDescendentByPath("shared/" + SHARED_MSG_LOG, hasher, network))
                 .thenApply(messageFile -> new ChatController(chatId, chat,
-                        new FileBackedMessageStore(messageFile.get(), network, crypto), privateChatState))
+                        new FileBackedMessageStore(messageFile.get(), network, crypto), privateChatState, hasher))
                 .thenCompose(controller -> controller.join(context.signer, c -> overwriteState(c, chatId)));
     }
 
@@ -198,7 +198,7 @@ public class Messenger {
                 .thenCompose(sharedDir -> getChatState(sharedDir.get()))
                 .thenCompose(chat -> getPrivateChatState(chatRoot)
                         .thenCompose(priv -> getChatMessageStore(chatRoot)
-                                .thenApply(msgStore -> new ChatController(chatRoot.getName(), chat, msgStore, priv))));
+                                .thenApply(msgStore -> new ChatController(chatRoot.getName(), chat, msgStore, priv, hasher))));
     }
 
     private CompletableFuture<Chat> getChatState(FileWrapper chatRoot) {
