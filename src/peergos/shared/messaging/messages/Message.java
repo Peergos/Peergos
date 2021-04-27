@@ -20,6 +20,7 @@ public interface Message extends Cborable {
             case Invite: return Invite.fromCbor(cbor);
             case Application: return ApplicationMessage.fromCbor(cbor);
             case GroupState: return SetGroupState.fromCbor(cbor);
+            case ReplyTo: return ReplyTo.fromCbor(cbor);
             default: throw new IllegalStateException("Invalid message type!");
         }
     }
@@ -29,7 +30,8 @@ public interface Message extends Cborable {
         Join(0),
         Invite(1),
         Application(2),
-        GroupState(3);
+        GroupState(3),
+        ReplyTo(4);
 
         public final int value;
 

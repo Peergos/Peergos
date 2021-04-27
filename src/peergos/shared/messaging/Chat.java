@@ -39,13 +39,6 @@ public class Chat implements Cborable {
         return members.values().stream().filter(m -> m.username.equals(username)).findFirst().get();
     }
 
-    public CompletableFuture<MessageEnvelope> addApplicationMessage(ApplicationMessage body,
-                                                                    SigningPrivateKeyAndPublicHash signer,
-                                                                    MessageStore store,
-                                                                    Hasher hasher) {
-        return addMessage(body, signer, store, hasher);
-    }
-
     public CompletableFuture<MessageEnvelope> addMessage(Message body,
                                                          SigningPrivateKeyAndPublicHash signer,
                                                          MessageStore store,
