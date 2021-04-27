@@ -31,7 +31,7 @@ public class ReplyTo implements Message {
     public CborObject.CborMap toCbor() {
         SortedMap<String, Cborable> state = new TreeMap<>();
         state.put("c", new CborObject.CborLong(type().value));
-        state.put("p", parent);
+        state.put("r", parent);
         state.put("b", content);
         return CborObject.CborMap.build(state);
     }
@@ -41,7 +41,7 @@ public class ReplyTo implements Message {
             throw new IllegalStateException("Invalid cbor! " + cbor);
         CborObject.CborMap m = (CborObject.CborMap) cbor;
 
-        MessageRef parent = m.get("p", MessageRef::fromCbor);
+        MessageRef parent = m.get("r", MessageRef::fromCbor);
         ApplicationMessage content = m.get("b", ApplicationMessage::fromCbor);
         return new ReplyTo(parent, content);
     }

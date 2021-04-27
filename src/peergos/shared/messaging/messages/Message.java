@@ -31,7 +31,8 @@ public interface Message extends Cborable {
         Invite(1),
         Application(2),
         GroupState(3),
-        ReplyTo(4);
+        ReplyTo(4),
+        Delete(5);
 
         public final int value;
 

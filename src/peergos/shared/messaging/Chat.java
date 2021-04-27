@@ -127,6 +127,8 @@ public class Chat implements Cborable {
                                 break;
                             }
                             case Application:
+                            case ReplyTo:
+                            case Delete:
                                 break;
                         }
                         return Futures.of(true);
