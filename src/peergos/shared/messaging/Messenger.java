@@ -30,6 +30,7 @@ public class Messenger {
     private static final String MESSAGING_BASE_DIR = ".messaging";
     private static final String SHARED_CHAT_STATE = "peergos-chat-state.cbor";
     private static final String SHARED_MSG_LOG = "peergos-chat-messages.cborstream";
+    private static final String SHARED_MSG_LOG_INDEX = "peergos-chat-messages.index.bin";
     private static final String PRIVATE_CHAT_STATE = "private-chat-state.cbor";
 
     private final UserContext context;
@@ -68,14 +69,15 @@ public class Messenger {
                                         network, Optional.of(updatedChatRoot)).thenCompose(b -> chatSharedDir.getUpdated(network))))
                         .thenCompose(chatSharedDir -> chatSharedDir.uploadOrReplaceFile(SHARED_MSG_LOG,
                                 AsyncReader.build(new byte[0]), 0, network, crypto, x -> {}, crypto.random.randomBytes(32)))
+                        .thenCompose(chatSharedDir -> chatSharedDir.uploadOrReplaceFile(SHARED_MSG_LOG_INDEX,
+                                AsyncReader.build(new byte[16]), 16, network, crypto, x -> {}, crypto.random.randomBytes(32)))
                         .thenCompose(chatSharedDir -> chatSharedDir.uploadOrReplaceFile(SHARED_CHAT_STATE,
                                 AsyncReader.build(rawChat), rawChat.length, network, crypto, x -> {}, crypto.random.randomBytes(32)))
                         .thenCompose(x -> chatRoot.getUpdated(x.version, network))
                         .thenCompose(updatedChatRoot -> updatedChatRoot.uploadOrReplaceFile(PRIVATE_CHAT_STATE,
                                 AsyncReader.build(rawPrivateChatState), rawPrivateChatState.length, network, crypto, x -> {}, crypto.random.randomBytes(32))))
-                .thenCompose(chatRoot -> chatRoot.getDescendentByPath("shared/" + SHARED_MSG_LOG, hasher, network))
-                .thenApply(messageFile -> new ChatController(chatId, chat,
-                        new FileBackedMessageStore(messageFile.get(), network, crypto), privateChatState, hasher))
+                .thenCompose(this::getChatMessageStore)
+                .thenApply(messageStore -> new ChatController(chatId, chat, messageStore, privateChatState, hasher))
                 .thenCompose(controller -> controller.join(context.signer, c -> overwriteState(c, chatId)));
     }
 
@@ -126,7 +128,7 @@ public class Messenger {
                                             Chat ourVersion = mirrorState.copy(new Member(context.username,
                                                     mirrorState.getMember(context.username).id,
                                                     context.signer.publicKeyHash, Optional.empty(),
-                                                    mirrorState.host.messagesMergedUpto, 0));
+                                                    mirrorState.host().messagesMergedUpto, 0));
 
                                             byte[] rawChat = ourVersion.serialize();
                                             return shared.uploadOrReplaceFile(SHARED_CHAT_STATE, AsyncReader.build(rawChat),
@@ -135,6 +137,9 @@ public class Messenger {
                                         .thenCompose(b -> sourceChatSharedDir.getChild(SHARED_MSG_LOG, hasher, network))
                                         .thenCompose(msgs -> shared.getUpdated(network)
                                                 .thenCompose(updatedShared -> msgs.get().copyTo(updatedShared, context)))
+                                        .thenCompose(b -> sourceChatSharedDir.getChild(SHARED_MSG_LOG_INDEX, hasher, network))
+                                        .thenCompose(msgsIndex -> shared.getUpdated(network)
+                                                .thenCompose(updatedShared -> msgsIndex.get().copyTo(updatedShared, context)))
                                         .thenCompose(x -> chatRoot.uploadOrReplaceFile(PRIVATE_CHAT_STATE,
                                                 AsyncReader.build(rawPrivateChatState), rawPrivateChatState.length, network,
                                                 crypto, y -> {}, crypto.random.randomBytes(32)))
@@ -213,11 +218,13 @@ public class Messenger {
 
     private CompletableFuture<MessageStore> getChatMessageStore(FileWrapper chatRoot) {
         return chatRoot.getDescendentByPath("shared/" + SHARED_MSG_LOG, hasher, network)
-                .thenApply(msgFile -> new FileBackedMessageStore(msgFile.get(), network, crypto));
+                .thenCompose(msgFile -> chatRoot.getDescendentByPath("shared/" + SHARED_MSG_LOG_INDEX, hasher, network)
+                        .thenApply(index -> new FileBackedMessageStore(msgFile.get(), index.get(), network, crypto)));
     }
 
     private CompletableFuture<MessageStore> getMessageStoreMirror(String username, String uuid) {
-        return context.getByPath(getChatPath(username, uuid).resolve(Paths.get("shared", SHARED_MSG_LOG)))
-                .thenApply(msgFile -> new FileBackedMessageStore(msgFile.get(), network, crypto));
+        return context.getByPath(getChatPath(username, uuid))
+                .thenApply(Optional::get)
+                .thenCompose(this::getChatMessageStore);
     }
 }

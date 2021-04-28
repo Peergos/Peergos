@@ -31,6 +31,10 @@ public class ChatController {
         this.hasher = hasher;
     }
 
+    public Member host() {
+        return state.host();
+    }
+
     public Member getMember(String username) {
         return state.getMember(username);
     }
@@ -67,7 +71,7 @@ public class ChatController {
     public CompletableFuture<ChatController> join(SigningPrivateKeyAndPublicHash identity,
                                                   Function<Chat, CompletableFuture<Boolean>> committer) {
         OwnerProof chatId = OwnerProof.build(identity, privateChatState.chatIdentity.publicKeyHash);
-        return state.join(state.host, chatId, privateChatState.chatIdPublic, identity, store, committer, hasher)
+        return state.join(state.host(), chatId, privateChatState.chatIdPublic, identity, store, committer, hasher)
                 .thenApply(x -> this);
     }
 

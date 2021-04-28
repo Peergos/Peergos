@@ -1673,13 +1673,17 @@ public class PeergosNetworkUtils {
 
         List<MessageEnvelope> initialMessages = controllerB.getMessages(0, 10).join();
         Assert.assertEquals(initialMessages.size(), 3);
+        Assert.assertEquals(controllerA.host().messagesMergedUpto, 2);
+        Assert.assertEquals(controllerB.host().messagesMergedUpto, 3);
 
         ApplicationMessage msg1 = ApplicationMessage.text("G'day mate!");
         controllerA = msgA.sendMessage(controllerA, msg1).join();
+        Assert.assertEquals(controllerA.host().messagesMergedUpto, 3);
         controllerB = msgB.mergeMessages(controllerB, a.username).join();
         List<MessageEnvelope> messages = controllerB.getMessages(0, 10).join();
         Assert.assertEquals(messages.size(), 4);
         Assert.assertEquals(messages.get(messages.size() - 1).payload, msg1);
+        Assert.assertEquals(controllerB.host().messagesMergedUpto, 4);
 
         ApplicationMessage msg2 = ApplicationMessage.text("Isn't this cool!!");
         controllerB = msgB.sendMessage(controllerB, msg2).join();
@@ -1687,6 +1691,8 @@ public class PeergosNetworkUtils {
         List<MessageEnvelope> messagesA = controllerA.getMessages(0, 10).join();
         Assert.assertEquals(messagesA.size(), 5);
         Assert.assertEquals(messagesA.get(messagesA.size() - 1).payload, msg2);
+        Assert.assertEquals(controllerA.host().messagesMergedUpto, 5);
+        Assert.assertEquals(controllerB.host().messagesMergedUpto, 5);
 
         // test setting group properties
         String random_chat = "Random chat";
@@ -1694,6 +1700,18 @@ public class PeergosNetworkUtils {
         controllerB = msgB.mergeMessages(controllerB, a.username).join();
         String groupName = controllerB.getGroupProperty("name");
         Assert.assertTrue(groupName.equals(random_chat));
+        Assert.assertEquals(controllerA.host().messagesMergedUpto, 6);
+        Assert.assertEquals(controllerB.host().messagesMergedUpto, 6);
+
+        // make message log multi chunk
+        for (int i=0; i < 6; i++) {
+            ApplicationMessage msgn = ApplicationMessage.text(new String(new byte[1024 * 1024]));
+            controllerA = msgA.sendMessage(controllerA, msgn).join();
+        }
+
+        List<MessageEnvelope> last = controllerA.getMessages(11, 12).join();
+        controllerB = msgB.mergeMessages(controllerB, a.username).join();
+        controllerB.getMessages(11, 12).join();
     }
 
     public static void groupSharing(NetworkAccess network, Random random) {
