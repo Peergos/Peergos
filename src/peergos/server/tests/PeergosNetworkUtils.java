@@ -1682,17 +1682,23 @@ public class PeergosNetworkUtils {
         controllerB = msgB.mergeMessages(controllerB, a.username).join();
         List<MessageEnvelope> messages = controllerB.getMessages(0, 10).join();
         Assert.assertEquals(messages.size(), 4);
-        Assert.assertEquals(messages.get(messages.size() - 1).payload, msg1);
+        MessageEnvelope fromA = messages.get(messages.size() - 1);
+        Assert.assertEquals(fromA.payload, msg1);
         Assert.assertEquals(controllerB.host().messagesMergedUpto, 4);
 
-        ApplicationMessage msg2 = ApplicationMessage.text("Isn't this cool!!");
+        ReplyTo msg2 = ReplyTo.build(fromA, ApplicationMessage.text("Isn't this cool!!"), hasher).join();
         controllerB = msgB.sendMessage(controllerB, msg2).join();
         controllerA = msgA.mergeMessages(controllerA, b.username).join();
         List<MessageEnvelope> messagesA = controllerA.getMessages(0, 10).join();
+        MessageEnvelope fromB = messagesA.get(4);
         Assert.assertEquals(messagesA.size(), 5);
         Assert.assertEquals(messagesA.get(messagesA.size() - 1).payload, msg2);
         Assert.assertEquals(controllerA.host().messagesMergedUpto, 5);
         Assert.assertEquals(controllerB.host().messagesMergedUpto, 5);
+        Assert.assertTrue(fromB.payload instanceof ReplyTo);
+        MessageRef parentRef = ((ReplyTo) fromB.payload).parent;
+        MessageEnvelope parent = controllerA.getMessage(parentRef).join();
+        Assert.assertTrue(parent.equals(fromA));
 
         // test setting group properties
         String random_chat = "Random chat";

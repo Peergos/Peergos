@@ -71,6 +71,22 @@ public class Futures {
         );
     }
 
+    /** Efficiently apply an async function to an entire list
+     *
+     * @param input
+     * @param producer
+     * @param <X>
+     * @param <V>
+     * @return
+     */
+    public static <X, V> CompletableFuture<List<V>> map(List<X> input,
+                                                        Function<X, CompletableFuture<V>> producer) {
+        return combineAllInOrder(input.stream()
+                .parallel()
+                .map(producer)
+                .collect(Collectors.toList()));
+    }
+
     /*** Asynchronously map a set of input values to output values until one matches a predicate
      *
      * @param input the values to reduce

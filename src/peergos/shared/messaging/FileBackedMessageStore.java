@@ -23,21 +23,21 @@ public class FileBackedMessageStore implements MessageStore {
     }
 
     private CompletableFuture<Pair<Long, Integer>> getChunkByteOffset(long index) {
-//        if (messages.getSize() < 5*1024*1024)
-//            return Futures.of(new Pair<>(0L, (int) index));
+        if (messages.getSize() < 5*1024*1024)
+            return Futures.of(new Pair<>(0L, (int) index));
         return indexFile.getUpdated(network)
                 .thenCompose(updated -> updated.getInputStream(network, crypto, x -> {})
-                        .thenCompose(reader -> findIndex(reader, new byte[1024],
+                        .thenCompose(reader -> findOffset(reader, new byte[1024],
                                 0L, 0L, index, updated.getSize())));
 
     }
 
-    private CompletableFuture<Pair<Long, Integer>> findIndex(AsyncReader r,
-                                                             byte[] buf,
-                                                             long previousIndex,
-                                                             long previousByteOffset,
-                                                             long index,
-                                                             long remainingBytes) {
+    private CompletableFuture<Pair<Long, Integer>> findOffset(AsyncReader r,
+                                                              byte[] buf,
+                                                              long previousIndex,
+                                                              long previousByteOffset,
+                                                              long index,
+                                                              long remainingBytes) {
         if (remainingBytes == 0)
             return Futures.of(new Pair<>(previousByteOffset, (int)(index - previousIndex)));
         int toRead = remainingBytes > buf.length ? buf.length : (int) remainingBytes;
@@ -56,7 +56,7 @@ public class FileBackedMessageStore implements MessageStore {
                             prevBytes = byteOffset;
                         } catch (IOException e) {}
                     }
-                    return findIndex(r, buf, prevIndex, prevBytes, index, remainingBytes - read);
+                    return findOffset(r, buf, prevIndex, prevBytes, index, remainingBytes - read);
                 });
     }
 

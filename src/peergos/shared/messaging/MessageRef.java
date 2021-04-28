@@ -27,4 +27,22 @@ public class MessageRef implements Cborable {
         Multihash h = Multihash.decode(m.getByteArray("h"));
         return new MessageRef(h);
     }
+
+    @Override
+    public String toString() {
+        return envelopeHash.toString();
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        MessageRef that = (MessageRef) o;
+        return Objects.equals(envelopeHash, that.envelopeHash);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(envelopeHash);
+    }
 }

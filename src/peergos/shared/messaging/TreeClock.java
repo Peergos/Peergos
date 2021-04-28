@@ -143,4 +143,17 @@ public class TreeClock implements Cborable {
                 .map(p -> p.getKey() + ":" + p.getValue())
                 .collect(Collectors.joining(","));
     }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        TreeClock treeClock = (TreeClock) o;
+        return Objects.equals(time, treeClock.time);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(time);
+    }
 }

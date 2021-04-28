@@ -5,6 +5,7 @@ import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.messaging.messages.*;
 import peergos.shared.storage.*;
+import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
@@ -47,6 +48,17 @@ public class ChatController {
     @JsMethod
     public Set<String> getMemberNames() {
         return state.members.values().stream().map(m -> m.username).collect(Collectors.toSet());
+    }
+
+    @JsMethod
+    public CompletableFuture<MessageEnvelope> getMessage(MessageRef ref) {
+        long msgCount = state.host().messagesMergedUpto;
+        // Todo try most recent 100 first, then try previous chunks
+        // Todo cache hashes in LRU
+        return store.getMessagesFrom(0)
+                .thenCompose(allSigned -> Futures.findFirst(allSigned, s -> hasher.bareHash(s.msg.serialize())
+                        .thenApply(h -> h.equals(ref.envelopeHash) ? Optional.of(s.msg) : Optional.empty())))
+                .thenApply(Optional::get);
     }
 
     @JsMethod
