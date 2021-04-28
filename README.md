@@ -203,3 +203,10 @@ ant test
 
 ### Development Notes
 The ``ant compile`` target will only compile sources in src/peergos/{client,server,shared} folders.
+
+### Experimental
+
+Bazel builds
+```
+bazel build //src/peergos/shared/util:all
+```
