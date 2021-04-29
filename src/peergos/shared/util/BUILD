@@ -4,6 +4,7 @@
 java_library(
     name = "ArrayOps",
     srcs = ["ArrayOps.java", "ByteArrayWrapper.java"],
+    visibility = ["//visibility:public"],
 )
 
 java_library(
