@@ -208,5 +208,13 @@ The ``ant compile`` target will only compile sources in src/peergos/{client,serv
 
 Bazel builds
 ```
-bazel build //src/peergos/shared/util:all
+bazel build //src/peergos/shared/util:all --incompatible_restrict_string_escapes=false 
 ```
+
+The `--incompatible_restrict_string_escapes=false` is a documented issue to suppress
+
+```
+io_bazel_rules_gwt/gwt/gwt.bzl:119:46: invalid escape sequence: \).
+```
+
+A documented issue https://github.com/bazelbuild/rules_gwt/issues
