@@ -195,6 +195,32 @@ public class Chat implements Cborable {
                 .thenApply(x -> member);
     }
 
+    public CompletableFuture<List<Member>> inviteMembers(List<String> usernames,
+                                                   PublicKeyHash identity,
+                                                   SigningPrivateKeyAndPublicHash ourChatIdentity,
+                                                   MessageStore ourStore,
+                                                   Function<Chat, CompletableFuture<Boolean>> committer,
+                                                   Hasher hasher) {
+        List<Member> newMembers = new ArrayList<>();
+        List<Invite> invites = new ArrayList<>();
+        for (String username : usernames) {
+            Id newMember = host.fork(host().membersInvited);
+            Member member = new Member(username, newMember, identity, host().messagesMergedUpto, 0);
+            newMembers.add(member);
+            host().membersInvited++;
+            members.put(newMember, member);
+            current = current.withMember(newMember);
+            Invite invite = new Invite(username, identity);
+            invites.add(invite);
+        }
+        return Futures.reduceAll(invites, true,
+                (b, m) -> addMessage(m, ourChatIdentity, ourStore, hasher)
+                        .thenApply(x -> true),
+                (a, b) -> b)
+                .thenCompose(x -> committer.apply(this))
+                .thenApply(x -> newMembers);
+    }
+
     @Override
     public CborObject toCbor() {
         Map<String, Cborable> result = new TreeMap<>();

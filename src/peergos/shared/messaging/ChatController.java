@@ -87,6 +87,13 @@ public class ChatController {
                 .thenApply(x -> this);
     }
 
+    public CompletableFuture<ChatController> invite(List<String> usernames,
+                                                    PublicKeyHash identity,
+                                                    Function<Chat, CompletableFuture<Boolean>> committer) {
+        return state.inviteMembers(usernames, identity, privateChatState.chatIdentity, store, committer, hasher)
+                .thenApply(x -> this);
+    }
+
     public CompletableFuture<ChatController> invite(String username,
                                                     PublicKeyHash identity,
                                                     Function<Chat, CompletableFuture<Boolean>> committer) {

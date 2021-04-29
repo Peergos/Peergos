@@ -94,10 +94,10 @@ public class Messenger {
     }
 
     @JsMethod
-    public CompletableFuture<ChatController> invite(ChatController chat, String username, PublicKeyHash identity) {
+    public CompletableFuture<ChatController> invite(ChatController chat, List<String> usernames, PublicKeyHash identity) {
         Path chatSharedDir = Paths.get(context.username, MESSAGING_BASE_DIR, chat.chatUuid, "shared");
-        return chat.invite(username, identity, c -> overwriteState(c, chat.chatUuid))
-                .thenCompose(res -> context.shareReadAccessWith(chatSharedDir, Collections.singleton(username))
+        return chat.invite(usernames, identity, c -> overwriteState(c, chat.chatUuid))
+                .thenCompose(res -> context.shareReadAccessWith(chatSharedDir, new HashSet<>(usernames))
                         .thenApply(x -> res));
     }
 
