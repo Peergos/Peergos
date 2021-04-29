@@ -1,6 +1,7 @@
 java_library(
     name = "Base32",
     srcs = ["Base32.java"],
+    visibility = ["//visibility:public"],
     deps = [
         ":BaseNCodec",
         ":StringUtils",
@@ -10,6 +11,7 @@ java_library(
 java_library(
     name = "Base64",
     srcs = ["Base64.java"],
+    visibility = ["//visibility:public"],
     deps = [
         ":BaseNCodec",
         ":StringUtils",

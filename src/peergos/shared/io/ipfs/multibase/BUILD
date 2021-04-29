@@ -34,7 +34,6 @@ java_library(
     visibility = ["//visibility:public"],
 )
 
-
 java_library(
     name = "Charsets",
     srcs = ["Charsets.java"],
@@ -71,4 +70,11 @@ java_library(
 java_library(
     name = "Multibase",
     srcs = ["Multibase.java"],
+    deps = [
+        ":Base16",
+        ":Base36",
+        ":Base58",
+        "//src/peergos/shared/io/ipfs/multibase/binary:Base32",
+        "//src/peergos/shared/io/ipfs/multibase/binary:Base64",
+    ],
 )
