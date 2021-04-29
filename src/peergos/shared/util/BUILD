@@ -1,16 +1,16 @@
 
-# These form a circular dependancy, a pathological example
+# These form a circular dependancy, a pathological example, 
+# treat as a single compilation unit
 java_library(
     name = "ArrayOps",
     srcs = ["ArrayOps.java", "ByteArrayWrapper.java"],
 )
 
-# External dep on `jsinterop` don't know how to include 
-# java_library(
-#     name = "CappedProgressConsumer",
-#     srcs = ["CappedProgressConsumer.java"],
-#     deps = [":ProgressConsumer"]
-# )
+java_library(
+    name = "CappedProgressConsumer",
+    srcs = ["CappedProgressConsumer.java"],
+    deps = [":ProgressConsumer"]
+)
 
 java_library(
     name = "Constants",
@@ -38,11 +38,11 @@ java_library(
 #     srcs = ["FileUtils.java"],
 # )
 
-# External dep on `jsinterop` don't know how to include 
-# java_library(
-#     name = "Futures",
-#     srcs = ["Futures.java"]
-# )
+java_library(
+    name = "Futures",
+    srcs = ["Futures.java"],
+    deps = ["//external:gwt_jsinterop"],
+)
 
 java_library(
     name = "LongUtil",
@@ -59,16 +59,18 @@ java_library(
     srcs = ["Pair.java"],
 )
 
-# External dep on `jsinterop` don't know how to include 
-# java_library(
-#     name = "ProgressConsumer",
-#     srcs = ["ProgressConsumer.java"],
-# )
+java_library(
+    name = "ProgressConsumer",
+    srcs = ["ProgressConsumer.java"],
+    deps = ["//external:gwt_jsinterop"],
+)
 
 # External dep on `jsinterop` don't know how to include 
+# Internal dep
 # java_library(
 #     name = "Serialize",
 #     srcs = ["Serialize.java"],
+#     deps = ["//external:gwt_jsinterop"],
 # )
 
 # Internal dep
