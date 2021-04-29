@@ -1,10 +1,11 @@
 package peergos.shared.messaging;
 
+import jsinterop.annotations.JsType;
 import peergos.shared.cbor.*;
 import peergos.shared.io.ipfs.multihash.*;
 
 import java.util.*;
-
+@JsType
 public class MessageRef implements Cborable {
 
     public final Multihash envelopeHash;
