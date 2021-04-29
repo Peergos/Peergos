@@ -37,6 +37,7 @@ public class Messenger {
     private final NetworkAccess network;
     private final Crypto crypto;
     private final Hasher hasher;
+    private final LRUCache<MessageRef, MessageEnvelope> cache = new LRUCache<>(1_000);
 
     @JsConstructor
     public Messenger(UserContext context) {
@@ -77,7 +78,7 @@ public class Messenger {
                         .thenCompose(updatedChatRoot -> updatedChatRoot.uploadOrReplaceFile(PRIVATE_CHAT_STATE,
                                 AsyncReader.build(rawPrivateChatState), rawPrivateChatState.length, network, crypto, x -> {}, crypto.random.randomBytes(32))))
                 .thenCompose(this::getChatMessageStore)
-                .thenApply(messageStore -> new ChatController(chatId, chat, messageStore, privateChatState, hasher))
+                .thenApply(messageStore -> new ChatController(chatId, chat, messageStore, privateChatState, cache, hasher))
                 .thenCompose(controller -> controller.join(context.signer, c -> overwriteState(c, chatId)));
     }
 
@@ -203,7 +204,7 @@ public class Messenger {
                 .thenCompose(sharedDir -> getChatState(sharedDir.get()))
                 .thenCompose(chat -> getPrivateChatState(chatRoot)
                         .thenCompose(priv -> getChatMessageStore(chatRoot)
-                                .thenApply(msgStore -> new ChatController(chatRoot.getName(), chat, msgStore, priv, hasher))));
+                                .thenApply(msgStore -> new ChatController(chatRoot.getName(), chat, msgStore, priv, cache, hasher))));
     }
 
     private CompletableFuture<Chat> getChatState(FileWrapper chatRoot) {

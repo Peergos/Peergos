@@ -18,17 +18,20 @@ public class ChatController {
     private final Chat state;
     private final MessageStore store;
     private final PrivateChatState privateChatState;
+    private final LRUCache<MessageRef, MessageEnvelope> cache;
     private final Hasher hasher;
 
     public ChatController(String chatUuid,
                           Chat state,
                           MessageStore store,
                           PrivateChatState privateChatState,
+                          LRUCache<MessageRef, MessageEnvelope> cache,
                           Hasher hasher) {
         this.chatUuid = chatUuid;
         this.state = state;
         this.store = store;
         this.privateChatState = privateChatState;
+        this.cache = cache;
         this.hasher = hasher;
     }
 
@@ -52,13 +55,25 @@ public class ChatController {
 
     @JsMethod
     public CompletableFuture<MessageEnvelope> getMessage(MessageRef ref) {
+        MessageEnvelope cached = cache.get(ref);
+        if (cached != null)
+            return Futures.of(cached);
         long msgCount = state.host().messagesMergedUpto;
         // Todo try most recent 100 first, then try previous chunks
-        // Todo cache hashes in LRU
         return store.getMessagesFrom(0)
-                .thenCompose(allSigned -> Futures.findFirst(allSigned, s -> hasher.bareHash(s.msg.serialize())
-                        .thenApply(h -> h.equals(ref.envelopeHash) ? Optional.of(s.msg) : Optional.empty())))
+                .thenCompose(allSigned -> Futures.findFirst(allSigned, s -> hashMessage(s.msg)
+                        .thenApply(h -> h.equals(ref) ? Optional.of(s.msg) : Optional.empty())))
                 .thenApply(Optional::get);
+    }
+
+    private CompletableFuture<MessageRef> hashMessage(MessageEnvelope m) {
+        byte[] raw = m.serialize();
+        return hasher.bareHash(raw)
+                .thenApply(MessageRef::new)
+                .thenApply(r -> {
+                    cache.put(r, m);
+                    return r;
+                });
     }
 
     @JsMethod
