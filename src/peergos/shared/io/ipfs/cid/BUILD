@@ -1,0 +1,11 @@
+java_library(
+    name="Cid",
+    srcs=["Cid.java"],
+    visibility=["//visibility:public"],
+    deps=[
+        "//src/peergos/shared/util:ArrayOps",
+        "//src/peergos/shared/io/ipfs/multihash:Multihash",
+        "//src/peergos/shared/io/ipfs/multibase:Base58",
+        "//src/peergos/shared/io/ipfs/multibase:Multibase",
+    ],
+)

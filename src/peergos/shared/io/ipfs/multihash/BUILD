@@ -1,0 +1,9 @@
+java_library(
+    name="Multihash",
+    srcs=["Multihash.java"],
+    visibility=["//visibility:public"],
+    deps=[
+        "//external:gwt_jsinterop",
+        "//src/peergos/shared/io/ipfs/multibase:Base58",
+    ],
+)

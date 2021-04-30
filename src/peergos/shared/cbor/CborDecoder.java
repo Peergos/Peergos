@@ -13,6 +13,7 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PushbackInputStream;
+import java.util.Arrays;
 
 /**
  * Provides a decoder capable of handling CBOR encoded data from a {@link InputStream}.
@@ -33,7 +34,7 @@ public class CborDecoder {
     }
 
     private static void fail(String msg, Object... args) throws IOException {
-        throw new IOException(msg + args);
+        throw new IOException(msg + Arrays.toString(args));
     }
 
     private static String lengthToString(int len) {
