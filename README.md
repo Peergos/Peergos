@@ -206,17 +206,17 @@ The ``ant compile`` target will only compile sources in src/peergos/{client,serv
 
 ### Experimental
 
-Bazel builds - build all targets in aall package
+Build all targets in all packages
 ```
 bazel build --incompatible_restrict_string_escapes=false //...
 ```
 
-Bazel builds - build all targets in a package
+Build all targets in a package
 ```
 bazel build --incompatible_restrict_string_escapes=false //src/peergos/shared/util:all 
 ```
 
-Bazel builds - build a target in a package
+Build a target in a package
 ```
 bazel build --incompatible_restrict_string_escapes=false //src/peergos/shared/util:ArrayOps 
 ```
