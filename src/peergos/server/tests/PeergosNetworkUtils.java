@@ -1663,7 +1663,7 @@ public class PeergosNetworkUtils {
 
         Messenger msgA = new Messenger(a);
         ChatController controllerA = msgA.createChat().join();
-        controllerA = msgA.invite(controllerA, Arrays.asList(b.username), b.signer.publicKeyHash).join();
+        controllerA = msgA.invite(controllerA, Arrays.asList(b.username), Arrays.asList(b.signer.publicKeyHash)).join();
         List<Pair<SharedItem, FileWrapper>> feed = b.getSocialFeed().join().update().join().getSharedFiles(0, 10).join();
         FileWrapper chatSharedDir = feed.get(feed.size() - 1).right;
 
@@ -1697,7 +1697,7 @@ public class PeergosNetworkUtils {
         Assert.assertEquals(controllerB.host().messagesMergedUpto, 5);
         Assert.assertTrue(fromB.payload instanceof ReplyTo);
         MessageRef parentRef = ((ReplyTo) fromB.payload).parent;
-        MessageEnvelope parent = controllerA.getMessage(parentRef).join();
+        MessageEnvelope parent = controllerA.getMessage(parentRef, 4).join();
         Assert.assertTrue(parent.equals(fromA));
 
         // test setting group properties

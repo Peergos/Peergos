@@ -54,16 +54,16 @@ public class ChatController {
     }
 
     @JsMethod
-    public CompletableFuture<MessageEnvelope> getMessage(MessageRef ref) {
+    public CompletableFuture<MessageEnvelope> getMessage(MessageRef ref, int sourceIndex) {
         MessageEnvelope cached = cache.get(ref);
         if (cached != null)
             return Futures.of(cached);
-        long msgCount = state.host().messagesMergedUpto;
-        // Todo try most recent 100 first, then try previous chunks
-        return store.getMessagesFrom(0)
+        // Try 100 message prior to reference source first, then try previous chunks
+        return store.getMessages(Math.max(0, sourceIndex - 100), sourceIndex)
                 .thenCompose(allSigned -> Futures.findFirst(allSigned, s -> hashMessage(s.msg)
                         .thenApply(h -> h.equals(ref) ? Optional.of(s.msg) : Optional.empty())))
-                .thenApply(Optional::get);
+                .thenCompose(resOpt -> resOpt.map(Futures::of)
+                        .orElseGet(() -> getMessage(ref, sourceIndex - 100)));
     }
 
     private CompletableFuture<MessageRef> hashMessage(MessageEnvelope m) {
@@ -103,9 +103,9 @@ public class ChatController {
     }
 
     public CompletableFuture<ChatController> invite(List<String> usernames,
-                                                    PublicKeyHash identity,
+                                                    List<PublicKeyHash> identities,
                                                     Function<Chat, CompletableFuture<Boolean>> committer) {
-        return state.inviteMembers(usernames, identity, privateChatState.chatIdentity, store, committer, hasher)
+        return state.inviteMembers(usernames, identities, privateChatState.chatIdentity, store, committer, hasher)
                 .thenApply(x -> this);
     }
 

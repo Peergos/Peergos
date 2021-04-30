@@ -196,14 +196,16 @@ public class Chat implements Cborable {
     }
 
     public CompletableFuture<List<Member>> inviteMembers(List<String> usernames,
-                                                   PublicKeyHash identity,
-                                                   SigningPrivateKeyAndPublicHash ourChatIdentity,
-                                                   MessageStore ourStore,
-                                                   Function<Chat, CompletableFuture<Boolean>> committer,
-                                                   Hasher hasher) {
+                                                         List<PublicKeyHash> identities,
+                                                         SigningPrivateKeyAndPublicHash ourChatIdentity,
+                                                         MessageStore ourStore,
+                                                         Function<Chat, CompletableFuture<Boolean>> committer,
+                                                         Hasher hasher) {
         List<Member> newMembers = new ArrayList<>();
         List<Invite> invites = new ArrayList<>();
-        for (String username : usernames) {
+        for (int i=0; i < usernames.size(); i++) {
+            String username = usernames.get(i);
+            PublicKeyHash identity = identities.get(i);
             Id newMember = host.fork(host().membersInvited);
             Member member = new Member(username, newMember, identity, host().messagesMergedUpto, 0);
             newMembers.add(member);
