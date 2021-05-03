@@ -279,6 +279,8 @@ public class MirrorCoreNode implements CoreNode {
             return Futures.of(pkiResult);
 
         update();
+        usageStore.addUserIfAbsent(username);
+        usageStore.addWriter(username, chain.owner);
         IpfsCoreNode.applyOpLog(chain.owner, setupOperations, ipfs, p2pMutable);
         return Futures.of(Optional.empty());
     }
