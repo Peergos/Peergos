@@ -16,12 +16,10 @@ import java.util.function.Supplier;
 
 public class RetryStorage implements ContentAddressedStorage {
 
-    private static final int RANDOM_SEED = 987447;
-    private static Random random = new Random(RANDOM_SEED);
+    private final Random random = new Random(1);
     private final ContentAddressedStorage target;
     private final ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(1);
     private final int maxAttempts;
-
 
     public RetryStorage(ContentAddressedStorage target, int maxAttempts) {
         this.target = target;
@@ -134,7 +132,7 @@ public class RetryStorage implements ContentAddressedStorage {
 
     @Override
     public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey) {
-        return target.getChampLookup(owner, root, champKey);
+        return runWithRetry(() -> target.getChampLookup(owner, root, champKey));
     }
 
     @Override
