@@ -284,7 +284,7 @@ public class UserContext {
                                                         TRANSACTIONS_DIR_NAME, network, crypto))
                                                 .thenCompose(globalRoot -> createSpecialDirectory(globalRoot, username,
                                                         CapabilityStore.CAPABILITY_CACHE_DIR, network, crypto))
-                                                .thenCompose(x -> signupWithRetry(username, chain.get(0), token, opLog, crypto.hasher, initialNetwork, p -> {}))
+                                                .thenCompose(x -> signupWithRetry(username, chain.get(0), token, opLog, crypto.hasher, initialNetwork, progressCallback))
                                                 .thenCompose(y -> signIn(username, userWithRoot, initialNetwork, crypto, progressCallback));
                                     }));
                 }).exceptionally(Futures::logAndThrow);
