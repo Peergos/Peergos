@@ -27,6 +27,8 @@ import java.util.stream.*;
 
 public class MirrorCoreNode implements CoreNode {
 
+    private static final Logger LOG = Logging.LOG();
+
     private final CoreNode writeTarget;
     private final MutablePointers p2pMutable;
     private final DeletableContentAddressedStorage ipfs;
@@ -275,8 +277,10 @@ public class MirrorCoreNode implements CoreNode {
                                                                   ProofOfWork proof,
                                                                   String token) {
         Optional<RequiredDifficulty> pkiResult = writeTarget.updateChain(username, Arrays.asList(chain), proof, token).join();
-        if (pkiResult.isPresent()) // signup rejected
+        if (pkiResult.isPresent()) { // signup rejected
+            LOG.info("Rejecting signup: required " + pkiResult.get());
             return Futures.of(pkiResult);
+        }
 
         update();
         usageStore.addUserIfAbsent(username);

@@ -6,4 +6,9 @@ public class RequiredDifficulty {
     public RequiredDifficulty(int requiredDifficulty) {
         this.requiredDifficulty = requiredDifficulty;
     }
+
+    @Override
+    public String toString() {
+        return "Difficulty: " + requiredDifficulty;
+    }
 }
