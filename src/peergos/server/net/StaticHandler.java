@@ -78,7 +78,7 @@ public abstract class StaticHandler implements HttpHandler
             // Only allow assets to be loaded from the original host
             // Todo with our subdomain sandbox we should be able to remove both unsafes below
             httpExchange.getResponseHeaders().set("content-security-policy", "default-src https: 'self';" +
-                    "script-src https: 'self' 'unsafe-eval';" + // vue.js needs this without pre-compiling templates
+                    "script-src https: 'self';" +
                     "style-src https: 'self' 'unsafe-inline';" + // calendar, spinner
                     "media-src 'self' blob:;" +
                     "img-src 'self' data: blob:;" +
@@ -94,7 +94,7 @@ public abstract class StaticHandler implements HttpHandler
             // Don't send Peergos referrer to anyone
             httpExchange.getResponseHeaders().set("referrer-policy", "no-referrer");
             // allow list of permissions
-            httpExchange.getResponseHeaders().set("Permissions-Policy",
+            httpExchange.getResponseHeaders().set("permissions-policy",
                     "geolocation=(), microphone=(), " +
                     "camera=(self), fullscreen=(self)");
             if (! isRoot) {
