@@ -15,5 +15,6 @@ java_library(
         "//src/peergos/shared/zxing/common/reedsolomon:ReedSolomonDecoder",
         "//src/peergos/shared/zxing/common/reedsolomon:ReedSolomonException",
         "//src/peergos/shared/zxing/common/reedsolomon:GenericGF",
-    ]
+    ],
+    visibility=["//visibility:public"],
 )

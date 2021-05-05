@@ -35,13 +35,15 @@ java_library(
     name="GridSampler",
     srcs=["GridSampler.java", "DefaultGridSampler.java"],
     deps=["//src/peergos/shared/zxing:NotFoundException",
-          ":BitMatrix", ":PerspectiveTransform"]
+          ":BitMatrix", ":PerspectiveTransform"],
+    visibility=["//visibility:public"],
 )
 
 java_library(
     name="DetectorResult",
     srcs=["DetectorResult.java"],
-    deps=["//src/peergos/shared/zxing:ResultPoint", ":BitMatrix"]
+    deps=["//src/peergos/shared/zxing:ResultPoint", ":BitMatrix"],
+    visibility=["//visibility:public"],
 )
 
 java_library(
@@ -71,6 +73,7 @@ java_library(
 java_library(
     name="PerspectiveTransform",
     srcs=["PerspectiveTransform.java"],
+    visibility=["//visibility:public"],
 )
 
 java_library(
