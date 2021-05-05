@@ -1,0 +1,19 @@
+
+java_library(
+    name="decoder",
+    srcs=glob(["*.java"]),
+    deps=[
+        "//src/peergos/shared/zxing:ChecksumException",
+        "//src/peergos/shared/zxing:DecodeHintType",
+        "//src/peergos/shared/zxing:FormatException",
+        "//src/peergos/shared/zxing:ResultPoint",
+        "//src/peergos/shared/zxing/common:BitMatrix",
+        "//src/peergos/shared/zxing/common:BitSource",
+        "//src/peergos/shared/zxing/common:CharacterSetECI",
+        "//src/peergos/shared/zxing/common:DecoderResult",
+        "//src/peergos/shared/zxing/common:StringUtils",
+        "//src/peergos/shared/zxing/common/reedsolomon:ReedSolomonDecoder",
+        "//src/peergos/shared/zxing/common/reedsolomon:ReedSolomonException",
+        "//src/peergos/shared/zxing/common/reedsolomon:GenericGF",
+    ]
+)

@@ -7,6 +7,13 @@ java_library(
 )
 
 java_library(
+    name="ChecksumException",
+    srcs=["ChecksumException.java"],
+    visibility=["//visibility:public"],
+    deps=[":ReaderException"]
+)
+
+java_library(
     name="DecodeHintType",
     srcs=["DecodeHintType.java"],
     visibility=["//visibility:public"],

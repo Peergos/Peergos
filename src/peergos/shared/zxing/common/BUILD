@@ -14,17 +14,20 @@ java_library(
 java_library(
     name="BitSource",
     srcs=["BitSource.java"],
+    visibility=["//visibility:public"],
 )
 
 java_library(
     name="CharacterSetECI",
     srcs=["CharacterSetECI.java"],
-    deps=["//src/peergos/shared/zxing:FormatException"]
+    deps=["//src/peergos/shared/zxing:FormatException"],
+    visibility=["//visibility:public"],
 )
 
 java_library(
     name="DecoderResult",
     srcs=["DecoderResult.java"],
+    visibility=["//visibility:public"],
 )
 
 # domanski: treat as a sigle compilation unit, circular dep between the files
@@ -76,5 +79,6 @@ java_library(
     deps=[
         "//src/peergos/shared/zxing:DecodeHintType",
         "//src/peergos/shared/zxing:ResultPointCallback",
-    ]
+    ],
+    visibility=["//visibility:public"],
 )

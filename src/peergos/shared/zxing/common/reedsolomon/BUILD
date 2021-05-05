@@ -2,12 +2,14 @@
 java_library(
     name="GenericGF",
     srcs=["GenericGF.java", "GenericGFPoly.java"],
+    visibility=["//visibility:public"],
 )
 
 java_library(
     name="ReedSolomonDecoder",
     srcs=["ReedSolomonDecoder.java"],
-    deps=[":GenericGF", ":ReedSolomonException"]
+    deps=[":GenericGF", ":ReedSolomonException"],
+    visibility=["//visibility:public"],
 )
 
 java_library(
@@ -19,4 +21,5 @@ java_library(
 java_library(
     name="ReedSolomonException",
     srcs=["ReedSolomonException.java"],
+    visibility=["//visibility:public"],
 )
