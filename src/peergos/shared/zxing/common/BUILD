@@ -1,12 +1,14 @@
 java_library(
     name="BitArray",
     srcs=["BitArray.java"],
+    visibility=["//visibility:public"],
 )
 
 java_library(
     name="BitMatrix",
     srcs=["BitMatrix.java"],
-    deps=[":BitArray"]
+    deps=[":BitArray"],
+    visibility=["//visibility:public"],
 )
 
 java_library(
@@ -29,7 +31,8 @@ java_library(
 java_library(
     name="GridSampler",
     srcs=["GridSampler.java", "DefaultGridSampler.java"],
-    deps=["//src/peergos/shared/zxing:NotFoundException", ":BitMatrix", ":PerspectiveTransform"]
+    deps=["//src/peergos/shared/zxing:NotFoundException",
+          ":BitMatrix", ":PerspectiveTransform"]
 )
 
 java_library(
@@ -38,8 +41,40 @@ java_library(
     deps=["//src/peergos/shared/zxing:ResultPoint", ":BitMatrix"]
 )
 
+java_library(
+    name="GlobalHistogramBinarizer",
+    srcs=["GlobalHistogramBinarizer.java"],
+    deps=["//src/peergos/shared/zxing:NotFoundException",
+          "//src/peergos/shared/zxing:Binarizer",
+          "//src/peergos/shared/zxing/common:BitArray",
+          "//src/peergos/shared/zxing/common:BitMatrix",
+          "//src/peergos/shared/zxing:LuminanceSource",
+          ]
+)
+
+java_library(
+    name="HybridBinarizer",
+    srcs=["HybridBinarizer.java"],
+    deps=[
+        ":GlobalHistogramBinarizer",
+        "//src/peergos/shared/zxing/common:BitMatrix",
+        "//src/peergos/shared/zxing:Binarizer",
+        "//src/peergos/shared/zxing:NotFoundException",
+        "//src/peergos/shared/zxing:LuminanceSource",
+    ]
+)
+
 
 java_library(
     name="PerspectiveTransform",
     srcs=["PerspectiveTransform.java"],
+)
+
+java_library(
+    name="StringUtils",
+    srcs=["StringUtils.java"],
+    deps=[
+        "//src/peergos/shared/zxing:DecodeHintType",
+        "//src/peergos/shared/zxing:ResultPointCallback",
+    ]
 )
