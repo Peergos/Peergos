@@ -76,13 +76,15 @@ public abstract class StaticHandler implements HttpHandler
             }
 
             // Only allow assets to be loaded from the original host
-            httpExchange.getResponseHeaders().set("content-security-policy", "default-src https: 'self' " +
-                    "'unsafe-eval'; " + // vue.js needs this without pre-compiling templates
-//                    "'unsafe-inline'; " +
-                    "style-src https: 'self' " +
-                    "'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=';" + // spinner
+            // Todo with our subdomain sandbox we should be able to remove both unsafes below
+            httpExchange.getResponseHeaders().set("content-security-policy", "default-src https: 'self';" +
+                    "script-src https: 'self' 'unsafe-eval';" + // vue.js needs this without pre-compiling templates
+                    "style-src https: 'self' 'unsafe-inline';" + // calendar, spinner
                     "media-src 'self' blob:;" +
-                    "img-src 'self' data: blob:;");
+                    "img-src 'self' data: blob:;" +
+                    "object-src 'none';" +
+                    "frame-ancestors https: 'self';"
+            );
             // Don't anyone to load Peergos site in an iframe
             httpExchange.getResponseHeaders().set("x-frame-options", "sameorigin");
             // Enable cross site scripting protection
