@@ -76,7 +76,13 @@ public abstract class StaticHandler implements HttpHandler
             }
 
             // Only allow assets to be loaded from the original host
-//            httpExchange.getResponseHeaders().set("content-security-policy", "default-src https: 'self'");
+            httpExchange.getResponseHeaders().set("content-security-policy", "default-src https: 'self' " +
+                    "'unsafe-eval'; " + // vue.js needs this without pre-compiling templates
+//                    "'unsafe-inline'; " +
+                    "style-src https: 'self' " +
+                    "'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=';" + // spinner
+                    "media-src 'self' blob:;" +
+                    "img-src 'self' data: blob:;");
             // Don't anyone to load Peergos site in an iframe
             httpExchange.getResponseHeaders().set("x-frame-options", "sameorigin");
             // Enable cross site scripting protection
@@ -85,6 +91,10 @@ public abstract class StaticHandler implements HttpHandler
             httpExchange.getResponseHeaders().set("x-content-type-options", "nosniff");
             // Don't send Peergos referrer to anyone
             httpExchange.getResponseHeaders().set("referrer-policy", "no-referrer");
+            // allow list of permissions
+            httpExchange.getResponseHeaders().set("Permissions-Policy",
+                    "geolocation=(), microphone=(), " +
+                    "camera=(self), fullscreen=(self)");
             if (! isRoot) {
                 String previousEtag = httpExchange.getRequestHeaders().getFirst("If-None-Match");
                 if (res.hash.equals(previousEtag)) {
