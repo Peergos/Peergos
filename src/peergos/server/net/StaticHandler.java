@@ -76,10 +76,14 @@ public abstract class StaticHandler implements HttpHandler
             }
 
             // Only allow assets to be loaded from the original host
-            // Todo with our subdomain sandbox we should be able to remove both unsafes below
+            // Todo work on removing both unsafes below
             httpExchange.getResponseHeaders().set("content-security-policy", "default-src https: 'self';" +
-                    "script-src https: 'self';" +
-                    "style-src https: 'self' 'unsafe-inline';" + // calendar, spinner
+                    "script-src https: 'self'" +
+                    " 'unsafe-eval'" + // safari is broken and needs this
+                    ";" +
+                    "style-src https: 'self'" +
+                    " 'unsafe-inline'" + // calendar, spinner
+                    ";" +
                     "media-src 'self' blob:;" +
                     "img-src 'self' data: blob:;" +
                     "object-src 'none';" +
