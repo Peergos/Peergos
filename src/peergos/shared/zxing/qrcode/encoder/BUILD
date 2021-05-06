@@ -4,15 +4,12 @@ java_library(
     srcs=glob(["*.java"]),
     deps=[
         "//src/peergos/shared/zxing:EncodeHintType",
-        # "//src/peergos/shared/zxing:FormatException",
-        # "//src/peergos/shared/zxing:NotFoundException",
-        # "//src/peergos/shared/zxing:ResultPoint",
-        # "//src/peergos/shared/zxing:ResultPointCallback",
-        # "//src/peergos/shared/zxing/common:BitMatrix",
-        # "//src/peergos/shared/zxing/common:DetectorResult",
-        # "//src/peergos/shared/zxing/common:GridSampler",
-        # "//src/peergos/shared/zxing/common:PerspectiveTransform",
-        # "//src/peergos/shared/zxing/common/detector:MathUtils",
+        "//src/peergos/shared/zxing:WriterException",
+        "//src/peergos/shared/zxing/common:BitArray",
+        "//src/peergos/shared/zxing/common:CharacterSetECI",
+        "//src/peergos/shared/zxing/common/reedsolomon:GenericGF",
+        "//src/peergos/shared/zxing/common/reedsolomon:ReedSolomonEncoder",
         "//src/peergos/shared/zxing/qrcode/decoder:decoder",
-    ]
+    ],
+    visibility=["//visibility:public"],
 )

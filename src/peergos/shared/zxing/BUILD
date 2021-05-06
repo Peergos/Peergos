@@ -1,6 +1,7 @@
 java_library(
     name="BarcodeFormat",
     srcs=["BarcodeFormat.java"],
+    visibility=["//visibility:public"],
 )
 
 java_library(
@@ -21,6 +22,7 @@ java_library(
         "//src/peergos/shared/zxing/common:BitArray",
         "//src/peergos/shared/zxing/common:BitMatrix",
     ],
+    visibility=["//visibility:public"],
 )
 
 java_library(
@@ -86,6 +88,7 @@ java_library(
         ":DecodeHintType",
         ":Result",
     ],
+    visibility=["//visibility:public"],
 )
 
 java_library(
@@ -101,13 +104,13 @@ java_library(
         ":ResultMetadataType",
         ":BarcodeFormat",
     ],
+    visibility=["//visibility:public"],
 )
 
 java_library(
     name="ResultMetadataType",
     srcs=["ResultMetadataType.java"],
-    deps=[
-    ],
+    visibility=["//visibility:public"],
 )
 
 java_library(
@@ -140,9 +143,11 @@ java_library(
         ":EncodeHintType",
         "//src/peergos/shared/zxing/common:BitMatrix",
     ],
+    visibility=["//visibility:public"],
 )
 
 java_library(
     name="WriterException",
     srcs=["WriterException.java"],
+    visibility=["//visibility:public"],
 )

@@ -14,5 +14,6 @@ java_library(
         "//src/peergos/shared/zxing/common:PerspectiveTransform",
         "//src/peergos/shared/zxing/common/detector:MathUtils",
         "//src/peergos/shared/zxing/qrcode/decoder:decoder",
-    ]
+    ],
+    visibility=["//visibility:public"],
 )

@@ -15,7 +15,8 @@ java_library(
 java_library(
     name="ReedSolomonEncoder",
     srcs=["ReedSolomonEncoder.java"],
-    deps=[":GenericGF"]
+    deps=[":GenericGF"],
+    visibility=["//visibility:public"],
 )
 
 java_library(

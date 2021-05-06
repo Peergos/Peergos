@@ -1,0 +1,41 @@
+java_library(
+    name="QRCodeReader",
+    srcs=["QRCodeReader.java"],
+    deps=[
+        "//src/peergos/shared/zxing:NotFoundException",
+        "//src/peergos/shared/zxing/common:BitMatrix",
+        "//src/peergos/shared/zxing:BarcodeFormat",
+        "//src/peergos/shared/zxing:ResultMetadataType",
+        "//src/peergos/shared/zxing:Result",
+        "//src/peergos/shared/zxing:Reader",
+        "//src/peergos/shared/zxing/common:DecoderResult",
+        "//src/peergos/shared/zxing:ResultPoint",
+        "//src/peergos/shared/zxing:BinaryBitmap",
+        "//src/peergos/shared/zxing:ChecksumException",
+        "//src/peergos/shared/zxing:FormatException",
+        "//src/peergos/shared/zxing:EncodeHintType",
+        "//src/peergos/shared/zxing:DecodeHintType",
+        "//src/peergos/shared/zxing/qrcode/detector:detector",
+        "//src/peergos/shared/zxing/common:DetectorResult",
+        "//src/peergos/shared/zxing/qrcode/decoder",
+    ]
+)
+
+java_library(
+    name="QRCodeWriter",
+    srcs=["QRCodeWriter.java"],
+    deps=[
+        "//src/peergos/shared/zxing/common:BitMatrix",
+        "//src/peergos/shared/zxing:ResultMetadataType",
+        "//src/peergos/shared/zxing:EncodeHintType",
+        "//src/peergos/shared/zxing:DecodeHintType",
+        "//src/peergos/shared/zxing:BarcodeFormat",
+        "//src/peergos/shared/zxing:Writer",
+        "//src/peergos/shared/zxing:BinaryBitmap",
+        "//src/peergos/shared/zxing:WriterException",
+        "//src/peergos/shared/zxing/qrcode/decoder:decoder",
+        "//src/peergos/shared/zxing/qrcode/encoder:encoder",
+        "//src/peergos/shared/zxing:ChecksumException",
+        "//src/peergos/shared/zxing:FormatException",
+    ]
+)
