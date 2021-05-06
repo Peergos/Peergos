@@ -77,17 +77,17 @@ public abstract class StaticHandler implements HttpHandler
 
             // Only allow assets to be loaded from the original host
             // Todo work on removing both unsafes below
-            httpExchange.getResponseHeaders().set("content-security-policy", "default-src https: 'self';" +
-                    "script-src https: 'self'" +
+            httpExchange.getResponseHeaders().set("content-security-policy", "default-src 'self';" +
+                    "script-src 'self'" +
                     " 'unsafe-eval'" + // safari is broken and needs this
                     ";" +
-                    "style-src https: 'self'" +
+                    "style-src 'self'" +
                     " 'unsafe-inline'" + // calendar, spinner
                     ";" +
                     "media-src 'self' blob:;" +
                     "img-src 'self' data: blob:;" +
                     "object-src 'none';" +
-                    "frame-ancestors https: 'self';"
+                    "frame-ancestors 'self';"
             );
             // Don't anyone to load Peergos site in an iframe
             httpExchange.getResponseHeaders().set("x-frame-options", "sameorigin");
