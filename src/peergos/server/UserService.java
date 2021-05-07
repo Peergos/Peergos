@@ -117,6 +117,7 @@ public class UserService {
 
     public boolean initAndStart(InetSocketAddress local,
                                 Optional<TlsProperties> tlsProps,
+                                Optional<String> publicHostname,
                                 Optional<String> basicAuth,
                                 Optional<Path> webroot,
                                 boolean useWebCache,
@@ -202,8 +203,13 @@ public class UserService {
             LOG.info("Using webroot from local file system: " + webroot);
         else
             LOG.info("Using webroot from jar");
-        StaticHandler handler = webroot.map(p -> (StaticHandler) new FileHandler(p, true))
-                .orElseGet(() -> new JarHandler(true, Paths.get("/webroot")));
+        if (isPublicServer && publicHostname.isEmpty())
+            throw new IllegalStateException("Missing arg public-hostname");
+        String host = tlsProps.map(p -> "https://" + p.hostname)
+                .orElse(isPublicServer ? "https://" + publicHostname.get()  :
+        "http://" + local.getHostName() + ":" + local.getPort());
+        StaticHandler handler = webroot.map(p -> (StaticHandler) new FileHandler(host, p, true))
+                .orElseGet(() -> new JarHandler(host, true, Paths.get("/webroot")));
 
         if (useWebCache) {
             LOG.info("Caching web-resources");

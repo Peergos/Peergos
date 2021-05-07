@@ -13,8 +13,10 @@ import java.util.zip.GZIPOutputStream;
 public abstract class StaticHandler implements HttpHandler
 {
     private final boolean isGzip;
+    private final String host;
 
-    public StaticHandler(boolean isGzip) {
+    public StaticHandler(String host, boolean isGzip) {
+        this.host = host;
         this.isGzip = isGzip;
     }
 
@@ -76,18 +78,15 @@ public abstract class StaticHandler implements HttpHandler
             }
 
             // Only allow assets to be loaded from the original host
-            // Todo work on removing both unsafes below
-            httpExchange.getResponseHeaders().set("content-security-policy", "default-src 'self';" +
-                    "script-src 'self'" +
-                    " 'unsafe-eval'" + // safari is broken and needs this
-                    ";" +
+            // Todo work on removing unsafe-inline
+            httpExchange.getResponseHeaders().set("content-security-policy", "default-src 'self' " + host + ";" +
                     "style-src 'self'" +
+                    " " + host +
                     " 'unsafe-inline'" + // calendar, spinner
                     ";" +
-                    "media-src 'self' blob:;" +
-                    "img-src 'self' data: blob:;" +
-                    "object-src 'none';" +
-                    "frame-ancestors 'self';"
+                    "media-src 'self' " + host + " blob:;" +
+                    "img-src 'self' " + host + " data: blob:;" +
+                    "object-src 'none';"
             );
             // Don't anyone to load Peergos site in an iframe
             httpExchange.getResponseHeaders().set("x-frame-options", "sameorigin");
@@ -138,7 +137,7 @@ public abstract class StaticHandler implements HttpHandler
         Map<String, Asset> cache = new ConcurrentHashMap<>();
         StaticHandler that = this;
 
-        return new StaticHandler(isGzip) {
+        return new StaticHandler(host, isGzip) {
             @Override
             public Asset getAsset(String resourcePath) throws IOException {
                 if (! cache.containsKey(resourcePath))

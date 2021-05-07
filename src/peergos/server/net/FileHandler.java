@@ -6,8 +6,8 @@ import java.nio.file.Path;
 public class FileHandler extends StaticHandler
 {
     private final Path root;
-    public FileHandler(Path root, boolean isGzip) {
-        super(isGzip);
+    public FileHandler(String host, Path root, boolean isGzip) {
+        super(host, isGzip);
         this.root = root;
     }
 
