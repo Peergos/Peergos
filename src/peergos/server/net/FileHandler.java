@@ -2,12 +2,13 @@ package peergos.server.net;
 
 import java.io.*;
 import java.nio.file.Path;
+import java.util.*;
 
 public class FileHandler extends StaticHandler
 {
     private final Path root;
-    public FileHandler(String host, Path root, boolean isGzip) {
-        super(host, isGzip);
+    public FileHandler(String host, List<String> blockstoreDomain, Path root, boolean isGzip) {
+        super(host, blockstoreDomain, isGzip);
         this.root = root;
     }
 

@@ -8,15 +8,18 @@ import peergos.shared.util.ArrayOps;
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.stream.*;
 import java.util.zip.GZIPOutputStream;
 
 public abstract class StaticHandler implements HttpHandler
 {
     private final boolean isGzip;
     private final String host;
+    private final List<String> blockstoreDomain;
 
-    public StaticHandler(String host, boolean isGzip) {
+    public StaticHandler(String host, List<String> blockstoreDomain, boolean isGzip) {
         this.host = host;
+        this.blockstoreDomain = blockstoreDomain;
         this.isGzip = isGzip;
     }
 
@@ -84,6 +87,7 @@ public abstract class StaticHandler implements HttpHandler
                     " " + host +
                     " 'unsafe-inline'" + // calendar, spinner
                     ";" +
+                    "connect-src 'self' " + host + blockstoreDomain.stream().map(d -> " https://" + d).collect(Collectors.joining()) + ";" +
                     "media-src 'self' " + host + " blob:;" +
                     "img-src 'self' " + host + " data: blob:;" +
                     "object-src 'none';"
@@ -137,7 +141,7 @@ public abstract class StaticHandler implements HttpHandler
         Map<String, Asset> cache = new ConcurrentHashMap<>();
         StaticHandler that = this;
 
-        return new StaticHandler(host, isGzip) {
+        return new StaticHandler(host, blockstoreDomain, isGzip) {
             @Override
             public Asset getAsset(String resourcePath) throws IOException {
                 if (! cache.containsKey(resourcePath))

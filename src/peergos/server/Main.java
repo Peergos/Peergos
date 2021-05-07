@@ -513,8 +513,9 @@ public class Main extends Builder {
             int handlerThreads = a.getInt("handler-threads", 50);
             boolean isPublicServer = a.getBoolean("public-server", false);
             Optional<String> basicAuth = a.getOptionalArg("basic-auth");
-            peergos.initAndStart(localAddress, tlsProps, publicHostname, basicAuth, webroot, useWebAssetCache, isPublicServer,
-                    maxConnectionQueue, handlerThreads);
+            List<String> blockstoreDomains = S3Config.getBlockstoreDomains(a);
+            peergos.initAndStart(localAddress, tlsProps, publicHostname, blockstoreDomains, basicAuth, webroot,
+                    useWebAssetCache, isPublicServer, maxConnectionQueue, handlerThreads);
             boolean isPkiNode = nodeId.equals(pkiServerNodeId);
             if (! isPkiNode && useIPFS) {
                 int pkiNodeSwarmPort = a.getInt("pki.node.swarm.port");

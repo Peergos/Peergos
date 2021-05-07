@@ -2,6 +2,8 @@ package peergos.server.storage;
 
 import peergos.server.util.*;
 
+import java.util.*;
+
 public class S3Config {
     public final String path, bucket, region, accessKey, secretKey, regionEndpoint;
 
@@ -39,5 +41,19 @@ public class S3Config {
         String secretKey = a.getArg("s3.secretKey", "");
         String regionEndpoint = a.getArg("s3.region.endpoint", bucket + ".amazonaws.com");
         return new S3Config(path, bucket, region, accessKey, secretKey, regionEndpoint);
+    }
+
+    public static Optional<String> getPublicReadUrl(Args a) {
+        return Optional.ofNullable(a.getArg("blockstore-url", null));
+    }
+
+    public static List<String> getBlockstoreDomains(Args a) {
+        if (! useS3(a))
+            return Collections.emptyList();
+        Optional<String> publicReads = getPublicReadUrl(a);
+        String authedHost = S3Config.build(a).getHost();
+        if (publicReads.isPresent())
+            return Arrays.asList(authedHost, publicReads.get());
+        return Arrays.asList(authedHost);
     }
 }

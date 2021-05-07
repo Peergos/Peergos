@@ -118,6 +118,7 @@ public class UserService {
     public boolean initAndStart(InetSocketAddress local,
                                 Optional<TlsProperties> tlsProps,
                                 Optional<String> publicHostname,
+                                List<String> blockstoreDomains,
                                 Optional<String> basicAuth,
                                 Optional<Path> webroot,
                                 boolean useWebCache,
@@ -208,8 +209,8 @@ public class UserService {
         String host = tlsProps.map(p -> "https://" + p.hostname)
                 .orElse(isPublicServer ? "https://" + publicHostname.get()  :
         "http://" + local.getHostName() + ":" + local.getPort());
-        StaticHandler handler = webroot.map(p -> (StaticHandler) new FileHandler(host, p, true))
-                .orElseGet(() -> new JarHandler(host, true, Paths.get("/webroot")));
+        StaticHandler handler = webroot.map(p -> (StaticHandler) new FileHandler(host, blockstoreDomains, p, true))
+                .orElseGet(() -> new JarHandler(host, blockstoreDomains, true, Paths.get("/webroot")));
 
         if (useWebCache) {
             LOG.info("Caching web-resources");
