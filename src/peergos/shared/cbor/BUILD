@@ -5,5 +5,6 @@ java_library(
     deps=[
         "//src/peergos/shared/io/ipfs/multihash:Multihash",
         "//src/peergos/shared/io/ipfs/cid:Cid",
-    ]
+    ],
+    visibility=["//visibility:public"],
 )
