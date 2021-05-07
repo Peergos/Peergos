@@ -166,7 +166,7 @@ public class Builder {
                 if (enableGC)
                     throw new IllegalStateException("GC should be run separately when using S3!");
                 ContentAddressedStorage.HTTP ipfs = new ContentAddressedStorage.HTTP(ipfsApi, false, hasher);
-                Optional<String> publicReadUrl = Optional.ofNullable(a.getArg("blockstore-url", null));
+                Optional<String> publicReadUrl = S3Config.getPublicReadUrl(a);
                 boolean directWrites = a.getBoolean("direct-s3-writes", false);
                 boolean publicReads = a.getBoolean("public-s3-reads", false);
                 boolean authedReads = a.getBoolean("authed-s3-reads", false);

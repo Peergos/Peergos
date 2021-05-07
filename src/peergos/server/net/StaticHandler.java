@@ -8,13 +8,18 @@ import peergos.shared.util.ArrayOps;
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.stream.*;
 import java.util.zip.GZIPOutputStream;
 
 public abstract class StaticHandler implements HttpHandler
 {
     private final boolean isGzip;
+    private final String host;
+    private final List<String> blockstoreDomain;
 
-    public StaticHandler(boolean isGzip) {
+    public StaticHandler(String host, List<String> blockstoreDomain, boolean isGzip) {
+        this.host = host;
+        this.blockstoreDomain = blockstoreDomain;
         this.isGzip = isGzip;
     }
 
@@ -76,7 +81,17 @@ public abstract class StaticHandler implements HttpHandler
             }
 
             // Only allow assets to be loaded from the original host
-//            httpExchange.getResponseHeaders().set("content-security-policy", "default-src https: 'self'");
+            // Todo work on removing unsafe-inline
+            httpExchange.getResponseHeaders().set("content-security-policy", "default-src 'self' " + host + ";" +
+                    "style-src 'self'" +
+                    " " + host +
+                    " 'unsafe-inline'" + // calendar, spinner
+                    ";" +
+                    "connect-src 'self' " + host + blockstoreDomain.stream().map(d -> " https://" + d).collect(Collectors.joining()) + ";" +
+                    "media-src 'self' " + host + " blob:;" +
+                    "img-src 'self' " + host + " data: blob:;" +
+                    "object-src 'none';"
+            );
             // Don't anyone to load Peergos site in an iframe
             httpExchange.getResponseHeaders().set("x-frame-options", "sameorigin");
             // Enable cross site scripting protection
@@ -85,6 +100,10 @@ public abstract class StaticHandler implements HttpHandler
             httpExchange.getResponseHeaders().set("x-content-type-options", "nosniff");
             // Don't send Peergos referrer to anyone
             httpExchange.getResponseHeaders().set("referrer-policy", "no-referrer");
+            // allow list of permissions
+            httpExchange.getResponseHeaders().set("permissions-policy",
+                    "geolocation=(), gyroscope=(), magnetometer=(), accelerometer=(), microphone=(), " +
+                    "camera=(self), fullscreen=(self)");
             if (! isRoot) {
                 String previousEtag = httpExchange.getRequestHeaders().getFirst("If-None-Match");
                 if (res.hash.equals(previousEtag)) {
@@ -122,7 +141,7 @@ public abstract class StaticHandler implements HttpHandler
         Map<String, Asset> cache = new ConcurrentHashMap<>();
         StaticHandler that = this;
 
-        return new StaticHandler(isGzip) {
+        return new StaticHandler(host, blockstoreDomain, isGzip) {
             @Override
             public Asset getAsset(String resourcePath) throws IOException {
                 if (! cache.containsKey(resourcePath))
