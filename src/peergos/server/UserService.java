@@ -6,7 +6,8 @@ import java.util.logging.Logger;
 import peergos.server.storage.*;
 import peergos.server.messages.*;
 import peergos.server.storage.admin.*;
-import peergos.server.util.Logging;
+import peergos.server.util.*;
+
 import java.util.logging.Level;
 
 import com.sun.net.httpserver.*;
@@ -206,9 +207,9 @@ public class UserService {
             LOG.info("Using webroot from jar");
         if (isPublicServer && publicHostname.isEmpty())
             throw new IllegalStateException("Missing arg public-hostname");
-        String host = tlsProps.map(p -> "https://" + p.hostname)
-                .orElse(isPublicServer ? "https://" + publicHostname.get()  :
-        "http://" + local.getHostName() + ":" + local.getPort());
+        CspHost host = tlsProps.map(p -> new CspHost("https://", p.hostname))
+                .orElse(isPublicServer ? new CspHost("https://", publicHostname.get())  :
+        new CspHost("http://",  local.getHostName(), local.getPort()));
         StaticHandler handler = webroot.map(p -> (StaticHandler) new FileHandler(host, blockstoreDomains, p, true))
                 .orElseGet(() -> new JarHandler(host, blockstoreDomains, true, Paths.get("/webroot")));
 

@@ -14,10 +14,10 @@ import java.util.zip.GZIPOutputStream;
 public abstract class StaticHandler implements HttpHandler
 {
     private final boolean isGzip;
-    private final String host;
+    private final CspHost host;
     private final List<String> blockstoreDomain;
 
-    public StaticHandler(String host, List<String> blockstoreDomain, boolean isGzip) {
+    public StaticHandler(CspHost host, List<String> blockstoreDomain, boolean isGzip) {
         this.host = host;
         this.blockstoreDomain = blockstoreDomain;
         this.isGzip = isGzip;
@@ -80,16 +80,21 @@ public abstract class StaticHandler implements HttpHandler
                 httpExchange.getResponseHeaders().set("ETag", res.hash);
             }
 
+            String reqHost = httpExchange.getRequestHeaders().get("Host").stream().findFirst().orElse("");
+            boolean isSubdomain = reqHost.endsWith("." + host.domain + host.port.map(p -> ":" + p).orElse(""));
+
             // Only allow assets to be loaded from the original host
-            // Todo work on removing unsafe-inline
-            httpExchange.getResponseHeaders().set("content-security-policy", "default-src 'self' " + host + ";" +
+            // Todo work on removing unsafe-inline from sub domains
+            httpExchange.getResponseHeaders().set("content-security-policy", "default-src 'self' " + this.host + ";" +
                     "style-src 'self'" +
-                    " " + host +
-                    " 'unsafe-inline'" + // calendar, spinner
+                    " " + this.host +
+                    (isSubdomain ? " 'unsafe-inline'" : "") + // calendar, editor, todoboard, pdfviewer
                     ";" +
-                    "connect-src 'self' " + host + blockstoreDomain.stream().map(d -> " https://" + d).collect(Collectors.joining()) + ";" +
-                    "media-src 'self' " + host + " blob:;" +
-                    "img-src 'self' " + host + " data: blob:;" +
+                    "frame-src 'self' " + this.host.wildcard() + ";" +
+                    "frame-ancestors 'self' " + this.host + ";" +
+                    "connect-src 'self' " + this.host + blockstoreDomain.stream().map(d -> " https://" + d).collect(Collectors.joining()) + ";" +
+                    "media-src 'self' " + this.host + " blob:;" +
+                    "img-src 'self' " + this.host + " data: blob:;" +
                     "object-src 'none';"
             );
             // Don't anyone to load Peergos site in an iframe

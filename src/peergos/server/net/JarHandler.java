@@ -7,7 +7,7 @@ import java.util.*;
 public class JarHandler extends StaticHandler {
     private final Path root;
 
-    public JarHandler(String host, List<String> blockstoreDomain, boolean isGzip, Path root) {
+    public JarHandler(CspHost host, List<String> blockstoreDomain, boolean isGzip, Path root) {
         super(host, blockstoreDomain, isGzip);
         this.root = root;
     }
