@@ -208,8 +208,9 @@ public class UserService {
         if (isPublicServer && publicHostname.isEmpty())
             throw new IllegalStateException("Missing arg public-hostname");
         CspHost host = tlsProps.map(p -> new CspHost("https://", p.hostname))
-                .orElse(isPublicServer ? new CspHost("https://", publicHostname.get())  :
-        new CspHost("http://",  local.getHostName(), local.getPort()));
+                .orElse(isPublicServer ?
+                        new CspHost("https://", publicHostname.get())  :
+                        new CspHost("http://",  local.getHostName(), local.getPort()));
         StaticHandler handler = webroot.map(p -> (StaticHandler) new FileHandler(host, blockstoreDomains, p, true))
                 .orElseGet(() -> new JarHandler(host, blockstoreDomains, true, Paths.get("/webroot")));
 
