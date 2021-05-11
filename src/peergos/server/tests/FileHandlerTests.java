@@ -12,7 +12,8 @@ public class FileHandlerTests {
     static final Path TEST_ROOT = Paths.get("test", "resources", "static_handler");
     @Test
     public  void  test_read() throws IOException {
-        FileHandler fileHandler = new FileHandler(new CspHost("http://", "localhost"), Collections.emptyList(), TEST_ROOT, false);
+        FileHandler fileHandler = new FileHandler(new CspHost("http://", "localhost"),
+                Collections.emptyList(), Collections.emptyList(), TEST_ROOT, false);
         for (String path : Arrays.asList("something.txt", "/something.txt")) {
             StaticHandler.Asset asset = fileHandler.getAsset(path);
             Assert.assertEquals(new String(asset.data), "The thing!");
