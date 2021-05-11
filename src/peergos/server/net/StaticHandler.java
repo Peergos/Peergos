@@ -2,6 +2,7 @@ package peergos.server.net;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
+import peergos.server.util.*;
 import peergos.shared.crypto.hash.Hash;
 import peergos.shared.util.ArrayOps;
 
@@ -14,12 +15,17 @@ import java.util.zip.GZIPOutputStream;
 public abstract class StaticHandler implements HttpHandler
 {
     private final boolean isGzip;
-    private final String host;
+    private final CspHost host;
     private final List<String> blockstoreDomain;
+    private final List<String> appsubdomains;
+    private final Map<String, String> appDomains;
 
-    public StaticHandler(String host, List<String> blockstoreDomain, boolean isGzip) {
+    public StaticHandler(CspHost host, List<String> blockstoreDomain, List<String> appSubdomains, boolean isGzip) {
         this.host = host;
         this.blockstoreDomain = blockstoreDomain;
+        this.appsubdomains = appSubdomains;
+        this.appDomains = appSubdomains.stream()
+                .collect(Collectors.toMap(s -> s + "." + host.domain + host.port.map(p -> ":" + p).orElse(""), s -> s));
         this.isGzip = isGzip;
     }
 
@@ -80,16 +86,32 @@ public abstract class StaticHandler implements HttpHandler
                 httpExchange.getResponseHeaders().set("ETag", res.hash);
             }
 
+            String reqHost = httpExchange.getRequestHeaders().get("Host").stream().findFirst().orElse("");
+            boolean isSubdomain = appDomains.containsKey(reqHost);
+            Logging.LOG().info("Req host: " + reqHost);
+            // subdomains and only subdomains can access apps/ files
+            String app = appDomains.get(reqHost);
+            if (isSubdomain ^ path.startsWith("apps/" + app)) {
+                System.err.println("404 FileNotFound: " + path);
+                httpExchange.sendResponseHeaders(404, 0);
+                httpExchange.getResponseBody().close();
+                return;
+            }
+
             // Only allow assets to be loaded from the original host
-            // Todo work on removing unsafe-inline
-            httpExchange.getResponseHeaders().set("content-security-policy", "default-src 'self' " + host + ";" +
+            // Todo work on removing unsafe-inline from sub domains
+            httpExchange.getResponseHeaders().set("content-security-policy", "default-src 'self' " + this.host + ";" +
                     "style-src 'self'" +
-                    " " + host +
-                    " 'unsafe-inline'" + // calendar, spinner
+                    " " + this.host +
+                    (isSubdomain ? " 'unsafe-inline' https://" + reqHost : "") + // calendar, editor, todoboard, pdfviewer
                     ";" +
-                    "connect-src 'self' " + host + blockstoreDomain.stream().map(d -> " https://" + d).collect(Collectors.joining()) + ";" +
-                    "media-src 'self' " + host + " blob:;" +
-                    "img-src 'self' " + host + " data: blob:;" +
+                    (isSubdomain ? "sandbox allow-scripts allow-forms;" : "") +
+                    "frame-src 'self' " + (isSubdomain ? "" : this.host.wildcard()) + ";" +
+                    "frame-ancestors 'self' " + this.host + ";" +
+                    "connect-src 'self' " + this.host +
+                    (isSubdomain ? "" : blockstoreDomain.stream().map(d -> " https://" + d).collect(Collectors.joining())) + ";" +
+                    "media-src 'self' " + this.host + " blob:;" +
+                    "img-src 'self' " + this.host + " data: blob:;" +
                     "object-src 'none';"
             );
             // Don't anyone to load Peergos site in an iframe
@@ -141,7 +163,7 @@ public abstract class StaticHandler implements HttpHandler
         Map<String, Asset> cache = new ConcurrentHashMap<>();
         StaticHandler that = this;
 
-        return new StaticHandler(host, blockstoreDomain, isGzip) {
+        return new StaticHandler(host, blockstoreDomain, appsubdomains, isGzip) {
             @Override
             public Asset getAsset(String resourcePath) throws IOException {
                 if (! cache.containsKey(resourcePath))
