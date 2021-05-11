@@ -8,5 +8,7 @@ java_library(
         "//src/peergos/shared/io/ipfs/multihash:Multihash",
         "//src/peergos/shared/io/ipfs/cid:Cid",
         "@gwt_jsinterop_artifact//:gwt_jsinterop_artifact",
+        "//src/peergos/shared/user/fs:Chunk",
+        "//src/peergos/shared/user/fs:AsyncReader",
     ]
 )

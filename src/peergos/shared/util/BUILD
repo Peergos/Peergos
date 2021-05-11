@@ -42,6 +42,7 @@ java_library(
 java_library(
     name = "Futures",
     srcs = ["Futures.java"],
+    visibility = ["//visibility:public"],
     deps = ["//external:gwt_jsinterop"],
 )
 

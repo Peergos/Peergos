@@ -1,15 +1,24 @@
+
 java_library(
-    name="crypto",
+    name="user",
     srcs=glob(["*.java"]),
     visibility=["//visibility:public"],
     deps=[
+    ]
+)
+
+java_library(
+    name="Trio",
+    srcs=[
+        "ScryptGenerator.java",
+        "RandomSecretType.java",
+        "SecretGenerationAlgorithm.java",
+    ],
+    visibility=["//visibility:public"],
+    deps=[
         "//src/peergos/shared/cbor:Cbor",
-        "//src/peergos/shared/io/ipfs/multihash:Multihash",
         "//src/peergos/shared/util:ArrayOps",
-        "//src/peergos/shared/crypto/asymmetric:asymmetric",
-        "//src/peergos/shared/crypto/symmetric:symmetric",
         "//src/peergos/shared/crypto/random:SafeRandom",
         "@gwt_jsinterop_artifact//:gwt_jsinterop_artifact",
-        "//src/peergos/shared/user/fs:Chunk",
-    ],
+    ]
 )
