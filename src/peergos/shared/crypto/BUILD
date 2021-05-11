@@ -1,13 +1,14 @@
-
 java_library(
-    name="symmetric",
+    name="crypto",
     srcs=glob(["*.java"]),
     visibility=["//visibility:public"],
     deps=[
-        "//src/peergos/shared/crypto/random:JSNaCl",
-        "//src/peergos/shared/crypto/random:SafeRandom",
         "//src/peergos/shared/cbor:Cbor",
+        "//src/peergos/shared/io/ipfs/multihash:Multihash",
+        "//src/peergos/shared/util:ArrayOps",
         "//src/peergos/shared/crypto/asymmetric:asymmetric",
+        "//src/peergos/shared/crypto/symmetric:symmetric",
+        "//src/peergos/shared/crypto/random:SafeRandom",
         "@gwt_jsinterop_artifact//:gwt_jsinterop_artifact",
-    ]
+    ],
 )
