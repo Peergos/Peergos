@@ -2,6 +2,7 @@ package peergos.server.net;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
+import peergos.server.util.*;
 import peergos.shared.crypto.hash.Hash;
 import peergos.shared.util.ArrayOps;
 
@@ -82,14 +83,16 @@ public abstract class StaticHandler implements HttpHandler
 
             String reqHost = httpExchange.getRequestHeaders().get("Host").stream().findFirst().orElse("");
             boolean isSubdomain = reqHost.endsWith("." + host.domain + host.port.map(p -> ":" + p).orElse(""));
+            Logging.LOG().info("Req host: " + reqHost);
 
             // Only allow assets to be loaded from the original host
             // Todo work on removing unsafe-inline from sub domains
             httpExchange.getResponseHeaders().set("content-security-policy", "default-src 'self' " + this.host + ";" +
                     "style-src 'self'" +
                     " " + this.host +
-                    (isSubdomain ? " 'unsafe-inline'" : "") + // calendar, editor, todoboard, pdfviewer
+                    (isSubdomain ? " 'unsafe-inline' https://" + reqHost : "") + // calendar, editor, todoboard, pdfviewer
                     ";" +
+                    (isSubdomain ? "sandbox allow-scripts allow-forms;" : "") +
                     "frame-src 'self' " + this.host.wildcard() + ";" +
                     "frame-ancestors 'self' " + this.host + ";" +
                     "connect-src 'self' " + this.host + blockstoreDomain.stream().map(d -> " https://" + d).collect(Collectors.joining()) + ";" +
