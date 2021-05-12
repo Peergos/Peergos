@@ -182,13 +182,17 @@ public class GatewayHandler implements HttpHandler {
         }
 
         // Only allow assets to be loaded from the original host
-//            httpExchange.getResponseHeaders().set("content-security-policy", "default-src https: 'self'");
+//            httpExchange.getResponseHeaders().set("content-security-policy", "default-src 'self'");
         // Don't anyone to load Peergos site in an iframe
         httpExchange.getResponseHeaders().set("x-frame-options", "sameorigin");
         // Enable cross site scripting protection
         httpExchange.getResponseHeaders().set("x-xss-protection", "1; mode=block");
+        // Don't let browser sniff mime types
+        httpExchange.getResponseHeaders().set("x-content-type-options", "nosniff");
         // Don't send Peergos referrer to anyone
         httpExchange.getResponseHeaders().set("referrer-policy", "no-referrer");
+        // Don't send Peergos referrer to anyone
+        httpExchange.getResponseHeaders().set("permissions-policy", "interest-cohort=()");
 
         httpExchange.sendResponseHeaders(200, size);
         OutputStream resp = httpExchange.getResponseBody();
