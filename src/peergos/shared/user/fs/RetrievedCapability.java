@@ -15,14 +15,6 @@ public class RetrievedCapability {
         this.fileAccess = fileAccess;
     }
 
-    public boolean equals(Object that) {
-        if (that == null)
-            return false;
-        if (!(that instanceof RetrievedCapability))
-            return false;
-        return capability.equals(((RetrievedCapability)that).capability);
-    }
-
     public SymmetricKey getParentKey() {
         return getParentKey(fileAccess, capability.rBaseKey);
     }

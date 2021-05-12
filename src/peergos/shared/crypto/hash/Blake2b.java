@@ -1916,7 +1916,6 @@ public interface Blake2b {
         }
         public final Param setKey (final byte[] key) {
             assert key != null : "key is null";
-            assert key.length >= 0 : assertFail("key.length", key.length, inclusiveUpperBound, 0);
             assert key.length <= Spec.max_key_bytes : assertFail("key.length", key.length, inclusiveUpperBound, Spec.max_key_bytes);
 
             // zeropad keybytes

@@ -4,6 +4,7 @@ package peergos.shared.cbor;
  * JACOB - CBOR implementation in Java.
  *
  * (C) Copyright - 2013 - J.W. Janssen <j.w.janssen@lxtreme.nl>
+ * Apache Public License v2.0
  */
 
 import static peergos.shared.cbor.CborConstants.*;
@@ -13,6 +14,7 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PushbackInputStream;
+import java.util.*;
 
 /**
  * Provides a decoder capable of handling CBOR encoded data from a {@link InputStream}.
@@ -33,7 +35,7 @@ public class CborDecoder {
     }
 
     private static void fail(String msg, Object... args) throws IOException {
-        throw new IOException(msg + args);
+        throw new IOException(msg + Arrays.toString(args));
     }
 
     private static String lengthToString(int len) {
@@ -341,13 +343,6 @@ public class CborDecoder {
         return null;
     }
 
-    /**
-     * Reads the next major type from the underlying input stream, and verifies whether it matches the given expectation.
-     *
-     * @param majorType the expected major type, cannot be <code>null</code> (unchecked).
-     * @return either <tt>-1</tt> if the major type was an signed integer, or <tt>0</tt> otherwise.
-     * @throws IOException in case of I/O problems reading the CBOR-encoded value from the underlying input stream.
-     */
     protected long expectIntegerType(int ib) throws IOException {
         int majorType = ((ib & 0xFF) >>> 5);
         if ((majorType != TYPE_UNSIGNED_INTEGER) && (majorType != TYPE_NEGATIVE_INTEGER)) {

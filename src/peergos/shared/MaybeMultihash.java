@@ -35,7 +35,7 @@ public class MaybeMultihash implements Cborable {
 
     public CompletableFuture<Boolean> ifPresent(Function<Multihash, CompletableFuture<Boolean>> con) {
         if (isPresent())
-            con.apply(hash);
+            return con.apply(hash);
         return CompletableFuture.completedFuture(true);
     }
 
