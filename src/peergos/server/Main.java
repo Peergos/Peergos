@@ -691,6 +691,10 @@ public class Main extends Builder {
             List<UserPublicKeyLink> existing = user.network.coreNode.getChain(username).join();
             Multihash currentStorageNodeId = existing.get(existing.size() - 1).claim.storageProviders.stream().findFirst().get();
             Multihash newStorageNodeId = network.dhtClient.id().join();
+            if (currentStorageNodeId.equals(newStorageNodeId)) {
+                System.err.println("You are trying to migrate a user to their current server. Please supply the url of a different server.");
+                return false;
+            }
             System.out.println("Migrating user from node " + currentStorageNodeId + " to " + newStorageNodeId);
             List<UserPublicKeyLink> newChain = Migrate.buildMigrationChain(existing, newStorageNodeId, user.signer.secret);
             user.network.coreNode.migrateUser(username, newChain, currentStorageNodeId).join();
