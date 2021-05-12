@@ -1,6 +1,5 @@
 package peergos.shared.corenode;
 
-import peergos.server.crypto.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
@@ -14,6 +13,7 @@ import java.util.concurrent.*;
 import java.util.stream.*;
 
 public class OpLog implements Cborable, MutablePointers, ContentAddressedStorage {
+    private static final int ED25519_SIGNATURE_SIZE = 64;
 
     public final List<Either<PointerWrite, BlockWrite>> operations;
     private final Map<Multihash, byte[]> storage = new HashMap<>();
@@ -88,7 +88,7 @@ public class OpLog implements Cborable, MutablePointers, ContentAddressedStorage
 
     private CompletableFuture<Multihash> put(PublicKeyHash writer, byte[] signedHash, byte[] block, boolean isRaw) {
         // Assume we are using ed25519 for now
-        byte[] hash = Arrays.copyOfRange(signedHash, TweetNaCl.SIGNATURE_SIZE_BYTES, signedHash.length);
+        byte[] hash = Arrays.copyOfRange(signedHash, ED25519_SIGNATURE_SIZE, signedHash.length);
         Multihash h = new Cid(1, isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor, Multihash.Type.sha2_256, hash);
         storage.put(h, block);
         operations.add(Either.b(new BlockWrite(writer, signedHash, block, isRaw)));
