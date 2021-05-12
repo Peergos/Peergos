@@ -691,11 +691,17 @@ public class Main extends Builder {
             List<UserPublicKeyLink> existing = user.network.coreNode.getChain(username).join();
             Multihash currentStorageNodeId = existing.get(existing.size() - 1).claim.storageProviders.stream().findFirst().get();
             Multihash newStorageNodeId = network.dhtClient.id().join();
+            System.out.println("Migrating user from node " + currentStorageNodeId + " to " + newStorageNodeId);
             List<UserPublicKeyLink> newChain = Migrate.buildMigrationChain(existing, newStorageNodeId, user.signer.secret);
             user.network.coreNode.migrateUser(username, newChain, currentStorageNodeId).join();
+            List<UserPublicKeyLink> updatedChain = user.network.coreNode.getChain(username).join();
+            if (!updatedChain.get(updatedChain.size() - 1).claim.storageProviders.contains(newStorageNodeId))
+                throw new IllegalStateException("Migration failed. Please try again later");
+            System.out.println("Migration complete.");
             return true;
         } catch (Exception ex) {
-            throw new RuntimeException(ex);
+            ex.printStackTrace();
+            return false;
         }
     }
 
