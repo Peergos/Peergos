@@ -4,6 +4,7 @@ import com.sun.net.httpserver.*;
 import peergos.server.util.Logging;
 import peergos.server.util.*;
 import peergos.shared.*;
+import peergos.shared.io.ipfs.api.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
@@ -35,10 +36,12 @@ public class GatewayHandler implements HttpHandler {
     private final class WebRootEntry {
         public final FileWrapper field;
         public final FileWrapper webRoot;
+        public final Optional<String> cspHeader;
 
-        public WebRootEntry(FileWrapper field, FileWrapper webRoot) {
+        public WebRootEntry(FileWrapper field, FileWrapper webRoot, Optional<String> cspHeader) {
             this.field = field;
             this.webRoot = webRoot;
+            this.cspHeader = cspHeader;
         }
     }
 
@@ -90,21 +93,23 @@ public class GatewayHandler implements HttpHandler {
             if (webRootEntry != null) {
                 FileWrapper updatedField = webRootEntry.field.getUpdated(network).join();
                 if (!updatedField.version.equals(webRootEntry.field.version)) {
-                    webRootEntry = new WebRootEntry(updatedField, null);
+                    webRootEntry = new WebRootEntry(updatedField, null, Optional.empty());
                     invalidateAssets(owner);
                 }
             } else {
                 Path toProfileEntry = Paths.get(owner).resolve(".profile").resolve("webroot");
                 AbsoluteCapability capToWebRootField = UserContext.getPublicCapability(toProfileEntry, network).join();
                 FileWrapper webRootField = network.getFile(capToWebRootField, owner).join().get();
-                webRootEntry = new WebRootEntry(webRootField, null);
+                webRootEntry = new WebRootEntry(webRootField, null, Optional.empty());
             }
 
             if (webRootEntry.webRoot == null) {
                 Path toWebRoot = Paths.get(new String(Serialize.readFully(webRootEntry.field, crypto, network).join()));
                 AbsoluteCapability capToWebRoot = UserContext.getPublicCapability(toWebRoot, network).join();
                 FileWrapper webRoot = network.getFile(capToWebRoot, owner).join().get();
-                webRootEntry = new WebRootEntry(webRootEntry.field, webRoot);
+                Optional<FileWrapper> headers = webRoot.getChild("headers.json", crypto.hasher, network).join();
+                Optional<String> csp = headers.flatMap(f -> getCsp(f));
+                webRootEntry = new WebRootEntry(webRootEntry.field, webRoot, csp);
                 cacheRoot(owner, webRootEntry);
             }
 
@@ -112,7 +117,8 @@ public class GatewayHandler implements HttpHandler {
             if (cached != null) {
                 FileWrapper updated = cached.source.getUpdated(network).join();
                 if (updated.version.equals(cached.source.version)) {
-                    serveAsset(AsyncReader.build(cached.data), cached.source.getFileProperties(), cached.data.length, path, httpExchange);
+                    serveAsset(AsyncReader.build(cached.data), cached.source.getFileProperties(), cached.data.length,
+                            path, webRootEntry.cspHeader, httpExchange);
                     return;
                 }
             }
@@ -134,7 +140,8 @@ public class GatewayHandler implements HttpHandler {
             }
             AsyncReader reader = asset.getInputStream(network, crypto, x -> {}).join();
             long size = asset.getSize();
-            Optional<byte[]> bodyToCache = serveAsset(reader, asset.getFileProperties(), size, path, httpExchange);
+            Optional<byte[]> bodyToCache = serveAsset(reader, asset.getFileProperties(), size, path,
+                    webRootEntry.cspHeader, httpExchange);
             if (bodyToCache.isPresent()) {
                 cacheAsset(owner, path, new Asset(asset, bodyToCache.get()));
             }
@@ -150,12 +157,25 @@ public class GatewayHandler implements HttpHandler {
         }
     }
 
+    private Optional<String> getCsp(FileWrapper headers) {
+        if (headers.getSize() > 1024)
+            return Optional.empty();
+        try {
+            byte[] body = Serialize.readFully(headers.getInputStream(network, crypto, x -> {}).join(), headers.getSize()).join();
+            Map<String, String> json = (Map)JSONParser.parse(new String(body));
+            return Optional.ofNullable(json.get("content-security-policy"));
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     private ThreadLocal<byte[]> buffer = ThreadLocal.withInitial(() -> new byte[MAX_ASSET_SIZE_CACHE]);
 
     private Optional<byte[]> serveAsset(AsyncReader reader,
                                         FileProperties props,
                                         long size,
                                         String path,
+                                        Optional<String> cspHeader,
                                         HttpExchange httpExchange) throws IOException {
 //            if (isGzip)
 //                httpExchange.getResponseHeaders().set("Content-Encoding", "gzip");
@@ -168,7 +188,7 @@ public class GatewayHandler implements HttpHandler {
         }
 
         // Only allow assets to be loaded from the original host
-//        httpExchange.getResponseHeaders().set("content-security-policy", "default-src 'self'");
+        httpExchange.getResponseHeaders().set("content-security-policy", cspHeader.orElse("default-src 'self'"));
         // Don't anyone to load Peergos site in an iframe
         httpExchange.getResponseHeaders().set("x-frame-options", "sameorigin");
         // Enable cross site scripting protection
