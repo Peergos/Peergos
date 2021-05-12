@@ -1,6 +1,3 @@
-
-# These form a circular dependancy, a pathological example, 
-# treat as a single compilation unit
 java_library(
     name = "ArrayOps",
     srcs = ["ArrayOps.java", "ByteArrayWrapper.java"],
@@ -34,10 +31,16 @@ java_library(
 )
 
 # Internal deps
-# java_library(
-#     name = "FileUtils",
-#     srcs = ["FileUtils.java"],
-# )
+java_library(
+    name = "FileUtils",
+    srcs = ["FileUtils.java"],
+    deps = [
+        "//src/peergos/shared/cbor:Cbor",
+        "//src/peergos/shared/user/fs:AsyncReader",
+        # UserContext
+        # Serialize
+    ]
+)
 
 java_library(
     name = "Futures",
@@ -54,32 +57,45 @@ java_library(
 java_library(
     name = "LRUCache",
     srcs = ["LRUCache.java"],
+    visibility = ["//visibility:public"],
 )
 
 java_library(
     name = "Pair",
     srcs = ["Pair.java"],
+    visibility = ["//visibility:public"],
 )
 
 java_library(
     name = "ProgressConsumer",
     srcs = ["ProgressConsumer.java"],
+    visibility = ["//visibility:public"],
     deps = ["//external:gwt_jsinterop"],
 )
 
 # External dep on `jsinterop` don't know how to include 
 # Internal dep
-# java_library(
-#     name = "Serialize",
-#     srcs = ["Serialize.java"],
-#     deps = ["//external:gwt_jsinterop"],
-# )
+java_library(
+    name = "Serialize",
+    srcs = ["Serialize.java"],
+    deps = [
+        "//src/peergos/shared/cbor:Cbor",
+        "//src/peergos/shared/user/fs:AsyncReader",
+        # FileWrapper
+        # Crypto
+        # NetworkAccess
+        "//external:gwt_jsinterop"
+    ],
+)
 
-# Internal dep
-# java_library(
-#     name = "TimeLimitedClient",
-#     srcs = ["TimeLimitedClient.java"],
-# )
+java_library(
+    name = "TimeLimitedClient",
+    srcs = ["TimeLimitedClient.java"],
+    deps = [
+        "//src/peergos/shared/cbor:Cbor",
+        "//src/peergos/shared/crypto/asymmetric:asymmetric",
+    ]
+)
 
 java_library(
     name = "TriFunction",

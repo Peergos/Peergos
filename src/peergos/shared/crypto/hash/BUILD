@@ -10,5 +10,7 @@ java_library(
         "@gwt_jsinterop_artifact//:gwt_jsinterop_artifact",
         "//src/peergos/shared/user/fs:Chunk",
         "//src/peergos/shared/user/fs:AsyncReader",
+        "//src/peergos/shared/user:Secret",
+        "//src/peergos/shared/crypto:ProofOfWork",
     ]
 )

@@ -1,6 +1,6 @@
 java_library(
     name="Multihash",
-    srcs=["Multihash.java"],
+    srcs=glob(["*.java"]),
     visibility=["//visibility:public"],
     deps=[
         "//external:gwt_jsinterop",

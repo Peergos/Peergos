@@ -1,0 +1,12 @@
+java_library(
+    name="multiaddr",
+    srcs=glob(["*.java"]),
+    visibility=["//visibility:public"],
+    deps=[
+        "//src/peergos/shared/io/ipfs/cid:Cid",
+        "//src/peergos/shared/util:ArrayOps",
+        "//src/peergos/shared/io/ipfs/multihash:Multihash",
+        "//src/peergos/shared/io/ipfs/multibase:Base58",
+        "//src/peergos/shared/io/ipfs/multibase:Multibase",
+    ],
+)

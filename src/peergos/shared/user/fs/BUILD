@@ -6,6 +6,8 @@ java_library(
         "@gwt_jsinterop_artifact//:gwt_jsinterop_artifact",
         "//src/peergos/shared/util:ArrayOps",
         "//src/peergos/shared/io/ipfs/multibase:Base58",
+        "//src/peergos/shared/crypto:crypto",
+        "//src/peergos/shared/crypto/hash:hash",
     ]
 )
 
@@ -31,6 +33,26 @@ java_library(
     visibility=["//visibility:public"],
     deps=[
         "//src/peergos/shared/crypto/symmetric:symmetric"
+    ]
+)
+
+
+java_library(
+    name="Fragment",
+    srcs=["Fragment.java"],
+    visibility=["//visibility:public"],
+    deps=[
+    ]
+)
+
+
+java_library(
+    name="FragmentWithHash",
+    srcs=["FragmentWithHash.java"],
+    visibility=["//visibility:public"],
+    deps=[
+        ":Fragment",
+        "//src/peergos/shared/io/ipfs/multihash:Multihash",
     ]
 )
 
