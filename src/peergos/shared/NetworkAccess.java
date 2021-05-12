@@ -2,7 +2,6 @@ package peergos.shared;
 import java.util.logging.*;
 
 import jsinterop.annotations.*;
-import peergos.client.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
@@ -173,8 +172,6 @@ public class NetworkAccess {
     @JsMethod
     public static CompletableFuture<NetworkAccess> buildJS(String pkiNodeId, boolean isPublic) {
         Multihash pkiServerNodeId = Cid.decode(pkiNodeId);
-        System.setOut(new ConsolePrintStream());
-        System.setErr(new ConsolePrintStream());
         JavaScriptPoster relative = new JavaScriptPoster(false, isPublic);
         JavaScriptPoster absolute = new JavaScriptPoster(true, true);
         ScryptJS hasher = new ScryptJS();
