@@ -38,6 +38,8 @@ import java.util.function.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static peergos.server.util.Logging.LOG;
+
 public class Main extends Builder {
     public static final String PEERGOS_PATH = "PEERGOS_PATH";
     public static final Path DEFAULT_PEERGOS_DIR_PATH =
@@ -188,7 +190,7 @@ public class Main extends Builder {
                     crypto.random);
             Files.write(args.fromPeergosDir("pki.secret.key.path"), cipherTextCbor.serialize());
             Files.write(args.fromPeergosDir("pki.public.key.path"), pkiKeys.publicSigningKey.toCbor().toByteArray());
-            System.out.println("Peergos user identity hash: " + peergosPublicHash);
+            LOG().info("Peergos user identity hash: " + peergosPublicHash);
             return args.setIfAbsent("peergos.identity.hash", peergosPublicHash.toString());
         } catch (Exception e) {
             throw new RuntimeException(e);
