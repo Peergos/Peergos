@@ -159,6 +159,52 @@ public class GatewayHandler implements HttpHandler {
                                         HttpExchange httpExchange) throws IOException {
 //            if (isGzip)
 //                httpExchange.getResponseHeaders().set("Content-Encoding", "gzip");
+
+        if (httpExchange.getRequestMethod().equals("HEAD")) {
+            httpExchange.getResponseHeaders().set("Content-Length", "" + size);
+            httpExchange.getResponseHeaders().set("Content-Type", props.mimeType);
+            httpExchange.sendResponseHeaders(200, -1);
+            return Optional.empty();
+        }
+
+        // Only allow assets to be loaded from the original host
+//        httpExchange.getResponseHeaders().set("content-security-policy", "default-src 'self'");
+        // Don't anyone to load Peergos site in an iframe
+        httpExchange.getResponseHeaders().set("x-frame-options", "sameorigin");
+        // Enable cross site scripting protection
+        httpExchange.getResponseHeaders().set("x-xss-protection", "1; mode=block");
+        // Don't let browser sniff mime types
+        httpExchange.getResponseHeaders().set("x-content-type-options", "nosniff");
+        // Don't send Peergos referrer to anyone
+        httpExchange.getResponseHeaders().set("referrer-policy", "no-referrer");
+        // Don't send Peergos referrer to anyone
+        httpExchange.getResponseHeaders().set("permissions-policy", "interest-cohort=()");
+
+        if (size < MAX_ASSET_SIZE_CACHE) {
+            byte[] body = Serialize.readFully(reader, size).join();
+            addContentType(httpExchange, path, body);
+            httpExchange.sendResponseHeaders(200, size);
+            OutputStream resp = httpExchange.getResponseBody();
+            resp.write(body);
+            httpExchange.close();
+            return Optional.of(body);
+        }
+
+        addContentType(httpExchange, path, null);
+        httpExchange.sendResponseHeaders(200, size);
+        OutputStream resp = httpExchange.getResponseBody();
+        byte[] buf = buffer.get();
+        int read;
+        long offset = 0;
+        while ((read = reader.readIntoArray(buf, 0, (int) Math.min(size - offset, buf.length)).join()) >= 0) {
+            resp.write(buf, 0, read);
+            offset += read;
+        }
+        httpExchange.close();
+        return Optional.empty();
+    }
+
+    private void addContentType(HttpExchange httpExchange, String path, byte[] start) {
         if (path.endsWith(".js"))
             httpExchange.getResponseHeaders().set("Content-Type", "text/javascript");
         else if (path.endsWith(".html"))
@@ -173,45 +219,8 @@ public class GatewayHandler implements HttpHandler {
             httpExchange.getResponseHeaders().set("Content-Type", "application/font-woff");
         else if (path.endsWith(".svg"))
             httpExchange.getResponseHeaders().set("Content-Type", "image/svg+xml");
-
-        if (httpExchange.getRequestMethod().equals("HEAD")) {
-            httpExchange.getResponseHeaders().set("Content-Length", "" + size);
-            httpExchange.getResponseHeaders().set("Content-Type", props.mimeType);
-            httpExchange.sendResponseHeaders(200, -1);
-            return Optional.empty();
-        }
-
-        // Only allow assets to be loaded from the original host
-//            httpExchange.getResponseHeaders().set("content-security-policy", "default-src 'self'");
-        // Don't anyone to load Peergos site in an iframe
-        httpExchange.getResponseHeaders().set("x-frame-options", "sameorigin");
-        // Enable cross site scripting protection
-        httpExchange.getResponseHeaders().set("x-xss-protection", "1; mode=block");
-        // Don't let browser sniff mime types
-        httpExchange.getResponseHeaders().set("x-content-type-options", "nosniff");
-        // Don't send Peergos referrer to anyone
-        httpExchange.getResponseHeaders().set("referrer-policy", "no-referrer");
-        // Don't send Peergos referrer to anyone
-        httpExchange.getResponseHeaders().set("permissions-policy", "interest-cohort=()");
-
-        httpExchange.sendResponseHeaders(200, size);
-        OutputStream resp = httpExchange.getResponseBody();
-        if (size < MAX_ASSET_SIZE_CACHE) {
-            byte[] body = Serialize.readFully(reader, size).join();
-            resp.write(body);
-            httpExchange.close();
-            return Optional.of(body);
-        }
-
-        byte[] buf = buffer.get();
-        int read;
-        long offset = 0;
-        while ((read = reader.readIntoArray(buf, 0, (int) Math.min(size - offset, buf.length)).join()) >= 0) {
-            resp.write(buf, 0, read);
-            offset += read;
-        }
-        httpExchange.close();
-        return Optional.empty();
+        else if (start!= null && start.length > 15 && Arrays.equals("<!DOCTYPE html>".getBytes(), Arrays.copyOfRange(start, 0, 15)))
+            httpExchange.getResponseHeaders().set("Content-Type", "text/html");
     }
 
     private void serve404(HttpExchange httpExchange, FileWrapper webroot) throws IOException {
