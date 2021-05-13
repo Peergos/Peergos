@@ -125,12 +125,8 @@ public class FileWrapper {
     }
 
     @JsMethod
-    public boolean equals(Object other) {
-        if (other == null)
-            return false;
-        if (!(other instanceof FileWrapper))
-            return false;
-        return pointer.equals(((FileWrapper) other).getPointer());
+    public boolean samePointer(FileWrapper other) {
+        return pointer.equals(other.getPointer());
     }
 
     public CompletableFuture<FileWrapper> getUpdated(NetworkAccess network) {
