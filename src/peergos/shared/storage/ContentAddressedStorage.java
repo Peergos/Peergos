@@ -64,7 +64,7 @@ public interface ContentAddressedStorage {
                                              byte[] signature,
                                              byte[] block,
                                              TransactionId tid) {
-        return put(owner, writer, Arrays.asList(signature), Arrays.asList(block), tid)
+        return put(owner, writer, Collections.singletonList(signature), Collections.singletonList(block), tid)
                 .thenApply(hashes -> hashes.get(0));
     }
 
@@ -74,7 +74,7 @@ public interface ContentAddressedStorage {
                                                 byte[] block,
                                                 TransactionId tid,
                                                 ProgressConsumer<Long> progressConsumer) {
-        return putRaw(owner, writer, Arrays.asList(signature), Arrays.asList(block), tid, progressConsumer)
+        return putRaw(owner, writer, Collections.singletonList(signature), Collections.singletonList(block), tid, progressConsumer)
                 .thenApply(hashes -> hashes.get(0));
     }
 
