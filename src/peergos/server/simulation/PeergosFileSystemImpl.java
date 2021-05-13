@@ -130,7 +130,7 @@ public class PeergosFileSystemImpl implements FileSystem {
 
             @Override
             public String user() {
-                return this.user();
+                return fileWrapper.getOwnerName();
             }
 
             @Override
