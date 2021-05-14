@@ -415,7 +415,7 @@ public class IPFS {
         }
 
         public MerkleNode put(String inputFormat, byte[] object, String outputFormat) throws IOException {
-            block.put(Arrays.asList(object));
+            block.put(Collections.singletonList(object));
             String prefix = "http://" + host + ":" + port + version;
             Multipart m = new Multipart(prefix + "block/put/?stream-channels=true&input-enc=" + inputFormat + "&f=" + outputFormat, "UTF-8");
             m.addFilePart("file", new NamedStreamable.ByteArrayWrapper(object));
