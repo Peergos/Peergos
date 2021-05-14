@@ -24,7 +24,7 @@ class S3Exploration {
         String host = bucketName + "." + regionEndpoint;
 
         byte[] payload = "Hi Linode2!".getBytes();
-        Multihash content = new RAMStorage(crypto.hasher).put(null, null, null, Arrays.asList(payload), null).join().get(0);
+        Multihash content = new RAMStorage(crypto.hasher).put(null, null, null, Collections.singletonList(payload), null).join().get(0);
         String s3Key = DirectS3BlockStore.hashToKey(content);// "AFYREIBF5Y4OUJXNGRCHBAR2ZMPQBSW62SZDHFNX2GA6V4J3W7I63LA4UQ"
         {
             // test an authed PUT
@@ -214,7 +214,7 @@ class S3Exploration {
             int r;
             while ((r = in.read(buf)) >= 0)
                 resp.write(buf, 0, r);
-            throw new IllegalStateException("HTTP " + code + "-" + resp.toByteArray());
+            throw new IllegalStateException("HTTP " + code + "-" + new String(resp.toByteArray()));
         } catch (IOException e) {
             InputStream err = conn.getErrorStream();
             ByteArrayOutputStream resp = new ByteArrayOutputStream();
