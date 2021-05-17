@@ -207,7 +207,7 @@ public class UserService {
         else
             LOG.info("Using webroot from jar");
         if (isPublicServer && publicHostname.isEmpty())
-            throw new IllegalStateException("Missing arg public-hostname");
+            throw new IllegalStateException("Missing arg public-domain");
         CspHost host = tlsProps.map(p -> new CspHost("https://", p.hostname))
                 .orElse(isPublicServer ?
                         new CspHost("https://", publicHostname.get())  :
