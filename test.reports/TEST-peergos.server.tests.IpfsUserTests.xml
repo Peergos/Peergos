@@ -1,0 +1,736 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuite errors="0" failures="0" hostname="MacBook-Pro-Dawid.local" name="peergos.server.tests.IpfsUserTests" skipped="1" tests="54" time="423.054" timestamp="2021-05-16T19:21:11">
+  <properties>
+    <property name="ant.library.dir" value="/usr/local/Cellar/ant/1.10.9/libexec/lib" />
+    <property name="ant.file.type" value="file" />
+    <property name="java.specification.version" value="15" />
+    <property name="ant.project.name" value="Peergos" />
+    <property name="sun.jnu.encoding" value="UTF-8" />
+    <property name="dist" value="/Users/dawid/dev/mudita/Peergos/dist" />
+    <property name="java.class.path" value="/Users/dawid/dev/mudita/Peergos/lib-build/gwt-user.jar:/Users/dawid/dev/mudita/Peergos/lib-build/hamcrest-core-1.3.jar:/Users/dawid/dev/mudita/Peergos/lib-build/junit-4.11.jar:/Users/dawid/dev/mudita/Peergos/lib/HikariCP-3.4.2.jar:/Users/dawid/dev/mudita/Peergos/lib/jain-sdp.jar:/Users/dawid/dev/mudita/Peergos/lib/jline-3.12.1.jar:/Users/dawid/dev/mudita/Peergos/lib/jnr-fuse-0.3-all.jar:/Users/dawid/dev/mudita/Peergos/lib/postgresql-42.2.8.jar:/Users/dawid/dev/mudita/Peergos/lib/simpleclient-0.8.0.jar:/Users/dawid/dev/mudita/Peergos/lib/simpleclient_common-0.8.0.jar:/Users/dawid/dev/mudita/Peergos/lib/simpleclient_httpserver-0.8.0.jar:/Users/dawid/dev/mudita/Peergos/lib/slf4j-api-1.7.30.jar:/Users/dawid/dev/mudita/Peergos/lib/slf4j-nop-1.7.30.jar:/Users/dawid/dev/mudita/Peergos/lib/sqlite-jdbc-3.30.1.jar:/Users/dawid/dev/mudita/Peergos/lib/weupnp-0.1.2-SNAPSHOT.jar:/Users/dawid/dev/mudita/Peergos/build:/usr/local/Cellar/ant/1.10.9/libexec/lib/ant-launcher.jar:/usr/local/Cellar/ant/1.10.9/libexec/lib/ant.jar:/usr/local/Cellar/ant/1.10.9/libexec/lib/ant-junit.jar:/usr/local/Cellar/ant/1.10.9/libexec/lib/ant-junit4.jar" />
+    <property name="java.vm.vendor" value="Oracle Corporation" />
+    <property name="test.reports" value="/Users/dawid/dev/mudita/Peergos/test.reports" />
+    <property name="sun.arch.data.model" value="64" />
+    <property name="java.vendor.url" value="https://openjdk.java.net/" />
+    <property name="os.name" value="Mac OS X" />
+    <property name="java.vm.specification.version" value="15" />
+    <property name="sun.java.launcher" value="SUN_STANDARD" />
+    <property name="user.country" value="PL" />
+    <property name="sun.boot.library.path" value="/usr/local/Cellar/openjdk/15.0.1/libexec/openjdk.jdk/Contents/Home/lib" />
+    <property name="sun.java.command" value="org.apache.tools.ant.taskdefs.optional.junit.JUnitTestRunner peergos.server.tests.IpfsUserTests skipNonTests=true filtertrace=true haltOnError=false haltOnFailure=false formatter=org.apache.tools.ant.taskdefs.optional.junit.SummaryJUnitResultFormatter showoutput=false outputtoformatters=true logfailedtests=true threadid=0 logtestlistenerevents=false formatter=org.apache.tools.ant.taskdefs.optional.junit.XMLJUnitResultFormatter,/Users/dawid/dev/mudita/Peergos/test.reports/TEST-peergos.server.tests.IpfsUserTests.xml crashfile=/Users/dawid/dev/mudita/Peergos/junitvmwatcher1681034627714746235.properties propsfile=/Users/dawid/dev/mudita/Peergos/junit14704372715936519294.properties" />
+    <property name="http.nonProxyHosts" value="local|*.local|169.254/16|*.169.254/16" />
+    <property name="jdk.debug" value="release" />
+    <property name="sun.cpu.endian" value="little" />
+    <property name="user.home" value="/Users/dawid" />
+    <property name="user.language" value="pl" />
+    <property name="java.specification.vendor" value="Oracle Corporation" />
+    <property name="java.version.date" value="2020-10-20" />
+    <property name="java.home" value="/usr/local/Cellar/openjdk/15.0.1/libexec/openjdk.jdk/Contents/Home" />
+    <property name="file.separator" value="/" />
+    <property name="basedir" value="/Users/dawid/dev/mudita/Peergos" />
+    <property name="java.vm.compressedOopsMode" value="Zero based" />
+    <property name="line.separator" value="&#xa;" />
+    <property name="ant.java.version" value="15" />
+    <property name="java.vm.specification.vendor" value="Oracle Corporation" />
+    <property name="java.specification.name" value="Java Platform API Specification" />
+    <property name="test.source.absolute" value="/Users/dawid/dev/mudita/Peergos/src/peergos/server/tests/IpfsUserTests.java" />
+    <property name="gwt.args" value="-generateJsInteropExports -style Pretty -strict" />
+    <property name="sun.management.compiler" value="HotSpot 64-Bit Tiered Compilers" />
+    <property name="ftp.nonProxyHosts" value="local|*.local|169.254/16|*.169.254/16" />
+    <property name="ant.file.type.Peergos" value="file" />
+    <property name="java.runtime.version" value="15.0.1+9" />
+    <property name="user.name" value="dawid" />
+    <property name="ant.file" value="/Users/dawid/dev/mudita/Peergos/build.xml" />
+    <property name="test.source.relative" value="peergos/server/tests/IpfsUserTests.java" />
+    <property name="path.separator" value=":" />
+    <property name="os.version" value="10.15.7" />
+    <property name="ant.file.Peergos" value="/Users/dawid/dev/mudita/Peergos/build.xml" />
+    <property name="java.runtime.name" value="OpenJDK Runtime Environment" />
+    <property name="file.encoding" value="UTF-8" />
+    <property name="ant.project.invoked-targets" value="execute.test" />
+    <property name="java.vm.name" value="OpenJDK 64-Bit Server VM" />
+    <property name="ant.core.lib" value="/usr/local/Cellar/ant/1.10.9/libexec/lib/ant.jar" />
+    <property name="java.vendor.url.bug" value="https://bugreport.java.com/bugreport/" />
+    <property name="java.io.tmpdir" value="/var/folders/gv/63jbvk_x3dv61sknmgcfqtg40000gn/T/" />
+    <property name="src" value="/Users/dawid/dev/mudita/Peergos/src" />
+    <property name="java.version" value="15.0.1" />
+    <property name="user.dir" value="/Users/dawid/dev/mudita/Peergos" />
+    <property name="os.arch" value="x86_64" />
+    <property name="timestamp.millis" value="1489731900000" />
+    <property name="java.vm.specification.name" value="Java Virtual Machine Specification" />
+    <property name="manifest_cp" value="lib/HikariCP-3.4.2.jar lib/jain-sdp.jar lib/jline-3.12.1.jar lib/jnr-fuse-0.3-all.jar lib/postgresql-42.2.8.jar lib/simpleclient-0.8.0.jar lib/simpleclient_common-0.8.0.jar lib/simpleclient_httpserver-0.8.0.jar lib/slf4j-api-1.7.30.jar lib/slf4j-nop-1.7.30.jar lib/sqlite-jdbc-3.30.1.jar lib/weupnp-0.1.2-SNAPSHOT.jar" />
+    <property name="ant.home" value="/usr/local/Cellar/ant/1.10.9/libexec" />
+    <property name="test.sources" value="/Users/dawid/dev/mudita/Peergos/src" />
+    <property name="ant.version" value="Apache Ant(TM) version 1.10.9 compiled on September 27 2020" />
+    <property name="java.library.path" value="native-lib" />
+    <property name="java.vm.info" value="mixed mode, sharing" />
+    <property name="java.vendor" value="N/A" />
+    <property name="build" value="/Users/dawid/dev/mudita/Peergos/build" />
+    <property name="java.vm.version" value="15.0.1+9" />
+    <property name="sun.io.unicode.encoding" value="UnicodeBig" />
+    <property name="gwt.sdk" value="/Users/dawid/dev/mudita/Peergos/gwt/gwt-2.8.3" />
+    <property name="socksNonProxyHosts" value="local|*.local|169.254/16|*.169.254/16" />
+    <property name="java.class.version" value="59.0" />
+    <property name="ant.project.default-target" value="dist" />
+  </properties>
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="expiredSigninAfterPasswordChange[0]" time="10.338" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="errorLoggingInToDeletedAccont[0]" time="6.097" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="javascriptCompatible[0]" time="0.744" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="changeLoginAlgorithm[0]" time="15.744" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="publiclySharedDirectory[0]" time="6.288" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="javaThumbnail[0]" time="5.946" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="repeatFailedUpload[0]" time="8.741" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="overwriteContentsOfFileShrinkFile[0]" time="5.472" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="publiclySharedFile[0]" time="5.768" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="todoTest[0]" time="4.835" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="renameFile[0]" time="7.312" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="publicLinkToDir[0]" time="6.536" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="concurrentMkdirs[0]" time="8.755" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="repeatedSignUp[0]" time="4.455" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="rename[0]" time="7.795" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="fileSeek[0]" time="21.442" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="overwriteContentsOfFileGrowFile[0]" time="5.07" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="fileEncryptionKey[0]" time="4.826" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="fileModifiedDateShouldChangeAfterOverwrite[0]" time="5.967" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="randomSignup[0]" time="4.262" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="serverMessaging[0]" time="4.548" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="concurrentUploadSucceeds[0]" time="9.307" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="mediumFileWrite[0]" time="8.956" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="concurrentFileModificationFailure[0]" time="5.289" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="differentLoginTypes[0]" time="6.466" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="recursiveDelete[0]" time="9.039" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="smallFileWrite[0]" time="4.904" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="concurrentWritesToFile[0]" time="9.536" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="internalCopy[0]" time="10.508" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="changePasswordFAIL[0]" time="9.423" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="downloadSmallFile[0]" time="5.205" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="usage[0]" time="6.022" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="concurrentWritesToDir[0]" time="9.283" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="noRepeatedPassword[0]" time="12.005" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="profileTest[0]" time="15.545" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="deleteDirectoryTest[0]" time="7.887" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="javaVideoThumbnail[0]" time="0.0">
+    <skipped />
+  </testcase>
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="internalCopyDirToDir[0]" time="10.735" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="maliciousPointerClone[0]" time="8.608" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="duplicateSignUp[0]" time="4.32" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="serializationSizesSmall[0]" time="0.003" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="writablePublicLinkToDir[0]" time="11.505" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="changePassword[0]" time="13.336" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="readWriteTest[0]" time="7.259" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="ownerUpdateAfterPasswordChange[0]" time="9.306" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="publicLinkToFile[0]" time="5.347" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="writeReadVariations[0]" time="14.475" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="expiredSignin[0]" time="6.281" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="directoryEncryptionKey[0]" time="5.253" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="writeTiming[0]" time="7.288" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="deleteTest[0]" time="13.022" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="singleSignUp[0]" time="4.676" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="truncate[0]" time="11.957" />
+  <testcase classname="peergos.server.tests.IpfsUserTests" name="cleanupFailedUpload[0]" time="6.728" />
+  <system-out><![CDATA[Looking up OS: mac os x
+Looking up architecture: x86_64
+init
+bootstrap rm all
+config --json Experimental.Libp2pStreamMounting true
+config --json Experimental.P2pHttpProxy true
+config Addresses.API /ip4/127.0.0.1/tcp/28658
+config Addresses.Gateway /ip4/127.0.0.1/tcp/49151
+config --json Addresses.Swarm ["/ip4/0.0.0.0/tcp/27639","/ip6/::/tcp/27639"]
+daemon
+p2p listen --allow-custom-protocol /http /ip4/127.0.0.1/tcp/11937
+Looking up OS: mac os x
+Looking up architecture: x86_64
+bootstrap rm all
+config --json Experimental.Libp2pStreamMounting true
+config --json Experimental.P2pHttpProxy true
+config Addresses.API /ip4/127.0.0.1/tcp/28658
+config Addresses.Gateway /ip4/127.0.0.1/tcp/49151
+config --json Addresses.Swarm ["/ip4/0.0.0.0/tcp/27639","/ip6/::/tcp/27639"]
+daemon
+p2p listen --allow-custom-protocol /http /ip4/127.0.0.1/tcp/11937
+Starting blockstore garbage collection on node z5AanNVJCxnQXtEvyXZx9duEEmN4MCEx4c1aEGVysWpDdkE1ZB39zyF...
+Listing block store took 0s
+Listing pending blocks took 0s
+Listing pointers took 0s
+Marking reachable took 0s
+Deleting blocks took 0s
+GC complete. Freed 28 blocks totalling 40888 bytes in 0s
+
+█╗█╗█╗█╗   ██████╗ ███████╗███████╗██████╗  ██████╗  ██████╗ ███████╗   █╗█╗█╗█╗
+ █████╔╝   ██╔══██╗██╔════╝██╔════╝██╔══██╗██╔════╝ ██╔═══██╗██╔════╝    █████╔╝
+ ██ ██║    ██████╔╝█████╗  █████╗  ██████╔╝██║  ███╗██║   ██║███████╗    ██ ██║
+ █████║    ██╔═══╝ ██╔══╝  ██╔══╝  ██╔══██╗██║   ██║██║   ██║╚════██║    █████║
+███████╗   ██║     ███████╗███████╗██║  ██║╚██████╔╝╚██████╔╝███████║   ███████╗
+╚══════╝   ╚═╝     ╚══════╝╚══════╝╚═╝  ╚═╝ ╚═════╝  ╚═════╝ ╚══════╝   ╚══════╝
+Peergos daemon started. Browse to http://localhost:11937/ to sign up or login. 
+Running version 0.4.0-
+Starting blockstore garbage collection on node z5AanNVJCxnQXtEvyXZx9duEEmN4MCEx4c1aEGVysWpDdkE1ZB39zyF...
+Listing block store took 0s
+Listing pending blocks took 0s
+Listing pointers took 0s
+Marking reachable took 0s
+Deleting blocks took 8s
+GC complete. Freed 834 blocks totalling 3430202 bytes in 8s
+Starting blockstore garbage collection on node z5AanNVJCxnQXtEvyXZx9duEEmN4MCEx4c1aEGVysWpDdkE1ZB39zyF...
+Listing block store took 0s
+Listing pending blocks took 0s
+Listing pointers took 0s
+Marking reachable took 0s
+Deleting blocks took 25s
+GC complete. Freed 1285 blocks totalling 5553784 bytes in 25s
+Starting blockstore garbage collection on node z5AanNVJCxnQXtEvyXZx9duEEmN4MCEx4c1aEGVysWpDdkE1ZB39zyF...
+Listing block store took 0s
+Listing pending blocks took 0s
+Listing pointers took 0s
+Marking reachable took 0s
+Deleting blocks took 48s
+GC complete. Freed 1366 blocks totalling 22180057 bytes in 48s
+.transactions
+shared
+.keystore
+.capabilitycache
+Starting blockstore garbage collection on node z5AanNVJCxnQXtEvyXZx9duEEmN4MCEx4c1aEGVysWpDdkE1ZB39zyF...
+Listing block store took 0s
+Listing pending blocks took 0s
+Listing pointers took 0s
+Marking reachable took 0s
+shared
+.transactions
+.capabilitycache
+.keystore
+Deleting blocks took 101s
+GC complete. Freed 1996 blocks totalling 9852751 bytes in 102s
+Deleting /var/folders/gv/63jbvk_x3dv61sknmgcfqtg40000gn/T/peergos7945353798703947708
+]]></system-out>
+  <system-err><![CDATA[Couldn't load native crypto library at /Users/dawid/dev/mudita/Peergos/native-lib/libtweetnacl.so, using pure Java version...
+To use the native linux-x86-64 crypto implementation use option -Djava.library.path=native-lib
+java.util.concurrent.CompletionException: java.lang.IllegalStateException: User has been deleted. Did you mean a different username?
+	at java.base/java.util.concurrent.CompletableFuture.encodeThrowable(CompletableFuture.java:331)
+	at java.base/java.util.concurrent.CompletableFuture.uniApplyNow(CompletableFuture.java:670)
+	at java.base/java.util.concurrent.CompletableFuture.uniApplyStage(CompletableFuture.java:658)
+	at java.base/java.util.concurrent.CompletableFuture.thenApply(CompletableFuture.java:2158)
+	at peergos.shared.util.Futures.lambda$asyncExceptionally$18(Futures.java:104)
+	at java.base/java.util.concurrent.CompletableFuture.uniExceptionally(CompletableFuture.java:986)
+	at java.base/java.util.concurrent.CompletableFuture.uniExceptionallyStage(CompletableFuture.java:1004)
+	at java.base/java.util.concurrent.CompletableFuture.exceptionally(CompletableFuture.java:2354)
+	at peergos.shared.util.Futures.asyncExceptionally(Futures.java:102)
+	at peergos.shared.user.UserContext.signIn(UserContext.java:136)
+	at peergos.shared.user.UserContext.signIn(UserContext.java:130)
+	at peergos.server.tests.PeergosNetworkUtils.ensureSignedUp(PeergosNetworkUtils.java:1950)
+	at peergos.server.tests.UserTests.errorLoggingInToDeletedAccont(UserTests.java:205)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:64)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:564)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:47)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:44)
+	at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:17)
+	at org.junit.runners.ParentRunner.runLeaf(ParentRunner.java:271)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:70)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:50)
+	at org.junit.runners.ParentRunner$3.run(ParentRunner.java:238)
+	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:63)
+	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:236)
+	at org.junit.runners.ParentRunner.access$000(ParentRunner.java:53)
+	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:229)
+	at org.junit.runners.ParentRunner.run(ParentRunner.java:309)
+	at org.junit.runners.Suite.runChild(Suite.java:127)
+	at org.junit.runners.Suite.runChild(Suite.java:26)
+	at org.junit.runners.ParentRunner$3.run(ParentRunner.java:238)
+	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:63)
+	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:236)
+	at org.junit.runners.ParentRunner.access$000(ParentRunner.java:53)
+	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:229)
+	at org.junit.internal.runners.statements.RunAfters.evaluate(RunAfters.java:27)
+	at org.junit.runners.ParentRunner.run(ParentRunner.java:309)
+	at junit.framework.JUnit4TestAdapter.run(JUnit4TestAdapter.java:38)
+	at org.apache.tools.ant.taskdefs.optional.junit.JUnitTestRunner.run(JUnitTestRunner.java:535)
+	at org.apache.tools.ant.taskdefs.optional.junit.JUnitTestRunner.launch(JUnitTestRunner.java:1197)
+	at org.apache.tools.ant.taskdefs.optional.junit.JUnitTestRunner.main(JUnitTestRunner.java:1042)
+Caused by: java.lang.IllegalStateException: User has been deleted. Did you mean a different username?
+	at peergos.shared.user.UserContext.lambda$signIn$6(UserContext.java:139)
+	at peergos.shared.util.Futures.lambda$asyncExceptionally$18(Futures.java:103)
+	... 38 more
+java.util.concurrent.CompletionException: java.lang.RuntimeException: Simulated IO Error
+	at java.base/java.util.concurrent.CompletableFuture.encodeThrowable(CompletableFuture.java:314)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1190)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.util.Futures.lambda$reduceAll$13(Futures.java:69)
+	at java.base/java.util.stream.ReduceOps$1ReducingSink.accept(ReduceOps.java:80)
+	at java.base/java.util.ArrayList$ArrayListSpliterator.forEachRemaining(ArrayList.java:1625)
+	at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:484)
+	at java.base/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:474)
+	at java.base/java.util.stream.ReduceOps$ReduceOp.evaluateSequential(ReduceOps.java:913)
+	at java.base/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:234)
+	at java.base/java.util.stream.ReferencePipeline.reduce(ReferencePipeline.java:563)
+	at peergos.shared.util.Futures.reduceAll(Futures.java:67)
+	at peergos.shared.user.fs.FileUploader.upload(FileUploader.java:117)
+	at peergos.shared.user.fs.FileWrapper.lambda$uploadFileSection$103(FileWrapper.java:974)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.fs.FileWrapper.lambda$uploadFileSection$104(FileWrapper.java:957)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.fs.FileWrapper.lambda$uploadFileSection$105(FileWrapper.java:956)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.fs.FileWrapper.lambda$uploadFileSection$106(FileWrapper.java:910)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.fs.FileWrapper.lambda$uploadFileSection$107(FileWrapper.java:909)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.fs.FileWrapper.uploadFileSection(FileWrapper.java:908)
+	at peergos.shared.user.fs.FileWrapper.lambda$uploadFileJS$47(FileWrapper.java:577)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.fs.FileWrapper.lambda$uploadFileJS$49(FileWrapper.java:577)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.fs.FileWrapper.lambda$uploadFileJS$50(FileWrapper.java:576)
+	at peergos.shared.user.WriteSynchronizer.lambda$applyComplexUpdate$18(WriteSynchronizer.java:96)
+	at peergos.shared.util.AsyncLock.lambda$runWithLock$5(AsyncLock.java:35)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.util.AsyncLock.runWithLock(AsyncLock.java:35)
+	at peergos.shared.user.WriteSynchronizer.applyComplexUpdate(WriteSynchronizer.java:96)
+	at peergos.shared.user.fs.FileWrapper.lambda$uploadFileJS$53(FileWrapper.java:575)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.fs.FileWrapper.uploadFileJS(FileWrapper.java:575)
+	at peergos.server.tests.UserTests.repeatFailedUpload(UserTests.java:855)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:64)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:564)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:47)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:44)
+	at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:17)
+	at org.junit.runners.ParentRunner.runLeaf(ParentRunner.java:271)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:70)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:50)
+	at org.junit.runners.ParentRunner$3.run(ParentRunner.java:238)
+	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:63)
+	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:236)
+	at org.junit.runners.ParentRunner.access$000(ParentRunner.java:53)
+	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:229)
+	at org.junit.runners.ParentRunner.run(ParentRunner.java:309)
+	at org.junit.runners.Suite.runChild(Suite.java:127)
+	at org.junit.runners.Suite.runChild(Suite.java:26)
+	at org.junit.runners.ParentRunner$3.run(ParentRunner.java:238)
+	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:63)
+	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:236)
+	at org.junit.runners.ParentRunner.access$000(ParentRunner.java:53)
+	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:229)
+	at org.junit.internal.runners.statements.RunAfters.evaluate(RunAfters.java:27)
+	at org.junit.runners.ParentRunner.run(ParentRunner.java:309)
+	at junit.framework.JUnit4TestAdapter.run(JUnit4TestAdapter.java:38)
+	at org.apache.tools.ant.taskdefs.optional.junit.JUnitTestRunner.run(JUnitTestRunner.java:535)
+	at org.apache.tools.ant.taskdefs.optional.junit.JUnitTestRunner.launch(JUnitTestRunner.java:1197)
+	at org.apache.tools.ant.taskdefs.optional.junit.JUnitTestRunner.main(JUnitTestRunner.java:1042)
+Caused by: java.lang.RuntimeException: Simulated IO Error
+	at peergos.server.tests.UserTests$ThrowingStream.readIntoArray(UserTests.java:790)
+	at peergos.shared.user.fs.FileUploader.uploadChunk(FileUploader.java:91)
+	at peergos.shared.user.fs.FileUploader.lambda$upload$4(FileUploader.java:117)
+	at peergos.shared.util.Futures.lambda$reduceAll$12(Futures.java:69)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	... 75 more
+java.util.concurrent.CompletionException: java.lang.IllegalStateException: User already exists!
+	at java.base/java.util.concurrent.CompletableFuture.encodeThrowable(CompletableFuture.java:314)
+	at java.base/java.util.concurrent.CompletableFuture.uniApplyNow(CompletableFuture.java:683)
+	at java.base/java.util.concurrent.CompletableFuture.uniApplyStage(CompletableFuture.java:658)
+	at java.base/java.util.concurrent.CompletableFuture.thenApply(CompletableFuture.java:2158)
+	at peergos.shared.user.UserContext.signUpGeneral(UserContext.java:237)
+	at peergos.shared.user.UserContext.signUp(UserContext.java:221)
+	at peergos.server.tests.UserTests.repeatedSignUp(UserTests.java:285)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:64)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:564)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:47)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:44)
+	at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:17)
+	at org.junit.runners.ParentRunner.runLeaf(ParentRunner.java:271)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:70)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:50)
+	at org.junit.runners.ParentRunner$3.run(ParentRunner.java:238)
+	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:63)
+	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:236)
+	at org.junit.runners.ParentRunner.access$000(ParentRunner.java:53)
+	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:229)
+	at org.junit.runners.ParentRunner.run(ParentRunner.java:309)
+	at org.junit.runners.Suite.runChild(Suite.java:127)
+	at org.junit.runners.Suite.runChild(Suite.java:26)
+	at org.junit.runners.ParentRunner$3.run(ParentRunner.java:238)
+	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:63)
+	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:236)
+	at org.junit.runners.ParentRunner.access$000(ParentRunner.java:53)
+	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:229)
+	at org.junit.internal.runners.statements.RunAfters.evaluate(RunAfters.java:27)
+	at org.junit.runners.ParentRunner.run(ParentRunner.java:309)
+	at junit.framework.JUnit4TestAdapter.run(JUnit4TestAdapter.java:38)
+	at org.apache.tools.ant.taskdefs.optional.junit.JUnitTestRunner.run(JUnitTestRunner.java:535)
+	at org.apache.tools.ant.taskdefs.optional.junit.JUnitTestRunner.launch(JUnitTestRunner.java:1197)
+	at org.apache.tools.ant.taskdefs.optional.junit.JUnitTestRunner.main(JUnitTestRunner.java:1042)
+Caused by: java.lang.IllegalStateException: User already exists!
+	at peergos.shared.user.UserContext.lambda$signUpGeneral$16(UserContext.java:239)
+	at java.base/java.util.concurrent.CompletableFuture.uniApplyNow(CompletableFuture.java:680)
+	... 35 more
+Trailer:Please+wait+before+sending+more+messages%21
+java.util.concurrent.CompletionException: peergos.shared.user.MutableTree$CasException: CAS exception updating cryptree node. existing: Optional[peergos.shared.cbor.CborObject$CborMerkleLink@36bf42f8], claimed: Optional[peergos.shared.cbor.CborObject$CborMerkleLink@48826cd7]
+	at java.base/java.util.concurrent.CompletableFuture.encodeRelay(CompletableFuture.java:367)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1185)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.hamt.ChampWrapper.put(ChampWrapper.java:99)
+	at peergos.shared.user.MutableTreeImpl.lambda$put$3(MutableTreeImpl.java:53)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.MutableTreeImpl.put(MutableTreeImpl.java:53)
+	at peergos.shared.NetworkAccess.lambda$uploadChunk$61(NetworkAccess.java:509)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.NetworkAccess.uploadChunk(NetworkAccess.java:509)
+	at peergos.shared.user.fs.FileUploader.lambda$uploadChunk$9(FileUploader.java:158)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.fs.FileUploader.lambda$uploadChunk$10(FileUploader.java:158)
+	at peergos.shared.storage.IpfsTransaction.lambda$call$5(IpfsTransaction.java:22)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.storage.IpfsTransaction.call(IpfsTransaction.java:22)
+	at peergos.shared.user.fs.FileUploader.lambda$uploadChunk$11(FileUploader.java:156)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.fs.FileUploader.uploadChunk(FileUploader.java:145)
+	at peergos.shared.user.fs.FileWrapper.lambda$overwriteSection$79(FileWrapper.java:763)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.fs.FileWrapper.lambda$overwriteSection$80(FileWrapper.java:752)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.fs.FileWrapper.lambda$overwriteSection$81(FileWrapper.java:736)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.fs.FileWrapper.lambda$overwriteSection$82(FileWrapper.java:719)
+	at peergos.shared.util.Futures.lambda$reduceAll$12(Futures.java:69)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.util.Futures.lambda$reduceAll$13(Futures.java:69)
+	at java.base/java.util.stream.ReduceOps$1ReducingSink.accept(ReduceOps.java:80)
+	at java.base/java.util.ArrayList$ArrayListSpliterator.forEachRemaining(ArrayList.java:1625)
+	at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:484)
+	at java.base/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:474)
+	at java.base/java.util.stream.ReduceOps$ReduceOp.evaluateSequential(ReduceOps.java:913)
+	at java.base/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:234)
+	at java.base/java.util.stream.ReferencePipeline.reduce(ReferencePipeline.java:563)
+	at peergos.shared.util.Futures.reduceAll(Futures.java:67)
+	at peergos.shared.user.fs.FileWrapper.lambda$overwriteSection$84(FileWrapper.java:793)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.fs.FileWrapper.lambda$overwriteSection$85(FileWrapper.java:697)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.fs.FileWrapper.overwriteSection(FileWrapper.java:694)
+	at peergos.server.tests.UserTests.lambda$concurrentFileModificationFailure$8(UserTests.java:430)
+	at peergos.shared.user.WriteSynchronizer.lambda$applyComplexUpdate$18(WriteSynchronizer.java:96)
+	at peergos.shared.util.AsyncLock.lambda$runWithLock$5(AsyncLock.java:35)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.util.AsyncLock.runWithLock(AsyncLock.java:35)
+	at peergos.shared.user.WriteSynchronizer.applyComplexUpdate(WriteSynchronizer.java:96)
+	at peergos.server.tests.UserTests.concurrentFileModificationFailure(UserTests.java:429)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:64)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:564)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:47)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:44)
+	at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:17)
+	at org.junit.runners.ParentRunner.runLeaf(ParentRunner.java:271)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:70)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:50)
+	at org.junit.runners.ParentRunner$3.run(ParentRunner.java:238)
+	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:63)
+	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:236)
+	at org.junit.runners.ParentRunner.access$000(ParentRunner.java:53)
+	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:229)
+	at org.junit.runners.ParentRunner.run(ParentRunner.java:309)
+	at org.junit.runners.Suite.runChild(Suite.java:127)
+	at org.junit.runners.Suite.runChild(Suite.java:26)
+	at org.junit.runners.ParentRunner$3.run(ParentRunner.java:238)
+	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:63)
+	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:236)
+	at org.junit.runners.ParentRunner.access$000(ParentRunner.java:53)
+	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:229)
+	at org.junit.internal.runners.statements.RunAfters.evaluate(RunAfters.java:27)
+	at org.junit.runners.ParentRunner.run(ParentRunner.java:309)
+	at junit.framework.JUnit4TestAdapter.run(JUnit4TestAdapter.java:38)
+	at org.apache.tools.ant.taskdefs.optional.junit.JUnitTestRunner.run(JUnitTestRunner.java:535)
+	at org.apache.tools.ant.taskdefs.optional.junit.JUnitTestRunner.launch(JUnitTestRunner.java:1197)
+	at org.apache.tools.ant.taskdefs.optional.junit.JUnitTestRunner.main(JUnitTestRunner.java:1042)
+Caused by: peergos.shared.user.MutableTree$CasException: CAS exception updating cryptree node. existing: Optional[peergos.shared.cbor.CborObject$CborMerkleLink@36bf42f8], claimed: Optional[peergos.shared.cbor.CborObject$CborMerkleLink@48826cd7]
+	at peergos.shared.hamt.Champ.put(Champ.java:261)
+	at peergos.shared.hamt.ChampWrapper.lambda$put$4(ChampWrapper.java:99)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	... 89 more
+java.util.concurrent.CompletionException: java.lang.IllegalStateException: Incorrect password
+	at java.base/java.util.concurrent.CompletableFuture.encodeThrowable(CompletableFuture.java:314)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1190)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.UserContext.lambda$signIn$9(UserContext.java:150)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.UserContext.signIn(UserContext.java:144)
+	at peergos.shared.user.UserContext.signIn(UserContext.java:130)
+	at peergos.server.tests.PeergosNetworkUtils.ensureSignedUp(PeergosNetworkUtils.java:1950)
+	at peergos.server.tests.UserTests.changePasswordFAIL(UserTests.java:337)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:64)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:564)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:47)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:44)
+	at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:17)
+	at org.junit.runners.ParentRunner.runLeaf(ParentRunner.java:271)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:70)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:50)
+	at org.junit.runners.ParentRunner$3.run(ParentRunner.java:238)
+	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:63)
+	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:236)
+	at org.junit.runners.ParentRunner.access$000(ParentRunner.java:53)
+	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:229)
+	at org.junit.runners.ParentRunner.run(ParentRunner.java:309)
+	at org.junit.runners.Suite.runChild(Suite.java:127)
+	at org.junit.runners.Suite.runChild(Suite.java:26)
+	at org.junit.runners.ParentRunner$3.run(ParentRunner.java:238)
+	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:63)
+	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:236)
+	at org.junit.runners.ParentRunner.access$000(ParentRunner.java:53)
+	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:229)
+	at org.junit.internal.runners.statements.RunAfters.evaluate(RunAfters.java:27)
+	at org.junit.runners.ParentRunner.run(ParentRunner.java:309)
+	at junit.framework.JUnit4TestAdapter.run(JUnit4TestAdapter.java:38)
+	at org.apache.tools.ant.taskdefs.optional.junit.JUnitTestRunner.run(JUnitTestRunner.java:535)
+	at org.apache.tools.ant.taskdefs.optional.junit.JUnitTestRunner.launch(JUnitTestRunner.java:1197)
+	at org.apache.tools.ant.taskdefs.optional.junit.JUnitTestRunner.main(JUnitTestRunner.java:1042)
+Caused by: java.lang.IllegalStateException: Incorrect password
+	at peergos.shared.user.UserContext.login(UserContext.java:196)
+	at peergos.shared.user.UserContext.lambda$signIn$8(UserContext.java:152)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	... 38 more
+Trailer:User+is+not+an+admin+on+this+instance%21
+Trailer:Couldn%27t+update+mutable+pointer%2C+cas+failed%3A+%28zdpuAp8TBsJyMY5kLiyix1paTRndwCpP4tANbK18jx8hV2zNU%2C+zdpuAkcWj5XafEkMv3g1hEbFPCQnRhnfVtrVC94u9Cjp6pPHG%29
+java.util.concurrent.CompletionException: java.lang.RuntimeException: Couldn%27t+update+mutable+pointer%2C+cas+failed%3A+%28zdpuAp8TBsJyMY5kLiyix1paTRndwCpP4tANbK18jx8hV2zNU%2C+zdpuAkcWj5XafEkMv3g1hEbFPCQnRhnfVtrVC94u9Cjp6pPHG%29
+	at java.base/java.util.concurrent.CompletableFuture.encodeThrowable(CompletableFuture.java:331)
+	at java.base/java.util.concurrent.CompletableFuture.uniApplyNow(CompletableFuture.java:670)
+	at java.base/java.util.concurrent.CompletableFuture.uniApplyStage(CompletableFuture.java:658)
+	at java.base/java.util.concurrent.CompletableFuture.thenApply(CompletableFuture.java:2158)
+	at peergos.shared.mutable.HttpMutablePointers.setPointer(HttpMutablePointers.java:71)
+	at peergos.shared.mutable.HttpMutablePointers.setPointer(HttpMutablePointers.java:52)
+	at peergos.shared.mutable.CachingPointers.setPointer(CachingPointers.java:43)
+	at peergos.server.tests.UserTests.maliciousPointerClone(UserTests.java:369)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:64)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:564)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:47)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:44)
+	at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:17)
+	at org.junit.runners.ParentRunner.runLeaf(ParentRunner.java:271)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:70)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:50)
+	at org.junit.runners.ParentRunner$3.run(ParentRunner.java:238)
+	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:63)
+	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:236)
+	at org.junit.runners.ParentRunner.access$000(ParentRunner.java:53)
+	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:229)
+	at org.junit.runners.ParentRunner.run(ParentRunner.java:309)
+	at org.junit.runners.Suite.runChild(Suite.java:127)
+	at org.junit.runners.Suite.runChild(Suite.java:26)
+	at org.junit.runners.ParentRunner$3.run(ParentRunner.java:238)
+	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:63)
+	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:236)
+	at org.junit.runners.ParentRunner.access$000(ParentRunner.java:53)
+	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:229)
+	at org.junit.internal.runners.statements.RunAfters.evaluate(RunAfters.java:27)
+	at org.junit.runners.ParentRunner.run(ParentRunner.java:309)
+	at junit.framework.JUnit4TestAdapter.run(JUnit4TestAdapter.java:38)
+	at org.apache.tools.ant.taskdefs.optional.junit.JUnitTestRunner.run(JUnitTestRunner.java:535)
+	at org.apache.tools.ant.taskdefs.optional.junit.JUnitTestRunner.launch(JUnitTestRunner.java:1197)
+	at org.apache.tools.ant.taskdefs.optional.junit.JUnitTestRunner.main(JUnitTestRunner.java:1042)
+Caused by: java.lang.RuntimeException: Couldn%27t+update+mutable+pointer%2C+cas+failed%3A+%28zdpuAp8TBsJyMY5kLiyix1paTRndwCpP4tANbK18jx8hV2zNU%2C+zdpuAkcWj5XafEkMv3g1hEbFPCQnRhnfVtrVC94u9Cjp6pPHG%29
+	at peergos.shared.user.JavaPoster.post(JavaPoster.java:76)
+	at peergos.shared.user.JavaPoster.post(JavaPoster.java:43)
+	at peergos.shared.user.JavaPoster.postUnzip(JavaPoster.java:38)
+	... 34 more
+java.util.concurrent.CompletionException: java.lang.IllegalStateException: User already exists!
+	at java.base/java.util.concurrent.CompletableFuture.encodeThrowable(CompletableFuture.java:314)
+	at java.base/java.util.concurrent.CompletableFuture.uniApplyNow(CompletableFuture.java:683)
+	at java.base/java.util.concurrent.CompletableFuture.uniApplyStage(CompletableFuture.java:658)
+	at java.base/java.util.concurrent.CompletableFuture.thenApply(CompletableFuture.java:2158)
+	at peergos.shared.user.UserContext.signUpGeneral(UserContext.java:237)
+	at peergos.shared.user.UserContext.signUp(UserContext.java:221)
+	at peergos.server.tests.UserTests.duplicateSignUp(UserTests.java:272)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:64)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:564)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:47)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:44)
+	at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:17)
+	at org.junit.runners.ParentRunner.runLeaf(ParentRunner.java:271)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:70)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:50)
+	at org.junit.runners.ParentRunner$3.run(ParentRunner.java:238)
+	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:63)
+	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:236)
+	at org.junit.runners.ParentRunner.access$000(ParentRunner.java:53)
+	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:229)
+	at org.junit.runners.ParentRunner.run(ParentRunner.java:309)
+	at org.junit.runners.Suite.runChild(Suite.java:127)
+	at org.junit.runners.Suite.runChild(Suite.java:26)
+	at org.junit.runners.ParentRunner$3.run(ParentRunner.java:238)
+	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:63)
+	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:236)
+	at org.junit.runners.ParentRunner.access$000(ParentRunner.java:53)
+	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:229)
+	at org.junit.internal.runners.statements.RunAfters.evaluate(RunAfters.java:27)
+	at org.junit.runners.ParentRunner.run(ParentRunner.java:309)
+	at junit.framework.JUnit4TestAdapter.run(JUnit4TestAdapter.java:38)
+	at org.apache.tools.ant.taskdefs.optional.junit.JUnitTestRunner.run(JUnitTestRunner.java:535)
+	at org.apache.tools.ant.taskdefs.optional.junit.JUnitTestRunner.launch(JUnitTestRunner.java:1197)
+	at org.apache.tools.ant.taskdefs.optional.junit.JUnitTestRunner.main(JUnitTestRunner.java:1042)
+Caused by: java.lang.IllegalStateException: User already exists!
+	at peergos.shared.user.UserContext.lambda$signUpGeneral$16(UserContext.java:239)
+	at java.base/java.util.concurrent.CompletableFuture.uniApplyNow(CompletableFuture.java:680)
+	... 35 more
+java.util.concurrent.CompletionException: java.lang.IllegalStateException: User already exists!
+	at java.base/java.util.concurrent.CompletableFuture.encodeThrowable(CompletableFuture.java:314)
+	at java.base/java.util.concurrent.CompletableFuture.uniApplyNow(CompletableFuture.java:683)
+	at java.base/java.util.concurrent.CompletableFuture.uniApplyStage(CompletableFuture.java:658)
+	at java.base/java.util.concurrent.CompletableFuture.thenApply(CompletableFuture.java:2158)
+	at peergos.shared.user.UserContext.signUpGeneral(UserContext.java:237)
+	at peergos.shared.user.UserContext.signUp(UserContext.java:221)
+	at peergos.server.tests.UserTests.singleSignUp(UserTests.java:192)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:64)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:564)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:47)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:44)
+	at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:17)
+	at org.junit.runners.ParentRunner.runLeaf(ParentRunner.java:271)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:70)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:50)
+	at org.junit.runners.ParentRunner$3.run(ParentRunner.java:238)
+	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:63)
+	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:236)
+	at org.junit.runners.ParentRunner.access$000(ParentRunner.java:53)
+	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:229)
+	at org.junit.runners.ParentRunner.run(ParentRunner.java:309)
+	at org.junit.runners.Suite.runChild(Suite.java:127)
+	at org.junit.runners.Suite.runChild(Suite.java:26)
+	at org.junit.runners.ParentRunner$3.run(ParentRunner.java:238)
+	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:63)
+	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:236)
+	at org.junit.runners.ParentRunner.access$000(ParentRunner.java:53)
+	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:229)
+	at org.junit.internal.runners.statements.RunAfters.evaluate(RunAfters.java:27)
+	at org.junit.runners.ParentRunner.run(ParentRunner.java:309)
+	at junit.framework.JUnit4TestAdapter.run(JUnit4TestAdapter.java:38)
+	at org.apache.tools.ant.taskdefs.optional.junit.JUnitTestRunner.run(JUnitTestRunner.java:535)
+	at org.apache.tools.ant.taskdefs.optional.junit.JUnitTestRunner.launch(JUnitTestRunner.java:1197)
+	at org.apache.tools.ant.taskdefs.optional.junit.JUnitTestRunner.main(JUnitTestRunner.java:1042)
+Caused by: java.lang.IllegalStateException: User already exists!
+	at peergos.shared.user.UserContext.lambda$signUpGeneral$16(UserContext.java:239)
+	at java.base/java.util.concurrent.CompletableFuture.uniApplyNow(CompletableFuture.java:680)
+	... 35 more
+java.util.concurrent.CompletionException: java.lang.RuntimeException: Simulated IO Error
+	at java.base/java.util.concurrent.CompletableFuture.encodeThrowable(CompletableFuture.java:314)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1190)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.util.Futures.lambda$reduceAll$13(Futures.java:69)
+	at java.base/java.util.stream.ReduceOps$1ReducingSink.accept(ReduceOps.java:80)
+	at java.base/java.util.ArrayList$ArrayListSpliterator.forEachRemaining(ArrayList.java:1625)
+	at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:484)
+	at java.base/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:474)
+	at java.base/java.util.stream.ReduceOps$ReduceOp.evaluateSequential(ReduceOps.java:913)
+	at java.base/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:234)
+	at java.base/java.util.stream.ReferencePipeline.reduce(ReferencePipeline.java:563)
+	at peergos.shared.util.Futures.reduceAll(Futures.java:67)
+	at peergos.shared.user.fs.FileUploader.upload(FileUploader.java:117)
+	at peergos.shared.user.fs.FileWrapper.lambda$uploadFileSection$103(FileWrapper.java:974)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.fs.FileWrapper.lambda$uploadFileSection$104(FileWrapper.java:957)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.fs.FileWrapper.lambda$uploadFileSection$105(FileWrapper.java:956)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.fs.FileWrapper.lambda$uploadFileSection$106(FileWrapper.java:910)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.fs.FileWrapper.lambda$uploadFileSection$107(FileWrapper.java:909)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.fs.FileWrapper.uploadFileSection(FileWrapper.java:908)
+	at peergos.shared.user.fs.FileWrapper.lambda$uploadFileSection$86(FileWrapper.java:826)
+	at peergos.shared.user.WriteSynchronizer.lambda$applyComplexUpdate$18(WriteSynchronizer.java:96)
+	at peergos.shared.util.AsyncLock.lambda$runWithLock$5(AsyncLock.java:35)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.util.AsyncLock.runWithLock(AsyncLock.java:35)
+	at peergos.shared.user.WriteSynchronizer.applyComplexUpdate(WriteSynchronizer.java:96)
+	at peergos.shared.user.fs.FileWrapper.uploadFileSection(FileWrapper.java:825)
+	at peergos.shared.user.fs.FileWrapper.uploadOrReplaceFile(FileWrapper.java:598)
+	at peergos.server.tests.UserTests.cleanupFailedUpload(UserTests.java:826)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:64)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:564)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:47)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:44)
+	at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:17)
+	at org.junit.runners.ParentRunner.runLeaf(ParentRunner.java:271)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:70)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:50)
+	at org.junit.runners.ParentRunner$3.run(ParentRunner.java:238)
+	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:63)
+	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:236)
+	at org.junit.runners.ParentRunner.access$000(ParentRunner.java:53)
+	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:229)
+	at org.junit.runners.ParentRunner.run(ParentRunner.java:309)
+	at org.junit.runners.Suite.runChild(Suite.java:127)
+	at org.junit.runners.Suite.runChild(Suite.java:26)
+	at org.junit.runners.ParentRunner$3.run(ParentRunner.java:238)
+	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:63)
+	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:236)
+	at org.junit.runners.ParentRunner.access$000(ParentRunner.java:53)
+	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:229)
+	at org.junit.internal.runners.statements.RunAfters.evaluate(RunAfters.java:27)
+	at org.junit.runners.ParentRunner.run(ParentRunner.java:309)
+	at junit.framework.JUnit4TestAdapter.run(JUnit4TestAdapter.java:38)
+	at org.apache.tools.ant.taskdefs.optional.junit.JUnitTestRunner.run(JUnitTestRunner.java:535)
+	at org.apache.tools.ant.taskdefs.optional.junit.JUnitTestRunner.launch(JUnitTestRunner.java:1197)
+	at org.apache.tools.ant.taskdefs.optional.junit.JUnitTestRunner.main(JUnitTestRunner.java:1042)
+Caused by: java.lang.RuntimeException: Simulated IO Error
+	at peergos.server.tests.UserTests$ThrowingStream.readIntoArray(UserTests.java:790)
+	at peergos.shared.user.fs.FileUploader.uploadChunk(FileUploader.java:91)
+	at peergos.shared.user.fs.FileUploader.lambda$upload$4(FileUploader.java:117)
+	at peergos.shared.util.Futures.lambda$reduceAll$12(Futures.java:69)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	... 67 more
+]]></system-err>
+</testsuite>

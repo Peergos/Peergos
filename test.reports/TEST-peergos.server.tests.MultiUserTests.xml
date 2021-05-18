@@ -1,0 +1,375 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuite errors="0" failures="0" hostname="MacBook-Pro-Dawid.local" name="peergos.server.tests.MultiUserTests" skipped="0" tests="54" time="576.991" timestamp="2021-05-16T19:42:11">
+  <properties>
+    <property name="ant.library.dir" value="/usr/local/Cellar/ant/1.10.9/libexec/lib" />
+    <property name="ant.file.type" value="file" />
+    <property name="java.specification.version" value="15" />
+    <property name="ant.project.name" value="Peergos" />
+    <property name="sun.jnu.encoding" value="UTF-8" />
+    <property name="dist" value="/Users/dawid/dev/mudita/Peergos/dist" />
+    <property name="java.class.path" value="/Users/dawid/dev/mudita/Peergos/lib-build/gwt-user.jar:/Users/dawid/dev/mudita/Peergos/lib-build/hamcrest-core-1.3.jar:/Users/dawid/dev/mudita/Peergos/lib-build/junit-4.11.jar:/Users/dawid/dev/mudita/Peergos/lib/HikariCP-3.4.2.jar:/Users/dawid/dev/mudita/Peergos/lib/jain-sdp.jar:/Users/dawid/dev/mudita/Peergos/lib/jline-3.12.1.jar:/Users/dawid/dev/mudita/Peergos/lib/jnr-fuse-0.3-all.jar:/Users/dawid/dev/mudita/Peergos/lib/postgresql-42.2.8.jar:/Users/dawid/dev/mudita/Peergos/lib/simpleclient-0.8.0.jar:/Users/dawid/dev/mudita/Peergos/lib/simpleclient_common-0.8.0.jar:/Users/dawid/dev/mudita/Peergos/lib/simpleclient_httpserver-0.8.0.jar:/Users/dawid/dev/mudita/Peergos/lib/slf4j-api-1.7.30.jar:/Users/dawid/dev/mudita/Peergos/lib/slf4j-nop-1.7.30.jar:/Users/dawid/dev/mudita/Peergos/lib/sqlite-jdbc-3.30.1.jar:/Users/dawid/dev/mudita/Peergos/lib/weupnp-0.1.2-SNAPSHOT.jar:/Users/dawid/dev/mudita/Peergos/build:/usr/local/Cellar/ant/1.10.9/libexec/lib/ant-launcher.jar:/usr/local/Cellar/ant/1.10.9/libexec/lib/ant.jar:/usr/local/Cellar/ant/1.10.9/libexec/lib/ant-junit.jar:/usr/local/Cellar/ant/1.10.9/libexec/lib/ant-junit4.jar" />
+    <property name="java.vm.vendor" value="Oracle Corporation" />
+    <property name="test.reports" value="/Users/dawid/dev/mudita/Peergos/test.reports" />
+    <property name="sun.arch.data.model" value="64" />
+    <property name="java.vendor.url" value="https://openjdk.java.net/" />
+    <property name="os.name" value="Mac OS X" />
+    <property name="java.vm.specification.version" value="15" />
+    <property name="sun.java.launcher" value="SUN_STANDARD" />
+    <property name="user.country" value="PL" />
+    <property name="sun.boot.library.path" value="/usr/local/Cellar/openjdk/15.0.1/libexec/openjdk.jdk/Contents/Home/lib" />
+    <property name="sun.java.command" value="org.apache.tools.ant.taskdefs.optional.junit.JUnitTestRunner peergos.server.tests.MultiUserTests skipNonTests=true filtertrace=true haltOnError=false haltOnFailure=false formatter=org.apache.tools.ant.taskdefs.optional.junit.SummaryJUnitResultFormatter showoutput=false outputtoformatters=true logfailedtests=true threadid=0 logtestlistenerevents=false formatter=org.apache.tools.ant.taskdefs.optional.junit.XMLJUnitResultFormatter,/Users/dawid/dev/mudita/Peergos/test.reports/TEST-peergos.server.tests.MultiUserTests.xml crashfile=/Users/dawid/dev/mudita/Peergos/junitvmwatcher5609996690744809229.properties propsfile=/Users/dawid/dev/mudita/Peergos/junit13020250986304382613.properties" />
+    <property name="http.nonProxyHosts" value="local|*.local|169.254/16|*.169.254/16" />
+    <property name="jdk.debug" value="release" />
+    <property name="sun.cpu.endian" value="little" />
+    <property name="user.home" value="/Users/dawid" />
+    <property name="user.language" value="pl" />
+    <property name="java.specification.vendor" value="Oracle Corporation" />
+    <property name="java.version.date" value="2020-10-20" />
+    <property name="java.home" value="/usr/local/Cellar/openjdk/15.0.1/libexec/openjdk.jdk/Contents/Home" />
+    <property name="file.separator" value="/" />
+    <property name="basedir" value="/Users/dawid/dev/mudita/Peergos" />
+    <property name="java.vm.compressedOopsMode" value="Zero based" />
+    <property name="line.separator" value="&#xa;" />
+    <property name="ant.java.version" value="15" />
+    <property name="java.vm.specification.vendor" value="Oracle Corporation" />
+    <property name="java.specification.name" value="Java Platform API Specification" />
+    <property name="test.source.absolute" value="/Users/dawid/dev/mudita/Peergos/src/peergos/server/tests/MultiUserTests.java" />
+    <property name="gwt.args" value="-generateJsInteropExports -style Pretty -strict" />
+    <property name="sun.management.compiler" value="HotSpot 64-Bit Tiered Compilers" />
+    <property name="ftp.nonProxyHosts" value="local|*.local|169.254/16|*.169.254/16" />
+    <property name="ant.file.type.Peergos" value="file" />
+    <property name="java.runtime.version" value="15.0.1+9" />
+    <property name="user.name" value="dawid" />
+    <property name="ant.file" value="/Users/dawid/dev/mudita/Peergos/build.xml" />
+    <property name="test.source.relative" value="peergos/server/tests/MultiUserTests.java" />
+    <property name="path.separator" value=":" />
+    <property name="os.version" value="10.15.7" />
+    <property name="ant.file.Peergos" value="/Users/dawid/dev/mudita/Peergos/build.xml" />
+    <property name="java.runtime.name" value="OpenJDK Runtime Environment" />
+    <property name="file.encoding" value="UTF-8" />
+    <property name="ant.project.invoked-targets" value="execute.test" />
+    <property name="java.vm.name" value="OpenJDK 64-Bit Server VM" />
+    <property name="ant.core.lib" value="/usr/local/Cellar/ant/1.10.9/libexec/lib/ant.jar" />
+    <property name="java.vendor.url.bug" value="https://bugreport.java.com/bugreport/" />
+    <property name="java.io.tmpdir" value="/var/folders/gv/63jbvk_x3dv61sknmgcfqtg40000gn/T/" />
+    <property name="src" value="/Users/dawid/dev/mudita/Peergos/src" />
+    <property name="java.version" value="15.0.1" />
+    <property name="user.dir" value="/Users/dawid/dev/mudita/Peergos" />
+    <property name="os.arch" value="x86_64" />
+    <property name="timestamp.millis" value="1489731900000" />
+    <property name="java.vm.specification.name" value="Java Virtual Machine Specification" />
+    <property name="manifest_cp" value="lib/HikariCP-3.4.2.jar lib/jain-sdp.jar lib/jline-3.12.1.jar lib/jnr-fuse-0.3-all.jar lib/postgresql-42.2.8.jar lib/simpleclient-0.8.0.jar lib/simpleclient_common-0.8.0.jar lib/simpleclient_httpserver-0.8.0.jar lib/slf4j-api-1.7.30.jar lib/slf4j-nop-1.7.30.jar lib/sqlite-jdbc-3.30.1.jar lib/weupnp-0.1.2-SNAPSHOT.jar" />
+    <property name="ant.home" value="/usr/local/Cellar/ant/1.10.9/libexec" />
+    <property name="test.sources" value="/Users/dawid/dev/mudita/Peergos/src" />
+    <property name="ant.version" value="Apache Ant(TM) version 1.10.9 compiled on September 27 2020" />
+    <property name="java.library.path" value="native-lib" />
+    <property name="java.vm.info" value="mixed mode, sharing" />
+    <property name="java.vendor" value="N/A" />
+    <property name="build" value="/Users/dawid/dev/mudita/Peergos/build" />
+    <property name="java.vm.version" value="15.0.1+9" />
+    <property name="sun.io.unicode.encoding" value="UnicodeBig" />
+    <property name="gwt.sdk" value="/Users/dawid/dev/mudita/Peergos/gwt/gwt-2.8.3" />
+    <property name="socksNonProxyHosts" value="local|*.local|169.254/16|*.169.254/16" />
+    <property name="java.class.version" value="59.0" />
+    <property name="ant.project.default-target" value="dist" />
+  </properties>
+  <testcase classname="peergos.server.tests.MultiUserTests" name="concurrentMutualFollowRequests" time="5.775" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="copyToDirectorySharedWith" time="12.652" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="socialFeedCommentOnSharedFile" time="9.973" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="socialFeed" time="11.583" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="cleanRenamedFilesReadAccess" time="13.934" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="grantAndRevokeWriteThenReadAccessToFolder" time="7.398" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="renamedDirectorySharedWith" time="11.091" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="socialFeedVariations" time="6.636" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="grantAndRevokeReadAccessToFileInFolder" time="6.461" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="grantAndRevokeNestedDirWriteAccess" time="21.607" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="acceptThenSubsequentFollowRequest" time="4.985" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="groupSharingToFollowers" time="9.251" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="removeFollower" time="5.802" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="acceptThenCompleteFollowRequest" time="6.163" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="reciprocateButNotAcceptFollowRequest" time="6.639" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="socialFeedAndUnfriending" time="11.188" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="shareAFileWithDifferentSigner" time="9.563" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="verifyFriend" time="5.981" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="denyThenSubsequentFollowRequest" time="6.716" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="socialFeedVariations2" time="7.548" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="sharedWriteableAndTruncate" time="6.811" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="moveToFileSharedWith" time="16.578" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="shareFolderForWriteAccess" time="10.104" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="renameSharedwithFolder" time="5.611" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="unfollow" time="5.205" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="renamedFileSharedWith" time="12.281" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="moveToDirectorySharedWith" time="17.344" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="groupReadIndividualWrite" time="9.826" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="grantAndRevokeDirWriteAccessWithNestedWriteAccess" time="19.625" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="acceptButNotReciprocateFollowRequest" time="5.998" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="deleteFileSharedWithWriteAccess" time="7.729" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="shareTwoFilesWithSameNameReadAccess" time="7.029" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="grantAndRevokeDirReadAccess" time="20.472" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="safeCopyOfFriendsWriteAccess" time="8.699" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="acceptAndReciprocateFollowRequestThenRemoveFollowRequest" time="8.104" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="sharedwithPermutations" time="11.728" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="groupAwareSharingWriteAccess" time="13.078" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="grantAndRevokeFileReadAccess" time="21.018" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="safeCopyOfFriendsReadAccess" time="8.343" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="grantAndRevokeDirWriteAccess" time="25.218" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="socialFeedEmpty" time="1.543" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="rejectFollowRequest" time="3.67" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="grantAndRevokeFileWriteAccess" time="17.88" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="revokeReadAccessToWritableFile" time="13.937" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="acceptAndReciprocateFollowRequest" time="7.177" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="shareTwoFilesWithSameNameWriteAccess" time="7.159" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="groupSharing" time="14.066" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="friendDeletesAccount" time="6.816" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="socialFeedBug" time="10.705" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="socialPostPropagation" time="15.077" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="socialFeedFailsInUI" time="7.488" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="groupAwareSharingReadAccess" time="9.106" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="grantAndRevokeParentNestedWriteAccess" time="13.274" />
+  <testcase classname="peergos.server.tests.MultiUserTests" name="copyToFileSharedWith" time="19.504" />
+  <system-out><![CDATA[Starting blockstore garbage collection on node Qmdo2VJ1sAZUh4yJTtVnWLCNorQcwfyWmH5CKj8Fef3VWA...
+Listing block store took 0s
+Listing pending blocks took 0s
+Listing pointers took 0s
+Marking reachable took 0s
+Deleting blocks took 0s
+GC complete. Freed 0 blocks totalling 0 bytes in 0s
+
+█╗█╗█╗█╗   ██████╗ ███████╗███████╗██████╗  ██████╗  ██████╗ ███████╗   █╗█╗█╗█╗
+ █████╔╝   ██╔══██╗██╔════╝██╔════╝██╔══██╗██╔════╝ ██╔═══██╗██╔════╝    █████╔╝
+ ██ ██║    ██████╔╝█████╗  █████╗  ██████╔╝██║  ███╗██║   ██║███████╗    ██ ██║
+ █████║    ██╔═══╝ ██╔══╝  ██╔══╝  ██╔══██╗██║   ██║██║   ██║╚════██║    █████║
+███████╗   ██║     ███████╗███████╗██║  ██║╚██████╔╝╚██████╔╝███████║   ███████╗
+╚══════╝   ╚═╝     ╚══════╝╚══════╝╚═╝  ╚═╝ ╚═════╝  ╚═════╝ ╚══════╝   ╚══════╝
+Peergos daemon started. Browse to http://localhost:10374/ to sign up or login. 
+Running version 0.4.0-
+Resharing WRITE cap to fa3a4755eb22d176fcdbe714bc9720/subdir with [username_964918189]
+Starting blockstore garbage collection on node Qmdo2VJ1sAZUh4yJTtVnWLCNorQcwfyWmH5CKj8Fef3VWA...
+Listing block store took 0s
+Listing pending blocks took 0s
+Listing pointers took 0s
+Marking reachable took 0s
+Deleting blocks took 0s
+GC complete. Freed 2337 blocks totalling 3221056 bytes in 0s
+Resharing WRITE cap to username_915660033/folder with [username_642975291]
+Resharing WRITE cap to 27e526d594eeb343bb405f318c5c6d/subdir with [username_276678052]
+Resharing WRITE cap to username_17673040/folder with [username_649861948]
+Resharing WRITE cap to username_17673040/folder/subdir with [username_960570054]
+Starting blockstore garbage collection on node Qmdo2VJ1sAZUh4yJTtVnWLCNorQcwfyWmH5CKj8Fef3VWA...
+Listing block store took 0s
+Listing pending blocks took 0s
+Listing pointers took 0s
+Marking reachable took 0s
+Deleting blocks took 0s
+GC complete. Freed 2606 blocks totalling 3554914 bytes in 0s
+Couldn't retrieve entry point for friend: ab4d17ea686c656ff061cf7d1fb315. Did they remove you as a follower?
+Couldn't retrieve entry point for friend: ab4d17ea686c656ff061cf7d1fb315. Did they remove you as a follower?
+Couldn't retrieve entry point for friend: 85829a40591827dc2169b1fb540702. Did they remove you as a follower?
+Resharing WRITE cap to username_714205046/dir with [username_304992996]
+Resharing WRITE cap to username_714205046/dir/somefile.txt with [username_304992996]
+Starting blockstore garbage collection on node Qmdo2VJ1sAZUh4yJTtVnWLCNorQcwfyWmH5CKj8Fef3VWA...
+Listing block store took 0s
+Listing pending blocks took 0s
+Listing pointers took 0s
+Marking reachable took 0s
+Deleting blocks took 0s
+GC complete. Freed 2565 blocks totalling 3669414 bytes in 0s
+filesize=409
+Resharing WRITE cap to sharer5bfb4e8fa03aab46ce386801/afolder/somefile.txt with [sharee0e27b4a11956a4c610f9da35]
+filesize=255
+Resharing WRITE cap to 69acf3788f2aa05dc834bdb6034200/subdir/somefile.txt with [username_804760270]
+PATH username_549373536/awritefolder
+Resharing WRITE cap to username_549373536/awritefolder with [username_773135867, username_340273074]
+Resharing WRITE cap to 3e34c679ba4f25f59ddecc1d1b9726/subdir/somefile.txt with [username_387009009]
+Starting blockstore garbage collection on node Qmdo2VJ1sAZUh4yJTtVnWLCNorQcwfyWmH5CKj8Fef3VWA...
+Listing block store took 0s
+Listing pending blocks took 0s
+Listing pointers took 0s
+Marking reachable took 0s
+Deleting blocks took 0s
+GC complete. Freed 2680 blocks totalling 3726508 bytes in 0s
+Resharing WRITE cap to 66167a2a019643f9a143f7d8789113/subdir with [username_38277755]
+Resharing WRITE cap to username_873533010/one with [username_915824166]
+Resharing WRITE cap to username_301854653/folder with [username_679365446]
+Resharing WRITE cap to username_301854653/folder/subdir with [username_441348293]
+Resharing WRITE cap to username_301854653/folder/subdir with [username_441348293]
+Resharing WRITE cap to 758bfad92cb7a00a7ae65bac5846e7/subdir/somefile.txt with [username_108498780]
+Starting blockstore garbage collection on node Qmdo2VJ1sAZUh4yJTtVnWLCNorQcwfyWmH5CKj8Fef3VWA...
+Listing block store took 0s
+Listing pending blocks took 0s
+Listing pointers took 0s
+Marking reachable took 0s
+Deleting blocks took 0s
+GC complete. Freed 2646 blocks totalling 3554201 bytes in 1s
+PATH username_128049486/afolder
+Resharing WRITE cap to 9bb1d8e50c3abe87b538ad65b4bbaf/somefile.txt with [fb786592cb87c930c616c12c992d9c]
+Couldn't retrieve entry point for friend: 49a20eee58ec92e81c7f1c1b8e9475. Did they remove you as a follower?
+Resharing WRITE cap to sharer-d401f714690965bf28acac/afolder with [sharee2-69cd41c6ee99e1a134ddd5]
+Resharing WRITE cap to sharer-d401f714690965bf28acac/afolder with [sharee2-69cd41c6ee99e1a134ddd5]
+Resharing WRITE cap to sharer-d401f714690965bf28acac/afolder with [sharee2-69cd41c6ee99e1a134ddd5]
+Starting blockstore garbage collection on node Qmdo2VJ1sAZUh4yJTtVnWLCNorQcwfyWmH5CKj8Fef3VWA...
+Listing block store took 0s
+Listing pending blocks took 0s
+Listing pointers took 0s
+Marking reachable took 0s
+Deleting blocks took 0s
+GC complete. Freed 2441 blocks totalling 3315388 bytes in 1s
+Resharing WRITE cap to username_702552710/one with [username_106743146]
+Resharing WRITE cap to username_702552710/one with [username_227931372]
+Resharing WRITE cap to username_702552710/one with [.7d56f3da93eb8d4c5f128b98d29f7d3f8101118eaf80695c11b2df96f0ed8f19]
+Resharing WRITE cap to username_702552710/one with [.112c8922159c5b3715e3e7217ae17423c7ea8dd3bb50ddfcb91c8a473ea112bd]
+PATH username_41776812/afolder
+Resharing WRITE cap to username_41776812/afolder with [username_773582581, username_117625994]
+Resharing WRITE cap to username_41776812/afolder with [username_117625994]
+Starting blockstore garbage collection on node Qmdo2VJ1sAZUh4yJTtVnWLCNorQcwfyWmH5CKj8Fef3VWA...
+Listing block store took 0s
+Listing pending blocks took 0s
+Listing pointers took 0s
+Marking reachable took 1s
+Deleting blocks took 0s
+GC complete. Freed 2284 blocks totalling 13539849 bytes in 1s
+Resharing WRITE cap to username_47203989/somefile.txt with [username_187965080, username_190157234]
+Resharing WRITE cap to username_47203989/somefile.txt with [username_187965080]
+Resharing WRITE cap to 14036c060889848c95efe7b2594821/subdir/file.txt with [2018e99af10b734ff0dd401cbf4e46]
+Resharing WRITE cap to 14036c060889848c95efe7b2594821/subdir/file.txt with [1c9db7a02461ed13c7862b9b3bef50]
+Resharing WRITE cap to 14036c060889848c95efe7b2594821/subdir/file.txt with [2018e99af10b734ff0dd401cbf4e46, 1c9db7a02461ed13c7862b9b3bef50]
+Resharing WRITE cap to d4c6e62c9eaade9a42e4025816e3ab/somefile.txt with [username_109344136]
+Resharing WRITE cap to d4c6e62c9eaade9a42e4025816e3ab/subdir/somefile.txt with [username_109344136]
+Starting blockstore garbage collection on node Qmdo2VJ1sAZUh4yJTtVnWLCNorQcwfyWmH5CKj8Fef3VWA...
+Listing block store took 0s
+Listing pending blocks took 0s
+Listing pointers took 0s
+Marking reachable took 1s
+Deleting blocks took 0s
+GC complete. Freed 2432 blocks totalling 13872836 bytes in 1s
+Starting blockstore garbage collection on node Qmdo2VJ1sAZUh4yJTtVnWLCNorQcwfyWmH5CKj8Fef3VWA...
+Listing block store took 0s
+Listing pending blocks took 0s
+Listing pointers took 0s
+Marking reachable took 1s
+Deleting blocks took 0s
+GC complete. Freed 2791 blocks totalling 6116254 bytes in 1s
+Resharing WRITE cap to username_568376813/folder/subdir with [username_809360473]
+Resharing WRITE cap to username_568376813/folder/subdir with [username_809360473]
+Resharing WRITE cap to username_568376813/folder with [username_49280010]
+Resharing WRITE cap to username_568376813/folder/subdir with [username_809360473]
+Resharing WRITE cap to c2b9617755df5076b6829d55f04f67/subdir/somefile.txt with [username_58475393]
+]]></system-out>
+  <system-err><![CDATA[Couldn't load native crypto library at /Users/dawid/dev/mudita/Peergos/native-lib/libtweetnacl.so, using pure Java version...
+To use the native linux-x86-64 crypto implementation use option -Djava.library.path=native-lib
+java.util.concurrent.CompletionException: java.lang.IllegalStateException: Couldn't retrieve entry point for user username_522723825
+	at java.base/java.util.concurrent.CompletableFuture.encodeThrowable(CompletableFuture.java:314)
+	at java.base/java.util.concurrent.CompletableFuture.uniApplyNow(CompletableFuture.java:683)
+	at java.base/java.util.concurrent.CompletableFuture.uniApplyStage(CompletableFuture.java:658)
+	at java.base/java.util.concurrent.CompletableFuture.thenApply(CompletableFuture.java:2158)
+	at peergos.shared.NetworkAccess.getUptodateEntryPoint(NetworkAccess.java:357)
+	at peergos.shared.NetworkAccess.lambda$getLatestEntryPoint$33(NetworkAccess.java:349)
+	at peergos.shared.util.Futures.lambda$asyncExceptionally$18(Futures.java:103)
+	at java.base/java.util.concurrent.CompletableFuture.uniExceptionally(CompletableFuture.java:986)
+	at java.base/java.util.concurrent.CompletableFuture.uniExceptionallyStage(CompletableFuture.java:1004)
+	at java.base/java.util.concurrent.CompletableFuture.exceptionally(CompletableFuture.java:2354)
+	at peergos.shared.util.Futures.asyncExceptionally(Futures.java:102)
+	at peergos.shared.NetworkAccess.getLatestEntryPoint(NetworkAccess.java:348)
+	at peergos.shared.user.IncomingCapCache.retrieveNewCaps(IncomingCapCache.java:422)
+	at peergos.shared.user.IncomingCapCache.getCapsFrom(IncomingCapCache.java:407)
+	at peergos.shared.user.IncomingCapCache.ensureUptodate(IncomingCapCache.java:452)
+	at peergos.shared.user.IncomingCapCache.lambda$ensureFriendUptodate$56(IncomingCapCache.java:394)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.IncomingCapCache.lambda$ensureFriendUptodate$58(IncomingCapCache.java:394)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.IncomingCapCache.ensureFriendUptodate(IncomingCapCache.java:375)
+	at peergos.shared.user.FriendSourcedTrieNode.ensureUptodate(FriendSourcedTrieNode.java:65)
+	at peergos.shared.user.FriendSourcedTrieNode.updateIncludingGroups(FriendSourcedTrieNode.java:95)
+	at peergos.shared.user.FriendSourcedTrieNode.getByPath(FriendSourcedTrieNode.java:120)
+	at peergos.shared.user.TrieNodeImpl.getByPath(TrieNodeImpl.java:64)
+	at peergos.shared.user.UserContext.getByPath(UserContext.java:1861)
+	at peergos.shared.user.UserContext.getByPath(UserContext.java:1852)
+	at peergos.server.tests.PeergosNetworkUtils.groupSharingToFollowers(PeergosNetworkUtils.java:1729)
+	at peergos.server.tests.MultiUserTests.groupSharingToFollowers(MultiUserTests.java:219)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:64)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:564)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:47)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:44)
+	at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:17)
+	at org.junit.runners.ParentRunner.runLeaf(ParentRunner.java:271)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:70)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:50)
+	at org.junit.runners.ParentRunner$3.run(ParentRunner.java:238)
+	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:63)
+	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:236)
+	at org.junit.runners.ParentRunner.access$000(ParentRunner.java:53)
+	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:229)
+	at org.junit.internal.runners.statements.RunBefores.evaluate(RunBefores.java:26)
+	at org.junit.runners.ParentRunner.run(ParentRunner.java:309)
+	at junit.framework.JUnit4TestAdapter.run(JUnit4TestAdapter.java:38)
+	at org.apache.tools.ant.taskdefs.optional.junit.JUnitTestRunner.run(JUnitTestRunner.java:535)
+	at org.apache.tools.ant.taskdefs.optional.junit.JUnitTestRunner.launch(JUnitTestRunner.java:1197)
+	at org.apache.tools.ant.taskdefs.optional.junit.JUnitTestRunner.main(JUnitTestRunner.java:1042)
+Caused by: java.lang.IllegalStateException: Couldn't retrieve entry point for user username_522723825
+	at peergos.shared.NetworkAccess.lambda$getUptodateEntryPoint$35(NetworkAccess.java:359)
+	at java.base/java.util.concurrent.CompletableFuture.uniApplyNow(CompletableFuture.java:680)
+	... 50 more
+java.util.concurrent.CompletionException: java.lang.IllegalStateException: Couldn't retrieve entry point for user username_297609950
+	at java.base/java.util.concurrent.CompletableFuture.encodeThrowable(CompletableFuture.java:314)
+	at java.base/java.util.concurrent.CompletableFuture.uniApplyNow(CompletableFuture.java:683)
+	at java.base/java.util.concurrent.CompletableFuture.uniApplyStage(CompletableFuture.java:658)
+	at java.base/java.util.concurrent.CompletableFuture.thenApply(CompletableFuture.java:2158)
+	at peergos.shared.NetworkAccess.getUptodateEntryPoint(NetworkAccess.java:357)
+	at peergos.shared.NetworkAccess.lambda$getLatestEntryPoint$33(NetworkAccess.java:349)
+	at peergos.shared.util.Futures.lambda$asyncExceptionally$18(Futures.java:103)
+	at java.base/java.util.concurrent.CompletableFuture.uniExceptionally(CompletableFuture.java:986)
+	at java.base/java.util.concurrent.CompletableFuture.uniExceptionallyStage(CompletableFuture.java:1004)
+	at java.base/java.util.concurrent.CompletableFuture.exceptionally(CompletableFuture.java:2354)
+	at peergos.shared.util.Futures.asyncExceptionally(Futures.java:102)
+	at peergos.shared.NetworkAccess.getLatestEntryPoint(NetworkAccess.java:348)
+	at peergos.shared.user.IncomingCapCache.retrieveNewCaps(IncomingCapCache.java:422)
+	at peergos.shared.user.IncomingCapCache.getCapsFrom(IncomingCapCache.java:407)
+	at peergos.shared.user.IncomingCapCache.ensureUptodate(IncomingCapCache.java:452)
+	at peergos.shared.user.IncomingCapCache.lambda$ensureFriendUptodate$56(IncomingCapCache.java:394)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.IncomingCapCache.lambda$ensureFriendUptodate$58(IncomingCapCache.java:394)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.IncomingCapCache.ensureFriendUptodate(IncomingCapCache.java:375)
+	at peergos.shared.user.FriendSourcedTrieNode.ensureUptodate(FriendSourcedTrieNode.java:65)
+	at peergos.shared.user.FriendSourcedTrieNode.updateIncludingGroups(FriendSourcedTrieNode.java:95)
+	at peergos.shared.user.FriendSourcedTrieNode.getByPath(FriendSourcedTrieNode.java:120)
+	at peergos.shared.user.TrieNodeImpl.getByPath(TrieNodeImpl.java:64)
+	at peergos.shared.user.UserContext.getByPath(UserContext.java:1861)
+	at peergos.shared.user.UserContext.getByPath(UserContext.java:1852)
+	at peergos.server.tests.PeergosNetworkUtils.groupSharing(PeergosNetworkUtils.java:1686)
+	at peergos.server.tests.MultiUserTests.groupSharing(MultiUserTests.java:214)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:64)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:564)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:47)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:44)
+	at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:17)
+	at org.junit.runners.ParentRunner.runLeaf(ParentRunner.java:271)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:70)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:50)
+	at org.junit.runners.ParentRunner$3.run(ParentRunner.java:238)
+	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:63)
+	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:236)
+	at org.junit.runners.ParentRunner.access$000(ParentRunner.java:53)
+	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:229)
+	at org.junit.internal.runners.statements.RunBefores.evaluate(RunBefores.java:26)
+	at org.junit.runners.ParentRunner.run(ParentRunner.java:309)
+	at junit.framework.JUnit4TestAdapter.run(JUnit4TestAdapter.java:38)
+	at org.apache.tools.ant.taskdefs.optional.junit.JUnitTestRunner.run(JUnitTestRunner.java:535)
+	at org.apache.tools.ant.taskdefs.optional.junit.JUnitTestRunner.launch(JUnitTestRunner.java:1197)
+	at org.apache.tools.ant.taskdefs.optional.junit.JUnitTestRunner.main(JUnitTestRunner.java:1042)
+Caused by: java.lang.IllegalStateException: Couldn't retrieve entry point for user username_297609950
+	at peergos.shared.NetworkAccess.lambda$getUptodateEntryPoint$35(NetworkAccess.java:359)
+	at java.base/java.util.concurrent.CompletableFuture.uniApplyNow(CompletableFuture.java:680)
+	... 50 more
+]]></system-err>
+</testsuite>

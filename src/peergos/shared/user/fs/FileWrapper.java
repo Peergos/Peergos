@@ -71,7 +71,7 @@ public class FileWrapper {
                 pointer.capability instanceof WritableAbsoluteCapability ||
                 entryWriter.map(s -> s.publicKeyHash.equals(pointer.capability.writer)).orElse(false);
         if (pointer == null)
-            props = new FileProperties("/", true, false, "", 0, LocalDateTime.MIN, false, Optional.empty(), Optional.empty());
+            props = new FileProperties("/", true, false, "", 0, LocalDateTime.MIN, false, Optional.empty(), Optional.empty(), Optional.empty());
         else {
             SymmetricKey parentKey = this.getParentKey();
             FileProperties directProps = pointer.fileAccess.getProperties(parentKey);
@@ -758,7 +758,7 @@ public class FileWrapper {
                                                         props.isLink, props.mimeType,
                                                         endIndex > currentSize ? endIndex : currentSize,
                                                         LocalDateTime.now(), props.isHidden,
-                                                        props.thumbnail, props.streamSecret);
+                                                        props.thumbnail, props.streamSecret, props.tags);
 
                                                 CompletableFuture<Snapshot> chunkUploaded = FileUploader.uploadChunk(version, committer, us.signingPair(),
                                                         newProps, parentLocation, parentParentKey, baseKey, located,
@@ -958,7 +958,7 @@ public class FileWrapper {
                                                         Optional<byte[]> streamSecret = Optional.of(crypto.random.randomBytes(32));
                                                         FileProperties fileProps = new FileProperties(filename,
                                                                 false, false, mimeType, endIndex,
-                                                                LocalDateTime.now(), isHidden, Optional.empty(), streamSecret);
+                                                                LocalDateTime.now(), isHidden, Optional.empty(), streamSecret, props.tags);
 
                                                         FileUploader chunks = new FileUploader(filename, mimeType, resetReader,
                                                                 startIndex, endIndex, fileKey, dataKey, parentLocation,
@@ -1011,7 +1011,7 @@ public class FileWrapper {
                     if (thumbData.isEmpty())
                         return Futures.of(base);
                     FileProperties fileProps = new FileProperties(fileName, false, props.isLink, mimeType, fileSize,
-                            updatedDateTime, isHidden, thumbData, streamSecret);
+                            updatedDateTime, isHidden, thumbData, streamSecret, props.tags);
 
                     return network.getFile(base, cap, getChildsEntryWriter(), ownername)
                             .thenCompose(child -> child.get().updateProperties(base, committer, fileProps, network));
@@ -1258,7 +1258,8 @@ public class FileWrapper {
                     FileProperties newProps = new FileProperties(newFilename, isDir, isLink,
                             currentProps.mimeType, currentProps.size,
                             currentProps.modified, currentProps.isHidden,
-                            currentProps.thumbnail, currentProps.streamSecret);
+                            currentProps.thumbnail, currentProps.streamSecret,
+                            currentProps.tags);
                     SigningPrivateKeyAndPublicHash signer = isLink ? parent.signingPair() : signingPair();
                     return userContext.network.synchronizer.applyComplexUpdate(owner(), signer,
                             (s, committer) -> nodeToUpdate.updateProperties(s, committer, us,

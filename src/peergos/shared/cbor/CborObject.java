@@ -177,6 +177,7 @@ public interface CborObject extends Cborable {
             return ((CborBoolean) val).value;
         }
 
+
         public Optional<byte[]> getOptionalByteArray(String key) {
             return Optional.ofNullable((CborByteArray) get(key)).map(c -> c.value);
         }
@@ -195,6 +196,10 @@ public interface CborObject extends Cborable {
 
         public Optional<Long> getOptionalLong(String key) {
             return Optional.ofNullable((CborLong) get(key)).map(c -> c.value);
+        }
+
+        public <T> Optional<List<T>> getOptionalList(String key, Function<Cborable, T> fromCbor) {
+            return Optional.ofNullable(this.getList(key, fromCbor));
         }
 
         public <T> List<T> getList(String key, Function<Cborable, T> fromCbor) {

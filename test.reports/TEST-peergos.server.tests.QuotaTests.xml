@@ -1,0 +1,392 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuite errors="0" failures="0" hostname="MacBook-Pro-Dawid.local" name="peergos.server.tests.QuotaTests" skipped="0" tests="4" time="16.692" timestamp="2021-05-16T19:52:45">
+  <properties>
+    <property name="ant.library.dir" value="/usr/local/Cellar/ant/1.10.9/libexec/lib" />
+    <property name="ant.file.type" value="file" />
+    <property name="java.specification.version" value="15" />
+    <property name="ant.project.name" value="Peergos" />
+    <property name="sun.jnu.encoding" value="UTF-8" />
+    <property name="dist" value="/Users/dawid/dev/mudita/Peergos/dist" />
+    <property name="java.class.path" value="/Users/dawid/dev/mudita/Peergos/lib-build/gwt-user.jar:/Users/dawid/dev/mudita/Peergos/lib-build/hamcrest-core-1.3.jar:/Users/dawid/dev/mudita/Peergos/lib-build/junit-4.11.jar:/Users/dawid/dev/mudita/Peergos/lib/HikariCP-3.4.2.jar:/Users/dawid/dev/mudita/Peergos/lib/jain-sdp.jar:/Users/dawid/dev/mudita/Peergos/lib/jline-3.12.1.jar:/Users/dawid/dev/mudita/Peergos/lib/jnr-fuse-0.3-all.jar:/Users/dawid/dev/mudita/Peergos/lib/postgresql-42.2.8.jar:/Users/dawid/dev/mudita/Peergos/lib/simpleclient-0.8.0.jar:/Users/dawid/dev/mudita/Peergos/lib/simpleclient_common-0.8.0.jar:/Users/dawid/dev/mudita/Peergos/lib/simpleclient_httpserver-0.8.0.jar:/Users/dawid/dev/mudita/Peergos/lib/slf4j-api-1.7.30.jar:/Users/dawid/dev/mudita/Peergos/lib/slf4j-nop-1.7.30.jar:/Users/dawid/dev/mudita/Peergos/lib/sqlite-jdbc-3.30.1.jar:/Users/dawid/dev/mudita/Peergos/lib/weupnp-0.1.2-SNAPSHOT.jar:/Users/dawid/dev/mudita/Peergos/build:/usr/local/Cellar/ant/1.10.9/libexec/lib/ant-launcher.jar:/usr/local/Cellar/ant/1.10.9/libexec/lib/ant.jar:/usr/local/Cellar/ant/1.10.9/libexec/lib/ant-junit.jar:/usr/local/Cellar/ant/1.10.9/libexec/lib/ant-junit4.jar" />
+    <property name="java.vm.vendor" value="Oracle Corporation" />
+    <property name="test.reports" value="/Users/dawid/dev/mudita/Peergos/test.reports" />
+    <property name="sun.arch.data.model" value="64" />
+    <property name="java.vendor.url" value="https://openjdk.java.net/" />
+    <property name="os.name" value="Mac OS X" />
+    <property name="java.vm.specification.version" value="15" />
+    <property name="sun.java.launcher" value="SUN_STANDARD" />
+    <property name="user.country" value="PL" />
+    <property name="sun.boot.library.path" value="/usr/local/Cellar/openjdk/15.0.1/libexec/openjdk.jdk/Contents/Home/lib" />
+    <property name="sun.java.command" value="org.apache.tools.ant.taskdefs.optional.junit.JUnitTestRunner peergos.server.tests.QuotaTests skipNonTests=true filtertrace=true haltOnError=false haltOnFailure=false formatter=org.apache.tools.ant.taskdefs.optional.junit.SummaryJUnitResultFormatter showoutput=false outputtoformatters=true logfailedtests=true threadid=0 logtestlistenerevents=false formatter=org.apache.tools.ant.taskdefs.optional.junit.XMLJUnitResultFormatter,/Users/dawid/dev/mudita/Peergos/test.reports/TEST-peergos.server.tests.QuotaTests.xml crashfile=/Users/dawid/dev/mudita/Peergos/junitvmwatcher8448701785728506506.properties propsfile=/Users/dawid/dev/mudita/Peergos/junit1697798837180273809.properties" />
+    <property name="http.nonProxyHosts" value="local|*.local|169.254/16|*.169.254/16" />
+    <property name="jdk.debug" value="release" />
+    <property name="sun.cpu.endian" value="little" />
+    <property name="user.home" value="/Users/dawid" />
+    <property name="user.language" value="pl" />
+    <property name="java.specification.vendor" value="Oracle Corporation" />
+    <property name="java.version.date" value="2020-10-20" />
+    <property name="java.home" value="/usr/local/Cellar/openjdk/15.0.1/libexec/openjdk.jdk/Contents/Home" />
+    <property name="file.separator" value="/" />
+    <property name="basedir" value="/Users/dawid/dev/mudita/Peergos" />
+    <property name="java.vm.compressedOopsMode" value="Zero based" />
+    <property name="line.separator" value="&#xa;" />
+    <property name="ant.java.version" value="15" />
+    <property name="java.vm.specification.vendor" value="Oracle Corporation" />
+    <property name="java.specification.name" value="Java Platform API Specification" />
+    <property name="test.source.absolute" value="/Users/dawid/dev/mudita/Peergos/src/peergos/server/tests/QuotaTests.java" />
+    <property name="gwt.args" value="-generateJsInteropExports -style Pretty -strict" />
+    <property name="sun.management.compiler" value="HotSpot 64-Bit Tiered Compilers" />
+    <property name="ftp.nonProxyHosts" value="local|*.local|169.254/16|*.169.254/16" />
+    <property name="ant.file.type.Peergos" value="file" />
+    <property name="java.runtime.version" value="15.0.1+9" />
+    <property name="user.name" value="dawid" />
+    <property name="ant.file" value="/Users/dawid/dev/mudita/Peergos/build.xml" />
+    <property name="test.source.relative" value="peergos/server/tests/QuotaTests.java" />
+    <property name="path.separator" value=":" />
+    <property name="os.version" value="10.15.7" />
+    <property name="ant.file.Peergos" value="/Users/dawid/dev/mudita/Peergos/build.xml" />
+    <property name="java.runtime.name" value="OpenJDK Runtime Environment" />
+    <property name="file.encoding" value="UTF-8" />
+    <property name="ant.project.invoked-targets" value="execute.test" />
+    <property name="java.vm.name" value="OpenJDK 64-Bit Server VM" />
+    <property name="ant.core.lib" value="/usr/local/Cellar/ant/1.10.9/libexec/lib/ant.jar" />
+    <property name="java.vendor.url.bug" value="https://bugreport.java.com/bugreport/" />
+    <property name="java.io.tmpdir" value="/var/folders/gv/63jbvk_x3dv61sknmgcfqtg40000gn/T/" />
+    <property name="src" value="/Users/dawid/dev/mudita/Peergos/src" />
+    <property name="java.version" value="15.0.1" />
+    <property name="user.dir" value="/Users/dawid/dev/mudita/Peergos" />
+    <property name="os.arch" value="x86_64" />
+    <property name="timestamp.millis" value="1489731900000" />
+    <property name="java.vm.specification.name" value="Java Virtual Machine Specification" />
+    <property name="manifest_cp" value="lib/HikariCP-3.4.2.jar lib/jain-sdp.jar lib/jline-3.12.1.jar lib/jnr-fuse-0.3-all.jar lib/postgresql-42.2.8.jar lib/simpleclient-0.8.0.jar lib/simpleclient_common-0.8.0.jar lib/simpleclient_httpserver-0.8.0.jar lib/slf4j-api-1.7.30.jar lib/slf4j-nop-1.7.30.jar lib/sqlite-jdbc-3.30.1.jar lib/weupnp-0.1.2-SNAPSHOT.jar" />
+    <property name="ant.home" value="/usr/local/Cellar/ant/1.10.9/libexec" />
+    <property name="test.sources" value="/Users/dawid/dev/mudita/Peergos/src" />
+    <property name="ant.version" value="Apache Ant(TM) version 1.10.9 compiled on September 27 2020" />
+    <property name="java.library.path" value="native-lib" />
+    <property name="java.vm.info" value="mixed mode, sharing" />
+    <property name="java.vendor" value="N/A" />
+    <property name="build" value="/Users/dawid/dev/mudita/Peergos/build" />
+    <property name="java.vm.version" value="15.0.1+9" />
+    <property name="sun.io.unicode.encoding" value="UnicodeBig" />
+    <property name="gwt.sdk" value="/Users/dawid/dev/mudita/Peergos/gwt/gwt-2.8.3" />
+    <property name="socksNonProxyHosts" value="local|*.local|169.254/16|*.169.254/16" />
+    <property name="java.class.version" value="59.0" />
+    <property name="ant.project.default-target" value="dist" />
+  </properties>
+  <testcase classname="peergos.server.tests.QuotaTests" name="deletionAtQuota[0]" time="2.296" />
+  <testcase classname="peergos.server.tests.QuotaTests" name="deletionsReduceUsage[0]" time="3.324" />
+  <testcase classname="peergos.server.tests.QuotaTests" name="deletionAfterExceedingQuota[0]" time="2.175" />
+  <testcase classname="peergos.server.tests.QuotaTests" name="quota[0]" time="1.853" />
+  <system-out><![CDATA[Starting blockstore garbage collection on node Qmdo2VJ1sAZUh4yJTtVnWLCNorQcwfyWmH5CKj8Fef3VWA...
+Listing block store took 0s
+Listing pending blocks took 0s
+Listing pointers took 0s
+Marking reachable took 0s
+Deleting blocks took 0s
+GC complete. Freed 0 blocks totalling 0 bytes in 0s
+
+█╗█╗█╗█╗   ██████╗ ███████╗███████╗██████╗  ██████╗  ██████╗ ███████╗   █╗█╗█╗█╗
+ █████╔╝   ██╔══██╗██╔════╝██╔════╝██╔══██╗██╔════╝ ██╔═══██╗██╔════╝    █████╔╝
+ ██ ██║    ██████╔╝█████╗  █████╗  ██████╔╝██║  ███╗██║   ██║███████╗    ██ ██║
+ █████║    ██╔═══╝ ██╔══╝  ██╔══╝  ██╔══██╗██║   ██║██║   ██║╚════██║    █████║
+███████╗   ██║     ███████╗███████╗██║  ██║╚██████╔╝╚██████╔╝███████║   ███████╗
+╚══════╝   ╚═╝     ╚══════╝╚══════╝╚═╝  ╚═╝ ╚═════╝  ╚═════╝ ╚══════╝   ╚══════╝
+Peergos daemon started. Browse to http://localhost:9060/ to sign up or login. 
+Running version 0.4.0-
+]]></system-out>
+  <system-err><![CDATA[Couldn't load native crypto library at /Users/dawid/dev/mudita/Peergos/native-lib/libtweetnacl.so, using pure Java version...
+To use the native linux-x86-64 crypto implementation use option -Djava.library.path=native-lib
+java.util.concurrent.CompletionException: java.lang.RuntimeException: java.lang.RuntimeException: java.io.IOException: Server returned status: 400 with body:  and Trailer header: [Storage+quota+reached%21+%0AUsed+2085264+out+of+2097152+bytes.+Rejecting+write+of+size+479232.+%0APlease+delete+some+files+or+request+more+space.]
+	at java.base/java.util.concurrent.CompletableFuture.encodeThrowable(CompletableFuture.java:331)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1173)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.storage.CachingVerifyingStorage.putRaw(CachingVerifyingStorage.java:143)
+	at peergos.shared.storage.DelegatingStorage.putRaw(DelegatingStorage.java:56)
+	at peergos.shared.NetworkAccess.bulkUploadFragments(NetworkAccess.java:462)
+	at peergos.shared.NetworkAccess.lambda$uploadFragments$57(NetworkAccess.java:479)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.NetworkAccess.uploadFragments(NetworkAccess.java:479)
+	at peergos.shared.user.fs.FileUploader.lambda$uploadChunk$10(FileUploader.java:157)
+	at peergos.shared.storage.IpfsTransaction.lambda$call$5(IpfsTransaction.java:22)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.storage.IpfsTransaction.call(IpfsTransaction.java:22)
+	at peergos.shared.user.fs.FileUploader.lambda$uploadChunk$11(FileUploader.java:156)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.fs.FileUploader.uploadChunk(FileUploader.java:145)
+	at peergos.shared.user.fs.FileUploader.lambda$uploadChunk$0(FileUploader.java:101)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.fs.FileUploader.lambda$uploadChunk$1(FileUploader.java:99)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.fs.FileUploader.lambda$uploadChunk$2(FileUploader.java:95)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.fs.FileUploader.uploadChunk(FileUploader.java:91)
+	at peergos.shared.user.fs.FileUploader.lambda$upload$4(FileUploader.java:117)
+	at peergos.shared.util.Futures.lambda$reduceAll$12(Futures.java:69)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.util.Futures.lambda$reduceAll$13(Futures.java:69)
+	at java.base/java.util.stream.ReduceOps$1ReducingSink.accept(ReduceOps.java:80)
+	at java.base/java.util.ArrayList$ArrayListSpliterator.forEachRemaining(ArrayList.java:1625)
+	at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:484)
+	at java.base/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:474)
+	at java.base/java.util.stream.ReduceOps$ReduceOp.evaluateSequential(ReduceOps.java:913)
+	at java.base/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:234)
+	at java.base/java.util.stream.ReferencePipeline.reduce(ReferencePipeline.java:563)
+	at peergos.shared.util.Futures.reduceAll(Futures.java:67)
+	at peergos.shared.user.fs.FileUploader.upload(FileUploader.java:117)
+	at peergos.shared.user.fs.FileWrapper.lambda$uploadFileSection$103(FileWrapper.java:974)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.fs.FileWrapper.lambda$uploadFileSection$104(FileWrapper.java:957)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.fs.FileWrapper.lambda$uploadFileSection$105(FileWrapper.java:956)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.fs.FileWrapper.lambda$uploadFileSection$106(FileWrapper.java:910)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.fs.FileWrapper.lambda$uploadFileSection$107(FileWrapper.java:909)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.fs.FileWrapper.uploadFileSection(FileWrapper.java:908)
+	at peergos.shared.user.fs.FileWrapper.lambda$uploadFileSection$86(FileWrapper.java:826)
+	at peergos.shared.user.WriteSynchronizer.lambda$applyComplexUpdate$18(WriteSynchronizer.java:96)
+	at peergos.shared.util.AsyncLock.lambda$runWithLock$5(AsyncLock.java:35)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.util.AsyncLock.runWithLock(AsyncLock.java:35)
+	at peergos.shared.user.WriteSynchronizer.applyComplexUpdate(WriteSynchronizer.java:96)
+	at peergos.shared.user.fs.FileWrapper.uploadFileSection(FileWrapper.java:825)
+	at peergos.shared.user.fs.FileWrapper.uploadOrReplaceFile(FileWrapper.java:598)
+	at peergos.server.tests.QuotaTests.deletionAfterExceedingQuota(QuotaTests.java:125)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:64)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:564)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:47)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:44)
+	at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:17)
+	at org.junit.runners.ParentRunner.runLeaf(ParentRunner.java:271)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:70)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:50)
+	at org.junit.runners.ParentRunner$3.run(ParentRunner.java:238)
+	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:63)
+	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:236)
+	at org.junit.runners.ParentRunner.access$000(ParentRunner.java:53)
+	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:229)
+	at org.junit.runners.ParentRunner.run(ParentRunner.java:309)
+	at org.junit.runners.Suite.runChild(Suite.java:127)
+	at org.junit.runners.Suite.runChild(Suite.java:26)
+	at org.junit.runners.ParentRunner$3.run(ParentRunner.java:238)
+	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:63)
+	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:236)
+	at org.junit.runners.ParentRunner.access$000(ParentRunner.java:53)
+	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:229)
+	at org.junit.internal.runners.statements.RunBefores.evaluate(RunBefores.java:26)
+	at org.junit.runners.ParentRunner.run(ParentRunner.java:309)
+	at junit.framework.JUnit4TestAdapter.run(JUnit4TestAdapter.java:38)
+	at org.apache.tools.ant.taskdefs.optional.junit.JUnitTestRunner.run(JUnitTestRunner.java:535)
+	at org.apache.tools.ant.taskdefs.optional.junit.JUnitTestRunner.launch(JUnitTestRunner.java:1197)
+	at org.apache.tools.ant.taskdefs.optional.junit.JUnitTestRunner.main(JUnitTestRunner.java:1042)
+Caused by: java.lang.RuntimeException: java.lang.RuntimeException: java.io.IOException: Server returned status: 400 with body:  and Trailer header: [Storage+quota+reached%21+%0AUsed+2085264+out+of+2097152+bytes.+Rejecting+write+of+size+479232.+%0APlease+delete+some+files+or+request+more+space.]
+	at java.base/jdk.internal.reflect.NativeConstructorAccessorImpl.newInstance0(Native Method)
+	at java.base/jdk.internal.reflect.NativeConstructorAccessorImpl.newInstance(NativeConstructorAccessorImpl.java:64)
+	at java.base/jdk.internal.reflect.DelegatingConstructorAccessorImpl.newInstance(DelegatingConstructorAccessorImpl.java:45)
+	at java.base/java.lang.reflect.Constructor.newInstanceWithCaller(Constructor.java:500)
+	at java.base/java.lang.reflect.Constructor.newInstance(Constructor.java:481)
+	at java.base/java.util.concurrent.ForkJoinTask.getThrowableException(ForkJoinTask.java:600)
+	at java.base/java.util.concurrent.ForkJoinTask.reportException(ForkJoinTask.java:678)
+	at java.base/java.util.concurrent.ForkJoinTask.invoke(ForkJoinTask.java:737)
+	at java.base/java.util.stream.ReduceOps$ReduceOp.evaluateParallel(ReduceOps.java:919)
+	at java.base/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:233)
+	at java.base/java.util.stream.ReferencePipeline.collect(ReferencePipeline.java:578)
+	at peergos.shared.storage.ContentAddressedStorage$HTTP.bulkPut(ContentAddressedStorage.java:543)
+	at peergos.shared.storage.ContentAddressedStorage$HTTP.putRaw(ContentAddressedStorage.java:507)
+	at peergos.shared.storage.RetryStorage.lambda$putRaw$9(RetryStorage.java:112)
+	at peergos.shared.storage.RetryStorage.recurse(RetryStorage.java:51)
+	at peergos.shared.storage.RetryStorage.runWithRetry(RetryStorage.java:45)
+	at peergos.shared.storage.RetryStorage.putRaw(RetryStorage.java:112)
+	at peergos.shared.storage.CachingVerifyingStorage.putRaw(CachingVerifyingStorage.java:142)
+	... 95 more
+Caused by: java.lang.RuntimeException: java.io.IOException: Server returned status: 400 with body:  and Trailer header: [Storage+quota+reached%21+%0AUsed+2085264+out+of+2097152+bytes.+Rejecting+write+of+size+479232.+%0APlease+delete+some+files+or+request+more+space.]
+	at peergos.shared.user.JavaPoster.postMultipart(JavaPoster.java:97)
+	at peergos.shared.storage.ContentAddressedStorage$HTTP.put(ContentAddressedStorage.java:560)
+	at peergos.shared.storage.ContentAddressedStorage$HTTP.lambda$bulkPut$17(ContentAddressedStorage.java:532)
+	at java.base/java.util.stream.IntPipeline$1$1.accept(IntPipeline.java:180)
+	at java.base/java.util.stream.Streams$RangeIntSpliterator.forEachRemaining(Streams.java:104)
+	at java.base/java.util.Spliterator$OfInt.forEachRemaining(Spliterator.java:699)
+	at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:484)
+	at java.base/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:474)
+	at java.base/java.util.stream.ReduceOps$ReduceTask.doLeaf(ReduceOps.java:952)
+	at java.base/java.util.stream.ReduceOps$ReduceTask.doLeaf(ReduceOps.java:926)
+	at java.base/java.util.stream.AbstractTask.compute(AbstractTask.java:327)
+	at java.base/java.util.concurrent.CountedCompleter.exec(CountedCompleter.java:746)
+	at java.base/java.util.concurrent.ForkJoinTask.doExec(ForkJoinTask.java:290)
+	at java.base/java.util.concurrent.ForkJoinPool$WorkQueue.topLevelExec(ForkJoinPool.java:1016)
+	at java.base/java.util.concurrent.ForkJoinPool.scan(ForkJoinPool.java:1665)
+	at java.base/java.util.concurrent.ForkJoinPool.runWorker(ForkJoinPool.java:1598)
+	at java.base/java.util.concurrent.ForkJoinWorkerThread.run(ForkJoinWorkerThread.java:183)
+Caused by: java.io.IOException: Server returned status: 400 with body:  and Trailer header: [Storage+quota+reached%21+%0AUsed+2085264+out+of+2097152+bytes.+Rejecting+write+of+size+479232.+%0APlease+delete+some+files+or+request+more+space.]
+	at peergos.shared.io.ipfs.api.Multipart.finish(Multipart.java:153)
+	at peergos.shared.user.JavaPoster.postMultipart(JavaPoster.java:95)
+	... 16 more
+java.util.concurrent.CompletionException: java.lang.RuntimeException: java.io.IOException: Server returned status: 400 with body:  and Trailer header: [Storage+quota+reached%21+%0AUsed+1081662+out+of+2097152+bytes.+Rejecting+write+of+size+1049135.+%0APlease+delete+some+files+or+request+more+space.]
+	at java.base/java.util.concurrent.CompletableFuture.encodeThrowable(CompletableFuture.java:331)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1173)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.storage.CachingVerifyingStorage.put(CachingVerifyingStorage.java:89)
+	at peergos.shared.storage.ContentAddressedStorage.put(ContentAddressedStorage.java:67)
+	at peergos.shared.storage.CommittableStorage.lambda$flush$1(CommittableStorage.java:30)
+	at java.base/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:195)
+	at java.base/java.util.ArrayList$ArrayListSpliterator.forEachRemaining(ArrayList.java:1625)
+	at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:484)
+	at java.base/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:474)
+	at java.base/java.util.stream.ReduceOps$ReduceOp.evaluateSequential(ReduceOps.java:913)
+	at java.base/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:234)
+	at java.base/java.util.stream.ReferencePipeline.collect(ReferencePipeline.java:578)
+	at peergos.shared.storage.CommittableStorage.flush(CommittableStorage.java:36)
+	at peergos.shared.user.WriterData.lambda$commit$32(WriterData.java:280)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.WriterData.commit(WriterData.java:280)
+	at peergos.shared.user.WriteSynchronizer.lambda$applyComplexUpdate$17(WriteSynchronizer.java:97)
+	at peergos.shared.NetworkAccess.lambda$uploadChunk$60(NetworkAccess.java:511)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.NetworkAccess.lambda$uploadChunk$61(NetworkAccess.java:511)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.NetworkAccess.uploadChunk(NetworkAccess.java:509)
+	at peergos.shared.user.fs.FileUploader.lambda$uploadChunk$9(FileUploader.java:158)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.fs.FileUploader.lambda$uploadChunk$10(FileUploader.java:158)
+	at peergos.shared.storage.IpfsTransaction.lambda$call$5(IpfsTransaction.java:22)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.storage.IpfsTransaction.call(IpfsTransaction.java:22)
+	at peergos.shared.user.fs.FileUploader.lambda$uploadChunk$11(FileUploader.java:156)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.fs.FileUploader.uploadChunk(FileUploader.java:145)
+	at peergos.shared.user.fs.FileUploader.lambda$uploadChunk$0(FileUploader.java:101)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.fs.FileUploader.lambda$uploadChunk$1(FileUploader.java:99)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.fs.FileUploader.lambda$uploadChunk$2(FileUploader.java:95)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.fs.FileUploader.uploadChunk(FileUploader.java:91)
+	at peergos.shared.user.fs.FileUploader.lambda$upload$4(FileUploader.java:117)
+	at peergos.shared.util.Futures.lambda$reduceAll$12(Futures.java:69)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.util.Futures.lambda$reduceAll$13(Futures.java:69)
+	at java.base/java.util.stream.ReduceOps$1ReducingSink.accept(ReduceOps.java:80)
+	at java.base/java.util.ArrayList$ArrayListSpliterator.forEachRemaining(ArrayList.java:1625)
+	at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:484)
+	at java.base/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:474)
+	at java.base/java.util.stream.ReduceOps$ReduceOp.evaluateSequential(ReduceOps.java:913)
+	at java.base/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:234)
+	at java.base/java.util.stream.ReferencePipeline.reduce(ReferencePipeline.java:563)
+	at peergos.shared.util.Futures.reduceAll(Futures.java:67)
+	at peergos.shared.user.fs.FileUploader.upload(FileUploader.java:117)
+	at peergos.shared.user.fs.FileWrapper.lambda$uploadFileSection$103(FileWrapper.java:974)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.fs.FileWrapper.lambda$uploadFileSection$104(FileWrapper.java:957)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.fs.FileWrapper.lambda$uploadFileSection$105(FileWrapper.java:956)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.fs.FileWrapper.lambda$uploadFileSection$106(FileWrapper.java:910)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.fs.FileWrapper.lambda$uploadFileSection$107(FileWrapper.java:909)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.user.fs.FileWrapper.uploadFileSection(FileWrapper.java:908)
+	at peergos.shared.user.fs.FileWrapper.lambda$uploadFileSection$86(FileWrapper.java:826)
+	at peergos.shared.user.WriteSynchronizer.lambda$applyComplexUpdate$18(WriteSynchronizer.java:96)
+	at peergos.shared.util.AsyncLock.lambda$runWithLock$5(AsyncLock.java:35)
+	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1183)
+	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2299)
+	at peergos.shared.util.AsyncLock.runWithLock(AsyncLock.java:35)
+	at peergos.shared.user.WriteSynchronizer.applyComplexUpdate(WriteSynchronizer.java:96)
+	at peergos.shared.user.fs.FileWrapper.uploadFileSection(FileWrapper.java:825)
+	at peergos.shared.user.fs.FileWrapper.uploadOrReplaceFile(FileWrapper.java:598)
+	at peergos.server.tests.QuotaTests.quota(QuotaTests.java:64)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:64)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:564)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:47)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:44)
+	at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:17)
+	at org.junit.runners.ParentRunner.runLeaf(ParentRunner.java:271)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:70)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:50)
+	at org.junit.runners.ParentRunner$3.run(ParentRunner.java:238)
+	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:63)
+	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:236)
+	at org.junit.runners.ParentRunner.access$000(ParentRunner.java:53)
+	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:229)
+	at org.junit.runners.ParentRunner.run(ParentRunner.java:309)
+	at org.junit.runners.Suite.runChild(Suite.java:127)
+	at org.junit.runners.Suite.runChild(Suite.java:26)
+	at org.junit.runners.ParentRunner$3.run(ParentRunner.java:238)
+	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:63)
+	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:236)
+	at org.junit.runners.ParentRunner.access$000(ParentRunner.java:53)
+	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:229)
+	at org.junit.internal.runners.statements.RunBefores.evaluate(RunBefores.java:26)
+	at org.junit.runners.ParentRunner.run(ParentRunner.java:309)
+	at junit.framework.JUnit4TestAdapter.run(JUnit4TestAdapter.java:38)
+	at org.apache.tools.ant.taskdefs.optional.junit.JUnitTestRunner.run(JUnitTestRunner.java:535)
+	at org.apache.tools.ant.taskdefs.optional.junit.JUnitTestRunner.launch(JUnitTestRunner.java:1197)
+	at org.apache.tools.ant.taskdefs.optional.junit.JUnitTestRunner.main(JUnitTestRunner.java:1042)
+Caused by: java.lang.RuntimeException: java.io.IOException: Server returned status: 400 with body:  and Trailer header: [Storage+quota+reached%21+%0AUsed+1081662+out+of+2097152+bytes.+Rejecting+write+of+size+1049135.+%0APlease+delete+some+files+or+request+more+space.]
+	at peergos.shared.user.JavaPoster.postMultipart(JavaPoster.java:97)
+	at peergos.shared.storage.ContentAddressedStorage$HTTP.put(ContentAddressedStorage.java:560)
+	at peergos.shared.storage.ContentAddressedStorage$HTTP.lambda$bulkPut$17(ContentAddressedStorage.java:532)
+	at java.base/java.util.stream.IntPipeline$1$1.accept(IntPipeline.java:180)
+	at java.base/java.util.stream.Streams$RangeIntSpliterator.forEachRemaining(Streams.java:104)
+	at java.base/java.util.Spliterator$OfInt.forEachRemaining(Spliterator.java:699)
+	at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:484)
+	at java.base/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:474)
+	at java.base/java.util.stream.ReduceOps$ReduceTask.doLeaf(ReduceOps.java:952)
+	at java.base/java.util.stream.ReduceOps$ReduceTask.doLeaf(ReduceOps.java:926)
+	at java.base/java.util.stream.AbstractTask.compute(AbstractTask.java:327)
+	at java.base/java.util.concurrent.CountedCompleter.exec(CountedCompleter.java:746)
+	at java.base/java.util.concurrent.ForkJoinTask.doExec(ForkJoinTask.java:290)
+	at java.base/java.util.concurrent.ForkJoinTask.doInvoke(ForkJoinTask.java:408)
+	at java.base/java.util.concurrent.ForkJoinTask.invoke(ForkJoinTask.java:736)
+	at java.base/java.util.stream.ReduceOps$ReduceOp.evaluateParallel(ReduceOps.java:919)
+	at java.base/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:233)
+	at java.base/java.util.stream.ReferencePipeline.collect(ReferencePipeline.java:578)
+	at peergos.shared.storage.ContentAddressedStorage$HTTP.bulkPut(ContentAddressedStorage.java:543)
+	at peergos.shared.storage.ContentAddressedStorage$HTTP.put(ContentAddressedStorage.java:497)
+	at peergos.shared.storage.RetryStorage.lambda$put$7(RetryStorage.java:97)
+	at peergos.shared.storage.RetryStorage.recurse(RetryStorage.java:51)
+	at peergos.shared.storage.RetryStorage.runWithRetry(RetryStorage.java:45)
+	at peergos.shared.storage.RetryStorage.put(RetryStorage.java:97)
+	at peergos.shared.storage.CachingVerifyingStorage.put(CachingVerifyingStorage.java:88)
+	... 114 more
+Caused by: java.io.IOException: Server returned status: 400 with body:  and Trailer header: [Storage+quota+reached%21+%0AUsed+1081662+out+of+2097152+bytes.+Rejecting+write+of+size+1049135.+%0APlease+delete+some+files+or+request+more+space.]
+	at peergos.shared.io.ipfs.api.Multipart.finish(Multipart.java:153)
+	at peergos.shared.user.JavaPoster.postMultipart(JavaPoster.java:95)
+	... 138 more
+]]></system-err>
+</testsuite>

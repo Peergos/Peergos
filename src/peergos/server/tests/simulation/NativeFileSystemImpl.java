@@ -3,6 +3,7 @@ package peergos.server.tests.simulation;
 import peergos.server.simulation.AccessControl;
 import peergos.server.simulation.FileSystem;
 import peergos.server.simulation.Stat;
+import peergos.shared.user.TagsList;
 import peergos.shared.user.fs.FileProperties;
 
 import java.io.File;
@@ -158,11 +159,12 @@ public class NativeFileSystemImpl implements FileSystem {
                 Optional<byte[]> thumbnail = Optional.empty();
                 boolean isHidden = false;
                 String mimeType="NOT_SUPPORTED";
+                Optional<TagsList> tags = Optional.empty();
 
                 //TODO make files use the new format with a stream secret
                 Optional<byte[]> streamSecret = file.isDirectory() ? Optional.empty() : Optional.empty();
                 return new FileProperties(file.getName(), file.isDirectory(), false, mimeType, sizeHi, sizeLo, lastModified,
-                        isHidden, thumbnail, streamSecret);
+                        isHidden, thumbnail, streamSecret, tags);
 
             }
 

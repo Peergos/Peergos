@@ -810,7 +810,7 @@ public class UserContext {
                                         RelativeCapability.buildSubsequentChunk(crypto.random.randomBytes(32), rootRKey);
                                 return CryptreeNode.createEmptyDir(MaybeMultihash.empty(), rootRKey, rootWKey, Optional.of(writerPair),
                                                 new FileProperties(directoryName, true, false, "", 0, LocalDateTime.now(),
-                                                        false, Optional.empty(), Optional.empty()),
+                                                        false, Optional.empty(), Optional.empty(), Optional.empty()),
                                                 Optional.empty(), SymmetricKey.random(), nextChunk, crypto.hasher)
                                         .thenCompose(root -> {
                                             LOG.info("Uploading entry point directory");

@@ -23,7 +23,7 @@ public class BlockSizeTests {
         SymmetricKey parent = SymmetricKey.random();
         SymmetricKey parentParent = SymmetricKey.random();
         FileProperties props = new FileProperties("a-directory", true, false, "", 0, 0,
-                LocalDateTime.now(), false, Optional.empty(), Optional.empty());
+                LocalDateTime.now(), false, Optional.empty(), Optional.empty(), Optional.empty());
         SigningPrivateKeyAndPublicHash signingPair = ChampTests.createUser(new RAMStorage(crypto.hasher), crypto);
 
         Optional<RelativeCapability> parentCap = Optional.of(new RelativeCapability(Optional.empty(), crypto.random.randomBytes(32), parentParent, Optional.empty()));

@@ -3,6 +3,8 @@ package peergos.shared.user.fs;
 import jsinterop.annotations.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.user.TagsList;
+import peergos.shared.user.TagsListItem;
 import peergos.shared.util.*;
 
 import java.nio.file.*;
@@ -19,12 +21,14 @@ import java.util.concurrent.*;
 public class FileProperties implements Cborable {
     public static final int MAX_FILE_NAME_SIZE = 255;
     public static final int MAX_PATH_SIZE = 4096;
-    public static final FileProperties EMPTY = new FileProperties("", true, false, "", 0, LocalDateTime.MIN, false, Optional.empty(), Optional.empty());
+    public static final FileProperties EMPTY = new FileProperties("", true, false, "", 0, LocalDateTime.MIN, false, Optional.empty(), Optional.empty(), Optional.empty());
 
     public final String name;
     public final boolean isDirectory;
     public final boolean isLink;
     public final String mimeType;
+    public final Optional<TagsList> tags;
+
     @JsIgnore
     public final long size;
     public final LocalDateTime modified;
@@ -40,7 +44,8 @@ public class FileProperties implements Cborable {
                           LocalDateTime modified,
                           boolean isHidden,
                           Optional<byte[]> thumbnail,
-                          Optional<byte[]> streamSecret) {
+                          Optional<byte[]> streamSecret,
+                          Optional<TagsList> tags) {
         if (name.length() > MAX_FILE_NAME_SIZE)
             throw new IllegalStateException("File and directory names must be less than 256 characters.");
         if (isDirectory && streamSecret.isPresent())
@@ -54,6 +59,7 @@ public class FileProperties implements Cborable {
         this.isHidden = isHidden;
         this.thumbnail = thumbnail;
         this.streamSecret = streamSecret;
+        this.tags = tags;
     }
 
     @JsIgnore
@@ -65,8 +71,9 @@ public class FileProperties implements Cborable {
                           LocalDateTime modified,
                           boolean isHidden,
                           Optional<byte[]> thumbnail,
-                          Optional<byte[]> streamSecret) {
-        this(name, isDirectory, isLink, mimeType, (int)(size >> 32), (int) size, modified, isHidden, thumbnail, streamSecret);
+                          Optional<byte[]> streamSecret,
+                          Optional<TagsList> tags) {
+        this(name, isDirectory, isLink, mimeType, (int)(size >> 32), (int) size, modified, isHidden, thumbnail, streamSecret, tags);
     }
 
     /** Override this properties name with the link's name
@@ -75,7 +82,7 @@ public class FileProperties implements Cborable {
      * @return
      */
     public FileProperties withLink(FileProperties link) {
-        return new FileProperties(link.name, isDirectory, false, mimeType, size, modified, isHidden, thumbnail, streamSecret);
+        return new FileProperties(link.name, isDirectory, false, mimeType, size, modified, isHidden, thumbnail, streamSecret, tags);
     }
 
     public static void ensureValidParsedPath(Path path) {
@@ -131,6 +138,7 @@ public class FileProperties implements Cborable {
         state.put("h", new CborObject.CborBoolean(isHidden));
         thumbnail.ifPresent(thumb -> state.put("i", new CborObject.CborByteArray(thumb)));
         streamSecret.ifPresent(secret -> state.put("p", new CborObject.CborByteArray(secret)));
+        tags.ifPresent((TagsList tags) -> state.put("r", tags));
         return CborObject.CborMap.build(state);
     }
 
@@ -148,33 +156,34 @@ public class FileProperties implements Cborable {
         boolean isHidden = m.getBoolean("h");
         Optional<byte[]> thumbnail = m.getOptionalByteArray("i");
         Optional<byte[]> streamSecret = m.getOptionalByteArray("p");
+        Optional<TagsList> tags = m.getOptional("r", TagsList::fromCbor);
 
         LocalDateTime modified = LocalDateTime.ofEpochSecond(modifiedEpochMillis, 0, ZoneOffset.UTC);
-        return new FileProperties(name, isDirectory, isLink, mimeType, size, modified, isHidden, thumbnail, streamSecret);
+        return new FileProperties(name, isDirectory, isLink, mimeType, size, modified, isHidden, thumbnail, streamSecret, tags);
     }
 
     @JsIgnore
     public FileProperties withSize(long newSize) {
-        return new FileProperties(name, isDirectory, isLink, mimeType, newSize, modified, isHidden, thumbnail, streamSecret);
+        return new FileProperties(name, isDirectory, isLink, mimeType, newSize, modified, isHidden, thumbnail, streamSecret, tags);
     }
 
     public FileProperties withNoThumbnail() {
-        return new FileProperties(name, isDirectory, isLink, mimeType, size, modified, isHidden, Optional.empty(), streamSecret);
+        return new FileProperties(name, isDirectory, isLink, mimeType, size, modified, isHidden, Optional.empty(), streamSecret, tags);
     }
     public FileProperties withThumbnail(byte[] newThumbnail) {
-        return new FileProperties(name, isDirectory, isLink, mimeType, size, modified, isHidden, Optional.of(newThumbnail), streamSecret);
+        return new FileProperties(name, isDirectory, isLink, mimeType, size, modified, isHidden, Optional.of(newThumbnail), streamSecret, tags);
     }
 
     public FileProperties withModified(LocalDateTime modified) {
-        return new FileProperties(name, isDirectory, isLink, mimeType, size, modified, isHidden, thumbnail, streamSecret);
+        return new FileProperties(name, isDirectory, isLink, mimeType, size, modified, isHidden, thumbnail, streamSecret, tags);
     }
 
     public FileProperties withNewStreamSecret(byte[] streamSecret) {
-        return new FileProperties(name, isDirectory, isLink, mimeType, size, modified, isHidden, thumbnail, Optional.of(streamSecret));
+        return new FileProperties(name, isDirectory, isLink, mimeType, size, modified, isHidden, thumbnail, Optional.of(streamSecret), tags);
     }
 
     public FileProperties asLink() {
-        return new FileProperties(name, isDirectory, true, mimeType, size, modified, isHidden, thumbnail, streamSecret);
+        return new FileProperties(name, isDirectory, true, mimeType, size, modified, isHidden, thumbnail, streamSecret, tags);
     }
 
     public String getType() {
