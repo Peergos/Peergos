@@ -130,13 +130,28 @@ public class App implements StoreAppData {
     }
     @JsMethod
     public CompletableFuture<List<String>> dirInternal(Path relativePath, String username) {
-        Path path = fullPath(relativePath, username);
+        Path path = relativePath == null ?
+                Paths.get(username == null ? ctx.username : username).resolve(appDataDirectoryWithoutUser)
+                : fullPath(relativePath, username);
         return ctx.getByPath(path).thenCompose(dirOpt -> {
             if(dirOpt.isEmpty()) {
                 return Futures.of(Collections.emptyList());
             }
             return dirOpt.get().getChildren(ctx.crypto.hasher, ctx.network).thenApply(files ->
                     files.stream().map(fw -> fw.getName()).collect(Collectors.toList()));
+        });
+    }
+    @JsMethod
+    public CompletableFuture<Boolean> createDirectoryInternal(Path relativePath, String username) {
+        Path path = fullPath(relativePath, username);
+        Path parentPath = path.getParent();
+        Path subPath = path.getFileName();
+        return ctx.getByPath(parentPath).thenCompose(dirOpt -> {
+            if(dirOpt.isEmpty()) {
+                throw new IllegalStateException("Parent directory not found:" + parentPath.toString());
+            }
+            return dirOpt.get().getOrMkdirs(subPath, ctx.network, false, ctx.crypto)
+                .thenApply(fw -> true);
         });
     }
 }

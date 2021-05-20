@@ -16,4 +16,6 @@ public interface StoreAppData {
     CompletableFuture<Boolean> writeInternal(Path relativePath, byte[] data, String username);
 
     CompletableFuture<Boolean> deleteInternal(Path relativePath, String username);
+
+    CompletableFuture<Boolean> createDirectoryInternal(Path relativePath, String username);
 }
