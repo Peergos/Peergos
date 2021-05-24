@@ -313,16 +313,31 @@ public class SocialFeed {
                 }
             }
             byte[] data = bout.toByteArray();
-            return Futures.asyncExceptionally(() -> dataDir.appendToChild(FEED_FILE, feedSizeBytes, data, false, network, crypto, x -> {}),
-                    t -> ensureFeedUptodate().thenCompose(x -> dataDir.appendToChild(FEED_FILE, feedSizeBytes, data, false, network, crypto, y -> {})))
-                    .thenCompose(dir -> {
-                        feedSizeRecords += newItems.size();
-                        feedSizeBytes += data.length;
-                        this.dataDir = dir;
-                        return commit();
-                    })
+            return Futures.asyncExceptionally(() -> appendToFeedAndCommitState(data, newItems.size()),
+                    t -> ensureFeedUptodate().thenCompose(x -> appendToFeedAndCommitState(data, newItems.size())))
                     .thenApply(x -> this);
         });
+    }
+
+    private synchronized CompletableFuture<Snapshot> appendToFeedAndCommitState(byte[] data, int records) {
+        FileWrapper feed = dataDir.getChild(FEED_FILE, crypto.hasher, network).join().get();
+        if (feed.getSize() != feedSizeBytes)
+            throw new IllegalStateException("Feed size incorrect!");
+        return network.synchronizer.applyComplexUpdate(feed.owner(), feed.signingPair(),
+                (s, c) -> feed.append(data, network, crypto, c, x -> {}).thenCompose(s2 -> {
+                    feedSizeRecords += records;
+                    feedSizeBytes += data.length;
+                    byte[] raw = new FeedState(lastSeenIndex, feedSizeRecords, feedSizeBytes, currentCapBytesProcessed).serialize();
+                    return stateFile.overwriteFile(AsyncReader.build(raw), raw.length, network, crypto, x -> {}, s2, c);
+                })
+        ).thenCompose(s -> this.dataDir.getUpdated(s, network).thenApply(u -> {
+                    this.dataDir = u;
+                    return true;
+                }).thenCompose(x -> this.stateFile.getUpdated(s, network).thenApply(us -> {
+            this.stateFile = us;
+            return s;
+                }))
+        );
     }
 
     private CompletableFuture<Boolean> ensureFeedUptodate() {
