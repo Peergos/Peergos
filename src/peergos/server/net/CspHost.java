@@ -30,6 +30,10 @@ public class CspHost {
         return new CspHost(protocol, "*." + domain, port);
     }
 
+    public String host() {
+        return domain + port.map(p -> ":" + p).orElse("");
+    }
+
     @Override
     public String toString() {
         return protocol.orElse("") + domain + port.map(p -> ":" + p).orElse("");
