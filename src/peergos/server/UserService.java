@@ -220,34 +220,23 @@ public class UserService {
             handler = handler.withCache();
         }
 
-        BiConsumer<String, HttpHandler> addHandler = (path, handlerFunc) -> {
-            if (basicAuth.isPresent())
-                localhostServer.createContext(path, new BasicAuthHandler(basicAuth.get(), handlerFunc));
-            else
-                localhostServer.createContext(path, handlerFunc);
-            if (tlsServer != null) {
-                if (basicAuth.isPresent())
-                    tlsServer.createContext(path, new HSTSHandler(new BasicAuthHandler(basicAuth.get(), handlerFunc)));
-                else
-                    tlsServer.createContext(path, new HSTSHandler(handlerFunc));
-            }
-        };
-
-        addHandler.accept(Constants.DHT_URL, new DHTHandler(storage, crypto.hasher, (h, i) -> true, isPublicServer));
-        addHandler.accept("/" + Constants.CORE_URL,
-                new CoreNodeHandler(this.coreNode, isPublicServer));
-        addHandler.accept("/" + Constants.SOCIAL_URL,
-                new SocialHandler(this.social, isPublicServer));
-        addHandler.accept("/" + Constants.MUTABLE_POINTERS_URL,
-                new MutationHandler(this.mutable, isPublicServer));
-        addHandler.accept("/" + Constants.ADMIN_URL,
-                new AdminHandler(this.controller, isPublicServer));
-        addHandler.accept("/" + Constants.SPACE_USAGE_URL,
-                new SpaceHandler(this.usage, isPublicServer));
-        addHandler.accept("/" + Constants.SERVER_MESSAGE_URL,
-                new ServerMessageHandler(this.serverMessages, coreNode, storage, isPublicServer));
-        addHandler.accept("/" + Constants.PUBLIC_FILES_URL, new PublicFileHandler(crypto.hasher, coreNode, mutable, storage));
-        addHandler.accept(UI_URL, handler);
+        addHandler(localhostServer, tlsServer, Constants.DHT_URL,
+                new DHTHandler(storage, crypto.hasher, (h, i) -> true, isPublicServer), basicAuth, host, false);
+        addHandler(localhostServer, tlsServer, "/" + Constants.CORE_URL,
+                new CoreNodeHandler(this.coreNode, isPublicServer), basicAuth, host, false);
+        addHandler(localhostServer, tlsServer, "/" + Constants.SOCIAL_URL,
+                new SocialHandler(this.social, isPublicServer), basicAuth, host, false);
+        addHandler(localhostServer, tlsServer, "/" + Constants.MUTABLE_POINTERS_URL,
+                new MutationHandler(this.mutable, isPublicServer), basicAuth, host, false);
+        addHandler(localhostServer, tlsServer, "/" + Constants.ADMIN_URL,
+                new AdminHandler(this.controller, isPublicServer), basicAuth, host, false);
+        addHandler(localhostServer, tlsServer, "/" + Constants.SPACE_USAGE_URL,
+                new SpaceHandler(this.usage, isPublicServer), basicAuth, host, false);
+        addHandler(localhostServer, tlsServer, "/" + Constants.SERVER_MESSAGE_URL,
+                new ServerMessageHandler(this.serverMessages, coreNode, storage, isPublicServer), basicAuth, host, false);
+        addHandler(localhostServer, tlsServer, "/" + Constants.PUBLIC_FILES_URL,
+                new PublicFileHandler(crypto.hasher, coreNode, mutable, storage), basicAuth, host, false);
+        addHandler(localhostServer, tlsServer, UI_URL, handler, basicAuth, host, true);
 
         localhostServer.setExecutor(Executors.newFixedThreadPool(handlerPoolSize));
         localhostServer.start();
@@ -258,6 +247,23 @@ public class UserService {
         }
 
         return true;
+    }
+
+    private static void addHandler(HttpServer localhostServer,
+                                   HttpsServer tlsServer,
+                                   String path,
+                                   HttpHandler handler,
+                                   Optional<String> basicAuth,
+                                   CspHost host,
+                                   boolean allowSubdomains) {
+        HttpHandler withAuth = basicAuth
+                    .map(ba -> (HttpHandler) new BasicAuthHandler(ba, handler))
+                    .orElse(handler);
+        SubdomainHandler subdomainHandler = new SubdomainHandler(host.host(), withAuth, allowSubdomains);
+        localhostServer.createContext(path, subdomainHandler);
+        if (tlsServer != null) {
+            tlsServer.createContext(path, new HSTSHandler(subdomainHandler));
+        }
     }
 
     public static KeyStore getKeyStore(String filename, char[] password)
