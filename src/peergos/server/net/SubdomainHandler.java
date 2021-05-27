@@ -7,12 +7,12 @@ import java.util.*;
 
 public class SubdomainHandler implements HttpHandler
 {
-    private final String domain;
+    private final List<String> domains;
     private final HttpHandler handler;
     private final boolean allowSubdomains;
 
-    public SubdomainHandler(String domain, HttpHandler handler, boolean allowSubdomains) {
-        this.domain = domain;
+    public SubdomainHandler(List<String> domains, HttpHandler handler, boolean allowSubdomains) {
+        this.domains = domains;
         this.handler = handler;
         this.allowSubdomains = allowSubdomains;
     }
@@ -20,12 +20,13 @@ public class SubdomainHandler implements HttpHandler
     @Override
     public void handle(HttpExchange exchange) throws IOException {
         List<String> hostHeaders = exchange.getRequestHeaders().get("Host");
-        if (hostHeaders.isEmpty() || (hostHeaders.size() == 1 && hostHeaders.get(0).equals(domain))) {
+        if (hostHeaders.isEmpty() || (hostHeaders.size() == 1 &&
+                domains.contains(hostHeaders.get(0)))) {
             handler.handle(exchange);
-        } else if (allowSubdomains && hostHeaders.size() == 1 && hostHeaders.get(0).endsWith(domain)) {
+        } else if (allowSubdomains && hostHeaders.size() == 1 &&
+                domains.stream().anyMatch(d -> hostHeaders.get(0).endsWith(d))) {
             handler.handle(exchange);
         } else {
-            System.out.println("Subdomain err: " + hostHeaders + " doesn't match " + domain);
             exchange.sendResponseHeaders(404, 0);
             exchange.close();
         }

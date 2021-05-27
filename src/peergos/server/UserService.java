@@ -13,6 +13,7 @@ import java.util.logging.Level;
 import com.sun.net.httpserver.*;
 import peergos.shared.*;
 import peergos.shared.corenode.*;
+import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.mutable.*;
 import peergos.shared.social.*;
 import peergos.shared.storage.*;
@@ -117,6 +118,7 @@ public class UserService {
     }
 
     public boolean initAndStart(InetSocketAddress local,
+                                Multihash nodeId,
                                 Optional<TlsProperties> tlsProps,
                                 Optional<String> publicHostname,
                                 List<String> blockstoreDomains,
@@ -221,22 +223,22 @@ public class UserService {
         }
 
         addHandler(localhostServer, tlsServer, Constants.DHT_URL,
-                new DHTHandler(storage, crypto.hasher, (h, i) -> true, isPublicServer), basicAuth, host, false);
+                new DHTHandler(storage, crypto.hasher, (h, i) -> true, isPublicServer), basicAuth, host, nodeId, false);
         addHandler(localhostServer, tlsServer, "/" + Constants.CORE_URL,
-                new CoreNodeHandler(this.coreNode, isPublicServer), basicAuth, host, false);
+                new CoreNodeHandler(this.coreNode, isPublicServer), basicAuth, host, nodeId, false);
         addHandler(localhostServer, tlsServer, "/" + Constants.SOCIAL_URL,
-                new SocialHandler(this.social, isPublicServer), basicAuth, host, false);
+                new SocialHandler(this.social, isPublicServer), basicAuth, host, nodeId, false);
         addHandler(localhostServer, tlsServer, "/" + Constants.MUTABLE_POINTERS_URL,
-                new MutationHandler(this.mutable, isPublicServer), basicAuth, host, false);
+                new MutationHandler(this.mutable, isPublicServer), basicAuth, host, nodeId, false);
         addHandler(localhostServer, tlsServer, "/" + Constants.ADMIN_URL,
-                new AdminHandler(this.controller, isPublicServer), basicAuth, host, false);
+                new AdminHandler(this.controller, isPublicServer), basicAuth, host, nodeId, false);
         addHandler(localhostServer, tlsServer, "/" + Constants.SPACE_USAGE_URL,
-                new SpaceHandler(this.usage, isPublicServer), basicAuth, host, false);
+                new SpaceHandler(this.usage, isPublicServer), basicAuth, host, nodeId, false);
         addHandler(localhostServer, tlsServer, "/" + Constants.SERVER_MESSAGE_URL,
-                new ServerMessageHandler(this.serverMessages, coreNode, storage, isPublicServer), basicAuth, host, false);
+                new ServerMessageHandler(this.serverMessages, coreNode, storage, isPublicServer), basicAuth, host, nodeId, false);
         addHandler(localhostServer, tlsServer, "/" + Constants.PUBLIC_FILES_URL,
-                new PublicFileHandler(crypto.hasher, coreNode, mutable, storage), basicAuth, host, false);
-        addHandler(localhostServer, tlsServer, UI_URL, handler, basicAuth, host, true);
+                new PublicFileHandler(crypto.hasher, coreNode, mutable, storage), basicAuth, host, nodeId, false);
+        addHandler(localhostServer, tlsServer, UI_URL, handler, basicAuth, host, nodeId, true);
 
         localhostServer.setExecutor(Executors.newFixedThreadPool(handlerPoolSize));
         localhostServer.start();
@@ -255,11 +257,12 @@ public class UserService {
                                    HttpHandler handler,
                                    Optional<String> basicAuth,
                                    CspHost host,
+                                   Multihash nodeId,
                                    boolean allowSubdomains) {
         HttpHandler withAuth = basicAuth
                     .map(ba -> (HttpHandler) new BasicAuthHandler(ba, handler))
                     .orElse(handler);
-        SubdomainHandler subdomainHandler = new SubdomainHandler(host.host(), withAuth, allowSubdomains);
+        SubdomainHandler subdomainHandler = new SubdomainHandler(Arrays.asList(host.host(), nodeId.toString()), withAuth, allowSubdomains);
         localhostServer.createContext(path, subdomainHandler);
         if (tlsServer != null) {
             tlsServer.createContext(path, new HSTSHandler(subdomainHandler));
