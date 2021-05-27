@@ -1,12 +1,15 @@
 package peergos.server.net;
 
 import com.sun.net.httpserver.*;
+import peergos.server.util.*;
 
 import java.io.*;
 import java.util.*;
+import java.util.logging.*;
 
 public class SubdomainHandler implements HttpHandler
 {
+    private static final Logger LOG = Logging.LOG();
     private final List<String> domains;
     private final HttpHandler handler;
     private final boolean allowSubdomains;
@@ -27,6 +30,7 @@ public class SubdomainHandler implements HttpHandler
                 domains.stream().anyMatch(d -> hostHeaders.get(0).endsWith(d))) {
             handler.handle(exchange);
         } else {
+            LOG.severe("Subdomain access blocked: " + hostHeaders + " not in " + String.join(",", domains));
             exchange.sendResponseHeaders(404, 0);
             exchange.close();
         }

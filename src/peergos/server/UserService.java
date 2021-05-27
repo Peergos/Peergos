@@ -223,22 +223,25 @@ public class UserService {
         }
 
         addHandler(localhostServer, tlsServer, Constants.DHT_URL,
-                new DHTHandler(storage, crypto.hasher, (h, i) -> true, isPublicServer), basicAuth, host, nodeId, false);
+                new DHTHandler(storage, crypto.hasher, (h, i) -> true, isPublicServer),
+                basicAuth, local, host, nodeId, false);
         addHandler(localhostServer, tlsServer, "/" + Constants.CORE_URL,
-                new CoreNodeHandler(this.coreNode, isPublicServer), basicAuth, host, nodeId, false);
+                new CoreNodeHandler(this.coreNode, isPublicServer), basicAuth, local, host, nodeId, false);
         addHandler(localhostServer, tlsServer, "/" + Constants.SOCIAL_URL,
-                new SocialHandler(this.social, isPublicServer), basicAuth, host, nodeId, false);
+                new SocialHandler(this.social, isPublicServer), basicAuth, local, host, nodeId, false);
         addHandler(localhostServer, tlsServer, "/" + Constants.MUTABLE_POINTERS_URL,
-                new MutationHandler(this.mutable, isPublicServer), basicAuth, host, nodeId, false);
+                new MutationHandler(this.mutable, isPublicServer), basicAuth, local, host, nodeId, false);
         addHandler(localhostServer, tlsServer, "/" + Constants.ADMIN_URL,
-                new AdminHandler(this.controller, isPublicServer), basicAuth, host, nodeId, false);
+                new AdminHandler(this.controller, isPublicServer), basicAuth, local, host, nodeId, false);
         addHandler(localhostServer, tlsServer, "/" + Constants.SPACE_USAGE_URL,
-                new SpaceHandler(this.usage, isPublicServer), basicAuth, host, nodeId, false);
+                new SpaceHandler(this.usage, isPublicServer), basicAuth, local, host, nodeId, false);
         addHandler(localhostServer, tlsServer, "/" + Constants.SERVER_MESSAGE_URL,
-                new ServerMessageHandler(this.serverMessages, coreNode, storage, isPublicServer), basicAuth, host, nodeId, false);
+                new ServerMessageHandler(this.serverMessages, coreNode, storage, isPublicServer),
+                basicAuth, local, host, nodeId, false);
         addHandler(localhostServer, tlsServer, "/" + Constants.PUBLIC_FILES_URL,
-                new PublicFileHandler(crypto.hasher, coreNode, mutable, storage), basicAuth, host, nodeId, false);
-        addHandler(localhostServer, tlsServer, UI_URL, handler, basicAuth, host, nodeId, true);
+                new PublicFileHandler(crypto.hasher, coreNode, mutable, storage),
+                basicAuth, local, host, nodeId, false);
+        addHandler(localhostServer, tlsServer, UI_URL, handler, basicAuth, local, host, nodeId, true);
 
         localhostServer.setExecutor(Executors.newFixedThreadPool(handlerPoolSize));
         localhostServer.start();
@@ -256,13 +259,14 @@ public class UserService {
                                    String path,
                                    HttpHandler handler,
                                    Optional<String> basicAuth,
+                                   InetSocketAddress local,
                                    CspHost host,
                                    Multihash nodeId,
                                    boolean allowSubdomains) {
         HttpHandler withAuth = basicAuth
                     .map(ba -> (HttpHandler) new BasicAuthHandler(ba, handler))
                     .orElse(handler);
-        SubdomainHandler subdomainHandler = new SubdomainHandler(Arrays.asList(host.host(), nodeId.toString()), withAuth, allowSubdomains);
+        SubdomainHandler subdomainHandler = new SubdomainHandler(Arrays.asList("127.0.0.1:" + local.getPort(), host.host(), nodeId.toString()), withAuth, allowSubdomains);
         localhostServer.createContext(path, subdomainHandler);
         if (tlsServer != null) {
             tlsServer.createContext(path, new HSTSHandler(subdomainHandler));
