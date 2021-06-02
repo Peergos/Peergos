@@ -515,8 +515,8 @@ public class Main extends Builder {
             Optional<String> basicAuth = a.getOptionalArg("basic-auth");
             List<String> blockstoreDomains = S3Config.getBlockstoreDomains(a);
             List<String> appSubdomains = Arrays.asList(a.getArg("apps", "calendar,todo-board,code-editor,pdf").split(","));
-            peergos.initAndStart(localAddress, nodeId, tlsProps, publicHostname, blockstoreDomains, appSubdomains, basicAuth,
-                    webroot, useWebAssetCache, isPublicServer, maxConnectionQueue, handlerThreads);
+            peergos.initAndStart(localAddress, nodeId, tlsProps, publicHostname, blockstoreDomains, appSubdomains,
+                    a.getBoolean("include-csp", true), basicAuth, webroot, useWebAssetCache, isPublicServer, maxConnectionQueue, handlerThreads);
             boolean isPkiNode = nodeId.equals(pkiServerNodeId);
             if (! isPkiNode && useIPFS) {
                 int pkiNodeSwarmPort = a.getInt("pki.node.swarm.port");

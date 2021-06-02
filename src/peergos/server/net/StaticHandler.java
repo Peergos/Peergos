@@ -15,13 +15,19 @@ import java.util.zip.GZIPOutputStream;
 public abstract class StaticHandler implements HttpHandler
 {
     private final boolean isGzip;
+    private final boolean includeCsp;
     private final CspHost host;
     private final List<String> blockstoreDomain;
     private final List<String> appsubdomains;
     private final Map<String, String> appDomains;
 
-    public StaticHandler(CspHost host, List<String> blockstoreDomain, List<String> appSubdomains, boolean isGzip) {
+    public StaticHandler(CspHost host,
+                         List<String> blockstoreDomain,
+                         List<String> appSubdomains,
+                         boolean includeCsp,
+                         boolean isGzip) {
         this.host = host;
+        this.includeCsp = includeCsp;
         this.blockstoreDomain = blockstoreDomain;
         this.appsubdomains = appSubdomains;
         this.appDomains = appSubdomains.stream()
@@ -100,20 +106,21 @@ public abstract class StaticHandler implements HttpHandler
 
             // Only allow assets to be loaded from the original host
             // Todo work on removing unsafe-inline from sub domains
-            httpExchange.getResponseHeaders().set("content-security-policy", "default-src 'self' " + this.host + ";" +
-                    "style-src 'self'" +
-                    " " + this.host +
-                    (isSubdomain ? " 'unsafe-inline' https://" + reqHost : "") + // calendar, editor, todoboard, pdfviewer
-                    ";" +
-                    (isSubdomain ? "sandbox allow-scripts allow-forms;" : "") +
-                    "frame-src 'self' " + (isSubdomain ? "" : this.host.wildcard()) + ";" +
-                    "frame-ancestors 'self' " + this.host + ";" +
-                    "connect-src 'self' " + this.host +
-                    (isSubdomain ? "" : blockstoreDomain.stream().map(d -> " https://" + d).collect(Collectors.joining())) + ";" +
-                    "media-src 'self' " + this.host + " blob:;" +
-                    "img-src 'self' " + this.host + " data: blob:;" +
-                    "object-src 'none';"
-            );
+            if (includeCsp)
+                httpExchange.getResponseHeaders().set("content-security-policy", "default-src 'self' " + this.host + ";" +
+                        "style-src 'self'" +
+                        " " + this.host +
+                        (isSubdomain ? " 'unsafe-inline' https://" + reqHost : "") + // calendar, editor, todoboard, pdfviewer
+                        ";" +
+                        (isSubdomain ? "sandbox allow-scripts allow-forms;" : "") +
+                        "frame-src 'self' " + (isSubdomain ? "" : this.host.wildcard()) + ";" +
+                        "frame-ancestors 'self' " + this.host + ";" +
+                        "connect-src 'self' " + this.host +
+                        (isSubdomain ? "" : blockstoreDomain.stream().map(d -> " https://" + d).collect(Collectors.joining())) + ";" +
+                        "media-src 'self' " + this.host + " blob:;" +
+                        "img-src 'self' " + this.host + " data: blob:;" +
+                        "object-src 'none';"
+                );
             // Don't anyone to load Peergos site in an iframe
             httpExchange.getResponseHeaders().set("x-frame-options", "sameorigin");
             // Enable cross site scripting protection
@@ -163,7 +170,7 @@ public abstract class StaticHandler implements HttpHandler
         Map<String, Asset> cache = new ConcurrentHashMap<>();
         StaticHandler that = this;
 
-        return new StaticHandler(host, blockstoreDomain, appsubdomains, isGzip) {
+        return new StaticHandler(host, blockstoreDomain, appsubdomains, includeCsp, isGzip) {
             @Override
             public Asset getAsset(String resourcePath) throws IOException {
                 if (! cache.containsKey(resourcePath))

@@ -7,8 +7,13 @@ import java.util.*;
 public class FileHandler extends StaticHandler
 {
     private final Path root;
-    public FileHandler(CspHost host, List<String> blockstoreDomain, List<String> appSubdomains, Path root, boolean isGzip) {
-        super(host, blockstoreDomain, appSubdomains, isGzip);
+    public FileHandler(CspHost host,
+                       List<String> blockstoreDomain,
+                       List<String> appSubdomains,
+                       Path root,
+                       boolean includeCsp,
+                       boolean isGzip) {
+        super(host, blockstoreDomain, appSubdomains, includeCsp, isGzip);
         this.root = root;
     }
 
