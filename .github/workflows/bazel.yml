@@ -14,13 +14,16 @@ jobs:
       with:
         java-version: 11
     - name: Set up Bazel
-      run:
-        - sudo apt install apt-transport-https curl gnupg
-        - curl -fsSL https://bazel.build/bazel-release.pub.gpg | gpg --dearmor > bazel.gpg
-        - sudo mv bazel.gpg /etc/apt/trusted.gpg.d/
-        - echo "deb [arch=amd64] https://storage.googleapis.com/bazel-apt stable jdk1.8" | sudo tee /etc/apt/sources.list.d/bazel.list
-        - sudo apt update && sudo apt install bazel
-        - bazel --version
+      run: |
+        sudo apt install apt-transport-https curl gnupg
+        curl -fsSL https://bazel.build/bazel-release.pub.gpg | gpg --dearmor > bazel.gpg
+        sudo mv bazel.gpg /etc/apt/trusted.gpg.d/
+        echo "deb [arch=amd64] https://storage.googleapis.com/bazel-apt stable jdk1.8" | sudo tee /etc/apt/sources.list.d/bazel.list
+        sudo apt update && sudo apt install bazel
+        bazel --version
     - name: Build with Bazel
-      run: bazel build //src/peergos/shared:shared
+      run: |
+        bazel build //src/peergos/shared:shared
+        bazel build //src/peergos/server:server 
+        bazel build //src/peergos:Peergos
 
