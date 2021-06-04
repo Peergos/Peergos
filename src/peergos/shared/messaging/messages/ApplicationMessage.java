@@ -7,9 +7,9 @@ import peergos.shared.display.*;
 import java.util.*;
 @JsType
 public class ApplicationMessage implements Message {
-    public final MsgContent body;
+    public final List<? extends Content> body;
 
-    public ApplicationMessage(MsgContent body) {
+    public ApplicationMessage(List<? extends Content> body) {
         this.body = body;
     }
 
@@ -22,7 +22,7 @@ public class ApplicationMessage implements Message {
     public CborObject.CborMap toCbor() {
         SortedMap<String, Cborable> state = new TreeMap<>();
         state.put("c", new CborObject.CborLong(type().value));
-        state.put("b", body);
+        state.put("b", new CborObject.CborList(body));
         return CborObject.CborMap.build(state);
     }
 
@@ -31,7 +31,7 @@ public class ApplicationMessage implements Message {
             throw new IllegalStateException("Invalid cbor! " + cbor);
         CborObject.CborMap m = (CborObject.CborMap) cbor;
 
-        MsgContent body = m.get("b", MsgContent::fromCbor);
+        List<Content> body = m.getList("b", Content::fromCbor);
         return new ApplicationMessage(body);
     }
 
@@ -49,6 +49,6 @@ public class ApplicationMessage implements Message {
     }
 
     public static ApplicationMessage text(String text) {
-        return new ApplicationMessage(new Text(text));
+        return new ApplicationMessage(Collections.singletonList(new Text(text)));
     }
 }

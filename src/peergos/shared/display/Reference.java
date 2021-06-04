@@ -2,16 +2,15 @@ package peergos.shared.display;
 
 import jsinterop.annotations.*;
 import peergos.shared.cbor.*;
-import peergos.shared.social.*;
 
 import java.util.*;
 
 @JsType
 public
 class Reference implements Content {
-    public final SocialPost.Ref ref;
+    public final FileRef ref;
 
-    public Reference(SocialPost.Ref ref) {
+    public Reference(FileRef ref) {
         this.ref = ref;
     }
 
@@ -29,7 +28,7 @@ class Reference implements Content {
     }
 
     @Override
-    public Optional<SocialPost.Ref> reference() {
+    public Optional<FileRef> reference() {
         return Optional.of(ref);
     }
 

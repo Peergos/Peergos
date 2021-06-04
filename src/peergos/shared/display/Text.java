@@ -2,13 +2,12 @@ package peergos.shared.display;
 
 import jsinterop.annotations.*;
 import peergos.shared.cbor.*;
-import peergos.shared.social.*;
 
 import java.util.*;
 
 @JsType
 public
-class Text implements Content, MsgContent {
+class Text implements Content {
     public final String content;
 
     public Text(String content) {
@@ -21,7 +20,7 @@ class Text implements Content, MsgContent {
     }
 
     @Override
-    public Optional<SocialPost.Ref> reference() {
+    public Optional<FileRef> reference() {
         return Optional.empty();
     }
 

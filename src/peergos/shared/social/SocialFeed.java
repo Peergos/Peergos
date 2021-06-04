@@ -3,6 +3,7 @@ package peergos.shared.social;
 import jsinterop.annotations.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
+import peergos.shared.display.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
@@ -88,17 +89,17 @@ public class SocialFeed {
     }
 
     @JsMethod
-    public CompletableFuture<Pair<String, SocialPost.Ref>> uploadMediaForPost(AsyncReader media,
-                                                                              int length,
-                                                                              LocalDateTime postTime,
-                                                                              ProgressConsumer<Long> monitor) {
+    public CompletableFuture<Pair<String, FileRef>> uploadMediaForPost(AsyncReader media,
+                                                                       int length,
+                                                                       LocalDateTime postTime,
+                                                                       ProgressConsumer<Long> monitor) {
         String uuid = UUID.randomUUID().toString();
         return getOrMkdirToStoreMedia("media", postTime)
                 .thenCompose(p -> p.right.uploadAndReturnFile(uuid, media, length, false, monitor,
                         network, crypto)
                         .thenCompose(f ->  media.reset().thenCompose(r -> crypto.hasher.hash(r, length))
                                 .thenApply(hash -> new Pair<>(f.getFileProperties().getType(),
-                                        new SocialPost.Ref(p.left.resolve(uuid).toString(), f.readOnlyPointer(), hash)))));
+                                        new FileRef(p.left.resolve(uuid).toString(), f.readOnlyPointer(), hash)))));
     }
 
     private CompletableFuture<Pair<Path, FileWrapper>> getOrMkdirToStoreMedia(String mediaType, LocalDateTime postTime) {
@@ -195,7 +196,7 @@ public class SocialFeed {
                                                                List<Triple<SharedItem, FileWrapper, SocialPost>> comments) {
         return Futures.combineAllInOrder(comments.stream().map(t -> t.middle.getInputStream(network, crypto, x -> {})
                 .thenCompose(reader -> crypto.hasher.hash(reader, t.middle.getSize())
-                        .thenApply(h -> new SocialPost.Ref(t.left.path, t.left.cap, h))))
+                        .thenApply(h -> new FileRef(t.left.path, t.left.cap, h))))
                 .collect(Collectors.toList())).thenCompose(refs ->
                 context.getByPath(parentPath).thenCompose(fopt -> {
                     if (fopt.isEmpty())

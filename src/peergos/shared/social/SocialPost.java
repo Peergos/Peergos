@@ -30,19 +30,19 @@ public class SocialPost implements Cborable {
     public final List<? extends Content> body;
     public final LocalDateTime postTime;
     public final Resharing shareTo;
-    public final Optional<Ref> parent;
+    public final Optional<FileRef> parent;
     public final List<SocialPost> previousVersions;
     // this is excluded from hash calculation when replying
-    public final List<Ref> comments;
+    public final List<FileRef> comments;
 
     @JsConstructor
     public SocialPost(String author,
                       List<? extends Content> body,
                       LocalDateTime postTime,
                       Resharing shareTo,
-                      Optional<Ref> parent,
+                      Optional<FileRef> parent,
                       List<SocialPost> previousVersions,
-                      List<Ref> comments) {
+                      List<FileRef> comments) {
         this.author = author;
         this.body = body;
         this.postTime = postTime;
@@ -53,7 +53,7 @@ public class SocialPost implements Cborable {
     }
 
     @JsMethod
-    public List<Ref> references() {
+    public List<FileRef> references() {
         return body.stream()
                 .flatMap(c -> c.reference().stream())
                 .collect(Collectors.toList());
@@ -64,7 +64,7 @@ public class SocialPost implements Cborable {
                 Optional.empty(), Collections.emptyList(), Collections.emptyList());
     }
 
-    public static SocialPost createComment(Ref parent, Resharing fromParent, String author, List<? extends Content> body) {
+    public static SocialPost createComment(FileRef parent, Resharing fromParent, String author, List<? extends Content> body) {
         return new SocialPost(author, body, LocalDateTime.now(), fromParent,
                 Optional.of(parent), Collections.emptyList(), Collections.emptyList());
     }
@@ -81,16 +81,16 @@ public class SocialPost implements Cborable {
      * @param comment
      * @return
      */
-    public SocialPost addComment(Ref comment) {
-        ArrayList<Ref> updatedComments = new ArrayList<>(comments);
+    public SocialPost addComment(FileRef comment) {
+        ArrayList<FileRef> updatedComments = new ArrayList<>(comments);
         if (! comments.contains(comment))
             updatedComments.add(comment);
         return new SocialPost(author, body, postTime, shareTo, parent, previousVersions, updatedComments);
     }
 
-    public SocialPost addComments(List<Ref> newComments) {
-        ArrayList<Ref> updatedComments = new ArrayList<>(comments);
-        for (Ref comment : newComments) {
+    public SocialPost addComments(List<FileRef> newComments) {
+        ArrayList<FileRef> updatedComments = new ArrayList<>(comments);
+        for (FileRef comment : newComments) {
             if (!updatedComments.contains(comment))
                 updatedComments.add(comment);
         }
@@ -140,58 +140,11 @@ public class SocialPost implements Cborable {
         List<Content> body = m.getList("b", Content::fromCbor);
         LocalDateTime postTime = m.get("t", c -> LocalDateTime.ofEpochSecond(((CborObject.CborLong)c).value, 0, ZoneOffset.UTC));
         Resharing shareTo = Resharing.valueOf(m.getString("s"));
-        Optional<Ref> parent = m.getOptional("p", Ref::fromCbor);
+        Optional<FileRef> parent = m.getOptional("p", FileRef::fromCbor);
         List<SocialPost> previousVersions = m.getList("v", SocialPost::fromCbor);
-        List<Ref> comments = m.getList("d", Ref::fromCbor);
+        List<FileRef> comments = m.getList("d", FileRef::fromCbor);
 
         return new SocialPost(author, body, postTime, shareTo, parent, previousVersions, comments);
-    }
-
-    public static class Ref implements Cborable {
-        public final String path;
-        public final AbsoluteCapability cap;
-        public final Multihash contentHash;
-
-        @JsConstructor
-        public Ref(String path, AbsoluteCapability cap, Multihash contentHash) {
-            this.path = path;
-            this.cap = cap;
-            this.contentHash = contentHash;
-        }
-
-        @Override
-        public CborObject toCbor() {
-            SortedMap<String, Cborable> state = new TreeMap<>();
-            state.put("p", new CborObject.CborString(path));
-            state.put("c", cap);
-            state.put("h", new CborObject.CborMerkleLink(contentHash));
-
-            return CborObject.CborMap.build(state);
-        }
-
-        public static Ref fromCbor(Cborable cbor) {
-            if (!(cbor instanceof CborObject.CborMap))
-                throw new IllegalStateException("Invalid cbor! " + cbor);
-            CborObject.CborMap m = (CborObject.CborMap) cbor;
-
-            String path = m.getString("p");
-            AbsoluteCapability cap = m.get("c", AbsoluteCapability::fromCbor);
-            Multihash contentHash = m.getMerkleLink("h");
-            return new Ref(path, cap, contentHash);
-        }
-
-        @Override
-        public boolean equals(Object o) {
-            if (this == o) return true;
-            if (o == null || getClass() != o.getClass()) return false;
-            Ref ref = (Ref) o;
-            return Objects.equals(path, ref.path) && Objects.equals(cap, ref.cap) && Objects.equals(contentHash, ref.contentHash);
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash(path, cap, contentHash);
-        }
     }
 
     public static class MutableRef implements Cborable {

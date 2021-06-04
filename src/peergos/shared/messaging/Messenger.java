@@ -4,6 +4,7 @@ import jsinterop.annotations.*;
 import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.display.*;
 import peergos.shared.messaging.messages.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
@@ -11,6 +12,7 @@ import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
 import java.nio.file.*;
+import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.*;
@@ -20,6 +22,7 @@ import java.util.stream.*;
  *  Within this, each chat has a directory named with a uid and the following substructure:
  *  $uuid/shared/peergos-chat-messages.cborstream (append only, eventually consistent log of all messages in chat)
  *  $uuid/shared/peergos-chat-state.cbor (our view of the current state of the chat)
+ *  $uuid/shared/media/$year/$month/$media-file (media files shared in chat)
  *  $uuid/private-state.cbor  (keypair for chat identity)
  *
  *  To invite a user we add an invite message to our log, and share the shared directory with them.
@@ -176,6 +179,34 @@ public class Messenger {
     @JsMethod
     public CompletableFuture<ChatController> sendMessage(ChatController current, Message message) {
         return current.sendMessage(message, c -> overwriteState(c, current.chatUuid));
+    }
+
+    @JsMethod
+    public CompletableFuture<Pair<String, FileRef>> uploadMedia(ChatController current,
+                                                                AsyncReader media,
+                                                                int length,
+                                                                LocalDateTime postTime,
+                                                                ProgressConsumer<Long> monitor) {
+        String uuid = UUID.randomUUID().toString();
+        return getOrMkdirToStoreMedia(current, postTime)
+                .thenCompose(p -> p.right.uploadAndReturnFile(uuid, media, length, false, monitor,
+                        network, crypto)
+                        .thenCompose(f ->  media.reset().thenCompose(r -> crypto.hasher.hash(r, length))
+                                .thenApply(hash -> new Pair<>(f.getFileProperties().getType(),
+                                        new FileRef(p.left.resolve(uuid).toString(), f.readOnlyPointer(), hash)))));
+    }
+
+    private CompletableFuture<Pair<Path, FileWrapper>> getOrMkdirToStoreMedia(ChatController current,
+                                                                              LocalDateTime postTime) {
+        Path dirFromHome = Paths.get(MESSAGING_BASE_DIR,
+                current.chatUuid,
+                "shared",
+                "media",
+                Integer.toString(postTime.getYear()),
+                Integer.toString(postTime.getMonthValue()));
+        return context.getUserRoot()
+                .thenCompose(home -> home.getOrMkdirs(dirFromHome, network, true, crypto)
+                .thenApply(dir -> new Pair<>(Paths.get("/" + context.username).resolve(dirFromHome), dir)));
     }
 
     @JsMethod

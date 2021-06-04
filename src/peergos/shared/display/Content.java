@@ -2,7 +2,6 @@ package peergos.shared.display;
 
 import jsinterop.annotations.*;
 import peergos.shared.cbor.*;
-import peergos.shared.social.*;
 
 import java.util.*;
 
@@ -12,7 +11,7 @@ public interface Content extends Cborable {
     String inlineText();
 
     @JsMethod
-    Optional<SocialPost.Ref> reference();
+    Optional<FileRef> reference();
 
     static Content fromCbor(Cborable cbor) {
         if (cbor instanceof CborObject.CborString)
@@ -22,7 +21,7 @@ public interface Content extends Cborable {
             String type = m.getString("t");
             switch (type) {
                 case "Ref":
-                    return new Reference(m.get("r", SocialPost.Ref::fromCbor));
+                    return new Reference(m.get("r", FileRef::fromCbor));
                 default:
                     throw new IllegalStateException("Unknown content type in Social Post: " + type);
             }

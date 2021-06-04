@@ -224,7 +224,7 @@ public class PeergosNetworkUtils {
         Multihash hash = sharedFile.getContentHash(sharee.network, sharee.crypto).join();
         String replyText = "reply";
         SocialPost.Resharing resharingType = SocialPost.Resharing.Friends;
-        SocialPost.Ref parent = new SocialPost.Ref(sharedItem.path, sharedItem.cap, hash);
+        FileRef parent = new FileRef(sharedItem.path, sharedItem.cap, hash);
         SocialPost replySocialPost = SocialPost.createComment(parent, resharingType, sharee.username,
                 Arrays.asList(new Text(replyText)));
         Pair<Path, FileWrapper> result = receiverFeed.createNewPost(replySocialPost).join();
@@ -1368,7 +1368,7 @@ public class PeergosNetworkUtils {
         SocialPost reply = new SocialPost(b.username,
                 Arrays.asList(new Text("What an entrance!")), LocalDateTime.now(),
                 SocialPost.Resharing.Friends,
-                Optional.of(new SocialPost.Ref(sharedPost.left.path, sharedPost.left.cap, post.contentHash(hasher).join())),
+                Optional.of(new FileRef(sharedPost.left.path, sharedPost.left.cap, post.contentHash(hasher).join())),
                 Collections.emptyList(), Collections.emptyList());
         Pair<Path, FileWrapper> replyFromB = bFeed.createNewPost(reply).join();
         String bFriendsUid = b.getGroupUid(SocialState.FRIENDS_GROUP_NAME).join().get();
@@ -1404,7 +1404,7 @@ public class PeergosNetworkUtils {
         AsyncReader reader = new AsyncReader.ArrayBacked(fileData);
 
         SocialFeed feed = sharer.getSocialFeed().join();
-        SocialPost.Ref ref = feed.uploadMediaForPost(reader, fileData.length, LocalDateTime.now(), c -> {}).join().right;
+        FileRef ref = feed.uploadMediaForPost(reader, fileData.length, LocalDateTime.now(), c -> {}).join().right;
         SocialPost.Resharing resharingType = SocialPost.Resharing.Friends;
         List<? extends Content> body = Arrays.asList(new Text("aaaa"), new Reference(ref));
         SocialPost socialPost = SocialPost.createInitialPost(sharer.username, body, resharingType);
@@ -1434,14 +1434,14 @@ public class PeergosNetworkUtils {
         SocialPost loadedSocialPost = Serialize.parse(socialFile, SocialPost::fromCbor, sharee.network, crypto).join();
         assertTrue(loadedSocialPost.body.get(0).inlineText().equals(updatedBody));
 
-        SocialPost.Ref mediaRef = ((Reference)loadedSocialPost.body.get(1)).ref;
+        FileRef mediaRef = ((Reference)loadedSocialPost.body.get(1)).ref;
         Optional<FileWrapper> optFile = sharee.network.getFile(mediaRef.cap, sharer.username).join();
         assertTrue(optFile.isPresent());
 
         //create a reply
         String replyText = "reply";
         Multihash hash = loadedSocialPost.contentHash(sharee.crypto.hasher).join();
-        SocialPost.Ref parent = new SocialPost.Ref(sharedItem.path, sharedItem.cap, hash);
+        FileRef parent = new FileRef(sharedItem.path, sharedItem.cap, hash);
         SocialPost replySocialPost = SocialPost.createComment(parent, resharingType, sharee.username, Arrays.asList(new Text(replyText)));
         result = receiverFeed.createNewPost(replySocialPost).join();
         String receiverGroupUid = sharee.getSocialState().join().groupNameToUid.get(friendGroup);
@@ -1494,7 +1494,7 @@ public class PeergosNetworkUtils {
         //create a reply
         String replyText = "reply";
         Multihash hash = loadedSocialPost.contentHash(sharee.crypto.hasher).join();
-        SocialPost.Ref parent = new SocialPost.Ref(sharedItem.path, sharedItem.cap, hash);
+        FileRef parent = new FileRef(sharedItem.path, sharedItem.cap, hash);
         SocialPost replySocialPost = SocialPost.createComment(parent, resharingType, sharee.username,
                 Arrays.asList(new Text(replyText)));
         result = receiverFeed.createNewPost(replySocialPost).join();
