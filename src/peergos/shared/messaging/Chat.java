@@ -4,6 +4,7 @@ import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.display.*;
 import peergos.shared.messaging.messages.*;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
@@ -70,18 +71,20 @@ public class Chat implements Cborable {
                                             MessageStore mirrorStore,
                                             MessageStore ourStore,
                                             ContentAddressedStorage ipfs,
-                                            Function<Chat, CompletableFuture<Boolean>> committer) {
+                                            Function<Chat, CompletableFuture<Boolean>> committer,
+                                            Function<FileRef, CompletableFuture<Boolean>> mediaCopier) {
         Member host = getMember(mirrorHostId);
         return mirrorStore.getMessagesFrom(host.messagesMergedUpto)
                 .thenCompose(newMessages -> Futures.reduceAll(newMessages, true,
-                        (b, msg) -> mergeMessage(msg, host, ourStore, ipfs, committer), (a, b) -> a && b));
+                        (b, msg) -> mergeMessage(msg, host, ourStore, ipfs, committer, mediaCopier), (a, b) -> a && b));
     }
 
     private CompletableFuture<Boolean> mergeMessage(SignedMessage signed,
                                                     Member host,
                                                     MessageStore ourStore,
                                                     ContentAddressedStorage ipfs,
-                                                    Function<Chat, CompletableFuture<Boolean>> committer) {
+                                                    Function<Chat, CompletableFuture<Boolean>> committer,
+                                                    Function<FileRef, CompletableFuture<Boolean>> mediaCopier) {
         Member author = members.get(signed.msg.author);
         MessageEnvelope msg = signed.msg;
         if (! msg.timestamp.isBeforeOrEqual(current)) {
@@ -131,7 +134,17 @@ public class Chat implements Cborable {
                                 }
                                 break;
                             }
-                            case Application:
+                            case Application: {
+                                ApplicationMessage content = (ApplicationMessage) msg.payload;
+                                List<FileRef> fileRefs = content.body.stream()
+                                        .flatMap(c -> c.reference().stream())
+                                        .collect(Collectors.toList());
+                                // mirror media to our storage
+                                List<CompletableFuture<Boolean>> mirroredMedia = fileRefs.stream().parallel()
+                                        .map(mediaCopier)
+                                        .collect(Collectors.toList());
+                                return Futures.combineAll(mirroredMedia).thenApply(x -> true);
+                            }
                             case ReplyTo:
                             case Delete:
                                 break;

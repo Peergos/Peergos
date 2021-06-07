@@ -3,6 +3,7 @@ package peergos.shared.messaging;
 import jsinterop.annotations.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.display.*;
 import peergos.shared.messaging.messages.*;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
@@ -119,9 +120,10 @@ public class ChatController {
     public CompletableFuture<ChatController> mergeMessages(String username,
                                                            MessageStore mirrorStore,
                                                            ContentAddressedStorage ipfs,
-                                                           Function<Chat, CompletableFuture<Boolean>> committer) {
+                                                           Function<Chat, CompletableFuture<Boolean>> committer,
+                                                           Function<FileRef, CompletableFuture<Boolean>> mediaCopier) {
         Member mirrorHost = state.getMember(username);
-        return state.merge(mirrorHost.id, mirrorStore, store, ipfs, committer)
+        return state.merge(mirrorHost.id, mirrorStore, store, ipfs, committer, mediaCopier)
                 .thenApply(x -> this);
     }
 }

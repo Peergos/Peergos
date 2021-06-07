@@ -15,6 +15,8 @@ public class FileRef implements Cborable {
 
     @JsConstructor
     public FileRef(String path, AbsoluteCapability cap, Multihash contentHash) {
+        if (path.contains("/../") || path.startsWith("../"))
+            throw new IllegalStateException("Invalid path containing /../");
         this.path = path;
         this.cap = cap;
         this.contentHash = contentHash;

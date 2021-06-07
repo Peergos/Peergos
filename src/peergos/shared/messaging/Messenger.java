@@ -161,8 +161,29 @@ public class Messenger {
         }
         return getMessageStoreMirror(mirrorUsername, current.chatUuid)
                 .thenCompose(mirrorStore -> current.mergeMessages(mirrorUsername, mirrorStore, network.dhtClient,
-                        c -> overwriteState(c, current.chatUuid)))
+                        c -> overwriteState(c, current.chatUuid), r -> mirrorMedia(r, current, mirrorUsername)))
                 .exceptionally(e -> current);
+    }
+
+    private CompletableFuture<Boolean> mirrorMedia(FileRef ref, ChatController chat, String currentMirrorUsername) {
+        Path mediaDir = getChatMediaDir(chat);
+        Path sourcePath = Paths.get(ref.path);
+        Path chatRelativePath = sourcePath.subpath(1 + mediaDir.getNameCount(), sourcePath.getNameCount());
+        Path ourCopy = mediaDir.resolve(chatRelativePath);
+        return context.getUserRoot()
+                .thenCompose(home -> home.getOrMkdirs(ourCopy.getParent(), network, false, crypto))
+                .thenCompose(dir -> copyFile(dir, sourcePath, currentMirrorUsername))
+                .thenApply(x -> true);
+    }
+
+    private CompletableFuture<FileWrapper> copyFile(FileWrapper dir, Path sourcePath, String mirrorUsername) {
+        // Try copying file from source first, and then fallback to mirror we are currently merging
+        return Futures.asyncExceptionally(() -> context.getByPath(sourcePath)
+                        .thenApply(Optional::get),
+                t -> context.getByPath(Paths.get(mirrorUsername).resolve(sourcePath.subpath(1, sourcePath.getNameCount())))
+                        .thenApply(Optional::get))
+                .thenCompose(f -> f.getInputStream(network, crypto, x -> {})
+                        .thenCompose(r -> dir.uploadAndReturnFile(f.getName(), r, f.getSize(), false, network, crypto)));
     }
 
     @JsMethod
@@ -196,14 +217,18 @@ public class Messenger {
                                         new FileRef(p.left.resolve(uuid).toString(), f.readOnlyPointer(), hash)))));
     }
 
-    private CompletableFuture<Pair<Path, FileWrapper>> getOrMkdirToStoreMedia(ChatController current,
-                                                                              LocalDateTime postTime) {
-        Path dirFromHome = Paths.get(MESSAGING_BASE_DIR,
+    private Path getChatMediaDir(ChatController current) {
+        return Paths.get(MESSAGING_BASE_DIR,
                 current.chatUuid,
                 "shared",
-                "media",
+                "media");
+    }
+
+    private CompletableFuture<Pair<Path, FileWrapper>> getOrMkdirToStoreMedia(ChatController current,
+                                                                              LocalDateTime postTime) {
+        Path dirFromHome = getChatMediaDir(current).resolve(Paths.get(
                 Integer.toString(postTime.getYear()),
-                Integer.toString(postTime.getMonthValue()));
+                Integer.toString(postTime.getMonthValue())));
         return context.getUserRoot()
                 .thenCompose(home -> home.getOrMkdirs(dirFromHome, network, true, crypto)
                 .thenApply(dir -> new Pair<>(Paths.get("/" + context.username).resolve(dirFromHome), dir)));
