@@ -21,6 +21,8 @@ public interface Message extends Cborable {
             case Application: return ApplicationMessage.fromCbor(cbor);
             case GroupState: return SetGroupState.fromCbor(cbor);
             case ReplyTo: return ReplyTo.fromCbor(cbor);
+            case Edit: return EditMessage.fromCbor(cbor);
+            case Delete: return DeleteMessage.fromCbor(cbor);
             default: throw new IllegalStateException("Invalid message type!");
         }
     }

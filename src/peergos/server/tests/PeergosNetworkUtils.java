@@ -1697,7 +1697,7 @@ public class PeergosNetworkUtils {
         Assert.assertEquals(controllerB.host().messagesMergedUpto, 5);
         Assert.assertTrue(fromB.payload instanceof ReplyTo);
         MessageRef parentRef = ((ReplyTo) fromB.payload).parent;
-        MessageEnvelope parent = controllerA.getMessage(parentRef, 4).join();
+        MessageEnvelope parent = controllerA.getMessageFromRef(parentRef, 4).join();
         Assert.assertTrue(parent.equals(fromA));
 
         // test setting group properties
@@ -1718,6 +1718,59 @@ public class PeergosNetworkUtils {
         List<MessageEnvelope> last = controllerA.getMessages(11, 12).join();
         controllerB = msgB.mergeMessages(controllerB, a.username).join();
         controllerB.getMessages(11, 12).join();
+    }
+
+    public static void messagingVariations(NetworkAccess network, Random random) {
+        CryptreeNode.setMaxChildLinkPerBlob(10);
+
+        String password = "notagoodone";
+
+        UserContext a = PeergosNetworkUtils.ensureSignedUp(generateUsername(random), password, network, crypto);
+
+        List<UserContext> shareeUsers = getUserContextsForNode(network, random, 1, Arrays.asList(password));
+        UserContext b = shareeUsers.get(0);
+
+        // friend sharer with others
+        friendBetweenGroups(Arrays.asList(a), shareeUsers);
+
+        Messenger msgA = new Messenger(a);
+        ChatController controllerA = msgA.createChat().join();
+        controllerA = msgA.invite(controllerA, Arrays.asList(b.username), Arrays.asList(b.signer.publicKeyHash)).join();
+
+        ApplicationMessage msg1 = ApplicationMessage.text("G'day mate!");
+        controllerA = msgA.sendMessage(controllerA, msg1).join();
+
+        controllerA = msgA.mergeMessages(controllerA, a.username).join();
+        List<MessageEnvelope> messages = controllerA.getMessages(0, 10).join();
+        Assert.assertEquals(messages.size(), 3);
+        MessageEnvelope envelope = messages.get(messages.size()-1);
+
+        MessageRef messageRef = controllerA.generateHash(envelope).join();
+        String changedContent = "edited";
+        EditMessage editMessage = new EditMessage(messageRef, ApplicationMessage.text(changedContent));
+        controllerA = msgA.sendMessage(controllerA, editMessage).join();
+        controllerA = msgA.mergeMessages(controllerA, a.username).join();
+        messages = controllerA.getMessages(0, 10).join();
+        Assert.assertEquals(messages.size(), 4);
+        envelope = messages.get(messages.size()-1);
+        EditMessage appMsg = (EditMessage) envelope.payload;
+        String msgContent = appMsg.content.body.get(0).inlineText();
+        Assert.assertEquals(msgContent, changedContent);
+
+        messageRef = controllerA.generateHash(envelope).join();
+        DeleteMessage delMessage = new DeleteMessage(messageRef);
+        controllerA = msgA.sendMessage(controllerA, delMessage).join();
+        controllerA = msgA.mergeMessages(controllerA, a.username).join();
+        messages = controllerA.getMessages(0, 10).join();
+        Assert.assertEquals(messages.size(), 5);
+
+        Set<ChatController> chats = msgA.listChats().join();
+        byte[] fileData = crypto.random.randomBytes(1*1024*1024);
+        AsyncReader reader = new AsyncReader.ArrayBacked(fileData);
+
+        FileRef ref = msgA.uploadMedia(controllerA, reader, fileData.length, LocalDateTime.now(), c -> {}).join().right;
+        chats = msgA.listChats().join();
+        System.currentTimeMillis();
     }
 
     public static void groupSharing(NetworkAccess network, Random random) {

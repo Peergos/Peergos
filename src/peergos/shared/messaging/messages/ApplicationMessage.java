@@ -51,4 +51,8 @@ public class ApplicationMessage implements Message {
     public static ApplicationMessage text(String text) {
         return new ApplicationMessage(Collections.singletonList(new Text(text)));
     }
+
+    public static ApplicationMessage attachment(String text, FileRef attachment) {
+        return new ApplicationMessage(Arrays.asList(new Text(text), new Reference(attachment)));
+    }
 }
