@@ -55,20 +55,6 @@ public class ChatController {
     }
 
     @JsMethod
-    public CompletableFuture<MessageEnvelope> getMessage(MessageRef ref, int sourceIndex) {
-        MessageEnvelope cached = cache.get(ref);
-        if (cached != null)
-            return Futures.of(cached);
-        // Try 100 message prior to reference source first, then try previous chunks
-        return store.getMessages(Math.max(0, sourceIndex - 100), sourceIndex)
-                .thenCompose(allSigned -> Futures.findFirst(allSigned, s -> hashMessage(s.msg)
-                        .thenApply(h -> h.equals(ref) ? Optional.of(s.msg) : Optional.empty())))
-                .thenCompose(resOpt -> resOpt.map(Futures::of)
-                        .orElseGet(() -> getMessage(ref, sourceIndex - 100)));
-    }
-
-
-    @JsMethod
     public CompletableFuture<MessageEnvelope> getMessageFromRef(MessageRef ref, int sourceIndex) {
         MessageEnvelope cached = cache.get(ref);
         if (cached != null)
