@@ -117,7 +117,7 @@ public interface AsyncReader extends AutoCloseable {
                 .thenCompose(bytesRead -> {
                     int toSkip = objectsToSkip;
                     int objectsToRead = maxObjectsToRead;
-                    for (int localOffset = 0; localOffset < bytesRead;) {
+                    for (int localOffset = 0; localOffset < bytesRead + prefix.length;) {
                         try {
                             CborObject readObject = CborObject.read(in, prefix.length + bytesRead);
                             if (toSkip > 0)

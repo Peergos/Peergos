@@ -68,7 +68,7 @@ public class FileBackedMessageStore implements MessageStore {
                         .thenCompose(reader -> getChunkByteOffset(index)
                                 .thenCompose(p -> reader.seek(p.left)
                                         .thenCompose(seeked -> seeked.parseLimitedStream(SignedMessage::fromCbor,
-                                        res::add, p.right, Integer.MAX_VALUE, updated.getSize()))))
+                                        res::add, p.right, Integer.MAX_VALUE, updated.getSize() - p.left))))
                         .thenApply(x -> res));
     }
 

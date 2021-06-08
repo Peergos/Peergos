@@ -1718,6 +1718,22 @@ public class PeergosNetworkUtils {
         List<MessageEnvelope> last = controllerA.getMessages(11, 12).join();
         controllerB = msgB.mergeMessages(controllerB, a.username).join();
         controllerB.getMessages(11, 12).join();
+
+        // share a media file
+        byte[] media = "Some media data".getBytes();
+        AsyncReader reader = AsyncReader.build(media);
+        Pair<String, FileRef> mediaRef = msgA.uploadMedia(controllerA, reader, media.length, LocalDateTime.now(), x -> {}).join();
+        List<Content> content = Arrays.asList(new Reference(mediaRef.right), new Text("Check out this sunset!"));
+        controllerA = msgA.sendMessage(controllerA, new ApplicationMessage(content)).join();
+        controllerB = msgB.mergeMessages(controllerB, a.username).join();
+        List<MessageEnvelope> withMediaMessage = controllerB.getMessages(0, 50).join();
+        MessageEnvelope mediaMessage = withMediaMessage.get(withMediaMessage.size() - 1);
+        Assert.assertTrue(mediaMessage.payload instanceof ApplicationMessage);
+        Optional<FileRef> ref = ((ApplicationMessage) mediaMessage.payload).body.stream().flatMap(c -> c.reference().stream()).findFirst();
+        Assert.assertTrue("Message with media ref present", ref.isPresent());
+        FileRef fileRef = ref.get();
+        Optional<FileWrapper> mediaFile = a.getByPath(fileRef.path).join();
+        Assert.assertTrue(mediaFile.isPresent());
     }
 
     public static void messagingVariations(NetworkAccess network, Random random) {
