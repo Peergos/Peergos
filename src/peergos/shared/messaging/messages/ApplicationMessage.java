@@ -5,6 +5,8 @@ import peergos.shared.cbor.*;
 import peergos.shared.display.*;
 
 import java.util.*;
+import java.util.stream.Collectors;
+
 @JsType
 public class ApplicationMessage implements Message {
     public final List<? extends Content> body;
@@ -52,7 +54,11 @@ public class ApplicationMessage implements Message {
         return new ApplicationMessage(Collections.singletonList(new Text(text)));
     }
 
-    public static ApplicationMessage attachment(String text, FileRef attachment) {
-        return new ApplicationMessage(Arrays.asList(new Text(text), new Reference(attachment)));
+    public static ApplicationMessage attachment(String text, Set<FileRef> attachments) {
+        List<Reference> attachmentList = attachments.stream().map(a -> new Reference(a)).collect(Collectors.toList());
+        List<Content> body = new ArrayList<>();
+        body.add(new Text(text));
+        body.addAll(attachmentList);
+        return new ApplicationMessage(body);
     }
 }
