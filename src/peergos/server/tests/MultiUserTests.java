@@ -221,7 +221,7 @@ public class MultiUserTests {
 
     @Test
     public void messagingVariations() {
-        PeergosNetworkUtils.messagingVariations(network, random);
+        PeergosNetworkUtils.editMessage(network, random);
     }
 
     @Test

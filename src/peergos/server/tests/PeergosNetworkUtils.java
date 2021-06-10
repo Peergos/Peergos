@@ -1743,7 +1743,7 @@ public class PeergosNetworkUtils {
         Assert.assertEquals(all.size(), withMediaMessage.size());
     }
 
-    public static void messagingVariations(NetworkAccess network, Random random) {
+    public static void editMessage(NetworkAccess network, Random random) {
         CryptreeNode.setMaxChildLinkPerBlob(10);
 
         String password = "notagoodone";
@@ -1765,7 +1765,7 @@ public class PeergosNetworkUtils {
 
         controllerA = msgA.mergeMessages(controllerA, a.username).join();
         List<MessageEnvelope> messages = controllerA.getMessages(0, 10).join();
-        Assert.assertEquals(messages.size(), 3);
+        Assert.assertEquals(messages.size(), 4);
         MessageEnvelope envelope = messages.get(messages.size()-1);
 
         MessageRef messageRef = controllerA.generateHash(envelope).join();
@@ -1774,7 +1774,7 @@ public class PeergosNetworkUtils {
         controllerA = msgA.sendMessage(controllerA, editMessage).join();
         controllerA = msgA.mergeMessages(controllerA, a.username).join();
         messages = controllerA.getMessages(0, 10).join();
-        Assert.assertEquals(messages.size(), 4);
+        Assert.assertEquals(messages.size(), 5);
         envelope = messages.get(messages.size()-1);
         EditMessage appMsg = (EditMessage) envelope.payload;
         String msgContent = appMsg.content.body.get(0).inlineText();
@@ -1785,15 +1785,7 @@ public class PeergosNetworkUtils {
         controllerA = msgA.sendMessage(controllerA, delMessage).join();
         controllerA = msgA.mergeMessages(controllerA, a.username).join();
         messages = controllerA.getMessages(0, 10).join();
-        Assert.assertEquals(messages.size(), 5);
-
-        Set<ChatController> chats = msgA.listChats().join();
-        byte[] fileData = crypto.random.randomBytes(1*1024*1024);
-        AsyncReader reader = new AsyncReader.ArrayBacked(fileData);
-
-        FileRef ref = msgA.uploadMedia(controllerA, reader, fileData.length, LocalDateTime.now(), c -> {}).join().right;
-        chats = msgA.listChats().join();
-        System.currentTimeMillis();
+        Assert.assertEquals(messages.size(), 6);
     }
 
     public static void groupSharing(NetworkAccess network, Random random) {
