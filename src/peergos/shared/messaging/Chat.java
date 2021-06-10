@@ -32,6 +32,13 @@ public class Chat implements Cborable {
         this.groupState = groupState;
     }
 
+    public Set<String> getAdmins() {
+        GroupProperty current = groupState.get(GroupProperty.ADMINS_STATE_KEY);
+        if (current == null)
+            return Collections.emptySet();
+        return new HashSet<>(Arrays.asList(current.value.split(",")));
+    }
+
     public Member host() {
         return members.get(host);
     }
@@ -67,7 +74,8 @@ public class Chat implements Cborable {
                 });
     }
 
-    public CompletableFuture<Boolean> merge(Id mirrorHostId,
+    public CompletableFuture<Boolean> merge(String chatUid,
+                                            Id mirrorHostId,
                                             MessageStore mirrorStore,
                                             MessageStore ourStore,
                                             ContentAddressedStorage ipfs,
@@ -76,10 +84,11 @@ public class Chat implements Cborable {
         Member host = getMember(mirrorHostId);
         return mirrorStore.getMessagesFrom(host.messagesMergedUpto)
                 .thenCompose(newMessages -> Futures.reduceAll(newMessages, true,
-                        (b, msg) -> mergeMessage(msg, host, ourStore, ipfs, committer, mediaCopier), (a, b) -> a && b));
+                        (b, msg) -> mergeMessage(chatUid, msg, host, ourStore, ipfs, committer, mediaCopier), (a, b) -> a && b));
     }
 
-    private CompletableFuture<Boolean> mergeMessage(SignedMessage signed,
+    private CompletableFuture<Boolean> mergeMessage(String chatUid,
+                                                    SignedMessage signed,
                                                     Member host,
                                                     MessageStore ourStore,
                                                     ContentAddressedStorage ipfs,
@@ -126,10 +135,13 @@ public class Chat implements Cborable {
                             case GroupState: {
                                 SetGroupState update = (SetGroupState) msg.payload;
                                 GroupProperty existing = groupState.get(update.key);
+                                // only admins can update the list of admins
+                                // concurrent allowed modifications are tie-broken by Id
                                 if (existing == null ||
-                                        existing.updateTimestamp.isBeforeOrEqual(msg.timestamp) ||
-                                        (existing.updateTimestamp.isConcurrentWith(msg.timestamp) &&
-                                                msg.author.compareTo(existing.author) < 0)) {
+                                        ((!update.key.equals(GroupProperty.ADMINS_STATE_KEY) || getAdmins().contains(author.username)) &&
+                                                (existing.updateTimestamp.isBeforeOrEqual(msg.timestamp) ||
+                                                        (existing.updateTimestamp.isConcurrentWith(msg.timestamp) &&
+                                                                msg.author.compareTo(existing.author) < 0)))) {
                                     groupState.put(update.key, new GroupProperty(msg.author, msg.timestamp, update.value));
                                 }
                                 break;
@@ -144,6 +156,19 @@ public class Chat implements Cborable {
                                         .map(mediaCopier)
                                         .collect(Collectors.toList());
                                 return Futures.combineAll(mirroredMedia).thenApply(x -> true);
+                            }
+                            case RemoveMember: {
+                                RemoveMember rem = (RemoveMember) msg.payload;
+                                if (!rem.chatUid.equals(chatUid))
+                                    return Futures.of(true); // ignore message from incorrect chat
+                                // anyone can remove themselves
+                                // an admin can remove anyone
+                                if (rem.memberToRemove.equals(signed.msg.author) || getAdmins().contains(author.username)) {
+                                    members.remove(rem.memberToRemove);
+                                    // revoke read access to shared chat state from removee
+                                    return ourStore.revokeAccess(getMember(rem.memberToRemove).username);
+                                }
+                                break;
                             }
                             case ReplyTo:
                             case Delete:
@@ -267,7 +292,8 @@ public class Chat implements Cborable {
         HashMap<Id, Member> members = new HashMap<>();
         members.put(creator, us);
         TreeClock zero = TreeClock.init(Arrays.asList(us.id));
-        return new Chat(creator, zero, members, new HashMap<>());
+        HashMap<String, GroupProperty> groupState = new HashMap<>();
+        return new Chat(creator, zero, members, groupState);
     }
 
     public static List<Chat> createNew(List<String> usernames, List<PublicKeyHash> identities) {

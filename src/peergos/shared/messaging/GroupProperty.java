@@ -6,6 +6,8 @@ import java.util.*;
 
 public class GroupProperty implements Cborable {
 
+    public static final String ADMINS_STATE_KEY = "admins";
+
     public final Id author;
     public final TreeClock updateTimestamp;
     public final String value;

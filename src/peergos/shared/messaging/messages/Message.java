@@ -23,6 +23,7 @@ public interface Message extends Cborable {
             case ReplyTo: return ReplyTo.fromCbor(cbor);
             case Edit: return EditMessage.fromCbor(cbor);
             case Delete: return DeleteMessage.fromCbor(cbor);
+            case RemoveMember: return RemoveMember.fromCbor(cbor);
             default: throw new IllegalStateException("Invalid message type!");
         }
     }
@@ -35,7 +36,8 @@ public interface Message extends Cborable {
         GroupState(3),
         ReplyTo(4),
         Delete(5),
-        Edit(6);
+        Edit(6),
+        RemoveMember(7);
 
         public final int value;
 

@@ -1653,7 +1653,7 @@ public class PeergosNetworkUtils {
 
         String password = "notagoodone";
 
-        UserContext a = PeergosNetworkUtils.ensureSignedUp(generateUsername(random), password, network, crypto);
+        UserContext a = PeergosNetworkUtils.ensureSignedUp("a-" + generateUsername(random), password, network, crypto);
 
         List<UserContext> shareeUsers = getUserContextsForNode(network, random, 1, Arrays.asList(password));
         UserContext b = shareeUsers.get(0);
@@ -1672,29 +1672,29 @@ public class PeergosNetworkUtils {
         controllerB = msgB.mergeMessages(controllerB, a.username).join();
 
         List<MessageEnvelope> initialMessages = controllerB.getMessages(0, 10).join();
-        Assert.assertEquals(initialMessages.size(), 3);
-        Assert.assertEquals(controllerA.host().messagesMergedUpto, 2);
-        Assert.assertEquals(controllerB.host().messagesMergedUpto, 3);
+        Assert.assertEquals(initialMessages.size(), 4);
+        Assert.assertEquals(controllerA.host().messagesMergedUpto, 3);
+        Assert.assertEquals(controllerB.host().messagesMergedUpto, 4);
 
         ApplicationMessage msg1 = ApplicationMessage.text("G'day mate!");
         controllerA = msgA.sendMessage(controllerA, msg1).join();
-        Assert.assertEquals(controllerA.host().messagesMergedUpto, 3);
+        Assert.assertEquals(controllerA.host().messagesMergedUpto, 4);
         controllerB = msgB.mergeMessages(controllerB, a.username).join();
         List<MessageEnvelope> messages = controllerB.getMessages(0, 10).join();
-        Assert.assertEquals(messages.size(), 4);
+        Assert.assertEquals(messages.size(), 5);
         MessageEnvelope fromA = messages.get(messages.size() - 1);
         Assert.assertEquals(fromA.payload, msg1);
-        Assert.assertEquals(controllerB.host().messagesMergedUpto, 4);
+        Assert.assertEquals(controllerB.host().messagesMergedUpto, 5);
 
         ReplyTo msg2 = ReplyTo.build(fromA, ApplicationMessage.text("Isn't this cool!!"), hasher).join();
         controllerB = msgB.sendMessage(controllerB, msg2).join();
         controllerA = msgA.mergeMessages(controllerA, b.username).join();
         List<MessageEnvelope> messagesA = controllerA.getMessages(0, 10).join();
-        MessageEnvelope fromB = messagesA.get(4);
-        Assert.assertEquals(messagesA.size(), 5);
+        MessageEnvelope fromB = messagesA.get(5);
+        Assert.assertEquals(messagesA.size(), 6);
         Assert.assertEquals(messagesA.get(messagesA.size() - 1).payload, msg2);
-        Assert.assertEquals(controllerA.host().messagesMergedUpto, 5);
-        Assert.assertEquals(controllerB.host().messagesMergedUpto, 5);
+        Assert.assertEquals(controllerA.host().messagesMergedUpto, 6);
+        Assert.assertEquals(controllerB.host().messagesMergedUpto, 6);
         Assert.assertTrue(fromB.payload instanceof ReplyTo);
         MessageRef parentRef = ((ReplyTo) fromB.payload).parent;
         MessageEnvelope parent = controllerA.getMessageFromRef(parentRef, 4).join();
@@ -1706,8 +1706,8 @@ public class PeergosNetworkUtils {
         controllerB = msgB.mergeMessages(controllerB, a.username).join();
         String groupName = controllerB.getGroupProperty("name");
         Assert.assertTrue(groupName.equals(random_chat));
-        Assert.assertEquals(controllerA.host().messagesMergedUpto, 6);
-        Assert.assertEquals(controllerB.host().messagesMergedUpto, 6);
+        Assert.assertEquals(controllerA.host().messagesMergedUpto, 7);
+        Assert.assertEquals(controllerB.host().messagesMergedUpto, 7);
 
         // make message log multi chunk
         for (int i=0; i < 6; i++) {
@@ -1715,9 +1715,9 @@ public class PeergosNetworkUtils {
             controllerA = msgA.sendMessage(controllerA, msgn).join();
         }
 
-        List<MessageEnvelope> last = controllerA.getMessages(11, 12).join();
+        List<MessageEnvelope> last = controllerA.getMessages(12, 13).join();
         controllerB = msgB.mergeMessages(controllerB, a.username).join();
-        controllerB.getMessages(11, 12).join();
+        controllerB.getMessages(12, 13).join();
 
         // share a media file
         byte[] media = "Some media data".getBytes();
@@ -1734,6 +1734,13 @@ public class PeergosNetworkUtils {
         FileRef fileRef = ref.get();
         Optional<FileWrapper> mediaFile = a.getByPath(fileRef.path).join();
         Assert.assertTrue(mediaFile.isPresent());
+
+        // remove member from chat
+        controllerA = msgA.removeMember(controllerA, b.username).join();
+        controllerA = msgA.sendMessage(controllerA, new ApplicationMessage(Arrays.asList(new Text("B shouldn't see this!")))).join();
+        controllerB = msgB.mergeMessages(controllerB, a.username).join();
+        List<MessageEnvelope> all = controllerB.getMessages(0, 50).join();
+        Assert.assertEquals(all.size(), withMediaMessage.size());
     }
 
     public static void messagingVariations(NetworkAccess network, Random random) {

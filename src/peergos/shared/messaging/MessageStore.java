@@ -10,4 +10,6 @@ public interface MessageStore {
     CompletableFuture<List<SignedMessage>> getMessages(long fromIndex, long toIndex);
 
     CompletableFuture<Boolean> addMessage(long msgIndex, SignedMessage msg);
+
+    CompletableFuture<Boolean> revokeAccess(String username);
 }

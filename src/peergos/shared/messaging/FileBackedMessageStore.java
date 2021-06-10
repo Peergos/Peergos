@@ -1,12 +1,15 @@
 package peergos.shared.messaging;
 
 import peergos.shared.*;
+import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
 import java.io.*;
+import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.*;
 
 public class FileBackedMessageStore implements MessageStore {
 
@@ -14,12 +17,22 @@ public class FileBackedMessageStore implements MessageStore {
     private FileWrapper indexFile;
     private final NetworkAccess network;
     private final Crypto crypto;
+    private final UserContext context;
+    private final Path sharedDir;
+    private final Supplier<CompletableFuture<Pair<FileWrapper, FileWrapper>>> filesUpdater;
 
-    public FileBackedMessageStore(FileWrapper messages, FileWrapper indexFile, NetworkAccess network, Crypto crypto) {
+    public FileBackedMessageStore(FileWrapper messages,
+                                  FileWrapper indexFile,
+                                  UserContext context,
+                                  Path sharedDir,
+                                  Supplier<CompletableFuture<Pair<FileWrapper, FileWrapper>>> filesUpdater) {
         this.messages = messages;
         this.indexFile = indexFile;
-        this.network = network;
-        this.crypto = crypto;
+        this.network = context.network;
+        this.crypto = context.crypto;
+        this.context = context;
+        this.sharedDir = sharedDir;
+        this.filesUpdater = filesUpdater;
     }
 
     private CompletableFuture<Pair<Long, Integer>> getChunkByteOffset(long index) {
@@ -89,27 +102,40 @@ public class FileBackedMessageStore implements MessageStore {
         byte[] raw = msg.serialize();
         return network.synchronizer.applyComplexUpdate(messages.owner(), messages.signingPair(),
                 (s, committer) -> messages.getUpdated(s, network)
-                .thenCompose(m -> m.overwriteSection(s, committer, AsyncReader.build(raw), m.getSize(),
-                        m.getSize() + raw.length, network, crypto, x -> {}).thenCompose(s2 -> {
-                    boolean newChunk = (raw.length + m.getSize())/Chunk.MAX_SIZE > m.getSize()/Chunk.MAX_SIZE;
-                    if (! newChunk)
-                        return Futures.of(s2);
-                    ByteArrayOutputStream bout = new ByteArrayOutputStream();
-                    DataOutputStream dout = new DataOutputStream(bout);
-                    try {
-                        dout.writeLong(msgIndex + 1);
-                        dout.writeLong(m.getSize() + raw.length);
-                    } catch (IOException e) {} // can't happen
-                    byte[] twoLongs = bout.toByteArray();
-                    return indexFile.getUpdated(s2, network)
-                            .thenCompose(updatedIndex -> updatedIndex.overwriteSection(s2, committer,
-                                    AsyncReader.build(twoLongs), updatedIndex.getSize(),
-                                    updatedIndex.getSize() + twoLongs.length, network, crypto, x -> {}));
+                        .thenCompose(mIn -> mIn.clean(mIn.version, committer, network, crypto))
+                        .thenCompose(p -> p.left.overwriteSection(p.right, committer, AsyncReader.build(raw), p.left.getSize(),
+                                p.left.getSize() + raw.length, network, crypto, x -> {}).thenCompose(s2 -> {
+                            long size = p.left.getSize();
+                            boolean newChunk = (raw.length + size)/Chunk.MAX_SIZE > size/Chunk.MAX_SIZE;
+                            if (! newChunk)
+                                return Futures.of(s2);
+                            ByteArrayOutputStream bout = new ByteArrayOutputStream();
+                            DataOutputStream dout = new DataOutputStream(bout);
+                            try {
+                                dout.writeLong(msgIndex + 1);
+                                dout.writeLong(size + raw.length);
+                            } catch (IOException e) {} // can't happen
+                            byte[] twoLongs = bout.toByteArray();
+                            return indexFile.getUpdated(s2, network)
+                                    .thenCompose(updatedIndex -> updatedIndex.overwriteSection(s2, committer,
+                                            AsyncReader.build(twoLongs), updatedIndex.getSize(),
+                                            updatedIndex.getSize() + twoLongs.length, network, crypto, x -> {}));
 
-                })))
+                        })))
                 .thenCompose(s -> messages.getUpdated(s, network).thenApply(updated -> {
                     this.messages = updated;
                     return true;
                 }));
+    }
+
+    @Override
+    public synchronized CompletableFuture<Boolean> revokeAccess(String username) {
+        return context.unShareReadAccess(sharedDir, username)
+                .thenCompose(b -> filesUpdater.get())
+                .thenApply(files -> {
+                    this.messages = files.left;
+                    this.indexFile = files.right;
+                    return true;
+                });
     }
 }

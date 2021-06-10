@@ -16,8 +16,8 @@ import java.util.stream.*;
 public class ChatController {
 
     public final String chatUuid;
+    public final MessageStore store;
     private final Chat state;
-    private final MessageStore store;
     private final PrivateChatState privateChatState;
     private final LRUCache<MessageRef, MessageEnvelope> cache;
     private final Hasher hasher;
@@ -101,10 +101,38 @@ public class ChatController {
         return state.groupState.get(key).value;
     }
 
+    @JsMethod
+    public Set<String> getAdmins() {
+        return state.getAdmins();
+    }
+
     public CompletableFuture<ChatController> join(SigningPrivateKeyAndPublicHash identity,
                                                   Function<Chat, CompletableFuture<Boolean>> committer) {
         OwnerProof chatId = OwnerProof.build(identity, privateChatState.chatIdentity.publicKeyHash);
         return state.join(state.host(), chatId, privateChatState.chatIdPublic, identity, store, committer, hasher)
+                .thenApply(x -> this);
+    }
+
+    public CompletableFuture<ChatController> addAdmin(String username) {
+        Set<String> admins = new TreeSet<>(state.getAdmins());
+        if (! admins.isEmpty() && ! admins.contains(state.host().username))
+            throw new IllegalStateException("Only admins can modify the admin list!");
+        admins.add(username);
+        SetGroupState msg = new SetGroupState(GroupProperty.ADMINS_STATE_KEY, admins.stream().collect(Collectors.joining(",")));
+        return state.addMessage(msg, privateChatState.chatIdentity, store, hasher)
+                .thenApply(x -> this);
+    }
+
+    public CompletableFuture<ChatController> removeAdmin(String username) {
+        Set<String> admins = new TreeSet<>(state.getAdmins());
+        if (! admins.contains(state.host().username))
+            throw new IllegalStateException("Only admins can modify the admin list!");
+
+        admins.remove(username);
+        if (admins.isEmpty())
+            throw new IllegalStateException("A chat must always have at least 1 admin");
+        SetGroupState msg = new SetGroupState(GroupProperty.ADMINS_STATE_KEY, admins.stream().collect(Collectors.joining(",")));
+        return state.addMessage(msg, privateChatState.chatIdentity, store, hasher)
                 .thenApply(x -> this);
     }
 
@@ -128,7 +156,7 @@ public class ChatController {
                                                            Function<Chat, CompletableFuture<Boolean>> committer,
                                                            Function<FileRef, CompletableFuture<Boolean>> mediaCopier) {
         Member mirrorHost = state.getMember(username);
-        return state.merge(mirrorHost.id, mirrorStore, store, ipfs, committer, mediaCopier)
+        return state.merge(chatUuid, mirrorHost.id, mirrorStore, store, ipfs, committer, mediaCopier)
                 .thenApply(x -> this);
     }
 }

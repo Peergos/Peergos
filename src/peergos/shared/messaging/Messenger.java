@@ -82,7 +82,8 @@ public class Messenger {
                                 AsyncReader.build(rawPrivateChatState), rawPrivateChatState.length, network, crypto, x -> {}, crypto.random.randomBytes(32))))
                 .thenCompose(this::getChatMessageStore)
                 .thenApply(messageStore -> new ChatController(chatId, chat, messageStore, privateChatState, cache, hasher))
-                .thenCompose(controller -> controller.join(context.signer, c -> overwriteState(c, chatId)));
+                .thenCompose(controller -> controller.join(context.signer, c -> overwriteState(c, chatId)))
+                .thenCompose(controller -> controller.addAdmin(context.username));
     }
 
     private CompletableFuture<FileWrapper> createChatRoot(String chatId) {
@@ -97,9 +98,13 @@ public class Messenger {
         return Paths.get(hostUsername, MESSAGING_BASE_DIR, chatId);
     }
 
+    private Path getChatSharedDir(String chatUid) {
+        return Paths.get(context.username, MESSAGING_BASE_DIR, chatUid, "shared");
+    }
+
     @JsMethod
     public CompletableFuture<ChatController> invite(ChatController chat, List<String> usernames, List<PublicKeyHash> identities) {
-        Path chatSharedDir = Paths.get(context.username, MESSAGING_BASE_DIR, chat.chatUuid, "shared");
+        Path chatSharedDir = getChatSharedDir(chat.chatUuid);
         return chat.invite(usernames, identities, c -> overwriteState(c, chat.chatUuid))
                 .thenCompose(res -> context.shareReadAccessWith(chatSharedDir, new HashSet<>(usernames))
                         .thenApply(x -> res));
@@ -198,6 +203,18 @@ public class Messenger {
     }
 
     @JsMethod
+    public CompletableFuture<ChatController> removeMember(ChatController current, String username) {
+        Member member = current.getMember(username);
+        if (member == null)
+            throw new IllegalStateException("No member in chat with that name!");
+        RemoveMember msg = new RemoveMember(current.chatUuid, member.id);
+        return (username.equals(context.username) ?
+                Futures.of(true) :
+                current.store.revokeAccess(username))
+                .thenCompose(x -> sendMessage(current, msg));
+    }
+
+    @JsMethod
     public CompletableFuture<ChatController> sendMessage(ChatController current, Message message) {
         return current.sendMessage(message, c -> overwriteState(c, current.chatUuid));
     }
@@ -273,10 +290,19 @@ public class Messenger {
                 .thenCompose(priv -> Serialize.parse(priv.get(), PrivateChatState::fromCbor, network, crypto));
     }
 
-    private CompletableFuture<MessageStore> getChatMessageStore(FileWrapper chatRoot) {
+    private CompletableFuture<Pair<FileWrapper, FileWrapper>> getSharedLogAndIndex(FileWrapper chatRoot) {
         return chatRoot.getDescendentByPath("shared/" + SHARED_MSG_LOG, hasher, network)
                 .thenCompose(msgFile -> chatRoot.getDescendentByPath("shared/" + SHARED_MSG_LOG_INDEX, hasher, network)
-                        .thenApply(index -> new FileBackedMessageStore(msgFile.get(), index.get(), network, crypto)));
+                        .thenApply(index -> new Pair<>(msgFile.get(), index.get())));
+    }
+
+    private CompletableFuture<MessageStore> getChatMessageStore(FileWrapper chatRoot) {
+        return getSharedLogAndIndex(chatRoot)
+                .thenApply(files -> new FileBackedMessageStore(files.left, files.right, context,
+                        getChatPath(context.username, chatRoot.getName()).resolve("shared"),
+                        () -> context.getByPath(getChatPath(context.username, chatRoot.getName()))
+                                .thenApply(Optional::get)
+                                .thenCompose(this::getSharedLogAndIndex)));
     }
 
     private CompletableFuture<MessageStore> getMessageStoreMirror(String username, String uuid) {
