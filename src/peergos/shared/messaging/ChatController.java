@@ -45,8 +45,8 @@ public class ChatController {
     }
 
     @JsMethod
-    public String getAuthorUsername(MessageEnvelope m) {
-        return state.getMember(m.author).username;
+    public String getUsername(Id author) {
+        return state.getMember(author).username;
     }
 
     @JsMethod

@@ -54,7 +54,7 @@ public class ApplicationMessage implements Message {
         return new ApplicationMessage(Collections.singletonList(new Text(text)));
     }
 
-    public static ApplicationMessage attachment(String text, Set<FileRef> attachments) {
+    public static ApplicationMessage attachment(String text, List<FileRef> attachments) {
         List<Reference> attachmentList = attachments.stream().map(a -> new Reference(a)).collect(Collectors.toList());
         List<Content> body = new ArrayList<>();
         body.add(new Text(text));
