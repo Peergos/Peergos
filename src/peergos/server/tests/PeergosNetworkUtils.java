@@ -1663,6 +1663,7 @@ public class PeergosNetworkUtils {
 
         Messenger msgA = new Messenger(a);
         ChatController controllerA = msgA.createChat().join();
+        Assert.assertTrue("creator is admin", controllerA.getAdmins().equals(Collections.singleton(a.username)));
         controllerA = msgA.invite(controllerA, Arrays.asList(b.username), Arrays.asList(b.signer.publicKeyHash)).join();
         List<Pair<SharedItem, FileWrapper>> feed = b.getSocialFeed().join().update().join().getSharedFiles(0, 10).join();
         FileWrapper chatSharedDir = feed.get(feed.size() - 1).right;

@@ -81,8 +81,9 @@ public class Messenger {
                         .thenCompose(updatedChatRoot -> updatedChatRoot.uploadOrReplaceFile(PRIVATE_CHAT_STATE,
                                 AsyncReader.build(rawPrivateChatState), rawPrivateChatState.length, network, crypto, x -> {}, crypto.random.randomBytes(32))))
                 .thenCompose(this::getChatMessageStore)
-                .thenApply(messageStore -> new ChatController(chatId, chat, messageStore, privateChatState, cache, hasher))
-                .thenCompose(controller -> controller.join(context.signer, c -> overwriteState(c, chatId)))
+                .thenApply(messageStore -> new ChatController(chatId, chat, messageStore, privateChatState, cache, hasher,
+                        c -> overwriteState(c, chatId), this::mirrorMedia, network.dhtClient))
+                .thenCompose(controller -> controller.join(context.signer))
                 .thenCompose(controller -> controller.addAdmin(context.username));
     }
 
@@ -105,7 +106,7 @@ public class Messenger {
     @JsMethod
     public CompletableFuture<ChatController> invite(ChatController chat, List<String> usernames, List<PublicKeyHash> identities) {
         Path chatSharedDir = getChatSharedDir(chat.chatUuid);
-        return chat.invite(usernames, identities, c -> overwriteState(c, chat.chatUuid))
+        return chat.invite(usernames, identities)
                 .thenCompose(res -> context.shareReadAccessWith(chatSharedDir, new HashSet<>(usernames))
                         .thenApply(x -> res));
     }
@@ -156,7 +157,7 @@ public class Messenger {
                                 getChatPath(context.username, chatId).resolve("shared"),
                                 Collections.singleton(sourceChatSharedDir.getOwnerName())))
                         .thenCompose(b -> getChat(chatId))
-                        .thenCompose(controller -> controller.join(context.signer, c -> overwriteState(c, chatId))));
+                        .thenCompose(controller -> controller.join(context.signer)));
     }
 
     @JsMethod
@@ -165,8 +166,7 @@ public class Messenger {
             return Futures.of(current);
         }
         return getMessageStoreMirror(mirrorUsername, current.chatUuid)
-                .thenCompose(mirrorStore -> current.mergeMessages(mirrorUsername, mirrorStore, network.dhtClient,
-                        c -> overwriteState(c, current.chatUuid), r -> mirrorMedia(r, current, mirrorUsername)))
+                .thenCompose(mirrorStore -> current.mergeMessages(mirrorUsername, mirrorStore))
                 .exceptionally(e -> current);
     }
 
@@ -208,6 +208,8 @@ public class Messenger {
         if (member == null)
             throw new IllegalStateException("No member in chat with that name!");
         RemoveMember msg = new RemoveMember(current.chatUuid, member.id);
+        if (! username.equals(context.username) && ! current.getAdmins().contains(context.username))
+            throw new IllegalStateException("Only admins can remove other members!");
         return (username.equals(context.username) ?
                 Futures.of(true) :
                 current.store.revokeAccess(username))
@@ -216,7 +218,7 @@ public class Messenger {
 
     @JsMethod
     public CompletableFuture<ChatController> sendMessage(ChatController current, Message message) {
-        return current.sendMessage(message, c -> overwriteState(c, current.chatUuid));
+        return current.sendMessage(message);
     }
 
     @JsMethod
@@ -253,7 +255,7 @@ public class Messenger {
 
     @JsMethod
     public CompletableFuture<ChatController> setGroupProperty(ChatController current, String key, String value) {
-        return current.sendMessage(new SetGroupState(key, value), c -> overwriteState(c, current.chatUuid));
+        return current.sendMessage(new SetGroupState(key, value));
     }
 
     public CompletableFuture<ChatController> getChat(String uuid) {
@@ -277,7 +279,9 @@ public class Messenger {
                 .thenCompose(sharedDir -> getChatState(sharedDir.get()))
                 .thenCompose(chat -> getPrivateChatState(chatRoot)
                         .thenCompose(priv -> getChatMessageStore(chatRoot)
-                                .thenApply(msgStore -> new ChatController(chatRoot.getName(), chat, msgStore, priv, cache, hasher))));
+                                .thenApply(msgStore -> new ChatController(chatRoot.getName(), chat, msgStore, priv,
+                                        cache, hasher, c -> overwriteState(c, chatRoot.getName()),
+                                        this::mirrorMedia, network.dhtClient))));
     }
 
     private CompletableFuture<Chat> getChatState(FileWrapper chatRoot) {

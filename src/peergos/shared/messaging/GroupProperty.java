@@ -34,7 +34,7 @@ public class GroupProperty implements Cborable {
 
         Id author = m.get("a", Id::fromCbor);
         TreeClock timestamp = m.get("t", TreeClock::fromCbor);
-        String value = m.getString("t");
+        String value = m.getString("v");
 
         return new GroupProperty(author, timestamp, value);
     }

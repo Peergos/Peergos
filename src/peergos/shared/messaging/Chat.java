@@ -74,6 +74,91 @@ public class Chat implements Cborable {
                 });
     }
 
+    /** Apply message to this Chat's state
+     *
+     * @param msg
+     * @return
+     */
+    public CompletableFuture<Boolean> apply(MessageEnvelope msg,
+                                            String chatUid,
+                                            Function<FileRef, CompletableFuture<Boolean>> mediaCopier,
+                                            MessageStore ourStore,
+                                            ContentAddressedStorage ipfs) {
+        Member author = members.get(msg.author);
+        switch (msg.payload.type()) {
+            case Invite: {
+                Set<Id> newMembers = current.newMembersFrom(msg.timestamp);
+                for (Id newMember : newMembers) {
+                    long indexIntoParent = getMember(newMember.parent()).messagesMergedUpto;
+                    Invite invite = (Invite) msg.payload;
+                    String username = invite.username;
+                    PublicKeyHash identity = invite.identity;
+                    members.put(newMember, new Member(username, newMember, identity, indexIntoParent, 0));
+                }
+                break;
+            }
+            case Join:
+                if (author.chatIdentity.isEmpty()) {
+                    // This is a Join message from a new member
+                    Join join = (Join)msg.payload;
+                    OwnerProof chatIdentity = join.chatIdentity;
+                    if (!chatIdentity.ownedKey.equals(author.identity))
+                        throw new IllegalStateException("Identity keys don't match!");
+                    // verify signature
+                    return chatIdentity.getOwner(ipfs).thenApply(x -> {
+                        members.put(author.id, author.withChatId(chatIdentity));
+                        return true;
+                    });
+                }
+                break;
+            case GroupState: {
+                SetGroupState update = (SetGroupState) msg.payload;
+                GroupProperty existing = groupState.get(update.key);
+                // only admins can update the list of admins
+                // concurrent allowed modifications are tie-broken by Id
+                if (existing == null ||
+                        ((!update.key.equals(GroupProperty.ADMINS_STATE_KEY) || getAdmins().contains(author.username)) &&
+                                (existing.updateTimestamp.isBeforeOrEqual(msg.timestamp) ||
+                                        (existing.updateTimestamp.isConcurrentWith(msg.timestamp) &&
+                                                msg.author.compareTo(existing.author) < 0)))) {
+                    groupState.put(update.key, new GroupProperty(msg.author, msg.timestamp, update.value));
+                }
+                break;
+            }
+            case Application: {
+                if (msg.author.equals(host))
+                    break; // Don't attempt to copy own own media
+                ApplicationMessage content = (ApplicationMessage) msg.payload;
+                List<FileRef> fileRefs = content.body.stream()
+                        .flatMap(c -> c.reference().stream())
+                        .collect(Collectors.toList());
+                // mirror media to our storage
+                List<CompletableFuture<Boolean>> mirroredMedia = fileRefs.stream().parallel()
+                        .map(mediaCopier)
+                        .collect(Collectors.toList());
+                return Futures.combineAll(mirroredMedia).thenApply(x -> true);
+            }
+            case RemoveMember: {
+                RemoveMember rem = (RemoveMember) msg.payload;
+                if (!rem.chatUid.equals(chatUid))
+                    return Futures.of(true); // ignore message from incorrect chat
+                // anyone can remove themselves
+                // an admin can remove anyone
+                if (rem.memberToRemove.equals(msg.author) || getAdmins().contains(author.username)) {
+                    String username = getMember(rem.memberToRemove).username;
+                    members.remove(rem.memberToRemove);
+                    // revoke read access to shared chat state from removee
+                    return ourStore.revokeAccess(username);
+                }
+                break;
+            }
+            case ReplyTo:
+            case Delete:
+                break;
+        }
+        return Futures.of(true);
+    }
+
     public CompletableFuture<Boolean> merge(String chatUid,
                                             Id mirrorHostId,
                                             MessageStore mirrorStore,
@@ -106,75 +191,7 @@ public class Chat implements Cborable {
                         if (signerOpt.isEmpty())
                             throw new IllegalStateException("Couldn't retrieve public signing key!");
                         signerOpt.get().unsignMessage(ArrayOps.concat(signed.signature, signed.msg.serialize()));
-                        switch(msg.payload.type()) {
-                            case Invite: {
-                                Set<Id> newMembers = current.newMembersFrom(msg.timestamp);
-                                for (Id newMember : newMembers) {
-                                    long indexIntoParent = getMember(newMember.parent()).messagesMergedUpto;
-                                    Invite invite = (Invite) msg.payload;
-                                    String username = invite.username;
-                                    PublicKeyHash identity = invite.identity;
-                                    members.put(newMember, new Member(username, newMember, identity, indexIntoParent, 0));
-                                }
-                                break;
-                            }
-                            case Join:
-                                if (author.chatIdentity.isEmpty()) {
-                                    // This is a Join message from a new member
-                                    Join join = (Join)msg.payload;
-                                    OwnerProof chatIdentity = join.chatIdentity;
-                                    if (!chatIdentity.ownedKey.equals(author.identity))
-                                        throw new IllegalStateException("Identity keys don't match!");
-                                    // verify signature
-                                    return chatIdentity.getOwner(ipfs).thenApply(x -> {
-                                        members.put(author.id, author.withChatId(chatIdentity));
-                                        return true;
-                                    });
-                                }
-                                break;
-                            case GroupState: {
-                                SetGroupState update = (SetGroupState) msg.payload;
-                                GroupProperty existing = groupState.get(update.key);
-                                // only admins can update the list of admins
-                                // concurrent allowed modifications are tie-broken by Id
-                                if (existing == null ||
-                                        ((!update.key.equals(GroupProperty.ADMINS_STATE_KEY) || getAdmins().contains(author.username)) &&
-                                                (existing.updateTimestamp.isBeforeOrEqual(msg.timestamp) ||
-                                                        (existing.updateTimestamp.isConcurrentWith(msg.timestamp) &&
-                                                                msg.author.compareTo(existing.author) < 0)))) {
-                                    groupState.put(update.key, new GroupProperty(msg.author, msg.timestamp, update.value));
-                                }
-                                break;
-                            }
-                            case Application: {
-                                ApplicationMessage content = (ApplicationMessage) msg.payload;
-                                List<FileRef> fileRefs = content.body.stream()
-                                        .flatMap(c -> c.reference().stream())
-                                        .collect(Collectors.toList());
-                                // mirror media to our storage
-                                List<CompletableFuture<Boolean>> mirroredMedia = fileRefs.stream().parallel()
-                                        .map(mediaCopier)
-                                        .collect(Collectors.toList());
-                                return Futures.combineAll(mirroredMedia).thenApply(x -> true);
-                            }
-                            case RemoveMember: {
-                                RemoveMember rem = (RemoveMember) msg.payload;
-                                if (!rem.chatUid.equals(chatUid))
-                                    return Futures.of(true); // ignore message from incorrect chat
-                                // anyone can remove themselves
-                                // an admin can remove anyone
-                                if (rem.memberToRemove.equals(signed.msg.author) || getAdmins().contains(author.username)) {
-                                    members.remove(rem.memberToRemove);
-                                    // revoke read access to shared chat state from removee
-                                    return ourStore.revokeAccess(getMember(rem.memberToRemove).username);
-                                }
-                                break;
-                            }
-                            case ReplyTo:
-                            case Delete:
-                                break;
-                        }
-                        return Futures.of(true);
+                        return apply(msg, chatUid, mediaCopier, ourStore, ipfs);
                     }).thenCompose(b -> ourStore.addMessage(host().messagesMergedUpto, signed)
                             .thenCompose(x -> {
                                 current = current.merge(msg.timestamp);

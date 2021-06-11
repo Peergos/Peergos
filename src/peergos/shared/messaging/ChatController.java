@@ -21,19 +21,28 @@ public class ChatController {
     private final PrivateChatState privateChatState;
     private final LRUCache<MessageRef, MessageEnvelope> cache;
     private final Hasher hasher;
+    private final Function<Chat, CompletableFuture<Boolean>> committer;
+    private final TriFunction<FileRef, ChatController, String, CompletableFuture<Boolean>> mediaCopier;
+    private final ContentAddressedStorage ipfs;
 
     public ChatController(String chatUuid,
                           Chat state,
                           MessageStore store,
                           PrivateChatState privateChatState,
                           LRUCache<MessageRef, MessageEnvelope> cache,
-                          Hasher hasher) {
+                          Hasher hasher,
+                          Function<Chat, CompletableFuture<Boolean>> committer,
+                          TriFunction<FileRef, ChatController, String, CompletableFuture<Boolean>> mediaCopier,
+                          ContentAddressedStorage ipfs) {
         this.chatUuid = chatUuid;
         this.state = state;
         this.store = store;
         this.privateChatState = privateChatState;
         this.cache = cache;
         this.hasher = hasher;
+        this.committer = committer;
+        this.mediaCopier = mediaCopier;
+        this.ipfs = ipfs;
     }
 
     public Member host() {
@@ -89,9 +98,9 @@ public class ChatController {
     }
 
     @JsMethod
-    public CompletableFuture<ChatController> sendMessage(Message message,
-                                                         Function<Chat, CompletableFuture<Boolean>> committer) {
+    public CompletableFuture<ChatController> sendMessage(Message message) {
         return state.addMessage(message, privateChatState.chatIdentity, store, hasher)
+                .thenCompose(msg -> this.state.apply(msg, chatUuid, r -> mediaCopier.apply(r, this, state.host().username), store, ipfs))
                 .thenCompose(x -> committer.apply(this.state))
                 .thenApply(x -> this);
     }
@@ -106,8 +115,7 @@ public class ChatController {
         return state.getAdmins();
     }
 
-    public CompletableFuture<ChatController> join(SigningPrivateKeyAndPublicHash identity,
-                                                  Function<Chat, CompletableFuture<Boolean>> committer) {
+    public CompletableFuture<ChatController> join(SigningPrivateKeyAndPublicHash identity) {
         OwnerProof chatId = OwnerProof.build(identity, privateChatState.chatIdentity.publicKeyHash);
         return state.join(state.host(), chatId, privateChatState.chatIdPublic, identity, store, committer, hasher)
                 .thenApply(x -> this);
@@ -119,8 +127,7 @@ public class ChatController {
             throw new IllegalStateException("Only admins can modify the admin list!");
         admins.add(username);
         SetGroupState msg = new SetGroupState(GroupProperty.ADMINS_STATE_KEY, admins.stream().collect(Collectors.joining(",")));
-        return state.addMessage(msg, privateChatState.chatIdentity, store, hasher)
-                .thenApply(x -> this);
+        return sendMessage(msg);
     }
 
     public CompletableFuture<ChatController> removeAdmin(String username) {
@@ -132,31 +139,26 @@ public class ChatController {
         if (admins.isEmpty())
             throw new IllegalStateException("A chat must always have at least 1 admin");
         SetGroupState msg = new SetGroupState(GroupProperty.ADMINS_STATE_KEY, admins.stream().collect(Collectors.joining(",")));
-        return state.addMessage(msg, privateChatState.chatIdentity, store, hasher)
-                .thenApply(x -> this);
+        return sendMessage(msg);
     }
 
     public CompletableFuture<ChatController> invite(List<String> usernames,
-                                                    List<PublicKeyHash> identities,
-                                                    Function<Chat, CompletableFuture<Boolean>> committer) {
+                                                    List<PublicKeyHash> identities) {
         return state.inviteMembers(usernames, identities, privateChatState.chatIdentity, store, committer, hasher)
                 .thenApply(x -> this);
     }
 
     public CompletableFuture<ChatController> invite(String username,
-                                                    PublicKeyHash identity,
-                                                    Function<Chat, CompletableFuture<Boolean>> committer) {
+                                                    PublicKeyHash identity) {
         return state.inviteMember(username, identity, privateChatState.chatIdentity, store, committer, hasher)
                 .thenApply(x -> this);
     }
 
     public CompletableFuture<ChatController> mergeMessages(String username,
-                                                           MessageStore mirrorStore,
-                                                           ContentAddressedStorage ipfs,
-                                                           Function<Chat, CompletableFuture<Boolean>> committer,
-                                                           Function<FileRef, CompletableFuture<Boolean>> mediaCopier) {
+                                                           MessageStore mirrorStore) {
         Member mirrorHost = state.getMember(username);
-        return state.merge(chatUuid, mirrorHost.id, mirrorStore, store, ipfs, committer, mediaCopier)
+        return state.merge(chatUuid, mirrorHost.id, mirrorStore, store, ipfs, committer,
+                r -> mediaCopier.apply(r, this, username))
                 .thenApply(x -> this);
     }
 }
