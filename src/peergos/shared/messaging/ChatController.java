@@ -121,6 +121,7 @@ public class ChatController {
                 .thenApply(x -> this);
     }
 
+    @JsMethod
     public CompletableFuture<ChatController> addAdmin(String username) {
         Set<String> admins = new TreeSet<>(state.getAdmins());
         if (! admins.isEmpty() && ! admins.contains(state.host().username))
@@ -130,6 +131,7 @@ public class ChatController {
         return sendMessage(msg);
     }
 
+    @JsMethod
     public CompletableFuture<ChatController> removeAdmin(String username) {
         Set<String> admins = new TreeSet<>(state.getAdmins());
         if (! admins.contains(state.host().username))
