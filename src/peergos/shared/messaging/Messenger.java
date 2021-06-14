@@ -170,7 +170,7 @@ public class Messenger {
                         .thenCompose(mirrorStore -> current.mergeMessages(mirrorUsername, mirrorStore)),
                 t -> {
                     if (t.getCause() instanceof NoSuchElementException)
-                        return Futures.errored(new IllegalStateException("You have been remove from the chat."));
+                        return Futures.errored(new IllegalStateException("You have been removed from the chat."));
                     return Futures.of(current);
                 });
     }

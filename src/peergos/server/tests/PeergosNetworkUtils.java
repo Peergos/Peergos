@@ -1742,7 +1742,7 @@ public class PeergosNetworkUtils {
         try {
             controllerB = msgB.mergeMessages(controllerB, a.username).join();
             throw new RuntimeException("Fail!");
-        } catch (IllegalStateException e) {}
+        } catch (CompletionException e) {}
         List<MessageEnvelope> all = controllerB.getMessages(0, 50).join();
         Assert.assertEquals(all.size(), withMediaMessage.size());
     }
