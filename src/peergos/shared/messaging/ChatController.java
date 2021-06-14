@@ -60,7 +60,7 @@ public class ChatController {
 
     @JsMethod
     public Set<String> getMemberNames() {
-        return state.members.values().stream().map(m -> m.username).collect(Collectors.toSet());
+        return state.members.values().stream().filter(m -> !m.removed).map(m -> m.username).collect(Collectors.toSet());
     }
 
     @JsMethod

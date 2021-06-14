@@ -13,31 +13,34 @@ public class Member implements Cborable {
     public Optional<OwnerProof> chatIdentity;
     public long messagesMergedUpto;
     public int membersInvited;
+    public boolean removed;
 
     public Member(String username,
                   Id id,
                   PublicKeyHash identity,
                   Optional<OwnerProof> chatIdentity,
                   long messagesMergedUpto,
-                  int membersInvited) {
+                  int membersInvited,
+                  boolean removed) {
         this.username = username;
         this.id = id;
         this.identity = identity;
         this.chatIdentity = chatIdentity;
         this.messagesMergedUpto = messagesMergedUpto;
         this.membersInvited = membersInvited;
+        this.removed = removed;
     }
 
     public Member(String username, Id id, PublicKeyHash identity, long messagesMergedUpto, int membersInvited) {
-        this(username, id, identity, Optional.empty(), messagesMergedUpto, membersInvited);
+        this(username, id, identity, Optional.empty(), messagesMergedUpto, membersInvited, false);
     }
 
     public Member withChatId(OwnerProof proof) {
-        return new Member(username, id, identity, Optional.of(proof), messagesMergedUpto, membersInvited);
+        return new Member(username, id, identity, Optional.of(proof), messagesMergedUpto, membersInvited, removed);
     }
 
     public Member copy() {
-        return new Member(username, id, identity, chatIdentity, messagesMergedUpto, membersInvited);
+        return new Member(username, id, identity, chatIdentity, messagesMergedUpto, membersInvited, removed);
     }
 
     @Override
@@ -49,6 +52,7 @@ public class Member implements Cborable {
         chatIdentity.ifPresent(c -> result.put("s", c));
         result.put("m", new CborObject.CborLong(messagesMergedUpto));
         result.put("c", new CborObject.CborLong(membersInvited));
+        result.put("r", new CborObject.CborBoolean(removed));
         return CborObject.CborMap.build(result);
     }
 
@@ -63,6 +67,7 @@ public class Member implements Cborable {
         Optional<OwnerProof> chatIdentity = m.getOptional("s", OwnerProof::fromCbor);
         long messagesMergedUpTo = m.getLong("m");
         int membersInvited = (int) m.getLong("c");
-        return new Member(username, id, publicIdentity, chatIdentity, messagesMergedUpTo, membersInvited);
+        boolean removed = m.getBoolean("r");
+        return new Member(username, id, publicIdentity, chatIdentity, messagesMergedUpTo, membersInvited, removed);
     }
 }

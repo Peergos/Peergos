@@ -138,7 +138,7 @@ public class Messenger {
                                             Chat ourVersion = mirrorState.copy(new Member(context.username,
                                                     mirrorState.getMember(context.username).id,
                                                     context.signer.publicKeyHash, Optional.empty(),
-                                                    mirrorState.host().messagesMergedUpto, 0));
+                                                    mirrorState.host().messagesMergedUpto, 0, false));
 
                                             byte[] rawChat = ourVersion.serialize();
                                             return shared.uploadOrReplaceFile(SHARED_CHAT_STATE, AsyncReader.build(rawChat),

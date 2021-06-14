@@ -146,7 +146,7 @@ public class Chat implements Cborable {
                 // an admin can remove anyone
                 if (rem.memberToRemove.equals(msg.author) || getAdmins().contains(author.username)) {
                     String username = getMember(rem.memberToRemove).username;
-                    members.remove(rem.memberToRemove);
+                    members.get(rem.memberToRemove).removed = true;
                     // revoke read access to shared chat state from removee
                     return ourStore.revokeAccess(username);
                 }
