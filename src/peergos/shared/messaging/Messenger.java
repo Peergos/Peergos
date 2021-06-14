@@ -165,9 +165,14 @@ public class Messenger {
         if (mirrorUsername.equals(this.context.username)) {
             return Futures.of(current);
         }
-        return getMessageStoreMirror(mirrorUsername, current.chatUuid)
-                .thenCompose(mirrorStore -> current.mergeMessages(mirrorUsername, mirrorStore))
-                .exceptionally(e -> current);
+        return Futures.asyncExceptionally(
+                () -> getMessageStoreMirror(mirrorUsername, current.chatUuid)
+                        .thenCompose(mirrorStore -> current.mergeMessages(mirrorUsername, mirrorStore)),
+                t -> {
+                    if (t instanceof CompletionException && t.getCause() instanceof NoSuchElementException)
+                        return Futures.errored(new IllegalStateException("You have been remove from the chat."));
+                    return Futures.of(current);
+                });
     }
 
     private CompletableFuture<Boolean> mirrorMedia(FileRef ref, ChatController chat, String currentMirrorUsername) {

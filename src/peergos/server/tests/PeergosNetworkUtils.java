@@ -1739,7 +1739,10 @@ public class PeergosNetworkUtils {
         // remove member from chat
         controllerA = msgA.removeMember(controllerA, b.username).join();
         controllerA = msgA.sendMessage(controllerA, new ApplicationMessage(Arrays.asList(new Text("B shouldn't see this!")))).join();
-        controllerB = msgB.mergeMessages(controllerB, a.username).join();
+        try {
+            controllerB = msgB.mergeMessages(controllerB, a.username).join();
+            throw new RuntimeException("Fail!");
+        } catch (IllegalStateException e) {}
         List<MessageEnvelope> all = controllerB.getMessages(0, 50).join();
         Assert.assertEquals(all.size(), withMediaMessage.size());
     }
