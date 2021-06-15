@@ -62,7 +62,6 @@ public class ChatController {
     public Set<String> getMemberNames() {
         return state.members.values().stream()
                 .filter(m -> !m.removed)
-                .filter(m -> m.chatIdentity.isPresent())
                 .map(m -> m.username)
                 .collect(Collectors.toSet());
     }
