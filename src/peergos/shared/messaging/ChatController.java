@@ -60,7 +60,20 @@ public class ChatController {
 
     @JsMethod
     public Set<String> getMemberNames() {
-        return state.members.values().stream().filter(m -> !m.removed).map(m -> m.username).collect(Collectors.toSet());
+        return state.members.values().stream()
+                .filter(m -> !m.removed)
+                .filter(m -> m.chatIdentity.isPresent())
+                .map(m -> m.username)
+                .collect(Collectors.toSet());
+    }
+
+    @JsMethod
+    public Set<String> getPendingMemberNames() {
+        return state.members.values().stream()
+                .filter(m -> !m.removed)
+                .filter(m -> m.chatIdentity.isEmpty())
+                .map(m -> m.username)
+                .collect(Collectors.toSet());
     }
 
     @JsMethod

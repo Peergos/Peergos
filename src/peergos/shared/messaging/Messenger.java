@@ -170,7 +170,7 @@ public class Messenger {
                         .thenCompose(mirrorStore -> current.mergeMessages(mirrorUsername, mirrorStore)),
                 t -> {
                     //if (t.getCause() instanceof NoSuchElementException) not GWT compatible
-                    if (t.toString().indexOf("java.util.NoSuchElementException") > -1)
+                    if (t.getMessage().indexOf("java.util.NoSuchElementException") > -1)
                         return Futures.errored(new IllegalStateException("You have been removed from the chat."));
                     return Futures.of(current);
                 });
@@ -203,8 +203,13 @@ public class Messenger {
         List<String> toPullFrom = current.getMemberNames().stream()
                 .filter(following::contains)
                 .collect(Collectors.toList());
+        Set<String> pendingMembers = current.getPendingMemberNames().stream()
+                .filter(following::contains)
+                .collect(Collectors.toSet());
         return Futures.reduceAll(toPullFrom, current,
-                (c, n) -> mergeMessages(c, n),
+                (c, n) -> Futures.asyncExceptionally(
+                        () -> mergeMessages(c, n),
+                        t -> pendingMembers.contains(n) ? Futures.of(c) : Futures.errored(t)),
                 (a, b) -> {throw new IllegalStateException();});
     }
 
