@@ -1740,9 +1740,9 @@ public class PeergosNetworkUtils {
         controllerA = msgA.removeMember(controllerA, b.username).join();
         controllerA = msgA.sendMessage(controllerA, new ApplicationMessage(Arrays.asList(new Text("B shouldn't see this!")))).join();
         try {
-            controllerB = msgB.mergeMessages(controllerB, a.username).join();
+            controllerB = msgB.mergeMessages(controllerB, a.username).get();
             throw new RuntimeException("Fail!");
-        } catch (CompletionException e) {}
+        } catch (Exception e) {}
         List<MessageEnvelope> all = controllerB.getMessages(0, 50).join();
         Assert.assertEquals(all.size(), withMediaMessage.size());
     }

@@ -169,7 +169,8 @@ public class Messenger {
                 () -> getMessageStoreMirror(mirrorUsername, current.chatUuid)
                         .thenCompose(mirrorStore -> current.mergeMessages(mirrorUsername, mirrorStore)),
                 t -> {
-                    if (t.getCause() instanceof NoSuchElementException)
+                    //if (t.getCause() instanceof NoSuchElementException) not GWT compatible
+                    if (t.toString().indexOf("java.util.NoSuchElementException") > -1)
                         return Futures.errored(new IllegalStateException("You have been removed from the chat."));
                     return Futures.of(current);
                 });
