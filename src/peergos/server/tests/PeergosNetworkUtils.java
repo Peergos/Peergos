@@ -1723,7 +1723,7 @@ public class PeergosNetworkUtils {
         // share a media file
         byte[] media = "Some media data".getBytes();
         AsyncReader reader = AsyncReader.build(media);
-        Pair<String, FileRef> mediaRef = msgA.uploadMedia(controllerA, reader, media.length, LocalDateTime.now(), x -> {}).join();
+        Pair<String, FileRef> mediaRef = msgA.uploadMedia(controllerA, reader, "txt", media.length, LocalDateTime.now(), x -> {}).join();
         List<Content> content = Arrays.asList(new Reference(mediaRef.right), new Text("Check out this sunset!"));
         controllerA = msgA.sendMessage(controllerA, new ApplicationMessage(content)).join();
         controllerB = msgB.mergeMessages(controllerB, a.username).join();

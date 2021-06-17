@@ -235,10 +235,11 @@ public class Messenger {
     @JsMethod
     public CompletableFuture<Pair<String, FileRef>> uploadMedia(ChatController current,
                                                                 AsyncReader media,
+                                                                String fileExtension,
                                                                 int length,
                                                                 LocalDateTime postTime,
                                                                 ProgressConsumer<Long> monitor) {
-        String uuid = UUID.randomUUID().toString();
+        String uuid = UUID.randomUUID().toString() + "." + fileExtension;
         return getOrMkdirToStoreMedia(current, postTime)
                 .thenCompose(p -> p.right.uploadAndReturnFile(uuid, media, length, false, monitor,
                         network, crypto)
