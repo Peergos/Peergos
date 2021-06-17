@@ -1745,6 +1745,10 @@ public class PeergosNetworkUtils {
         } catch (Exception e) {}
         List<MessageEnvelope> all = controllerB.getMessages(0, 50).join();
         Assert.assertEquals(all.size(), withMediaMessage.size());
+
+        // recent messages
+        List<MessageEnvelope> recentA = controllerA.getRecent();
+        Assert.assertTrue(recentA.size() > 0);
     }
 
     public static void editMessage(NetworkAccess network, Random random) {
