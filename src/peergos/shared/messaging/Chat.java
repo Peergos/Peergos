@@ -323,7 +323,7 @@ public class Chat implements Cborable {
         TreeClock current = m.get("c", TreeClock::fromCbor);
         Map<Id, Member> members = m.getListMap("m", Id::fromCbor, Member::fromCbor);
         Map<String, GroupProperty> group = m.getMap("g", CborObject.CborString::getString, GroupProperty::fromCbor);
-        List<MessageEnvelope> recent = m.getList("r", MessageEnvelope::fromCbor);
+        List<MessageEnvelope> recent = new ArrayList<>(m.getList("r", MessageEnvelope::fromCbor));
         return new Chat(host, current, members, group, recent);
     }
 
