@@ -76,6 +76,11 @@ public class ChatController {
     }
 
     @JsMethod
+    public List<MessageEnvelope> getRecent() {
+        return state.getRecent();
+    }
+
+    @JsMethod
     public CompletableFuture<MessageEnvelope> getMessageFromRef(MessageRef ref, int sourceIndex) {
         MessageEnvelope cached = cache.get(ref);
         if (cached != null)
