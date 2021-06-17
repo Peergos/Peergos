@@ -311,6 +311,7 @@ public class Chat implements Cborable {
         result.put("g", CborObject.CborMap.build(groupState.entrySet()
                 .stream()
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue))));
+        result.put("r", new CborObject.CborList(recentMessages));
         return CborObject.CborMap.build(result);
     }
 
