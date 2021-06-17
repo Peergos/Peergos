@@ -32,6 +32,14 @@ public class Chat implements Cborable {
         this.groupState = groupState;
     }
 
+    public String getTitle() {
+        GroupProperty prop = groupState.get("title");
+        if (prop != null) {
+            return prop.value;
+        }
+        return "";
+    }
+
     public Set<String> getAdmins() {
         GroupProperty current = groupState.get(GroupProperty.ADMINS_STATE_KEY);
         if (current == null)

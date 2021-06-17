@@ -123,6 +123,11 @@ public class ChatController {
     }
 
     @JsMethod
+    public String getTitle() {
+        return state.getTitle();
+    }
+
+    @JsMethod
     public Set<String> getAdmins() {
         return state.getAdmins();
     }
