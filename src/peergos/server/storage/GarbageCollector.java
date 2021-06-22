@@ -84,7 +84,7 @@ public class GarbageCollector {
                 markReachable(storage, updated.get(), toIndex, reachable);
         }
         for (Multihash additional : pending) {
-            int index = present.indexOf(additional);
+            int index = toIndex.getOrDefault(additional, -1);
             if (index >= 0)
                 reachable.set(index);
         }
