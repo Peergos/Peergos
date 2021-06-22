@@ -65,7 +65,9 @@ public class S3BucketCopy {
         PresignedUrl copyUrl = S3Request.preSignCopy(sourceBucket, key, key,
                 ZonedDateTime.now(), config.getHost(), Collections.emptyMap(), config.region, config.accessKey, config.secretKey);
         try {
-            HttpUtil.put(copyUrl, new byte[0]);
+            String res = new String(HttpUtil.put(copyUrl, new byte[0]));
+            if (! res.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><CopyObjectResult"))
+                throw new IllegalStateException(res);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
