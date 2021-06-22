@@ -59,16 +59,16 @@ public class GarbageCollector {
         long t0 = System.nanoTime();
         List<Multihash> present = storage.getAllBlockHashes().collect(Collectors.toList());
         long t1 = System.nanoTime();
-        System.out.println("Listing block store took " + (t1-t0)/1_000_000_000 + "s");
+        System.out.println("Listing " + present.size() + " blocks took " + (t1-t0)/1_000_000_000 + "s");
 
         List<Multihash> pending = storage.getOpenTransactionBlocks();
         long t2 = System.nanoTime();
-        System.out.println("Listing pending blocks took " + (t2-t1)/1_000_000_000 + "s");
+        System.out.println("Listing " + pending.size() + " pending blocks took " + (t2-t1)/1_000_000_000 + "s");
 
         // This pointers call must happen AFTER the previous two for correctness
         Map<PublicKeyHash, byte[]> allPointers = pointers.getAllEntries();
         long t3 = System.nanoTime();
-        System.out.println("Listing pointers took " + (t3-t2)/1_000_000_000 + "s");
+        System.out.println("Listing " + allPointers.size() + " pointers took " + (t3-t2)/1_000_000_000 + "s");
 
         Map<Multihash, Integer> toIndex = new HashMap<>();
         for (int i=0; i < present.size(); i++)
