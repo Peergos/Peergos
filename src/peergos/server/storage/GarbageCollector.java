@@ -70,6 +70,9 @@ public class GarbageCollector {
         long t3 = System.nanoTime();
         System.out.println("Listing pointers took " + (t3-t2)/1_000_000_000 + "s");
 
+        Map<Multihash, Integer> toIndex = new HashMap<>();
+        for (int i=0; i < present.size(); i++)
+            toIndex.put(present.get(i), i);
         BitSet reachable = new BitSet(present.size());
         for (PublicKeyHash writerHash : allPointers.keySet()) {
             byte[] signedRawCas = allPointers.get(writerHash);
@@ -78,7 +81,7 @@ public class GarbageCollector {
             HashCasPair cas = HashCasPair.fromCbor(CborObject.fromByteArray(bothHashes));
             MaybeMultihash updated = cas.updated;
             if (updated.isPresent())
-                markReachable(storage, updated.get(), present, reachable);
+                markReachable(storage, updated.get(), toIndex, reachable);
         }
         for (Multihash additional : pending) {
             int index = present.indexOf(additional);
@@ -109,13 +112,16 @@ public class GarbageCollector {
         System.out.println("GC complete. Freed " + deletedBlocks + " blocks totalling " + deletedSize + " bytes in " + (t5-t0)/1_000_000_000 + "s");
     }
 
-    private static void markReachable(ContentAddressedStorage storage, Multihash root, List<Multihash> present, BitSet reachable) {
-        int index = present.indexOf(root);
+    private static void markReachable(ContentAddressedStorage storage,
+                                      Multihash root,
+                                      Map<Multihash, Integer> toIndex,
+                                      BitSet reachable) {
+        int index = toIndex.getOrDefault(root, -1);
         if (index >= 0)
             reachable.set(index);
         List<Multihash> links = storage.getLinks(root).join();
         for (Multihash link : links) {
-            markReachable(storage, link, present, reachable);
+            markReachable(storage, link, toIndex, reachable);
         }
     }
 }
