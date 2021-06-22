@@ -65,8 +65,9 @@ public class S3BucketCopy {
         PresignedUrl copyUrl = S3Request.preSignCopy(sourceBucket, key, key,
                 ZonedDateTime.now(), config.getHost(), Collections.emptyMap(), config.region, config.accessKey, config.secretKey);
         try {
+            System.out.println("Copying s3://"+sourceBucket + "/" + key + " to s3://" + config.bucket);
             String res = new String(HttpUtil.put(copyUrl, new byte[0]));
-            if (! res.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><CopyObjectResult"))
+            if (! res.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><CopyObjectResult") || !res.contains("</LastModified><ETag>"))
                 throw new IllegalStateException(res);
         } catch (IOException e) {
             throw new RuntimeException(e);
@@ -78,6 +79,7 @@ public class S3BucketCopy {
                                   S3Config sourceConfig,
                                   S3Config destConfig,
                                   AtomicLong counter,
+                                  AtomicLong copyCounter,
                                   int parallelism) {
         System.out.println("Listing destination bucket...");
         Set<String> targetKeys = getFilenames(destConfig);
@@ -87,9 +89,11 @@ public class S3BucketCopy {
             if (!targetKeys.contains(obj.key)) {
                 while (pool.getQueuedSubmissionCount() > 100)
                     try {Thread.sleep(100);} catch (InterruptedException e) {}
+                copyCounter.incrementAndGet();
                 pool.submit(() -> copyObject(obj.key, sourceConfig.bucket, destConfig));
             }
         }, startPrefix, endPrefix, sourceConfig, counter);
+        System.out.println("Objects copied: " + copyCounter.get());
     }
 
     public static void main(String[] args) {
@@ -103,6 +107,6 @@ public class S3BucketCopy {
         Optional<String> endPrefix = Optional.empty();
 
         System.out.println("Copying S3 bucket " + sourceBucket + " to " + destConfig.bucket);
-        copyRange(startPrefix, endPrefix, sourceConfig, destConfig, new AtomicLong(0), a.getInt("parallelism"));
+        copyRange(startPrefix, endPrefix, sourceConfig, destConfig, new AtomicLong(0), new AtomicLong(0), a.getInt("parallelism"));
     }
 }
