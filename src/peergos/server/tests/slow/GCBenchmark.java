@@ -30,7 +30,7 @@ public class GCBenchmark {
         JdbcIpnsAndSocial pointers = new JdbcIpnsAndSocial(Main.buildEphemeralSqlite(), new SqliteCommands());
 
         int nLeavesPerUser = 1_000;
-        int nPointers = 100;
+        int nPointers = 200;
         for (int i=0; i < nPointers; i++) {
             SigningKeyPair pair = SigningKeyPair.random(crypto.random, crypto.signer);
             PublicKeyHash owner = ContentAddressedStorage.hashKey(pair.publicSigningKey);
