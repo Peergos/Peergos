@@ -77,7 +77,7 @@ public class GarbageCollector {
             toIndex.put(present.get(i), i);
         BitSet reachable = new BitSet(present.size());
 
-        int markParallelism = 50;
+        int markParallelism = 10;
         ForkJoinPool markPool = new ForkJoinPool(markParallelism);
         List<ForkJoinTask<Boolean>> marked = allPointers.entrySet().stream()
                 .map(e -> markPool.submit(() -> markReachable(e.getKey(), e.getValue(), reachable, toIndex, storage)))
@@ -95,7 +95,7 @@ public class GarbageCollector {
         // Save pointers snapshot
         snapshotSaver.apply(allPointers.entrySet().stream()).join();
 
-        int deleteParallelism = 50;
+        int deleteParallelism = 4;
         ForkJoinPool pool = new ForkJoinPool(deleteParallelism);
         int batchSize = present.size() / deleteParallelism;
         AtomicLong progressCounter = new AtomicLong(0);
@@ -118,7 +118,7 @@ public class GarbageCollector {
                                          BitSet reachable,
                                          Map<Multihash, Integer> toIndex,
                                          DeletableContentAddressedStorage storage) {
-        PublicSigningKey writer = storage.getSigningKey(writerHash).join().get();
+        PublicSigningKey writer = getWithBackoff(() -> storage.getSigningKey(writerHash).join().get());
         byte[] bothHashes = writer.unsignMessage(signedRawCas);
         HashCasPair cas = HashCasPair.fromCbor(CborObject.fromByteArray(bothHashes));
         MaybeMultihash updated = cas.updated;
@@ -138,7 +138,7 @@ public class GarbageCollector {
         for (int i = reachable.nextClearBit(startIndex); i >= startIndex && i < endIndex; i = reachable.nextClearBit(i + 1)) {
             Multihash hash = present.get(i);
             try {
-                int size = storage.getSize(hash).join().get();
+                int size = getWithBackoff(() -> storage.getSize(hash).join().get());
                 deletedBlocks++;
                 deletedSize += size;
                 storage.delete(hash);
@@ -166,9 +166,24 @@ public class GarbageCollector {
                 reachable.set(index);
             }
         }
-        List<Multihash> links = storage.getLinks(root).join();
+        List<Multihash> links = getWithBackoff(() -> storage.getLinks(root).join());
         for (Multihash link : links) {
             markReachable(storage, link, toIndex, reachable);
         }
+    }
+
+    private static <V> V getWithBackoff(Supplier<V> req) {
+        long sleep = 1000;
+        for (int i=0; i < 20; i++) {
+            try {
+                return req.get();
+            } catch (RateLimitException e) {
+                try {
+                    Thread.sleep(sleep);
+                } catch (InterruptedException f) {}
+                sleep *= 2;
+            }
+        }
+        throw new IllegalStateException("Couldn't process request because of rate limit!");
     }
 }
