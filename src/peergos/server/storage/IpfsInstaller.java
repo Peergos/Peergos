@@ -70,16 +70,14 @@ public class IpfsInstaller {
         final class S3 implements Plugin {
             public static final String TYPE = "S3";
             public final String path, bucket, region, accessKey, secretKey, regionEndpoint;
-            public final DownloadTarget version;
 
-            public S3(S3Config config, DownloadTarget version) {
+            public S3(S3Config config) {
                 this.path = config.path;
                 this.bucket = config.bucket;
                 this.region = config.region;
                 this.accessKey = config.accessKey;
                 this.secretKey = config.secretKey;
                 this.regionEndpoint = config.regionEndpoint;
-                this.version = version;
             }
 
             public String getFileName() {
@@ -105,10 +103,7 @@ public class IpfsInstaller {
 
             public static S3 build(Args a) {
                 S3Config config = S3Config.build(a);
-
-                String osArch = getOsArch();
-                DownloadTarget pluginVersion = DownloadTarget.valueOf(TYPE + "_" + osArch.toUpperCase());
-                return new S3(config, pluginVersion);
+                return new S3(config);
             }
 
             @Override
