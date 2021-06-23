@@ -96,6 +96,7 @@ public class GarbageCollector {
 
         long deletedBlocks = 0;
         long deletedSize = 0;
+        long logPoint = 0;
         for (int i = reachable.nextClearBit(0); i >= 0 && i < present.size(); i = reachable.nextClearBit(i + 1)) {
             Multihash hash = present.get(i);
             try {
@@ -105,6 +106,10 @@ public class GarbageCollector {
                 storage.delete(hash);
             } catch (Exception e) {
                 LOG.info("GC Unable to read " + hash + " during delete phase, ignoring block and continuing.");
+            }
+            if (i > logPoint + present.size()/10) {
+                logPoint += present.size()/10;
+                System.out.println("Deleting unreachable blocks: " + i * 100 / present.size() + "% done");
             }
         }
         long t5 = System.nanoTime();
