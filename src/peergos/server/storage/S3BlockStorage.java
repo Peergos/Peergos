@@ -243,7 +243,6 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     private CompletableFuture<Boolean> savePointerSnapshot(Stream<Map.Entry<PublicKeyHash, byte[]>> pointers) {
-        CompletableFuture<Boolean> res = new CompletableFuture<>();
         // Save pointers snapshot to file
         Path pointerSnapshotFile = Paths.get("pointers-snapshot-" + LocalDateTime.now() + ".txt");
         pointers.forEach(entry -> {
@@ -251,11 +250,10 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 Files.write(pointerSnapshotFile, (entry.getKey() + ":" +
                         ArrayOps.bytesToHex(entry.getValue()) + "\n").getBytes(), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
             } catch (IOException e) {
-                res.completeExceptionally(e);
                 throw new RuntimeException(e);
             }
         });
-        return res;
+        return Futures.of(true);
     }
 
     @Override
