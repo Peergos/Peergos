@@ -141,7 +141,7 @@ public class GarbageCollector {
                 int size = getWithBackoff(() -> storage.getSize(hash).join().get());
                 deletedBlocks++;
                 deletedSize += size;
-                storage.delete(hash);
+                getWithBackoff(() -> {storage.delete(hash); return true;});
             } catch (Exception e) {
                 LOG.info("GC Unable to read " + hash + " during delete phase, ignoring block and continuing.");
             }

@@ -80,22 +80,26 @@ public class HttpUtil {
         }
     }
 
-    public static Map<String, List<String>> head(PresignedUrl head) throws Exception {
-        HttpURLConnection conn = (HttpURLConnection) new URI(head.base).toURL().openConnection();
-        conn.setRequestMethod("HEAD");
-        for (Map.Entry<String, String> e : head.fields.entrySet()) {
-            conn.setRequestProperty(e.getKey(), e.getValue());
-        }
-
+    public static Map<String, List<String>> head(PresignedUrl head) throws IOException {
         try {
-            int resp = conn.getResponseCode();
-            if (resp == 200)
-                return conn.getHeaderFields();
-            throw new IllegalStateException("HTTP " + resp + " " + head.base);
-        } catch (IOException e) {
-            InputStream err = conn.getErrorStream();
-            byte[] errBody = Serialize.readFully(err);
-            throw new IllegalStateException(new String(errBody));
+            HttpURLConnection conn = (HttpURLConnection) new URI(head.base).toURL().openConnection();
+            conn.setRequestMethod("HEAD");
+            for (Map.Entry<String, String> e : head.fields.entrySet()) {
+                conn.setRequestProperty(e.getKey(), e.getValue());
+            }
+
+            try {
+                int resp = conn.getResponseCode();
+                if (resp == 200)
+                    return conn.getHeaderFields();
+                throw new IllegalStateException("HTTP " + resp + " " + head.base);
+            } catch (IOException e) {
+                InputStream err = conn.getErrorStream();
+                byte[] errBody = Serialize.readFully(err);
+                throw new IOException(new String(errBody));
+            }
+        } catch (URISyntaxException e) {
+            throw new RuntimeException(e);
         }
     }
 
