@@ -160,6 +160,10 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             return Futures.of(Optional.of(HttpUtil.get(getUrl)));
         } catch (IOException e) {
             String msg = e.getMessage();
+            boolean rateLimited = msg.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>SlowDown</Code>");
+            if (rateLimited) {
+                throw new RateLimitException();
+            }
             boolean notFound = msg.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>NoSuchKey</Code>");
             if (! notFound) {
                 LOG.warning("S3 error reading " + path);
