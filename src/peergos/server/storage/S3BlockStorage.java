@@ -260,12 +260,27 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         return Futures.of(true);
     }
 
-    @Override
-    public CompletableFuture<Optional<Integer>> getSize(Multihash hash) {
-        return getSize(hash, 3, 100);
+    private static <V> V getWithBackoff(Supplier<V> req) {
+        long sleep = 100;
+        for (int i=0; i < 20; i++) {
+            try {
+                return req.get();
+            } catch (RateLimitException e) {
+                try {
+                    Thread.sleep(sleep);
+                } catch (InterruptedException f) {}
+                sleep *= 2;
+            }
+        }
+        throw new IllegalStateException("Couldn't process request because of rate limit!");
     }
 
-    private CompletableFuture<Optional<Integer>> getSize(Multihash hash, int retries, long sleepMillis) {
+    @Override
+    public CompletableFuture<Optional<Integer>> getSize(Multihash hash) {
+        return getWithBackoff(() -> getSizeWithoutRetry(hash));
+    }
+
+    private CompletableFuture<Optional<Integer>> getSizeWithoutRetry(Multihash hash) {
         if (hash.isIdentity()) // Identity hashes are not actually stored explicitly
             return Futures.of(Optional.of(0));
         Histogram.Timer readTimer = readTimerLog.labels("size").startTimer();
@@ -275,17 +290,18 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             Map<String, List<String>> headRes = HttpUtil.head(headUrl);
             long size = Long.parseLong(headRes.get("Content-Length").get(0));
             return Futures.of(Optional.of((int)size));
-        } catch (Exception e) {
-            if (e.getMessage().contains("HTTP 503")) {
-                LOG.info("Sleeping for "+sleepMillis+" because of http 503 from S3 (you are being rate limited) getting size of " + hash + " ...");
-                try {Thread.sleep(sleepMillis);} catch (InterruptedException f) {}
-                if (retries <= 0)
-                    throw new RuntimeException(e);
-                return getSize(hash, retries - 1, sleepMillis * 2);
-            } else {
-                LOG.log(Level.SEVERE, e.getMessage(), e);
-                return Futures.of(Optional.empty());
+        } catch (IOException e) {
+            String msg = e.getMessage();
+            boolean rateLimited = msg.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>SlowDown</Code>");
+            if (rateLimited) {
+                throw new RateLimitException();
             }
+            boolean notFound = msg.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>NoSuchKey</Code>");
+            if (! notFound) {
+                LOG.warning("S3 error reading " + hash);
+                LOG.log(Level.WARNING, msg, e);
+            }
+            return Futures.of(Optional.empty());
         } finally {
             readTimer.observeDuration();
         }
