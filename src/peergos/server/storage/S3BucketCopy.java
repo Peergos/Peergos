@@ -43,7 +43,8 @@ public class S3BucketCopy {
                     processor.accept(objectSummary);
                 }
                 long done = counter.addAndGet(result.objects.size());
-                System.out.println("Objects processed: " + done);
+                if ((done / 1000) % 10 == 0)
+                    System.out.println("Objects processed: " + done);
                 LOG.log(Level.FINE, "Next Continuation Token : " + result.continuationToken);
                 continuationToken = result.continuationToken;
             } while (result.isTruncated);
