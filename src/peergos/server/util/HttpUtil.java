@@ -131,7 +131,7 @@ public class HttpUtil {
             if (conn != null) {
                 InputStream err = conn.getErrorStream();
                 byte[] errBody = Serialize.readFully(err);
-                throw new IOException("HTTP " + conn.getResponseCode() + ": " + conn.getResponseMessage() + "\nbody:\n" + new String(errBody));
+                throw new IOException(new String(errBody));
             }
             throw new RuntimeException(e);
         } catch (URISyntaxException e) {

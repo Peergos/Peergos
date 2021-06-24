@@ -458,22 +458,23 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     public void bulkDelete(List<Multihash> hash) {
-        try {
-            List<String> keys = hash.stream()
-                    .map(h -> folder + hashToKey(h))
-                    .collect(Collectors.toList());
-            S3Request.bulkDelete(keys, ZonedDateTime.now(), host, region, accessKeyId, secretKey,
-                    b -> ArrayOps.bytesToHex(Hash.sha256(b)),
-                    (url, body) -> {
-                        try {
-                            return HttpUtil.post(url, body);
-                        } catch (IOException e) {
-                            throw new RuntimeException(e);
+        List<String> keys = hash.stream()
+                .map(h -> folder + hashToKey(h))
+                .collect(Collectors.toList());
+        S3Request.bulkDelete(keys, ZonedDateTime.now(), host, region, accessKeyId, secretKey,
+                b -> ArrayOps.bytesToHex(Hash.sha256(b)),
+                (url, body) -> {
+                    try {
+                        return HttpUtil.post(url, body);
+                    } catch (IOException e) {
+                        String msg = e.getMessage();
+                        boolean rateLimited = msg.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>SlowDown</Code>");
+                        if (rateLimited) {
+                            throw new RateLimitException();
                         }
-                    });
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+                        throw new RuntimeException(e);
+                    }
+                });
     }
 
     public static void main(String[] args) throws Exception {

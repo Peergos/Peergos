@@ -137,6 +137,7 @@ public class GarbageCollector {
         long logPoint = startIndex;
         final int maxDeleteCount = 1000;
         long pendingDeleteSize = 0;
+        long ignoredBlocks = 0;
         List<Multihash> pendingDeletes = new ArrayList<>();
         for (int i = reachable.nextClearBit(startIndex); i >= startIndex && i < endIndex; i = reachable.nextClearBit(i + 1)) {
             Multihash hash = present.get(i);
@@ -146,7 +147,7 @@ public class GarbageCollector {
                 pendingDeleteSize += size;
                 pendingDeletes.add(hash);
             } catch (Exception e) {
-                LOG.info("GC Unable to read " + hash + " during delete phase, ignoring block and continuing.");
+                ignoredBlocks++;
             }
             if (pendingDeletes.size() >= maxDeleteCount) {
                 getWithBackoff(() -> {storage.bulkDelete(pendingDeletes); return true;});
@@ -170,6 +171,7 @@ public class GarbageCollector {
             deletedBlocks += pendingDeletes.size();
         }
 
+        System.out.println("Ignored blocks in delete phase: " + ignoredBlocks);
         return new Pair<>(deletedBlocks, deletedSize);
     }
 
