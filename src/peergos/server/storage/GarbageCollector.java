@@ -135,16 +135,27 @@ public class GarbageCollector {
                                                             DeletableContentAddressedStorage storage) {
         long deletedBlocks = 0, deletedSize = 0;
         long logPoint = startIndex;
+        final int maxDeleteCount = 1000;
+        long pendingDeleteSize = 0;
+        List<Multihash> pendingDeletes = new ArrayList<>();
         for (int i = reachable.nextClearBit(startIndex); i >= startIndex && i < endIndex; i = reachable.nextClearBit(i + 1)) {
             Multihash hash = present.get(i);
             try {
                 int size = getWithBackoff(() -> storage.getSize(hash).join().get());
                 deletedBlocks++;
-                deletedSize += size;
-                getWithBackoff(() -> {storage.delete(hash); return true;});
+                pendingDeleteSize += size;
+                pendingDeletes.add(hash);
             } catch (Exception e) {
                 LOG.info("GC Unable to read " + hash + " during delete phase, ignoring block and continuing.");
             }
+            if (pendingDeletes.size() >= maxDeleteCount) {
+                getWithBackoff(() -> {storage.bulkDelete(pendingDeletes); return true;});
+                deletedSize += pendingDeleteSize;
+                pendingDeleteSize = 0;
+                deletedBlocks += pendingDeletes.size();
+                pendingDeletes.clear();
+            }
+
             int tenth = (endIndex - startIndex) / 10;
             if (i > logPoint + tenth) {
                 logPoint += tenth;
@@ -153,6 +164,12 @@ public class GarbageCollector {
                     System.out.println("Deleting unreachable blocks: " + updatedProgress * 100 / present.size() + "% done");
             }
         }
+        if (pendingDeletes.size() > 0) {
+            getWithBackoff(() -> {storage.bulkDelete(pendingDeletes); return true;});
+            deletedSize += pendingDeleteSize;
+            deletedBlocks += pendingDeletes.size();
+        }
+
         return new Pair<>(deletedBlocks, deletedSize);
     }
 
