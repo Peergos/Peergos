@@ -148,6 +148,8 @@ public class GarbageCollector {
                 pendingDeletes.add(hash);
             } catch (Exception e) {
                 ignoredBlocks++;
+                if (ignoredBlocks < 10)
+                    e.printStackTrace();
             }
             if (pendingDeletes.size() >= maxDeleteCount) {
                 getWithBackoff(() -> {storage.bulkDelete(pendingDeletes); return true;});
@@ -171,7 +173,8 @@ public class GarbageCollector {
             deletedBlocks += pendingDeletes.size();
         }
 
-        System.out.println("Ignored blocks in delete phase: " + ignoredBlocks);
+        if (ignoredBlocks > 0)
+            System.out.println("Ignored blocks in delete phase: " + ignoredBlocks);
         return new Pair<>(deletedBlocks, deletedSize);
     }
 
