@@ -1,6 +1,7 @@
 package peergos.server.util;
 
 import com.sun.net.httpserver.*;
+import peergos.server.storage.*;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
@@ -89,10 +90,12 @@ public class HttpUtil {
             }
 
             try {
-                int resp = conn.getResponseCode();
-                if (resp == 200)
+                int respCode = conn.getResponseCode();
+                if (respCode == 200)
                     return conn.getHeaderFields();
-                throw new IllegalStateException("HTTP " + resp + " " + head.base);
+                if (respCode == 503)
+                    throw new RateLimitException();
+                throw new IllegalStateException("HTTP " + respCode);
             } catch (IOException e) {
                 InputStream err = conn.getErrorStream();
                 byte[] errBody = Serialize.readFully(err);
