@@ -220,6 +220,11 @@ public class MultiUserTests {
     }
 
     @Test
+    public void chatLeaveAndDelete() {
+        PeergosNetworkUtils.memberLeaveAndDeleteChat(network, random);
+    }
+
+    @Test
     public void messagingVariations() {
         PeergosNetworkUtils.editMessage(network, random);
     }

@@ -276,6 +276,15 @@ public class Messenger {
                 .thenCompose(this::getChatController);
     }
 
+    public CompletableFuture<Boolean> deleteChat(ChatController chat) {
+        Path chatPath = getChatPath(context.username, chat.chatUuid);
+        Path parentPath = chatPath.getParent();
+        return context.getByPath(parentPath)
+                .thenCompose(popt -> popt.get().getChild(chatPath.getFileName().toString(), crypto.hasher, network)
+                        .thenCompose(copt -> copt.get().remove(popt.get(), chatPath, context)))
+                .thenApply(x -> true);
+    }
+
     @JsMethod
     public CompletableFuture<Set<ChatController>> listChats() {
         return context.getUserRoot()

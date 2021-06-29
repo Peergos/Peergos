@@ -1751,6 +1751,67 @@ public class PeergosNetworkUtils {
         Assert.assertTrue(recentA.size() > 0);
     }
 
+    private static Pair<Messenger, ChatController> joinChat(UserContext c) {
+        List<Pair<SharedItem, FileWrapper>> feed = c.getSocialFeed().join().update().join().getSharedFiles(0, 10).join();
+        FileWrapper chatSharedDir = feed.get(feed.size() - 1).right;
+        Messenger msg = new Messenger(c);
+        ChatController controller = msg.cloneLocallyAndJoin(chatSharedDir).join();
+        return new Pair<>(msg, controller);
+    }
+
+    public static void memberLeaveAndDeleteChat(NetworkAccess network, Random random) {
+        CryptreeNode.setMaxChildLinkPerBlob(10);
+
+        String password = "notagoodone";
+
+        UserContext a = PeergosNetworkUtils.ensureSignedUp("a-" + generateUsername(random), password, network, crypto);
+        UserContext b = PeergosNetworkUtils.ensureSignedUp("b-" + generateUsername(random), password, network, crypto);
+        UserContext c = PeergosNetworkUtils.ensureSignedUp("c-" + generateUsername(random), password, network, crypto);
+
+        // friend sharer with others
+        friendBetweenGroups(Arrays.asList(a, b), Arrays.asList(c));
+        friendBetweenGroups(Arrays.asList(a), Arrays.asList(b));
+
+        Messenger msgA = new Messenger(a);
+        ChatController controllerA = msgA.createChat().join();
+        controllerA = msgA.invite(controllerA, Arrays.asList(b.username), Arrays.asList(b.signer.publicKeyHash)).join();
+        controllerA = msgA.invite(controllerA, Arrays.asList(c.username), Arrays.asList(c.signer.publicKeyHash)).join();
+
+        Pair<Messenger, ChatController> bInit = joinChat(b);
+        Messenger msgB = bInit.left;
+        ChatController controllerB = bInit.right;
+
+        Pair<Messenger, ChatController> cInit = joinChat(c);
+        Messenger msgC = cInit.left;
+        ChatController controllerC = cInit.right;
+
+        controllerA = msgA.mergeAllUpdates(controllerA, a.getSocialState().join()).join();
+
+        ApplicationMessage msg1 = ApplicationMessage.text("G'day mate!");
+        controllerA = msgA.sendMessage(controllerA, msg1).join();
+
+        controllerB = msgB.mergeMessages(controllerB, a.username).join();
+        List<MessageEnvelope> messages = controllerB.getMessages(0, 10).join();
+        MessageEnvelope fromA = messages.get(messages.size() - 1);
+        Assert.assertEquals(fromA.payload, msg1);
+
+        // C leaves and deletes their mirror
+        controllerC = msgC.mergeAllUpdates(controllerC, c.getSocialState().join()).join();
+        controllerC = msgC.removeMember(controllerC, c.username).join();
+        msgC.deleteChat(controllerC).join();
+
+        // B sends a message
+        ApplicationMessage msg2 = ApplicationMessage.text("You still here, A?");
+        controllerB = msgB.sendMessage(controllerB, msg2).join();
+
+        // recent messages
+        controllerA = msgA.mergeAllUpdates(controllerA, a.getSocialState().join()).join();
+        controllerB = msgB.mergeAllUpdates(controllerB, b.getSocialState().join()).join();
+        List<MessageEnvelope> recentA = controllerA.getRecent();
+        Assert.assertEquals(recentA.get(recentA.size() - 1).payload, msg2);
+        Assert.assertEquals(controllerA.getMemberNames(), Stream.of(a.username, b.username).collect(Collectors.toSet()));
+    }
+
     public static void editMessage(NetworkAccess network, Random random) {
         CryptreeNode.setMaxChildLinkPerBlob(10);
 
