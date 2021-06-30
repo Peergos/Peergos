@@ -147,6 +147,11 @@ public class ChatController {
         return state.getAdmins();
     }
 
+    @JsMethod
+    public boolean isAdmin() {
+        return state.getAdmins().contains(state.host().username);
+    }
+
     public CompletableFuture<ChatController> join(SigningPrivateKeyAndPublicHash identity) {
         OwnerProof chatId = OwnerProof.build(identity, privateChatState.chatIdentity.publicKeyHash);
         return state.join(state.host(), chatId, privateChatState.chatIdPublic, identity, store, committer, hasher)

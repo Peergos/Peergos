@@ -183,9 +183,13 @@ public class Messenger {
                     if (! current.getPendingMemberNames().contains(mirrorUsername) && t.toString().indexOf("java.util.NoSuchElementException") > -1) {
                         // member server is online, but chat mirror is not accessible
                         // This either means we have been removed, or they deleted their mirror
-                        // We add them to the deleted users list to stop polling them
-                        PrivateChatState updatedPrivate = current.privateChatState.addDeleted(mirrorUsername);
-                        return updatePrivateState(updatedPrivate, current);
+                        // We add them to the deleted users list to stop polling them, or remove them is we are an admin
+                        if (current.isAdmin()) {
+                            return removeMember(current, mirrorUsername);
+                        } else {
+                            PrivateChatState updatedPrivate = current.privateChatState.addDeleted(mirrorUsername);
+                            return updatePrivateState(updatedPrivate, current);
+                        }
                     }
                     return Futures.of(current);
                 });
