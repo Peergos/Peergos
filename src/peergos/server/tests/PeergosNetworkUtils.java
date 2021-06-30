@@ -1753,7 +1753,9 @@ public class PeergosNetworkUtils {
 
     private static Pair<Messenger, ChatController> joinChat(UserContext c) {
         List<Pair<SharedItem, FileWrapper>> feed = c.getSocialFeed().join().update().join().getSharedFiles(0, 10).join();
-        FileWrapper chatSharedDir = feed.get(feed.size() - 1).right;
+        FileWrapper chatSharedDir = feed.stream()
+                .filter(p -> p.left.path.contains("/.messaging/"))
+                .findAny().get().right;
         Messenger msg = new Messenger(c);
         ChatController controller = msg.cloneLocallyAndJoin(chatSharedDir).join();
         return new Pair<>(msg, controller);
@@ -1802,13 +1804,12 @@ public class PeergosNetworkUtils {
         ApplicationMessage msg2 = ApplicationMessage.text("You still here, A?");
         controllerB = msgB.sendMessage(controllerB, msg2).join();
 
-        // recent messages
-        controllerA = msgA.mergeAllUpdates(controllerA, a.getSocialState().join()).join();
         controllerB = msgB.mergeAllUpdates(controllerB, b.getSocialState().join()).join();
+        Assert.assertTrue(controllerB.deletedMemberNames().contains(c.username));
+        controllerA = msgA.mergeAllUpdates(controllerA, a.getSocialState().join()).join();
         List<MessageEnvelope> recentA = controllerA.getRecent();
-        Assert.assertEquals(recentA.get(recentA.size() - 1).payload, msg2);
+        Assert.assertTrue(recentA.stream().anyMatch(m -> m.payload.equals(msg2)));
         Assert.assertEquals(controllerA.getMemberNames(), Stream.of(a.username, b.username).collect(Collectors.toSet()));
-        Assert.assertTrue(controllerA.deletedMemberNames().contains(c.username));
     }
 
     public static void editMessage(NetworkAccess network, Random random) {
