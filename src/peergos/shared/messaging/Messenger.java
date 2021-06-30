@@ -55,7 +55,7 @@ public class Messenger {
         PublicKeyHash preHash = ContentAddressedStorage.hashKey(chatIdentity.publicSigningKey);
         SigningPrivateKeyAndPublicHash chatIdWithHash =
                 new SigningPrivateKeyAndPublicHash(preHash, chatIdentity.secretSigningKey);
-        return new PrivateChatState(chatIdWithHash, chatIdentity.publicSigningKey);
+        return new PrivateChatState(chatIdWithHash, chatIdentity.publicSigningKey, Collections.emptySet());
     }
 
     @JsMethod
@@ -160,9 +160,19 @@ public class Messenger {
                         .thenCompose(controller -> controller.join(context.signer)));
     }
 
+    private CompletableFuture<ChatController> updatePrivateState(PrivateChatState state, ChatController current) {
+        Path chatPath = getChatPath(context.username, current.chatUuid);
+        byte[] rawPrivateChatState = state.serialize();
+        return context.getByPath(chatPath)
+                .thenCompose(dopt -> dopt.get().uploadOrReplaceFile(PRIVATE_CHAT_STATE,
+                                                AsyncReader.build(rawPrivateChatState), rawPrivateChatState.length, network,
+                                                crypto, y -> {}, crypto.random.randomBytes(32)))
+                .thenApply(f -> current.with(state));
+    }
+
     @JsMethod
     public CompletableFuture<ChatController> mergeMessages(ChatController current, String mirrorUsername) {
-        if (mirrorUsername.equals(this.context.username)) {
+        if (mirrorUsername.equals(this.context.username) || current.deletedMemberNames().contains(mirrorUsername)) {
             return Futures.of(current);
         }
         return Futures.asyncExceptionally(
@@ -170,8 +180,13 @@ public class Messenger {
                         .thenCompose(mirrorStore -> current.mergeMessages(mirrorUsername, mirrorStore)),
                 t -> {
                     //if (t.getCause() instanceof NoSuchElementException) not GWT compatible
-                    if (t.toString().indexOf("java.util.NoSuchElementException") > -1)
-                        return Futures.errored(new IllegalStateException("You have been removed from the chat."));
+                    if (! current.getPendingMemberNames().contains(mirrorUsername) && t.toString().indexOf("java.util.NoSuchElementException") > -1) {
+                        // member server is online, but chat mirror is not accessible
+                        // This either means we have been removed, or they deleted their mirror
+                        // We add them to the deleted users list to stop polling them
+                        PrivateChatState updatedPrivate = current.privateChatState.addDeleted(mirrorUsername);
+                        return updatePrivateState(updatedPrivate, current);
+                    }
                     return Futures.of(current);
                 });
     }

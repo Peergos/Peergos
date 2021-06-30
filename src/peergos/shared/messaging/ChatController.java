@@ -17,8 +17,8 @@ public class ChatController {
 
     public final String chatUuid;
     public final MessageStore store;
+    public final PrivateChatState privateChatState;
     private final Chat state;
-    private final PrivateChatState privateChatState;
     private final LRUCache<MessageRef, MessageEnvelope> cache;
     private final Hasher hasher;
     private final Function<Chat, CompletableFuture<Boolean>> committer;
@@ -62,6 +62,7 @@ public class ChatController {
     public Set<String> getMemberNames() {
         return state.members.values().stream()
                 .filter(m -> !m.removed)
+                .filter(m -> ! privateChatState.deletedMembers.contains(m.username))
                 .map(m -> m.username)
                 .collect(Collectors.toSet());
     }
@@ -73,6 +74,15 @@ public class ChatController {
                 .filter(m -> m.chatIdentity.isEmpty())
                 .map(m -> m.username)
                 .collect(Collectors.toSet());
+    }
+
+    public ChatController with(PrivateChatState priv) {
+        return new ChatController(chatUuid, state, store, priv, cache, hasher, committer, mediaCopier, ipfs);
+    }
+
+    @JsMethod
+    public Set<String> deletedMemberNames() {
+        return privateChatState.deletedMembers;
     }
 
     @JsMethod

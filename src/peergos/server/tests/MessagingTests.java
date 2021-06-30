@@ -259,7 +259,7 @@ public class MessagingTests {
                 .mapToObj(i -> SigningKeyPair.random(crypto.random, crypto.signer))
                 .map(p -> new PrivateChatState(new SigningPrivateKeyAndPublicHash(
                         ContentAddressedStorage.hashKey(p.publicSigningKey), p.secretSigningKey),
-                        p.publicSigningKey))
+                        p.publicSigningKey, Collections.emptySet()))
                 .collect(Collectors.toList());
     }
 }

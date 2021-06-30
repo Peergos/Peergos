@@ -1795,9 +1795,7 @@ public class PeergosNetworkUtils {
         MessageEnvelope fromA = messages.get(messages.size() - 1);
         Assert.assertEquals(fromA.payload, msg1);
 
-        // C leaves and deletes their mirror
-        controllerC = msgC.mergeAllUpdates(controllerC, c.getSocialState().join()).join();
-        controllerC = msgC.removeMember(controllerC, c.username).join();
+        // C deletes their mirror
         msgC.deleteChat(controllerC).join();
 
         // B sends a message
@@ -1810,6 +1808,7 @@ public class PeergosNetworkUtils {
         List<MessageEnvelope> recentA = controllerA.getRecent();
         Assert.assertEquals(recentA.get(recentA.size() - 1).payload, msg2);
         Assert.assertEquals(controllerA.getMemberNames(), Stream.of(a.username, b.username).collect(Collectors.toSet()));
+        Assert.assertTrue(controllerA.deletedMemberNames().contains(c.username));
     }
 
     public static void editMessage(NetworkAccess network, Random random) {
