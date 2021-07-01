@@ -295,6 +295,7 @@ public class Messenger {
                 .thenCompose(this::getChatController);
     }
 
+    @JsMethod
     public CompletableFuture<Boolean> deleteChat(ChatController chat) {
         Path chatPath = getChatPath(context.username, chat.chatUuid);
         Path parentPath = chatPath.getParent();
