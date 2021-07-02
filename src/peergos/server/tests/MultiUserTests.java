@@ -215,8 +215,8 @@ public class MultiUserTests {
     }
 
     @Test
-    public void messaging() {
-        PeergosNetworkUtils.messaging(network, random);
+    public void chat() {
+        PeergosNetworkUtils.chat(network, random);
     }
 
     @Test
@@ -225,8 +225,8 @@ public class MultiUserTests {
     }
 
     @Test
-    public void messagingVariations() {
-        PeergosNetworkUtils.editMessage(network, random);
+    public void editChatMessage() {
+        PeergosNetworkUtils.editChatMessage(network, random);
     }
 
     @Test

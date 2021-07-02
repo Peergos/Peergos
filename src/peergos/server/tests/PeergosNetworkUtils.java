@@ -1648,7 +1648,7 @@ public class PeergosNetworkUtils {
         Assert.assertTrue(items.size() == initialFeedSize + 3);
     }
 
-    public static void messaging(NetworkAccess network, Random random) {
+    public static void chat(NetworkAccess network, Random random) {
         CryptreeNode.setMaxChildLinkPerBlob(10);
 
         String password = "notagoodone";
@@ -1739,12 +1739,10 @@ public class PeergosNetworkUtils {
         // remove member from chat
         controllerA = msgA.removeMember(controllerA, b.username).join();
         controllerA = msgA.sendMessage(controllerA, new ApplicationMessage(Arrays.asList(new Text("B shouldn't see this!")))).join();
-        try {
-            controllerB = msgB.mergeMessages(controllerB, a.username).get();
-            throw new RuntimeException("Fail!");
-        } catch (Exception e) {}
+        controllerB = msgB.mergeMessages(controllerB, a.username).join();
         List<MessageEnvelope> all = controllerB.getMessages(0, 50).join();
         Assert.assertEquals(all.size(), withMediaMessage.size());
+        Assert.assertTrue(controllerB.getMemberNames().size() == 1);
 
         // recent messages
         List<MessageEnvelope> recentA = controllerA.getRecent();
@@ -1812,7 +1810,7 @@ public class PeergosNetworkUtils {
         Assert.assertEquals(controllerA.getMemberNames(), Stream.of(a.username, b.username).collect(Collectors.toSet()));
     }
 
-    public static void editMessage(NetworkAccess network, Random random) {
+    public static void editChatMessage(NetworkAccess network, Random random) {
         CryptreeNode.setMaxChildLinkPerBlob(10);
 
         String password = "notagoodone";
