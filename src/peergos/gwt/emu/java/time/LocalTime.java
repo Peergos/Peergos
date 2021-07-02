@@ -44,6 +44,10 @@ public class LocalTime implements Comparable<LocalTime>{
         this.nano = nanoOfSecond;
     }
 
+    public int getNano() {
+        return nano;
+    }
+
     public int getSecond() {
         return second;
     }

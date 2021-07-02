@@ -57,9 +57,17 @@ public class LocalDateTime implements Comparable<LocalDateTime>{
         ZoneOffset offset = clock.getZone().getRules().getOffset(now);
         return ofEpochSecond(now.getEpochSecond(), now.getNano(), offset);
     }
+
+    public static LocalDateTime now(ZoneId zone) {
+        return now(Clock.systemDefaultZone());
+    }
     
     public static LocalDateTime now() {
         return now(Clock.systemDefaultZone());
+    }
+
+    public int getNano() {
+        return time.getNano();
     }
 
     public int getYear() {

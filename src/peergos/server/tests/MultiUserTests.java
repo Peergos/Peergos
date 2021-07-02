@@ -215,6 +215,21 @@ public class MultiUserTests {
     }
 
     @Test
+    public void chat() {
+        PeergosNetworkUtils.chat(network, random);
+    }
+
+    @Test
+    public void chatLeaveAndDelete() {
+        PeergosNetworkUtils.memberLeaveAndDeleteChat(network, random);
+    }
+
+    @Test
+    public void editChatMessage() {
+        PeergosNetworkUtils.editChatMessage(network, random);
+    }
+
+    @Test
     public void groupSharingToFollowers() {
         PeergosNetworkUtils.groupSharingToFollowers(network, random);
     }

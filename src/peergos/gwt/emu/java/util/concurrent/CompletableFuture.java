@@ -45,6 +45,10 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
         this(null, err, true);
     }
 
+    public T join() {
+        throw new IllegalStateException("Illegal synchronous call!");
+    }
+
     @Override
     @JsMethod
     public <U> CompletableFuture<U> thenApply(Function<? super T, ? extends U> fn) {

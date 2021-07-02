@@ -1,7 +1,7 @@
 package java.time;
 
 @SuppressWarnings("unusable-by-js")
-public class ZoneOffset {
+public class ZoneOffset extends ZoneId{
 
 	public static final ZoneOffset UTC = ZoneOffset.ofTotalSeconds(0);
 	
