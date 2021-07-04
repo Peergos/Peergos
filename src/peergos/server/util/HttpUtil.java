@@ -1,6 +1,7 @@
 package peergos.server.util;
 
 import com.sun.net.httpserver.*;
+import peergos.server.storage.*;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
@@ -80,22 +81,28 @@ public class HttpUtil {
         }
     }
 
-    public static Map<String, List<String>> head(PresignedUrl head) throws Exception {
-        HttpURLConnection conn = (HttpURLConnection) new URI(head.base).toURL().openConnection();
-        conn.setRequestMethod("HEAD");
-        for (Map.Entry<String, String> e : head.fields.entrySet()) {
-            conn.setRequestProperty(e.getKey(), e.getValue());
-        }
-
+    public static Map<String, List<String>> head(PresignedUrl head) throws IOException {
         try {
-            int resp = conn.getResponseCode();
-            if (resp == 200)
-                return conn.getHeaderFields();
-            throw new IllegalStateException("HTTP " + resp + " " + head.base);
-        } catch (IOException e) {
-            InputStream err = conn.getErrorStream();
-            byte[] errBody = Serialize.readFully(err);
-            throw new IllegalStateException(new String(errBody));
+            HttpURLConnection conn = (HttpURLConnection) new URI(head.base).toURL().openConnection();
+            conn.setRequestMethod("HEAD");
+            for (Map.Entry<String, String> e : head.fields.entrySet()) {
+                conn.setRequestProperty(e.getKey(), e.getValue());
+            }
+
+            try {
+                int respCode = conn.getResponseCode();
+                if (respCode == 200)
+                    return conn.getHeaderFields();
+                if (respCode == 503)
+                    throw new RateLimitException();
+                throw new IllegalStateException("HTTP " + respCode);
+            } catch (IOException e) {
+                InputStream err = conn.getErrorStream();
+                byte[] errBody = Serialize.readFully(err);
+                throw new IOException(new String(errBody));
+            }
+        } catch (URISyntaxException e) {
+            throw new RuntimeException(e);
         }
     }
 
@@ -127,7 +134,7 @@ public class HttpUtil {
             if (conn != null) {
                 InputStream err = conn.getErrorStream();
                 byte[] errBody = Serialize.readFully(err);
-                throw new IOException("HTTP " + conn.getResponseCode() + ": " + conn.getResponseMessage() + "\nbody:\n" + new String(errBody));
+                throw new IOException(new String(errBody));
             }
             throw new RuntimeException(e);
         } catch (URISyntaxException e) {

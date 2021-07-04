@@ -160,6 +160,10 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             return Futures.of(Optional.of(HttpUtil.get(getUrl)));
         } catch (IOException e) {
             String msg = e.getMessage();
+            boolean rateLimited = msg.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>SlowDown</Code>");
+            if (rateLimited) {
+                throw new RateLimitException();
+            }
             boolean notFound = msg.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>NoSuchKey</Code>");
             if (! notFound) {
                 LOG.warning("S3 error reading " + path);
@@ -243,7 +247,6 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     private CompletableFuture<Boolean> savePointerSnapshot(Stream<Map.Entry<PublicKeyHash, byte[]>> pointers) {
-        CompletableFuture<Boolean> res = new CompletableFuture<>();
         // Save pointers snapshot to file
         Path pointerSnapshotFile = Paths.get("pointers-snapshot-" + LocalDateTime.now() + ".txt");
         pointers.forEach(entry -> {
@@ -251,19 +254,33 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 Files.write(pointerSnapshotFile, (entry.getKey() + ":" +
                         ArrayOps.bytesToHex(entry.getValue()) + "\n").getBytes(), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
             } catch (IOException e) {
-                res.completeExceptionally(e);
                 throw new RuntimeException(e);
             }
         });
-        return res;
+        return Futures.of(true);
+    }
+
+    private static <V> V getWithBackoff(Supplier<V> req) {
+        long sleep = 100;
+        for (int i=0; i < 20; i++) {
+            try {
+                return req.get();
+            } catch (RateLimitException e) {
+                try {
+                    Thread.sleep(sleep);
+                } catch (InterruptedException f) {}
+                sleep *= 2;
+            }
+        }
+        throw new IllegalStateException("Couldn't process request because of rate limit!");
     }
 
     @Override
     public CompletableFuture<Optional<Integer>> getSize(Multihash hash) {
-        return getSize(hash, 3, 100);
+        return getWithBackoff(() -> getSizeWithoutRetry(hash));
     }
 
-    private CompletableFuture<Optional<Integer>> getSize(Multihash hash, int retries, long sleepMillis) {
+    private CompletableFuture<Optional<Integer>> getSizeWithoutRetry(Multihash hash) {
         if (hash.isIdentity()) // Identity hashes are not actually stored explicitly
             return Futures.of(Optional.of(0));
         Histogram.Timer readTimer = readTimerLog.labels("size").startTimer();
@@ -273,17 +290,18 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             Map<String, List<String>> headRes = HttpUtil.head(headUrl);
             long size = Long.parseLong(headRes.get("Content-Length").get(0));
             return Futures.of(Optional.of((int)size));
-        } catch (Exception e) {
-            if (e.getMessage().contains("HTTP 503")) {
-                LOG.info("Sleeping for "+sleepMillis+" because of http 503 from S3 (you are being rate limited) getting size of " + hash + " ...");
-                try {Thread.sleep(sleepMillis);} catch (InterruptedException f) {}
-                if (retries <= 0)
-                    throw new RuntimeException(e);
-                return getSize(hash, retries - 1, sleepMillis * 2);
-            } else {
-                LOG.log(Level.SEVERE, e.getMessage(), e);
-                return Futures.of(Optional.empty());
+        } catch (IOException e) {
+            String msg = e.getMessage();
+            boolean rateLimited = msg.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>SlowDown</Code>");
+            if (rateLimited) {
+                throw new RateLimitException();
             }
+            boolean notFound = msg.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>NoSuchKey</Code>");
+            if (! notFound) {
+                LOG.warning("S3 error reading " + hash);
+                LOG.log(Level.WARNING, msg, e);
+            }
+            return Futures.of(Optional.empty());
         } finally {
             readTimer.observeDuration();
         }
@@ -440,22 +458,23 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     public void bulkDelete(List<Multihash> hash) {
-        try {
-            List<String> keys = hash.stream()
-                    .map(h -> folder + hashToKey(h))
-                    .collect(Collectors.toList());
-            S3Request.bulkDelete(keys, ZonedDateTime.now(), host, region, accessKeyId, secretKey,
-                    b -> ArrayOps.bytesToHex(Hash.sha256(b)),
-                    (url, body) -> {
-                        try {
-                            return HttpUtil.post(url, body);
-                        } catch (IOException e) {
-                            throw new RuntimeException(e);
+        List<String> keys = hash.stream()
+                .map(h -> folder + hashToKey(h))
+                .collect(Collectors.toList());
+        S3Request.bulkDelete(keys, ZonedDateTime.now(), host, region, accessKeyId, secretKey,
+                b -> ArrayOps.bytesToHex(Hash.sha256(b)),
+                (url, body) -> {
+                    try {
+                        return HttpUtil.post(url, body);
+                    } catch (IOException e) {
+                        String msg = e.getMessage();
+                        boolean rateLimited = msg.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>SlowDown</Code>");
+                        if (rateLimited) {
+                            throw new RateLimitException();
                         }
-                    });
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+                        throw new RuntimeException(e);
+                    }
+                });
     }
 
     public static void main(String[] args) throws Exception {

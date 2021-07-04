@@ -22,6 +22,12 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
 
     void delete(Multihash hash);
 
+    default void bulkDelete(List<Multihash> blocks) {
+        for (Multihash block : blocks) {
+            delete(block);
+        }
+    }
+
     List<Multihash> getOpenTransactionBlocks();
 
     /** Ensure that local copies of all blocks in merkle tree referenced are present locally

@@ -24,7 +24,9 @@ class S3Exploration {
         String host = bucketName + "." + regionEndpoint;
 
         byte[] payload = "Hi Linode2!".getBytes();
-        Multihash content = new RAMStorage(crypto.hasher).put(null, null, null, Collections.singletonList(payload), null).join().get(0);
+        RAMStorage ram = new RAMStorage(crypto.hasher);
+        TransactionId tid = ram.startTransaction(null).join();
+        Multihash content = ram.put(null, null, null, Collections.singletonList(payload), tid).join().get(0);
         String s3Key = DirectS3BlockStore.hashToKey(content);// "AFYREIBF5Y4OUJXNGRCHBAR2ZMPQBSW62SZDHFNX2GA6V4J3W7I63LA4UQ"
         {
             // test an authed PUT

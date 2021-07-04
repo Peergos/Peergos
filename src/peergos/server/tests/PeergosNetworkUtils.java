@@ -7,7 +7,10 @@ import peergos.shared.Crypto;
 import peergos.shared.NetworkAccess;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.SymmetricKey;
+import peergos.shared.display.*;
 import peergos.shared.io.ipfs.multihash.Multihash;
+import peergos.shared.messaging.*;
+import peergos.shared.messaging.messages.*;
 import peergos.shared.social.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
@@ -221,9 +224,9 @@ public class PeergosNetworkUtils {
         Multihash hash = sharedFile.getContentHash(sharee.network, sharee.crypto).join();
         String replyText = "reply";
         SocialPost.Resharing resharingType = SocialPost.Resharing.Friends;
-        SocialPost.Ref parent = new SocialPost.Ref(sharedItem.path, sharedItem.cap, hash);
+        FileRef parent = new FileRef(sharedItem.path, sharedItem.cap, hash);
         SocialPost replySocialPost = SocialPost.createComment(parent, resharingType, sharee.username,
-                Arrays.asList(new SocialPost.Content.Text(replyText)));
+                Arrays.asList(new Text(replyText)));
         Pair<Path, FileWrapper> result = receiverFeed.createNewPost(replySocialPost).join();
         String friendGroup = SocialState.FRIENDS_GROUP_NAME;
         String receiverGroupUid = sharee.getSocialState().join().groupNameToUid.get(friendGroup);
@@ -1318,7 +1321,7 @@ public class PeergosNetworkUtils {
         Assert.assertTrue(item3.cap.equals(readCap3));
 
         // social post
-        List<SocialPost.Content.Text> postBody = Arrays.asList(new SocialPost.Content.Text("G'day, skip!"));
+        List<Text> postBody = Arrays.asList(new Text("G'day, skip!"));
         SocialPost post = new SocialPost(sharer.username, postBody, LocalDateTime.now(),
                 SocialPost.Resharing.Friends, Optional.empty(), Collections.emptyList(), Collections.emptyList());
         Pair<Path, FileWrapper> p = sharer.getSocialFeed().join().createNewPost(post).join();
@@ -1349,7 +1352,7 @@ public class PeergosNetworkUtils {
         // friends are now connected
         // test social post propagation (comment from b on post from a gets to c)
         SocialPost post = new SocialPost(a.username,
-                Arrays.asList(new SocialPost.Content.Text("G'day, skip!")), LocalDateTime.now(),
+                Arrays.asList(new Text("G'day, skip!")), LocalDateTime.now(),
                 SocialPost.Resharing.Friends, Optional.empty(),
                 Collections.emptyList(), Collections.emptyList());
         Pair<Path, FileWrapper> p = a.getSocialFeed().join().createNewPost(post).join();
@@ -1363,9 +1366,9 @@ public class PeergosNetworkUtils {
 
         // b now comments on post from a
         SocialPost reply = new SocialPost(b.username,
-                Arrays.asList(new SocialPost.Content.Text("What an entrance!")), LocalDateTime.now(),
+                Arrays.asList(new Text("What an entrance!")), LocalDateTime.now(),
                 SocialPost.Resharing.Friends,
-                Optional.of(new SocialPost.Ref(sharedPost.left.path, sharedPost.left.cap, post.contentHash(hasher).join())),
+                Optional.of(new FileRef(sharedPost.left.path, sharedPost.left.cap, post.contentHash(hasher).join())),
                 Collections.emptyList(), Collections.emptyList());
         Pair<Path, FileWrapper> replyFromB = bFeed.createNewPost(reply).join();
         String bFriendsUid = b.getGroupUid(SocialState.FRIENDS_GROUP_NAME).join().get();
@@ -1401,16 +1404,16 @@ public class PeergosNetworkUtils {
         AsyncReader reader = new AsyncReader.ArrayBacked(fileData);
 
         SocialFeed feed = sharer.getSocialFeed().join();
-        SocialPost.Ref ref = feed.uploadMediaForPost(reader, fileData.length, LocalDateTime.now(), c -> {}).join().right;
+        FileRef ref = feed.uploadMediaForPost(reader, fileData.length, LocalDateTime.now(), c -> {}).join().right;
         SocialPost.Resharing resharingType = SocialPost.Resharing.Friends;
-        List<? extends SocialPost.Content> body = Arrays.asList(new SocialPost.Content.Text("aaaa"), new SocialPost.Content.Reference(ref));
+        List<? extends Content> body = Arrays.asList(new Text("aaaa"), new Reference(ref));
         SocialPost socialPost = SocialPost.createInitialPost(sharer.username, body, resharingType);
 
         Pair<Path, FileWrapper> result = feed.createNewPost(socialPost).join();
 
         LocalDateTime postTime = LocalDateTime.now();
         String updatedBody = "bbbbb";
-        socialPost = socialPost.edit(Arrays.asList(new SocialPost.Content.Text(updatedBody), new SocialPost.Content.Reference(ref)), postTime);
+        socialPost = socialPost.edit(Arrays.asList(new Text(updatedBody), new Reference(ref)), postTime);
 
         String uuid = result.left.getFileName().toString();
         result = feed.updatePost(uuid, socialPost).join();
@@ -1431,15 +1434,15 @@ public class PeergosNetworkUtils {
         SocialPost loadedSocialPost = Serialize.parse(socialFile, SocialPost::fromCbor, sharee.network, crypto).join();
         assertTrue(loadedSocialPost.body.get(0).inlineText().equals(updatedBody));
 
-        SocialPost.Ref mediaRef = ((SocialPost.Content.Reference)loadedSocialPost.body.get(1)).ref;
+        FileRef mediaRef = ((Reference)loadedSocialPost.body.get(1)).ref;
         Optional<FileWrapper> optFile = sharee.network.getFile(mediaRef.cap, sharer.username).join();
         assertTrue(optFile.isPresent());
 
         //create a reply
         String replyText = "reply";
         Multihash hash = loadedSocialPost.contentHash(sharee.crypto.hasher).join();
-        SocialPost.Ref parent = new SocialPost.Ref(sharedItem.path, sharedItem.cap, hash);
-        SocialPost replySocialPost = SocialPost.createComment(parent, resharingType, sharee.username, Arrays.asList(new SocialPost.Content.Text(replyText)));
+        FileRef parent = new FileRef(sharedItem.path, sharedItem.cap, hash);
+        SocialPost replySocialPost = SocialPost.createComment(parent, resharingType, sharee.username, Arrays.asList(new Text(replyText)));
         result = receiverFeed.createNewPost(replySocialPost).join();
         String receiverGroupUid = sharee.getSocialState().join().groupNameToUid.get(friendGroup);
         res = sharee.shareReadAccessWith(result.left, Set.of(receiverGroupUid)).join();
@@ -1470,7 +1473,7 @@ public class PeergosNetworkUtils {
         SocialFeed feed = sharer.getSocialFeed().join();
         SocialPost.Resharing resharingType = SocialPost.Resharing.Friends;
         String bodyText = "aaaa";
-        List<SocialPost.Content.Text> body = Arrays.asList(new SocialPost.Content.Text(bodyText));
+        List<Text> body = Arrays.asList(new Text(bodyText));
         SocialPost socialPost = SocialPost.createInitialPost(sharer.username, body, resharingType);
         Pair<Path, FileWrapper> result = feed.createNewPost(socialPost).join();
 
@@ -1491,9 +1494,9 @@ public class PeergosNetworkUtils {
         //create a reply
         String replyText = "reply";
         Multihash hash = loadedSocialPost.contentHash(sharee.crypto.hasher).join();
-        SocialPost.Ref parent = new SocialPost.Ref(sharedItem.path, sharedItem.cap, hash);
+        FileRef parent = new FileRef(sharedItem.path, sharedItem.cap, hash);
         SocialPost replySocialPost = SocialPost.createComment(parent, resharingType, sharee.username,
-                Arrays.asList(new SocialPost.Content.Text(replyText)));
+                Arrays.asList(new Text(replyText)));
         result = receiverFeed.createNewPost(replySocialPost).join();
         String receiverGroupUid = sharee.getSocialState().join().groupNameToUid.get(friendGroup);
         res = sharee.shareReadAccessWith(result.left, Set.of(receiverGroupUid)).join();
@@ -1643,6 +1646,213 @@ public class PeergosNetworkUtils {
         feed = a.getSocialFeed().join().update().join();
         items = feed.getShared(0, 1000, a.crypto, a.network).join();
         Assert.assertTrue(items.size() == initialFeedSize + 3);
+    }
+
+    public static void chat(NetworkAccess network, Random random) {
+        CryptreeNode.setMaxChildLinkPerBlob(10);
+
+        String password = "notagoodone";
+
+        UserContext a = PeergosNetworkUtils.ensureSignedUp("a-" + generateUsername(random), password, network, crypto);
+
+        List<UserContext> shareeUsers = getUserContextsForNode(network, random, 1, Arrays.asList(password));
+        UserContext b = shareeUsers.get(0);
+
+        // friend sharer with others
+        friendBetweenGroups(Arrays.asList(a), shareeUsers);
+
+        Messenger msgA = new Messenger(a);
+        ChatController controllerA = msgA.createChat().join();
+        Assert.assertTrue("creator is admin", controllerA.getAdmins().equals(Collections.singleton(a.username)));
+        controllerA = msgA.invite(controllerA, Arrays.asList(b.username), Arrays.asList(b.signer.publicKeyHash)).join();
+        List<Pair<SharedItem, FileWrapper>> feed = b.getSocialFeed().join().update().join().getSharedFiles(0, 10).join();
+        FileWrapper chatSharedDir = feed.get(feed.size() - 1).right;
+
+        Messenger msgB = new Messenger(b);
+        ChatController controllerB = msgB.cloneLocallyAndJoin(chatSharedDir).join();
+        controllerB = msgB.mergeMessages(controllerB, a.username).join();
+
+        List<MessageEnvelope> initialMessages = controllerB.getMessages(0, 10).join();
+        Assert.assertEquals(initialMessages.size(), 4);
+        Assert.assertEquals(controllerA.host().messagesMergedUpto, 3);
+        Assert.assertEquals(controllerB.host().messagesMergedUpto, 4);
+
+        ApplicationMessage msg1 = ApplicationMessage.text("G'day mate!");
+        controllerA = msgA.sendMessage(controllerA, msg1).join();
+        Assert.assertEquals(controllerA.host().messagesMergedUpto, 4);
+        controllerB = msgB.mergeMessages(controllerB, a.username).join();
+        List<MessageEnvelope> messages = controllerB.getMessages(0, 10).join();
+        Assert.assertEquals(messages.size(), 5);
+        MessageEnvelope fromA = messages.get(messages.size() - 1);
+        Assert.assertEquals(fromA.payload, msg1);
+        Assert.assertEquals(controllerB.host().messagesMergedUpto, 5);
+
+        ReplyTo msg2 = ReplyTo.build(fromA, ApplicationMessage.text("Isn't this cool!!"), hasher).join();
+        controllerB = msgB.sendMessage(controllerB, msg2).join();
+        controllerA = msgA.mergeMessages(controllerA, b.username).join();
+        List<MessageEnvelope> messagesA = controllerA.getMessages(0, 10).join();
+        MessageEnvelope fromB = messagesA.get(5);
+        Assert.assertEquals(messagesA.size(), 6);
+        Assert.assertEquals(messagesA.get(messagesA.size() - 1).payload, msg2);
+        Assert.assertEquals(controllerA.host().messagesMergedUpto, 6);
+        Assert.assertEquals(controllerB.host().messagesMergedUpto, 6);
+        Assert.assertTrue(fromB.payload instanceof ReplyTo);
+        MessageRef parentRef = ((ReplyTo) fromB.payload).parent;
+        MessageEnvelope parent = controllerA.getMessageFromRef(parentRef, 4).join();
+        Assert.assertTrue(parent.equals(fromA));
+
+        // test setting group properties
+        String random_chat = "Random chat";
+        controllerA = msgA.setGroupProperty(controllerA, "name", random_chat).join();
+        controllerB = msgB.mergeMessages(controllerB, a.username).join();
+        String groupName = controllerB.getGroupProperty("name");
+        Assert.assertTrue(groupName.equals(random_chat));
+        Assert.assertEquals(controllerA.host().messagesMergedUpto, 7);
+        Assert.assertEquals(controllerB.host().messagesMergedUpto, 7);
+
+        // make message log multi chunk
+        for (int i=0; i < 6; i++) {
+            ApplicationMessage msgn = ApplicationMessage.text(new String(new byte[1024 * 1024]));
+            controllerA = msgA.sendMessage(controllerA, msgn).join();
+        }
+
+        List<MessageEnvelope> last = controllerA.getMessages(12, 13).join();
+        controllerB = msgB.mergeMessages(controllerB, a.username).join();
+        controllerB.getMessages(12, 13).join();
+
+        // share a media file
+        byte[] media = "Some media data".getBytes();
+        AsyncReader reader = AsyncReader.build(media);
+        Pair<String, FileRef> mediaRef = msgA.uploadMedia(controllerA, reader, "txt", media.length, LocalDateTime.now(), x -> {}).join();
+        List<Content> content = Arrays.asList(new Reference(mediaRef.right), new Text("Check out this sunset!"));
+        controllerA = msgA.sendMessage(controllerA, new ApplicationMessage(content)).join();
+        controllerB = msgB.mergeMessages(controllerB, a.username).join();
+        List<MessageEnvelope> withMediaMessage = controllerB.getMessages(0, 50).join();
+        MessageEnvelope mediaMessage = withMediaMessage.get(withMediaMessage.size() - 1);
+        Assert.assertTrue(mediaMessage.payload instanceof ApplicationMessage);
+        Optional<FileRef> ref = ((ApplicationMessage) mediaMessage.payload).body.stream().flatMap(c -> c.reference().stream()).findFirst();
+        Assert.assertTrue("Message with media ref present", ref.isPresent());
+        FileRef fileRef = ref.get();
+        Optional<FileWrapper> mediaFile = a.getByPath(fileRef.path).join();
+        Assert.assertTrue(mediaFile.isPresent());
+
+        // remove member from chat
+        controllerA = msgA.removeMember(controllerA, b.username).join();
+        controllerA = msgA.sendMessage(controllerA, new ApplicationMessage(Arrays.asList(new Text("B shouldn't see this!")))).join();
+        controllerB = msgB.mergeMessages(controllerB, a.username).join();
+        List<MessageEnvelope> all = controllerB.getMessages(0, 50).join();
+        Assert.assertEquals(all.size(), withMediaMessage.size());
+        Assert.assertTrue(controllerB.getMemberNames().size() == 1);
+
+        // recent messages
+        List<MessageEnvelope> recentA = controllerA.getRecent();
+        Assert.assertTrue(recentA.size() > 0);
+    }
+
+    private static Pair<Messenger, ChatController> joinChat(UserContext c) {
+        List<Pair<SharedItem, FileWrapper>> feed = c.getSocialFeed().join().update().join().getSharedFiles(0, 10).join();
+        FileWrapper chatSharedDir = feed.stream()
+                .filter(p -> p.left.path.contains("/.messaging/"))
+                .findAny().get().right;
+        Messenger msg = new Messenger(c);
+        ChatController controller = msg.cloneLocallyAndJoin(chatSharedDir).join();
+        return new Pair<>(msg, controller);
+    }
+
+    public static void memberLeaveAndDeleteChat(NetworkAccess network, Random random) {
+        CryptreeNode.setMaxChildLinkPerBlob(10);
+
+        String password = "notagoodone";
+
+        UserContext a = PeergosNetworkUtils.ensureSignedUp("a-" + generateUsername(random), password, network, crypto);
+        UserContext b = PeergosNetworkUtils.ensureSignedUp("b-" + generateUsername(random), password, network, crypto);
+        UserContext c = PeergosNetworkUtils.ensureSignedUp("c-" + generateUsername(random), password, network, crypto);
+
+        // friend sharer with others
+        friendBetweenGroups(Arrays.asList(a, b), Arrays.asList(c));
+        friendBetweenGroups(Arrays.asList(a), Arrays.asList(b));
+
+        Messenger msgA = new Messenger(a);
+        ChatController controllerA = msgA.createChat().join();
+        controllerA = msgA.invite(controllerA, Arrays.asList(b.username), Arrays.asList(b.signer.publicKeyHash)).join();
+        controllerA = msgA.invite(controllerA, Arrays.asList(c.username), Arrays.asList(c.signer.publicKeyHash)).join();
+
+        Pair<Messenger, ChatController> bInit = joinChat(b);
+        Messenger msgB = bInit.left;
+        ChatController controllerB = bInit.right;
+
+        Pair<Messenger, ChatController> cInit = joinChat(c);
+        Messenger msgC = cInit.left;
+        ChatController controllerC = cInit.right;
+
+        controllerA = msgA.mergeAllUpdates(controllerA, a.getSocialState().join()).join();
+
+        ApplicationMessage msg1 = ApplicationMessage.text("G'day mate!");
+        controllerA = msgA.sendMessage(controllerA, msg1).join();
+
+        controllerB = msgB.mergeMessages(controllerB, a.username).join();
+        List<MessageEnvelope> messages = controllerB.getMessages(0, 10).join();
+        MessageEnvelope fromA = messages.get(messages.size() - 1);
+        Assert.assertEquals(fromA.payload, msg1);
+
+        // C deletes their mirror
+        msgC.deleteChat(controllerC).join();
+
+        // B sends a message
+        ApplicationMessage msg2 = ApplicationMessage.text("You still here, A?");
+        controllerB = msgB.sendMessage(controllerB, msg2).join();
+
+        controllerB = msgB.mergeAllUpdates(controllerB, b.getSocialState().join()).join();
+        Assert.assertTrue(controllerB.deletedMemberNames().contains(c.username));
+        controllerA = msgA.mergeAllUpdates(controllerA, a.getSocialState().join()).join();
+        List<MessageEnvelope> recentA = controllerA.getRecent();
+        Assert.assertTrue(recentA.stream().anyMatch(m -> m.payload.equals(msg2)));
+        Assert.assertEquals(controllerA.getMemberNames(), Stream.of(a.username, b.username).collect(Collectors.toSet()));
+    }
+
+    public static void editChatMessage(NetworkAccess network, Random random) {
+        CryptreeNode.setMaxChildLinkPerBlob(10);
+
+        String password = "notagoodone";
+
+        UserContext a = PeergosNetworkUtils.ensureSignedUp(generateUsername(random), password, network, crypto);
+
+        List<UserContext> shareeUsers = getUserContextsForNode(network, random, 1, Arrays.asList(password));
+        UserContext b = shareeUsers.get(0);
+
+        // friend sharer with others
+        friendBetweenGroups(Arrays.asList(a), shareeUsers);
+
+        Messenger msgA = new Messenger(a);
+        ChatController controllerA = msgA.createChat().join();
+        controllerA = msgA.invite(controllerA, Arrays.asList(b.username), Arrays.asList(b.signer.publicKeyHash)).join();
+
+        ApplicationMessage msg1 = ApplicationMessage.text("G'day mate!");
+        controllerA = msgA.sendMessage(controllerA, msg1).join();
+
+        controllerA = msgA.mergeMessages(controllerA, a.username).join();
+        List<MessageEnvelope> messages = controllerA.getMessages(0, 10).join();
+        Assert.assertEquals(messages.size(), 4);
+        MessageEnvelope envelope = messages.get(messages.size()-1);
+
+        MessageRef messageRef = controllerA.generateHash(envelope).join();
+        String changedContent = "edited";
+        EditMessage editMessage = new EditMessage(messageRef, ApplicationMessage.text(changedContent));
+        controllerA = msgA.sendMessage(controllerA, editMessage).join();
+        controllerA = msgA.mergeMessages(controllerA, a.username).join();
+        messages = controllerA.getMessages(0, 10).join();
+        Assert.assertEquals(messages.size(), 5);
+        envelope = messages.get(messages.size()-1);
+        EditMessage appMsg = (EditMessage) envelope.payload;
+        String msgContent = appMsg.content.body.get(0).inlineText();
+        Assert.assertEquals(msgContent, changedContent);
+
+        messageRef = controllerA.generateHash(envelope).join();
+        DeleteMessage delMessage = new DeleteMessage(messageRef);
+        controllerA = msgA.sendMessage(controllerA, delMessage).join();
+        controllerA = msgA.mergeMessages(controllerA, a.username).join();
+        messages = controllerA.getMessages(0, 10).join();
+        Assert.assertEquals(messages.size(), 6);
     }
 
     public static void groupSharing(NetworkAccess network, Random random) {

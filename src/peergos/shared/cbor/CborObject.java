@@ -269,6 +269,13 @@ public interface CborObject extends Cborable {
                 return Collections.emptyMap();
             return val.toMap(toKey, toValue);
         }
+
+        public <K,V> Map<K,V> getListMap(String key, Function<? super Cborable, K> toKey, Function<? super Cborable, V> toValue) {
+            CborList val = (CborList) get(key);
+            if (val == null)
+                return Collections.emptyMap();
+            return val.getMap(toKey, toValue);
+        }
     }
 
     final class CborMerkleLink implements CborObject, Comparable<CborMerkleLink> {
@@ -552,6 +559,10 @@ public interface CborObject extends Cborable {
             return "CborString{\"" +
                     value +
                     "\"}";
+        }
+
+        public static String getString(Cborable cbor) {
+            return ((CborString)cbor).value;
         }
     }
 

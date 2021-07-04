@@ -108,7 +108,7 @@ public abstract class StaticHandler implements HttpHandler
             // Todo work on removing unsafe-inline from sub domains
             if (includeCsp)
                 httpExchange.getResponseHeaders().set("content-security-policy", "default-src 'self' " + this.host + ";" +
-                        "style-src 'self'" +
+                        "style-src 'self' " +
                         " " + this.host +
                         (isSubdomain ? " 'unsafe-inline' https://" + reqHost : "") + // calendar, editor, todoboard, pdfviewer
                         ";" +

@@ -6,6 +6,7 @@ import peergos.server.storage.*;
 import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.crypto.symmetric.*;
+import peergos.shared.display.*;
 import peergos.shared.social.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
@@ -110,14 +111,14 @@ public class RequestCountTests {
         String friends = social.getFriendsGroupUid();
         SocialFeed sharerFeed = sharer.getSocialFeed().join().update().join();
         { // Do an initial post to ensure all directories are created
-            List<SocialPost.Content.Text> postBody = Arrays.asList(new SocialPost.Content.Text("Initial post."));
+            List<Text> postBody = Arrays.asList(new Text("Initial post."));
             SocialPost post = SocialPost.createInitialPost(sharer.username, postBody, SocialPost.Resharing.Friends);
             Pair<Path, FileWrapper> p = sharerFeed.createNewPost(post).join();
             sharer.shareReadAccessWith(p.left, Set.of(friends)).join();
         }
         storageCounter.reset();
         {
-            List<SocialPost.Content.Text> postBody = Arrays.asList(new SocialPost.Content.Text("G'day, skip!"));
+            List<Text> postBody = Arrays.asList(new Text("G'day, skip!"));
             SocialPost post = SocialPost.createInitialPost(sharer.username, postBody, SocialPost.Resharing.Friends);
             Pair<Path, FileWrapper> p = sharerFeed.createNewPost(post).join();
             sharer.shareReadAccessWith(p.left, Set.of(friends)).join();
