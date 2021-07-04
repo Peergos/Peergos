@@ -11,6 +11,7 @@ java_library(
         glob(["crypto/password/*.java"]) + 
         glob(["crypto/random/*.java"]) + 
         glob(["crypto/symmetric/*.java"]) + 
+        glob(["display/*.java"]) + 
         glob(["fingerprint/*.java"]) + 
         glob(["hamt/*.java"]) + 
         glob(["inode/*.java"]) + 
