@@ -14,6 +14,19 @@ public class ArrayOps
                 .collect(Collectors.toList());
     }
 
+    /*
+    Due to an unfortunate bug in GWT emulation for Arrays.copyPrimitiveArray (introduced by us), It is necessary to call this version instead.
+     */
+    public static int[] copyOfRange(int[] original, int from, int to) {
+        int length = to - from;
+        if (length < 0) {
+            throw new IllegalArgumentException(from + " > " + to);
+        }
+        int[] copy = new int[length];
+        System.arraycopy(original, from, copy, 0, Math.min(original.length - from, length));
+        return copy;
+    }
+
     public static byte[] concat(byte[] one, byte[] two)
     {
         byte[] res = new byte[one.length+two.length];

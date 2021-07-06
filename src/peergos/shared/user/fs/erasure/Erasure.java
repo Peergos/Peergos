@@ -1,4 +1,6 @@
 package peergos.shared.user.fs.erasure;
+import peergos.shared.util.ArrayOps;
+
 import java.util.logging.*;
 
 import java.io.ByteArrayOutputStream;
@@ -31,7 +33,7 @@ public class Erasure {
 
         for (int i=0; i < ints.length; i+=inputSize)
         {
-            int[] copy = Arrays.copyOfRange(ints, i, i+inputSize);
+            int[] copy = ArrayOps.copyOfRange(ints, i, i+inputSize);
             byte[] encoded = convert(GaloisPolynomial.encode(copy, nec, f), f);
             for (int j=0; j < n; j++)
             {
