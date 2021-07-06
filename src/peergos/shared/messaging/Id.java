@@ -1,6 +1,7 @@
 package peergos.shared.messaging;
 
 import peergos.shared.cbor.*;
+import peergos.shared.util.ArrayOps;
 
 import java.util.*;
 import java.util.stream.*;
@@ -34,7 +35,7 @@ public final class Id implements Comparable<Id>, Cborable {
     }
 
     public Id parent() {
-        return new Id(Arrays.copyOfRange(id, 0, id.length - 1));
+        return new Id(ArrayOps.copyOfRange(id, 0, id.length - 1));
     }
 
     @Override
