@@ -1632,7 +1632,7 @@ public class UserContext {
 
         return network.synchronizer.applyComplexUpdate(signer.publicKeyHash,
                 parent.signingPair(), (s, c) -> rotateAllKeys(file, parent, true, s, c)
-                        .thenCompose(s2 -> getByPath(pathToFile)
+                        .thenCompose(s2 -> getByPath(pathToFile.toString(), s2)
                                 .thenCompose(newFileOpt -> sharedWithCache
                                         .addSharedWith(SharedWithCache.Access.WRITE, pathToFile, writersToAdd, s2, c))
                                 .thenCompose(s3 -> reSendAllWriteAccessRecursive(pathToFile)
