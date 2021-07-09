@@ -42,7 +42,6 @@ public class MessagingTests {
         stores.get(0).apply(u1_2);
         Member user2 = u1_2.state.getMember("user2");
         Chat chat2 = u1_2.state.copy(user2);
-//        chat2.host().messagesMergedUpto = chat1.host().messagesMergedUpto;
         stores.get(1).mirror(stores.get(0));
         OwnerProof user2ChatId = OwnerProof.build(identities.get(1), chatIdentities.get(1).chatIdentity.publicKeyHash);
         ChatUpdate u2_1 = chat2.join(user2, user2ChatId, chatIdentities.get(1).chatIdPublic, identities.get(1), stores.get(1), ipfs, hasher).join();
@@ -65,69 +64,83 @@ public class MessagingTests {
         Assert.assertTrue(stores.get(0).messages.get(4).msg.equals(msg2));
     }
 
-//    @Test
-//    public void multipleInvites() {
-//        List<SigningPrivateKeyAndPublicHash> identities = generateUsers(3);
-//        List<PrivateChatState> chatIdentities = generateChatIdentities(3);
-//        List<RamMessageStore> stores = IntStream.range(0, 3).mapToObj(i -> new RamMessageStore()).collect(Collectors.toList());
-//
-//        Chat chat1 = Chat.createNew("user1", identities.get(0).publicKeyHash);
-//        OwnerProof user1ChatId = OwnerProof.build(identities.get(0), chatIdentities.get(0).chatIdentity.publicKeyHash);
-//        chat1.join(chat1.host(), user1ChatId, chatIdentities.get(0).chatIdPublic, identities.get(0), stores.get(0), NO_OP, hasher).join();
-//
-//        Member user2 = chat1.inviteMember("user2", identities.get(1).publicKeyHash,
-//                chatIdentities.get(0).chatIdentity, stores.get(0), NO_OP, hasher).join();
-//        Chat chat2 = chat1.copy(user2);
-//        chat2.host().messagesMergedUpto = chat1.host().messagesMergedUpto;
-//        stores.get(1).mirror(stores.get(0));
-//        OwnerProof user2ChatId = OwnerProof.build(identities.get(1), chatIdentities.get(1).chatIdentity.publicKeyHash);
-//        chat2.join(user2, user2ChatId, chatIdentities.get(1).chatIdPublic, identities.get(1), stores.get(1), NO_OP, hasher).join();
-//
-//        Member user3 = chat1.inviteMember("user3", identities.get(2).publicKeyHash,
-//                chatIdentities.get(0).chatIdentity, stores.get(0), NO_OP, hasher).join();
-//        Chat chat3 = chat1.copy(user3);
-//        chat3.host().messagesMergedUpto = chat1.host().messagesMergedUpto;
-//        stores.get(2).mirror(stores.get(0));
-//        OwnerProof user3ChatId = OwnerProof.build(identities.get(2), chatIdentities.get(2).chatIdentity.publicKeyHash);
-//        chat3.join(user3, user3ChatId, chatIdentities.get(2).chatIdPublic, identities.get(2), stores.get(0), NO_OP, hasher).join();
-//
-//        Assert.assertTrue(! user2.id.equals(user3.id));
-//    }
-//
-//    @Test
-//    public void messagePropagation() {
-//        List<SigningPrivateKeyAndPublicHash> identities = generateUsers(3);
-//        List<PrivateChatState> chatIdentities = generateChatIdentities(3);
-//        List<RamMessageStore> stores = IntStream.range(0, 3).mapToObj(i -> new RamMessageStore()).collect(Collectors.toList());
-//
-//        Chat chat1 = Chat.createNew("user1", identities.get(0).publicKeyHash);
-//        OwnerProof user1ChatId = OwnerProof.build(identities.get(0), chatIdentities.get(0).chatIdentity.publicKeyHash);
-//        chat1.join(chat1.host(), user1ChatId, chatIdentities.get(0).chatIdPublic, identities.get(0), stores.get(0), NO_OP, hasher).join();
-//
-//        Member user2 = chat1.inviteMember("user2", identities.get(1).publicKeyHash,
-//                chatIdentities.get(0).chatIdentity, stores.get(0), NO_OP, hasher).join();
-//        Chat chat2 = chat1.copy(user2);
-//        chat2.host().messagesMergedUpto = chat1.host().messagesMergedUpto;
-//        stores.get(1).mirror(stores.get(0));
-//        OwnerProof user2ChatId = OwnerProof.build(identities.get(1), chatIdentities.get(1).chatIdentity.publicKeyHash);
-//        chat2.join(user2, user2ChatId, chatIdentities.get(1).chatIdPublic, identities.get(1), stores.get(1), NO_OP, hasher).join();
-//
-//        Member user3 = chat2.inviteMember("user3", identities.get(2).publicKeyHash,
-//                chatIdentities.get(1).chatIdentity, stores.get(1), NO_OP, hasher).join();
-//        Chat chat3 = chat2.copy(user3);
-//        chat3.host().messagesMergedUpto = chat2.host().messagesMergedUpto;
-//        stores.get(2).mirror(stores.get(1));
-//        OwnerProof user3ChatId = OwnerProof.build(identities.get(2), chatIdentities.get(2).chatIdentity.publicKeyHash);
-//        chat3.join(user3, user3ChatId, chatIdentities.get(2).chatIdPublic, identities.get(2), stores.get(2), NO_OP, hasher).join();
-//
-//        MessageEnvelope msg1 = chat3.sendMessage(text("Hey All!"), chatIdentities.get(2).chatIdentity, stores.get(2), hasher).join();
-//        chat2.merge("chat-uid", chat3.host, stores.get(2), stores.get(1), ipfs, NO_OP, NO_OP2).join();
-//        Assert.assertTrue(stores.get(1).messages.get(5).msg.equals(msg1));
-//
-//        chat1.merge("chat-uid", chat2.host, stores.get(1), stores.get(0), ipfs, NO_OP, NO_OP2).join();
-//        Assert.assertTrue(stores.get(0).messages.get(5).msg.equals(msg1));
-//    }
-//
+    @Test
+    public void multipleInvites() {
+        List<SigningPrivateKeyAndPublicHash> identities = generateUsers(3);
+        List<PrivateChatState> chatIdentities = generateChatIdentities(3);
+        List<RamMessageStore> stores = IntStream.range(0, 3).mapToObj(i -> new RamMessageStore()).collect(Collectors.toList());
+
+        Chat chat1 = Chat.createNew("uid", "user1", identities.get(0).publicKeyHash);
+        OwnerProof user1ChatId = OwnerProof.build(identities.get(0), chatIdentities.get(0).chatIdentity.publicKeyHash);
+        ChatUpdate u1_1 = chat1.join(chat1.host(), user1ChatId, chatIdentities.get(0).chatIdPublic, identities.get(0), stores.get(0), ipfs, hasher).join();
+        stores.get(0).apply(u1_1);
+
+        ChatUpdate u1_2 = u1_1.state.inviteMember("user2", identities.get(1).publicKeyHash,
+                chatIdentities.get(0).chatIdentity, stores.get(0), ipfs, hasher).join();
+        stores.get(0).apply(u1_2);
+        Member user2 = u1_2.state.getMember("user2");
+
+        Chat chat2 = u1_2.state.copy(user2);
+        stores.get(1).mirror(stores.get(0));
+        OwnerProof user2ChatId = OwnerProof.build(identities.get(1), chatIdentities.get(1).chatIdentity.publicKeyHash);
+        chat2.join(user2, user2ChatId, chatIdentities.get(1).chatIdPublic, identities.get(1), stores.get(1), ipfs, hasher).join();
+
+        ChatUpdate u1_3 = u1_2.state.inviteMember("user3", identities.get(2).publicKeyHash,
+                chatIdentities.get(0).chatIdentity, stores.get(0), ipfs, hasher).join();
+        stores.get(0).apply(u1_3);
+        Member user3 = u1_3.state.getMember("user3");
+
+        Chat chat3 = u1_3.state.copy(user3);
+        stores.get(2).mirror(stores.get(0));
+        OwnerProof user3ChatId = OwnerProof.build(identities.get(2), chatIdentities.get(2).chatIdentity.publicKeyHash);
+        chat3.join(user3, user3ChatId, chatIdentities.get(2).chatIdPublic, identities.get(2), stores.get(0), ipfs, hasher).join();
+
+        Assert.assertTrue(! user2.id.equals(user3.id));
+    }
+
+    @Test
+    public void messagePropagation() {
+        List<SigningPrivateKeyAndPublicHash> identities = generateUsers(3);
+        List<PrivateChatState> chatIdentities = generateChatIdentities(3);
+        List<RamMessageStore> stores = IntStream.range(0, 3).mapToObj(i -> new RamMessageStore()).collect(Collectors.toList());
+
+        Chat chat1 = Chat.createNew("uid", "user1", identities.get(0).publicKeyHash);
+        OwnerProof user1ChatId = OwnerProof.build(identities.get(0), chatIdentities.get(0).chatIdentity.publicKeyHash);
+        ChatUpdate u1_1 = chat1.join(chat1.host(), user1ChatId, chatIdentities.get(0).chatIdPublic, identities.get(0), stores.get(0), ipfs, hasher).join();
+        stores.get(0).apply(u1_1);
+
+        ChatUpdate u1_2 = u1_1.state.inviteMember("user2", identities.get(1).publicKeyHash,
+                chatIdentities.get(0).chatIdentity, stores.get(0), ipfs, hasher).join();
+        stores.get(0).apply(u1_2);
+        Member user2 = u1_2.state.getMember("user2");
+        Chat chat2 = u1_2.state.copy(user2);
+        stores.get(1).mirror(stores.get(0));
+        OwnerProof user2ChatId = OwnerProof.build(identities.get(1), chatIdentities.get(1).chatIdentity.publicKeyHash);
+        ChatUpdate u2_1 = chat2.join(user2, user2ChatId, chatIdentities.get(1).chatIdPublic, identities.get(1), stores.get(1), ipfs, hasher).join();
+        stores.get(1).apply(u2_1);
+
+        ChatUpdate u2_2 = u2_1.state.inviteMember("user3", identities.get(2).publicKeyHash,
+                chatIdentities.get(1).chatIdentity, stores.get(1), ipfs, hasher).join();
+        stores.get(1).apply(u2_2);
+        Member user3 = u2_2.state.getMember("user3");
+        Chat chat3 = u2_2.state.copy(user3);
+        stores.get(2).mirror(stores.get(1));
+        OwnerProof user3ChatId = OwnerProof.build(identities.get(2), chatIdentities.get(2).chatIdentity.publicKeyHash);
+        ChatUpdate u3_1 = chat3.join(user3, user3ChatId, chatIdentities.get(2).chatIdPublic, identities.get(2), stores.get(2), ipfs, hasher).join();
+        stores.get(2).apply(u3_1);
+
+        ChatUpdate u3_2 = u3_1.state.sendMessage(text("Hey All!"), chatIdentities.get(2).chatIdentity, stores.get(2), ipfs, hasher).join();
+        stores.get(2).apply(u3_2);
+        MessageEnvelope msg1 = u3_2.newMessages.get(u3_2.newMessages.size() - 1).msg;
+        ChatUpdate u2_3 = u2_2.state.merge("chat-uid", chat3.host, stores.get(2), ipfs).join();
+        stores.get(1).apply(u2_3);
+        Assert.assertTrue(stores.get(1).messages.get(5).msg.equals(msg1));
+
+        ChatUpdate u1_3 = u1_2.state.merge("chat-uid", chat2.host, stores.get(1), ipfs).join();
+        stores.get(0).apply(u1_3);
+        Assert.assertTrue(stores.get(0).messages.get(5).msg.equals(msg1));
+    }
+
 //    @Test
 //    public void partitionAndJoin() {
 //        List<SigningPrivateKeyAndPublicHash> identities = generateUsers(4);
