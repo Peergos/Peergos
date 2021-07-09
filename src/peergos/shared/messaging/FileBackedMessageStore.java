@@ -98,44 +98,43 @@ public class FileBackedMessageStore implements MessageStore {
     }
 
     @Override
-    public CompletableFuture<Boolean> addMessage(long msgIndex, SignedMessage msg) {
+    public CompletableFuture<Snapshot> addMessage(Snapshot initialVersion, Committer committer, long msgIndex, SignedMessage msg) {
         byte[] raw = msg.serialize();
-        return network.synchronizer.applyComplexUpdate(messages.owner(), messages.signingPair(),
-                (s, committer) -> messages.getUpdated(s, network)
-                        .thenCompose(mIn -> mIn.clean(mIn.version, committer, network, crypto))
-                        .thenCompose(p -> p.left.overwriteSection(p.right, committer, AsyncReader.build(raw), p.left.getSize(),
-                                p.left.getSize() + raw.length, network, crypto, x -> {}).thenCompose(s2 -> {
-                            long size = p.left.getSize();
-                            boolean newChunk = (raw.length + size)/Chunk.MAX_SIZE > size/Chunk.MAX_SIZE;
-                            if (! newChunk)
-                                return Futures.of(s2);
-                            ByteArrayOutputStream bout = new ByteArrayOutputStream();
-                            DataOutputStream dout = new DataOutputStream(bout);
-                            try {
-                                dout.writeLong(msgIndex + 1);
-                                dout.writeLong(size + raw.length);
-                            } catch (IOException e) {} // can't happen
-                            byte[] twoLongs = bout.toByteArray();
-                            return indexFile.getUpdated(s2, network)
-                                    .thenCompose(updatedIndex -> updatedIndex.overwriteSection(s2, committer,
-                                            AsyncReader.build(twoLongs), updatedIndex.getSize(),
-                                            updatedIndex.getSize() + twoLongs.length, network, crypto, x -> {}));
+        return messages.getUpdated(initialVersion, network)
+                .thenCompose(mIn -> mIn.clean(mIn.version, committer, network, crypto))
+                .thenCompose(p -> p.left.overwriteSection(p.right, committer, AsyncReader.build(raw), p.left.getSize(),
+                        p.left.getSize() + raw.length, network, crypto, x -> {}).thenCompose(s2 -> {
+                    long size = p.left.getSize();
+                    boolean newChunk = (raw.length + size)/Chunk.MAX_SIZE > size/Chunk.MAX_SIZE;
+                    if (! newChunk)
+                        return Futures.of(s2);
+                    ByteArrayOutputStream bout = new ByteArrayOutputStream();
+                    DataOutputStream dout = new DataOutputStream(bout);
+                    try {
+                        dout.writeLong(msgIndex + 1);
+                        dout.writeLong(size + raw.length);
+                    } catch (IOException e) {} // can't happen
+                    byte[] twoLongs = bout.toByteArray();
+                    return indexFile.getUpdated(s2, network)
+                            .thenCompose(updatedIndex -> updatedIndex.overwriteSection(s2, committer,
+                                    AsyncReader.build(twoLongs), updatedIndex.getSize(),
+                                    updatedIndex.getSize() + twoLongs.length, network, crypto, x -> {}));
 
-                        })))
+                }))
                 .thenCompose(s -> messages.getUpdated(s, network).thenApply(updated -> {
                     this.messages = updated;
-                    return true;
+                    return s;
                 }));
     }
 
     @Override
-    public synchronized CompletableFuture<Boolean> revokeAccess(String username) {
-        return context.unShareReadAccess(sharedDir, username)
-                .thenCompose(b -> filesUpdater.get())
+    public synchronized CompletableFuture<Snapshot> revokeAccess(Set<String> usernames) {
+        return context.unShareReadAccessWith(sharedDir, usernames)
+                .thenCompose(s -> filesUpdater.get()
                 .thenApply(files -> {
                     this.messages = files.left;
                     this.indexFile = files.right;
-                    return true;
-                });
+                    return s;
+                }));
     }
 }

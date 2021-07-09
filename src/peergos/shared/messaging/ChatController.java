@@ -5,12 +5,13 @@ import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.display.*;
 import peergos.shared.messaging.messages.*;
-import peergos.shared.storage.*;
+import peergos.shared.user.*;
+import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
+import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.function.*;
 import java.util.stream.*;
 
 public class ChatController {
@@ -19,30 +20,27 @@ public class ChatController {
     public final MessageStore store;
     public final PrivateChatState privateChatState;
     private final Chat state;
+    private final FileWrapper root; // includes the version that the state above was derived from
     private final LRUCache<MessageRef, MessageEnvelope> cache;
     private final Hasher hasher;
-    private final Function<Chat, CompletableFuture<Boolean>> committer;
-    private final TriFunction<FileRef, ChatController, String, CompletableFuture<Boolean>> mediaCopier;
-    private final ContentAddressedStorage ipfs;
+    private final UserContext context;
 
     public ChatController(String chatUuid,
                           Chat state,
                           MessageStore store,
                           PrivateChatState privateChatState,
+                          FileWrapper root,
                           LRUCache<MessageRef, MessageEnvelope> cache,
                           Hasher hasher,
-                          Function<Chat, CompletableFuture<Boolean>> committer,
-                          TriFunction<FileRef, ChatController, String, CompletableFuture<Boolean>> mediaCopier,
-                          ContentAddressedStorage ipfs) {
+                          UserContext context) {
         this.chatUuid = chatUuid;
         this.state = state;
         this.store = store;
         this.privateChatState = privateChatState;
+        this.root = root;
         this.cache = cache;
         this.hasher = hasher;
-        this.committer = committer;
-        this.mediaCopier = mediaCopier;
-        this.ipfs = ipfs;
+        this.context = context;
     }
 
     public Member host() {
@@ -77,7 +75,7 @@ public class ChatController {
     }
 
     public ChatController with(PrivateChatState priv) {
-        return new ChatController(chatUuid, state, store, priv, cache, hasher, committer, mediaCopier, ipfs);
+        return new ChatController(chatUuid, state, store, priv, root, cache, hasher, context);
     }
 
     @JsMethod
@@ -126,10 +124,8 @@ public class ChatController {
 
     @JsMethod
     public CompletableFuture<ChatController> sendMessage(Message message) {
-        return state.addMessage(message, privateChatState.chatIdentity, store, hasher)
-                .thenCompose(msg -> this.state.apply(msg, chatUuid, r -> mediaCopier.apply(r, this, state.host().username), store, ipfs))
-                .thenCompose(x -> committer.apply(this.state))
-                .thenApply(x -> this);
+        return state.sendMessage(message, privateChatState.chatIdentity, store, context.network.dhtClient, hasher)
+                .thenCompose(u -> commitUpdate(u, context.username));
     }
 
     @JsMethod
@@ -152,10 +148,18 @@ public class ChatController {
         return state.getAdmins().contains(state.host().username);
     }
 
+    private ChatController withState(Chat c) {
+        return new ChatController(chatUuid, c, store, privateChatState, root, cache, hasher, context);
+    }
+
+    private ChatController withRoot(FileWrapper root) {
+        return new ChatController(chatUuid, state, store, privateChatState, root, cache, hasher, context);
+    }
+
     public CompletableFuture<ChatController> join(SigningPrivateKeyAndPublicHash identity) {
         OwnerProof chatId = OwnerProof.build(identity, privateChatState.chatIdentity.publicKeyHash);
-        return state.join(state.host(), chatId, privateChatState.chatIdPublic, identity, store, committer, hasher)
-                .thenApply(x -> this);
+        return state.join(state.host(), chatId, privateChatState.chatIdPublic, identity, store, context.network.dhtClient, hasher)
+                .thenCompose(u -> commitUpdate(u, context.username));
     }
 
     @JsMethod
@@ -183,21 +187,72 @@ public class ChatController {
 
     public CompletableFuture<ChatController> invite(List<String> usernames,
                                                     List<PublicKeyHash> identities) {
-        return state.inviteMembers(usernames, identities, privateChatState.chatIdentity, store, committer, hasher)
-                .thenApply(x -> this);
-    }
-
-    public CompletableFuture<ChatController> invite(String username,
-                                                    PublicKeyHash identity) {
-        return state.inviteMember(username, identity, privateChatState.chatIdentity, store, committer, hasher)
-                .thenApply(x -> this);
+        return state.inviteMembers(usernames, identities, privateChatState.chatIdentity, store, context.network.dhtClient, hasher)
+                .thenCompose(u -> commitUpdate(u, context.username));
     }
 
     public CompletableFuture<ChatController> mergeMessages(String username,
                                                            MessageStore mirrorStore) {
         Member mirrorHost = state.getMember(username);
-        return state.merge(chatUuid, mirrorHost.id, mirrorStore, store, ipfs, committer,
-                r -> mediaCopier.apply(r, this, username))
-                .thenApply(x -> this);
+        return state.merge(chatUuid, mirrorHost.id, mirrorStore, context.network.dhtClient)
+                .thenCompose(u -> commitUpdate(u, username));
+    }
+
+    private CompletableFuture<Snapshot> copyFile(FileWrapper dir, Path sourcePath, String mirrorUsername, Snapshot v, Committer c) {
+        // Try copying file from source first, and then fallback to mirror we are currently merging
+        return Futures.asyncExceptionally(() -> context.getByPath(sourcePath.toString(), v)
+                        .thenApply(Optional::get),
+                t -> context.getByPath(Paths.get(mirrorUsername).resolve(sourcePath.subpath(1, sourcePath.getNameCount())).toString(), v)
+                        .thenApply(Optional::get))
+                .thenCompose(f -> f.getInputStream(f.version.get(f.writer()).props, context.network, context.crypto, x -> {})
+                        .thenCompose(r -> dir.uploadFileSection(v, c, f.getName(), r, false, 0, f.getSize(),
+                                Optional.empty(), false, false, context.network, context.crypto, x -> {},
+                                context.crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH))));
+    }
+
+    private Path getChatMediaDir(ChatController current) {
+        return Paths.get(Messenger.MESSAGING_BASE_DIR,
+                current.chatUuid,
+                "shared",
+                "media");
+    }
+
+    private CompletableFuture<Snapshot> mirrorMedia(FileRef ref, ChatController chat, String currentMirrorUsername, Snapshot in, Committer committer) {
+        Path mediaDir = getChatMediaDir(chat);
+        Path sourcePath = Paths.get(ref.path);
+        Path chatRelativePath = sourcePath.subpath(1 + mediaDir.getNameCount(), sourcePath.getNameCount());
+        Path ourCopy = mediaDir.resolve(chatRelativePath);
+        Path parent = ourCopy.getParent();
+        List<String> mediaFileParentPath = IntStream.range(0, parent.getNameCount())
+                .mapToObj(i -> parent.getName(i).toString())
+                .collect(Collectors.toList());
+        return context.getByPath(context.username, in)
+                .thenApply(Optional::get)
+                .thenCompose(home -> home.getOrMkdirs(mediaFileParentPath, false, context.network, context.crypto, in, committer))
+                .thenCompose(dir -> copyFile(dir.right, sourcePath, currentMirrorUsername, dir.left, committer));
+    }
+
+    private CompletableFuture<Snapshot> overwriteState(FileWrapper root, Chat c, Snapshot v, Committer com) {
+        byte[] raw = c.serialize();
+        return root.getUpdated(v, context.network)
+                .thenCompose(d -> d.getDescendentByPath("shared/"+ Messenger.SHARED_CHAT_STATE, context.crypto.hasher, context.network))
+                .thenCompose(file -> file.get().overwriteFile(AsyncReader.build(raw), raw.length, context.network, context.crypto, x -> {}, v, com));
+    }
+
+    private CompletableFuture<ChatController> commitUpdate(ChatUpdate u, String mirrorUsername) {
+        // 1. rotate access control
+        // 2. copy media
+        // 3. append messages
+        // 4. commit state file
+        return (u.toRevokeAccess.isEmpty() ? Futures.of(store) : store.revokeAccess(u.toRevokeAccess))
+                .thenCompose(x -> context.network.synchronizer.applyComplexUpdate(context.signer.publicKeyHash, root.signingPair(),
+                (s, c) -> Futures.reduceAll(u.mediaToCopy, s, (v, f) -> mirrorMedia(f, this, mirrorUsername, v, c),
+                                (a, b) -> a.merge(b))
+                        .thenCompose(s2 -> root.getUpdated(s2, context.network)
+                                .thenCompose(base -> Futures.reduceAll(u.newMessages, s2,
+                                        (v, m) -> store.addMessage(v, c, state.host().messagesMergedUpto + u.newMessages.indexOf(m), m),
+                                        (a, b) -> a.merge(b))))
+                        .thenCompose(s4 -> overwriteState(root, u.state, s4, c)))
+                        .thenApply(s -> withState(u.state).withRoot(root)));
     }
 }

@@ -30,10 +30,10 @@ import java.util.stream.*;
  *  and share their shared directory with us.
  */
 public class Messenger {
-    private static final String MESSAGING_BASE_DIR = ".messaging";
-    private static final String SHARED_CHAT_STATE = "peergos-chat-state.cbor";
-    private static final String SHARED_MSG_LOG = "peergos-chat-messages.cborstream";
-    private static final String SHARED_MSG_LOG_INDEX = "peergos-chat-messages.index.bin";
+    public static final String MESSAGING_BASE_DIR = ".messaging";
+    public static final String SHARED_CHAT_STATE = "peergos-chat-state.cbor";
+    public static final String SHARED_MSG_LOG = "peergos-chat-messages.cborstream";
+    public static final String SHARED_MSG_LOG_INDEX = "peergos-chat-messages.index.bin";
     private static final String PRIVATE_CHAT_STATE = "private-chat-state.cbor";
 
     private final UserContext context;
@@ -61,7 +61,7 @@ public class Messenger {
     @JsMethod
     public CompletableFuture<ChatController> createChat() {
         String chatId = "chat:" + context.username + ":" + UUID.randomUUID().toString();
-        Chat chat = Chat.createNew(context.username, context.signer.publicKeyHash);
+        Chat chat = Chat.createNew(chatId, context.username, context.signer.publicKeyHash);
 
         byte[] rawChat = chat.serialize();
         PrivateChatState privateChatState = generateChatIdentity();
@@ -79,10 +79,9 @@ public class Messenger {
                                 AsyncReader.build(rawChat), rawChat.length, network, crypto, x -> {}, crypto.random.randomBytes(32)))
                         .thenCompose(x -> chatRoot.getUpdated(x.version, network))
                         .thenCompose(updatedChatRoot -> updatedChatRoot.uploadOrReplaceFile(PRIVATE_CHAT_STATE,
-                                AsyncReader.build(rawPrivateChatState), rawPrivateChatState.length, network, crypto, x -> {}, crypto.random.randomBytes(32))))
-                .thenCompose(this::getChatMessageStore)
-                .thenApply(messageStore -> new ChatController(chatId, chat, messageStore, privateChatState, cache, hasher,
-                        c -> overwriteState(c, chatId), this::mirrorMedia, network.dhtClient))
+                                AsyncReader.build(rawPrivateChatState), rawPrivateChatState.length, network, crypto, x -> {}, crypto.random.randomBytes(32)))
+                        .thenCompose(this::getChatMessageStore)
+                        .thenApply(messageStore -> new ChatController(chatId, chat, messageStore, privateChatState, chatRoot, cache, hasher, context)))
                 .thenCompose(controller -> controller.join(context.signer))
                 .thenCompose(controller -> controller.addAdmin(context.username));
     }
@@ -109,14 +108,6 @@ public class Messenger {
         return chat.invite(usernames, identities)
                 .thenCompose(res -> context.shareReadAccessWith(chatSharedDir, new HashSet<>(usernames))
                         .thenApply(x -> res));
-    }
-
-    private CompletableFuture<Boolean> overwriteState(Chat c, String uuid) {
-        Path stateFile = Paths.get(context.username, MESSAGING_BASE_DIR, uuid, "shared", SHARED_CHAT_STATE);
-        byte[] raw = c.serialize();
-        return context.getByPath(stateFile)
-                .thenCompose(file -> file.get().overwriteFile(AsyncReader.build(raw), raw.length, network, crypto, x -> {}))
-                .thenApply(f -> true);
     }
 
     /** Copy a chat to our space to join it.
@@ -195,27 +186,6 @@ public class Messenger {
                 });
     }
 
-    private CompletableFuture<Boolean> mirrorMedia(FileRef ref, ChatController chat, String currentMirrorUsername) {
-        Path mediaDir = getChatMediaDir(chat);
-        Path sourcePath = Paths.get(ref.path);
-        Path chatRelativePath = sourcePath.subpath(1 + mediaDir.getNameCount(), sourcePath.getNameCount());
-        Path ourCopy = mediaDir.resolve(chatRelativePath);
-        return context.getUserRoot()
-                .thenCompose(home -> home.getOrMkdirs(ourCopy.getParent(), network, false, crypto))
-                .thenCompose(dir -> copyFile(dir, sourcePath, currentMirrorUsername))
-                .thenApply(x -> true);
-    }
-
-    private CompletableFuture<FileWrapper> copyFile(FileWrapper dir, Path sourcePath, String mirrorUsername) {
-        // Try copying file from source first, and then fallback to mirror we are currently merging
-        return Futures.asyncExceptionally(() -> context.getByPath(sourcePath)
-                        .thenApply(Optional::get),
-                t -> context.getByPath(Paths.get(mirrorUsername).resolve(sourcePath.subpath(1, sourcePath.getNameCount())))
-                        .thenApply(Optional::get))
-                .thenCompose(f -> f.getInputStream(network, crypto, x -> {})
-                        .thenCompose(r -> dir.uploadAndReturnFile(f.getName(), r, f.getSize(), false, network, crypto)));
-    }
-
     @JsMethod
     public CompletableFuture<ChatController> mergeAllUpdates(ChatController current, SocialState soc) {
         Set<String> following = soc.getFollowing();
@@ -240,10 +210,7 @@ public class Messenger {
         RemoveMember msg = new RemoveMember(current.chatUuid, member.id);
         if (! username.equals(context.username) && ! current.getAdmins().contains(context.username))
             throw new IllegalStateException("Only admins can remove other members!");
-        return (username.equals(context.username) ?
-                Futures.of(true) :
-                current.store.revokeAccess(username))
-                .thenCompose(x -> sendMessage(current, msg));
+        return sendMessage(current, msg);
     }
 
     @JsMethod
@@ -321,8 +288,7 @@ public class Messenger {
                 .thenCompose(chat -> getPrivateChatState(chatRoot)
                         .thenCompose(priv -> getChatMessageStore(chatRoot)
                                 .thenApply(msgStore -> new ChatController(chatRoot.getName(), chat, msgStore, priv,
-                                        cache, hasher, c -> overwriteState(c, chatRoot.getName()),
-                                        this::mirrorMedia, network.dhtClient))));
+                                        chatRoot, cache, hasher, context))));
     }
 
     private CompletableFuture<Chat> getChatState(FileWrapper chatRoot) {

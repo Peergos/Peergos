@@ -220,6 +220,11 @@ public class MultiUserTests {
     }
 
     @Test
+    public void concurrentChatMerges() {
+        PeergosNetworkUtils.concurrentChatMerges(network, random);
+    }
+
+    @Test
     public void chatLeaveAndDelete() {
         PeergosNetworkUtils.memberLeaveAndDeleteChat(network, random);
     }
@@ -245,7 +250,7 @@ public class MultiUserTests {
                 (u1, dirToShare, usersToAdd) ->
                         u1.shareReadAccessWith(dirToShare, usersToAdd);
 
-        TriFunction<UserContext, Path, Set<String>, CompletableFuture<Boolean>> unshareFunction =
+        TriFunction<UserContext, Path, Set<String>, CompletableFuture<Snapshot>> unshareFunction =
                 (u1, dirToShare, usersToRemove) -> u1.unShareReadAccessWith(dirToShare, usersToRemove);
 
         TriFunction<UserContext, Path, FileSharedWithState, Integer> resultFunc =
@@ -259,7 +264,7 @@ public class MultiUserTests {
         TriFunction<UserContext, Path, Set<String>, CompletableFuture<Boolean>> shareFunction =
                 (u1, dirToShare, usersToAdd) ->
                         u1.shareWriteAccessWith(dirToShare, usersToAdd);
-        TriFunction<UserContext, Path, Set<String>, CompletableFuture<Boolean>> unshareFunction =
+        TriFunction<UserContext, Path, Set<String>, CompletableFuture<Snapshot>> unshareFunction =
                 (u1, dirToShare, usersToRemove) ->
                         u1.unShareWriteAccessWith(dirToShare, usersToRemove);
         TriFunction<UserContext, Path, FileSharedWithState, Integer> resultFunc =

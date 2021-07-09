@@ -1749,6 +1749,46 @@ public class PeergosNetworkUtils {
         Assert.assertTrue(recentA.size() > 0);
     }
 
+    public static void concurrentChatMerges(NetworkAccess network, Random random) {
+        CryptreeNode.setMaxChildLinkPerBlob(10);
+
+        String password = "notagoodone";
+
+        UserContext a = PeergosNetworkUtils.ensureSignedUp("a-" + generateUsername(random), password, network, crypto);
+        UserContext b = PeergosNetworkUtils.ensureSignedUp("b-" + generateUsername(random), password, network, crypto);
+
+        // friend sharer with others
+        friendBetweenGroups(Arrays.asList(a), Arrays.asList(b));
+
+        Messenger msgA = new Messenger(a);
+        ChatController controllerA = msgA.createChat().join();
+        controllerA = msgA.invite(controllerA, Arrays.asList(b.username), Arrays.asList(b.signer.publicKeyHash)).join();
+
+        Pair<Messenger, ChatController> bInit = joinChat(b);
+        Messenger msgB = bInit.left;
+        ChatController controllerB = bInit.right;
+
+        controllerA = msgA.mergeAllUpdates(controllerA, a.getSocialState().join()).join();
+
+        ApplicationMessage msg1 = ApplicationMessage.text("G'day mate!");
+        ApplicationMessage msg2 = ApplicationMessage.text("G'day again!");
+        controllerA = msgA.sendMessage(controllerA, msg1).join();
+        controllerA = msgA.sendMessage(controllerA, msg2).join();
+
+        // B merges ne messages concurrently in two places
+        UserContext b2 = PeergosNetworkUtils.ensureSignedUp(b.username, password, network.clear(), crypto);
+        Messenger msgB2 = new Messenger(b2);
+        ChatController controllerB2 = msgB2.getChat(controllerB.chatUuid).join();
+        ForkJoinPool.commonPool().submit(() -> {
+            msgB2.mergeMessages(controllerB2, a.username).join();
+        });
+
+        controllerB = msgB.mergeMessages(controllerB, a.username).join();
+        List<MessageEnvelope> messages = controllerB.getMessages(0, 20).join();
+        int msgCount = messages.stream().filter(m -> m.payload.equals(msg1)).collect(Collectors.toList()).size();
+        Assert.assertEquals(1, msgCount);
+    }
+
     private static Pair<Messenger, ChatController> joinChat(UserContext c) {
         List<Pair<SharedItem, FileWrapper>> feed = c.getSocialFeed().join().update().join().getSharedFiles(0, 10).join();
         FileWrapper chatSharedDir = feed.stream()
@@ -1977,7 +2017,7 @@ public class PeergosNetworkUtils {
 
     public static void groupAwareSharing(NetworkAccess network, Random random,
                                          TriFunction<UserContext, Path, Set<String>, CompletableFuture<Boolean>> shareFunction,
-                                         TriFunction<UserContext, Path, Set<String>, CompletableFuture<Boolean>> unshareFunction,
+                                         TriFunction<UserContext, Path, Set<String>, CompletableFuture<Snapshot>> unshareFunction,
                                          TriFunction<UserContext, Path, FileSharedWithState, Integer> resultFunc) {
         CryptreeNode.setMaxChildLinkPerBlob(10);
         String password = "notagoodone";
@@ -2135,7 +2175,7 @@ public class PeergosNetworkUtils {
     public static void followBetweenGroups(List<UserContext> sharers, List<UserContext> followers) {
         for (UserContext userA : sharers) {
             for (UserContext userB : followers) {
-                // send intial request
+                // send initial request
                 userB.sendFollowRequest(userA.username, SymmetricKey.random()).join();
 
                 // make sharer reciprocate all the follow requests

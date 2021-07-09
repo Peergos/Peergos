@@ -1150,15 +1150,15 @@ public class FileWrapper {
                 .thenCompose(version -> getUpdated(version, network));
     }
 
-    private CompletableFuture<Snapshot> mkdir(String newFolderName,
-                                              Optional<SymmetricKey> requestedBaseReadKey,
-                                              Optional<SymmetricKey> requestedBaseWriteKey,
-                                              Optional<byte[]> desiredMapKey,
-                                              boolean isSystemFolder,
-                                              NetworkAccess network,
-                                              Crypto crypto,
-                                              Snapshot version,
-                                              Committer committer) {
+    public CompletableFuture<Snapshot> mkdir(String newFolderName,
+                                             Optional<SymmetricKey> requestedBaseReadKey,
+                                             Optional<SymmetricKey> requestedBaseWriteKey,
+                                             Optional<byte[]> desiredMapKey,
+                                             boolean isSystemFolder,
+                                             NetworkAccess network,
+                                             Crypto crypto,
+                                             Snapshot version,
+                                             Committer committer) {
 
         if (!this.isDirectory()) {
             return Futures.errored(new IllegalStateException("Cannot mkdir in a file!"));
@@ -1197,7 +1197,7 @@ public class FileWrapper {
                 .thenApply(p -> p.right);
     }
 
-    private CompletableFuture<Pair<Snapshot, FileWrapper>> getOrMkdirs(List<String> subPath,
+    public CompletableFuture<Pair<Snapshot, FileWrapper>> getOrMkdirs(List<String> subPath,
                                                                       boolean isSystemFolder,
                                                                       NetworkAccess network,
                                                                       Crypto crypto,
@@ -1280,11 +1280,11 @@ public class FileWrapper {
                                     entryWriter, newProps, userContext.network)
                                     .thenCompose(updated -> parent.updateChildLinks(updated, committer,
                                             Arrays.asList(new Pair<>(us, new NamedAbsoluteCapability(newFilename, us))),
-                                            userContext.network, userContext.crypto.random, userContext.crypto.hasher)))
-                            .thenCompose(newVersion -> parent.getUpdated(newVersion, userContext.network));
-                }).thenCompose(f -> userContext.sharedWithCache
-                        .rename(ourPath, ourPath.getParent().resolve(newFilename))
-                        .thenApply(b -> f));
+                                            userContext.network, userContext.crypto.random, userContext.crypto.hasher))
+                            .thenCompose(v -> userContext.sharedWithCache
+                                    .rename(ourPath, ourPath.getParent().resolve(newFilename), v, committer))
+                    ).thenCompose(newVersion -> parent.getUpdated(newVersion, userContext.network));
+                });
     }
 
     public CompletableFuture<Boolean> setProperties(FileProperties updatedProperties,
@@ -1572,8 +1572,8 @@ public class FileWrapper {
                                                 writableFilePointer(),
                                         writableParent ?
                                                 parent.signingPair() :
-                                                signingPair(), tid, hasher, network, version, committer), network.dhtClient))
-                                .thenCompose(b -> userContext.sharedWithCache.clearSharedWith(ourPath))
+                                                signingPair(), tid, hasher, network, version, committer), network.dhtClient)
+                                .thenCompose(s -> userContext.sharedWithCache.clearSharedWith(ourPath, s, committer)))
                                 .thenApply(b -> updatedParent)
                 );
     }
