@@ -1084,8 +1084,10 @@ public class UserContext {
                     return Futures.reduceAll(g.uidToGroupName.entrySet(), true,
                             (b, e) -> getUserRoot()
                                     .thenCompose(home -> home.getOrMkdirs(Paths.get(SHARED_DIR_NAME, e.getKey()), network, true, crypto))
-                                    .thenCompose(x -> shareReadAccessWith(Paths.get(username, SHARED_DIR_NAME, e.getKey()),
-                                            e.getValue().equals(SocialState.FOLLOWERS_GROUP_NAME) ? followers : friends))
+                                    .thenCompose(x -> getUserRoot()
+                                            .thenCompose(home -> network.synchronizer.applyComplexUpdate(signer.publicKeyHash, home.signingPair(),
+                                                    (s, c) -> shareReadAccessWith(Paths.get(username, SHARED_DIR_NAME, e.getKey()),
+                                                            e.getValue().equals(SocialState.FOLLOWERS_GROUP_NAME) ? followers : friends, s, c))))
                                     .thenApply(x -> true),
                             (a, b) -> a && b);
                 }));
@@ -1224,7 +1226,7 @@ public class UserContext {
                     getGroupUid(SocialState.FRIENDS_GROUP_NAME)
                             .thenCompose(friendsUidOpt -> shareReadAccessWith(Paths.get(username,
                                     SHARED_DIR_NAME, friendsUidOpt.get()), Collections.singleton(theirUsername))): // put them in our friends group
-                    Futures.of(true))
+                    Futures.of(null))
                     .thenCompose(x -> getPublicKeys(initialRequest.entry.get().ownerName))
                     .thenCompose(pair -> {
                         PublicBoxingKey targetUser = pair.get().right;
@@ -1433,8 +1435,8 @@ public class UserContext {
                                         parent.get().signingPair(), (s, c) -> rotateAllKeys(toUnshare, parent.get(), false, s, c)
                                         .thenCompose(markedDirty -> {
                                             return sharedWithCache.removeSharedWith(SharedWithCache.Access.READ, path, readersToRemove, markedDirty, c)
-                                                    .thenCompose(s2 -> reSendAllWriteAccessRecursive(path)
-                                                            .thenCompose(b -> reSendAllReadAccessRecursive(path)).thenApply(x -> s2));
+                                                    .thenCompose(s2 -> reSendAllWriteAccessRecursive(path, s2, c)
+                                                            .thenCompose(s3 -> reSendAllReadAccessRecursive(path, s3, c)));
                                         })));
                     });
                 });
@@ -1480,9 +1482,8 @@ public class UserContext {
                                             .thenCompose(s2 ->
                                                     sharedWithCache.removeSharedWith(SharedWithCache.Access.WRITE,
                                                             path, writersToRemove, s2, c))
-                                                    .thenCompose(s3 -> reSendAllWriteAccessRecursive(path)
-                                                            .thenCompose(b -> reSendAllReadAccessRecursive(path))
-                                                            .thenApply( x -> s3)));
+                                                    .thenCompose(s3 -> reSendAllWriteAccessRecursive(path, s3, c)
+                                                            .thenCompose(s4 -> reSendAllReadAccessRecursive(path, s4, c))));
                                 });
                     });
                 });
@@ -1502,21 +1503,26 @@ public class UserContext {
     }
 
     @JsMethod
-    public CompletableFuture<Boolean> shareReadAccessWithFriends(Path path) {
+    public CompletableFuture<Snapshot> shareReadAccessWithFriends(Path path) {
         return getSocialState()
                 .thenApply(s -> s.getFriendsGroupUid())
                 .thenCompose(friendsGroupUid -> getByPath(path.toString())
-                        .thenCompose(file -> shareReadAccessWith(file.orElseThrow(() ->
-                                new IllegalStateException("Could not find path " + path.toString())), path, Collections.singleton(friendsGroupUid))));
+                        .thenCompose(file -> getUserRoot()
+                                .thenCompose(home -> network.synchronizer.applyComplexUpdate(signer.publicKeyHash, home.signingPair(),
+                                        (s, c) -> shareReadAccessWith(file.orElseThrow(() ->
+                                new IllegalStateException("Could not find path " + path)), path, Collections.singleton(friendsGroupUid), s, c)))));
     }
 
     @JsMethod
-    public CompletableFuture<Boolean> shareReadAccessWithFollowers(Path path) {
+    public CompletableFuture<Snapshot> shareReadAccessWithFollowers(Path path) {
         return getSocialState()
                 .thenApply(s -> s.getFollowersGroupUid())
                 .thenCompose(followersGroupUid -> getByPath(path.toString())
-                        .thenCompose(file -> shareReadAccessWith(file.orElseThrow(() ->
-                                new IllegalStateException("Could not find path " + path.toString())), path, Collections.singleton(followersGroupUid))));
+                        .thenCompose(file -> getUserRoot()
+                                .thenCompose(home -> network.synchronizer.applyComplexUpdate(signer.publicKeyHash, home.signingPair(),
+                                        (s, c) -> shareReadAccessWith(file.orElseThrow(() ->
+                                                new IllegalStateException("Could not find path " + path.toString())),
+                                                path, Collections.singleton(followersGroupUid),s , c)))));
     }
 
     /*
@@ -1551,65 +1557,69 @@ public class UserContext {
     }
 
     @JsMethod
-    public CompletableFuture<Boolean> shareReadAccessWith(Path path, Set<String> readersToAdd) {
+    public CompletableFuture<Snapshot> shareReadAccessWith(Path path, Set<String> readersToAdd) {
+        return getUserRoot()
+                .thenCompose(home -> network.synchronizer.applyComplexUpdate(signer.publicKeyHash, home.signingPair(),
+                        (s, c) -> shareReadAccessWith(path, readersToAdd, s, c)));
+    }
+
+    public CompletableFuture<Snapshot> shareReadAccessWith(Path path, Set<String> readersToAdd, Snapshot s, Committer c) {
         if (readersToAdd.isEmpty())
-            return Futures.of(true);
+            return Futures.of(s);
 
-        return getByPath(path.toString())
+        return getByPath(path.toString(), s)
                 .thenCompose(file -> shareReadAccessWith(file.orElseThrow(() ->
-                        new IllegalStateException("Could not find path " + path.toString())), path, readersToAdd));
+                        new IllegalStateException("Could not find path " + path)), path, readersToAdd, s, c));
     }
 
-    public CompletableFuture<Boolean> reSendAllWriteAccessRecursive(Path start) {
-        return sharedWithCache.getAllWriteShares(start)
+    public CompletableFuture<Snapshot> reSendAllWriteAccessRecursive(Path start, Snapshot in, Committer c) {
+        return sharedWithCache.getAllWriteShares(start, in)
                 .thenCompose(toReshare -> Futures.reduceAll(toReshare.entrySet(),
-                        true,
-                        (b, e) -> sendWriteCapToAll(e.getKey(), e.getValue()),
-                        (a, b) -> a));
+                        in,
+                        (s, e) -> sendWriteCapToAll(e.getKey(), e.getValue(), s, c),
+                        (a, b) -> b));
     }
 
-    public CompletableFuture<Boolean> reSendAllReadAccessRecursive(Path start) {
-        return sharedWithCache.getAllReadShares(start)
+    public CompletableFuture<Snapshot> reSendAllReadAccessRecursive(Path start, Snapshot in, Committer c) {
+        return sharedWithCache.getAllReadShares(start, in)
                 .thenCompose(toReshare -> Futures.reduceAll(toReshare.entrySet(),
-                        true,
-                        (b, e) -> shareReadAccessWith(e.getKey(), e.getValue()),
-                        (a, b) -> a));
+                        in,
+                        (s, e) -> shareReadAccessWith(e.getKey(), e.getValue(), s, c),
+                        (a, b) -> b));
     }
 
-    private CompletableFuture<Boolean> shareReadAccessWith(FileWrapper file, Path p, Set<String> readersToAdd) {
+    private CompletableFuture<Snapshot> shareReadAccessWith(FileWrapper file,
+                                                            Path p,
+                                                            Set<String> readersToAdd,
+                                                            Snapshot in,
+                                                            Committer c) {
         ensureAllowedToShare(file, username, false);
-        BiFunction<FileWrapper, FileWrapper, CompletableFuture<Boolean>> sharingFunction = (sharedDir, fileWrapper) ->
+        BiFunction<FileWrapper, FileWrapper, CompletableFuture<Snapshot>> sharingFunction = (sharedDir, fileWrapper) ->
                 CapabilityStore.addReadOnlySharingLinkTo(sharedDir, fileWrapper.getPointer().capability,
-                        network, crypto)
-                        .thenCompose(ee -> CompletableFuture.completedFuture(true));
+                        c, network, crypto);
         return Futures.reduceAll(readersToAdd,
-                true,
-                (x, username) -> shareAccessWith(file, username, sharingFunction),
-                (a, b) -> a && b).thenCompose(result -> {
-            if (!result) {
-                return Futures.of(false);
-            }
-            return updatedSharedWithCache(file, p, readersToAdd, SharedWithCache.Access.READ);
-        });
+                in,
+                (s, username) -> shareAccessWith(file, username, sharingFunction, s),
+                (a, b) -> a.mergeAndOverwriteWith(b))
+                .thenCompose(result -> updatedSharedWithCache(file, p, readersToAdd, SharedWithCache.Access.READ, result, c));
     }
 
     @JsMethod
-    public CompletableFuture<Boolean> shareWriteAccessWith(Path fileToShare,
-                                                               Set<String> writersToAdd) {
+    public CompletableFuture<Snapshot> shareWriteAccessWith(Path fileToShare,
+                                                            Set<String> writersToAdd) {
         return getByPath(fileToShare.getParent())
                 .thenCompose(parentOpt -> ! parentOpt.isPresent() ?
                                 Futures.errored(new IllegalStateException("Unable to read " + fileToShare.getParent())) :
                 parentOpt.get().getChild(fileToShare.getFileName().toString(), crypto.hasher, network)
                         .thenCompose(fileOpt -> ! fileOpt.isPresent() ?
                                 Futures.errored(new IllegalStateException("Unable to read " + fileToShare)) :
-                                shareWriteAccessWith(fileOpt.get(), fileToShare, parentOpt.get(), writersToAdd)
-                                        .thenApply(x -> true)));
+                                shareWriteAccessWith(fileOpt.get(), fileToShare, parentOpt.get(), writersToAdd)));
     }
 
     private CompletableFuture<Snapshot> shareWriteAccessWith(FileWrapper file,
-                                                              Path pathToFile,
-                                                              FileWrapper parent,
-                                                              Set<String> writersToAdd) {
+                                                             Path pathToFile,
+                                                             FileWrapper parent,
+                                                             Set<String> writersToAdd) {
         // There are 2 situations:
         // a) file already has a different signing key than parent,
         //    in which case, just share a write cap
@@ -1627,66 +1637,64 @@ public class UserContext {
         if (! changeSigner) {
             return network.synchronizer.applyComplexUpdate(signer.publicKeyHash,
                     parent.signingPair(), (s, c) -> sharedWithCache.addSharedWith(SharedWithCache.Access.WRITE, pathToFile, writersToAdd, s, c)
-                    .thenCompose(s2 -> sendWriteCapToAll(pathToFile, writersToAdd).thenApply(x -> s2)));
+                    .thenCompose(s2 -> sendWriteCapToAll(pathToFile, writersToAdd, s2, c)));
         }
 
         return network.synchronizer.applyComplexUpdate(signer.publicKeyHash,
-                parent.signingPair(), (s, c) -> rotateAllKeys(file, parent, true, s, c)
+                file.signingPair(), (s, c) -> rotateAllKeys(file, parent, true, s, c)
                         .thenCompose(s2 -> getByPath(pathToFile.toString(), s2)
                                 .thenCompose(newFileOpt -> sharedWithCache
                                         .addSharedWith(SharedWithCache.Access.WRITE, pathToFile, writersToAdd, s2, c))
-                                .thenCompose(s3 -> reSendAllWriteAccessRecursive(pathToFile)
-                                        .thenCompose(b -> reSendAllReadAccessRecursive(pathToFile))
-                                        .thenApply(x -> s3))
+                                .thenCompose(s3 -> reSendAllWriteAccessRecursive(pathToFile, s3, c)
+                                        .thenCompose(s4 -> reSendAllReadAccessRecursive(pathToFile, s4, c)))
                         ));
     }
 
-    public CompletableFuture<Boolean> sendWriteCapToAll(Path toFile, Set<String> writersToAdd) {
+    public CompletableFuture<Snapshot> sendWriteCapToAll(Path toFile, Set<String> writersToAdd, Snapshot s, Committer c) {
         if (writersToAdd.isEmpty())
-            return Futures.of(true);
+            return Futures.of(s);
 
         System.out.println("Resharing WRITE cap to " + toFile + " with " + writersToAdd);
-        return getByPath(toFile.getParent())
-                .thenCompose(parent -> getByPath(toFile)
-                        .thenCompose(fileOpt -> fileOpt.map(file -> sendWriteCapToAll(file, parent.get(), toFile, writersToAdd))
+        return getByPath(toFile.getParent().toString(), s)
+                .thenCompose(parent -> getByPath(toFile.toString(), s)
+                        .thenCompose(fileOpt -> fileOpt.map(file -> sendWriteCapToAll(file, parent.get(), toFile, writersToAdd, s, c))
                                 .orElseGet(() -> Futures.errored(
                                         new IllegalStateException("Couldn't retrieve file at " + toFile)))));
     }
 
-    public CompletableFuture<Boolean> sendWriteCapToAll(FileWrapper file,
-                                                        FileWrapper parent,
-                                                        Path pathToFile,
-                                                        Set<String> writersToAdd) {
+    public CompletableFuture<Snapshot> sendWriteCapToAll(FileWrapper file,
+                                                         FileWrapper parent,
+                                                         Path pathToFile,
+                                                         Set<String> writersToAdd,
+                                                         Snapshot in,
+                                                         Committer c) {
         if (parent.writer().equals(file.writer()))
             return Futures.errored(
                     new IllegalStateException("A file must have different writer than its parent to grant write access!"));
-        BiFunction<FileWrapper, FileWrapper, CompletableFuture<Boolean>> sharingFunction =
+        BiFunction<FileWrapper, FileWrapper, CompletableFuture<Snapshot>> sharingFunction =
                 (sharedDir, fileToShare) -> CapabilityStore.addEditSharingLinkTo(sharedDir,
-                        file.writableFilePointer(), network, crypto)
-                        .thenCompose(ee -> CompletableFuture.completedFuture(true));
+                        file.writableFilePointer(), c, network, crypto);
         return Futures.reduceAll(writersToAdd,
-                true,
-                (x, username) -> shareAccessWith(file, username, sharingFunction),
-                (a, b) -> a && b).thenCompose(result -> {
-            if (!result) {
-                return Futures.of(false);
-            }
-            return updatedSharedWithCache(file, pathToFile, writersToAdd, SharedWithCache.Access.WRITE);
-        });
+                in,
+                (s, username) -> shareAccessWith(file, username, sharingFunction, s),
+                (a, b) -> a.mergeAndOverwriteWith(b))
+                .thenCompose(result -> updatedSharedWithCache(file, pathToFile, writersToAdd, SharedWithCache.Access.WRITE, result, c));
     }
 
-    private CompletableFuture<Boolean> updatedSharedWithCache(FileWrapper file,
-                                                              Path pathToFile,
-                                                              Set<String> usersToAdd,
-                                                              SharedWithCache.Access access) {
-        return getUserRoot().thenCompose(home -> network.synchronizer.applyComplexUpdate(signer.publicKeyHash, home.signingPair(),
-                (s, c) -> sharedWithCache.addSharedWith(access, pathToFile, usersToAdd, s, c)))
-                .thenApply(x -> true);
+    private CompletableFuture<Snapshot> updatedSharedWithCache(FileWrapper file,
+                                                               Path pathToFile,
+                                                               Set<String> usersToAdd,
+                                                               SharedWithCache.Access access,
+                                                               Snapshot s,
+                                                               Committer c) {
+        return sharedWithCache.addSharedWith(access, pathToFile, usersToAdd, s, c);
     }
 
-    public CompletableFuture<Boolean> shareAccessWith(FileWrapper file, String usernameToGrantAccess,
-                                                      BiFunction<FileWrapper, FileWrapper, CompletableFuture<Boolean>> sharingFunction) {
-        return getByPath("/" + username + "/shared/" + usernameToGrantAccess)
+    public CompletableFuture<Snapshot> shareAccessWith(FileWrapper file,
+                                                       String usernameToGrantAccess,
+                                                       BiFunction<FileWrapper, FileWrapper, CompletableFuture<Snapshot>> sharingFunction,
+                                                       Snapshot s) {
+        return getByPath("/" + username + "/shared/" + usernameToGrantAccess, s)
                 .thenCompose(shared -> {
                     if (!shared.isPresent())
                         return Futures.errored(new IllegalStateException("Unknown recipient for sharing: " + usernameToGrantAccess));

@@ -199,8 +199,9 @@ public class SharedWithCache {
         return p.getName(p.getNameCount() - 1).toString();
     }
 
-    public CompletableFuture<Map<Path, SharedWithState>> getAllDescendantShares(Path start) {
-        return base.getDescendentByPath(toRelative(start.getParent()).toString(), crypto.hasher, network)
+    public CompletableFuture<Map<Path, SharedWithState>> getAllDescendantShares(Path start, Snapshot s) {
+        return base.getUpdated(base.version.mergeAndOverwriteWith(s), network)
+                .thenCompose(freshBase -> freshBase.getDescendentByPath(toRelative(start.getParent()).toString(), crypto.hasher, network))
                 .thenCompose(opt -> {
                     if (opt.isEmpty())
                         return Futures.of(Collections.emptyMap());
@@ -243,8 +244,8 @@ public class SharedWithCache {
                         .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue())));
     }
 
-    public CompletableFuture<Map<Path, Set<String>>> getAllReadShares(Path start) {
-        return getAllDescendantShares(start)
+    public CompletableFuture<Map<Path, Set<String>>> getAllReadShares(Path start, Snapshot s) {
+        return getAllDescendantShares(start, s)
                 .thenApply(m -> m.entrySet().stream()
                         .flatMap(e -> e.getValue().readShares().entrySet()
                                 .stream()
@@ -252,8 +253,8 @@ public class SharedWithCache {
                         .collect(Collectors.toMap(p -> p.left, p -> p.right)));
     }
 
-    public CompletableFuture<Map<Path, Set<String>>> getAllWriteShares(Path start) {
-        return getAllDescendantShares(start)
+    public CompletableFuture<Map<Path, Set<String>>> getAllWriteShares(Path start, Snapshot s) {
+        return getAllDescendantShares(start, s)
                 .thenApply(m -> m.entrySet().stream()
                         .flatMap(e -> e.getValue().writeShares().entrySet()
                                 .stream()

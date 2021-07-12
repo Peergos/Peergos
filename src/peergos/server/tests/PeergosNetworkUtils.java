@@ -230,7 +230,7 @@ public class PeergosNetworkUtils {
         Pair<Path, FileWrapper> result = receiverFeed.createNewPost(replySocialPost).join();
         String friendGroup = SocialState.FRIENDS_GROUP_NAME;
         String receiverGroupUid = sharee.getSocialState().join().groupNameToUid.get(friendGroup);
-        Boolean res = sharee.shareReadAccessWith(result.left, Set.of(receiverGroupUid)).join();
+        sharee.shareReadAccessWith(result.left, Set.of(receiverGroupUid)).join();
 
         //now sharer should see the reply
         SocialFeed feed = sharer.getSocialFeed().join().update().join();
@@ -618,7 +618,7 @@ public class PeergosNetworkUtils {
                 .collect(Collectors.toSet());
 
         // file is uploaded, do the actual sharing
-        boolean finished = sharer.shareReadAccessWith(Paths.get(path),
+        sharer.shareReadAccessWith(Paths.get(path),
                 shareeUsers.stream()
                         .map(c -> c.username)
                         .collect(Collectors.toSet())).get();
@@ -735,9 +735,9 @@ public class PeergosNetworkUtils {
         }
 
         // file is uploaded, do the actual sharing
-        boolean finished = sharer.shareWriteAccessWith(Paths.get(path), shareeUsers.stream()
+        sharer.shareWriteAccessWith(Paths.get(path), shareeUsers.stream()
                 .map(c -> c.username)
-                .collect(Collectors.toSet())).get();
+                .collect(Collectors.toSet())).join();
 
         // upload a image
         String imagename = "small.png";
@@ -1423,7 +1423,7 @@ public class PeergosNetworkUtils {
         String groupUid = state.groupNameToUid.get(friendGroup);
         // was Set.of(groupUid)
         //boolean res = sharer.shareReadAccessWith(result.left, Set.of(sharee.username)).join();
-        boolean res = sharer.shareReadAccessWith(result.left, Set.of(groupUid)).join();
+        sharer.shareReadAccessWith(result.left, Set.of(groupUid)).join();
 
         SocialFeed receiverFeed = sharee.getSocialFeed().join().update().join();
         List<Pair<SharedItem, FileWrapper>> files = receiverFeed.getSharedFiles(0, 100).join();
@@ -1445,7 +1445,7 @@ public class PeergosNetworkUtils {
         SocialPost replySocialPost = SocialPost.createComment(parent, resharingType, sharee.username, Arrays.asList(new Text(replyText)));
         result = receiverFeed.createNewPost(replySocialPost).join();
         String receiverGroupUid = sharee.getSocialState().join().groupNameToUid.get(friendGroup);
-        res = sharee.shareReadAccessWith(result.left, Set.of(receiverGroupUid)).join();
+        sharee.shareReadAccessWith(result.left, Set.of(receiverGroupUid)).join();
 
         //now sharer should see the reply
         sharer = UserContext.signIn(sharer.username, password, sharer.network, sharer.crypto, c -> {}).join();
@@ -1480,7 +1480,7 @@ public class PeergosNetworkUtils {
         String friendGroup = SocialState.FRIENDS_GROUP_NAME;
         SocialState state = sharer.getSocialState().join();
         String groupUid = state.groupNameToUid.get(friendGroup);
-        boolean res = sharer.shareReadAccessWith(result.left, Set.of(groupUid)).join();
+        sharer.shareReadAccessWith(result.left, Set.of(groupUid)).join();
 
         SocialFeed receiverFeed = sharee.getSocialFeed().join().update().join();
         List<Pair<SharedItem, FileWrapper>> files = receiverFeed.getSharedFiles(0, 100).join();
@@ -1499,7 +1499,7 @@ public class PeergosNetworkUtils {
                 Arrays.asList(new Text(replyText)));
         result = receiverFeed.createNewPost(replySocialPost).join();
         String receiverGroupUid = sharee.getSocialState().join().groupNameToUid.get(friendGroup);
-        res = sharee.shareReadAccessWith(result.left, Set.of(receiverGroupUid)).join();
+        sharee.shareReadAccessWith(result.left, Set.of(receiverGroupUid)).join();
 
         //now sharer should see the reply
         feed = sharer.getSocialFeed().join().update().join();
@@ -2016,7 +2016,7 @@ public class PeergosNetworkUtils {
     }
 
     public static void groupAwareSharing(NetworkAccess network, Random random,
-                                         TriFunction<UserContext, Path, Set<String>, CompletableFuture<Boolean>> shareFunction,
+                                         TriFunction<UserContext, Path, Set<String>, CompletableFuture<Snapshot>> shareFunction,
                                          TriFunction<UserContext, Path, Set<String>, CompletableFuture<Snapshot>> unshareFunction,
                                          TriFunction<UserContext, Path, FileSharedWithState, Integer> resultFunc) {
         CryptreeNode.setMaxChildLinkPerBlob(10);
@@ -2110,10 +2110,10 @@ public class PeergosNetworkUtils {
         System.out.println("PATH "+ path);
 
         // file is uploaded, do the actual sharing
-        boolean finished = sharer.shareWriteAccessWith(Paths.get(path),
+        sharer.shareWriteAccessWith(Paths.get(path),
                 shareeUsers.stream()
                         .map(c -> c.username)
-                        .collect(Collectors.toSet())).get();
+                        .collect(Collectors.toSet())).join();
 
         // check each user can see the shared folder, and write to it
         for (UserContext sharee : shareeUsers) {

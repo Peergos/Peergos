@@ -246,7 +246,7 @@ public class MultiUserTests {
 
     @Test
     public void groupAwareSharingReadAccess() {
-        TriFunction<UserContext, Path, Set<String>, CompletableFuture<Boolean>> shareFunction =
+        TriFunction<UserContext, Path, Set<String>, CompletableFuture<Snapshot>> shareFunction =
                 (u1, dirToShare, usersToAdd) ->
                         u1.shareReadAccessWith(dirToShare, usersToAdd);
 
@@ -261,7 +261,7 @@ public class MultiUserTests {
 
     @Test
     public void groupAwareSharingWriteAccess() {
-        TriFunction<UserContext, Path, Set<String>, CompletableFuture<Boolean>> shareFunction =
+        TriFunction<UserContext, Path, Set<String>, CompletableFuture<Snapshot>> shareFunction =
                 (u1, dirToShare, usersToAdd) ->
                         u1.shareWriteAccessWith(dirToShare, usersToAdd);
         TriFunction<UserContext, Path, Set<String>, CompletableFuture<Snapshot>> unshareFunction =
@@ -275,7 +275,7 @@ public class MultiUserTests {
 
     @Test
     public void safeCopyOfFriendsReadAccess() throws Exception {
-        TriFunction<UserContext, UserContext, String, CompletableFuture<Boolean>> readAccessSharingFunction =
+        TriFunction<UserContext, UserContext, String, CompletableFuture<Snapshot>> readAccessSharingFunction =
                 (u1, u2, filename) ->
         u1.shareReadAccessWith(Paths.get(u1.username, filename), Collections.singleton(u2.username));
         safeCopyOfFriends(readAccessSharingFunction);
@@ -283,13 +283,13 @@ public class MultiUserTests {
 
     @Test
     public void safeCopyOfFriendsWriteAccess() throws Exception {
-        TriFunction<UserContext, UserContext, String, CompletableFuture<Boolean>> writeAccessSharingFunction =
+        TriFunction<UserContext, UserContext, String, CompletableFuture<Snapshot>> writeAccessSharingFunction =
                 (u1, u2, filename) ->
                         u1.shareWriteAccessWith(Paths.get(u1.username, filename), Collections.singleton(u2.username));
         safeCopyOfFriends(writeAccessSharingFunction);
     }
 
-    private void safeCopyOfFriends(TriFunction<UserContext, UserContext, String, CompletableFuture<Boolean>> sharingFunction) throws Exception {
+    private void safeCopyOfFriends(TriFunction<UserContext, UserContext, String, CompletableFuture<Snapshot>> sharingFunction) throws Exception {
         UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
         UserContext u2 = PeergosNetworkUtils.ensureSignedUp(random(), "b", network.clear(), crypto);
 
@@ -359,7 +359,7 @@ public class MultiUserTests {
 
     @Test
     public void shareTwoFilesWithSameNameReadAccess() throws Exception {
-        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> readAccessSharingFunction =
+        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Snapshot>> readAccessSharingFunction =
                 (u1, userContexts, path) ->
                         u1.shareReadAccessWith(path, userContexts.stream().map(u -> u.username).collect(Collectors.toSet()));
         shareTwoFilesWithSameName(readAccessSharingFunction);
@@ -367,13 +367,13 @@ public class MultiUserTests {
 
     @Test
     public void shareTwoFilesWithSameNameWriteAccess() throws Exception {
-        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> writeAccessSharingFunction =
+        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Snapshot>> writeAccessSharingFunction =
                 (u1, userContexts, path) ->
                         u1.shareWriteAccessWith(path, userContexts.stream().map(u -> u.username).collect(Collectors.toSet()));
         shareTwoFilesWithSameName(writeAccessSharingFunction);
     }
 
-    private void shareTwoFilesWithSameName(TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> sharingFunction) throws Exception {
+    private void shareTwoFilesWithSameName(TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Snapshot>> sharingFunction) throws Exception {
         UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
 
         // send follow requests from each other user to u1
@@ -508,20 +508,20 @@ public class MultiUserTests {
     @Test
     public void renamedFileSharedWith() throws Exception {
         //read access
-        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> readAccessSharingFunction =
+        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Snapshot>> readAccessSharingFunction =
                 (u1, u2List, filePath) ->
                         u1.shareReadAccessWith(filePath, u2List.stream().map(u -> u.username).collect(Collectors.toSet()));
 
         renamedFileSharedWith(readAccessSharingFunction, SharedWithCache.Access.READ);
         //write access
-        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> writeAccessSharingFunction =
+        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Snapshot>> writeAccessSharingFunction =
                 (u1, u2List, filePath) ->
                         u1.shareWriteAccessWith(filePath, u2List.stream().map(u -> u.username).collect(Collectors.toSet()));
         renamedFileSharedWith(writeAccessSharingFunction, SharedWithCache.Access.WRITE);
     }
 
     private void renamedFileSharedWith(
-            TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> shareFunction,
+            TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Snapshot>> shareFunction,
             SharedWithCache.Access sharedWithAccess)
             throws Exception {
         UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
@@ -570,20 +570,20 @@ public class MultiUserTests {
     @Test
     public void renamedDirectorySharedWith() throws Exception {
         //read access
-        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> readAccessSharingFunction =
+        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Snapshot>> readAccessSharingFunction =
                 (u1, u2List, filePath) ->
                         u1.shareReadAccessWith(filePath, u2List.stream().map(u -> u.username).collect(Collectors.toSet()));
 
         renamedDirectorySharedWith(readAccessSharingFunction, SharedWithCache.Access.READ);
         //write access
-        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> writeAccessSharingFunction =
+        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Snapshot>> writeAccessSharingFunction =
                 (u1, u2List, filePath) ->
                         u1.shareWriteAccessWith(filePath, u2List.stream().map(u -> u.username).collect(Collectors.toSet()));
         renamedDirectorySharedWith(writeAccessSharingFunction, SharedWithCache.Access.WRITE);
     }
 
     private void renamedDirectorySharedWith(
-            TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> shareFunction,
+            TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Snapshot>> shareFunction,
             SharedWithCache.Access sharedWithAccess)
             throws Exception {
         UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
@@ -625,20 +625,20 @@ public class MultiUserTests {
     @Test
     public void copyToFileSharedWith() throws Exception {
         //read access
-        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> readAccessSharingFunction =
+        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Snapshot>> readAccessSharingFunction =
                 (u1, u2List, filePath) ->
                         u1.shareReadAccessWith(filePath, u2List.stream().map(u -> u.username).collect(Collectors.toSet()));
 
         copyToFileSharedWith(readAccessSharingFunction, SharedWithCache.Access.READ);
         //write access
-        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> writeAccessSharingFunction =
+        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Snapshot>> writeAccessSharingFunction =
                 (u1, u2List, filePath) ->
                         u1.shareWriteAccessWith(filePath, u2List.stream().map(u -> u.username).collect(Collectors.toSet()));
         copyToFileSharedWith(writeAccessSharingFunction, SharedWithCache.Access.WRITE);
     }
 
     private void copyToFileSharedWith(
-            TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> shareFunction,
+            TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Snapshot>> shareFunction,
             SharedWithCache.Access sharedWithAccess)
             throws Exception {
         UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
@@ -691,20 +691,20 @@ public class MultiUserTests {
     @Test
     public void copyToDirectorySharedWith() throws Exception {
         //read access
-        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> readAccessSharingFunction =
+        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Snapshot>> readAccessSharingFunction =
                 (u1, u2List, filePath) ->
                         u1.shareReadAccessWith(filePath, u2List.stream().map(u -> u.username).collect(Collectors.toSet()));
 
         copyToDirectorySharedWith(readAccessSharingFunction, SharedWithCache.Access.READ);
         //write access
-        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> writeAccessSharingFunction =
+        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Snapshot>> writeAccessSharingFunction =
                 (u1, u2List, filePath) ->
                         u1.shareWriteAccessWith(filePath, u2List.stream().map(u -> u.username).collect(Collectors.toSet()));
         copyToDirectorySharedWith(writeAccessSharingFunction, SharedWithCache.Access.WRITE);
     }
 
     private void copyToDirectorySharedWith(
-            TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> shareFunction,
+            TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Snapshot>> shareFunction,
             SharedWithCache.Access sharedWithAccess)
             throws Exception {
         UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
@@ -750,19 +750,19 @@ public class MultiUserTests {
     public void moveToFileSharedWith()
             throws Exception {
         //read access
-        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> readAccessSharingFunction =
+        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Snapshot>> readAccessSharingFunction =
                 (u1, u2List, filePath) ->
                         u1.shareReadAccessWith(filePath, u2List.stream().map(u -> u.username).collect(Collectors.toSet()));
 
         moveToFileSharedWith(readAccessSharingFunction, SharedWithCache.Access.READ);
         //write access
-        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> writeAccessSharingFunction =
+        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Snapshot>> writeAccessSharingFunction =
                 (u1, u2List, filePath) ->
                         u1.shareWriteAccessWith(filePath, u2List.stream().map(u -> u.username).collect(Collectors.toSet()));
         moveToFileSharedWith(writeAccessSharingFunction, SharedWithCache.Access.WRITE);
     }
 
-    private void moveToFileSharedWith(TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> shareFunction,
+    private void moveToFileSharedWith(TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Snapshot>> shareFunction,
             SharedWithCache.Access sharedWithAccess)
             throws Exception {
         UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
@@ -820,19 +820,19 @@ public class MultiUserTests {
     public void moveToDirectorySharedWith()
             throws Exception {
         //read access
-        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> readAccessSharingFunction =
+        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Snapshot>> readAccessSharingFunction =
                 (u1, u2List, filePath) ->
                         u1.shareReadAccessWith(filePath, u2List.stream().map(u -> u.username).collect(Collectors.toSet()));
 
         moveToDirectorySharedWith(readAccessSharingFunction, SharedWithCache.Access.READ);
         //write access
-        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> writeAccessSharingFunction =
+        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Snapshot>> writeAccessSharingFunction =
                 (u1, u2List, filePath) ->
                         u1.shareWriteAccessWith(filePath, u2List.stream().map(u -> u.username).collect(Collectors.toSet()));
         moveToDirectorySharedWith(writeAccessSharingFunction, SharedWithCache.Access.WRITE);
     }
 
-    private void moveToDirectorySharedWith(TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Boolean>> shareFunction,
+    private void moveToDirectorySharedWith(TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Snapshot>> shareFunction,
                                       SharedWithCache.Access sharedWithAccess)
             throws Exception {
         UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);

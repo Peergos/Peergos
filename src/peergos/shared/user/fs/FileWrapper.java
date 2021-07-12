@@ -135,11 +135,13 @@ public class FileWrapper {
     }
 
     public CompletableFuture<FileWrapper> getUpdated(Snapshot version, NetworkAccess network) {
-        if (this.version.get(writer()).equals(version.get(writer())))
-            return CompletableFuture.completedFuture(this);
-        return network.getFile(version, pointer.capability, entryWriter, ownername)
-                .thenApply(Optional::get)
-                .thenApply(f -> f.withTrieNodeOpt(capTrie));
+        return version.withWriter(owner(), writer(), network).thenCompose(v -> {
+            if (this.version.get(writer()).equals(v.get(writer())))
+                return CompletableFuture.completedFuture(this);
+            return network.getFile(v, pointer.capability, entryWriter, ownername)
+                    .thenApply(Optional::get)
+                    .thenApply(f -> f.withTrieNodeOpt(capTrie));
+        });
     }
 
     public PublicKeyHash owner() {

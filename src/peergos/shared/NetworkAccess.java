@@ -378,7 +378,8 @@ public class NetworkAccess {
                                                             AbsoluteCapability cap,
                                                             Optional<SigningPrivateKeyAndPublicHash> entryWriter,
                                                             String ownerName) {
-        return getMetadata(version.get(cap.writer).props, cap)
+        return version.withWriter(cap.owner, cap.writer, this)
+                .thenCompose(v -> getMetadata(v.get(cap.writer).props, cap)
                 .thenCompose(faOpt -> {
                     if (! faOpt.isPresent())
                         return Futures.of(Optional.empty());
@@ -390,14 +391,14 @@ public class NetworkAccess {
                             return Futures.of(Optional.of(new FileWrapper(Optional.empty(),
                                     rc,
                                     Optional.empty(),
-                                    cap.wBaseKey.map(wBase -> fa.getSigner(cap.rBaseKey, wBase, entryWriter)), ownerName, version)));
-                        return getFileFromLink(cap.owner, rc, entryWriter, ownerName, this, version)
+                                    cap.wBaseKey.map(wBase -> fa.getSigner(cap.rBaseKey, wBase, entryWriter)), ownerName, v)));
+                        return getFileFromLink(cap.owner, rc, entryWriter, ownerName, this, v)
                                 .thenApply(f -> Optional.of(f));
                     } catch (InvalidCipherTextException e) {
                         LOG.info("Couldn't decrypt file from friend: " + ownerName);
                         return Futures.of(Optional.empty());
                     }
-                });
+                }));
     }
 
     public static CompletableFuture<FileWrapper> getFileFromLink(PublicKeyHash owner,
