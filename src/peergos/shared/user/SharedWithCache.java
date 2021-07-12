@@ -50,16 +50,17 @@ public class SharedWithCache {
         return Paths.get("/" + username).resolve(CACHE_BASE);
     }
 
-    private CompletableFuture<Optional<SharedWithState>> retrieve(Path dir) {
-        return retrieveWithFile(dir).thenApply(opt -> opt.map(p -> p.right));
+    private CompletableFuture<Optional<SharedWithState>> retrieve(Path dir, Snapshot s) {
+        return retrieveWithFile(dir, s).thenApply(opt -> opt.map(p -> p.right));
     }
 
-    private CompletableFuture<Optional<Pair<FileWrapper, SharedWithState>>> retrieveWithFile(Path dir) {
-        return base.getDescendentByPath(toRelative(dir).resolve(DIR_CACHE_FILENAME).toString(), crypto.hasher, network)
+    private CompletableFuture<Optional<Pair<FileWrapper, SharedWithState>>> retrieveWithFile(Path dir, Snapshot s) {
+        return base.getUpdated(s, network)
+                .thenCompose(updated -> updated.getDescendentByPath(toRelative(dir).resolve(DIR_CACHE_FILENAME).toString(), crypto.hasher, network))
                 .thenCompose(opt -> opt.isEmpty() ?
                         Futures.of(Optional.empty()) :
                         parseCacheFile(opt.get(), network, crypto)
-                                .thenApply(s -> new Pair<>(opt.get(), s))
+                                .thenApply(state -> new Pair<>(opt.get(), state))
                                 .thenApply(Optional::of)
                 );
     }
@@ -262,8 +263,8 @@ public class SharedWithCache {
                         .collect(Collectors.toMap(p -> p.left, p -> p.right)));
     }
 
-    public CompletableFuture<FileSharedWithState> getSharedWith(Path p) {
-        return retrieve(p.getParent())
+    public CompletableFuture<FileSharedWithState> getSharedWith(Path p, Snapshot v) {
+        return retrieve(p.getParent(), v)
                 .thenApply(opt -> opt.map(s -> s.get(getFilename(p))).orElse(FileSharedWithState.EMPTY));
     }
 
@@ -284,7 +285,7 @@ public class SharedWithCache {
             throw new IllegalStateException("Not a valid rename!");
         String initialFilename = getFilename(initial);
         String newFilename = getFilename(after);
-        return getSharedWith(initial)
+        return getSharedWith(initial, in)
                 .thenCompose(sharees -> applyAndCommit(after, current ->
                         current.add(Access.READ, newFilename, sharees.readAccess)
                                 .add(Access.WRITE, newFilename, sharees.writeAccess)

@@ -485,14 +485,14 @@ public class MultiUserTests {
                 u1.network.mutable, u1.network.dhtClient, u1.network.hasher).join();
         Assert.assertTrue("New writer key present", keysOwnedByRootSigner.contains(theFile.writer()));
 
-        Set<String> sharedWriteAccessWithBefore = u1.sharedWithCache.getSharedWith(filePath).join().get(SharedWithCache.Access.WRITE);
+        Set<String> sharedWriteAccessWithBefore = u1.sharedWith(filePath).join().get(SharedWithCache.Access.WRITE);
         Assert.assertTrue("file shared", ! sharedWriteAccessWithBefore.isEmpty());
 
         theFile.remove(parentFolder, filePath, u1).get();
         Optional<FileWrapper> removedFile = u1.getByPath(filePath).get();
         Assert.assertTrue("file removed", ! removedFile.isPresent());
 
-        Set<String> sharedWriteAccessWithAfter = u1.sharedWithCache.getSharedWith(filePath).join().get(SharedWithCache.Access.WRITE);
+        Set<String> sharedWriteAccessWithAfter = u1.sharedWith(filePath).join().get(SharedWithCache.Access.WRITE);
         Assert.assertTrue("file shared", sharedWriteAccessWithAfter.isEmpty());
 
         for (UserContext userContext : userContexts) {
@@ -555,7 +555,7 @@ public class MultiUserTests {
         FileWrapper theFile = u1.getByPath(filePath).get().get();
         FileWrapper parentFolder = u1.getByPath(subdirPath).get().get();
 
-        Set<String> sharedAccessWithBefore = u1.sharedWithCache.getSharedWith(filePath).join().get(sharedWithAccess);
+        Set<String> sharedAccessWithBefore = u1.sharedWith(filePath).join().get(sharedWithAccess);
         Assert.assertTrue("file shared", ! sharedAccessWithBefore.isEmpty());
 
         String newFilename = "newfilename.txt";
@@ -563,7 +563,7 @@ public class MultiUserTests {
 
         filePath = Paths.get(u1.username, subdirName, newFilename);
 
-        Set<String> sharedAccessWithAfter = u1.sharedWithCache.getSharedWith(filePath).join().get(sharedWithAccess);
+        Set<String> sharedAccessWithAfter = u1.sharedWith(filePath).join().get(sharedWithAccess);
         Assert.assertTrue("file shared", ! sharedAccessWithAfter.isEmpty());
     }
 
@@ -610,7 +610,7 @@ public class MultiUserTests {
         FileWrapper theDir = u1.getByPath(filePath).get().get();
         FileWrapper parentFolder = u1.getUserRoot().get();
 
-        Set<String> sharedAccessWithBefore = u1.sharedWithCache.getSharedWith(filePath).join().get(sharedWithAccess);
+        Set<String> sharedAccessWithBefore = u1.sharedWith(filePath).join().get(sharedWithAccess);
         Assert.assertTrue("directory shared", ! sharedAccessWithBefore.isEmpty());
 
         String newDirectoryName = "newDir";
@@ -618,7 +618,7 @@ public class MultiUserTests {
 
         filePath = Paths.get(u1.username, newDirectoryName);
 
-        Set<String> sharedAccessWithAfter = u1.sharedWithCache.getSharedWith(filePath).join().get(sharedWithAccess);
+        Set<String> sharedAccessWithAfter = u1.sharedWith(filePath).join().get(sharedWithAccess);
         Assert.assertTrue("directory shared", ! sharedAccessWithAfter.isEmpty());
     }
 
@@ -670,7 +670,7 @@ public class MultiUserTests {
         shareFunction.apply(u1, userContexts, filePath);
 
         FileWrapper theFile = u1.getByPath(filePath).get().get();
-        Set<String> sharedWriteAccessWithBefore = u1.sharedWithCache.getSharedWith(filePath).join().get(sharedWithAccess);
+        Set<String> sharedWriteAccessWithBefore = u1.sharedWith(filePath).join().get(sharedWithAccess);
         Assert.assertTrue("file shared", ! sharedWriteAccessWithBefore.isEmpty());
 
         //copy file
@@ -679,12 +679,12 @@ public class MultiUserTests {
         theFile.copyTo(destSubdir, u1);
 
         //old copy should retain sharedWith entries
-        Set<String> sharedWriteAccessWithOriginal = u1.sharedWithCache.getSharedWith(filePath).join().get(sharedWithAccess);
+        Set<String> sharedWriteAccessWithOriginal = u1.sharedWith(filePath).join().get(sharedWithAccess);
         Assert.assertTrue("file shared", ! sharedWriteAccessWithOriginal.isEmpty());
 
         filePath = Paths.get(u1.username, destinationSubdirName, filename);
 
-        Set<String> sharedWriteAccessWithNewCopy = u1.sharedWithCache.getSharedWith(filePath).join().get(sharedWithAccess);
+        Set<String> sharedWriteAccessWithNewCopy = u1.sharedWith(filePath).join().get(sharedWithAccess);
         Assert.assertTrue("file shared", sharedWriteAccessWithNewCopy.isEmpty());
     }
 
@@ -728,7 +728,7 @@ public class MultiUserTests {
         shareFunction.apply(u1, userContexts, dirPath);
 
         FileWrapper theDir = u1.getByPath(dirPath).get().get();
-        Set<String> sharedWriteAccessWithBefore = u1.sharedWithCache.getSharedWith(dirPath).join().get(sharedWithAccess);
+        Set<String> sharedWriteAccessWithBefore = u1.sharedWith(dirPath).join().get(sharedWithAccess);
         Assert.assertTrue("directory shared", ! sharedWriteAccessWithBefore.isEmpty());
 
         //copy file
@@ -737,12 +737,12 @@ public class MultiUserTests {
         theDir.copyTo(destDir, u1).join();
 
         //old copy should retain sharedWith entries
-        Set<String> sharedWriteAccessWithOriginal = u1.sharedWithCache.getSharedWith(dirPath).join().get(sharedWithAccess);
+        Set<String> sharedWriteAccessWithOriginal = u1.sharedWith(dirPath).join().get(sharedWithAccess);
         Assert.assertTrue("directory shared", ! sharedWriteAccessWithOriginal.isEmpty());
 
         dirPath = Paths.get(u1.username, destinationDirName, subdirName);
 
-        Set<String> sharedWriteAccessWithNewCopy = u1.sharedWithCache.getSharedWith(dirPath).join().get(sharedWithAccess);
+        Set<String> sharedWriteAccessWithNewCopy = u1.sharedWith(dirPath).join().get(sharedWithAccess);
         Assert.assertTrue("directory shared", sharedWriteAccessWithNewCopy.isEmpty());
     }
 
@@ -794,7 +794,7 @@ public class MultiUserTests {
         Path parentPath = Paths.get(u1.username, subdirName);
         FileWrapper theParent = u1.getByPath(parentPath).get().get();
         AbsoluteCapability cap = theFile.getPointer().capability;
-        Set<String> sharedWriteAccessWithBefore = u1.sharedWithCache.getSharedWith(filePath).join().get(sharedWithAccess);
+        Set<String> sharedWriteAccessWithBefore = u1.sharedWith(filePath).join().get(sharedWithAccess);
         Assert.assertTrue("file shared", ! sharedWriteAccessWithBefore.isEmpty());
 
         //move file
@@ -804,7 +804,7 @@ public class MultiUserTests {
         theFile.moveTo(destSubdir, theParent, filePath, u1).join();
 
         //old copy sharedWith entries should be removed
-        Set<String> sharedWriteAccessWithOriginal = u1.sharedWithCache.getSharedWith(filePath).join().get(sharedWithAccess);
+        Set<String> sharedWriteAccessWithOriginal = u1.sharedWith(filePath).join().get(sharedWithAccess);
         Assert.assertTrue("file shared", sharedWriteAccessWithOriginal.isEmpty());
 
         filePath = Paths.get(u1.username, destinationSubdirName, filename);
@@ -812,7 +812,7 @@ public class MultiUserTests {
         cap = theFile.getPointer().capability;
 
         //new copy sharedWith entry should also be empty
-        Set<String> sharedWriteAccessWithNewCopy = u1.sharedWithCache.getSharedWith(filePath).join().get(sharedWithAccess);
+        Set<String> sharedWriteAccessWithNewCopy = u1.sharedWith(filePath).join().get(sharedWithAccess);
         Assert.assertTrue("file shared", sharedWriteAccessWithNewCopy.isEmpty());
     }
 
@@ -857,7 +857,7 @@ public class MultiUserTests {
         Path parentPath = Paths.get(u1.username);
         FileWrapper theParent = u1.getByPath(parentPath).get().get();
         AbsoluteCapability cap = theDir.getPointer().capability;
-        Set<String> sharedWriteAccessWithBefore = u1.sharedWithCache.getSharedWith(dirPath).join().get(sharedWithAccess);
+        Set<String> sharedWriteAccessWithBefore = u1.sharedWith(dirPath).join().get(sharedWithAccess);
         Assert.assertTrue("directory shared", ! sharedWriteAccessWithBefore.isEmpty());
 
         //move directory
@@ -867,7 +867,7 @@ public class MultiUserTests {
         theDir.moveTo(destSubdir, theParent, dirPath, u1);
 
         //old copy sharedWith entries should be removed
-        Set<String> sharedWriteAccessWithOriginal = u1.sharedWithCache.getSharedWith(dirPath).join().get(sharedWithAccess);
+        Set<String> sharedWriteAccessWithOriginal = u1.sharedWith(dirPath).join().get(sharedWithAccess);
         Assert.assertTrue("directory shared", sharedWriteAccessWithOriginal.isEmpty());
 
         dirPath = Paths.get(u1.username, destinationSubdirName, subdirName);
@@ -875,7 +875,7 @@ public class MultiUserTests {
         cap = theDir.getPointer().capability;
 
         //new copy sharedWith entry should also be empty
-        Set<String> sharedWriteAccessWithNewCopy = u1.sharedWithCache.getSharedWith(dirPath).join().get(sharedWithAccess);
+        Set<String> sharedWriteAccessWithNewCopy = u1.sharedWith(dirPath).join().get(sharedWithAccess);
         Assert.assertTrue("directory shared", sharedWriteAccessWithNewCopy.isEmpty());
     }
 
