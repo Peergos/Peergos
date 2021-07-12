@@ -112,7 +112,7 @@ public class Chat implements Cborable {
 
     /** Apply message to this Chat's state
      *
-     * @return
+     * @return The state after applying the message
      */
     public CompletableFuture<ChatUpdate> applyMessage(SignedMessage signed,
                                                       String chatUid,

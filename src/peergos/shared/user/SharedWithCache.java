@@ -65,14 +65,14 @@ public class SharedWithCache {
                 );
     }
 
-    private static CompletableFuture<Snapshot> staticAddSharedWith(FileWrapper base,
-                                                                   Access access,
-                                                                   Path toFile,
-                                                                   Set<String> names,
-                                                                   NetworkAccess network,
-                                                                   Crypto crypto,
-                                                                   Snapshot in,
-                                                                   Committer committer) {
+    private static CompletableFuture<Snapshot> addSharedWith(FileWrapper base,
+                                                             Access access,
+                                                             Path toFile,
+                                                             Set<String> names,
+                                                             NetworkAccess network,
+                                                             Crypto crypto,
+                                                             Snapshot in,
+                                                             Committer committer) {
         return base.getUpdated(in, network)
                 .thenCompose(updateed -> retrieveWithFileOrCreate(updateed, toFile.getParent(), network, crypto, in, committer))
                 .thenCompose(p -> {
@@ -100,14 +100,14 @@ public class SharedWithCache {
                                                                         friendDirectory.signingPair(),
                                                                         (s, c) -> Futures.reduceAll(readCaps.getRetrievedCapabilities(),
                                                                                 s,
-                                                                                (v, rc) -> staticAddSharedWith(cacheDirOpt.get(), Access.READ, Paths.get(rc.path), Collections.singleton(friendDirectory.getName()), network, crypto, v, c),
+                                                                                (v, rc) -> addSharedWith(cacheDirOpt.get(), Access.READ, Paths.get(rc.path), Collections.singleton(friendDirectory.getName()), network, crypto, v, c),
                                                                                 (a, b) -> b)
                                                                                 .thenCompose(s2 -> friendDirectory.getUpdated(network)
                                                                                         .thenCompose(updatedFriendDir -> CapabilityStore.loadWriteableLinks(cacheDirOpt.get(), updatedFriendDir,
                                                                                                 ourname, network, crypto, false))
                                                                                         .thenCompose(writeCaps ->
                                                                                                 Futures.reduceAll(writeCaps.getRetrievedCapabilities(), s2,
-                                                                                                        (v, rc) -> staticAddSharedWith(cacheDirOpt.get(), Access.WRITE, Paths.get(rc.path), Collections.singleton(friendDirectory.getName()), network, crypto, v, c),
+                                                                                                        (v, rc) -> addSharedWith(cacheDirOpt.get(), Access.WRITE, Paths.get(rc.path), Collections.singleton(friendDirectory.getName()), network, crypto, v, c),
                                                                                                         (a, b) -> b)
                                                                                         ))))
                                                         .thenApply(y -> true),

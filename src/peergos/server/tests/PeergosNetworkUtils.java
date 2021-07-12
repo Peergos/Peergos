@@ -621,7 +621,7 @@ public class PeergosNetworkUtils {
         sharer.shareReadAccessWith(Paths.get(path),
                 shareeUsers.stream()
                         .map(c -> c.username)
-                        .collect(Collectors.toSet())).get();
+                        .collect(Collectors.toSet())).join();
 
         // check each user can see the shared folder and directory
         for (UserContext sharee : shareeUsers) {
