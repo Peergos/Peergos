@@ -51,7 +51,7 @@ public class RequestCountTests {
 
         storageCounter.reset();
         UserContext sharer = PeergosNetworkUtils.ensureSignedUp(generateUsername(random), password, network, crypto);
-        Assert.assertTrue("signup request count: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 25);
+        Assert.assertTrue("signup request count: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 32);
 
         storageCounter.reset();
         PeergosNetworkUtils.ensureSignedUp(sharer.username, password, network, crypto);
