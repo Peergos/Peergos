@@ -1499,7 +1499,7 @@ public class UserContext {
         // The global root and home folders cannot be shared
         if (dir.getNameCount() == 0 || username == null)
             return Futures.of(SharedWithState.empty());
-        return sharedWithCache.getDirSharingState(dir);
+        return getUserRoot().thenCompose(home -> sharedWithCache.getDirSharingState(dir, home.version));
     }
 
     @JsMethod

@@ -154,11 +154,12 @@ public class SharedWithCache {
                 .thenCompose(child -> getOrMkdirs(child, remaining.subList(1, remaining.size()), network, crypto, child.version, c));
     }
 
-    public CompletableFuture<SharedWithState> getDirSharingState(Path dir) {
+    public CompletableFuture<SharedWithState> getDirSharingState(Path dir, Snapshot in) {
         if (this.ourname == null) {
             return Futures.of(SharedWithState.empty());
         }
-        return base.getDescendentByPath(dir.resolve(DIR_CACHE_FILENAME).toString(), crypto.hasher, network)
+        return base.getUpdated(base.version.mergeAndOverwriteWith(in), network)
+                .thenCompose(updated -> updated.getDescendentByPath(dir.resolve(DIR_CACHE_FILENAME).toString(), crypto.hasher, network))
                 .thenCompose(fopt -> fopt.map(f -> parseCacheFile(f, network, crypto)).orElse(Futures.of(SharedWithState.empty())));
     }
 
