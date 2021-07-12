@@ -20,7 +20,7 @@ public class TimeLimited {
      */
     public static long isAllowedTime(byte[] signedTime, int durationSeconds, ContentAddressedStorage ipfs, PublicKeyHash owner) {
         try {
-            Optional<PublicSigningKey> ownerOpt = ipfs.getSigningKey(owner).get();
+            Optional<PublicSigningKey> ownerOpt = ipfs.getSigningKey(owner).join();
             if (! ownerOpt.isPresent())
                 throw new IllegalStateException("Couldn't retrieve owner key!");
             byte[] raw = ownerOpt.get().unsignMessage(signedTime);
@@ -49,7 +49,7 @@ public class TimeLimited {
      */
     public static long isAllowed(String expectedPath, byte[] signedReq, int durationSeconds, ContentAddressedStorage ipfs, PublicKeyHash owner) {
         try {
-            Optional<PublicSigningKey> ownerOpt = ipfs.getSigningKey(owner).get();
+            Optional<PublicSigningKey> ownerOpt = ipfs.getSigningKey(owner).join();
             if (! ownerOpt.isPresent())
                 throw new IllegalStateException("Couldn't retrieve owner key!");
             byte[] raw = ownerOpt.get().unsignMessage(signedReq);

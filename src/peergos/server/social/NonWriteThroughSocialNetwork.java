@@ -38,7 +38,7 @@ public class NonWriteThroughSocialNetwork implements SocialNetwork {
     @Override
     public CompletableFuture<byte[]> getFollowRequests(PublicKeyHash owner, byte[] signedTime) {
         try {
-            byte[] reqs = source.getFollowRequests(owner, signedTime).get();
+            byte[] reqs = source.getFollowRequests(owner, signedTime).join();
             CborObject cbor = CborObject.fromByteArray(reqs);
             List<byte[]> notDeleted = new ArrayList<>();
             List<ByteArrayWrapper> removed = removedFollowRequests.get(owner);
@@ -67,7 +67,7 @@ public class NonWriteThroughSocialNetwork implements SocialNetwork {
     @Override
     public CompletableFuture<Boolean> removeFollowRequest(PublicKeyHash owner, byte[] signedEncryptedPermission) {
         try {
-            PublicSigningKey signer = ipfs.getSigningKey(owner).get().get();
+            PublicSigningKey signer = ipfs.getSigningKey(owner).join().get();
             byte[] unsigned = signer.unsignMessage(signedEncryptedPermission);
 
             newFollowRequests.putIfAbsent(owner, new ArrayList<>());

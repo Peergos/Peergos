@@ -179,11 +179,11 @@ public class InodeFilesystemTests {
         SigningKeyPair random = SigningKeyPair.random(crypto.random, crypto.signer);
         try {
             PublicKeyHash ownerHash = ContentAddressedStorage.hashKey(random.publicSigningKey);
-            TransactionId tid = storage.startTransaction(ownerHash).get();
+            TransactionId tid = storage.startTransaction(ownerHash).join();
             PublicKeyHash publicHash = storage.putSigningKey(
                     random.secretSigningKey.signMessage(random.publicSigningKey.serialize()),
                     ownerHash,
-                    random.publicSigningKey, tid).get();
+                    random.publicSigningKey, tid).join();
             return new SigningPrivateKeyAndPublicHash(publicHash, random.secretSigningKey);
         } catch (Exception e) {
             throw new RuntimeException(e);
