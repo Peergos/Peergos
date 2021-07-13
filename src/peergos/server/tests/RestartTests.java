@@ -33,7 +33,7 @@ public class RestartTests {
     private static Process server;
 
     public RestartTests() throws Exception {
-        this.network = Builder.buildJavaNetworkAccess(new URL("http://localhost:" + args.getInt("port")), false).get();
+        this.network = Builder.buildJavaNetworkAccess(new URL("http://localhost:" + args.getInt("port")), false).join();
     }
 
     @BeforeClass
@@ -70,7 +70,7 @@ public class RestartTests {
     private static void waitUntilReady() {
         for (int i=0; i < 30; i++) {
             try {
-                Builder.buildJavaNetworkAccess(new URL("http://localhost:" + args.getInt("port")), false).get();
+                Builder.buildJavaNetworkAccess(new URL("http://localhost:" + args.getInt("port")), false).join();
                 return;
             } catch (Exception e) {
                 try {
@@ -115,11 +115,11 @@ public class RestartTests {
         String username2 = random();
         String password2 = random();
         UserContext u2 = PeergosNetworkUtils.ensureSignedUp(username2, password2, network, crypto);
-        u2.sendFollowRequest(u1.username, SymmetricKey.random()).get();
-        List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
-        u1.sendReplyFollowRequest(u1Requests.get(0), true, true).get();
+        u2.sendFollowRequest(u1.username, SymmetricKey.random()).join();
+        List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().join();
+        u1.sendReplyFollowRequest(u1Requests.get(0), true, true).join();
         // complete connection
-        List<FollowRequestWithCipherText> u2FollowRequests = u2.processFollowRequests().get();
+        List<FollowRequestWithCipherText> u2FollowRequests = u2.processFollowRequests().join();
 
         // change password for u2
         String password3 = random();
@@ -129,7 +129,7 @@ public class RestartTests {
         restart();
 
         UserContext freshU1 = UserContext.signIn(username1, password1, network.clear(), crypto).join();
-        Optional<FileWrapper> u2ToU1 = freshU1.getByPath("/" + u2.username).get();
+        Optional<FileWrapper> u2ToU1 = freshU1.getByPath("/" + u2.username).join();
         assertTrue("Friend root present after their password change", u2ToU1.isPresent());
     }
 }

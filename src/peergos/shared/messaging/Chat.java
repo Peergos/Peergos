@@ -12,27 +12,29 @@ import peergos.shared.util.*;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.function.*;
 import java.util.stream.*;
 
 public class Chat implements Cborable {
 
+    public final String chatUid;
     public final Id host;
-    public TreeClock current;
+    public final TreeClock current;
     public final Map<Id, Member> members;
     public final Map<String, GroupProperty> groupState;
     private final List<MessageEnvelope> recentMessages;
 
-    public Chat(Id host,
+    public Chat(String chatUid,
+                Id host,
                 TreeClock current,
                 Map<Id, Member> members,
                 Map<String, GroupProperty> groupState,
                 List<MessageEnvelope> recentMessages) {
+        this.chatUid = chatUid;
         this.host = host;
         this.current = current;
-        this.members = members;
-        this.groupState = groupState;
-        this.recentMessages = recentMessages;
+        this.members = Collections.unmodifiableMap(members);
+        this.groupState = Collections.unmodifiableMap(groupState);
+        this.recentMessages = Collections.unmodifiableList(recentMessages);
     }
 
     public String getTitle() {
@@ -62,10 +64,11 @@ public class Chat implements Cborable {
         return members.values().stream().filter(m -> m.username.equals(username)).findFirst().get();
     }
 
-    public CompletableFuture<MessageEnvelope> addMessage(Message body,
-                                                         SigningPrivateKeyAndPublicHash signer,
-                                                         MessageStore store,
-                                                         Hasher hasher) {
+    public CompletableFuture<ChatUpdate> sendMessage(Message body,
+                                                     SigningPrivateKeyAndPublicHash signer,
+                                                     MessageStore store,
+                                                     ContentAddressedStorage ipfs,
+                                                     Hasher hasher) {
         TreeClock msgTime = current.increment(host);
         boolean nonEmpty = host().messagesMergedUpto > 0;
         return (nonEmpty ?
@@ -77,11 +80,9 @@ public class Chat implements Cborable {
                         .collect(Collectors.toList())))
                 .thenCompose(recentRefs -> {
                     MessageEnvelope msg = new MessageEnvelope(host, msgTime, LocalDateTime.now(ZoneOffset.UTC), recentRefs, body);
-                    current = msgTime;
                     byte[] signature = signer.secret.signatureOnly(msg.serialize());
-                    host().messagesMergedUpto++;
-                    long msgCount = host().messagesMergedUpto;
-                    return store.addMessage(msgCount - 1, new SignedMessage(signature, msg)).thenApply(x -> msg);
+                    SignedMessage signed = new SignedMessage(signature, msg);
+                    return mergeMessage(chatUid, signed, host(), ipfs);
                 });
     }
 
@@ -89,35 +90,50 @@ public class Chat implements Cborable {
         return new ArrayList<>(recentMessages);
     }
 
-    private synchronized boolean addToRecent(MessageEnvelope m) {
-        if (recentMessages.size() >= 10)
-            recentMessages.remove(0);
-        recentMessages.add(m);
-        return true;
+    private Chat withMembers(Map<Id, Member> updated) {
+        return new Chat(chatUid, host, current, updated, groupState, recentMessages);
+    }
+
+    private Chat withTime(TreeClock newTime) {
+        return new Chat(chatUid, host, newTime, members, groupState, recentMessages);
+    }
+
+    private Chat withProperties(Map<String, GroupProperty> updated) {
+        return new Chat(chatUid, host, current, members, updated, recentMessages);
+    }
+
+    private Chat addToRecent(MessageEnvelope m) {
+        ArrayList<MessageEnvelope> updated = new ArrayList<>(recentMessages);
+        if (updated.size() >= 10)
+            updated.remove(0);
+        updated.add(m);
+        return new Chat(chatUid, host, current, members, groupState, updated);
     }
 
     /** Apply message to this Chat's state
      *
-     * @param msg
-     * @return
+     * @return The state after applying the message
      */
-    public CompletableFuture<Boolean> apply(MessageEnvelope msg,
-                                            String chatUid,
-                                            Function<FileRef, CompletableFuture<Boolean>> mediaCopier,
-                                            MessageStore ourStore,
-                                            ContentAddressedStorage ipfs) {
+    public CompletableFuture<ChatUpdate> applyMessage(SignedMessage signed,
+                                                      String chatUid,
+                                                      ContentAddressedStorage ipfs) {
+        MessageEnvelope msg = signed.msg;
         Member author = members.get(msg.author);
         switch (msg.payload.type()) {
             case Invite: {
-                Set<Id> newMembers = current.newMembersFrom(msg.timestamp);
-                for (Id newMember : newMembers) {
-                    long indexIntoParent = getMember(newMember.parent()).messagesMergedUpto;
-                    Invite invite = (Invite) msg.payload;
-                    String username = invite.username;
-                    PublicKeyHash identity = invite.identity;
-                    members.put(newMember, new Member(username, newMember, identity, indexIntoParent, 0));
-                }
-                break;
+                Invite invite = (Invite) msg.payload;
+                Id newMember = invite.recipientId;
+                if (members.containsKey(newMember))
+                    throw new IllegalStateException("Id already exists in this chat!");
+                if (!newMember.parent().equals(author.id))
+                    throw new IllegalStateException("Invalid invite Id!");
+                HashMap<Id, Member> updated = new HashMap<>(members);
+                updated.put(author.id, members.get(author.id).incrementInvited());
+                long indexIntoParent = getMember(newMember.parent()).messagesMergedUpto;
+                String username = invite.username;
+                PublicKeyHash identity = invite.identity;
+                updated.put(newMember, new Member(username, newMember, identity, indexIntoParent, 0));
+                return Futures.of(new ChatUpdate(withMembers(updated).addToRecent(msg), Arrays.asList(signed), Collections.emptyList(), Collections.emptySet()));
             }
             case Join:
                 if (author.chatIdentity.isEmpty()) {
@@ -128,9 +144,9 @@ public class Chat implements Cborable {
                         throw new IllegalStateException("Identity keys don't match!");
                     // verify signature
                     return chatIdentity.getOwner(ipfs).thenApply(x -> {
-                        members.put(author.id, author.withChatId(chatIdentity));
-                        addToRecent(msg);
-                        return true;
+                        Map<Id, Member> updated = new HashMap<>(members);
+                        updated.put(author.id, author.withChatId(chatIdentity));
+                        return new ChatUpdate(withMembers(updated).addToRecent(msg), Arrays.asList(signed), Collections.emptyList(), Collections.emptySet());
                     });
                 }
                 break;
@@ -144,7 +160,9 @@ public class Chat implements Cborable {
                                 (existing.updateTimestamp.isBeforeOrEqual(msg.timestamp) ||
                                         (existing.updateTimestamp.isConcurrentWith(msg.timestamp) &&
                                                 msg.author.compareTo(existing.author) < 0)))) {
-                    groupState.put(update.key, new GroupProperty(msg.author, msg.timestamp, update.value));
+                    Map<String, GroupProperty> updated = new HashMap<>(groupState);
+                    updated.put(update.key, new GroupProperty(msg.author, msg.timestamp, update.value));
+                    return Futures.of(new ChatUpdate(withProperties(updated).addToRecent(msg), Arrays.asList(signed), Collections.emptyList(), Collections.emptySet()));
                 }
                 break;
             }
@@ -155,53 +173,57 @@ public class Chat implements Cborable {
                 List<FileRef> fileRefs = content.body.stream()
                         .flatMap(c -> c.reference().stream())
                         .collect(Collectors.toList());
-                // mirror media to our storage
-                List<CompletableFuture<Boolean>> mirroredMedia = fileRefs.stream().parallel()
-                        .map(mediaCopier)
-                        .collect(Collectors.toList());
-                return Futures.combineAll(mirroredMedia).thenApply(x -> addToRecent(msg));
+                // note media to mirror our storage
+                return Futures.of(new ChatUpdate(addToRecent(msg), Arrays.asList(signed), fileRefs, Collections.emptySet()));
             }
             case RemoveMember: {
                 RemoveMember rem = (RemoveMember) msg.payload;
                 if (!rem.chatUid.equals(chatUid))
-                    return Futures.of(true); // ignore message from incorrect chat
+                    return Futures.of(new ChatUpdate(this, Collections.emptyList(), Collections.emptyList(), Collections.emptySet())); // ignore message from incorrect chat
                 // anyone can remove themselves
                 // an admin can remove anyone
                 if (rem.memberToRemove.equals(msg.author) || getAdmins().contains(author.username)) {
                     String username = getMember(rem.memberToRemove).username;
-                    members.get(rem.memberToRemove).removed = true;
-                    // revoke read access to shared chat state from removee
-                    return ourStore.revokeAccess(username).thenApply(b -> addToRecent(msg));
+                    Member updatedMember = members.get(rem.memberToRemove).removed(true);
+                    Map<Id, Member> updated = new HashMap<>(members);
+                    updated.put(rem.memberToRemove, updatedMember);
+                    // revoke read access to shared chat state from removee (unless removee is us!)
+                    return Futures.of(new ChatUpdate(addToRecent(msg).withMembers(updated), Arrays.asList(signed), Collections.emptyList(),
+                                    username.equals(host().username) ? Collections.emptySet() : Collections.singleton(username)));
                 }
                 break;
             }
-            case ReplyTo:
+            case ReplyTo: {
+                ReplyTo content = (ReplyTo) msg.payload;
+                List<FileRef> fileRefs = content.content.body.stream()
+                        .flatMap(c -> c.reference().stream())
+                        .collect(Collectors.toList());
+                // note media to mirror our storage
+                return Futures.of(new ChatUpdate(addToRecent(msg), Arrays.asList(signed), fileRefs, Collections.emptySet()));
+            }
             case Delete:
                 break;
         }
-        return Futures.of(addToRecent(msg));
+        return Futures.of(new ChatUpdate(addToRecent(msg), Arrays.asList(signed), Collections.emptyList(), Collections.emptySet()));
     }
 
-    public CompletableFuture<Boolean> merge(String chatUid,
-                                            Id mirrorHostId,
-                                            MessageStore mirrorStore,
-                                            MessageStore ourStore,
-                                            ContentAddressedStorage ipfs,
-                                            Function<Chat, CompletableFuture<Boolean>> committer,
-                                            Function<FileRef, CompletableFuture<Boolean>> mediaCopier) {
+    public CompletableFuture<ChatUpdate> merge(String chatUid,
+                                               Id mirrorHostId,
+                                               MessageStore mirrorStore,
+                                               ContentAddressedStorage ipfs) {
         Member host = getMember(mirrorHostId);
         return mirrorStore.getMessagesFrom(host.messagesMergedUpto)
-                .thenCompose(newMessages -> Futures.reduceAll(newMessages, true,
-                        (b, msg) -> mergeMessage(chatUid, msg, host, ourStore, ipfs, committer, mediaCopier), (a, b) -> a && b));
+                .thenCompose(newMessages -> Futures.reduceAll(newMessages,
+                        ChatUpdate.empty(this),
+                        (u, msg) -> u.state.mergeMessage(chatUid, msg, u.state.getMember(mirrorHostId), ipfs)
+                                .thenApply(u::apply),
+                        (a, b) -> a.apply(b)));
     }
 
-    private CompletableFuture<Boolean> mergeMessage(String chatUid,
-                                                    SignedMessage signed,
-                                                    Member host,
-                                                    MessageStore ourStore,
-                                                    ContentAddressedStorage ipfs,
-                                                    Function<Chat, CompletableFuture<Boolean>> committer,
-                                                    Function<FileRef, CompletableFuture<Boolean>> mediaCopier) {
+    private CompletableFuture<ChatUpdate> mergeMessage(String chatUid,
+                                                       SignedMessage signed,
+                                                       Member host,
+                                                       ContentAddressedStorage ipfs) {
         Member author = members.get(signed.msg.author);
         MessageEnvelope msg = signed.msg;
         if (! msg.timestamp.isBeforeOrEqual(current)) {
@@ -214,37 +236,35 @@ public class Chat implements Cborable {
                         if (signerOpt.isEmpty())
                             throw new IllegalStateException("Couldn't retrieve public signing key!");
                         signerOpt.get().unsignMessage(ArrayOps.concat(signed.signature, signed.msg.serialize()));
-                        return apply(msg, chatUid, mediaCopier, ourStore, ipfs);
-                    }).thenCompose(b -> ourStore.addMessage(host().messagesMergedUpto, signed)
-                            .thenCompose(x -> {
-                                current = current.merge(msg.timestamp);
-                                host.messagesMergedUpto++;
-                                host().messagesMergedUpto++;
-                                return committer.apply(this);
-                            }))
-                    .exceptionally(t -> {
-                        t.printStackTrace();
-                        return true;
-                    });
+                        return applyMessage(signed, chatUid, ipfs);
+                    }).thenApply(u -> u.withState(u.state.mergeMessageTimestamp(msg.timestamp, host)));
         }
-        host.messagesMergedUpto++;
-        return committer.apply(this);
+        return Futures.of(ChatUpdate.empty(incrementHost(host)));
     }
 
-    public CompletableFuture<Boolean> join(Member host,
-                                           OwnerProof chatId,
-                                           PublicSigningKey chatIdPublic,
-                                           SigningPrivateKeyAndPublicHash identity,
-                                           MessageStore ourStore,
-                                           Function<Chat, CompletableFuture<Boolean>> committer,
-                                           Hasher hasher) {
+    private Chat incrementHost(Member source) {
+        Map<Id, Member> updated = new HashMap<>(members);
+        updated.put(source.id, source.incrementMessages());
+        return new Chat(chatUid, host, current, updated, groupState, recentMessages);
+    }
+
+    private Chat mergeMessageTimestamp(TreeClock timestamp, Member source) {
+        TreeClock newTime = current.merge(timestamp);
+        Map<Id, Member> updated = new HashMap<>(members);
+        updated.put(source.id, members.get(source.id).incrementMessages());
+        updated.put(host, host().incrementMessages());
+        return new Chat(chatUid, host, newTime, updated, groupState, recentMessages);
+    }
+
+    public CompletableFuture<ChatUpdate> join(Member host,
+                                              OwnerProof chatId,
+                                              PublicSigningKey chatIdPublic,
+                                              SigningPrivateKeyAndPublicHash identity,
+                                              MessageStore ourStore,
+                                              ContentAddressedStorage ipfs,
+                                              Hasher hasher) {
         Join joinMsg = new Join(host.username, host.identity, chatId, chatIdPublic);
-        return addMessage(joinMsg, identity, ourStore, hasher)
-                .thenApply(x -> {
-                    this.host().chatIdentity = Optional.of(chatId);
-                    members.put(this.host, this.host());
-                    return true;
-                }).thenCompose(x -> committer.apply(this));
+        return withTime(current.withMember(host.id)).sendMessage(joinMsg, identity, ourStore, ipfs, hasher);
     }
 
     public Chat copy(Member host) {
@@ -253,58 +273,45 @@ public class Chat implements Cborable {
         Map<Id, Member> clonedMembers = members.entrySet().stream()
                 .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue().copy()));
         clonedMembers.put(host.id, host.copy());
-        return new Chat(host.id, current, clonedMembers, new HashMap<>(groupState), new ArrayList<>(recentMessages));
+        return new Chat(chatUid, host.id, current, clonedMembers, new HashMap<>(groupState), new ArrayList<>(recentMessages));
     }
 
-    public CompletableFuture<Member> inviteMember(String username,
-                                                  PublicKeyHash identity,
-                                                  SigningPrivateKeyAndPublicHash ourChatIdentity,
-                                                  MessageStore ourStore,
-                                                  Function<Chat, CompletableFuture<Boolean>> committer,
-                                                  Hasher hasher) {
-        Id newMember = host.fork(host().membersInvited);
-        Member member = new Member(username, newMember, identity, host().messagesMergedUpto, 0);
-        host().membersInvited++;
-        members.put(newMember, member);
-        current = current.withMember(newMember);
-        Invite invite = new Invite(username, identity);
-        return addMessage(invite, ourChatIdentity, ourStore, hasher)
-                .thenCompose(x -> committer.apply(this))
-                .thenApply(x -> member);
+    public CompletableFuture<ChatUpdate> inviteMember(String username,
+                                                      PublicKeyHash identity,
+                                                      SigningPrivateKeyAndPublicHash ourChatIdentity,
+                                                      MessageStore ourStore,
+                                                      ContentAddressedStorage ipfs,
+                                                      Hasher hasher) {
+        return inviteMembers(Arrays.asList(username), Arrays.asList(identity), ourChatIdentity, ourStore, ipfs, hasher);
     }
 
-    public CompletableFuture<List<Member>> inviteMembers(List<String> usernames,
-                                                         List<PublicKeyHash> identities,
-                                                         SigningPrivateKeyAndPublicHash ourChatIdentity,
-                                                         MessageStore ourStore,
-                                                         Function<Chat, CompletableFuture<Boolean>> committer,
-                                                         Hasher hasher) {
-        List<Member> newMembers = new ArrayList<>();
-        List<Invite> invites = new ArrayList<>();
-        for (int i=0; i < usernames.size(); i++) {
-            String username = usernames.get(i);
-            PublicKeyHash identity = identities.get(i);
-            Id newMember = host.fork(host().membersInvited);
-            Member member = new Member(username, newMember, identity, host().messagesMergedUpto, 0);
-            newMembers.add(member);
-            host().membersInvited++;
-            members.put(newMember, member);
-            current = current.withMember(newMember);
-            Invite invite = new Invite(username, identity);
-            invites.add(invite);
-        }
-        return Futures.reduceAll(invites, true,
-                (b, m) -> addMessage(m, ourChatIdentity, ourStore, hasher)
-                        .thenApply(x -> true),
-                (a, b) -> b)
-                .thenCompose(x -> committer.apply(this))
-                .thenApply(x -> newMembers);
+    public CompletableFuture<ChatUpdate> inviteMembers(List<String> usernames,
+                                                       List<PublicKeyHash> identities,
+                                                       SigningPrivateKeyAndPublicHash ourChatIdentity,
+                                                       MessageStore ourStore,
+                                                       ContentAddressedStorage ipfs,
+                                                       Hasher hasher) {
+        List<Integer> range = IntStream.range(0, usernames.size()).mapToObj(i -> i).collect(Collectors.toList());
+        return Futures.reduceAll(range, ChatUpdate.empty(this),
+                (u, i) -> {
+                    String username = usernames.get(i);
+                    PublicKeyHash identity = identities.get(i);
+
+                    Member us = u.state.host();
+                    Id newMember = u.state.host.fork(us.membersInvited);
+                    Invite invite = new Invite(username, identity, newMember);
+
+                    TreeClock newTime = u.state.current.withMember(newMember);
+                    return u.state.sendMessage(invite, ourChatIdentity, ourStore, ipfs, hasher);
+                },
+                (a, b) -> a.apply(b));
     }
 
     @Override
     public CborObject toCbor() {
         Map<String, Cborable> result = new TreeMap<>();
         result.put("v", new CborObject.CborLong(0));
+        result.put("i", new CborObject.CborString(chatUid));
         result.put("h", host);
         result.put("c", current);
         result.put("m", new CborObject.CborList(members));
@@ -320,25 +327,26 @@ public class Chat implements Cborable {
             throw new IllegalStateException("Incorrect cbor: " + cbor);
         CborObject.CborMap m = (CborObject.CborMap) cbor;
         long version = m.getLong("v");
+        String chatUid = m.getString("i");
         Id host = m.get("h", Id::fromCbor);
         TreeClock current = m.get("c", TreeClock::fromCbor);
         Map<Id, Member> members = m.getListMap("m", Id::fromCbor, Member::fromCbor);
         Map<String, GroupProperty> group = m.getMap("g", CborObject.CborString::getString, GroupProperty::fromCbor);
         List<MessageEnvelope> recent = new ArrayList<>(m.getList("r", MessageEnvelope::fromCbor));
-        return new Chat(host, current, members, group, recent);
+        return new Chat(chatUid, host, current, members, group, recent);
     }
 
-    public static Chat createNew(String username, PublicKeyHash identity) {
+    public static Chat createNew(String uid, String username, PublicKeyHash identity) {
         Id creator = Id.creator();
         Member us = new Member(username, creator, identity, 0, 0);
         HashMap<Id, Member> members = new HashMap<>();
         members.put(creator, us);
         TreeClock zero = TreeClock.init(Arrays.asList(us.id));
         HashMap<String, GroupProperty> groupState = new HashMap<>();
-        return new Chat(creator, zero, members, groupState, new ArrayList<>());
+        return new Chat(uid, creator, zero, members, groupState, new ArrayList<>());
     }
 
-    public static List<Chat> createNew(List<String> usernames, List<PublicKeyHash> identities) {
+    public static List<Chat> createNew(String uid, List<String> usernames, List<PublicKeyHash> identities) {
         HashMap<Id, Member> members = new HashMap<>();
         List<Id> initialMembers = new ArrayList<>();
 
@@ -351,7 +359,7 @@ public class Chat implements Cborable {
         TreeClock genesis = TreeClock.init(initialMembers);
 
         return initialMembers.stream()
-                .map(id -> new Chat(id, genesis, members.entrySet().stream()
+                .map(id -> new Chat(uid, id, genesis, members.entrySet().stream()
                         .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue().copy())), new HashMap<>(), new ArrayList<>()))
                 .collect(Collectors.toList());
     }

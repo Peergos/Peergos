@@ -10,10 +10,10 @@ public class Member implements Cborable {
     public final String username;
     public final Id id;
     public final PublicKeyHash identity;
-    public Optional<OwnerProof> chatIdentity;
-    public long messagesMergedUpto;
-    public int membersInvited;
-    public boolean removed;
+    public final Optional<OwnerProof> chatIdentity;
+    public final  long messagesMergedUpto;
+    public final int membersInvited;
+    public final boolean removed;
 
     public Member(String username,
                   Id id,
@@ -33,6 +33,18 @@ public class Member implements Cborable {
 
     public Member(String username, Id id, PublicKeyHash identity, long messagesMergedUpto, int membersInvited) {
         this(username, id, identity, Optional.empty(), messagesMergedUpto, membersInvited, false);
+    }
+
+    public Member incrementInvited() {
+        return new Member(username, id, identity, chatIdentity, messagesMergedUpto, membersInvited + 1, removed);
+    }
+
+    public Member incrementMessages() {
+        return new Member(username, id, identity, chatIdentity, messagesMergedUpto + 1, membersInvited, removed);
+    }
+
+    public Member removed(boolean updated) {
+        return new Member(username, id, identity, chatIdentity, messagesMergedUpto, membersInvited, updated);
     }
 
     public Member withChatId(OwnerProof proof) {

@@ -130,7 +130,7 @@ public class RamUserTests extends UserTests {
                 final int blockSize = length > maxBlockSize ? maxBlockSize : length;
                 return pump(seekReader, length, blockSize, resultBytes);
             });
-        }).join().get();
+        }).join().join();
 
         List<byte[]> resultBytes2 = new ArrayList<>();
         boolean result2 = file.getInputStream(network, crypto, sizeHigh, sizeLow, l -> {}).thenCompose(reader -> {
@@ -138,7 +138,7 @@ public class RamUserTests extends UserTests {
                 final int blockSize = length > maxBlockSize ? maxBlockSize : length;
                 return pump(seekReader, length, blockSize, resultBytes2);
             });
-        }).join().get();
+        }).join().join();
         compare(resultBytes, resultBytes2);
     }
 
@@ -229,7 +229,7 @@ public class RamUserTests extends UserTests {
                 final int blockSize = length > maxBlockSize ? maxBlockSize : length;
                 return pump(seekReader, length, blockSize, resultBytes2);
             });
-        }).join().get();
+        }).join().join();
 
         List<byte[]> resultBytes3 = new ArrayList<>();
 
@@ -241,7 +241,7 @@ public class RamUserTests extends UserTests {
             currentAsyncReader.add(seekReader);
             final int blockSize = length > maxBlockSize ? maxBlockSize : length;
             return pump(currentAsyncReader.get(0), length, blockSize, resultBytes3);
-        }).join().get();
+        }).join().join();
 
         compare(resultBytes2, resultBytes3);
         return currentAsyncReader.get(0);
@@ -288,7 +288,7 @@ public class RamUserTests extends UserTests {
         String username1 = generateUsername();
         String password = "test";
         UserContext user1 = PeergosNetworkUtils.ensureSignedUp(username1, password, network, crypto);
-        FileWrapper user1Root = user1.getUserRoot().get();
+        FileWrapper user1Root = user1.getUserRoot().join();
 
         String folder1 = "folder1";
         user1Root.mkdir(folder1, user1.network, false, crypto).join();
@@ -302,7 +302,7 @@ public class RamUserTests extends UserTests {
         byte[] data = new byte[0];
         user1.getByPath(Paths.get(username1, folder1, folder11)).join().get()
                 .uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length, user1.network,
-                crypto, l -> {}, crypto.random.randomBytes(32)).get();
+                crypto, l -> {}, crypto.random.randomBytes(32)).join();
 
         // create 2nd user and friend user1
         String username2 = generateUsername();

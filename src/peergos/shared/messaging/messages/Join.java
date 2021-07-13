@@ -47,4 +47,9 @@ public class Join implements Message {
         PublicSigningKey chatIdPublic = m.get("p", PublicSigningKey::fromCbor);
         return new Join(username, identity, chatIdentity, chatIdPublic);
     }
+
+    @Override
+    public String toString() {
+        return "JOIN(" + username + ")";
+    }
 }

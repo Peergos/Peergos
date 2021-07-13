@@ -3,7 +3,7 @@ package peergos.shared.user.fs;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.user.EntryPoint;
+import peergos.shared.user.*;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -24,29 +24,30 @@ public class CapabilityStore {
     private static final String READ_SHARING_FILE_NAME = "sharing.r";
     private static final String EDIT_SHARING_FILE_NAME = "sharing.w";
 
-    public static CompletableFuture<FileWrapper> addReadOnlySharingLinkTo(FileWrapper sharedDir,
-                                                                          AbsoluteCapability capability,
-                                                                          NetworkAccess network,
-                                                                          Crypto crypto) {
-        return addSharingLinkTo(sharedDir, capability.readOnly(), network, crypto, CapabilityStore.READ_SHARING_FILE_NAME);
+    public static CompletableFuture<Snapshot> addReadOnlySharingLinkTo(FileWrapper sharedDir,
+                                                                       AbsoluteCapability capability,
+                                                                       Committer c,
+                                                                       NetworkAccess network,
+                                                                       Crypto crypto) {
+        return addSharingLinkTo(sharedDir, capability.readOnly(), network, crypto, CapabilityStore.READ_SHARING_FILE_NAME, c);
     }
 
-    public static CompletableFuture<FileWrapper> addEditSharingLinkTo(FileWrapper sharedDir,
-                                                                      WritableAbsoluteCapability capability,
-                                                                      NetworkAccess network,
-                                                                      Crypto crypto) {
-        return addSharingLinkTo(sharedDir, capability, network, crypto, CapabilityStore.EDIT_SHARING_FILE_NAME);
+    public static CompletableFuture<Snapshot> addEditSharingLinkTo(FileWrapper sharedDir,
+                                                                   WritableAbsoluteCapability capability,
+                                                                   Committer c,
+                                                                   NetworkAccess network,
+                                                                   Crypto crypto) {
+        return addSharingLinkTo(sharedDir, capability, network, crypto, CapabilityStore.EDIT_SHARING_FILE_NAME, c);
     }
 
-    private static CompletableFuture<FileWrapper> addSharingLinkTo(FileWrapper sharedDir,
-                                                                  AbsoluteCapability capability,
-                                                                  NetworkAccess network,
-                                                                  Crypto crypto,
-                                                                  String capStoreFilename) {
+    private static CompletableFuture<Snapshot> addSharingLinkTo(FileWrapper sharedDir,
+                                                                AbsoluteCapability capability,
+                                                                NetworkAccess network,
+                                                                Crypto crypto,
+                                                                String capStoreFilename,
+                                                                Committer c) {
         if (! sharedDir.isDirectory() || ! sharedDir.isWritable()) {
-            CompletableFuture<FileWrapper> error = new CompletableFuture<>();
-            error.completeExceptionally(new IllegalArgumentException("Can only add link to a writable directory!"));
-            return error;
+            return Futures.errored(new IllegalArgumentException("Can only add link to a writable directory!"));
         }
 
         return sharedDir.getChild(capStoreFilename, crypto.hasher, network)
@@ -54,9 +55,9 @@ public class CapabilityStore {
                     byte[] serializedCapability = capability.toCbor().toByteArray();
                     AsyncReader.ArrayBacked newCapability = new AsyncReader.ArrayBacked(serializedCapability);
                     long startIndex = capStore.map(f -> f.getSize()).orElse(0L);
-                    return sharedDir.uploadFileSection(capStoreFilename, newCapability, false,
+                    return sharedDir.uploadFileSection(sharedDir.version, c, capStoreFilename, newCapability, false,
                             startIndex, startIndex + serializedCapability.length, Optional.empty(), true,
-                            network, crypto, x -> {}, crypto.random.randomBytes(32));
+                            false, network, crypto, x -> {}, crypto.random.randomBytes(32));
                 });
     }
 
@@ -101,7 +102,6 @@ public class CapabilityStore {
      * @param friendName
      * @param network
      * @param crypto
-     * @param saveCache
      * @return the current byte index, and the valid capabilities
      */
     public static CompletableFuture<CapabilitiesFromUser> loadWriteableLinks(FileWrapper cacheDir,

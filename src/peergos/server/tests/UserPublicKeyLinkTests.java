@@ -30,7 +30,7 @@ public class UserPublicKeyLinkTests {
     private final List<Multihash> id;
 
     public UserPublicKeyLinkTests() throws Exception {
-        id = Arrays.asList(ipfs.id().get());
+        id = Arrays.asList(ipfs.id().join());
     }
 
     @BeforeClass
@@ -43,7 +43,7 @@ public class UserPublicKeyLinkTests {
         return ipfs.putSigningKey(
                 user.secretSigningKey.signMessage(user.publicSigningKey.serialize()),
                 owner,
-                user.publicSigningKey, ipfs.startTransaction(owner).get()).get();
+                user.publicSigningKey, ipfs.startTransaction(owner).join()).get();
     }
 
     @Test

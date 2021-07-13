@@ -99,7 +99,7 @@ public class TrieNodeImpl implements TrieNode {
         String[] elements = finalPath.split("/");
         // There may be an entry point further down the tree, but it will have <= permission than this one, unless this is read only
         if (value.isPresent() && (value.get().pointer.isWritable() || !children.containsKey(elements[0])))
-            return network.retrieveEntryPoint(value.get())
+            return network.getFile(version, value.get().pointer, Optional.empty(), value.get().ownerName)
                     .thenCompose(dir -> dir.get().getDescendentByPath(finalPath, hasher, network));
         if (!children.containsKey(elements[0]))
             return CompletableFuture.completedFuture(Optional.empty());

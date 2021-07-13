@@ -218,7 +218,9 @@ public class IncomingCapCache {
                 .thenCompose(capsOpt -> {
                     if (capsOpt.isEmpty())
                         return recurse.get();
-                    return Serialize.readFully(capsOpt.get(), crypto, network)
+                    FileWrapper capsFile = capsOpt.get();
+                    return capsFile.getInputStream(capsFile.version.get(capsFile.writer()).props, network, crypto, x-> {})
+                            .thenCompose(r -> Serialize.readFully(r, capsFile.getSize()))
                             .thenApply(CborObject::fromByteArray)
                             .thenApply(CapsInDirectory::fromCbor)
                             .thenCompose(caps -> caps.getChild(path.get(childIndex))

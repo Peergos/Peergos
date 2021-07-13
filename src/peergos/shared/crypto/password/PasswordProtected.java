@@ -34,7 +34,7 @@ public class PasswordProtected {
         String salt = ArrayOps.bytesToHex(saltBytes);
 
         try {
-            byte[] derivedKeyBytes = hasher.hashToKeyBytes(salt, password, algorithm).get();
+            byte[] derivedKeyBytes = hasher.hashToKeyBytes(salt, password, algorithm).join();
             SymmetricKey key = new TweetNaClKey(derivedKeyBytes, false, provider, random);
             byte[] nonce = key.createNonce();
             byte[] cipherText = key.encrypt(cleartext, nonce);
@@ -63,7 +63,7 @@ public class PasswordProtected {
         byte[] cipherText = ((CborObject.CborByteArray) list.get(3)).value;
 
         try {
-            byte[] derivedKeyBytes = hasher.hashToKeyBytes(salt, password, algorithm).get();
+            byte[] derivedKeyBytes = hasher.hashToKeyBytes(salt, password, algorithm).join();
 
             SymmetricKey key = new TweetNaClKey(derivedKeyBytes, false, provider, random);
             return key.decrypt(cipherText, nonce);

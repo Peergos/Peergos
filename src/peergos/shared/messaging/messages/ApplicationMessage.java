@@ -16,6 +16,11 @@ public class ApplicationMessage implements Message {
     }
 
     @Override
+    public String toString() {
+        return body.stream().map(Object::toString).collect(Collectors.joining());
+    }
+
+    @Override
     public Type type() {
         return Type.Application;
     }
