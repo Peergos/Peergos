@@ -193,7 +193,14 @@ public class Chat implements Cborable {
                 }
                 break;
             }
-            case ReplyTo:
+            case ReplyTo: {
+                ReplyTo content = (ReplyTo) msg.payload;
+                List<FileRef> fileRefs = content.content.body.stream()
+                        .flatMap(c -> c.reference().stream())
+                        .collect(Collectors.toList());
+                // note media to mirror our storage
+                return Futures.of(new ChatUpdate(addToRecent(msg), Arrays.asList(signed), fileRefs, Collections.emptySet()));
+            }
             case Delete:
                 break;
         }
