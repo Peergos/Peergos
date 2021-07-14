@@ -1424,8 +1424,9 @@ public class UserContext {
                                 gatherAllUsernamesToUnshare(social, fileSharingState.readAccess, initialReadersToRemove)
                         )) :
                 Futures.of(initialReadersToRemove))
-                .thenCompose(users -> network.synchronizer.applyComplexUpdate(signer.publicKeyHash, signer,
-                        (s, c) -> unShareReadAccessWith(path, users, s, c)));
+                .thenCompose(users -> getUserRoot()
+                        .thenCompose(home -> network.synchronizer.applyComplexUpdate(signer.publicKeyHash, home.signingPair(),
+                                (s, c) -> unShareReadAccessWith(path, users, s, c))));
     }
 
     public CompletableFuture<Snapshot> unShareReadAccessWith(Path path,
@@ -1438,7 +1439,7 @@ public class UserContext {
             FileWrapper toUnshare = opt.orElseThrow(() -> new IllegalStateException("Specified un-shareWith path " + absolutePathString + " does not exist"));
             // now change to new base keys, clean some keys and mark others as dirty
             return getByPath(path.getParent().toString(), s)
-                    .thenCompose(parent -> rotateAllKeys(toUnshare, parent.get(), false, s, c)
+                    .thenCompose(parent -> rotateAllKeys(toUnshare, parent.get(), false, toUnshare.version, c)
                             .thenCompose(markedDirty -> {
                                 return sharedWithCache.removeSharedWith(SharedWithCache.Access.READ, path, readersToRemove, markedDirty, c)
                                         .thenCompose(s2 -> reSendAllWriteAccessRecursive(path, s2, c)
