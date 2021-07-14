@@ -13,8 +13,8 @@ import java.util.function.*;
 
 public class FileBackedMessageStore implements MessageStore {
 
-    private FileWrapper messages;
-    private FileWrapper indexFile;
+    private final FileWrapper messages;
+    private final FileWrapper indexFile;
     private final NetworkAccess network;
     private final Crypto crypto;
     private final UserContext context;
@@ -38,11 +38,9 @@ public class FileBackedMessageStore implements MessageStore {
     private CompletableFuture<Pair<Long, Integer>> getChunkByteOffset(long index) {
         if (messages.getSize() < 5*1024*1024)
             return Futures.of(new Pair<>(0L, (int) index));
-        return indexFile.getUpdated(network)
-                .thenCompose(updated -> updated.getInputStream(network, crypto, x -> {})
+        return indexFile.getInputStream(indexFile.version.get(indexFile.writer()).props, network, crypto, x -> {})
                         .thenCompose(reader -> findOffset(reader, new byte[1024],
-                                0L, 0L, index, updated.getSize())));
-
+                                0L, 0L, index, indexFile.getSize()));
     }
 
     private CompletableFuture<Pair<Long, Integer>> findOffset(AsyncReader r,
@@ -76,32 +74,38 @@ public class FileBackedMessageStore implements MessageStore {
     @Override
     public CompletableFuture<List<SignedMessage>> getMessagesFrom(long index) {
         List<SignedMessage> res = new ArrayList<>();
-        return messages.getUpdated(network)
-                .thenCompose(updated -> updated.getInputStream(network, crypto, x -> {})
+        return messages.getInputStream(messages.version.get(messages.writer()).props, network, crypto, x -> {})
                         .thenCompose(reader -> getChunkByteOffset(index)
                                 .thenCompose(p -> reader.seek(p.left)
                                         .thenCompose(seeked -> seeked.parseLimitedStream(SignedMessage::fromCbor,
-                                        res::add, p.right, Integer.MAX_VALUE, updated.getSize() - p.left))))
-                        .thenApply(x -> res));
+                                        res::add, p.right, Integer.MAX_VALUE, messages.getSize() - p.left))))
+                        .thenApply(x -> res);
     }
 
     @Override
     public CompletableFuture<List<SignedMessage>> getMessages(long fromIndex, long toIndex) {
         List<SignedMessage> res = new ArrayList<>();
-        return messages.getUpdated(network)
-                .thenCompose(updated -> updated.getInputStream(network, crypto, x -> {})
+        return messages.getInputStream(messages.version.get(messages.writer()).props, network, crypto, x -> {})
                         .thenCompose(reader -> getChunkByteOffset(fromIndex)
                                 .thenCompose(p -> reader.seek(p.left)
                                         .thenCompose(seeked -> seeked.parseLimitedStream(SignedMessage::fromCbor,
-                                                res::add, p.right, (int) (toIndex - fromIndex), updated.getSize() - p.left))))
-                        .thenApply(x -> res));
+                                                res::add, p.right, (int) (toIndex - fromIndex), messages.getSize() - p.left))))
+                        .thenApply(x -> res);
     }
 
     @Override
-    public CompletableFuture<Snapshot> addMessage(Snapshot initialVersion, Committer committer, long msgIndex, SignedMessage msg) {
-        byte[] raw = msg.serialize();
-        return messages.getUpdated(initialVersion, network)
-                .thenCompose(mIn -> mIn.clean(mIn.version, committer, network, crypto))
+    public CompletableFuture<Snapshot> addMessages(Snapshot initialVersion, Committer committer, long msgIndex, List<SignedMessage> msgs) {
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        List<Integer> sizes = new ArrayList<>();
+        for (SignedMessage msg : msgs) {
+            try {
+                byte[] msgData = msg.serialize();
+                buf.write(msgData);
+                sizes.add(msgData.length);
+            } catch (IOException e) {} // can't happen
+        }
+        byte[] raw = buf.toByteArray();
+        return messages.clean(initialVersion, committer, network, crypto)
                 .thenCompose(p -> p.left.overwriteSection(p.right, committer, AsyncReader.build(raw), p.left.getSize(),
                         p.left.getSize() + raw.length, network, crypto, x -> {}).thenCompose(s2 -> {
                     long size = p.left.getSize();
@@ -110,31 +114,29 @@ public class FileBackedMessageStore implements MessageStore {
                         return Futures.of(s2);
                     ByteArrayOutputStream bout = new ByteArrayOutputStream();
                     DataOutputStream dout = new DataOutputStream(bout);
+                    // find message that crossed chunk boundary
+                    int count=0;
+                    int totalSize = 0;
+                    while (count < sizes.size()) {
+                        totalSize += sizes.get(count);
+                        count++;
+                        if ((totalSize + size)/Chunk.MAX_SIZE > size/Chunk.MAX_SIZE)
+                            break;
+                    }
                     try {
-                        dout.writeLong(msgIndex + 1);
-                        dout.writeLong(size + raw.length);
+                        dout.writeLong(msgIndex + count);
+                        dout.writeLong(size + totalSize);
                     } catch (IOException e) {} // can't happen
                     byte[] twoLongs = bout.toByteArray();
-                    return indexFile.getUpdated(s2, network)
-                            .thenCompose(updatedIndex -> updatedIndex.overwriteSection(s2, committer,
-                                    AsyncReader.build(twoLongs), updatedIndex.getSize(),
-                                    updatedIndex.getSize() + twoLongs.length, network, crypto, x -> {}));
+                    return indexFile.overwriteSection(s2, committer,
+                                    AsyncReader.build(twoLongs), indexFile.getSize(),
+                            indexFile.getSize() + twoLongs.length, network, crypto, x -> {});
 
-                }))
-                .thenCompose(s -> messages.getUpdated(s, network).thenApply(updated -> {
-                    this.messages = updated;
-                    return s;
                 }));
     }
 
     @Override
-    public synchronized CompletableFuture<Snapshot> revokeAccess(Set<String> usernames) {
-        return context.unShareReadAccessWith(sharedDir, usernames)
-                .thenCompose(s -> filesUpdater.get()
-                .thenApply(files -> {
-                    this.messages = files.left;
-                    this.indexFile = files.right;
-                    return s;
-                }));
+    public synchronized CompletableFuture<Snapshot> revokeAccess(Set<String> usernames, Snapshot s, Committer c) {
+        return context.unShareReadAccessWith(sharedDir, usernames, s, c);
     }
 }
