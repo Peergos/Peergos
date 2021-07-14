@@ -31,10 +31,6 @@ import java.util.stream.*;
  */
 public class Messenger {
     public static final String MESSAGING_BASE_DIR = ".messaging";
-    public static final String SHARED_CHAT_STATE = "peergos-chat-state.cbor";
-    public static final String SHARED_MSG_LOG = "peergos-chat-messages.cborstream";
-    public static final String SHARED_MSG_LOG_INDEX = "peergos-chat-messages.index.bin";
-    private static final String PRIVATE_CHAT_STATE = "private-chat-state.cbor";
 
     private final UserContext context;
     private final NetworkAccess network;
@@ -71,17 +67,18 @@ public class Messenger {
                         .thenCompose(chatSharedDir -> chatRoot.getUpdated(network)
                                 .thenCompose(updatedChatRoot -> chatSharedDir.setProperties(chatSharedDir.getFileProperties(), hasher,
                                         network, Optional.of(updatedChatRoot)).thenCompose(b -> chatSharedDir.getUpdated(network))))
-                        .thenCompose(chatSharedDir -> chatSharedDir.uploadOrReplaceFile(SHARED_MSG_LOG,
+                        .thenCompose(chatSharedDir -> chatSharedDir.uploadOrReplaceFile(ChatController.SHARED_MSG_LOG,
                                 AsyncReader.build(new byte[0]), 0, network, crypto, x -> {}, crypto.random.randomBytes(32)))
-                        .thenCompose(chatSharedDir -> chatSharedDir.uploadOrReplaceFile(SHARED_MSG_LOG_INDEX,
+                        .thenCompose(chatSharedDir -> chatSharedDir.uploadOrReplaceFile(ChatController.SHARED_MSG_LOG_INDEX,
                                 AsyncReader.build(new byte[16]), 16, network, crypto, x -> {}, crypto.random.randomBytes(32)))
-                        .thenCompose(chatSharedDir -> chatSharedDir.uploadOrReplaceFile(SHARED_CHAT_STATE,
+                        .thenCompose(chatSharedDir -> chatSharedDir.uploadOrReplaceFile(ChatController.SHARED_CHAT_STATE,
                                 AsyncReader.build(rawChat), rawChat.length, network, crypto, x -> {}, crypto.random.randomBytes(32)))
                         .thenCompose(x -> chatRoot.getUpdated(x.version, network))
-                        .thenCompose(updatedChatRoot -> updatedChatRoot.uploadOrReplaceFile(PRIVATE_CHAT_STATE,
+                        .thenCompose(updatedChatRoot -> updatedChatRoot.uploadOrReplaceFile(ChatController.PRIVATE_CHAT_STATE,
                                 AsyncReader.build(rawPrivateChatState), rawPrivateChatState.length, network, crypto, x -> {}, crypto.random.randomBytes(32)))
-                        .thenCompose(this::getChatMessageStore)
-                        .thenApply(messageStore -> new ChatController(chatId, chat, messageStore, privateChatState, chatRoot, cache, hasher, context)))
+                        .thenCompose(newRoot -> ChatController.getChatMessageStore(newRoot, context)
+                                .thenApply(messageStore -> new ChatController(chatId, chat, messageStore,
+                                        privateChatState, newRoot, cache, context))))
                 .thenCompose(controller -> controller.join(context.signer))
                 .thenCompose(controller -> controller.addAdmin(context.username));
     }
@@ -93,8 +90,7 @@ public class Messenger {
                 .thenCompose(updated -> updated.getChild(chatId, hasher, network))
                 .thenApply(Optional::get);
     }
-
-    public Path getChatPath(String hostUsername, String chatId) {
+    public static Path getChatPath(String hostUsername, String chatId) {
         return Paths.get(hostUsername, MESSAGING_BASE_DIR, chatId);
     }
 
@@ -124,7 +120,7 @@ public class Messenger {
                 .thenApply(parent -> parent.getName())
                 .thenCompose(chatId -> createChatRoot(chatId) // This will error if a chat with this chatId already exists
                         .thenCompose(chatRoot -> chatRoot.getOrMkdirs(Paths.get("shared"), network, false, crypto)
-                                .thenCompose(shared -> getChatState(sourceChatSharedDir)
+                                .thenCompose(shared -> ChatController.getChatState(sourceChatSharedDir, network, crypto)
                                         .thenCompose(mirrorState -> {
                                             Chat ourVersion = mirrorState.copy(new Member(context.username,
                                                     mirrorState.getMember(context.username).id,
@@ -132,16 +128,16 @@ public class Messenger {
                                                     mirrorState.host().messagesMergedUpto, 0, false));
 
                                             byte[] rawChat = ourVersion.serialize();
-                                            return shared.uploadOrReplaceFile(SHARED_CHAT_STATE, AsyncReader.build(rawChat),
+                                            return shared.uploadOrReplaceFile(ChatController.SHARED_CHAT_STATE, AsyncReader.build(rawChat),
                                                     rawChat.length, network, crypto, x -> {}, crypto.random.randomBytes(32));
                                         })
-                                        .thenCompose(b -> sourceChatSharedDir.getChild(SHARED_MSG_LOG, hasher, network))
+                                        .thenCompose(b -> sourceChatSharedDir.getChild(ChatController.SHARED_MSG_LOG, hasher, network))
                                         .thenCompose(msgs -> shared.getUpdated(network)
                                                 .thenCompose(updatedShared -> msgs.get().copyTo(updatedShared, context)))
-                                        .thenCompose(b -> sourceChatSharedDir.getChild(SHARED_MSG_LOG_INDEX, hasher, network))
+                                        .thenCompose(b -> sourceChatSharedDir.getChild(ChatController.SHARED_MSG_LOG_INDEX, hasher, network))
                                         .thenCompose(msgsIndex -> shared.getUpdated(network)
                                                 .thenCompose(updatedShared -> msgsIndex.get().copyTo(updatedShared, context)))
-                                        .thenCompose(x -> chatRoot.uploadOrReplaceFile(PRIVATE_CHAT_STATE,
+                                        .thenCompose(x -> chatRoot.uploadOrReplaceFile(ChatController.PRIVATE_CHAT_STATE,
                                                 AsyncReader.build(rawPrivateChatState), rawPrivateChatState.length, network,
                                                 crypto, y -> {}, crypto.random.randomBytes(32)))
                                 )).thenCompose(b -> context.shareReadAccessWith(
@@ -155,7 +151,7 @@ public class Messenger {
         Path chatPath = getChatPath(context.username, current.chatUuid);
         byte[] rawPrivateChatState = state.serialize();
         return context.getByPath(chatPath)
-                .thenCompose(dopt -> dopt.get().uploadOrReplaceFile(PRIVATE_CHAT_STATE,
+                .thenCompose(dopt -> dopt.get().uploadOrReplaceFile(ChatController.PRIVATE_CHAT_STATE,
                                                 AsyncReader.build(rawPrivateChatState), rawPrivateChatState.length, network,
                                                 crypto, y -> {}, crypto.random.randomBytes(32)))
                 .thenApply(f -> current.with(state));
@@ -259,7 +255,7 @@ public class Messenger {
     public CompletableFuture<ChatController> getChat(String uuid) {
         return context.getByPath(getChatPath(context.username, uuid))
                 .thenApply(Optional::get)
-                .thenCompose(this::getChatController);
+                .thenCompose(d -> ChatController.getChatController(d, context, cache));
     }
 
     @JsMethod
@@ -278,47 +274,13 @@ public class Messenger {
                 .thenCompose(home -> home.getOrMkdirs(Paths.get(MESSAGING_BASE_DIR), network, true, crypto))
                 .thenCompose(chatsRoot -> chatsRoot.getChildren(hasher, network))
                 .thenCompose(chatDirs -> Futures.combineAll(chatDirs.stream()
-                        .map(this::getChatController)
+                        .map(d -> ChatController.getChatController(d, context, cache))
                         .collect(Collectors.toList())));
-    }
-
-    private CompletableFuture<ChatController> getChatController(FileWrapper chatRoot) {
-        return chatRoot.getChild("shared", hasher, network)
-                .thenCompose(sharedDir -> getChatState(sharedDir.get()))
-                .thenCompose(chat -> getPrivateChatState(chatRoot)
-                        .thenCompose(priv -> getChatMessageStore(chatRoot)
-                                .thenApply(msgStore -> new ChatController(chatRoot.getName(), chat, msgStore, priv,
-                                        chatRoot, cache, hasher, context))));
-    }
-
-    private CompletableFuture<Chat> getChatState(FileWrapper chatRoot) {
-        return chatRoot.getChild(SHARED_CHAT_STATE, hasher, network)
-                .thenCompose(chatStateOpt -> Serialize.parse(chatStateOpt.get(), Chat::fromCbor, network, crypto));
-    }
-
-    private CompletableFuture<PrivateChatState> getPrivateChatState(FileWrapper chatRoot) {
-        return chatRoot.getChild(PRIVATE_CHAT_STATE, hasher, network)
-                .thenCompose(priv -> Serialize.parse(priv.get(), PrivateChatState::fromCbor, network, crypto));
-    }
-
-    private CompletableFuture<Pair<FileWrapper, FileWrapper>> getSharedLogAndIndex(FileWrapper chatRoot) {
-        return chatRoot.getDescendentByPath("shared/" + SHARED_MSG_LOG, hasher, network)
-                .thenCompose(msgFile -> chatRoot.getDescendentByPath("shared/" + SHARED_MSG_LOG_INDEX, hasher, network)
-                        .thenApply(index -> new Pair<>(msgFile.get(), index.get())));
-    }
-
-    private CompletableFuture<MessageStore> getChatMessageStore(FileWrapper chatRoot) {
-        return getSharedLogAndIndex(chatRoot)
-                .thenApply(files -> new FileBackedMessageStore(files.left, files.right, context,
-                        getChatPath(context.username, chatRoot.getName()).resolve("shared"),
-                        () -> context.getByPath(getChatPath(context.username, chatRoot.getName()))
-                                .thenApply(Optional::get)
-                                .thenCompose(this::getSharedLogAndIndex)));
     }
 
     private CompletableFuture<MessageStore> getMessageStoreMirror(String username, String uuid) {
         return context.getByPath(getChatPath(username, uuid))
                 .thenApply(Optional::get)
-                .thenCompose(this::getChatMessageStore);
+                .thenCompose(d -> ChatController.getChatMessageStore(d, context));
     }
 }

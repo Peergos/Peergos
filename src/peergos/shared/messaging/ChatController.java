@@ -1,6 +1,7 @@
 package peergos.shared.messaging;
 
 import jsinterop.annotations.*;
+import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.display.*;
@@ -15,6 +16,10 @@ import java.util.concurrent.*;
 import java.util.stream.*;
 
 public class ChatController {
+    public static final String SHARED_CHAT_STATE = "peergos-chat-state.cbor";
+    public static final String SHARED_MSG_LOG = "peergos-chat-messages.cborstream";
+    public static final String SHARED_MSG_LOG_INDEX = "peergos-chat-messages.index.bin";
+    public static final String PRIVATE_CHAT_STATE = "private-chat-state.cbor";
 
     public final String chatUuid;
     public final MessageStore store;
@@ -31,7 +36,6 @@ public class ChatController {
                           PrivateChatState privateChatState,
                           FileWrapper root,
                           LRUCache<MessageRef, MessageEnvelope> cache,
-                          Hasher hasher,
                           UserContext context) {
         this.chatUuid = chatUuid;
         this.state = state;
@@ -39,7 +43,7 @@ public class ChatController {
         this.privateChatState = privateChatState;
         this.root = root;
         this.cache = cache;
-        this.hasher = hasher;
+        this.hasher = context.crypto.hasher;
         this.context = context;
     }
 
@@ -75,7 +79,7 @@ public class ChatController {
     }
 
     public ChatController with(PrivateChatState priv) {
-        return new ChatController(chatUuid, state, store, priv, root, cache, hasher, context);
+        return new ChatController(chatUuid, state, store, priv, root, cache, context);
     }
 
     @JsMethod
@@ -149,11 +153,11 @@ public class ChatController {
     }
 
     private ChatController withState(Chat c) {
-        return new ChatController(chatUuid, c, store, privateChatState, root, cache, hasher, context);
+        return new ChatController(chatUuid, c, store, privateChatState, root, cache, context);
     }
 
     private ChatController withRoot(FileWrapper root) {
-        return new ChatController(chatUuid, state, store, privateChatState, root, cache, hasher, context);
+        return new ChatController(chatUuid, state, store, privateChatState, root, cache, context);
     }
 
     public CompletableFuture<ChatController> join(SigningPrivateKeyAndPublicHash identity) {
@@ -234,8 +238,7 @@ public class ChatController {
 
     private CompletableFuture<Snapshot> overwriteState(FileWrapper root, Chat c, Snapshot v, Committer com) {
         byte[] raw = c.serialize();
-        return root.getUpdated(v, context.network)
-                .thenCompose(d -> d.getDescendentByPath("shared/"+ Messenger.SHARED_CHAT_STATE, context.crypto.hasher, context.network))
+        return root.getDescendentByPath("shared/"+ SHARED_CHAT_STATE, context.crypto.hasher, context.network)
                 .thenCompose(file -> file.get().overwriteFile(AsyncReader.build(raw), raw.length, context.network, context.crypto, x -> {}, v, com));
     }
 
@@ -251,8 +254,46 @@ public class ChatController {
                         .thenCompose(s2 -> root.getUpdated(s2, context.network)
                                 .thenCompose(base -> Futures.reduceAll(u.newMessages, s2,
                                         (v, m) -> store.addMessage(v, c, state.host().messagesMergedUpto + u.newMessages.indexOf(m), m),
-                                        (a, b) -> a.merge(b))))
-                        .thenCompose(s4 -> overwriteState(root, u.state, s4, c)))
-                        .thenApply(s -> withState(u.state).withRoot(root)));
+                                        (a, b) -> a.merge(b))
+                                        .thenCompose(s4 -> overwriteState(base, u.state, s4, c)))))
+                        .thenCompose(s -> root.getUpdated(s, context.network)
+                                .thenApply(newRoot -> withState(u.state).withRoot(newRoot))));
+    }
+
+    private static CompletableFuture<Pair<FileWrapper, FileWrapper>> getSharedLogAndIndex(FileWrapper chatRoot, Hasher hasher, NetworkAccess network) {
+        return chatRoot.getDescendentByPath("shared/" + SHARED_MSG_LOG, hasher, network)
+                .thenCompose(msgFile -> chatRoot.getDescendentByPath("shared/" + SHARED_MSG_LOG_INDEX, hasher, network)
+                        .thenApply(index -> new Pair<>(msgFile.get(), index.get())));
+    }
+
+    public static CompletableFuture<MessageStore> getChatMessageStore(FileWrapper chatRoot, UserContext context) {
+        Path chatRootPath = Messenger.getChatPath(context.username, chatRoot.getName());
+        return getSharedLogAndIndex(chatRoot, context.crypto.hasher, context.network)
+                .thenApply(files -> new FileBackedMessageStore(files.left, files.right, context,
+                        chatRootPath.resolve("shared"),
+                        () -> context.getByPath(chatRootPath)
+                                .thenApply(Optional::get)
+                                .thenCompose(d -> getSharedLogAndIndex(d, context.crypto.hasher, context.network))));
+    }
+
+    public static CompletableFuture<Chat> getChatState(FileWrapper chatRoot, NetworkAccess network, Crypto crypto) {
+        return chatRoot.getChild(SHARED_CHAT_STATE, crypto.hasher, network)
+                .thenCompose(chatStateOpt -> Serialize.parse(chatStateOpt.get(), Chat::fromCbor, network, crypto));
+    }
+
+    private static CompletableFuture<PrivateChatState> getPrivateChatState(FileWrapper chatRoot, NetworkAccess network, Crypto crypto) {
+        return chatRoot.getChild(PRIVATE_CHAT_STATE, crypto.hasher, network)
+                .thenCompose(priv -> Serialize.parse(priv.get(), PrivateChatState::fromCbor, network, crypto));
+    }
+
+    public static CompletableFuture<ChatController> getChatController(FileWrapper chatRoot,
+                                                                      UserContext context,
+                                                                      LRUCache<MessageRef, MessageEnvelope> cache) {
+        return chatRoot.getChild("shared", context.crypto.hasher, context.network)
+                .thenCompose(sharedDir -> getChatState(sharedDir.get(), context.network, context.crypto))
+                .thenCompose(chat -> getPrivateChatState(chatRoot, context.network, context.crypto)
+                        .thenCompose(priv -> getChatMessageStore(chatRoot, context)
+                                .thenApply(msgStore -> new ChatController(chatRoot.getName(), chat, msgStore, priv,
+                                        chatRoot, cache, context))));
     }
 }
