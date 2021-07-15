@@ -284,15 +284,15 @@ public class MessagingTests {
         }
 
         @Override
-        public CompletableFuture<Snapshot> addMessage(Snapshot initialVersion, Committer committer, long msgIndex, SignedMessage msg) {
+        public CompletableFuture<Snapshot> addMessages(Snapshot initialVersion, Committer committer, long msgIndex, List<SignedMessage> msgs) {
             if (messages.size() != msgIndex)
                 throw new IllegalStateException();
-            messages.add(msg);
+            messages.addAll(msgs);
             return Futures.of(initialVersion);
         }
 
         @Override
-        public CompletableFuture<Snapshot> revokeAccess(Set<String> usernames) {
+        public CompletableFuture<Snapshot> revokeAccess(Set<String> usernames, Snapshot initialVersion, Committer committer) {
             return Futures.of(new Snapshot(Collections.emptyMap()));
         }
 

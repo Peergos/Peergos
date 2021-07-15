@@ -11,7 +11,7 @@ public interface MessageStore {
 
     CompletableFuture<List<SignedMessage>> getMessages(long fromIndex, long toIndex);
 
-    CompletableFuture<Snapshot> addMessage(Snapshot initialVersion, Committer committer, long msgIndex, SignedMessage msg);
+    CompletableFuture<Snapshot> addMessages(Snapshot initialVersion, Committer committer, long msgIndex, List<SignedMessage> msgs);
 
-    CompletableFuture<Snapshot> revokeAccess(Set<String> usernames);
+    CompletableFuture<Snapshot> revokeAccess(Set<String> usernames, Snapshot initialVersion, Committer committer);
 }

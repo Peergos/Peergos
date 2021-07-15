@@ -122,7 +122,7 @@ public class Serialize
                                                  NetworkAccess network,
                                                  Crypto crypto) {
         byte[] res = new byte[(int)f.getSize()];
-        return f.getInputStream(network, crypto, x -> {})
+        return f.getInputStream(f.version.get(f.writer()).props,network, crypto, x -> {})
                 .thenCompose(reader -> reader.readIntoArray(res, 0, (int) f.getSize()))
                 .thenApply(i -> Cborable.parser(parser).apply(res));
     }
