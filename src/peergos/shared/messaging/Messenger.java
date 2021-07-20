@@ -46,21 +46,13 @@ public class Messenger {
         this.hasher = context.crypto.hasher;
     }
 
-    private PrivateChatState generateChatIdentity() {
-        SigningKeyPair chatIdentity = SigningKeyPair.random(crypto.random, crypto.signer);
-        PublicKeyHash preHash = ContentAddressedStorage.hashKey(chatIdentity.publicSigningKey);
-        SigningPrivateKeyAndPublicHash chatIdWithHash =
-                new SigningPrivateKeyAndPublicHash(preHash, chatIdentity.secretSigningKey);
-        return new PrivateChatState(chatIdWithHash, chatIdentity.publicSigningKey, Collections.emptySet());
-    }
-
     @JsMethod
     public CompletableFuture<ChatController> createChat() {
         String chatId = "chat:" + context.username + ":" + UUID.randomUUID().toString();
         Chat chat = Chat.createNew(chatId, context.username, context.signer.publicKeyHash);
 
         byte[] rawChat = chat.serialize();
-        PrivateChatState privateChatState = generateChatIdentity();
+        PrivateChatState privateChatState = Chat.generateChatIdentity(crypto);
         byte[] rawPrivateChatState = privateChatState.serialize();
         return createChatRoot(chatId)
                 .thenCompose(chatRoot -> chatRoot.getOrMkdirs(Paths.get("shared"), context.network, false, crypto)
@@ -113,7 +105,7 @@ public class Messenger {
      */
     @JsMethod
     public CompletableFuture<ChatController> cloneLocallyAndJoin(FileWrapper sourceChatSharedDir) {
-        PrivateChatState privateChatState = generateChatIdentity();
+        PrivateChatState privateChatState = Chat.generateChatIdentity(crypto);
         byte[] rawPrivateChatState = privateChatState.serialize();
         return sourceChatSharedDir.retrieveParent(network)
                 .thenApply(Optional::get)
@@ -157,9 +149,15 @@ public class Messenger {
                 .thenApply(f -> current.with(state));
     }
 
+    public boolean allOtherMembersRemoved(ChatController current) {
+        Set<String> memberNames = current.getMemberNames();
+        return memberNames.contains(context.username) && memberNames.size() == 1;
+    }
+
     @JsMethod
     public CompletableFuture<ChatController> mergeMessages(ChatController current, String mirrorUsername) {
-        if (mirrorUsername.equals(this.context.username) || current.deletedMemberNames().contains(mirrorUsername)) {
+        if (mirrorUsername.equals(this.context.username) ||
+                (current.deletedMemberNames().contains(mirrorUsername) && ! allOtherMembersRemoved(current))) {
             return Futures.of(current);
         }
         return Futures.asyncExceptionally(
@@ -174,6 +172,8 @@ public class Messenger {
                         if (current.isAdmin()) {
                             return removeMember(current, mirrorUsername);
                         } else {
+                            if (current.deletedMemberNames().contains(mirrorUsername))
+                                return Futures.of(current);
                             PrivateChatState updatedPrivate = current.privateChatState.addDeleted(mirrorUsername);
                             return updatePrivateState(updatedPrivate, current);
                         }

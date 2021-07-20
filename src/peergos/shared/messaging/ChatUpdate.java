@@ -9,12 +9,25 @@ public class ChatUpdate {
     public final List<SignedMessage> newMessages;
     public final List<FileRef> mediaToCopy;
     public final Set<String> toRevokeAccess;
+    public final Optional<PrivateChatState> priv;
 
-    public ChatUpdate(Chat state, List<SignedMessage> newMessages, List<FileRef> mediaToCopy, Set<String> toRevokeAccess) {
+    public ChatUpdate(Chat state,
+                      List<SignedMessage> newMessages,
+                      List<FileRef> mediaToCopy,
+                      Set<String> toRevokeAccess,
+                      Optional<PrivateChatState> priv) {
         this.state = state;
         this.newMessages = newMessages;
         this.mediaToCopy = mediaToCopy;
         this.toRevokeAccess = toRevokeAccess;
+        this.priv = priv;
+    }
+
+    public ChatUpdate(Chat state,
+                      List<SignedMessage> newMessages,
+                      List<FileRef> mediaToCopy,
+                      Set<String> toRevokeAccess) {
+        this(state, newMessages, mediaToCopy, toRevokeAccess, Optional.empty());
     }
 
     public ChatUpdate apply(ChatUpdate next) {
@@ -24,14 +37,14 @@ public class ChatUpdate {
         refs.addAll(next.mediaToCopy);
         Set<String> toRevoke = new HashSet(toRevokeAccess);
         toRevoke.addAll(next.toRevokeAccess);
-        return new ChatUpdate(next.state, msgs, refs, toRevoke);
+        return new ChatUpdate(next.state, msgs, refs, toRevoke, priv.flatMap(a -> next.priv.map(a::apply)));
     }
 
     public ChatUpdate withState(Chat c) {
-        return new ChatUpdate(c, newMessages, mediaToCopy, toRevokeAccess);
+        return new ChatUpdate(c, newMessages, mediaToCopy, toRevokeAccess, priv);
     }
 
     public static ChatUpdate empty(Chat c) {
-        return new ChatUpdate(c, Collections.emptyList(), Collections.emptyList(), Collections.emptySet());
+        return new ChatUpdate(c, Collections.emptyList(), Collections.emptyList(), Collections.emptySet(), Optional.empty());
     }
 }
