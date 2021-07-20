@@ -83,8 +83,8 @@ public class EmailMessage implements Cborable {
         state.put("a", new CborObject.CborList(attachments));
         state.put("e", new CborObject.CborString(icalEvent));
 
-        replyingToEmail.ifPresent(proof -> state.put("r", replyingToEmail.get().toCbor()));
-        forwardingToEmail.ifPresent(proof -> state.put("o", forwardingToEmail.get().toCbor()));
+        replyingToEmail.ifPresent(r -> state.put("r", replyingToEmail.get().toCbor()));
+        forwardingToEmail.ifPresent(o -> state.put("o", forwardingToEmail.get().toCbor()));
 
         List<CborObject> withMimeType = new ArrayList<>();
         withMimeType.add(new CborObject.CborLong(MimeTypes.CBOR_PEERGOS_EMAIL_INT));

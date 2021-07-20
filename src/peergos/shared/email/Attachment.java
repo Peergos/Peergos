@@ -4,6 +4,8 @@ import jsinterop.annotations.JsConstructor;
 import jsinterop.annotations.JsType;
 import peergos.shared.cbor.CborObject;
 import peergos.shared.cbor.Cborable;
+import peergos.shared.display.FileRef;
+
 import java.util.SortedMap;
 import java.util.TreeMap;
 
@@ -13,16 +15,16 @@ public class Attachment implements Cborable {
     public final String filename;
     public final int size;
     public final String type;
-    public final byte[] data;
+    public final FileRef reference;
 
     @JsConstructor
     public Attachment(String filename, int size,
-                      String type, byte[] data
+                      String type, FileRef reference
     ) {
         this.filename = filename;
         this.size = size;
         this.type = type;
-        this.data = data;
+        this.reference = reference;
     }
 
     @Override
@@ -31,7 +33,7 @@ public class Attachment implements Cborable {
         state.put("f", new CborObject.CborString(filename));
         state.put("s", new CborObject.CborLong(size));
         state.put("t", new CborObject.CborString(type));
-        state.put("d", new CborObject.CborByteArray(data));
+        state.put("d", reference.toCbor());
         return CborObject.CborMap.build(state);
     }
 
@@ -43,7 +45,7 @@ public class Attachment implements Cborable {
         String filename = m.getString("f");
         int size = (int) m.getLong("s");
         String type = m.getString("t");
-        byte[] data = m.getByteArray("d");
-        return new Attachment(filename, size, type, data);
+        FileRef ref = m.get("d", FileRef::fromCbor);
+        return new Attachment(filename, size, type, ref);
     }
 }
