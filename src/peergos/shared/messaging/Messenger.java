@@ -149,9 +149,15 @@ public class Messenger {
                 .thenApply(f -> current.with(state));
     }
 
+    public boolean allOtherMembersRemoved(ChatController current) {
+        Set<String> memberNames = current.getMemberNames();
+        return memberNames.contains(context.username) && memberNames.size() == 1;
+    }
+
     @JsMethod
     public CompletableFuture<ChatController> mergeMessages(ChatController current, String mirrorUsername) {
-        if (mirrorUsername.equals(this.context.username)) {
+        if (mirrorUsername.equals(this.context.username) ||
+                (current.deletedMemberNames().contains(mirrorUsername) && ! allOtherMembersRemoved(current))) {
             return Futures.of(current);
         }
         return Futures.asyncExceptionally(
