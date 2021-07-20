@@ -82,4 +82,17 @@ public class Member implements Cborable {
         boolean removed = m.getBoolean("r");
         return new Member(username, id, publicIdentity, chatIdentity, messagesMergedUpTo, membersInvited, removed);
     }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        Member member = (Member) o;
+        return messagesMergedUpto == member.messagesMergedUpto && membersInvited == member.membersInvited && removed == member.removed && Objects.equals(username, member.username) && Objects.equals(id, member.id) && Objects.equals(identity, member.identity) && Objects.equals(chatIdentity, member.chatIdentity);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(username, id, identity, chatIdentity, messagesMergedUpto, membersInvited, removed);
+    }
 }

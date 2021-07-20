@@ -23,6 +23,10 @@ public class ChatUpdate {
         this.priv = priv;
     }
 
+    public boolean isEmpty() {
+        return newMessages.isEmpty() && mediaToCopy.isEmpty() && toRevokeAccess.isEmpty() && priv.isEmpty();
+    }
+
     public ChatUpdate(Chat state,
                       List<SignedMessage> newMessages,
                       List<FileRef> mediaToCopy,
