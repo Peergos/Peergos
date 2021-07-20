@@ -1,5 +1,6 @@
 package peergos.shared.messaging;
 
+import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
@@ -61,29 +62,40 @@ public class Chat implements Cborable {
     }
 
     public Member getMember(String username) {
-        return members.values().stream().filter(m -> m.username.equals(username)).findFirst().get();
+        List<Member> matching = members.values().stream()
+                .filter(m -> m.username.equals(username))
+                .collect(Collectors.toList());
+        return matching.stream().filter(m -> !m.removed).findFirst().orElse(matching.get(0));
     }
 
     public CompletableFuture<ChatUpdate> sendMessage(Message body,
                                                      SigningPrivateKeyAndPublicHash signer,
+                                                     SigningPrivateKeyAndPublicHash userIdentity,
                                                      MessageStore store,
                                                      ContentAddressedStorage ipfs,
-                                                     Hasher hasher) {
-        TreeClock msgTime = current.increment(host);
+                                                     Crypto crypto) {
         boolean nonEmpty = host().messagesMergedUpto > 0;
         return (nonEmpty ?
                 store.getMessages(host().messagesMergedUpto - 1, host().messagesMergedUpto) :
                 Futures.of(Collections.<SignedMessage>emptyList()))
                 .thenCompose(recent -> Futures.combineAllInOrder(recent.stream()
-                        .map(s -> hasher.bareHash(s.msg.serialize())
+                        .map(s -> crypto.hasher.bareHash(s.msg.serialize())
                                 .thenApply(MessageRef::new))
                         .collect(Collectors.toList())))
-                .thenCompose(recentRefs -> {
-                    MessageEnvelope msg = new MessageEnvelope(host, msgTime, LocalDateTime.now(ZoneOffset.UTC), recentRefs, body);
-                    byte[] signature = signer.secret.signatureOnly(msg.serialize());
-                    SignedMessage signed = new SignedMessage(signature, msg);
-                    return mergeMessage(chatUid, signed, host(), ipfs);
-                });
+                .thenCompose(recentRefs -> sendMessage(body, signer, userIdentity, recentRefs, ipfs, crypto));
+    }
+
+    private CompletableFuture<ChatUpdate> sendMessage(Message body,
+                                                      SigningPrivateKeyAndPublicHash signer,
+                                                      SigningPrivateKeyAndPublicHash userIdentity,
+                                                      List<MessageRef> recentRefs,
+                                                      ContentAddressedStorage ipfs,
+                                                      Crypto crypto) {
+        TreeClock msgTime = current.increment(host);
+        MessageEnvelope msg = new MessageEnvelope(host, msgTime, LocalDateTime.now(ZoneOffset.UTC), recentRefs, body);
+        byte[] signature = signer.secret.signatureOnly(msg.serialize());
+        SignedMessage signed = new SignedMessage(signature, msg);
+        return mergeMessage(chatUid, signed, host(), userIdentity, ipfs, crypto);
     }
 
     public synchronized List<MessageEnvelope> getRecent() {
@@ -98,6 +110,10 @@ public class Chat implements Cborable {
         return new Chat(chatUid, host, newTime, members, groupState, recentMessages);
     }
 
+    private Chat withHost(Id host) {
+        return new Chat(chatUid, host, current, members, groupState, recentMessages);
+    }
+
     private Chat withProperties(Map<String, GroupProperty> updated) {
         return new Chat(chatUid, host, current, members, updated, recentMessages);
     }
@@ -110,13 +126,23 @@ public class Chat implements Cborable {
         return new Chat(chatUid, host, current, members, groupState, updated);
     }
 
+    public static PrivateChatState generateChatIdentity(Crypto crypto) {
+        SigningKeyPair chatIdentity = SigningKeyPair.random(crypto.random, crypto.signer);
+        PublicKeyHash preHash = ContentAddressedStorage.hashKey(chatIdentity.publicSigningKey);
+        SigningPrivateKeyAndPublicHash chatIdWithHash =
+                new SigningPrivateKeyAndPublicHash(preHash, chatIdentity.secretSigningKey);
+        return new PrivateChatState(chatIdWithHash, chatIdentity.publicSigningKey, Collections.emptySet());
+    }
+
     /** Apply message to this Chat's state
      *
      * @return The state after applying the message
      */
     public CompletableFuture<ChatUpdate> applyMessage(SignedMessage signed,
                                                       String chatUid,
-                                                      ContentAddressedStorage ipfs) {
+                                                      SigningPrivateKeyAndPublicHash userIdentity,
+                                                      ContentAddressedStorage ipfs,
+                                                      Crypto crypto) {
         MessageEnvelope msg = signed.msg;
         Member author = members.get(msg.author);
         switch (msg.payload.type()) {
@@ -132,6 +158,23 @@ public class Chat implements Cborable {
                 long indexIntoParent = getMember(newMember.parent()).messagesMergedUpto;
                 String username = invite.username;
                 PublicKeyHash identity = invite.identity;
+                // If we have been removed and re-invited, generate a new chat identity
+                Member host = host();
+                if (host.username.equals(username) && host.removed) {
+                    PrivateChatState newIdentity = generateChatIdentity(crypto);
+                    OwnerProof chatId = OwnerProof.build(userIdentity, newIdentity.chatIdentity.publicKeyHash);
+                    Member newHost = new Member(username, newMember, identity, indexIntoParent, 0);
+                    updated.put(newMember, newHost);
+                    ChatUpdate afterInvite = new ChatUpdate(withMembers(updated).addToRecent(msg), Arrays.asList(signed), Collections.emptyList(), Collections.emptySet());
+                    Join joinMsg = new Join(host.username, host.identity, chatId, newIdentity.chatIdPublic);
+                    return crypto.hasher.bareHash(signed.msg.serialize())
+                            .thenApply(MessageRef::new)
+                            .thenCompose(ref -> afterInvite.state.withTime(afterInvite.state.current.withMember(newHost.id))
+                                    .withHost(newHost.id)
+                                    .sendMessage(joinMsg, userIdentity, userIdentity, Arrays.asList(ref), ipfs, crypto)
+                                    .thenApply(afterInvite::apply));
+                }
+
                 updated.put(newMember, new Member(username, newMember, identity, indexIntoParent, 0));
                 return Futures.of(new ChatUpdate(withMembers(updated).addToRecent(msg), Arrays.asList(signed), Collections.emptyList(), Collections.emptySet()));
             }
@@ -209,13 +252,15 @@ public class Chat implements Cborable {
 
     public CompletableFuture<ChatUpdate> merge(String chatUid,
                                                Id mirrorHostId,
+                                               SigningPrivateKeyAndPublicHash userIdentity,
                                                MessageStore mirrorStore,
-                                               ContentAddressedStorage ipfs) {
+                                               ContentAddressedStorage ipfs,
+                                               Crypto crypto) {
         Member host = getMember(mirrorHostId);
         return mirrorStore.getMessagesFrom(host.messagesMergedUpto)
                 .thenCompose(newMessages -> Futures.reduceAll(newMessages,
                         ChatUpdate.empty(this),
-                        (u, msg) -> u.state.mergeMessage(chatUid, msg, u.state.getMember(mirrorHostId), ipfs)
+                        (u, msg) -> u.state.mergeMessage(chatUid, msg, u.state.getMember(mirrorHostId), userIdentity, ipfs, crypto)
                                 .thenApply(u::apply),
                         (a, b) -> a.apply(b)));
     }
@@ -223,10 +268,12 @@ public class Chat implements Cborable {
     private CompletableFuture<ChatUpdate> mergeMessage(String chatUid,
                                                        SignedMessage signed,
                                                        Member host,
-                                                       ContentAddressedStorage ipfs) {
+                                                       SigningPrivateKeyAndPublicHash userIdentity,
+                                                       ContentAddressedStorage ipfs,
+                                                       Crypto crypto) {
         Member author = members.get(signed.msg.author);
         MessageEnvelope msg = signed.msg;
-        if (! msg.timestamp.isBeforeOrEqual(current)) {
+        if (! msg.timestamp.isBeforeOrEqual(current) && !author.removed) {
             // check signature
             return (author.chatIdentity.isPresent() ?
                     author.chatIdentity.get().getOwner(ipfs) :
@@ -236,7 +283,7 @@ public class Chat implements Cborable {
                         if (signerOpt.isEmpty())
                             throw new IllegalStateException("Couldn't retrieve public signing key!");
                         signerOpt.get().unsignMessage(ArrayOps.concat(signed.signature, signed.msg.serialize()));
-                        return applyMessage(signed, chatUid, ipfs);
+                        return applyMessage(signed, chatUid, userIdentity, ipfs, crypto);
                     }).thenApply(u -> u.withState(u.state.mergeMessageTimestamp(msg.timestamp, host)));
         }
         return Futures.of(ChatUpdate.empty(incrementHost(host)));
@@ -262,9 +309,9 @@ public class Chat implements Cborable {
                                               SigningPrivateKeyAndPublicHash identity,
                                               MessageStore ourStore,
                                               ContentAddressedStorage ipfs,
-                                              Hasher hasher) {
+                                              Crypto crypto) {
         Join joinMsg = new Join(host.username, host.identity, chatId, chatIdPublic);
-        return withTime(current.withMember(host.id)).sendMessage(joinMsg, identity, ourStore, ipfs, hasher);
+        return withTime(current.withMember(host.id)).sendMessage(joinMsg, identity, identity, ourStore, ipfs, crypto);
     }
 
     public Chat copy(Member host) {
@@ -279,18 +326,20 @@ public class Chat implements Cborable {
     public CompletableFuture<ChatUpdate> inviteMember(String username,
                                                       PublicKeyHash identity,
                                                       SigningPrivateKeyAndPublicHash ourChatIdentity,
+                                                      SigningPrivateKeyAndPublicHash userIdentity,
                                                       MessageStore ourStore,
                                                       ContentAddressedStorage ipfs,
-                                                      Hasher hasher) {
-        return inviteMembers(Arrays.asList(username), Arrays.asList(identity), ourChatIdentity, ourStore, ipfs, hasher);
+                                                      Crypto crypto) {
+        return inviteMembers(Arrays.asList(username), Arrays.asList(identity), ourChatIdentity, userIdentity, ourStore, ipfs, crypto);
     }
 
     public CompletableFuture<ChatUpdate> inviteMembers(List<String> usernames,
                                                        List<PublicKeyHash> identities,
                                                        SigningPrivateKeyAndPublicHash ourChatIdentity,
+                                                       SigningPrivateKeyAndPublicHash userIdentity,
                                                        MessageStore ourStore,
                                                        ContentAddressedStorage ipfs,
-                                                       Hasher hasher) {
+                                                       Crypto crypto) {
         List<Integer> range = IntStream.range(0, usernames.size()).mapToObj(i -> i).collect(Collectors.toList());
         return Futures.reduceAll(range, ChatUpdate.empty(this),
                 (u, i) -> {
@@ -302,7 +351,7 @@ public class Chat implements Cborable {
                     Invite invite = new Invite(username, identity, newMember);
 
                     TreeClock newTime = u.state.current.withMember(newMember);
-                    return u.state.sendMessage(invite, ourChatIdentity, ourStore, ipfs, hasher);
+                    return u.state.sendMessage(invite, ourChatIdentity, userIdentity, ourStore, ipfs, crypto);
                 },
                 (a, b) -> a.apply(b));
     }

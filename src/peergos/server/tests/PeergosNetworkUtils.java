@@ -1747,6 +1747,27 @@ public class PeergosNetworkUtils {
         // recent messages
         List<MessageEnvelope> recentA = controllerA.getRecent();
         Assert.assertTrue(recentA.size() > 0);
+
+        // removal status
+        Member originalB = controllerA.getMember(b.username);
+        Id originalBId = originalB.id;
+        Assert.assertTrue(originalB.removed);
+
+        // reinvite member
+        controllerA = msgA.invite(controllerA, Arrays.asList(b.username), Arrays.asList(b.signer.publicKeyHash)).join();
+        Assert.assertTrue(! controllerA.getMember(b.username).removed);
+
+        // rejoin chat
+        controllerB = msgB.mergeMessages(controllerB, a.username).join();
+        Member newB = controllerB.getMember(b.username);
+        boolean bRemoved2 = newB.removed;
+        Assert.assertTrue(! bRemoved2);
+
+        Id newBId = newB.id;
+        Assert.assertTrue(! originalBId.equals(newBId));
+        PublicKeyHash newChatId = newB.chatIdentity.get().getOwner(network.dhtClient).join();
+        PublicKeyHash oldChatId = originalB.chatIdentity.get().getOwner(network.dhtClient).join();
+        Assert.assertTrue("New chat identity", !newChatId.equals(oldChatId));
     }
 
     public static void concurrentChatMerges(NetworkAccess network, Random random) {

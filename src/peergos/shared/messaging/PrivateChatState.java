@@ -27,6 +27,12 @@ public class PrivateChatState implements Cborable {
         return new PrivateChatState(chatIdentity, chatIdPublic, newDeleted);
     }
 
+    public PrivateChatState apply(PrivateChatState newer) {
+        HashSet<String> newDeleted = new HashSet<>(deletedMembers);
+        newDeleted.addAll(newer.deletedMembers);
+        return new PrivateChatState(newer.chatIdentity, newer.chatIdPublic, newDeleted);
+    }
+
     @Override
     public CborObject toCbor() {
         Map<String, Cborable> result = new TreeMap<>();
