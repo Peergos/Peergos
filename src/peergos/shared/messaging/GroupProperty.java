@@ -44,7 +44,9 @@ public class GroupProperty implements Cborable {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         GroupProperty that = (GroupProperty) o;
-        return Objects.equals(author, that.author) && Objects.equals(updateTimestamp, that.updateTimestamp) && Objects.equals(value, that.value);
+        return Objects.equals(author, that.author) &&
+                Objects.equals(updateTimestamp, that.updateTimestamp) &&
+                Objects.equals(value, that.value);
     }
 
     @Override
