@@ -412,4 +412,22 @@ public class Chat implements Cborable {
                         .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue().copy())), new HashMap<>(), new ArrayList<>()))
                 .collect(Collectors.toList());
     }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        Chat chat = (Chat) o;
+        return Objects.equals(chatUid, chat.chatUid) &&
+                Objects.equals(host, chat.host) &&
+                Objects.equals(current, chat.current) &&
+                Objects.equals(members, chat.members) &&
+                Objects.equals(groupState, chat.groupState) &&
+                Objects.equals(recentMessages, chat.recentMessages);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(chatUid, host, current, members, groupState, recentMessages);
+    }
 }

@@ -259,6 +259,8 @@ public class ChatController {
     }
 
     private CompletableFuture<Pair<Snapshot, ChatController>> commitUpdate(ChatUpdate u, String mirrorUsername, Snapshot in, Committer c) {
+        if (u.isEmpty() && u.state.equals(state))
+            return Futures.of(new Pair<>(in, this));
         // 1. rotate access control
         // 2. copy media
         // 3. commit any new private state
