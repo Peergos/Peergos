@@ -52,4 +52,20 @@ public class Join implements Message {
     public String toString() {
         return "JOIN(" + username + ")";
     }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        Join join = (Join) o;
+        return Objects.equals(username, join.username) &&
+                Objects.equals(identity, join.identity) &&
+                Objects.equals(chatIdentity, join.chatIdentity) &&
+                Objects.equals(chatIdPublic, join.chatIdPublic);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(username, identity, chatIdentity, chatIdPublic);
+    }
 }
