@@ -20,12 +20,12 @@ public class EmailAttachmentHelper {
     private static final Path attachmentsDir = Paths.get(".apps", "email", "data", "attachments");
 
     @JsMethod
-    public static CompletableFuture<Pair<String, FileRef>> upload(UserContext context, AsyncReader reader,
+    public static CompletableFuture<Pair<String, FileRef>> upload(UserContext context, String username, AsyncReader reader,
                                                                 String fileExtension,
                                                                 int length,
                                                                 ProgressConsumer<Long> monitor) {
         String uuid = UUID.randomUUID().toString() + "." + fileExtension;
-        return getOrMkdirToStoreAttachment(context)
+        return getOrMkdirToStoreAttachment(context, username)
                 .thenCompose(p -> p.right.uploadAndReturnFile(uuid, reader, length, false, monitor,
                         context.network, context.crypto)
                         .thenCompose(f ->  reader.reset().thenCompose(r -> context.crypto.hasher.hash(r, length))
@@ -33,13 +33,13 @@ public class EmailAttachmentHelper {
                                         new FileRef(p.left.resolve(uuid).toString(), f.readOnlyPointer(), hash)))));
     }
 
-    private static CompletableFuture<Pair<Path, FileWrapper>> getOrMkdirToStoreAttachment(UserContext context) {
+    private static CompletableFuture<Pair<Path, FileWrapper>> getOrMkdirToStoreAttachment(UserContext context, String username) {
         LocalDateTime postTime = LocalDateTime.now();
         Path dirFromHome = attachmentsDir.resolve(Paths.get(
                 Integer.toString(postTime.getYear()),
                 Integer.toString(postTime.getMonthValue())));
-        return context.getUserRoot()
-                .thenCompose(home -> home.getOrMkdirs(dirFromHome, context.network, true, context.crypto)
-                .thenApply(dir -> new Pair<>(Paths.get("/" + context.username).resolve(dirFromHome), dir)));
+        return context.getByPath(username)
+                .thenCompose(home -> home.get().getOrMkdirs(dirFromHome, context.network, true, context.crypto)
+                .thenApply(dir -> new Pair<>(Paths.get("/" + username).resolve(dirFromHome), dir)));
     }
 }

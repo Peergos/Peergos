@@ -55,6 +55,10 @@ public class EmailMessage implements Cborable {
         this.forwardingToEmail = forwardingToEmail;
     }
 
+    public EmailMessage withAttachments(List<Attachment> suppliedAttachments) {
+        return new EmailMessage(id, from, subject, created, to, cc, bcc, content, unread, star,
+                suppliedAttachments, icalEvent, replyingToEmail, forwardingToEmail);
+    }
     public byte[] toBytes() {
         return this.serialize();
     }
