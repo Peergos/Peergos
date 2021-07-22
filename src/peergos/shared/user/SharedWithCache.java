@@ -141,7 +141,7 @@ public class SharedWithCache {
         return parent.getChild(dirName, crypto.hasher, network)
                 .thenCompose(opt -> opt.isPresent() ?
                         Futures.of(opt.get()) :
-                        parent.mkdir(dirName, Optional.empty(), Optional.empty(), Optional.empty(), true, network, crypto, s, c)
+                        parent.mkdir(dirName, Optional.empty(), Optional.empty(), Optional.empty(), true, network, crypto, parent.version.mergeAndOverwriteWith(s), c)
                                 .thenCompose(s2 -> parent.getUpdated(s2, network)
                                         .thenCompose(p -> p.getChild(dirName, crypto.hasher, network)))
                                 .thenApply(Optional::get));
