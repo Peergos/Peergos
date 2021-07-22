@@ -15,10 +15,7 @@ import peergos.shared.user.fs.FileWrapper;
 import java.net.URL;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Optional;
-import java.util.Random;
+import java.util.*;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
@@ -73,8 +70,41 @@ public class WriterTest {
         byte[] bytes = randomData(10);
         Path filePath = Paths.get("pending", "output", "data.dat");
         emailApp.writeInternal(filePath, bytes, null).join();
+    }
 
-        System.currentTimeMillis();
+    @Test
+    public void deleteTest() throws Exception {
+        String password = "notagoodone";
+        UserContext userContext = PeergosNetworkUtils.ensureSignedUp("a-" + generateUsername(), password, network, crypto);
+
+        List<UserContext> shareeUsers = Arrays.asList(emailBridgeContext);
+        PeergosNetworkUtils.friendBetweenGroups(Arrays.asList(userContext), shareeUsers);
+
+        App emailApp = App.init(userContext, "email").join();
+        List<String> dirs = Arrays.asList("pending", "pending/inbox");
+        Path attachmentsDir = Paths.get(".apps", "email", "data");
+        for(String dir : dirs) {
+            Path dirFromHome = attachmentsDir.resolve(Paths.get(dir));
+            Optional<FileWrapper> homeOpt = userContext.getByPath(userContext.username).join();
+            homeOpt.get().getOrMkdirs(dirFromHome, userContext.network, true, userContext.crypto).join();
+        }
+        List<String> sharees = Arrays.asList(emailBridgeContext.username);
+        String dirStr = userContext.username + "/.apps/email/data/pending";
+        Path directoryPath = peergos.client.PathUtils.directoryToPath(dirStr.split("/"));
+        userContext.shareWriteAccessWith(directoryPath, sharees.stream().collect(Collectors.toSet())).join();
+
+        byte[] bytes = randomData(100);
+        Path filePath = Paths.get("pending/outbox/data.id");
+        emailApp.writeInternal(filePath, bytes, null).join();
+
+        String path = userContext.username + "/.apps/email/data/pending/outbox";
+        Optional<FileWrapper> directory = emailBridgeContext.getByPath(path).get();
+
+        Set<FileWrapper> files = directory.get().getChildren(emailBridgeContext.crypto.hasher, emailBridgeContext.network).get();
+        for (FileWrapper file : files) {
+            Path pathToFile = Paths.get(path).resolve(file.getName());
+            file.remove(directory.get(), pathToFile, emailBridgeContext).get();
+        }
     }
 
     public static byte[] randomData(int length) {
