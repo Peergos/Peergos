@@ -35,11 +35,12 @@ public class EmailAttachmentHelper {
 
     private static CompletableFuture<Pair<Path, FileWrapper>> getOrMkdirToStoreAttachment(UserContext context, String username) {
         LocalDateTime postTime = LocalDateTime.now();
-        Path dirFromHome = attachmentsDir.resolve(Paths.get(
+        Path baseDir = Paths.get(username + "/" + attachmentsDir.toString());
+        Path dirFromBase = Paths.get(
                 Integer.toString(postTime.getYear()),
-                Integer.toString(postTime.getMonthValue())));
-        return context.getByPath(username)
-                .thenCompose(home -> home.get().getOrMkdirs(dirFromHome, context.network, true, context.crypto)
-                .thenApply(dir -> new Pair<>(Paths.get("/" + username).resolve(dirFromHome), dir)));
+                Integer.toString(postTime.getMonthValue()));
+        return context.getByPath(baseDir)
+                .thenCompose(home -> home.get().getOrMkdirs(dirFromBase, context.network, true, context.crypto)
+                .thenApply(dir -> new Pair<>(Paths.get("/" + username).resolve(dirFromBase), dir)));
     }
 }
