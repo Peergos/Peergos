@@ -1205,8 +1205,10 @@ public class FileWrapper {
                                                                       Crypto crypto,
                                                                       Snapshot version,
                                                                       Committer committer) {
-        return Futures.reduceAll(subPath, new Pair<>(version, this), (p, name) -> p.right.getOrMkdir(name,
-                Optional.empty(), Optional.empty(), Optional.empty(), isSystemFolder, network, crypto, p.left, committer),
+        return Futures.reduceAll(subPath, new Pair<>(version, this),
+                (p, name) -> p.left.withWriter(owner(), p.right.writer(), network)
+                        .thenCompose(v -> p.right.getOrMkdir(name, Optional.empty(), Optional.empty(), Optional.empty(),
+                                isSystemFolder, network, crypto, v, committer)),
                 (a, b) -> b);
     }
 
