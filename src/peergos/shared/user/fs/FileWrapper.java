@@ -1168,11 +1168,12 @@ public class FileWrapper {
         if (!isLegalName(newFolderName)) {
             return Futures.errored(new IllegalStateException("Illegal directory name: " + newFolderName));
         }
-        return hasChildWithName(version, newFolderName, crypto.hasher, network).thenCompose(hasChild -> {
+        Snapshot fullVersion = this.version.mergeAndOverwriteWith(version);
+        return hasChildWithName(fullVersion, newFolderName, crypto.hasher, network).thenCompose(hasChild -> {
             if (hasChild) {
                 return Futures.errored(new IllegalStateException("Child already exists with name: " + newFolderName));
             }
-            return pointer.fileAccess.mkdir(version, committer, newFolderName, network, writableFilePointer(), getChildsEntryWriter(),
+            return pointer.fileAccess.mkdir(fullVersion, committer, newFolderName, network, writableFilePointer(), getChildsEntryWriter(),
                     requestedBaseReadKey, requestedBaseWriteKey, desiredMapKey, isSystemFolder, crypto).thenApply(x -> {
                 setModified();
                 return x;
@@ -1206,9 +1207,8 @@ public class FileWrapper {
                                                                       Snapshot version,
                                                                       Committer committer) {
         return Futures.reduceAll(subPath, new Pair<>(version, this),
-                (p, name) -> p.left.withWriter(owner(), p.right.writer(), network)
-                        .thenCompose(v -> p.right.getOrMkdir(name, Optional.empty(), Optional.empty(), Optional.empty(),
-                                isSystemFolder, network, crypto, v, committer)),
+                (p, name) -> p.right.getOrMkdir(name, Optional.empty(), Optional.empty(), Optional.empty(),
+                                isSystemFolder, network, crypto, p.left, committer),
                 (a, b) -> b);
     }
 
@@ -1228,11 +1228,12 @@ public class FileWrapper {
         if (! isLegalName(newFolderName)) {
             return Futures.errored(new IllegalStateException("Illegal directory name: " + newFolderName));
         }
-        return getChild(version, newFolderName, crypto.hasher, network).thenCompose(childOpt -> {
+        Snapshot fullVersion = this.version.mergeAndOverwriteWith(version);
+        return getChild(fullVersion, newFolderName, crypto.hasher, network).thenCompose(childOpt -> {
             if (childOpt.isPresent()) {
-                return Futures.of(new Pair<>(version, childOpt.get()));
+                return Futures.of(new Pair<>(fullVersion, childOpt.get()));
             }
-            return pointer.fileAccess.mkdir(version, committer, newFolderName, network, writableFilePointer(), getChildsEntryWriter(),
+            return pointer.fileAccess.mkdir(fullVersion, committer, newFolderName, network, writableFilePointer(), getChildsEntryWriter(),
                     requestedBaseReadKey, requestedBaseWriteKey, desiredMapKey, isSystemFolder, crypto).thenCompose(x -> {
                 setModified();
                 return getUpdated(x, network).thenCompose(us -> us.getChild(newFolderName, crypto.hasher, network))
