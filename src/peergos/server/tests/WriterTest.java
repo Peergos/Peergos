@@ -23,7 +23,7 @@ import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 public class WriterTest {
-    private static Args args = UserTests.buildArgs();
+    private static Args args = UserTests.buildArgs().with("useIPFS", "false");
     private static Random random = new Random();
     private static final Crypto crypto = Main.initCrypto();
     private NetworkAccess network = null;
