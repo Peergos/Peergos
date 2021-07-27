@@ -17,15 +17,15 @@ import java.util.concurrent.CompletableFuture;
 /** Attachments are stored in: /$username/.apps/email/data/attachments/$year/$month/
  */
 public class EmailAttachmentHelper {
-    private static final Path attachmentsDir = Paths.get(".apps", "email", "data", "attachments");
+    private static final Path attachmentsDir = Paths.get(".apps", "email", "data");
 
     @JsMethod
-    public static CompletableFuture<Pair<String, FileRef>> upload(UserContext context, String username, AsyncReader reader,
+    public static CompletableFuture<Pair<String, FileRef>> upload(UserContext context, String username, String directoryPrefix, AsyncReader reader,
                                                                 String fileExtension,
                                                                 int length,
                                                                 ProgressConsumer<Long> monitor) {
         String uuid = UUID.randomUUID().toString() + "." + fileExtension;
-        return getOrMkdirToStoreAttachment(context, username)
+        return getOrMkdirToStoreAttachment(context, username, directoryPrefix)
                 .thenCompose(p -> p.right.uploadAndReturnFile(uuid, reader, length, false, monitor,
                         context.network, context.crypto)
                         .thenCompose(f ->  reader.reset().thenCompose(r -> context.crypto.hasher.hash(r, length))
@@ -33,14 +33,14 @@ public class EmailAttachmentHelper {
                                         new FileRef(p.left.resolve(uuid).toString(), f.readOnlyPointer(), hash)))));
     }
 
-    private static CompletableFuture<Pair<Path, FileWrapper>> getOrMkdirToStoreAttachment(UserContext context, String username) {
+    private static CompletableFuture<Pair<Path, FileWrapper>> getOrMkdirToStoreAttachment(UserContext context, String username, String directoryPrefix) {
         LocalDateTime postTime = LocalDateTime.now();
-        Path baseDir = Paths.get(username + "/" + attachmentsDir.toString());
+        Path baseDir = Paths.get(username + "/" + attachmentsDir + "/" + directoryPrefix + "/attachments");
         Path dirFromBase = Paths.get(
                 Integer.toString(postTime.getYear()),
                 Integer.toString(postTime.getMonthValue()));
         return context.getByPath(baseDir)
                 .thenCompose(home -> home.get().getOrMkdirs(dirFromBase, context.network, true, context.crypto)
-                .thenApply(dir -> new Pair<>(Paths.get("/" + username).resolve(dirFromBase), dir)));
+                .thenApply(dir -> new Pair<>(baseDir.resolve(dirFromBase), dir)));
     }
 }

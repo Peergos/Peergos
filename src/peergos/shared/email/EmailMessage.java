@@ -28,7 +28,7 @@ public class EmailMessage implements Cborable {
     public final LocalDateTime created;
     public final List<Attachment> attachments;
     public final String icalEvent;
-
+    public final Optional<String> sendError;
     public final Optional<EmailMessage> replyingToEmail;
     public final Optional<EmailMessage> forwardingToEmail;
 
@@ -37,7 +37,8 @@ public class EmailMessage implements Cborable {
                         List<String> to, List<String> cc, List<String> bcc,
                         String content, boolean unread, boolean star,
                         List<Attachment> attachments,
-                        String icalEvent, Optional<EmailMessage> replyingToEmail, Optional<EmailMessage> forwardingToEmail
+                        String icalEvent, Optional<EmailMessage> replyingToEmail, Optional<EmailMessage> forwardingToEmail,
+                        Optional<String> sendError
     ) {
         this.id = id;
         this.from = from;
@@ -53,12 +54,23 @@ public class EmailMessage implements Cborable {
         this.icalEvent = icalEvent == null ? "" : icalEvent;
         this.replyingToEmail = replyingToEmail;
         this.forwardingToEmail = forwardingToEmail;
+        this.sendError = sendError;
+    }
+    public EmailMessage prepare(String generatedId, String fromEmailAddress, LocalDateTime emailSent) {
+        return new EmailMessage(generatedId, fromEmailAddress, subject, emailSent, to, cc, bcc, content, unread, star,
+                attachments, icalEvent, replyingToEmail, forwardingToEmail, sendError);
     }
 
     public EmailMessage withAttachments(List<Attachment> suppliedAttachments) {
         return new EmailMessage(id, from, subject, created, to, cc, bcc, content, unread, star,
-                suppliedAttachments, icalEvent, replyingToEmail, forwardingToEmail);
+                suppliedAttachments, icalEvent, replyingToEmail, forwardingToEmail, sendError);
     }
+
+    public EmailMessage withError(String error) {
+        return new EmailMessage(id, from, subject, created, to, cc, bcc, content, unread, star,
+                attachments, icalEvent, replyingToEmail, forwardingToEmail, Optional.of(error));
+    }
+
     public byte[] toBytes() {
         return this.serialize();
     }
@@ -89,6 +101,8 @@ public class EmailMessage implements Cborable {
 
         replyingToEmail.ifPresent(r -> state.put("r", replyingToEmail.get().toCbor()));
         forwardingToEmail.ifPresent(o -> state.put("o", forwardingToEmail.get().toCbor()));
+
+        sendError.ifPresent(o -> state.put("x", new CborObject.CborString(sendError.get())));
 
         List<CborObject> withMimeType = new ArrayList<>();
         withMimeType.add(new CborObject.CborLong(MimeTypes.CBOR_PEERGOS_EMAIL_INT));
@@ -129,7 +143,10 @@ public class EmailMessage implements Cborable {
         Optional<EmailMessage> forwardingToEmail = Optional.ofNullable(m.get("o"))
                 .map(c -> EmailMessage.fromCbor(c));
 
+        Optional<String> sendError = Optional.ofNullable(m.get("x"))
+                .map(c -> m.getString("x"));
+
         return new EmailMessage(id, from, subject, created, to, cc, bcc, content, unread, star, attachments, icalEvent,
-                replyingToEmail, forwardingToEmail);
+                replyingToEmail, forwardingToEmail, sendError);
     }
 }
