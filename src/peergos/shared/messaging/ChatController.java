@@ -226,6 +226,8 @@ public class ChatController {
     }
 
     private CompletableFuture<Snapshot> mirrorMedia(FileRef ref, ChatController chat, String currentMirrorUsername, Snapshot in, Committer committer) {
+        if (currentMirrorUsername.equals(context.username))
+            return Futures.of(in);
         Path mediaDir = getChatMediaDir(chat);
         Path sourcePath = Paths.get(ref.path);
         Path chatRelativePath = sourcePath.subpath(1 + mediaDir.getNameCount(), sourcePath.getNameCount());
