@@ -220,6 +220,11 @@ public class MultiUserTests {
     }
 
     @Test
+    public void chatReplyWithAttachment() {
+        PeergosNetworkUtils.chatReplyWithAttachment(network, random);
+    }
+
+    @Test
     public void concurrentChatMerges() {
         PeergosNetworkUtils.concurrentChatMerges(network, random);
     }

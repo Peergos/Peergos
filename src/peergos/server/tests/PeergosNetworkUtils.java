@@ -1648,6 +1648,38 @@ public class PeergosNetworkUtils {
         Assert.assertTrue(items.size() == initialFeedSize + 3);
     }
 
+    public static void chatReplyWithAttachment(NetworkAccess network, Random random) {
+        CryptreeNode.setMaxChildLinkPerBlob(10);
+
+        String password = "notagoodone";
+
+        UserContext a = PeergosNetworkUtils.ensureSignedUp("a-" + generateUsername(random), password, network, crypto);
+
+        List<UserContext> shareeUsers = getUserContextsForNode(network, random, 1, Arrays.asList(password));
+        UserContext b = shareeUsers.get(0);
+
+        // friend sharer with others
+        friendBetweenGroups(Arrays.asList(a), shareeUsers);
+
+        Messenger msgA = new Messenger(a);
+        ChatController controllerA = msgA.createChat().join();
+        controllerA = msgA.invite(controllerA, Arrays.asList(b.username), Arrays.asList(b.signer.publicKeyHash)).join();
+        List<Pair<SharedItem, FileWrapper>> feed = b.getSocialFeed().join().update().join().getSharedFiles(0, 10).join();
+
+        ApplicationMessage msg1 = ApplicationMessage.text("G'day mate!");
+        controllerA = msgA.sendMessage(controllerA, msg1).join();
+        List<MessageEnvelope> initialMessages = controllerA.getMessages(0, 10).join();
+        MessageEnvelope lastMessage = initialMessages.get(initialMessages.size() - 1);
+
+        byte[] media = "Some media data".getBytes();
+        AsyncReader reader = AsyncReader.build(media);
+        Pair<String, FileRef> mediaRef = msgA.uploadMedia(controllerA, reader, "txt", media.length,
+                LocalDateTime.now(), x -> {}).join();
+        ReplyTo msg2 = ReplyTo.build(lastMessage, ApplicationMessage.attachment("Isn't this cool!!",
+                Arrays.asList(mediaRef.right)), hasher).join();
+        controllerA = msgA.sendMessage(controllerA, msg2).join();
+    }
+
     public static void chat(NetworkAccess network, Random random) {
         CryptreeNode.setMaxChildLinkPerBlob(10);
 
