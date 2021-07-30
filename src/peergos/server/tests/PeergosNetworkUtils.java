@@ -79,7 +79,7 @@ public class PeergosNetworkUtils {
                 }).collect(Collectors.toList());
     }
 
-    public static void copyDirFromFriend(NetworkAccess network, Random random) throws Exception {
+    public static void copyDirFromFriend(NetworkAccess network, Random random) {
 
         String sharerUsername = generateUsername(random);
         String sharerPassword = generatePassword();
@@ -107,9 +107,7 @@ public class PeergosNetworkUtils {
         Assert.assertTrue("Folder is read only", !sharedFile.get().isWritable());
 
         Optional<FileWrapper> destFolder = shareeUser.getByPath(shareeUser.username).join();
-        sharedFile.get().copyTo(destFolder.get(), shareeUser).thenApply(b -> {
-            return b;
-        }).exceptionally(Futures::logAndThrow).get();
+        sharedFile.get().copyTo(destFolder.get(), shareeUser).join();
         //Assert.assertTrue("Folder not copied", res);
         Optional<FileWrapper> foundFolder = shareeUser.getByPath(shareeUser.username + "/" + folderName).join();
         Assert.assertTrue("Folder not accessible", foundFolder.isPresent());
