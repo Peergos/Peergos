@@ -79,6 +79,41 @@ public class PeergosNetworkUtils {
                 }).collect(Collectors.toList());
     }
 
+    public static void copyDirFromFriend(NetworkAccess network, Random random) {
+
+        String sharerUsername = generateUsername(random);
+        String sharerPassword = generatePassword();
+        UserContext sharerUser = ensureSignedUp(sharerUsername, sharerPassword, network, crypto);
+
+        //sign up some users on shareeNode
+        String shareeUsername = generateUsername(random);
+        String shareePassword = generatePassword();
+        UserContext shareeUser = ensureSignedUp(shareeUsername, shareePassword, network, crypto);
+
+        // friend sharer with others
+        friendBetweenGroups(Arrays.asList(sharerUser), Arrays.asList(shareeUser));
+
+        // upload a file to "a"'s space
+        FileWrapper u1Root = sharerUser.getUserRoot().join();
+        String folderName = "folder";
+        u1Root.mkdir(folderName, network, false, crypto).join();
+        // share
+        Set<String> shareeNames = new HashSet();
+        shareeNames.add(shareeUser.username);
+        sharerUser.shareReadAccessWith(Paths.get(sharerUser.username, folderName), shareeNames).join();
+
+        Optional<FileWrapper> sharedFile = shareeUser.getByPath(sharerUser.username + "/" + folderName).join();
+        Assert.assertTrue("shared folder present", sharedFile.isPresent());
+        Assert.assertTrue("Folder is read only", !sharedFile.get().isWritable());
+
+        Optional<FileWrapper> destFolder = shareeUser.getByPath(shareeUser.username).join();
+        sharedFile.get().copyTo(destFolder.get(), shareeUser).join();
+        //Assert.assertTrue("Folder not copied", res);
+        Optional<FileWrapper> foundFolder = shareeUser.getByPath(shareeUser.username + "/" + folderName).join();
+        Assert.assertTrue("Folder not accessible", foundFolder.isPresent());
+    }
+
+
     public static void grantAndRevokeFileReadAccess(NetworkAccess sharerNode, NetworkAccess shareeNode, int shareeCount, Random random) throws Exception {
         Assert.assertTrue(0 < shareeCount);
         //sign up a user on sharerNode
@@ -788,13 +823,8 @@ public class PeergosNetworkUtils {
         UserContext updatedSharer = PeergosNetworkUtils.ensureSignedUp(sharerUsername, sharerPassword, sharerNode.clear(), crypto);
 
         List<UserContext> updatedSharees = shareeUsers.stream()
-                .map(e -> {
-                    try {
-                        return ensureSignedUp(e.username, shareePasswords.get(shareeUsers.indexOf(e)), e.network, crypto);
-                    } catch (Exception ex) {
-                        throw new IllegalStateException(ex.getMessage(), ex);
-                    }
-                }).collect(Collectors.toList());
+                .map(e -> ensureSignedUp(e.username, shareePasswords.get(shareeUsers.indexOf(e)), shareeNode.clear(), crypto))
+                .collect(Collectors.toList());
 
 
         for (int i = 0; i < updatedSharees.size(); i++) {
@@ -918,13 +948,8 @@ public class PeergosNetworkUtils {
         UserContext updatedSharer = PeergosNetworkUtils.ensureSignedUp(sharer.username, password, network.clear(), crypto);
 
         List<UserContext> updatedSharees = shareeUsers.stream()
-                .map(e -> {
-                    try {
-                        return ensureSignedUp(e.username, password, e.network, crypto);
-                    } catch (Exception ex) {
-                        throw new IllegalStateException(ex.getMessage(), ex);
-                    }
-                }).collect(Collectors.toList());
+                .map(e -> ensureSignedUp(e.username, password, network.clear(), crypto))
+                .collect(Collectors.toList());
 
         // unshare subdir from 'b'
         UserContext user = updatedSharees.get(1);
@@ -1202,13 +1227,8 @@ public class PeergosNetworkUtils {
         UserContext updatedSharer = PeergosNetworkUtils.ensureSignedUp(sharer.username, password, network.clear(), crypto);
 
         List<UserContext> updatedSharees = shareeUsers.stream()
-                .map(e -> {
-                    try {
-                        return ensureSignedUp(e.username, password, e.network, crypto);
-                    } catch (Exception ex) {
-                        throw new IllegalStateException(ex.getMessage(), ex);
-                    }
-                }).collect(Collectors.toList());
+                .map(e -> ensureSignedUp(e.username, password, network.clear(), crypto))
+                .collect(Collectors.toList());
 
         // revoke write access to top level dir from 'a'
         UserContext user = updatedSharees.get(0);

@@ -103,7 +103,7 @@ public class Serialize
 
     public static CompletableFuture<byte[]> readFully(FileWrapper f, Crypto crypto, NetworkAccess network) {
         long size = f.getSize();
-        return f.getInputStream(network, crypto, x -> {})
+        return f.getInputStream(f.version.get(f.writer()).props, network, crypto, x -> {})
                 .thenCompose(stream -> readFully(stream, size));
     }
 
