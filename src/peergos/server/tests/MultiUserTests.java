@@ -100,6 +100,11 @@ public class MultiUserTests {
     }
 
     @Test
+    public void copyDirFromFriend() throws Exception {
+        PeergosNetworkUtils.copyDirFromFriend(network, random);
+    }
+
+    @Test
     public void grantAndRevokeFileReadAccess() throws Exception {
         PeergosNetworkUtils.grantAndRevokeFileReadAccess(network, network, userCount, random);
     }
