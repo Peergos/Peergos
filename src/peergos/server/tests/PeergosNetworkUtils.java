@@ -823,13 +823,8 @@ public class PeergosNetworkUtils {
         UserContext updatedSharer = PeergosNetworkUtils.ensureSignedUp(sharerUsername, sharerPassword, sharerNode.clear(), crypto);
 
         List<UserContext> updatedSharees = shareeUsers.stream()
-                .map(e -> {
-                    try {
-                        return ensureSignedUp(e.username, shareePasswords.get(shareeUsers.indexOf(e)), e.network, crypto);
-                    } catch (Exception ex) {
-                        throw new IllegalStateException(ex.getMessage(), ex);
-                    }
-                }).collect(Collectors.toList());
+                .map(e -> ensureSignedUp(e.username, shareePasswords.get(shareeUsers.indexOf(e)), shareeNode.clear(), crypto))
+                .collect(Collectors.toList());
 
 
         for (int i = 0; i < updatedSharees.size(); i++) {
@@ -1232,13 +1227,8 @@ public class PeergosNetworkUtils {
         UserContext updatedSharer = PeergosNetworkUtils.ensureSignedUp(sharer.username, password, network.clear(), crypto);
 
         List<UserContext> updatedSharees = shareeUsers.stream()
-                .map(e -> {
-                    try {
-                        return ensureSignedUp(e.username, password, e.network, crypto);
-                    } catch (Exception ex) {
-                        throw new IllegalStateException(ex.getMessage(), ex);
-                    }
-                }).collect(Collectors.toList());
+                .map(e -> ensureSignedUp(e.username, password, network.clear(), crypto))
+                .collect(Collectors.toList());
 
         // revoke write access to top level dir from 'a'
         UserContext user = updatedSharees.get(0);
