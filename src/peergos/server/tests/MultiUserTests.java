@@ -100,7 +100,7 @@ public class MultiUserTests {
     }
 
     @Test
-    public void copyDirFromFriend() throws Exception {
+    public void copyDirFromFriend() {
         PeergosNetworkUtils.copyDirFromFriend(network, random);
     }
 

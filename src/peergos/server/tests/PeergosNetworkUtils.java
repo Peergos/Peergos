@@ -97,6 +97,12 @@ public class PeergosNetworkUtils {
         FileWrapper u1Root = sharerUser.getUserRoot().join();
         String folderName = "folder";
         u1Root.mkdir(folderName, network, false, crypto).join();
+        byte[] data = "Some text".getBytes();
+        String filename = "Afile.txt";
+        sharerUser.getByPath(Paths.get(sharerUsername, folderName)).join().get()
+                .uploadOrReplaceFile(filename, AsyncReader.build(data), data.length, sharerUser.network, crypto,
+                        x -> {}, crypto.random.randomBytes(32)).join();
+
         // share
         Set<String> shareeNames = new HashSet();
         shareeNames.add(shareeUser.username);
@@ -111,6 +117,9 @@ public class PeergosNetworkUtils {
         //Assert.assertTrue("Folder not copied", res);
         Optional<FileWrapper> foundFolder = shareeUser.getByPath(shareeUser.username + "/" + folderName).join();
         Assert.assertTrue("Folder not accessible", foundFolder.isPresent());
+
+        Set<FileWrapper> receivedChildren = foundFolder.get().getChildren(crypto.hasher, shareeUser.network).join();
+        Assert.assertTrue(receivedChildren.stream().map(FileWrapper::getName).collect(Collectors.toSet()).equals(Set.of(filename)));
     }
 
 
