@@ -363,13 +363,13 @@ public class FileWrapper {
     @JsMethod
     public CompletableFuture<Set<FileWrapper>> getChildren(Hasher hasher, NetworkAccess network) {
         if (capTrie.isPresent())
-            return capTrie.get().getChildren("/", hasher, network);
+            return capTrie.get().getChildren("", hasher, network);
         return getChildren(version, hasher, network);
     }
 
     public CompletableFuture<Set<FileWrapper>> getChildren(Snapshot version, Hasher hasher, NetworkAccess network) {
         if (capTrie.isPresent())
-            return capTrie.get().getChildren("/", hasher, version.merge(this.version), network);
+            return capTrie.get().getChildren("", hasher, version.merge(this.version), network);
         if (isReadable()) {
             Optional<SigningPrivateKeyAndPublicHash> childsEntryWriter = pointer.capability.wBaseKey
                     .map(wBase -> pointer.fileAccess.getSigner(pointer.capability.rBaseKey, wBase, entryWriter));
