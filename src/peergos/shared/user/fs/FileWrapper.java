@@ -1386,7 +1386,8 @@ public class FileWrapper {
                         .withMapKey(newMapKey)
                         .withBaseKey(newBaseR)
                         .withBaseWriteKey(newBaseW);
-                return getChildren(version, crypto.hasher, network).thenCompose(children ->
+                return withVersion(this.version.mergeAndOverwriteWith(version))
+                        .getChildren(version, crypto.hasher, network).thenCompose(children ->
                         target.mkdir(getName(), Optional.of(newBaseR), Optional.of(newBaseW), Optional.of(newMapKey),
                                 getFileProperties().isHidden, network, crypto, version, committer)
                                 .thenCompose(versionWithDir ->
@@ -1761,6 +1762,9 @@ public class FileWrapper {
                     byte[] bytes = new byte[fileSize];
                     fileData.readIntoArray(bytes, 0, fileSize).thenAccept(data -> {
                         fut.complete(generateThumbnail(bytes));
+                    }).exceptionally(t -> {
+                        fut.complete(Optional.empty());
+                        return null;
                     });
                 }
             } else if (mimeType.startsWith("video")) {
@@ -1779,6 +1783,9 @@ public class FileWrapper {
                     byte[] bytes = new byte[fileSize];
                     fileData.readIntoArray(bytes, 0, fileSize).thenAccept(data -> {
                         fut.complete(Optional.of(generateVideoThumbnail(bytes)));
+                    }).exceptionally(t -> {
+                        fut.complete(Optional.empty());
+                        return null;
                     });
                 }
             } else if (mimeType.startsWith("audio/mpeg")) {
