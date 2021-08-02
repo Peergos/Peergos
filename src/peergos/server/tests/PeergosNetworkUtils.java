@@ -102,6 +102,9 @@ public class PeergosNetworkUtils {
         sharerUser.getByPath(Paths.get(sharerUsername, folderName)).join().get()
                 .uploadOrReplaceFile(filename, AsyncReader.build(data), data.length, sharerUser.network, crypto,
                         x -> {}, crypto.random.randomBytes(32)).join();
+        String subdirName = "subdir";
+        sharerUser.getByPath(Paths.get(sharerUsername, folderName)).join().get()
+                .mkdir(subdirName, sharerUser.network, false, crypto).join();
 
         // share
         Set<String> shareeNames = new HashSet();
@@ -119,7 +122,7 @@ public class PeergosNetworkUtils {
         Assert.assertTrue("Folder not accessible", foundFolder.isPresent());
 
         Set<FileWrapper> receivedChildren = foundFolder.get().getChildren(crypto.hasher, shareeUser.network).join();
-        Assert.assertTrue(receivedChildren.stream().map(FileWrapper::getName).collect(Collectors.toSet()).equals(Set.of(filename)));
+        Assert.assertTrue(receivedChildren.stream().map(FileWrapper::getName).collect(Collectors.toSet()).equals(Set.of(filename, subdirName)));
     }
 
 

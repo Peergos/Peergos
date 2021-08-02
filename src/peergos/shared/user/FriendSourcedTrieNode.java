@@ -136,6 +136,12 @@ public class FriendSourcedTrieNode implements TrieNode {
                 .thenApply(opt -> opt.map(f -> convert(f, path)));
     }
 
+    private static String canonicalise(String path) {
+        if (path.endsWith("/"))
+            return path.substring(path.length() - 1);
+        return path;
+    }
+
     @Override
     public synchronized CompletableFuture<Set<FileWrapper>> getChildren(String path,
                                                                         Hasher hasher,
@@ -145,7 +151,7 @@ public class FriendSourcedTrieNode implements TrieNode {
         return updateIncludingGroups(network)
                 .thenCompose(x -> cache.getChildren(dir, cache.getVersion(), hasher, network))
                 .thenApply(children -> children.stream()
-                        .map(f -> convert(f, path + "/" + f.getName()))
+                        .map(f -> convert(f, canonicalise(path) + "/" + f.getName()))
                         .collect(Collectors.toSet()));
     }
 
@@ -158,7 +164,7 @@ public class FriendSourcedTrieNode implements TrieNode {
         Path dir = Paths.get(ownerName + path);
         return cache.getChildren(dir, version, hasher, network)
                 .thenApply(children -> children.stream()
-                        .map(f -> convert(f, path + "/" + f.getName()))
+                        .map(f -> convert(f, canonicalise(path) + "/" + f.getName()))
                         .collect(Collectors.toSet()));
     }
 

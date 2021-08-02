@@ -363,13 +363,13 @@ public class FileWrapper {
     @JsMethod
     public CompletableFuture<Set<FileWrapper>> getChildren(Hasher hasher, NetworkAccess network) {
         if (capTrie.isPresent())
-            return capTrie.get().getChildren("/", hasher, network);
+            return capTrie.get().getChildren("", hasher, network);
         return getChildren(version, hasher, network);
     }
 
     public CompletableFuture<Set<FileWrapper>> getChildren(Snapshot version, Hasher hasher, NetworkAccess network) {
         if (capTrie.isPresent())
-            return capTrie.get().getChildren("/", hasher, version.merge(this.version), network);
+            return capTrie.get().getChildren("", hasher, version.merge(this.version), network);
         if (isReadable()) {
             Optional<SigningPrivateKeyAndPublicHash> childsEntryWriter = pointer.capability.wBaseKey
                     .map(wBase -> pointer.fileAccess.getSigner(pointer.capability.rBaseKey, wBase, entryWriter));
@@ -1386,7 +1386,8 @@ public class FileWrapper {
                         .withMapKey(newMapKey)
                         .withBaseKey(newBaseR)
                         .withBaseWriteKey(newBaseW);
-                return getChildren(version, crypto.hasher, network).thenCompose(children ->
+                return withVersion(this.version.mergeAndOverwriteWith(version))
+                        .getChildren(version, crypto.hasher, network).thenCompose(children ->
                         target.mkdir(getName(), Optional.of(newBaseR), Optional.of(newBaseW), Optional.of(newMapKey),
                                 getFileProperties().isHidden, network, crypto, version, committer)
                                 .thenCompose(versionWithDir ->
@@ -1761,6 +1762,9 @@ public class FileWrapper {
                     byte[] bytes = new byte[fileSize];
                     fileData.readIntoArray(bytes, 0, fileSize).thenAccept(data -> {
                         fut.complete(generateThumbnail(bytes));
+                    }).exceptionally(t -> {
+                        fut.complete(Optional.empty());
+                        return null;
                     });
                 }
             } else if (mimeType.startsWith("video")) {
@@ -1779,6 +1783,9 @@ public class FileWrapper {
                     byte[] bytes = new byte[fileSize];
                     fileData.readIntoArray(bytes, 0, fileSize).thenAccept(data -> {
                         fut.complete(Optional.of(generateVideoThumbnail(bytes)));
+                    }).exceptionally(t -> {
+                        fut.complete(Optional.empty());
+                        return null;
                     });
                 }
             } else if (mimeType.startsWith("audio/mpeg")) {
