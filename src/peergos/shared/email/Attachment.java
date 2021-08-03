@@ -15,16 +15,16 @@ public class Attachment implements Cborable {
     public final String filename;
     public final int size;
     public final String type;
-    public final FileRef reference;
+    public final String uuid;
 
     @JsConstructor
     public Attachment(String filename, int size,
-                      String type, FileRef reference
+                      String type, String uuid
     ) {
         this.filename = filename;
         this.size = size;
         this.type = type;
-        this.reference = reference;
+        this.uuid = uuid;
     }
 
     @Override
@@ -33,7 +33,7 @@ public class Attachment implements Cborable {
         state.put("f", new CborObject.CborString(filename));
         state.put("s", new CborObject.CborLong(size));
         state.put("t", new CborObject.CborString(type));
-        state.put("d", reference.toCbor());
+        state.put("u", new CborObject.CborString(uuid));
         return CborObject.CborMap.build(state);
     }
 
@@ -45,7 +45,7 @@ public class Attachment implements Cborable {
         String filename = m.getString("f");
         int size = (int) m.getLong("s");
         String type = m.getString("t");
-        FileRef ref = m.get("d", FileRef::fromCbor);
-        return new Attachment(filename, size, type, ref);
+        String uuid = m.getString("u");
+        return new Attachment(filename, size, type, uuid);
     }
 }

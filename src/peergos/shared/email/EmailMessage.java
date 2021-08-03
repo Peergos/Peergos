@@ -17,6 +17,7 @@ public class EmailMessage implements Cborable {
     private static final String VERSION_1 = "1";
 
     public final String id;
+    public final String msgId;
     public final String from;
     public final String subject;
     public final List<String> to;
@@ -33,7 +34,7 @@ public class EmailMessage implements Cborable {
     public final Optional<EmailMessage> forwardingToEmail;
 
     @JsConstructor
-    public EmailMessage(String id, String from, String subject, LocalDateTime created,
+    public EmailMessage(String id, String msgId, String from, String subject, LocalDateTime created,
                         List<String> to, List<String> cc, List<String> bcc,
                         String content, boolean unread, boolean star,
                         List<Attachment> attachments,
@@ -41,6 +42,7 @@ public class EmailMessage implements Cborable {
                         Optional<String> sendError
     ) {
         this.id = id;
+        this.msgId = msgId;
         this.from = from;
         this.subject = subject;
         this.created = created;
@@ -56,18 +58,18 @@ public class EmailMessage implements Cborable {
         this.forwardingToEmail = forwardingToEmail;
         this.sendError = sendError;
     }
-    public EmailMessage prepare(String generatedId, String fromEmailAddress, LocalDateTime emailSent) {
-        return new EmailMessage(generatedId, fromEmailAddress, subject, emailSent, to, cc, bcc, content, unread, star,
+    public EmailMessage prepare(String generatedMsgId, String fromEmailAddress, LocalDateTime emailSent) {
+        return new EmailMessage(id, generatedMsgId, fromEmailAddress, subject, emailSent, to, cc, bcc, content, unread, star,
                 attachments, icalEvent, replyingToEmail, forwardingToEmail, sendError);
     }
 
     public EmailMessage withAttachments(List<Attachment> suppliedAttachments) {
-        return new EmailMessage(id, from, subject, created, to, cc, bcc, content, unread, star,
+        return new EmailMessage(id, msgId, from, subject, created, to, cc, bcc, content, unread, star,
                 suppliedAttachments, icalEvent, replyingToEmail, forwardingToEmail, sendError);
     }
 
     public EmailMessage withError(String error) {
-        return new EmailMessage(id, from, subject, created, to, cc, bcc, content, unread, star,
+        return new EmailMessage(id, msgId, from, subject, created, to, cc, bcc, content, unread, star,
                 attachments, icalEvent, replyingToEmail, forwardingToEmail, Optional.of(error));
     }
 
@@ -80,6 +82,7 @@ public class EmailMessage implements Cborable {
         SortedMap<String, Cborable> state = new TreeMap<>();
         state.put("v", new CborObject.CborString(VERSION_1));
         state.put("i", new CborObject.CborString(id));
+        state.put("m", new CborObject.CborString(msgId));
         state.put("f", new CborObject.CborString(from));
         state.put("h", new CborObject.CborString(subject));
         state.put("t", new CborObject.CborLong(created.toEpochSecond(ZoneOffset.UTC)));
@@ -126,6 +129,7 @@ public class EmailMessage implements Cborable {
             throw new IllegalStateException("Unsupported version:" + version);
         }
         String id = m.getString("i");
+        String msgId = m.getString("m");
         String from = m.getString("f");
         String subject = m.getString("h");
         LocalDateTime created = m.get("t", c -> LocalDateTime.ofEpochSecond(((CborObject.CborLong)c).value, 0, ZoneOffset.UTC));
@@ -146,7 +150,7 @@ public class EmailMessage implements Cborable {
         Optional<String> sendError = Optional.ofNullable(m.get("x"))
                 .map(c -> m.getString("x"));
 
-        return new EmailMessage(id, from, subject, created, to, cc, bcc, content, unread, star, attachments, icalEvent,
+        return new EmailMessage(id, msgId, from, subject, created, to, cc, bcc, content, unread, star, attachments, icalEvent,
                 replyingToEmail, forwardingToEmail, sendError);
     }
 }

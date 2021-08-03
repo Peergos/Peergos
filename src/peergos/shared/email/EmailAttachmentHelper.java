@@ -14,33 +14,34 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
-/** Attachments are stored in: /$username/.apps/email/data/attachments/$year/$month/
+/** Attachments are stored in: attachments/$year/$month/
  */
 public class EmailAttachmentHelper {
-    private static final Path attachmentsDir = Paths.get(".apps", "email", "data");
+    private static final Path emailDataDir = Paths.get(".apps", "email", "data");
 
     @JsMethod
-    public static CompletableFuture<Pair<String, FileRef>> upload(UserContext context, String username, String directoryPrefix, AsyncReader reader,
-                                                                String fileExtension,
-                                                                int length,
+    public static CompletableFuture<String> upload(UserContext context, String username,
+                                                                  String directoryPrefix, String pendingDirectory,
+                                                                  AsyncReader reader, String fileExtension, int length,
                                                                 ProgressConsumer<Long> monitor) {
         String uuid = UUID.randomUUID().toString() + "." + fileExtension;
-        return getOrMkdirToStoreAttachment(context, username, directoryPrefix)
-                .thenCompose(p -> p.right.uploadAndReturnFile(uuid, reader, length, false, monitor,
-                        context.network, context.crypto)
-                        .thenCompose(f ->  reader.reset().thenCompose(r -> context.crypto.hasher.hash(r, length))
-                                .thenApply(hash -> new Pair<>(f.getFileProperties().getType(),
-                                        new FileRef(p.left.resolve(uuid).toString(), f.readOnlyPointer(), hash)))));
+        return getDirToStoreAttachment(context, username, directoryPrefix, pendingDirectory)
+                .thenCompose(dir -> dir.get().uploadAndReturnFile(uuid, reader, length, false, monitor,
+                    context.network, context.crypto)
+                        .thenApply(hash -> uuid));
     }
 
-    private static CompletableFuture<Pair<Path, FileWrapper>> getOrMkdirToStoreAttachment(UserContext context, String username, String directoryPrefix) {
-        LocalDateTime postTime = LocalDateTime.now();
-        Path baseDir = Paths.get(username + "/" + attachmentsDir + "/" + directoryPrefix + "/attachments");
-        Path dirFromBase = Paths.get(
-                Integer.toString(postTime.getYear()),
-                Integer.toString(postTime.getMonthValue()));
-        return context.getByPath(baseDir)
-                .thenCompose(home -> home.get().getOrMkdirs(dirFromBase, context.network, true, context.crypto)
-                .thenApply(dir -> new Pair<>(baseDir.resolve(dirFromBase), dir)));
+    @JsMethod
+    public static CompletableFuture<Optional<FileWrapper>> retrieveAttachment(UserContext context, String username,
+                                                           String directoryPrefix, String uuid) {
+        Path path = Paths.get(username + "/" + emailDataDir + "/" + directoryPrefix + "/attachments/" + uuid);
+        return context.getByPath(path);
+    }
+
+    private static CompletableFuture<Optional<FileWrapper>> getDirToStoreAttachment(UserContext context,
+                                      String username, String directoryPrefix, String pendingDirectory) {
+        Path baseDir = Paths.get(username + "/" + emailDataDir + "/" + directoryPrefix + "/" +
+                pendingDirectory + "/attachments");
+        return context.getByPath(baseDir);
     }
 }
