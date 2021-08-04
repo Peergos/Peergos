@@ -1793,7 +1793,7 @@ public class PeergosNetworkUtils {
         String propDirStr = "default/App.config";
         Path propDirPath = PathUtils.directoryToPath(propDirStr.split("/"));
         emailApp.writeInternal(propDirPath, json.getBytes(), null).join();
-        EmailClient client = EmailClient.load(user);
+        EmailClient client = EmailClient.load(emailApp, crypto).join();
         List<Attachment> attachments = Collections.emptyList();
         EmailMessage msg = new EmailMessage("id", "msgid", user.username, "subject",
                 LocalDateTime.now(), Arrays.asList("a@example.com"), Collections.emptyList(), Collections.emptyList(),

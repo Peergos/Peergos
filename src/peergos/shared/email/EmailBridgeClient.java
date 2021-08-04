@@ -32,7 +32,7 @@ public class EmailBridgeClient {
     }
 
     private static CompletableFuture<PublicBoxingKey> getEncryptionTarget(UserContext context, String clientUsername) {
-        Path base = EmailClient.getBase(clientUsername);
+        Path base = App.getDataDir("email", clientUsername);
         return context.getByPath(base.resolve(Paths.get("pending", "encryption.publickey.cbor")))
                 .thenCompose(kopt -> Serialize.parse(kopt.get(), PublicBoxingKey::fromCbor, context.network, context.crypto));
     }

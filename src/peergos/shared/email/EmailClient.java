@@ -1,10 +1,11 @@
 package peergos.shared.email;
 
-import peergos.client.PathUtils;
+import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.io.ipfs.api.JSONParser;
 import peergos.shared.user.*;
+import peergos.shared.util.*;
 
 import java.nio.file.*;
 import java.util.*;
@@ -39,22 +40,14 @@ import java.util.concurrent.*;
  */
 public class EmailClient {
 
-    private final UserContext context;
+    private final Crypto crypto;
     private final BoxingKeyPair encryptionKeys;
     private final App emailApp;
 
-    public EmailClient(App emailApp, UserContext context, BoxingKeyPair encryptionKeys) {
+    public EmailClient(App emailApp, Crypto crypto, BoxingKeyPair encryptionKeys) {
         this.emailApp = emailApp;
-        this.context = context;
+        this.crypto = crypto;
         this.encryptionKeys = encryptionKeys;
-    }
-
-    private Path getBase() {
-        return getBase(context.username);
-    }
-
-    public static Path getBase(String username) {
-        return Paths.get(username, ".apps", "email", "data");
     }
 
     private EmailMessage decryptEmail(SourcedAsymmetricCipherText cipherText) {
@@ -69,7 +62,7 @@ public class EmailClient {
         if (msg.attachments.size() > 0 || attachments.size() > 0) {
             throw new IllegalStateException("Unimplemented");
         }
-        return saveEmail("pending/outbox", msg.toBytes(), msg.id);
+        return saveEmail("pending/outbox", msg, msg.id);
     }
 
     public CompletableFuture<List<EmailMessage>> getIncoming(String folder) {
@@ -80,19 +73,26 @@ public class EmailClient {
         throw new IllegalStateException("Unimplemented");
     }
 
-    public static EmailClient initialise(UserContext context, App emailApp) {
-        BoxingKeyPair encryptionKeys = BoxingKeyPair.random(context.crypto.random, context.crypto.boxer);
-        return new EmailClient(emailApp, context, encryptionKeys);
+    /** Setup all the necessary directories, generate key pair, and store public key separately for bridge to read
+     *  N.B. The pending directory still needs to be shared with the email user after initialization.
+     *
+     * @param crypto
+     * @param emailApp
+     * @return
+     */
+    public static CompletableFuture<EmailClient> initialise(Crypto crypto, App emailApp) {
+        BoxingKeyPair encryptionKeys = BoxingKeyPair.random(crypto.random, crypto.boxer);
+        return Futures.of(new EmailClient(emailApp, crypto, encryptionKeys));
     }
-    public static EmailClient load(UserContext context) {
-        App emailApp = App.init(context, "email").join();
-        boolean isInit = isInitialised(emailApp).join();
-        if (isInit) {
-            return initialise(context, emailApp);
-        } else {
-            throw new IllegalStateException("Please use UI to setup email");
-        }
+
+    public static CompletableFuture<EmailClient> load(App emailApp, Crypto crypto) {
+        return isInitialised(emailApp).thenCompose(initialized -> {
+            if (! initialized)
+                throw new IllegalStateException("Please use UI to setup email");
+            return initialise(crypto, emailApp);
+        });
     }
+
     private static CompletableFuture<Boolean> isInitialised(App email) {
         Path filePath = Paths.get("default", "App.config");
         return email.readInternal(filePath, null).thenApply(data -> {
@@ -102,10 +102,11 @@ public class EmailClient {
             return false;
         });
     }
-    private CompletableFuture<Boolean> saveEmail(String folder, byte[] bytes, String id) {
+
+    private CompletableFuture<Boolean> saveEmail(String folder, EmailMessage email, String id) {
         String fullFolderPath = "default/" + folder + "/" + id + ".cbor";
         String[] folderDirs = fullFolderPath.split("/");
         Path filePath = peergos.client.PathUtils.directoryToPath(folderDirs);
-        return emailApp.writeInternal(filePath, bytes, context.username);
+        return emailApp.writeInternal(filePath, email.serialize(), null);
     }
 }
