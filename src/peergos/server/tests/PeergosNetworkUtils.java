@@ -119,12 +119,58 @@ public class PeergosNetworkUtils {
         sharedFile.get().copyTo(destFolder.get(), shareeUser).join();
         //Assert.assertTrue("Folder not copied", res);
         Optional<FileWrapper> foundFolder = shareeUser.getByPath(shareeUser.username + "/" + folderName).join();
-        Assert.assertTrue("Folder not accessible", foundFolder.isPresent());
+        Assert.assertTrue("Folder accessible", foundFolder.isPresent());
 
         Set<FileWrapper> receivedChildren = foundFolder.get().getChildren(crypto.hasher, shareeUser.network).join();
         Assert.assertTrue(receivedChildren.stream().map(FileWrapper::getName).collect(Collectors.toSet()).equals(Set.of(filename, subdirName)));
     }
 
+    public static void copySubdirFromFriend(NetworkAccess network, Random random) {
+
+        String sharerUsername = generateUsername(random);
+        String sharerPassword = generatePassword();
+        UserContext sharerUser = ensureSignedUp(sharerUsername, sharerPassword, network, crypto);
+
+        //sign up some users on shareeNode
+        String shareeUsername = generateUsername(random);
+        String shareePassword = generatePassword();
+        UserContext shareeUser = ensureSignedUp(shareeUsername, shareePassword, network, crypto);
+
+        // friend sharer with others
+        friendBetweenGroups(Arrays.asList(sharerUser), Arrays.asList(shareeUser));
+
+        // upload a file to /a/folder/subdir/file.txt
+        FileWrapper u1Root = sharerUser.getUserRoot().join();
+        String folderName = "folder";
+        u1Root.mkdir(folderName, network, false, crypto).join();
+        String subdirName = "subdir";
+        sharerUser.getByPath(Paths.get(sharerUsername, folderName)).join().get()
+                .mkdir(subdirName, sharerUser.network, false, crypto).join();
+        byte[] data = "Some text".getBytes();
+        String filename = "file.txt";
+        sharerUser.getByPath(Paths.get(sharerUsername, folderName, subdirName)).join().get()
+                .uploadOrReplaceFile(filename, AsyncReader.build(data), data.length, sharerUser.network, crypto,
+                        x -> {}, crypto.random.randomBytes(32)).join();
+
+        // share
+        Set<String> shareeNames = new HashSet<>();
+        shareeNames.add(shareeUser.username);
+        sharerUser.shareReadAccessWith(Paths.get(sharerUser.username, folderName), shareeNames).join();
+
+        Path subFolder = Paths.get(sharerUser.username, folderName, subdirName);
+        Optional<FileWrapper> sharedFile = shareeUser.getByPath(sharerUser.username + "/" + folderName + "/").join().get()
+                .getChildren(crypto.hasher, sharerUser.network).join().stream().findAny();
+        Assert.assertTrue("shared subfolder present", sharedFile.isPresent());
+        Assert.assertTrue("Folder is read only", !sharedFile.get().isWritable());
+
+        Optional<FileWrapper> destFolder = shareeUser.getByPath(shareeUser.username).join();
+        sharedFile.get().copyTo(destFolder.get(), shareeUser).join();
+        Optional<FileWrapper> foundFolder = shareeUser.getByPath(shareeUser.username + "/" + subdirName).join();
+        Assert.assertTrue("Folder accessible", foundFolder.isPresent());
+
+        Set<FileWrapper> receivedChildren = foundFolder.get().getChildren(crypto.hasher, shareeUser.network).join();
+        Assert.assertTrue(receivedChildren.stream().map(FileWrapper::getName).collect(Collectors.toSet()).equals(Set.of(filename)));
+    }
 
     public static void grantAndRevokeFileReadAccess(NetworkAccess sharerNode, NetworkAccess shareeNode, int shareeCount, Random random) throws Exception {
         Assert.assertTrue(0 < shareeCount);
