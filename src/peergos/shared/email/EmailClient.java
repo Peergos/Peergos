@@ -1,7 +1,9 @@
 package peergos.shared.email;
 
+import peergos.client.PathUtils;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
+import peergos.shared.io.ipfs.api.JSONParser;
 import peergos.shared.user.*;
 
 import java.nio.file.*;
@@ -39,8 +41,10 @@ public class EmailClient {
 
     private final UserContext context;
     private final BoxingKeyPair encryptionKeys;
+    private final App emailApp;
 
-    public EmailClient(UserContext context, BoxingKeyPair encryptionKeys) {
+    public EmailClient(App emailApp, UserContext context, BoxingKeyPair encryptionKeys) {
+        this.emailApp = emailApp;
         this.context = context;
         this.encryptionKeys = encryptionKeys;
     }
@@ -62,7 +66,10 @@ public class EmailClient {
     }
 
     public CompletableFuture<Boolean> send(EmailMessage msg, List<PendingAttachment> attachments) {
-        throw new IllegalStateException("Unimplemented");
+        if (msg.attachments.size() > 0 || attachments.size() > 0) {
+            throw new IllegalStateException("Unimplemented");
+        }
+        return saveEmail("pending/outbox", msg.toBytes(), msg.id);
     }
 
     public CompletableFuture<List<EmailMessage>> getIncoming(String folder) {
@@ -73,13 +80,32 @@ public class EmailClient {
         throw new IllegalStateException("Unimplemented");
     }
 
-    public static EmailClient initialise(UserContext context) {
+    public static EmailClient initialise(UserContext context, App emailApp) {
         BoxingKeyPair encryptionKeys = BoxingKeyPair.random(context.crypto.random, context.crypto.boxer);
-
-        throw new IllegalStateException("Unimplemented");
+        return new EmailClient(emailApp, context, encryptionKeys);
     }
-
     public static EmailClient load(UserContext context) {
-        throw new IllegalStateException("Unimplemented");
+        App emailApp = App.init(context, "email").join();
+        boolean isInit = isInitialised(emailApp).join();
+        if (isInit) {
+            return initialise(context, emailApp);
+        } else {
+            throw new IllegalStateException("Please use UI to setup email");
+        }
+    }
+    private static CompletableFuture<Boolean> isInitialised(App email) {
+        Path filePath = Paths.get("default", "App.config");
+        return email.readInternal(filePath, null).thenApply(data -> {
+            Map<String, String> props = (Map<String, String>) JSONParser.parse(new String(data));
+            return props.containsKey("emailBridgeUser") && props.containsKey("sharedPendingDirectory");
+        }).exceptionally(throwable -> {
+            return false;
+        });
+    }
+    private CompletableFuture<Boolean> saveEmail(String folder, byte[] bytes, String id) {
+        String fullFolderPath = "default/" + folder + "/" + id + ".cbor";
+        String[] folderDirs = fullFolderPath.split("/");
+        Path filePath = peergos.client.PathUtils.directoryToPath(folderDirs);
+        return emailApp.writeInternal(filePath, bytes, context.username);
     }
 }

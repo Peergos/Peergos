@@ -1,6 +1,7 @@
 package peergos.server.tests;
 
 import org.junit.Assert;
+import peergos.client.PathUtils;
 import peergos.server.*;
 import peergos.server.storage.ResetableFileInputStream;
 import peergos.shared.Crypto;
@@ -8,6 +9,10 @@ import peergos.shared.NetworkAccess;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.SymmetricKey;
 import peergos.shared.display.*;
+import peergos.shared.email.Attachment;
+import peergos.shared.email.EmailClient;
+import peergos.shared.email.EmailMessage;
+import peergos.shared.email.PendingAttachment;
 import peergos.shared.io.ipfs.multihash.Multihash;
 import peergos.shared.messaging.*;
 import peergos.shared.messaging.messages.*;
@@ -1752,10 +1757,50 @@ public class PeergosNetworkUtils {
         byte[] media = "Some media data".getBytes();
         AsyncReader reader = AsyncReader.build(media);
         Pair<String, FileRef> mediaRef = msgA.uploadMedia(controllerA, reader, "txt", media.length,
-                LocalDateTime.now(), x -> {}).join();
+                LocalDateTime.now(), x -> {
+                }).join();
         ReplyTo msg2 = ReplyTo.build(lastMessage, ApplicationMessage.attachment("Isn't this cool!!",
                 Arrays.asList(mediaRef.right)), hasher).join();
         controllerA = msgA.sendMessage(controllerA, msg2).join();
+    }
+
+    public static void email(NetworkAccess network, Random random) {
+        CryptreeNode.setMaxChildLinkPerBlob(10);
+
+        String password = "notagoodone";
+        UserContext user = PeergosNetworkUtils.ensureSignedUp("a-" + generateUsername(random), password, network, crypto);
+        UserContext email = PeergosNetworkUtils.ensureSignedUp("email-"+ generateUsername(random), password, network, crypto);
+
+        friendBetweenGroups(Arrays.asList(user), Arrays.asList(email));
+
+        App emailApp = App.init(user, "email").join();
+        List<String> dirs = Arrays.asList("inbox","sent","pending", "attachments",
+                "pending/inbox", "pending/outbox", "pending/sent",
+                "pending/inbox/attachments", "pending/outbox/attachments", "pending/sent/attachments");
+        Path baseDir = Paths.get(".apps", "email", "data", "default");
+        for(String dir : dirs) {
+            Path dirFromHome = baseDir.resolve(Paths.get(dir));
+            Optional<FileWrapper> homeOpt = user.getByPath(user.username).join();
+            homeOpt.get().getOrMkdirs(dirFromHome, user.network, true, user.crypto).join();
+        }
+        Set<String> sharees = new HashSet<>();
+        sharees.add(email.username);
+        String dirStr = user.username + "/.apps/email/data/default/pending";
+        Path directoryPath = PathUtils.directoryToPath(dirStr.split("/"));
+        user.shareWriteAccessWith(directoryPath, sharees).join();
+
+        String json = "{ \"emailBridgeUser\": \"" + email.username +"\", \"sharedPendingDirectory\": \"true\"}";
+        String propDirStr = "default/App.config";
+        Path propDirPath = PathUtils.directoryToPath(propDirStr.split("/"));
+        emailApp.writeInternal(propDirPath, json.getBytes(), null).join();
+        EmailClient client = EmailClient.load(user);
+        List<Attachment> attachments = Collections.emptyList();
+        EmailMessage msg = new EmailMessage("id", "msgid", user.username, "subject",
+                LocalDateTime.now(), Arrays.asList("a@example.com"), Collections.emptyList(), Collections.emptyList(),
+                "content", true, true, attachments, null,
+                Optional.empty(), Optional.empty(), Optional.empty());
+        boolean sentEmail = client.send(msg, Collections.emptyList()).join();
+        Assert.assertTrue("email sent", sentEmail);
     }
 
     public static void chat(NetworkAccess network, Random random) {
