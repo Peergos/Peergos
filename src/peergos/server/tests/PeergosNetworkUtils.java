@@ -1774,15 +1774,8 @@ public class PeergosNetworkUtils {
         friendBetweenGroups(Arrays.asList(user), Arrays.asList(email));
 
         App emailApp = App.init(user, "email").join();
-        List<String> dirs = Arrays.asList("inbox","sent","pending", "attachments",
-                "pending/inbox", "pending/outbox", "pending/sent",
-                "pending/inbox/attachments", "pending/outbox/attachments", "pending/sent/attachments");
-        Path baseDir = Paths.get(".apps", "email", "data", "default");
-        for(String dir : dirs) {
-            Path dirFromHome = baseDir.resolve(Paths.get(dir));
-            Optional<FileWrapper> homeOpt = user.getByPath(user.username).join();
-            homeOpt.get().getOrMkdirs(dirFromHome, user.network, true, user.crypto).join();
-        }
+        EmailClient client = EmailClient.load(emailApp, crypto).join();
+
         Set<String> sharees = new HashSet<>();
         sharees.add(email.username);
         String dirStr = user.username + "/.apps/email/data/default/pending";
@@ -1793,7 +1786,7 @@ public class PeergosNetworkUtils {
         String propDirStr = "default/App.config";
         Path propDirPath = PathUtils.directoryToPath(propDirStr.split("/"));
         emailApp.writeInternal(propDirPath, json.getBytes(), null).join();
-        EmailClient client = EmailClient.load(emailApp, crypto).join();
+
         List<Attachment> attachments = Collections.emptyList();
         EmailMessage msg = new EmailMessage("id", "msgid", user.username, "subject",
                 LocalDateTime.now(), Arrays.asList("a@example.com"), Collections.emptyList(), Collections.emptyList(),

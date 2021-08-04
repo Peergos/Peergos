@@ -39,6 +39,7 @@ import java.util.concurrent.*;
  *  to ~25 MiB anyway.
  */
 public class EmailClient {
+    private static final String ENCRYPTION_KEYPAIR_PATH = "encryption.keypair.cbor";
 
     private final Crypto crypto;
     private final BoxingKeyPair encryptionKeys;
@@ -81,26 +82,30 @@ public class EmailClient {
      * @return
      */
     public static CompletableFuture<EmailClient> initialise(Crypto crypto, App emailApp) {
-        BoxingKeyPair encryptionKeys = BoxingKeyPair.random(crypto.random, crypto.boxer);
-        return Futures.of(new EmailClient(emailApp, crypto, encryptionKeys));
+        List<String> dirs = Arrays.asList("inbox","sent","pending", "attachments",
+                "pending/inbox", "pending/outbox", "pending/sent",
+                "pending/inbox/attachments", "pending/outbox/attachments", "pending/sent/attachments");
+        String account = "default";
+        return Futures.reduceAll(dirs, true,
+                (b, d) -> emailApp.createDirectoryInternal(Paths.get(account + "/" + d), null),
+                (a, b) -> a && b).thenCompose(x -> {
+            BoxingKeyPair encryptionKeys = BoxingKeyPair.random(crypto.random, crypto.boxer);
+            return emailApp.writeInternal(Paths.get(account, ENCRYPTION_KEYPAIR_PATH), encryptionKeys.serialize(), null)
+                    .thenApply(b -> new EmailClient(emailApp, crypto, encryptionKeys));
+        });
     }
 
     public static CompletableFuture<EmailClient> load(App emailApp, Crypto crypto) {
-        return isInitialised(emailApp).thenCompose(initialized -> {
-            if (! initialized)
-                throw new IllegalStateException("Please use UI to setup email");
-            return initialise(crypto, emailApp);
-        });
-    }
+        return emailApp.dirInternal(Paths.get(""), null)
+                .thenCompose(children -> {
+                    if (children.contains(ENCRYPTION_KEYPAIR_PATH)) {
+                        return emailApp.readInternal(Paths.get(ENCRYPTION_KEYPAIR_PATH), null)
+                                .thenApply(bytes -> BoxingKeyPair.fromCbor(CborObject.fromByteArray(bytes)))
+                                .thenApply(keys -> new EmailClient(emailApp, crypto, keys));
+                    }
 
-    private static CompletableFuture<Boolean> isInitialised(App email) {
-        Path filePath = Paths.get("default", "App.config");
-        return email.readInternal(filePath, null).thenApply(data -> {
-            Map<String, String> props = (Map<String, String>) JSONParser.parse(new String(data));
-            return props.containsKey("emailBridgeUser") && props.containsKey("sharedPendingDirectory");
-        }).exceptionally(throwable -> {
-            return false;
-        });
+                    return initialise(crypto, emailApp);
+                });
     }
 
     private CompletableFuture<Boolean> saveEmail(String folder, EmailMessage email, String id) {

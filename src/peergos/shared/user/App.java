@@ -147,16 +147,10 @@ public class App implements StoreAppData {
     }
     @JsMethod
     public CompletableFuture<Boolean> createDirectoryInternal(Path relativePath, String username) {
-        Path path = fullPath(relativePath, username);
-        Path parentPath = path.getParent();
-        Path subPath = path.getFileName();
-        return ctx.getByPath(parentPath).thenCompose(dirOpt -> {
-            if(dirOpt.isEmpty()) {
-                throw new IllegalStateException("Parent directory not found:" + parentPath.toString());
-            }
-            return dirOpt.get().getOrMkdirs(subPath, ctx.network, false, ctx.crypto)
-                .thenApply(fw -> true);
-        });
+        Path base = fullPath(Paths.get(""), username);
+        return ctx.getByPath(base)
+                .thenCompose(baseOpt -> baseOpt.get().getOrMkdirs(normalisePath(relativePath), ctx.network, false, ctx.crypto)
+                .thenApply(fw -> true));
     }
 }
 
