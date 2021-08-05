@@ -9,10 +9,7 @@ import peergos.shared.NetworkAccess;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.SymmetricKey;
 import peergos.shared.display.*;
-import peergos.shared.email.Attachment;
-import peergos.shared.email.EmailClient;
-import peergos.shared.email.EmailMessage;
-import peergos.shared.email.PendingAttachment;
+import peergos.shared.email.*;
 import peergos.shared.io.ipfs.multihash.Multihash;
 import peergos.shared.messaging.*;
 import peergos.shared.messaging.messages.*;
@@ -1785,6 +1782,8 @@ public class PeergosNetworkUtils {
 
         email.sendReplyFollowRequest(email.processFollowRequests().join().get(0), true, true).join();
         user.processFollowRequests().join();
+        EmailBridgeClient bridge = EmailBridgeClient.build(email, user.username).join();
+
     }
 
     public static void chat(NetworkAccess network, Random random) {
