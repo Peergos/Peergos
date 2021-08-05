@@ -1771,21 +1771,9 @@ public class PeergosNetworkUtils {
         UserContext user = PeergosNetworkUtils.ensureSignedUp("a-" + generateUsername(random), password, network, crypto);
         UserContext email = PeergosNetworkUtils.ensureSignedUp("email-"+ generateUsername(random), password, network, crypto);
 
-        friendBetweenGroups(Arrays.asList(user), Arrays.asList(email));
-
         App emailApp = App.init(user, "email").join();
         EmailClient client = EmailClient.load(emailApp, crypto).join();
-
-        Set<String> sharees = new HashSet<>();
-        sharees.add(email.username);
-        String dirStr = user.username + "/.apps/email/data/default/pending";
-        Path directoryPath = PathUtils.directoryToPath(dirStr.split("/"));
-        user.shareWriteAccessWith(directoryPath, sharees).join();
-
-        String json = "{ \"emailBridgeUser\": \"" + email.username +"\", \"sharedPendingDirectory\": \"true\"}";
-        String propDirStr = "default/App.config";
-        Path propDirPath = PathUtils.directoryToPath(propDirStr.split("/"));
-        emailApp.writeInternal(propDirPath, json.getBytes(), null).join();
+        EmailClient.connectToBridge(email.username, user).join();
 
         List<Attachment> attachments = Collections.emptyList();
         EmailMessage msg = new EmailMessage("id", "msgid", user.username, "subject",
@@ -1794,6 +1782,9 @@ public class PeergosNetworkUtils {
                 Optional.empty(), Optional.empty(), Optional.empty());
         boolean sentEmail = client.send(msg, Collections.emptyList()).join();
         Assert.assertTrue("email sent", sentEmail);
+
+        email.sendReplyFollowRequest(email.processFollowRequests().join().get(0), true, true).join();
+        user.processFollowRequests().join();
     }
 
     public static void chat(NetworkAccess network, Random random) {

@@ -1,9 +1,9 @@
 package peergos.shared.email;
 
+import jsinterop.annotations.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
-import peergos.shared.io.ipfs.api.JSONParser;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
@@ -75,6 +75,13 @@ public class EmailClient {
         throw new IllegalStateException("Unimplemented");
     }
 
+    private CompletableFuture<Boolean> saveEmail(String folder, EmailMessage email, String id) {
+        String fullFolderPath = "default/" + folder + "/" + id + ".cbor";
+        String[] folderDirs = fullFolderPath.split("/");
+        Path filePath = peergos.client.PathUtils.directoryToPath(folderDirs);
+        return emailApp.writeInternal(filePath, email.serialize(), null);
+    }
+
     /** Setup all the necessary directories, generate key pair, and store public key separately for bridge to read
      *  N.B. The pending directory still needs to be shared with the email user after initialization.
      *
@@ -98,6 +105,7 @@ public class EmailClient {
         });
     }
 
+    @JsMethod
     public static CompletableFuture<EmailClient> load(App emailApp, Crypto crypto) {
         return emailApp.dirInternal(Paths.get(""), null)
                 .thenCompose(children -> {
@@ -111,10 +119,11 @@ public class EmailClient {
                 });
     }
 
-    private CompletableFuture<Boolean> saveEmail(String folder, EmailMessage email, String id) {
-        String fullFolderPath = "default/" + folder + "/" + id + ".cbor";
-        String[] folderDirs = fullFolderPath.split("/");
-        Path filePath = peergos.client.PathUtils.directoryToPath(folderDirs);
-        return emailApp.writeInternal(filePath, email.serialize(), null);
+    @JsMethod
+    public static CompletableFuture<Snapshot> connectToBridge(String bridgeUsername, UserContext context) {
+        Path pendingDir = App.getDataDir("email", context.username)
+                .resolve(Paths.get("default", "pending"));
+        return context.sendInitialFollowRequest(bridgeUsername)
+                .thenCompose(x -> context.shareWriteAccessWith(pendingDir, Collections.singleton(bridgeUsername)));
     }
 }
