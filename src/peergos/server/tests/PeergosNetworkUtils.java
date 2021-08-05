@@ -1,8 +1,8 @@
 package peergos.server.tests;
 
 import org.junit.Assert;
-import peergos.client.PathUtils;
 import peergos.server.*;
+import peergos.server.apps.email.*;
 import peergos.server.storage.ResetableFileInputStream;
 import peergos.shared.Crypto;
 import peergos.shared.NetworkAccess;
@@ -1772,6 +1772,7 @@ public class PeergosNetworkUtils {
         EmailClient client = EmailClient.load(emailApp, crypto).join();
         EmailClient.connectToBridge(email.username, user).join();
 
+        // send email to bridge
         List<Attachment> attachments = Collections.emptyList();
         EmailMessage msg = new EmailMessage("id", "msgid", user.username, "subject",
                 LocalDateTime.now(), Arrays.asList("a@example.com"), Collections.emptyList(), Collections.emptyList(),
@@ -1780,9 +1781,21 @@ public class PeergosNetworkUtils {
         boolean sentEmail = client.send(msg, Collections.emptyList()).join();
         Assert.assertTrue("email sent", sentEmail);
 
+        // Receive sent email in bridge
         email.sendReplyFollowRequest(email.processFollowRequests().join().get(0), true, true).join();
         user.processFollowRequests().join();
-        EmailBridgeClient bridge = EmailBridgeClient.build(email, user.username).join();
+        EmailBridgeClient bridge = EmailBridgeClient.build(email, user.username);
+        List<String> filenames = bridge.listOutbox();
+        Assert.assertTrue("bridge received email", ! filenames.isEmpty());
+        Pair<FileWrapper, EmailMessage> pendingEmail = bridge.getPendingEmail(filenames.get(0));
+        Assert.assertTrue(Arrays.equals(msg.serialize(), pendingEmail.right.serialize()));
+
+        bridge.encryptAndMoveEmailToSent(pendingEmail.left, pendingEmail.right);
+
+        // detect that email's been sent and move to private folder
+
+
+        // receive an inbound email in bridge
 
     }
 
