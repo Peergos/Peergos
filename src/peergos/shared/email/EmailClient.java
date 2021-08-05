@@ -40,6 +40,7 @@ import java.util.concurrent.*;
  */
 public class EmailClient {
     private static final String ENCRYPTION_KEYPAIR_PATH = "encryption.keypair.cbor";
+    private static final String PUBLIC_KEY_FILENAME = "encryption.publickey.cbor";
 
     private final Crypto crypto;
     private final BoxingKeyPair encryptionKeys;
@@ -91,6 +92,8 @@ public class EmailClient {
                 (a, b) -> a && b).thenCompose(x -> {
             BoxingKeyPair encryptionKeys = BoxingKeyPair.random(crypto.random, crypto.boxer);
             return emailApp.writeInternal(Paths.get(account, ENCRYPTION_KEYPAIR_PATH), encryptionKeys.serialize(), null)
+                    .thenCompose(b -> emailApp.writeInternal(Paths.get(account, "pending", PUBLIC_KEY_FILENAME),
+                            encryptionKeys.publicBoxingKey.serialize(), null))
                     .thenApply(b -> new EmailClient(emailApp, crypto, encryptionKeys));
         });
     }
