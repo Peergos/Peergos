@@ -10,6 +10,7 @@ import peergos.shared.util.*;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.stream.*;
 
 /**
  *  All email data is stored under $BASE = /$username/.apps/email/data
@@ -67,8 +68,19 @@ public class EmailClient {
         return saveEmail("pending/outbox", msg, msg.id);
     }
 
-    public CompletableFuture<List<EmailMessage>> getIncoming(String folder) {
-        throw new IllegalStateException("Unimplemented");
+    @JsMethod
+    public CompletableFuture<List<EmailMessage>> getIncoming() {
+        Path inbox = Paths.get("default", "pending", "inbox");
+        List<EmailMessage> res = new ArrayList<>();
+        return emailApp.dirInternal(inbox, null)
+                .thenApply(filenames -> filenames.stream().filter(n -> n.endsWith(".cbor")).collect(Collectors.toList()))
+                .thenCompose(filenames -> Futures.reduceAll(filenames, true,
+                        (r, n) -> emailApp.readInternal(inbox.resolve(n), null)
+                                .thenApply(bytes -> SourcedAsymmetricCipherText.fromCbor(CborObject.fromByteArray(bytes)))
+                                .thenApply(this::decryptEmail)
+                                .thenApply(m -> res.add(m)),
+                        (a, b) -> b))
+                .thenApply(x -> res);
     }
 
     private CompletableFuture<List<EmailMessage>> processPending() {

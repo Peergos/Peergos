@@ -1793,10 +1793,22 @@ public class PeergosNetworkUtils {
         bridge.encryptAndMoveEmailToSent(pendingEmail.left, pendingEmail.right);
 
         // detect that email's been sent and move to private folder
-
+        // TODO
 
         // receive an inbound email in bridge
+        EmailMessage inMsg = new EmailMessage("id2", "msgid", "alice@crypto.net", "what's up?",
+                LocalDateTime.now(), Arrays.asList("ouremail@example.com"), Collections.emptyList(), Collections.emptyList(),
+                "content", true, true, attachments, null,
+                Optional.empty(), Optional.empty(), Optional.empty());
+        bridge.addToInbox(inMsg);
 
+        // retrieve new message in client
+        List<EmailMessage> incoming = client.getIncoming().join();
+        Assert.assertTrue("received email", ! incoming.isEmpty());
+        Assert.assertTrue(Arrays.equals(inMsg.serialize(), incoming.get(0).serialize()));
+
+        // decrypt and move email to private folder
+        // TODO
     }
 
     public static void chat(NetworkAccess network, Random random) {

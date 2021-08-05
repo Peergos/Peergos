@@ -61,7 +61,15 @@ public class EmailBridgeClient {
     }
 
     public void addToInbox(EmailMessage m) {
-
+        Path inboxPath = pendingPath().resolve("inbox");
+        FileWrapper inbox = context.getByPath(inboxPath).join().get();
+        context.network.synchronizer.applyComplexUpdate(inbox.owner(), inbox.signingPair(), (s, c) -> {
+            byte[] rawCipherText = encryptEmail(m).serialize();
+            return inbox.getUpdated(s, context.network).join()
+                    .uploadFileSection(s, c, m.id + ".cbor", AsyncReader.build(rawCipherText), false, 0,
+                            rawCipherText.length, Optional.empty(), true, true,
+                            context.network, context.crypto, x -> {}, context.crypto.random.randomBytes(32));
+        }).join();
     }
 
     private SourcedAsymmetricCipherText encryptEmail(EmailMessage m) {
