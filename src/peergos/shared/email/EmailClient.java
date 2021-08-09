@@ -13,9 +13,10 @@ import java.util.concurrent.*;
 import java.util.stream.*;
 
 /**
- *  All email data is stored under $BASE = /$username/.apps/email/data
+ *  All email data is stored under $BASE = /$username/.apps/email/data/$ACCOUNT
+ *  $ACCOUNT = 'default' until multiple email addresses are supported
  *  Emails are stored in #BASE/{inbox, sent, $custom...}
- *  Attachments are stored in #BASE/attachments
+ *  Attachments are stored in $BASE/attachments
  *  The email bridge has write access to $BASE/pending
  *  Attachments are encrypted in $BASE/pending/inbox/attachments and $BASE/pending/sent/attachments
  *  Attachments are non encrypted in $BASE/pending/outbox/attachments
@@ -69,18 +70,40 @@ public class EmailClient {
     }
 
     @JsMethod
-    public CompletableFuture<List<EmailMessage>> getIncoming() {
+    public CompletableFuture<List<EmailMessage>> getNewIncoming() {
         Path inbox = Paths.get("default", "pending", "inbox");
+        return listFiles(inbox);
+    }
+
+    @JsMethod
+    public CompletableFuture<List<EmailMessage>> getNewSent() {
+        Path inbox = Paths.get("default", "pending", "sent");
+        return listFiles(inbox);
+    }
+
+    public CompletableFuture<List<EmailMessage>> listFiles(Path internalPath) {
         List<EmailMessage> res = new ArrayList<>();
-        return emailApp.dirInternal(inbox, null)
+        return emailApp.dirInternal(internalPath, null)
                 .thenApply(filenames -> filenames.stream().filter(n -> n.endsWith(".cbor")).collect(Collectors.toList()))
                 .thenCompose(filenames -> Futures.reduceAll(filenames, true,
-                        (r, n) -> emailApp.readInternal(inbox.resolve(n), null)
+                        (r, n) -> emailApp.readInternal(internalPath.resolve(n), null)
                                 .thenApply(bytes -> SourcedAsymmetricCipherText.fromCbor(CborObject.fromByteArray(bytes)))
                                 .thenApply(this::decryptEmail)
                                 .thenApply(m -> res.add(m)),
                         (a, b) -> b))
                 .thenApply(x -> res);
+    }
+
+    public CompletableFuture<Boolean> moveToPrivateSent(EmailMessage m) {
+        return moveToPrivateDir("default", m, Paths.get("default", "pending", "sent").resolve(m.id + ".cbor"));
+    }
+
+    public CompletableFuture<Boolean> moveToPrivateDir(String account, EmailMessage m, Path original) {
+        Path dirAndFile = original.subpath(original.getNameCount() - 2, original.getNameCount());
+        Path dest = Paths.get(account).resolve(dirAndFile);
+        // TODO make this move atomic
+        return emailApp.writeInternal(dest, m.serialize(), null)
+                .thenCompose(b -> emailApp.deleteInternal(original, null));
     }
 
     private CompletableFuture<List<EmailMessage>> processPending() {

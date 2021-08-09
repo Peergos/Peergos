@@ -1793,7 +1793,10 @@ public class PeergosNetworkUtils {
         bridge.encryptAndMoveEmailToSent(pendingEmail.left, pendingEmail.right);
 
         // detect that email's been sent and move to private folder
-        // TODO
+        List<EmailMessage> sent = client.getNewSent().join();
+        Assert.assertTrue(! sent.isEmpty());
+        client.moveToPrivateSent(sent.get(0)).join();
+        Assert.assertTrue(client.getNewSent().join().isEmpty());
 
         // receive an inbound email in bridge
         EmailMessage inMsg = new EmailMessage("id2", "msgid", "alice@crypto.net", "what's up?",
@@ -1803,11 +1806,11 @@ public class PeergosNetworkUtils {
         bridge.addToInbox(inMsg);
 
         // retrieve new message in client
-        List<EmailMessage> incoming = client.getIncoming().join();
+        List<EmailMessage> incoming = client.getNewIncoming().join();
         Assert.assertTrue("received email", ! incoming.isEmpty());
         Assert.assertTrue(Arrays.equals(inMsg.serialize(), incoming.get(0).serialize()));
 
-        // decrypt and move email to private folder
+        // decrypt and move incoming email to private folder
         // TODO
     }
 
