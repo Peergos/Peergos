@@ -1773,10 +1773,10 @@ public class PeergosNetworkUtils {
         EmailClient.connectToBridge(email.username, user).join();
 
         // send email to bridge
-        List<Attachment> attachments = Collections.emptyList();
+        List<Attachment> outGoingAttachments = Collections.emptyList();
         EmailMessage msg = new EmailMessage("id", "msgid", user.username, "subject",
                 LocalDateTime.now(), Arrays.asList("a@example.com"), Collections.emptyList(), Collections.emptyList(),
-                "content", true, true, attachments, null,
+                "content", true, true, outGoingAttachments, null,
                 Optional.empty(), Optional.empty(), Optional.empty());
         boolean sentEmail = client.send(msg, Collections.emptyList()).join();
         Assert.assertTrue("email sent", sentEmail);
@@ -1795,13 +1795,15 @@ public class PeergosNetworkUtils {
         // detect that email's been sent and move to private folder
         List<EmailMessage> sent = client.getNewSent().join();
         Assert.assertTrue(! sent.isEmpty());
-        client.moveToPrivateSent(sent.get(0)).join();
+        List<PendingAttachment> attachments1 = Collections.emptyList();
+        client.moveToPrivateSent(sent.get(0), attachments1).join();
         Assert.assertTrue(client.getNewSent().join().isEmpty());
 
         // receive an inbound email in bridge
+        List<Attachment> inboundAttachments = Collections.emptyList();
         EmailMessage inMsg = new EmailMessage("id2", "msgid", "alice@crypto.net", "what's up?",
                 LocalDateTime.now(), Arrays.asList("ouremail@example.com"), Collections.emptyList(), Collections.emptyList(),
-                "content", true, true, attachments, null,
+                "content", true, true, inboundAttachments, null,
                 Optional.empty(), Optional.empty(), Optional.empty());
         bridge.addToInbox(inMsg);
 
@@ -1811,7 +1813,8 @@ public class PeergosNetworkUtils {
         Assert.assertTrue(Arrays.equals(inMsg.serialize(), incoming.get(0).serialize()));
 
         // decrypt and move incoming email to private folder
-        client.moveToPrivateSent(sent.get(0)).join();
+        List<PendingAttachment> attachments2 = Collections.emptyList();
+        client.moveToPrivateInbox(incoming.get(0), attachments2).join();
         Assert.assertTrue(client.getNewIncoming().join().isEmpty());
     }
 

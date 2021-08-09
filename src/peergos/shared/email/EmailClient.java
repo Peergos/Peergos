@@ -95,12 +95,12 @@ public class EmailClient {
     }
 
     @JsMethod
-    public CompletableFuture<Boolean> moveToPrivateSent(EmailMessage m) {
+    public CompletableFuture<Boolean> moveToPrivateSent(EmailMessage m, List<PendingAttachment> attachments) {
         return moveToPrivateDir("default", m, Paths.get("default", "pending", "sent").resolve(m.id + ".cbor"));
     }
 
     @JsMethod
-    public CompletableFuture<Boolean> moveToPrivateInbox(EmailMessage m) {
+    public CompletableFuture<Boolean> moveToPrivateInbox(EmailMessage m, List<PendingAttachment> attachments) {
         return moveToPrivateDir("default", m, Paths.get("default", "pending", "inbox").resolve(m.id + ".cbor"));
     }
 
@@ -110,10 +110,6 @@ public class EmailClient {
         // TODO make this move atomic
         return emailApp.writeInternal(dest, m.serialize(), null)
                 .thenCompose(b -> emailApp.deleteInternal(original, null));
-    }
-
-    private CompletableFuture<List<EmailMessage>> processPending() {
-        throw new IllegalStateException("Unimplemented");
     }
 
     private CompletableFuture<Boolean> saveEmail(String folder, EmailMessage email, String id) {
