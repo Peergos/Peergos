@@ -1811,7 +1811,8 @@ public class PeergosNetworkUtils {
         Assert.assertTrue(Arrays.equals(inMsg.serialize(), incoming.get(0).serialize()));
 
         // decrypt and move incoming email to private folder
-        // TODO
+        client.moveToPrivateSent(sent.get(0)).join();
+        Assert.assertTrue(client.getNewIncoming().join().isEmpty());
     }
 
     public static void chat(NetworkAccess network, Random random) {

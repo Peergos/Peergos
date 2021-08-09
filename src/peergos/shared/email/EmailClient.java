@@ -94,8 +94,14 @@ public class EmailClient {
                 .thenApply(x -> res);
     }
 
+    @JsMethod
     public CompletableFuture<Boolean> moveToPrivateSent(EmailMessage m) {
         return moveToPrivateDir("default", m, Paths.get("default", "pending", "sent").resolve(m.id + ".cbor"));
+    }
+
+    @JsMethod
+    public CompletableFuture<Boolean> moveToPrivateInbox(EmailMessage m) {
+        return moveToPrivateDir("default", m, Paths.get("default", "pending", "inbox").resolve(m.id + ".cbor"));
     }
 
     public CompletableFuture<Boolean> moveToPrivateDir(String account, EmailMessage m, Path original) {
