@@ -1,10 +1,14 @@
 package peergos.shared.email;
 
 import jsinterop.annotations.*;
+import peergos.client.PathUtils;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
+import peergos.shared.io.ipfs.api.JSONParser;
 import peergos.shared.user.*;
+import peergos.shared.user.fs.AsyncReader;
+import peergos.shared.user.fs.FileWrapper;
 import peergos.shared.util.*;
 
 import java.nio.file.*;
@@ -43,15 +47,19 @@ import java.util.stream.*;
 public class EmailClient {
     private static final String ENCRYPTION_KEYPAIR_PATH = "encryption.keypair.cbor";
     private static final String PUBLIC_KEY_FILENAME = "encryption.publickey.cbor";
+    private static final String CLIENT_EMAIL_FILENAME = "email.json"; //Email bridge will write client's email address to this file
+    private static final Path emailDataDir = Paths.get(".apps", "email", "data");
 
     private final Crypto crypto;
     private final BoxingKeyPair encryptionKeys;
     private final App emailApp;
+    private final UserContext context;
 
-    public EmailClient(App emailApp, Crypto crypto, BoxingKeyPair encryptionKeys) {
+    public EmailClient(App emailApp, Crypto crypto, BoxingKeyPair encryptionKeys, UserContext context) {
         this.emailApp = emailApp;
         this.crypto = crypto;
         this.encryptionKeys = encryptionKeys;
+        this.context = context;
     }
 
     private EmailMessage decryptEmail(SourcedAsymmetricCipherText cipherText) {
@@ -62,11 +70,55 @@ public class EmailClient {
         return cipherText.decrypt(encryptionKeys.secretBoxingKey, c -> ((CborObject.CborByteArray)c).value);
     }
 
-    public CompletableFuture<Boolean> send(EmailMessage msg, List<PendingAttachment> attachments) {
-        if (msg.attachments.size() > 0 || attachments.size() > 0) {
-            throw new IllegalStateException("Unimplemented");
+    private CompletableFuture<Boolean> uploadForwardedAttachments(EmailMessage data) {
+        CompletableFuture<Boolean> future = peergos.shared.util.Futures.incomplete();
+        if (data.forwardingToEmail.isEmpty()) {
+            future.complete(true);
+        } else {
+            this.reduceMovingForwardedAttachments(data.forwardingToEmail.get().attachments, 0, future);
         }
-        return saveEmail("pending/outbox", msg, msg.id);
+        return future;
+    }
+    private CompletableFuture<Boolean> reduceMovingForwardedAttachments(List<Attachment>attachments, int index, CompletableFuture<Boolean> future) {
+        if (index >= attachments.size()) {
+            future.complete(true);
+            return future;
+        } else {
+            Attachment attachment = attachments.get(index);
+            String srcDirStr = "default/attachments/" + attachment.uuid;
+            Path srcFilePath = PathUtils.directoryToPath(srcDirStr.split("/"));
+            return emailApp.readInternal(srcFilePath, null).thenCompose(bytes -> {
+                    String destDirStr = "default/pending/outbox/attachments/" + attachment.uuid;
+                    Path destFilePath = PathUtils.directoryToPath(destDirStr.split("/"));
+                    return emailApp.writeInternal(destFilePath, bytes, null).thenCompose(res ->
+                        reduceMovingForwardedAttachments(attachments, index +1, future)
+                    );
+            });
+        }
+    }
+
+    @JsMethod
+    public CompletableFuture<String> uploadAttachment(AsyncReader reader, String fileExtension, int length,
+                                                             ProgressConsumer<Long> monitor) {
+        String uuid = UUID.randomUUID().toString() + "." + fileExtension;
+        Path baseDir = Paths.get(context.username + "/" + emailDataDir + "/default/pending/outbox/attachments");
+        return context.getByPath(baseDir)
+                .thenCompose(dir -> dir.get().uploadAndReturnFile(uuid, reader, length, false, monitor,
+                        context.network, context.crypto)
+                        .thenApply(hash -> uuid));
+    }
+
+    @JsMethod
+    public CompletableFuture<Optional<FileWrapper>> retrieveAttachment( String uuid) {
+        Path path = Paths.get(context.username + "/" + emailDataDir + "/default/attachments/" + uuid);
+        return context.getByPath(path);
+    }
+
+    @JsMethod
+    public CompletableFuture<Boolean> send(EmailMessage msg) {
+        return uploadForwardedAttachments(msg).thenCompose(res ->
+            saveEmail("pending/outbox", msg, msg.id)
+        );
     }
 
     @JsMethod
@@ -95,13 +147,37 @@ public class EmailClient {
     }
 
     @JsMethod
-    public CompletableFuture<Boolean> moveToPrivateSent(EmailMessage m, List<PendingAttachment> attachments) {
+    public CompletableFuture<Boolean> moveToPrivateSent(EmailMessage m) {
         return moveToPrivateDir("default", m, Paths.get("default", "pending", "sent").resolve(m.id + ".cbor"));
     }
 
     @JsMethod
-    public CompletableFuture<Boolean> moveToPrivateInbox(EmailMessage m, List<PendingAttachment> attachments) {
-        return moveToPrivateDir("default", m, Paths.get("default", "pending", "inbox").resolve(m.id + ".cbor"));
+    public CompletableFuture<Boolean> moveToPrivateInbox(EmailMessage emailMessage) {
+        CompletableFuture<Boolean> future = Futures.incomplete();
+        return reduceMovingAttachmentToFolder(emailMessage.attachments, 0, future).thenCompose( res ->
+             moveToPrivateDir("default", emailMessage, Paths.get("default", "pending", "inbox").resolve(emailMessage.id + ".cbor"))
+        );
+    }
+
+    private CompletableFuture<Boolean> reduceMovingAttachmentToFolder(List<Attachment> attachments, int index, CompletableFuture<Boolean> future) {
+        if (index >= attachments.size()) {
+            future.complete(true);
+            return future;
+        } else {
+            Attachment attachment = attachments.get(index);
+            String srcDirStr = "default/pending/inbox/attachments/" + attachment.uuid;
+            Path srcFilePath = PathUtils.directoryToPath(srcDirStr.split("/"));
+            return emailApp.readInternal(srcFilePath, null).thenCompose(bytes -> {
+                SourcedAsymmetricCipherText cipherText = SourcedAsymmetricCipherText.fromCbor(CborObject.fromByteArray(bytes));
+                String destDirStr = "default/attachments/" + attachment.uuid;
+                Path destFilePath = PathUtils.directoryToPath(destDirStr.split("/"));
+                return emailApp.writeInternal(destFilePath, decryptAttachment(cipherText), null).thenCompose(res ->
+                        emailApp.deleteInternal(srcFilePath, null).thenCompose(bool ->
+                                reduceMovingAttachmentToFolder(attachments, index + 1, future)
+                        )
+                );
+            });
+        }
     }
 
     public CompletableFuture<Boolean> moveToPrivateDir(String account, EmailMessage m, Path original) {
@@ -126,7 +202,7 @@ public class EmailClient {
      * @param emailApp
      * @return
      */
-    public static CompletableFuture<EmailClient> initialise(Crypto crypto, App emailApp) {
+    public static CompletableFuture<EmailClient> initialise(Crypto crypto, App emailApp, UserContext context) {
         List<String> dirs = Arrays.asList("inbox","sent","pending", "attachments",
                 "pending/inbox", "pending/outbox", "pending/sent",
                 "pending/inbox/attachments", "pending/outbox/attachments", "pending/sent/attachments");
@@ -138,26 +214,43 @@ public class EmailClient {
             return emailApp.writeInternal(Paths.get(account, ENCRYPTION_KEYPAIR_PATH), encryptionKeys.serialize(), null)
                     .thenCompose(b -> emailApp.writeInternal(Paths.get(account, "pending", PUBLIC_KEY_FILENAME),
                             encryptionKeys.publicBoxingKey.serialize(), null))
-                    .thenApply(b -> new EmailClient(emailApp, crypto, encryptionKeys));
+                    .thenApply(b -> new EmailClient(emailApp, crypto, encryptionKeys, context));
         });
     }
 
     @JsMethod
-    public static CompletableFuture<EmailClient> load(App emailApp, Crypto crypto) {
+    public CompletableFuture<Optional<String>> getEmailAddress() {
+        Path relativeEmailPath = Paths.get("default", "pending", CLIENT_EMAIL_FILENAME);
+        Path emailPath = App.getDataDir("email", context.username)
+                .resolve(relativeEmailPath);
+        return context.getByPath(emailPath).thenCompose(emailFile -> {
+            if (emailFile.isPresent()) {
+                return emailApp.readInternal(relativeEmailPath, null).thenApply(data -> {
+                    Map<String, String> props = (Map<String, String>) JSONParser.parse(new String(data));
+                    String email = props.get("email");
+                    return Optional.of(email);
+                });
+            } else {
+                return Futures.of(Optional.empty());
+            }
+        });
+    }
+    @JsMethod
+    public static CompletableFuture<EmailClient> load(App emailApp, Crypto crypto, UserContext context) {
         return emailApp.dirInternal(Paths.get(""), null)
                 .thenCompose(children -> {
                     if (children.contains(ENCRYPTION_KEYPAIR_PATH)) {
                         return emailApp.readInternal(Paths.get(ENCRYPTION_KEYPAIR_PATH), null)
                                 .thenApply(bytes -> BoxingKeyPair.fromCbor(CborObject.fromByteArray(bytes)))
-                                .thenApply(keys -> new EmailClient(emailApp, crypto, keys));
+                                .thenApply(keys -> new EmailClient(emailApp, crypto, keys, context));
                     }
 
-                    return initialise(crypto, emailApp);
+                    return initialise(crypto, emailApp, context);
                 });
     }
 
     @JsMethod
-    public static CompletableFuture<Snapshot> connectToBridge(String bridgeUsername, UserContext context) {
+    public CompletableFuture<Snapshot> connectToBridge(String bridgeUsername) {
         Path pendingDir = App.getDataDir("email", context.username)
                 .resolve(Paths.get("default", "pending"));
         return context.sendInitialFollowRequest(bridgeUsername)
