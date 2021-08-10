@@ -876,13 +876,11 @@ public class FileWrapper {
 
     @JsMethod
     public CompletableFuture<FileWrapper> updateThumbnail(String base64Str, NetworkAccess network) {
-        byte[] thumbData = null;
+        Optional<Thumbnail> thumbData = Optional.empty();
         if (base64Str != null && base64Str.length() > 0) {
-            String b64Thumb = base64Str.substring(base64Str.indexOf(',') + 1);
-            thumbData = Base64.getDecoder().decode(b64Thumb);
+            thumbData = convertFromBase64(base64Str);
         }
-        FileProperties updatedProperties = thumbData == null ? this.props.withNoThumbnail()
-                : this.props.withThumbnail(thumbData);
+        FileProperties updatedProperties = this.props.withThumbnail(thumbData);
         return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
                 (s, committer) -> updateProperties(s, committer, updatedProperties, network)
         ).thenCompose(finished -> getUpdated(finished, network));
@@ -1672,10 +1670,17 @@ public class FileWrapper {
 
     @JsMethod
     public String getBase64Thumbnail() {
-        Optional<byte[]> thumbnail = props.thumbnail;
+        Optional<Thumbnail> thumbnail = props.thumbnail;
         if (thumbnail.isPresent()) {
-            String base64Data = Base64.getEncoder().encodeToString(thumbnail.get());
-            return "data:image/png;base64," + base64Data;
+            Thumbnail thumb = thumbnail.get();
+            String base64Data = Base64.getEncoder().encodeToString(thumb.data);
+            if (thumb.mimeType.equals("image/webp"))
+                return "data:image/webp;base64," + base64Data;
+            if (thumb.mimeType.equals("image/jpeg"))
+                return "data:image/jpeg;base64," + base64Data;
+            if (thumb.mimeType.equals("image/png"))
+                return "data:image/png;base64," + base64Data;
+            throw new IllegalStateException("Unknown thumbnail mimetype: " + thumb.mimeType);
         } else {
             return "";
         }
@@ -1704,7 +1709,7 @@ public class FileWrapper {
         return new FileWrapper(Optional.of(root), null, Optional.empty(), Optional.empty(), null, new Snapshot(new HashMap<>()));
     }
 
-    public static Optional<byte[]> generateThumbnail(byte[] imageBlob) {
+    public static Optional<Thumbnail> generateThumbnail(byte[] imageBlob) {
         try {
             BufferedImage image = ImageIO.read(new ByteArrayInputStream(imageBlob));
             BufferedImage thumbnailImage = new BufferedImage(THUMBNAIL_SIZE, THUMBNAIL_SIZE, image.getType());
@@ -1719,14 +1724,14 @@ public class FileWrapper {
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             ImageIO.write(thumbnailImage, "JPG", baos);
             baos.close();
-            return Optional.of(baos.toByteArray());
+            return Optional.of(new Thumbnail("image/jpeg", baos.toByteArray()));
         } catch (IOException ioe) {
             LOG.log(Level.WARNING, ioe.getMessage(), ioe);
         }
         return Optional.empty();
     }
 
-    public static byte[] generateVideoThumbnail(byte[] videoBlob) {
+    public static Optional<Thumbnail> generateVideoThumbnail(byte[] videoBlob) {
         File tempFile = null;
         try {
             tempFile = File.createTempFile(UUID.randomUUID().toString(), ".mp4");
@@ -1743,20 +1748,28 @@ public class FileWrapper {
                 }
             }
         }
-        return new byte[0];
+        return Optional.empty();
     }
 
-    private CompletableFuture<Optional<byte[]>> generateThumbnail(NetworkAccess network, AsyncReader fileData, int fileSize, String filename, String mimeType) {
-        CompletableFuture<Optional<byte[]>> fut = new CompletableFuture<>();
+    private static Optional<Thumbnail> convertFromBase64(String base64Url) {
+        String base64data = base64Url.substring(base64Url.indexOf(",") + 1);
+        byte[] data = Base64.getDecoder().decode(base64data);
+        if (data.length == 0)
+            return Optional.empty();
+        if (base64Url.startsWith("data:image/jpeg;base64,"))
+            return Optional.of(new Thumbnail("/image/jpeg", data));
+        if (base64Url.startsWith("data:image/webp;base64,"))
+            return Optional.of(new Thumbnail("/image/webp", data));
+        throw new IllegalStateException("Unknown image type for generated thumbnail!");
+    }
+
+    private CompletableFuture<Optional<Thumbnail>> generateThumbnail(NetworkAccess network, AsyncReader fileData, int fileSize, String filename, String mimeType) {
+        CompletableFuture<Optional<Thumbnail>> fut = new CompletableFuture<>();
         if (fileSize > MimeTypes.HEADER_BYTES_TO_IDENTIFY_MIME_TYPE) {
             if (mimeType.startsWith("image")) {
                 if (network.isJavascript()) {
                     thumbnail.generateThumbnail(fileData, fileSize, filename).thenAccept(base64Str -> {
-                        byte[] bytesOfData = Base64.getDecoder().decode(base64Str);
-                        if (bytesOfData.length == 0)
-                            fut.complete(Optional.empty());
-                        else
-                            fut.complete(Optional.of(bytesOfData));
+                        fut.complete(convertFromBase64(base64Str));
                     });
                 } else {
                     byte[] bytes = new byte[fileSize];
@@ -1773,16 +1786,12 @@ public class FileWrapper {
                         if(base64Str == null) {
                             fut.complete(Optional.empty());
                         }
-                        byte[] bytesOfData = Base64.getDecoder().decode(base64Str);
-                        if (bytesOfData.length == 0)
-                            fut.complete(Optional.empty());
-                        else
-                            fut.complete(Optional.of(bytesOfData));
+                        fut.complete(convertFromBase64(base64Str));
                     });
                 } else {
                     byte[] bytes = new byte[fileSize];
                     fileData.readIntoArray(bytes, 0, fileSize).thenAccept(data -> {
-                        fut.complete(Optional.of(generateVideoThumbnail(bytes)));
+                        fut.complete(generateVideoThumbnail(bytes));
                     }).exceptionally(t -> {
                         fut.complete(Optional.empty());
                         return null;
@@ -1800,8 +1809,7 @@ public class FileWrapper {
                                 AsyncReader.ArrayBacked imageBlob = new AsyncReader.ArrayBacked(mp3CoverImage.imageData);
                                 thumbnail.generateThumbnail(imageBlob, mp3CoverImage.imageData.length, filename)
                                         .thenAccept(base64Str -> {
-                                            byte[] bytesOfData = Base64.getDecoder().decode(base64Str);
-                                            fut.complete(Optional.of(bytesOfData));
+                                            fut.complete(convertFromBase64(base64Str));
                                         });
                             } else {
                                 fut.complete(generateThumbnail(mp3CoverImage.imageData));

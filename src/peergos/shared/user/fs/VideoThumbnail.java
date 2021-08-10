@@ -13,6 +13,7 @@ import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
@@ -69,7 +70,7 @@ public class VideoThumbnail {
         return true;
     }
 
-    public static byte[] create(String filename, int height, int width) {
+    public static Optional<Thumbnail> create(String filename, int height, int width) {
 //        new JFXPanel(); // initialises toolkit
 //        Media video = new Media("file://" + filename);
 //        MediaPlayer mediaPlayer = new MediaPlayer(video);
@@ -105,7 +106,7 @@ public class VideoThumbnail {
 //                ex.printStackTrace();
 //            }
 //        }
-        return new byte[0];
+        return Optional.empty();
     }
 }
 

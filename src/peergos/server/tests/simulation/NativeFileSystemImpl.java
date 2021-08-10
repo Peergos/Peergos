@@ -3,7 +3,7 @@ package peergos.server.tests.simulation;
 import peergos.server.simulation.AccessControl;
 import peergos.server.simulation.FileSystem;
 import peergos.server.simulation.Stat;
-import peergos.shared.user.fs.FileProperties;
+import peergos.shared.user.fs.*;
 
 import java.io.File;
 import java.io.IOException;
@@ -155,7 +155,7 @@ public class NativeFileSystemImpl implements FileSystem {
                         ZoneOffset.systemDefault());
 
                 // These things are a bit awkward, not supporting them for now
-                Optional<byte[]> thumbnail = Optional.empty();
+                Optional<Thumbnail> thumbnail = Optional.empty();
                 boolean isHidden = false;
                 String mimeType="NOT_SUPPORTED";
 
