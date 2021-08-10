@@ -36,7 +36,7 @@ import java.util.stream.*;
 public class FileWrapper {
 	private static final Logger LOG = Logger.getGlobal();
 
-    private final static int THUMBNAIL_SIZE = 100;
+    private final static int THUMBNAIL_SIZE = 400;
     private static final NativeJSThumbnail thumbnail = new NativeJSThumbnail();
 
     private final RetrievedCapability pointer;
