@@ -1757,9 +1757,9 @@ public class FileWrapper {
         if (data.length == 0)
             return Optional.empty();
         if (base64Url.startsWith("data:image/jpeg;base64,"))
-            return Optional.of(new Thumbnail("/image/jpeg", data));
+            return Optional.of(new Thumbnail("image/jpeg", data));
         if (base64Url.startsWith("data:image/webp;base64,"))
-            return Optional.of(new Thumbnail("/image/webp", data));
+            return Optional.of(new Thumbnail("image/webp", data));
         throw new IllegalStateException("Unknown image type for generated thumbnail!");
     }
 
