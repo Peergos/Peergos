@@ -29,7 +29,7 @@ public class FileProperties implements Cborable {
     public final long size;
     public final LocalDateTime modified;
     public final boolean isHidden;
-    public final Optional<byte[]> thumbnail;
+    public final Optional<Thumbnail> thumbnail;
     public final Optional<byte[]> streamSecret;
 
     public FileProperties(String name,
@@ -39,7 +39,7 @@ public class FileProperties implements Cborable {
                           int sizeHi, int sizeLo,
                           LocalDateTime modified,
                           boolean isHidden,
-                          Optional<byte[]> thumbnail,
+                          Optional<Thumbnail> thumbnail,
                           Optional<byte[]> streamSecret) {
         if (name.length() > MAX_FILE_NAME_SIZE)
             throw new IllegalStateException("File and directory names must be less than 256 characters.");
@@ -64,7 +64,7 @@ public class FileProperties implements Cborable {
                           long size,
                           LocalDateTime modified,
                           boolean isHidden,
-                          Optional<byte[]> thumbnail,
+                          Optional<Thumbnail> thumbnail,
                           Optional<byte[]> streamSecret) {
         this(name, isDirectory, isLink, mimeType, (int)(size >> 32), (int) size, modified, isHidden, thumbnail, streamSecret);
     }
@@ -129,7 +129,8 @@ public class FileProperties implements Cborable {
         state.put("s", new CborObject.CborLong(size));
         state.put("t", new CborObject.CborLong(modified.toEpochSecond(ZoneOffset.UTC)));
         state.put("h", new CborObject.CborBoolean(isHidden));
-        thumbnail.ifPresent(thumb -> state.put("i", new CborObject.CborByteArray(thumb)));
+        thumbnail.ifPresent(thumb -> state.put("i", new CborObject.CborByteArray(thumb.data)));
+        thumbnail.ifPresent(thumb -> state.put("im", new CborObject.CborString(thumb.mimeType)));
         streamSecret.ifPresent(secret -> state.put("p", new CborObject.CborByteArray(secret)));
         return CborObject.CborMap.build(state);
     }
@@ -146,7 +147,8 @@ public class FileProperties implements Cborable {
         long size = m.getLong("s");
         long modifiedEpochMillis = m.getLong("t");
         boolean isHidden = m.getBoolean("h");
-        Optional<byte[]> thumbnail = m.getOptionalByteArray("i");
+        Optional<byte[]> thumbnailData = m.getOptionalByteArray("i");
+        Optional<Thumbnail> thumbnail = thumbnailData.map(d -> new Thumbnail(m.getString("im", "image/png"), d));
         Optional<byte[]> streamSecret = m.getOptionalByteArray("p");
 
         LocalDateTime modified = LocalDateTime.ofEpochSecond(modifiedEpochMillis, 0, ZoneOffset.UTC);
@@ -161,8 +163,8 @@ public class FileProperties implements Cborable {
     public FileProperties withNoThumbnail() {
         return new FileProperties(name, isDirectory, isLink, mimeType, size, modified, isHidden, Optional.empty(), streamSecret);
     }
-    public FileProperties withThumbnail(byte[] newThumbnail) {
-        return new FileProperties(name, isDirectory, isLink, mimeType, size, modified, isHidden, Optional.of(newThumbnail), streamSecret);
+    public FileProperties withThumbnail(Optional<Thumbnail> newThumbnail) {
+        return new FileProperties(name, isDirectory, isLink, mimeType, size, modified, isHidden, newThumbnail, streamSecret);
     }
 
     public FileProperties withModified(LocalDateTime modified) {
