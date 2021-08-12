@@ -147,7 +147,7 @@ public class App implements StoreAppData {
     }
     @JsMethod
     public CompletableFuture<Boolean> createDirectoryInternal(Path relativePath, String username) {
-        Path base = fullPath(Paths.get(""), username);
+        Path base = Paths.get(username == null ? ctx.username : username).resolve(appDataDirectoryWithoutUser);
         return ctx.getByPath(base)
                 .thenCompose(baseOpt -> baseOpt.get().getOrMkdirs(normalisePath(relativePath), ctx.network, false, ctx.crypto)
                 .thenApply(fw -> true));

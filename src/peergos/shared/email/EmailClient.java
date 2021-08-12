@@ -101,7 +101,8 @@ public class EmailClient {
     public CompletableFuture<String> uploadAttachment(AsyncReader reader, String fileExtension, int length,
                                                              ProgressConsumer<Long> monitor) {
         String uuid = UUID.randomUUID().toString() + "." + fileExtension;
-        Path baseDir = Paths.get(context.username + "/" + emailDataDir + "/default/pending/outbox/attachments");
+        Path outboundAttachmentDir = Paths.get("default", "pending", "outbox", "attachments");
+        Path baseDir = Paths.get(context.username).resolve(emailDataDir).resolve(outboundAttachmentDir);
         return context.getByPath(baseDir)
                 .thenCompose(dir -> dir.get().uploadAndReturnFile(uuid, reader, length, false, monitor,
                         context.network, context.crypto)
@@ -110,7 +111,8 @@ public class EmailClient {
 
     @JsMethod
     public CompletableFuture<Optional<FileWrapper>> retrieveAttachment( String uuid) {
-        Path path = Paths.get(context.username + "/" + emailDataDir + "/default/attachments/" + uuid);
+        Path attachmentDir = Paths.get("default", "attachments", uuid);
+        Path path = Paths.get(context.username).resolve(emailDataDir).resolve(attachmentDir);
         return context.getByPath(path);
     }
 
@@ -208,7 +210,7 @@ public class EmailClient {
                 "pending/inbox/attachments", "pending/outbox/attachments", "pending/sent/attachments");
         String account = "default";
         return Futures.reduceAll(dirs, true,
-                (b, d) -> emailApp.createDirectoryInternal(Paths.get(account + "/" + d), null),
+                (b, d) -> emailApp.createDirectoryInternal(Paths.get(account, d), null),
                 (a, b) -> a && b).thenCompose(x -> {
             BoxingKeyPair encryptionKeys = BoxingKeyPair.random(crypto.random, crypto.boxer);
             return emailApp.writeInternal(Paths.get(account, ENCRYPTION_KEYPAIR_PATH), encryptionKeys.serialize(), null)
@@ -237,10 +239,11 @@ public class EmailClient {
     }
     @JsMethod
     public static CompletableFuture<EmailClient> load(App emailApp, Crypto crypto, UserContext context) {
-        return emailApp.dirInternal(Paths.get(""), null)
+        String account = "default";
+        return emailApp.dirInternal(Paths.get(account), null)
                 .thenCompose(children -> {
                     if (children.contains(ENCRYPTION_KEYPAIR_PATH)) {
-                        return emailApp.readInternal(Paths.get(ENCRYPTION_KEYPAIR_PATH), null)
+                        return emailApp.readInternal(Paths.get(account, ENCRYPTION_KEYPAIR_PATH), null)
                                 .thenApply(bytes -> BoxingKeyPair.fromCbor(CborObject.fromByteArray(bytes)))
                                 .thenApply(keys -> new EmailClient(emailApp, crypto, keys, context));
                     }

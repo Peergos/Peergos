@@ -1770,6 +1770,7 @@ public class PeergosNetworkUtils {
 
         App emailApp = App.init(user, "email").join();
         EmailClient client = EmailClient.load(emailApp, crypto, user).join();
+        client = EmailClient.load(emailApp, crypto, user).join(); //test that keys are found and loaded
         client.connectToBridge(email.username).join();
 
         Optional<String> emailAddress =  client.getEmailAddress().join();
