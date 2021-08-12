@@ -1786,9 +1786,12 @@ public class PeergosNetworkUtils {
 
         // send email to bridge
         String attachmentFilename = "text.txt";
-        byte[] data = "this is an attachment!".getBytes();
+        String attachmentContent = "this is an attachment!";
+        byte[] data = attachmentContent.getBytes();
+        Map<String, byte[]> attachmentsMap = new HashMap<>();
         String uuid = client.uploadAttachment(new AsyncReader.ArrayBacked(data),
                 attachmentFilename.substring(attachmentFilename.lastIndexOf('.') + 1), data.length, t -> {}).join();
+        attachmentsMap.put(uuid, data);
         List<Attachment> outGoingAttachments = Arrays.asList(new Attachment(attachmentFilename, data.length, "text/plain", uuid));
         EmailMessage msg = new EmailMessage("id", "msgid", user.username, "subject",
             LocalDateTime.now(), Arrays.asList("a@example.com"), Collections.emptyList(), Collections.emptyList(),
@@ -1803,13 +1806,19 @@ public class PeergosNetworkUtils {
         Pair<FileWrapper, EmailMessage> pendingEmail = bridge.getPendingEmail(filenames.get(0));
         Assert.assertTrue(Arrays.equals(msg.serialize(), pendingEmail.right.serialize()));
 
-        bridge.encryptAndMoveEmailToSent(pendingEmail.left, pendingEmail.right);
+        bridge.encryptAndMoveEmailToSent(pendingEmail.left, pendingEmail.right, attachmentsMap);
 
         // detect that email's been sent and move to private folder
         List<EmailMessage> sent = client.getNewSent().join();
         Assert.assertTrue(! sent.isEmpty());
-        client.moveToPrivateSent(sent.get(0)).join();
+        EmailMessage sentEmail2 = sent.get(0);
+        client.moveToPrivateSent(sentEmail2).join();
+        FileWrapper attachmentRetrieved =  client.retrieveAttachment(sentEmail2.attachments.get(0).uuid).join().get();
+        String retrievedContent = new String(Serialize.readFully(attachmentRetrieved.getInputStream(user.network, crypto, x -> {}).join()
+                , attachmentRetrieved.getSize()).join());
+        Assert.assertTrue(retrievedContent.equals(attachmentContent));
         Assert.assertTrue(client.getNewSent().join().isEmpty());
+
 
         // receive an inbound email in bridge
         String content2 = "Inbound attachment text";
@@ -1830,10 +1839,10 @@ public class PeergosNetworkUtils {
 
         // decrypt and move incoming email to private folder
         client.moveToPrivateInbox(incoming.get(0)).join();
-        FileWrapper attachmentRetrieved =  client.retrieveAttachment( incoming.get(0).attachments.get(0).uuid).join().get();
-        String retrievedContent = new String(Serialize.readFully(attachmentRetrieved.getInputStream(user.network, crypto, x -> {}).join()
-                , attachmentRetrieved.getSize()).join());
-        Assert.assertTrue(retrievedContent.equals(content2));
+        FileWrapper attachmentRetrieved2 =  client.retrieveAttachment( incoming.get(0).attachments.get(0).uuid).join().get();
+        String retrievedContent2 = new String(Serialize.readFully(attachmentRetrieved2.getInputStream(user.network, crypto, x -> {}).join()
+                , attachmentRetrieved2.getSize()).join());
+        Assert.assertTrue(retrievedContent2.equals(content2));
         Assert.assertTrue(client.getNewIncoming().join().isEmpty());
 
 

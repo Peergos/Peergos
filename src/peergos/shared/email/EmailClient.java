@@ -149,34 +149,37 @@ public class EmailClient {
     }
 
     @JsMethod
-    public CompletableFuture<Boolean> moveToPrivateSent(EmailMessage m) {
-        return moveToPrivateDir("default", m, Paths.get("default", "pending", "sent").resolve(m.id + ".cbor"));
+    public CompletableFuture<Boolean> moveToPrivateSent(EmailMessage emailMessage) {
+        CompletableFuture<Boolean> future = Futures.incomplete();
+        return reduceMovingAttachmentsToFolder(emailMessage.attachments, "sent", 0, future).thenCompose( res ->
+            moveToPrivateDir("default", emailMessage, Paths.get("default", "pending", "sent").resolve(emailMessage.id + ".cbor"))
+        );
     }
 
     @JsMethod
     public CompletableFuture<Boolean> moveToPrivateInbox(EmailMessage emailMessage) {
         CompletableFuture<Boolean> future = Futures.incomplete();
-        return reduceMovingAttachmentToFolder(emailMessage.attachments, 0, future).thenCompose( res ->
+        return reduceMovingAttachmentsToFolder(emailMessage.attachments, "inbox",0, future).thenCompose( res ->
              moveToPrivateDir("default", emailMessage, Paths.get("default", "pending", "inbox").resolve(emailMessage.id + ".cbor"))
         );
     }
 
-    private CompletableFuture<Boolean> reduceMovingAttachmentToFolder(List<Attachment> attachments, int index, CompletableFuture<Boolean> future) {
+    private CompletableFuture<Boolean> reduceMovingAttachmentsToFolder(List<Attachment> attachments, String folder, int index, CompletableFuture<Boolean> future) {
         if (index >= attachments.size()) {
             future.complete(true);
             return future;
         } else {
             Attachment attachment = attachments.get(index);
-            String srcDirStr = "default/pending/inbox/attachments/" + attachment.uuid;
+            String srcDirStr = "default/pending/" + folder + "/attachments/" + attachment.uuid;
             Path srcFilePath = PathUtils.directoryToPath(srcDirStr.split("/"));
             return emailApp.readInternal(srcFilePath, null).thenCompose(bytes -> {
                 SourcedAsymmetricCipherText cipherText = SourcedAsymmetricCipherText.fromCbor(CborObject.fromByteArray(bytes));
                 String destDirStr = "default/attachments/" + attachment.uuid;
                 Path destFilePath = PathUtils.directoryToPath(destDirStr.split("/"));
                 return emailApp.writeInternal(destFilePath, decryptAttachment(cipherText), null).thenCompose(res ->
-                        emailApp.deleteInternal(srcFilePath, null).thenCompose(bool ->
-                                reduceMovingAttachmentToFolder(attachments, index + 1, future)
-                        )
+                    emailApp.deleteInternal(srcFilePath, null).thenCompose(bool ->
+                        reduceMovingAttachmentsToFolder(attachments, folder, index + 1, future)
+                    )
                 );
             });
         }

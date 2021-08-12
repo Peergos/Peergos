@@ -45,7 +45,7 @@ public class EmailBridgeClient {
         return new Pair<>(emailFile, email);
     }
 
-    public void encryptAndMoveEmailToSent(FileWrapper file, EmailMessage emailMessage) {
+    public void encryptAndMoveEmailToSent(FileWrapper file, EmailMessage emailMessage, Map<String, byte[]> attachmentsMap) {
         Path outboxPath = pendingPath().resolve("outbox");
         Path sentPath = pendingPath().resolve("sent");
 
@@ -58,17 +58,27 @@ public class EmailBridgeClient {
         FileWrapper original = file.getUpdated(context.network).join();
         FileWrapper outbox = context.getByPath(outboxPath).join().get();
         original.remove(outbox, outboxPath.resolve(file.getName()), context).join();
-        //remove attachments
+        //move attachments
         List<Attachment> allAttachments = new ArrayList(emailMessage.attachments);
         if (emailMessage.forwardingToEmail.isPresent()) {
             allAttachments.addAll(emailMessage.forwardingToEmail.get().attachments);
         }
+        Path sentAttachmentsPath = pendingPath().resolve(Paths.get("sent", "attachments"));
+        FileWrapper sentAttachments = context.getByPath(sentAttachmentsPath).join().get();
         for(Attachment attachment : allAttachments) {
-            Path outboxAttachmentPath = pendingPath().resolve(Paths.get("outbox", "attachments"));
-            FileWrapper outboxAttachmentDir = context.getByPath(outboxAttachmentPath).join().get();
-            Path attachmentFilePath = pendingPath().resolve(Paths.get("outbox", "attachments", attachment.uuid));
-            FileWrapper attachmentFile = context.getByPath(attachmentFilePath).join().get();
-            attachmentFile.remove(outboxAttachmentDir, attachmentFilePath, context).join();
+            byte[] bytes = attachmentsMap.get(attachment.uuid);
+            if (bytes != null) {
+                Path outboxAttachmentPath = pendingPath().resolve(Paths.get("outbox", "attachments"));
+                FileWrapper outboxAttachmentDir = context.getByPath(outboxAttachmentPath).join().get();
+                Path attachmentFilePath = pendingPath().resolve(Paths.get("outbox", "attachments", attachment.uuid));
+                FileWrapper attachmentFile = context.getByPath(attachmentFilePath).join().get();
+                byte[] rawAttachmentCipherText = encryptAttachment(bytes).serialize();
+                sentAttachments.uploadFileSection(attachment.uuid, AsyncReader.build(rawAttachmentCipherText),
+                        false, 0, rawAttachmentCipherText.length, Optional.empty(),
+                        true, context.network, context.crypto, x -> {
+                        }, context.crypto.random.randomBytes(32)).join();
+                attachmentFile.remove(outboxAttachmentDir, attachmentFilePath, context).join();
+            }
         }
     }
 
