@@ -51,7 +51,7 @@ public class EmailBridgeClient {
 
         FileWrapper sent = context.getByPath(sentPath).join().get();
         byte[] rawCipherText = encryptEmail(emailMessage).serialize();
-        sent.uploadFileSection(emailMessage.id, AsyncReader.build(rawCipherText), false, 0, rawCipherText.length, Optional.empty(),
+        sent.uploadFileSection(file.getName(), AsyncReader.build(rawCipherText), false, 0, rawCipherText.length, Optional.empty(),
                 true, context.network, context.crypto, x -> {}, context.crypto.random.randomBytes(32)).join();
 
         // TODO do this inside the update above and make atomic
