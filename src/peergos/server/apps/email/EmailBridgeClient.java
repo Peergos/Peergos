@@ -48,20 +48,16 @@ public class EmailBridgeClient {
     public void encryptAndMoveEmailToSent(FileWrapper file, EmailMessage emailMessage) {
         Path outboxPath = pendingPath().resolve("outbox");
         Path sentPath = pendingPath().resolve("sent");
-        context.network.synchronizer.applyComplexUpdate(file.owner(), file.signingPair(), (s, c) -> {
 
-            FileWrapper sent = context.getByPath(sentPath.toString(), s).join().get();
-
-            byte[] rawCipherText = encryptEmail(emailMessage).serialize();
-            //fixme this is not correct! file should have a different filename in sent (we do not trust client)
-            return sent.uploadFileSection(s, c, file.getName(), AsyncReader.build(rawCipherText), false, 0,
-                    rawCipherText.length, Optional.empty(), true, true,
-                    context.network, context.crypto, x -> {}, context.crypto.random.randomBytes(32));
-        }).join();
+        FileWrapper sent = context.getByPath(sentPath).join().get();
+        byte[] rawCipherText = encryptEmail(emailMessage).serialize();
+        sent.uploadFileSection(emailMessage.id, AsyncReader.build(rawCipherText), false, 0, rawCipherText.length, Optional.empty(),
+                true, context.network, context.crypto, x -> {}, context.crypto.random.randomBytes(32)).join();
 
         // TODO do this inside the update above and make atomic
         FileWrapper original = file.getUpdated(context.network).join();
-        original.remove(original, outboxPath.resolve(file.getName()), context).join(); //fixme? shouldn't 1st param be parent dir?
+        FileWrapper outbox = context.getByPath(outboxPath).join().get();
+        original.remove(outbox, outboxPath.resolve(file.getName()), context).join();
         //remove attachments
         List<Attachment> allAttachments = new ArrayList(emailMessage.attachments);
         if (emailMessage.forwardingToEmail.isPresent()) {
