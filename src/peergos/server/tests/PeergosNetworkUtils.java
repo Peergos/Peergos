@@ -1769,11 +1769,11 @@ public class PeergosNetworkUtils {
         UserContext email = PeergosNetworkUtils.ensureSignedUp("email-"+ generateUsername(random), password, network, crypto);
 
         App emailApp = App.init(user, "email").join();
-        EmailClient client = EmailClient.load(emailApp, crypto, user).join();
-        client = EmailClient.load(emailApp, crypto, user).join(); //test that keys are found and loaded
-        client.connectToBridge(email.username).join();
+        EmailClient client = EmailClient.load(emailApp, crypto).join();
+        client = EmailClient.load(emailApp, crypto).join(); //test that keys are found and loaded
+        client.connectToBridge(user, email.username).join();
 
-        Optional<String> emailAddress =  client.getEmailAddress().join();
+        Optional<String> emailAddress =  client.getEmailAddress(user).join();
         Assert.assertTrue("email address", emailAddress.isEmpty());
 
         //email bridge setup
@@ -1781,7 +1781,7 @@ public class PeergosNetworkUtils {
         user.processFollowRequests().join();
         EmailBridgeClient bridge = EmailBridgeClient.build(email, user.username, user.username + "@example.com");
 
-        emailAddress =  client.getEmailAddress().join();
+        emailAddress =  client.getEmailAddress(user).join();
         Assert.assertTrue("email address", emailAddress.isPresent());
 
         // send email to bridge
@@ -1789,7 +1789,7 @@ public class PeergosNetworkUtils {
         String attachmentContent = "this is an attachment!";
         byte[] data = attachmentContent.getBytes();
         Map<String, byte[]> attachmentsMap = new HashMap<>();
-        String uuid = client.uploadAttachment(new AsyncReader.ArrayBacked(data),
+        String uuid = client.uploadAttachment(user, new AsyncReader.ArrayBacked(data),
                 attachmentFilename.substring(attachmentFilename.lastIndexOf('.') + 1), data.length, t -> {}).join();
         attachmentsMap.put(uuid, data);
         List<Attachment> outGoingAttachments = Arrays.asList(new Attachment(attachmentFilename, data.length, "text/plain", uuid));
@@ -1813,7 +1813,7 @@ public class PeergosNetworkUtils {
         Assert.assertTrue(! sent.isEmpty());
         EmailMessage sentEmail2 = sent.get(0);
         client.moveToPrivateSent(sentEmail2).join();
-        FileWrapper attachmentRetrieved =  client.retrieveAttachment(sentEmail2.attachments.get(0).uuid).join().get();
+        FileWrapper attachmentRetrieved =  retrieveAttachment(user, sentEmail2.attachments.get(0).uuid).join().get();
         String retrievedContent = new String(Serialize.readFully(attachmentRetrieved.getInputStream(user.network, crypto, x -> {}).join()
                 , attachmentRetrieved.getSize()).join());
         Assert.assertTrue(retrievedContent.equals(attachmentContent));
@@ -1839,14 +1839,18 @@ public class PeergosNetworkUtils {
 
         // decrypt and move incoming email to private folder
         client.moveToPrivateInbox(incoming.get(0)).join();
-        FileWrapper attachmentRetrieved2 =  client.retrieveAttachment( incoming.get(0).attachments.get(0).uuid).join().get();
+        FileWrapper attachmentRetrieved2 =  retrieveAttachment(user, incoming.get(0).attachments.get(0).uuid).join().get();
         String retrievedContent2 = new String(Serialize.readFully(attachmentRetrieved2.getInputStream(user.network, crypto, x -> {}).join()
                 , attachmentRetrieved2.getSize()).join());
         Assert.assertTrue(retrievedContent2.equals(content2));
         Assert.assertTrue(client.getNewIncoming().join().isEmpty());
+    }
 
-
-        //todo now test forward and reply
+    private static CompletableFuture<Optional<FileWrapper>> retrieveAttachment(UserContext context, String uuid) {
+        Path attachmentDir = Paths.get("default", "attachments", uuid);
+        Path emailDataDir = Paths.get(".apps", "email", "data");
+        Path path = Paths.get(context.username).resolve(emailDataDir).resolve(attachmentDir);
+        return context.getByPath(path);
     }
 
     public static void chat(NetworkAccess network, Random random) {
