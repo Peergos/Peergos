@@ -1808,7 +1808,7 @@ public class PeergosNetworkUtils {
 
         Map<String, byte[]> receivedAttachmentsMap = new HashMap<>();
         Attachment attachment = pendingEmail.right.attachments.get(0);
-        receivedAttachmentsMap.put(attachment.filename, bridge.getOutgoingAttachment(attachment.uuid));
+        receivedAttachmentsMap.put(attachment.uuid, bridge.getOutgoingAttachment(attachment.uuid));
         bridge.encryptAndMoveEmailToSent(pendingEmail.left, pendingEmail.right, receivedAttachmentsMap);
 
         // detect that email's been sent and move to private folder
