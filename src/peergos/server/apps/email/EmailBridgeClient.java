@@ -45,6 +45,11 @@ public class EmailBridgeClient {
         return new Pair<>(emailFile, email);
     }
 
+    public byte[] getOutgoingAttachment(String filename) {
+        FileWrapper file = context.getByPath(pendingPath().resolve("outbox").resolve("attachments").resolve(filename)).join().get();
+        return Serialize.readFully(file, context.crypto, context.network).join();
+    }
+
     public void encryptAndMoveEmailToSent(FileWrapper file, EmailMessage emailMessage, Map<String, byte[]> attachmentsMap) {
         Path outboxPath = pendingPath().resolve("outbox");
         Path sentPath = pendingPath().resolve("sent");

@@ -1806,7 +1806,10 @@ public class PeergosNetworkUtils {
         Pair<FileWrapper, EmailMessage> pendingEmail = bridge.getPendingEmail(filenames.get(0));
         Assert.assertTrue(Arrays.equals(msg.serialize(), pendingEmail.right.serialize()));
 
-        bridge.encryptAndMoveEmailToSent(pendingEmail.left, pendingEmail.right, attachmentsMap);
+        Map<String, byte[]> receivedAttachmentsMap = new HashMap<>();
+        Attachment attachment = pendingEmail.right.attachments.get(0);
+        receivedAttachmentsMap.put(attachment.filename, bridge.getOutgoingAttachment(attachment.uuid));
+        bridge.encryptAndMoveEmailToSent(pendingEmail.left, pendingEmail.right, receivedAttachmentsMap);
 
         // detect that email's been sent and move to private folder
         List<EmailMessage> sent = client.getNewSent().join();
