@@ -1785,12 +1785,11 @@ public class PeergosNetworkUtils {
         Assert.assertTrue("email address", emailAddress.isPresent());
 
         // send email to bridge
-        String attachmentExtension = "txt";
-        String attachmentFilename = "text." + attachmentExtension;
+        String attachmentFilename = "text";
         String attachmentContent = "this is an attachment!";
         byte[] data = attachmentContent.getBytes();
         Map<String, byte[]> attachmentsMap = new HashMap<>();
-        String uuid = client.uploadAttachment(data, attachmentExtension).join();
+        String uuid = client.uploadAttachment(data).join();
         attachmentsMap.put(uuid, data);
         List<Attachment> outGoingAttachments = Arrays.asList(new Attachment(attachmentFilename, data.length, "text/plain", uuid));
         EmailMessage msg = new EmailMessage("id", "msgid", user.username, "subject",

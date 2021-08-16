@@ -95,9 +95,8 @@ public class EmailClient {
     }
 
     @JsMethod
-    public CompletableFuture<String> uploadAttachment(byte[] attachment,
-                                                      String fileExtension) {
-        String uuid = UUID.randomUUID().toString() + "." + fileExtension;
+    public CompletableFuture<String> uploadAttachment(byte[] attachment) {
+        String uuid = UUID.randomUUID().toString();
         Path outboundAttachment = Paths.get("default", "pending", "outbox", "attachments", uuid);
         return emailApp.writeInternal(outboundAttachment, attachment, null)
                 .thenApply(x -> uuid);
