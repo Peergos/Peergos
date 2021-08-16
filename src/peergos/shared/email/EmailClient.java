@@ -95,16 +95,12 @@ public class EmailClient {
     }
 
     @JsMethod
-    public CompletableFuture<String> uploadAttachment(UserContext context, AsyncReader reader, String fileExtension, int length,
-                                                             ProgressConsumer<Long> monitor) {
+    public CompletableFuture<String> uploadAttachment(byte[] attachment,
+                                                      String fileExtension) {
         String uuid = UUID.randomUUID().toString() + "." + fileExtension;
-        Path outboundAttachmentDir = Paths.get("default", "pending", "outbox", "attachments");
-        Path emailDataDir = Paths.get(".apps", "email", "data");
-        Path baseDir = Paths.get(context.username).resolve(emailDataDir).resolve(outboundAttachmentDir);
-        return context.getByPath(baseDir)
-                .thenCompose(dir -> dir.get().uploadAndReturnFile(uuid, reader, length, false, monitor,
-                        context.network, context.crypto)
-                        .thenApply(hash -> uuid));
+        Path outboundAttachment = Paths.get("default", "pending", "outbox", "attachments", uuid);
+        return emailApp.writeInternal(outboundAttachment, attachment, null)
+                .thenApply(x -> uuid);
     }
 
     @JsMethod
@@ -124,6 +120,12 @@ public class EmailClient {
     public CompletableFuture<List<EmailMessage>> getNewSent() {
         Path inbox = Paths.get("default", "pending", "sent");
         return listFiles(inbox);
+    }
+
+    @JsMethod
+    public CompletableFuture<byte[]> getAttachment(String uid) {
+        Path attachment = Paths.get("default", "attachments", uid);
+        return emailApp.readInternal(attachment, null);
     }
 
     public CompletableFuture<List<EmailMessage>> listFiles(Path internalPath) {
@@ -155,7 +157,10 @@ public class EmailClient {
         );
     }
 
-    private CompletableFuture<Boolean> reduceMovingAttachmentsToFolder(List<Attachment> attachments, String folder, int index, CompletableFuture<Boolean> future) {
+    private CompletableFuture<Boolean> reduceMovingAttachmentsToFolder(List<Attachment> attachments,
+                                                                       String folder,
+                                                                       int index,
+                                                                       CompletableFuture<Boolean> future) {
         if (index >= attachments.size()) {
             future.complete(true);
             return future;
@@ -185,9 +190,7 @@ public class EmailClient {
     }
 
     private CompletableFuture<Boolean> saveEmail(String folder, EmailMessage email, String id) {
-        String fullFolderPath = "default/" + folder + "/" + id + ".cbor";
-        String[] folderDirs = fullFolderPath.split("/");
-        Path filePath = peergos.client.PathUtils.directoryToPath(folderDirs);
+        Path filePath = Paths.get("default", folder, id + ".cbor");
         return emailApp.writeInternal(filePath, email.serialize(), null);
     }
 
@@ -215,22 +218,15 @@ public class EmailClient {
     }
 
     @JsMethod
-    public CompletableFuture<Optional<String>> getEmailAddress(UserContext context) {
+    public CompletableFuture<Optional<String>> getEmailAddress() {
         Path relativeEmailPath = Paths.get("default", "pending", CLIENT_EMAIL_FILENAME);
-        Path emailPath = App.getDataDir("email", context.username)
-                .resolve(relativeEmailPath);
-        return context.getByPath(emailPath).thenCompose(emailFile -> {
-            if (emailFile.isPresent()) {
-                return emailApp.readInternal(relativeEmailPath, null).thenApply(data -> {
-                    Map<String, String> props = (Map<String, String>) JSONParser.parse(new String(data));
-                    String email = props.get("email");
-                    return Optional.of(email);
-                });
-            } else {
-                return Futures.of(Optional.empty());
-            }
-        });
+        return emailApp.readInternal(relativeEmailPath, null).thenApply(data -> {
+            Map<String, String> props = (Map<String, String>) JSONParser.parse(new String(data));
+            String email = props.get("email");
+            return Optional.of(email);
+        }).exceptionally(t -> Optional.empty());
     }
+
     @JsMethod
     public static CompletableFuture<EmailClient> load(App emailApp, Crypto crypto) {
         String account = "default";
