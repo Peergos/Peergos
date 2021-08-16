@@ -165,18 +165,19 @@ public class EmailClient {
             return future;
         } else {
             Attachment attachment = attachments.get(index);
-            String srcDirStr = "default/pending/" + folder + "/attachments/" + attachment.uuid;
-            Path srcFilePath = PathUtils.directoryToPath(srcDirStr.split("/"));
-            return emailApp.readInternal(srcFilePath, null).thenCompose(bytes -> {
-                SourcedAsymmetricCipherText cipherText = SourcedAsymmetricCipherText.fromCbor(CborObject.fromByteArray(bytes));
-                String destDirStr = "default/attachments/" + attachment.uuid;
-                Path destFilePath = PathUtils.directoryToPath(destDirStr.split("/"));
-                return emailApp.writeInternal(destFilePath, decryptAttachment(cipherText), null).thenCompose(res ->
-                    emailApp.deleteInternal(srcFilePath, null).thenCompose(bool ->
-                        reduceMovingAttachmentsToFolder(attachments, folder, index + 1, future)
-                    )
-                );
-            });
+            Path srcFilePath = Paths.get("default", "pending", folder, "attachments", attachment.uuid);
+            Path destFilePath = Paths.get("default", "attachments", attachment.uuid);
+
+            return Futures.asyncExceptionally(() -> emailApp.readInternal(srcFilePath, null).thenCompose(bytes -> {
+                        SourcedAsymmetricCipherText cipherText = SourcedAsymmetricCipherText.fromCbor(CborObject.fromByteArray(bytes));
+                        return emailApp.writeInternal(destFilePath, decryptAttachment(cipherText), null).thenCompose(res ->
+                                emailApp.deleteInternal(srcFilePath, null).thenCompose(bool ->
+                                        reduceMovingAttachmentsToFolder(attachments, folder, index + 1, future)
+                                )
+                        );
+                    }),
+                    // If the read failed because it has already been copied, we have nothing to do
+                    t -> emailApp.readInternal(destFilePath, null).thenApply(x -> true));
         }
     }
 
