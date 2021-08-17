@@ -2,12 +2,14 @@ package peergos.server.tests;
 
 import org.junit.Assert;
 import peergos.server.*;
+import peergos.server.apps.email.*;
 import peergos.server.storage.ResetableFileInputStream;
 import peergos.shared.Crypto;
 import peergos.shared.NetworkAccess;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.SymmetricKey;
 import peergos.shared.display.*;
+import peergos.shared.email.*;
 import peergos.shared.io.ipfs.multihash.Multihash;
 import peergos.shared.messaging.*;
 import peergos.shared.messaging.messages.*;
@@ -1752,10 +1754,95 @@ public class PeergosNetworkUtils {
         byte[] media = "Some media data".getBytes();
         AsyncReader reader = AsyncReader.build(media);
         Pair<String, FileRef> mediaRef = msgA.uploadMedia(controllerA, reader, "txt", media.length,
-                LocalDateTime.now(), x -> {}).join();
+                LocalDateTime.now(), x -> {
+                }).join();
         ReplyTo msg2 = ReplyTo.build(lastMessage, ApplicationMessage.attachment("Isn't this cool!!",
                 Arrays.asList(mediaRef.right)), hasher).join();
         controllerA = msgA.sendMessage(controllerA, msg2).join();
+    }
+
+    public static void email(NetworkAccess network, Random random) {
+        CryptreeNode.setMaxChildLinkPerBlob(10);
+
+        String password = "notagoodone";
+        UserContext user = PeergosNetworkUtils.ensureSignedUp("a-" + generateUsername(random), password, network, crypto);
+        UserContext email = PeergosNetworkUtils.ensureSignedUp("email-"+ generateUsername(random), password, network, crypto);
+
+        App emailApp = App.init(user, "email").join();
+        EmailClient client = EmailClient.load(emailApp, crypto).join();
+        client = EmailClient.load(emailApp, crypto).join(); //test that keys are found and loaded
+        client.connectToBridge(user, email.username).join();
+
+        Optional<String> emailAddress =  client.getEmailAddress().join();
+        Assert.assertTrue("email address", emailAddress.isEmpty());
+
+        //email bridge setup
+        email.sendReplyFollowRequest(email.processFollowRequests().join().get(0), true, true).join();
+        user.processFollowRequests().join();
+        EmailBridgeClient bridge = EmailBridgeClient.build(email, user.username, user.username + "@example.com");
+
+        emailAddress =  client.getEmailAddress().join();
+        Assert.assertTrue("email address", emailAddress.isPresent());
+
+        // send email to bridge
+        String attachmentFilename = "text";
+        String attachmentContent = "this is an attachment!";
+        byte[] data = attachmentContent.getBytes();
+        Map<String, byte[]> attachmentsMap = new HashMap<>();
+        String uuid = client.uploadAttachment(data).join();
+        attachmentsMap.put(uuid, data);
+        List<Attachment> outGoingAttachments = Arrays.asList(new Attachment(attachmentFilename, data.length, "text/plain", uuid));
+        EmailMessage msg = new EmailMessage("id", "msgid", user.username, "subject",
+            LocalDateTime.now(), Arrays.asList("a@example.com"), Collections.emptyList(), Collections.emptyList(),
+            "content", true, true, outGoingAttachments, null,
+            Optional.empty(), Optional.empty(), Optional.empty());
+        boolean sentEmail = client.send(msg).join();
+        Assert.assertTrue("email sent", sentEmail);
+
+        // Receive sent email in bridge
+        List<String> filenames = bridge.listOutbox();
+        Assert.assertTrue("bridge received email", ! filenames.isEmpty());
+        Pair<FileWrapper, EmailMessage> pendingEmail = bridge.getPendingEmail(filenames.get(0));
+        Assert.assertTrue(Arrays.equals(msg.serialize(), pendingEmail.right.serialize()));
+
+        Map<String, byte[]> receivedAttachmentsMap = new HashMap<>();
+        Attachment attachment = pendingEmail.right.attachments.get(0);
+        receivedAttachmentsMap.put(attachment.uuid, bridge.getOutgoingAttachment(attachment.uuid));
+        bridge.encryptAndMoveEmailToSent(pendingEmail.left, pendingEmail.right, receivedAttachmentsMap);
+
+        // detect that email's been sent and move to private folder
+        List<EmailMessage> sent = client.getNewSent().join();
+        Assert.assertTrue(! sent.isEmpty());
+        EmailMessage sentEmail2 = sent.get(0);
+        client.moveToPrivateSent(sentEmail2).join();
+        byte[] attachmentRetrieved =  client.getAttachment(sentEmail2.attachments.get(0).uuid).join();
+        String retrievedContent = new String(attachmentRetrieved);
+        Assert.assertTrue(retrievedContent.equals(attachmentContent));
+        Assert.assertTrue(client.getNewSent().join().isEmpty());
+
+        // receive an inbound email in bridge
+        String content2 = "Inbound attachment text";
+        byte[] content2Bytes = content2.getBytes();
+        Attachment attachment2 = bridge.uploadAttachment("inbound.txt", content2Bytes.length, "text/plain", content2Bytes);
+
+        List<Attachment> inboundAttachments = Arrays.asList(attachment2);
+        EmailMessage inMsg = new EmailMessage("id2", "msgid", "alice@crypto.net", "what's up?",
+                LocalDateTime.now(), Arrays.asList("ouremail@example.com"), Collections.emptyList(), Collections.emptyList(),
+                "content", true, true, inboundAttachments, null,
+                Optional.empty(), Optional.empty(), Optional.empty());
+        bridge.addToInbox(inMsg);
+
+        // retrieve new message in client
+        List<EmailMessage> incoming = client.getNewIncoming().join();
+        Assert.assertTrue("received email", ! incoming.isEmpty());
+        Assert.assertTrue(Arrays.equals(inMsg.serialize(), incoming.get(0).serialize()));
+
+        // decrypt and move incoming email to private folder
+        client.moveToPrivateInbox(incoming.get(0)).join();
+        byte[] attachmentRetrieved2 =  client.getAttachment(incoming.get(0).attachments.get(0).uuid).join();
+        String retrievedContent2 = new String(attachmentRetrieved2);
+        Assert.assertTrue(retrievedContent2.equals(content2));
+        Assert.assertTrue(client.getNewIncoming().join().isEmpty());
     }
 
     public static void chat(NetworkAccess network, Random random) {

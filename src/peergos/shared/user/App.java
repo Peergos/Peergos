@@ -45,6 +45,10 @@ public class App implements StoreAppData {
         this.appDataDirectoryWithoutUser = appDataDirectory;
     }
 
+    public static Path getDataDir(String appName, String username) {
+        return Paths.get(username, APPS_DIR_NAME, appName, DATA_DIR_NAME);
+    }
+
     @JsMethod
     public static CompletableFuture<App> init(UserContext ctx, String appName) {
         Path appDataDir = Paths.get(APPS_DIR_NAME, appName, DATA_DIR_NAME);
@@ -130,7 +134,9 @@ public class App implements StoreAppData {
     }
     @JsMethod
     public CompletableFuture<List<String>> dirInternal(Path relativePath, String username) {
-        Path path = fullPath(relativePath, username);
+        Path path = relativePath == null ?
+                Paths.get(username == null ? ctx.username : username).resolve(appDataDirectoryWithoutUser)
+                : fullPath(relativePath, username);
         return ctx.getByPath(path).thenCompose(dirOpt -> {
             if(dirOpt.isEmpty()) {
                 return Futures.of(Collections.emptyList());
@@ -138,6 +144,13 @@ public class App implements StoreAppData {
             return dirOpt.get().getChildren(ctx.crypto.hasher, ctx.network).thenApply(files ->
                     files.stream().map(fw -> fw.getName()).collect(Collectors.toList()));
         });
+    }
+    @JsMethod
+    public CompletableFuture<Boolean> createDirectoryInternal(Path relativePath, String username) {
+        Path base = Paths.get(username == null ? ctx.username : username).resolve(appDataDirectoryWithoutUser);
+        return ctx.getByPath(base)
+                .thenCompose(baseOpt -> baseOpt.get().getOrMkdirs(normalisePath(relativePath), ctx.network, false, ctx.crypto)
+                .thenApply(fw -> true));
     }
 }
 

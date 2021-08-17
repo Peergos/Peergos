@@ -225,6 +225,11 @@ public class MultiUserTests {
     }
 
     @Test
+    public void email() {
+        PeergosNetworkUtils.email(network, random);
+    }
+
+    @Test
     public void chat() {
         PeergosNetworkUtils.chat(network, random);
     }

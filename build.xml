@@ -56,7 +56,7 @@
 
   <target name="compile" depends="clean, init"
         description="compile the source">
-    <javac includeantruntime="false" destdir="${build}" debug="true" debuglevel="lines,vars,source">
+    <javac source="11" target="11" includeantruntime="false" destdir="${build}" debug="true" debuglevel="lines,vars,source">
       <src>
 	<pathelement location="${src}/peergos/shared"/>
 	<pathelement location="${src}/peergos/server"/>
