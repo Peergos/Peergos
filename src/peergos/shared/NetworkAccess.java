@@ -160,12 +160,13 @@ public class NetworkAccess {
     public static CompletableFuture<ContentAddressedStorage> buildDirectS3Blockstore(ContentAddressedStorage localDht,
                                                                                      CoreNode core,
                                                                                      HttpPoster direct,
-                                                                                     boolean isPeergosServer) {
+                                                                                     boolean isPeergosServer,
+                                                                                     Hasher hasher) {
         if (! isPeergosServer)
             return Futures.of(localDht);
         return localDht.blockStoreProperties()
                 .thenCompose(bp -> bp.useDirectBlockStore() ?
-                        localDht.id().thenApply(id -> new DirectS3BlockStore(bp, direct, localDht, id, core)) :
+                        localDht.id().thenApply(id -> new DirectS3BlockStore(bp, direct, localDht, id, core, hasher)) :
                         Futures.of(localDht));
     }
 
@@ -203,7 +204,7 @@ public class NetworkAccess {
                 .thenAccept(usernames -> {
                     // We are on a Peergos server
                     CoreNode core = direct;
-                    buildDirectS3Blockstore(localDht, core, apiPoster, true)
+                    buildDirectS3Blockstore(localDht, core, apiPoster, true, hasher)
                             .thenCompose(dht -> build(core, dht, apiPoster, p2pPoster, hasher, usernames, true, isJavascript))
                             .thenApply(result::complete)
                             .exceptionally(t -> {
