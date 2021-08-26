@@ -1,4 +1,4 @@
-package peergos.server.storage;
+package peergos.shared.storage;
 
 public class RateLimitException extends RuntimeException {
 }

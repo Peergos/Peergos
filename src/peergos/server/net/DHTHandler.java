@@ -242,6 +242,8 @@ public class DHTHandler implements HttpHandler {
                     httpExchange.sendResponseHeaders(404, 0);
                 }
             }
+        } catch (RateLimitException e) {
+            HttpUtil.replyErrorWithCode(httpExchange, 429, "Too Many Requests");
         } catch (Exception e) {
             LOG.severe("Error handling " +httpExchange.getRequestURI());
             LOG.log(Level.WARNING, e.getMessage(), e);
