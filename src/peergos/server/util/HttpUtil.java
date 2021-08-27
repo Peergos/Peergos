@@ -1,7 +1,6 @@
 package peergos.server.util;
 
 import com.sun.net.httpserver.*;
-import peergos.server.storage.*;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
@@ -53,6 +52,16 @@ public class HttpUtil {
 
             exchange.getResponseHeaders().set("Content-Type", "text/plain");
             exchange.sendResponseHeaders(400, 0);
+        } catch (IOException e) {
+            Logging.LOG().log(Level.WARNING, e.getMessage(), e);
+        }
+    }
+
+    public static void replyErrorWithCode(HttpExchange exchange, int httpErrorCode, String message) {
+        try {
+            exchange.getResponseHeaders().set("Trailer", URLEncoder.encode(message, "UTF-8"));
+            exchange.getResponseHeaders().set("Content-Type", "text/plain");
+            exchange.sendResponseHeaders(httpErrorCode, 0);
         } catch (IOException e) {
             Logging.LOG().log(Level.WARNING, e.getMessage(), e);
         }

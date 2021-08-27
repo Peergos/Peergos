@@ -25,12 +25,14 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
     private final Multihash nodeId;
     private final LRUCache<PublicKeyHash, Multihash> storageNodeByOwner = new LRUCache<>(100);
     private final CoreNode core;
+    private final Hasher hasher;
 
     public DirectS3BlockStore(BlockStoreProperties blockStoreProperties,
                               HttpPoster direct,
                               ContentAddressedStorage fallback,
                               Multihash nodeId,
-                              CoreNode core) {
+                              CoreNode core,
+                              Hasher hasher) {
         this.directWrites = blockStoreProperties.directWrites;
         this.publicReads = blockStoreProperties.publicReads;
         this.authedReads = blockStoreProperties.authedReads;
@@ -40,6 +42,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
         this.fallback = fallback;
         this.nodeId = nodeId;
         this.core = core;
+        this.hasher = hasher;
     }
 
     @Override
@@ -313,7 +316,13 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
 
     @Override
     public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey) {
-        return fallback.getChampLookup(owner, root, champKey);
+        return Futures.asyncExceptionally(
+                () -> fallback.getChampLookup(owner, root, champKey),
+                t -> {
+                    if (!(t instanceof RateLimitException))
+                        return Futures.errored(t);
+                    return getChampLookup(root, champKey, hasher);
+                });
     }
 
     @Override
