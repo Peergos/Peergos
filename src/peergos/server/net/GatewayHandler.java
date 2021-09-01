@@ -239,6 +239,8 @@ public class GatewayHandler implements HttpHandler {
             httpExchange.getResponseHeaders().set("Content-Type", "application/font-woff");
         else if (path.endsWith(".svg"))
             httpExchange.getResponseHeaders().set("Content-Type", "image/svg+xml");
+        else if (path.endsWith(".xml"))
+            httpExchange.getResponseHeaders().set("Content-Type", "application/xml");
         else if (start!= null && start.length > 15 && Arrays.equals("<!DOCTYPE html>".getBytes(), Arrays.copyOfRange(start, 0, 15)))
             httpExchange.getResponseHeaders().set("Content-Type", "text/html");
     }
