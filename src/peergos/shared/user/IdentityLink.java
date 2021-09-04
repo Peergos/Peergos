@@ -51,6 +51,7 @@ public class IdentityLink implements Cborable {
             this.name = name;
         }
 
+        @JsMethod
         public String name() {
             return name.map(s -> s.name(), s -> s);
         }
