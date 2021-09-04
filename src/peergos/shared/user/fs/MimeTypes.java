@@ -55,7 +55,7 @@ public class MimeTypes {
 
     public static final String PEERGOS_IDENTITY = "application/vnd.peergos-identity-proof";
     public static final int CBOR_PEERGOS_IDENTITY_PROOF_INT = 24;
-    final static int[] CBOR_PEERGOS_IDENTITY_PROOF = new int[]{0x82 /* cbor list with 2 elements*/, CBOR_PEERGOS_IDENTITY_PROOF_INT};
+    final static int[] CBOR_PEERGOS_IDENTITY_PROOF = new int[]{0x82 /* cbor list with 2 elements*/, 0x18 /*single byte int*/, CBOR_PEERGOS_IDENTITY_PROOF_INT};
 
     public static final String PEERGOS_EMAIL = "application/vnd.peergos-email";
     public static final int CBOR_PEERGOS_EMAIL_INT = 18;

@@ -9,6 +9,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
+import peergos.shared.user.fs.*;
 
 public class IdentityProofTests {
     private static final Crypto crypto = Main.initCrypto();
@@ -38,5 +39,9 @@ public class IdentityProofTests {
 
         AlternateIdentityClaim decrypted = AlternateIdentityClaim.decrypt(encrypted, key, peergosIdentityKey);
         Assert.assertTrue(decrypted.equals(proof.claim));
+
+        // test mimetype detection
+        String mimeType = MimeTypes.calculateMimeType(withKey.serialize(), "1.id.cbor");
+        Assert.assertTrue(mimeType.equals(MimeTypes.PEERGOS_IDENTITY));
     }
 }

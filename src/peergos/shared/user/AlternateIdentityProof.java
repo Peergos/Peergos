@@ -85,7 +85,7 @@ public class AlternateIdentityProof implements Cborable {
         alternateUrl.ifPresent(ap -> cborData.put("ap", new CborObject.CborString(ap)));
 
         List<CborObject> contents = new ArrayList<>();
-        contents.add(new CborObject.CborLong(MimeTypes.CBOR_PEERGOS_TODO_INT));
+        contents.add(new CborObject.CborLong(MimeTypes.CBOR_PEERGOS_IDENTITY_PROOF_INT));
         contents.add(CborObject.CborMap.build(cborData));
 
         return new CborObject.CborList(contents);
