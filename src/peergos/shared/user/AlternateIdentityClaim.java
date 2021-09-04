@@ -1,5 +1,6 @@
 package peergos.shared.user;
 
+import jsinterop.annotations.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
@@ -10,8 +11,8 @@ import java.util.*;
 
 public class AlternateIdentityClaim implements Cborable {
 
-    public final String peergosUsername;
-    public final String alternateUsername, alternateService;
+    @JsProperty
+    public final String peergosUsername, alternateUsername, alternateService;
 
     public AlternateIdentityClaim(String peergosUsername, String alternateUsername, String alternateService) {
         this.peergosUsername = peergosUsername;
@@ -20,7 +21,7 @@ public class AlternateIdentityClaim implements Cborable {
     }
 
     public String textToPost(String proofFilename) {
-        String path = "/public/" + peergosUsername + "/accounts/" + proofFilename + "?open=true";
+        String path = "/public/" + peergosUsername + "/.profile/identities/" + proofFilename + "?open=true";
         return "I am " + peergosUsername + " on Peergos and " + alternateUsername + " on " + alternateService + "\n" +
                 "proof: https://beta.peergos.net" + path;
     }

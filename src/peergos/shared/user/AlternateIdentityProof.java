@@ -14,10 +14,12 @@ import java.util.*;
 public class AlternateIdentityProof implements Cborable {
     public static final String SIG_PREFIX = "\nsig: ";
 
+    @JsProperty
     public final AlternateIdentityClaim claim;
     public final byte[] signature;
     // This allows us to post proofs to other services that reveal nothing to someone without this key
     public final Optional<SymmetricKey> encryptionKey;
+    @JsProperty
     public final Optional<String> alternateUrl;
 
     public AlternateIdentityProof(AlternateIdentityClaim claim,
@@ -28,6 +30,11 @@ public class AlternateIdentityProof implements Cborable {
         this.encryptionKey = encryptionKey;
         this.signature = signature;
         this.alternateUrl = alternateUrl;
+    }
+
+    @JsMethod
+    public boolean hasUrl() {
+        return alternateUrl.isPresent();
     }
 
     public byte[] signedClaim() {
@@ -43,8 +50,13 @@ public class AlternateIdentityProof implements Cborable {
         return true;
     }
 
+    @JsMethod
+    public String encodedSignature() {
+        return Base58.encode(signature);
+    }
+
     public String alternatePostText(String proofFilename) {
-        return claim.textToPost(proofFilename) + SIG_PREFIX + Base58.encode(signature);
+        return claim.textToPost(proofFilename) + SIG_PREFIX + encodedSignature();
     }
 
     public String encryptedPostText() {
