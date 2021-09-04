@@ -22,22 +22,22 @@ public class IdentityProofTests {
         PublicKeyHash publicHash = ContentAddressedStorage.hashKey(pair.publicSigningKey);
         SigningPrivateKeyAndPublicHash signer = new SigningPrivateKeyAndPublicHash(publicHash, pair.secretSigningKey);
 
-        AlternateIdentityProof proof = AlternateIdentityProof.buildAndSign(signer, username, "twitterusername", "Twitter");
+        IdentityLinkProof proof = IdentityLinkProof.buildAndSign(signer, username, "twitterusername", "Twitter");
         Assert.assertTrue(proof.isValid(peergosIdentityKey));
 
         String toPost = proof.alternatePostText("100");
         Assert.assertTrue(toPost.length() < 280);
 
-        AlternateIdentityProof parsed = AlternateIdentityProof.parse(toPost);
+        IdentityLinkProof parsed = IdentityLinkProof.parse(toPost);
         Assert.assertTrue(parsed.isValid(peergosIdentityKey));
 
         // Now do an encrypted version
         SymmetricKey key = SymmetricKey.random();
-        AlternateIdentityProof withKey = proof.withKey(key);
+        IdentityLinkProof withKey = proof.withKey(key);
         String encrypted = withKey.encryptedPostText();
         Assert.assertTrue(encrypted.length() < 280);
 
-        AlternateIdentityClaim decrypted = AlternateIdentityClaim.decrypt(encrypted, key, peergosIdentityKey);
+        IdentityLink decrypted = IdentityLink.decrypt(encrypted, key, peergosIdentityKey);
         Assert.assertTrue(decrypted.equals(proof.claim));
 
         // test mimetype detection

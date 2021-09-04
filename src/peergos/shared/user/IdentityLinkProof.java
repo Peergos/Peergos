@@ -11,24 +11,24 @@ import peergos.shared.util.*;
 
 import java.util.*;
 
-public class AlternateIdentityProof implements Cborable {
+public class IdentityLinkProof implements Cborable {
     public static final String SIG_PREFIX = "\nsig: ";
 
     @JsProperty
-    public final AlternateIdentityClaim claim;
+    public final IdentityLink claim;
     public final byte[] signature;
     // This allows us to post proofs to other services that reveal nothing to someone without this key
     public final Optional<SymmetricKey> encryptionKey;
     @JsProperty
     public final Optional<String> alternateUrl;
 
-    public AlternateIdentityProof(AlternateIdentityClaim claim,
-                                  byte[] signature,
-                                  Optional<SymmetricKey> encryptionKey,
-                                  Optional<String> alternateUrl) {
+    public IdentityLinkProof(IdentityLink claim,
+                             byte[] signature,
+                             Optional<SymmetricKey> encryptionKey,
+                             Optional<String> alternateUrl) {
         this.claim = claim;
-        this.encryptionKey = encryptionKey;
         this.signature = signature;
+        this.encryptionKey = encryptionKey;
         this.alternateUrl = alternateUrl;
     }
 
@@ -44,7 +44,7 @@ public class AlternateIdentityProof implements Cborable {
 
     public boolean isValid(PublicSigningKey peergosIdentity) {
         byte[] unsigned = peergosIdentity.unsignMessage(signedClaim());
-        AlternateIdentityClaim signedClaim = AlternateIdentityClaim.fromCbor(CborObject.fromByteArray(unsigned));
+        IdentityLink signedClaim = IdentityLink.fromCbor(CborObject.fromByteArray(unsigned));
         if (! signedClaim.equals(claim))
             throw new IllegalStateException("Signature invalid!");
         return true;
@@ -68,12 +68,12 @@ public class AlternateIdentityProof implements Cborable {
         return Base58.encode(encrypted.serialize());
     }
 
-    public AlternateIdentityProof withAlternateUrl(String alternateUrl) {
-        return new AlternateIdentityProof(claim, signature, encryptionKey, Optional.of(alternateUrl));
+    public IdentityLinkProof withAlternateUrl(String alternateUrl) {
+        return new IdentityLinkProof(claim, signature, encryptionKey, Optional.of(alternateUrl));
     }
 
-    public AlternateIdentityProof withKey(SymmetricKey key) {
-        return new AlternateIdentityProof(claim, signature, Optional.of(key), alternateUrl);
+    public IdentityLinkProof withKey(SymmetricKey key) {
+        return new IdentityLinkProof(claim, signature, Optional.of(key), alternateUrl);
     }
 
     @Override
@@ -92,7 +92,7 @@ public class AlternateIdentityProof implements Cborable {
     }
 
     @JsMethod
-    public static AlternateIdentityProof fromCbor(Cborable cbor) {
+    public static IdentityLinkProof fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Invalid cbor for TodoList: " + cbor);
 
@@ -102,30 +102,32 @@ public class AlternateIdentityProof implements Cborable {
             throw new IllegalStateException("Invalid mimetype for AlternativeIdentityProof: " + mimeType);
 
         CborObject.CborMap m = (CborObject.CborMap) contents.get(1);
-        AlternateIdentityClaim claim = m.get("c", AlternateIdentityClaim::fromCbor);
+        IdentityLink claim = m.get("c", IdentityLink::fromCbor);
         Optional<SymmetricKey> encryptionKey = m.getOptional("k", SymmetricKey::fromCbor);
         byte[] signature = m.getByteArray("s");
         Optional<String> alternativeUrl = m.getOptional("ap", c -> ((CborObject.CborString) c).value);
 
-        return new AlternateIdentityProof(claim, signature, encryptionKey, alternativeUrl);
+        return new IdentityLinkProof(claim, signature, encryptionKey, alternativeUrl);
     }
 
     @JsMethod
-    public static AlternateIdentityProof parse(String postContents) {
+    public static IdentityLinkProof parse(String postContents) {
         String line1 = postContents.trim().split("\n")[0];
-        AlternateIdentityClaim claim = AlternateIdentityClaim.parse(line1);
+        IdentityLink claim = IdentityLink.parse(line1);
         String signatureText = postContents.substring(postContents.indexOf(SIG_PREFIX) + SIG_PREFIX.length()).trim();
         byte[] signature = Base58.decode(signatureText);
-        return new AlternateIdentityProof(claim, signature, Optional.empty(), Optional.empty());
+        return new IdentityLinkProof(claim, signature, Optional.empty(), Optional.empty());
     }
 
     @JsMethod
-    public static AlternateIdentityProof buildAndSign(SigningPrivateKeyAndPublicHash signer,
-                                                      String peergosUsername,
-                                                      String alternateUsername,
-                                                      String alternateService) {
-        AlternateIdentityClaim claim = new AlternateIdentityClaim(peergosUsername, alternateUsername, alternateService);
+    public static IdentityLinkProof buildAndSign(SigningPrivateKeyAndPublicHash signer,
+                                                 String peergosUsername,
+                                                 String alternateUsername,
+                                                 String alternateService) {
+        IdentityLink.IdentityService serviceA = new IdentityLink.IdentityService(Either.a(IdentityLink.KnownService.Peergos));
+        IdentityLink.IdentityService serviceB = IdentityLink.IdentityService.parse(alternateService);
+        IdentityLink claim = new IdentityLink(peergosUsername, serviceA, alternateUsername, serviceB);
         byte[] signature = signer.secret.signatureOnly(claim.serialize());
-        return new AlternateIdentityProof(claim, signature, Optional.empty(), Optional.empty());
+        return new IdentityLinkProof(claim, signature, Optional.empty(), Optional.empty());
     }
 }
