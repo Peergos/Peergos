@@ -91,6 +91,7 @@ public class AlternateIdentityProof implements Cborable {
         return new CborObject.CborList(contents);
     }
 
+    @JsMethod
     public static AlternateIdentityProof fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Invalid cbor for TodoList: " + cbor);
