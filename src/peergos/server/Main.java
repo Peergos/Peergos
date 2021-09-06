@@ -417,7 +417,7 @@ public class Main extends Builder {
                 }
             },
             Stream.of(
-                      new Command.Arg("peergos-url", "Address of the Peergos server to migrate to", false, "http://localhost:8000"),
+                      new Command.Arg("peergos-url", "Address of the Peergos server", false, "http://localhost:8000"),
                       new Command.Arg("username", "Your Peergos username", true),
                       new Command.Arg("service", "The other service, e.g. Twitter", true),
                       new Command.Arg("service-username", "Your username on the other service", true),
@@ -441,7 +441,7 @@ public class Main extends Builder {
                 }
             },
             Stream.of(
-                      new Command.Arg("peergos-url", "Address of the Peergos server to migrate to", false, "http://localhost:8000"),
+                      new Command.Arg("peergos-url", "Address of the Peergos server", false, "http://localhost:8000"),
                       new Command.Arg("username", "Your Peergos username", true),
                       new Command.Arg("service", "The other service, e.g. Twitter", true),
                       new Command.Arg("service-username", "Your username on the other service", true),
