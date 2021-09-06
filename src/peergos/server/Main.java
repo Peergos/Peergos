@@ -402,7 +402,7 @@ public class Main extends Builder {
             ).collect(Collectors.toList())
     );
 
-    public static final Command<Boolean> LINK_IDENTITY = new Command<>("link-identity",
+    public static final Command<Boolean> LINK_IDENTITY = new Command<>("link",
             "Link your Peergos identity to an account on another service.",
             a -> {
                 try {
