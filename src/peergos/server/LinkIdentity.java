@@ -2,12 +2,16 @@ package peergos.server;
 
 import peergos.server.util.*;
 import peergos.shared.*;
+import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
+import peergos.shared.io.ipfs.multibase.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 
 import java.io.*;
 import java.nio.file.*;
+import java.util.*;
 
 public class LinkIdentity {
 
@@ -56,5 +60,24 @@ public class LinkIdentity {
 
         if (makePublic)
             context.makePublic(context.getByPath(Paths.get(context.username).resolve(subPath).resolve(filename)).join().get()).join();
+    }
+
+    public static void verify(Args a, NetworkAccess network) {
+        String username = a.getArg("username");
+        String usernameB = a.getArg("service-username");
+        String serviceB = a.getArg("service");
+        String sigb58 = a.getArg("signature");
+        IdentityLink claim = new IdentityLink(username, IdentityLink.IdentityService.parse("Peergos"),
+                usernameB, IdentityLink.IdentityService.parse(serviceB));
+        IdentityLinkProof proof = new IdentityLinkProof(claim, Base58.decode(sigb58), Optional.empty(), Optional.empty());
+        Optional<PublicKeyHash> idKeyHash = network.coreNode.getPublicKeyHash(username).join();
+        if (idKeyHash.isEmpty())
+            throw new IllegalStateException("Unknown user: " + username);
+        Optional<PublicSigningKey> idKey = network.dhtClient.getSigningKey(idKeyHash.get()).join();
+        if (idKey.isEmpty())
+            throw new IllegalStateException("Couldn't retrieve key for " + username);
+
+        proof.isValid(idKey.get());
+        System.out.println("Identity link proof is correct - it was signed by the Peergos user " + username);
     }
 }

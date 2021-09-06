@@ -42,7 +42,7 @@ public class IdentityProofTests {
         Assert.assertTrue(decrypted.equals(proof.claim));
 
         // test mimetype detection
-        String mimeType = MimeTypes.calculateMimeType(withKey.serialize(), "1.id.cbor");
+        String mimeType = MimeTypes.calculateMimeType(withKey.serialize(), proof.getFilename());
         Assert.assertTrue(mimeType.equals(MimeTypes.PEERGOS_IDENTITY));
     }
 }

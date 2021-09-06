@@ -426,6 +426,42 @@ public class Main extends Builder {
             ).collect(Collectors.toList())
     );
 
+    public static final Command<Boolean> VERIFY_IDENTITY = new Command<>("verify",
+            "Verify an identity link post from another service.",
+            a -> {
+                try {
+                    Main.initCrypto();
+                    String peergosUrl = a.getArg("peergos-url");
+                    URL api = new URL(peergosUrl);
+                    NetworkAccess network = Builder.buildJavaNetworkAccess(api, ! peergosUrl.startsWith("http://localhost")).join();
+                    LinkIdentity.verify(a, network);
+                    return true;
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            },
+            Stream.of(
+                      new Command.Arg("peergos-url", "Address of the Peergos server to migrate to", false, "http://localhost:8000"),
+                      new Command.Arg("username", "Your Peergos username", true),
+                      new Command.Arg("service", "The other service, e.g. Twitter", true),
+                      new Command.Arg("service-username", "Your username on the other service", true),
+                      new Command.Arg("signature", "The signature of the link included in the post", true)
+                              ).collect(Collectors.toList())
+    );
+
+    public static final Command<Void> IDENTITY = new Command<>("identity",
+            "Create or verify an identity proof",
+            args -> {
+                System.out.println("Run with -help to show options");
+                return null;
+            },
+            Collections.emptyList(),
+            Arrays.asList(
+                    LINK_IDENTITY,
+                    VERIFY_IDENTITY
+            )
+    );
+
     public static UserService startPeergos(Args a) {
         try {
             Crypto crypto = initCrypto();
@@ -748,7 +784,7 @@ public class Main extends Builder {
                     ServerMessages.SERVER_MESSAGES,
                     GATEWAY,
                     MIGRATE,
-                    LINK_IDENTITY,
+                    IDENTITY,
                     INSTALL_AND_RUN_IPFS,
                     PKI,
                     PKI_INIT
