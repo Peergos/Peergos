@@ -20,21 +20,21 @@ public class IdentityLinkProof implements Cborable {
     // This allows us to post proofs to other services that reveal nothing to someone without this key
     public final Optional<SymmetricKey> encryptionKey;
     @JsProperty
-    public final Optional<String> alternateUrl;
+    public final Optional<String> postUrl;
 
     public IdentityLinkProof(IdentityLink claim,
                              byte[] signature,
                              Optional<SymmetricKey> encryptionKey,
-                             Optional<String> alternateUrl) {
+                             Optional<String> postUrl) {
         this.claim = claim;
         this.signature = signature;
         this.encryptionKey = encryptionKey;
-        this.alternateUrl = alternateUrl;
+        this.postUrl = postUrl;
     }
 
     @JsMethod
     public boolean hasUrl() {
-        return alternateUrl.isPresent();
+        return postUrl.isPresent();
     }
 
     public byte[] signedClaim() {
@@ -55,8 +55,21 @@ public class IdentityLinkProof implements Cborable {
         return Base58.encode(signature);
     }
 
-    public String alternatePostText(String proofFilename) {
-        return claim.textToPost(proofFilename) + SIG_PREFIX + encodedSignature();
+    public String postText(String urlToPeergosPost) {
+        return claim.textToPost() + SIG_PREFIX + encodedSignature() + "\nproof: " + urlToPeergosPost;
+    }
+
+    public String getFilename() {
+        return claim.usernameB + "." + claim.serviceB.name() + ".id.cbor";
+    }
+
+    public String getUrlToPost(FileWrapper proofFile, boolean isPublic) {
+        if (isPublic) {
+            String pathToProof = claim.usernameA + "/.profile/ids/" + getFilename();
+            String path = "/public/" + pathToProof + "?open=true";
+            return "https://beta.peergos.net" + path;
+        }
+        return "https://beta.peergos.net/#%7B%22secretLink%22:true%2c%22link%22:%22" + proofFile.toLink() + "%22%2c%22open%22:true%7D";
     }
 
     public String encryptedPostText() {
@@ -68,12 +81,12 @@ public class IdentityLinkProof implements Cborable {
         return Base58.encode(encrypted.serialize());
     }
 
-    public IdentityLinkProof withAlternateUrl(String alternateUrl) {
-        return new IdentityLinkProof(claim, signature, encryptionKey, Optional.of(alternateUrl));
+    public IdentityLinkProof withPostUrl(String postUrl) {
+        return new IdentityLinkProof(claim, signature, encryptionKey, Optional.of(postUrl));
     }
 
     public IdentityLinkProof withKey(SymmetricKey key) {
-        return new IdentityLinkProof(claim, signature, Optional.of(key), alternateUrl);
+        return new IdentityLinkProof(claim, signature, Optional.of(key), postUrl);
     }
 
     @Override
@@ -82,7 +95,7 @@ public class IdentityLinkProof implements Cborable {
         cborData.put("c", claim);
         cborData.put("s", new CborObject.CborByteArray(signature));
         encryptionKey.ifPresent(k -> cborData.put("k", k));
-        alternateUrl.ifPresent(ap -> cborData.put("ap", new CborObject.CborString(ap)));
+        postUrl.ifPresent(ap -> cborData.put("bu", new CborObject.CborString(ap)));
 
         List<CborObject> contents = new ArrayList<>();
         contents.add(new CborObject.CborLong(MimeTypes.CBOR_PEERGOS_IDENTITY_PROOF_INT));
@@ -105,7 +118,7 @@ public class IdentityLinkProof implements Cborable {
         IdentityLink claim = m.get("c", IdentityLink::fromCbor);
         Optional<SymmetricKey> encryptionKey = m.getOptional("k", SymmetricKey::fromCbor);
         byte[] signature = m.getByteArray("s");
-        Optional<String> alternativeUrl = m.getOptional("ap", c -> ((CborObject.CborString) c).value);
+        Optional<String> alternativeUrl = m.getOptional("bu", c -> ((CborObject.CborString) c).value);
 
         return new IdentityLinkProof(claim, signature, encryptionKey, alternativeUrl);
     }
@@ -114,7 +127,8 @@ public class IdentityLinkProof implements Cborable {
     public static IdentityLinkProof parse(String postContents) {
         String line1 = postContents.trim().split("\n")[0];
         IdentityLink claim = IdentityLink.parse(line1);
-        String signatureText = postContents.substring(postContents.indexOf(SIG_PREFIX) + SIG_PREFIX.length()).trim();
+        int signatureStart = postContents.indexOf(SIG_PREFIX) + SIG_PREFIX.length();
+        String signatureText = postContents.substring(signatureStart, postContents.indexOf("\n", signatureStart)).trim();
         byte[] signature = Base58.decode(signatureText);
         return new IdentityLinkProof(claim, signature, Optional.empty(), Optional.empty());
     }

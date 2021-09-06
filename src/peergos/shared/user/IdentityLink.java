@@ -109,10 +109,8 @@ public class IdentityLink implements Cborable {
         this.serviceB = serviceB;
     }
 
-    public String textToPost(String proofFilename) {
-        String path = "/public/" + usernameA + "/.profile/ids/" + proofFilename + "?open=true";
-        return "I am " + usernameA + " on " + serviceA.name() + " and " + usernameB + " on " + serviceB.name() + "\n" +
-                "proof: https://beta.peergos.net" + path;
+    public String textToPost() {
+        return "I am " + usernameA + " on " + serviceA.name() + " and " + usernameB + " on " + serviceB.name();
     }
 
     public static IdentityLink parse(String firstLine) {

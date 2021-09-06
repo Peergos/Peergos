@@ -402,6 +402,30 @@ public class Main extends Builder {
             ).collect(Collectors.toList())
     );
 
+    public static final Command<Boolean> LINK_IDENTITY = new Command<>("link-identity",
+            "Link your Peergos identity to an account on another service.",
+            a -> {
+                try {
+                    Crypto crypto = Main.initCrypto();
+                    String peergosUrl = a.getArg("peergos-url");
+                    URL api = new URL(peergosUrl);
+                    NetworkAccess network = Builder.buildJavaNetworkAccess(api, ! peergosUrl.startsWith("http://localhost")).join();
+                    LinkIdentity.link(a, network, crypto);
+                    return true;
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            },
+            Stream.of(
+                      new Command.Arg("peergos-url", "Address of the Peergos server to migrate to", false, "http://localhost:8000"),
+                      new Command.Arg("username", "Your Peergos username", true),
+                      new Command.Arg("service", "The other service, e.g. Twitter", true),
+                      new Command.Arg("service-username", "Your username on the other service", true),
+                      new Command.Arg("publish", "Whether the identity proof file should be made public", false, "false"),
+                      new Command.Arg("encrypted", "Whether the identity proof should be private", false, "false")
+            ).collect(Collectors.toList())
+    );
+
     public static UserService startPeergos(Args a) {
         try {
             Crypto crypto = initCrypto();
@@ -724,6 +748,7 @@ public class Main extends Builder {
                     ServerMessages.SERVER_MESSAGES,
                     GATEWAY,
                     MIGRATE,
+                    LINK_IDENTITY,
                     INSTALL_AND_RUN_IPFS,
                     PKI,
                     PKI_INIT
