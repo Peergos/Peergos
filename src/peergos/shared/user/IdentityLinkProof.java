@@ -63,13 +63,15 @@ public class IdentityLinkProof implements Cborable {
         return claim.usernameB + "." + claim.serviceB.name() + ".id.cbor";
     }
 
-    public String getUrlToPost(FileWrapper proofFile, boolean isPublic) {
+    public String getUrlToPost(String peergosServerUrl, FileWrapper proofFile, boolean isPublic) {
+        if (peergosServerUrl.endsWith("/"))
+            peergosServerUrl = peergosServerUrl.substring(0, peergosServerUrl.length() - 1);
         if (isPublic) {
             String pathToProof = claim.usernameA + "/.profile/ids/" + getFilename();
             String path = "/public/" + pathToProof + "?open=true";
-            return "https://beta.peergos.net" + path;
+            return peergosServerUrl + path;
         }
-        return "https://beta.peergos.net/#%7B%22secretLink%22:true%2c%22link%22:%22" + proofFile.toLink() + "%22%2c%22open%22:true%7D";
+        return peergosServerUrl + "/#%7B%22secretLink%22:true%2c%22link%22:%22" + proofFile.toLink() + "%22%2c%22open%22:true%7D";
     }
 
     public String encryptedPostText() {
