@@ -42,9 +42,11 @@ public class PublicFileHandler implements HttpHandler {
 
             AbsoluteCapability cap = UserContext.getPublicCapability(Paths.get(originalPath), network).join();
 
+            boolean open = httpExchange.getRequestURI().getQuery().contains("open=true");
             String link = "/#{\"secretLink\":true%2c\"path\":\""
                     + URLEncoder.encode("/" + originalPath, "UTF-8")
-                    + "\"%2c\"link\":\"" + cap.toLink() + "\"}";
+                    + (open ? "\"%2c\"open\":true" : "\"")
+                    + "%2c\"link\":\"" + cap.toLink() + "\"}";
 
             httpExchange.getResponseHeaders().add("Location", link);
             httpExchange.sendResponseHeaders(302, 0); // temporary redirect

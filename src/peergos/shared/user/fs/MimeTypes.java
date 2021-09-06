@@ -48,9 +48,14 @@ public class MimeTypes {
     public static final String PEERGOS_TODO = "application/vnd.peergos-todo";
     public static final int CBOR_PEERGOS_TODO_INT = 10;
     final static int[] CBOR_PEERGOS_TODO = new int[]{0x82 /* cbor list with 2 elements*/, CBOR_PEERGOS_TODO_INT};
+
     public static final String PEERGOS_POST = "application/vnd.peergos-post";
     public static final int CBOR_PEERGOS_POST_INT = 17;
     final static int[] CBOR_PEERGOS_POST = new int[]{0x82 /* cbor list with 2 elements*/, CBOR_PEERGOS_POST_INT};
+
+    public static final String PEERGOS_IDENTITY = "application/vnd.peergos-identity-proof";
+    public static final int CBOR_PEERGOS_IDENTITY_PROOF_INT = 24;
+    final static int[] CBOR_PEERGOS_IDENTITY_PROOF = new int[]{0x82 /* cbor list with 2 elements*/, 0x18 /*single byte int*/, CBOR_PEERGOS_IDENTITY_PROOF_INT};
 
     public static final String PEERGOS_EMAIL = "application/vnd.peergos-email";
     public static final int CBOR_PEERGOS_EMAIL_INT = 18;
@@ -158,6 +163,8 @@ public class MimeTypes {
             return PEERGOS_TODO;
         if (equalArrays(start, CBOR_PEERGOS_POST))
             return PEERGOS_POST;
+        if (equalArrays(start, CBOR_PEERGOS_IDENTITY_PROOF))
+            return PEERGOS_IDENTITY;
 
         if (allAscii(start)) {
             if (filename.endsWith(".ics") && equalArrays(start, ICS))
