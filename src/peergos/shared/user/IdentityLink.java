@@ -45,13 +45,13 @@ public class IdentityLink implements Cborable {
                 lookupByName.put(t.name().toLowerCase(), t);
         }
 
-        public static KnownService lookup(int t) {
+        public static KnownService byCode(int t) {
             if (!lookup.containsKey(t))
                 throw new IllegalStateException("Unknown Identity Service code: " + t);
             return lookup.get(t);
         }
 
-        public static KnownService lookup(String name) {
+        public static KnownService byName(String name) {
             KnownService result = lookupByName.get(name.toLowerCase());
             if (result == null)
                 throw new IllegalStateException("Unknown Identity Service: " + name);
@@ -95,7 +95,7 @@ public class IdentityLink implements Cborable {
             CborObject.CborMap m = (CborObject.CborMap) cbor;
             long type = m.getLong("t");
             if (type == 0) {
-                return new IdentityService(Either.a(KnownService.lookup((int)m.getLong("c"))));
+                return new IdentityService(Either.a(KnownService.byCode((int)m.getLong("c"))));
             } else if (type == 1) {
                 return new IdentityService(Either.b(m.getString("n")));
             } else throw new IllegalStateException("Unknown IdentityService type: " + type);
@@ -116,7 +116,7 @@ public class IdentityLink implements Cborable {
 
         public static IdentityService parse(String name) {
             try {
-                return new IdentityService(Either.a(KnownService.lookup(name)));
+                return new IdentityService(Either.a(KnownService.byName(name)));
             } catch (Exception e) {
                 return new IdentityService(Either.b(name));
             }
