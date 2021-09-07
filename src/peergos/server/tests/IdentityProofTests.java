@@ -11,6 +11,8 @@ import peergos.shared.storage.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 
+import java.util.regex.*;
+
 public class IdentityProofTests {
     private static final Crypto crypto = Main.initCrypto();
 
@@ -44,5 +46,15 @@ public class IdentityProofTests {
         // test mimetype detection
         String mimeType = MimeTypes.calculateMimeType(withKey.serialize(), proof.getFilename());
         Assert.assertTrue(mimeType.equals(MimeTypes.PEERGOS_IDENTITY));
+    }
+
+    @Test
+    public void usernameRegexes() {
+        Assert.assertTrue(Pattern.compile(IdentityLink.KnownService.Website.usernameRegex).matcher("example.com").matches());
+        Assert.assertTrue(Pattern.compile(IdentityLink.KnownService.Website.usernameRegex).matcher("cool.example.com").matches());
+        Assert.assertFalse(Pattern.compile(IdentityLink.KnownService.Website.usernameRegex).matcher("example-.com").matches());
+
+        Assert.assertTrue(Pattern.compile(IdentityLink.KnownService.Mastodon.usernameRegex).matcher("peergos@mastodon.social").matches());
+        Assert.assertFalse(Pattern.compile(IdentityLink.KnownService.Mastodon.usernameRegex).matcher("first.last@mastodon.social").matches());
     }
 }

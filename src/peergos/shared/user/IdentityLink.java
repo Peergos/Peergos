@@ -2,6 +2,7 @@ package peergos.shared.user;
 
 import jsinterop.annotations.*;
 import peergos.shared.cbor.*;
+import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.symmetric.*;
@@ -14,21 +15,23 @@ public class IdentityLink implements Cborable {
 
     @JsType
     public enum KnownService {
-        Peergos(0),
-        Twitter(1),
-        Facebook(2),
-        Website(3),
-        Reddit(4),
-        Github(5),
-        HackerNews(6),
-        Lobsters(7),
-        LinkedIn(8),
-        Mastodon(9);
+        Peergos(0, Usernames.REGEX),
+        Twitter(1, "^[A-Za-z0-9_]{1,15}$"),
+        Facebook(2, "^[a-z\\d.]{5,}$"),
+        Website(3, "^((?!-)[A-Za-z0-9-]{1,63}(?<!-)\\.)+[A-Za-z]{2,6}$"),
+        Reddit(4, "^[A-Za-z0-9]{1,20}$"),
+        Github(5, "^[a-z\\d](?:[a-z\\d]|-(?=[a-z\\d])){0,38}$"),
+        HackerNews(6, "^[a-z0-9_-]{2,15}$"),
+        Lobsters(7, "^[a-z0-9]{1,18}$"),
+        LinkedIn(8, "^[A-Za-z0-9-]{5,30}$"),
+        Mastodon(9, "[a-z0-9_]{1,30}@((?!-)[A-Za-z0-9-]{1,63}(?<!-)\\.)+[A-Za-z]{2,6}");
 
         public int code;
+        public String usernameRegex;
 
-        KnownService(int code) {
+        KnownService(int code, String usernameRegex) {
             this.code = code;
+            this.usernameRegex = usernameRegex;
         }
 
         private static Map<Integer, KnownService> lookup = new TreeMap<>();
@@ -36,11 +39,23 @@ public class IdentityLink implements Cborable {
             for (KnownService t: KnownService.values())
                 lookup.put(t.code, t);
         }
+        private static Map<String, KnownService> lookupByName = new TreeMap<>();
+        static {
+            for (KnownService t: KnownService.values())
+                lookupByName.put(t.name().toLowerCase(), t);
+        }
 
-        public static KnownService lookup(int t) {
+        public static KnownService byCode(int t) {
             if (!lookup.containsKey(t))
                 throw new IllegalStateException("Unknown Identity Service code: " + t);
             return lookup.get(t);
+        }
+
+        public static KnownService byName(String name) {
+            KnownService result = lookupByName.get(name.toLowerCase());
+            if (result == null)
+                throw new IllegalStateException("Unknown Identity Service: " + name);
+            return result;
         }
     }
 
@@ -49,6 +64,13 @@ public class IdentityLink implements Cborable {
 
         public IdentityService(Either<KnownService, String> name) {
             this.name = name;
+        }
+
+        public String usernameRegex() {
+            if (name.isB())
+                return ".+";
+            KnownService service = name.a();
+            return service.usernameRegex;
         }
 
         @JsMethod
@@ -73,7 +95,7 @@ public class IdentityLink implements Cborable {
             CborObject.CborMap m = (CborObject.CborMap) cbor;
             long type = m.getLong("t");
             if (type == 0) {
-                return new IdentityService(Either.a(KnownService.lookup((int)m.getLong("c"))));
+                return new IdentityService(Either.a(KnownService.byCode((int)m.getLong("c"))));
             } else if (type == 1) {
                 return new IdentityService(Either.b(m.getString("n")));
             } else throw new IllegalStateException("Unknown IdentityService type: " + type);
@@ -93,7 +115,11 @@ public class IdentityLink implements Cborable {
         }
 
         public static IdentityService parse(String name) {
-            return new IdentityService(Either.a(KnownService.valueOf(name)));
+            try {
+                return new IdentityService(Either.a(KnownService.byName(name)));
+            } catch (Exception e) {
+                return new IdentityService(Either.b(name));
+            }
         }
     }
 
