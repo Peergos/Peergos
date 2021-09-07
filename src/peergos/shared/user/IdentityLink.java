@@ -39,11 +39,23 @@ public class IdentityLink implements Cborable {
             for (KnownService t: KnownService.values())
                 lookup.put(t.code, t);
         }
+        private static Map<String, KnownService> lookupByName = new TreeMap<>();
+        static {
+            for (KnownService t: KnownService.values())
+                lookupByName.put(t.name().toLowerCase(), t);
+        }
 
         public static KnownService lookup(int t) {
             if (!lookup.containsKey(t))
                 throw new IllegalStateException("Unknown Identity Service code: " + t);
             return lookup.get(t);
+        }
+
+        public static KnownService lookup(String name) {
+            KnownService result = lookupByName.get(name.toLowerCase());
+            if (result == null)
+                throw new IllegalStateException("Unknown Identity Service: " + name);
+            return result;
         }
     }
 
@@ -103,7 +115,11 @@ public class IdentityLink implements Cborable {
         }
 
         public static IdentityService parse(String name) {
-            return new IdentityService(Either.a(KnownService.valueOf(name)));
+            try {
+                return new IdentityService(Either.a(KnownService.lookup(name)));
+            } catch (Exception e) {
+                return new IdentityService(Either.b(name));
+            }
         }
     }
 
