@@ -45,4 +45,14 @@ public class IdentityProofTests {
         String mimeType = MimeTypes.calculateMimeType(withKey.serialize(), proof.getFilename());
         Assert.assertTrue(mimeType.equals(MimeTypes.PEERGOS_IDENTITY));
     }
+
+    @Test
+    public void usernameRegexes() {
+        Assert.assertTrue(IdentityLink.KnownService.Website.usernameRegex.matcher("example.com").matches());
+        Assert.assertTrue(IdentityLink.KnownService.Website.usernameRegex.matcher("cool.example.com").matches());
+        Assert.assertFalse(IdentityLink.KnownService.Website.usernameRegex.matcher("example-.com").matches());
+
+        Assert.assertTrue(IdentityLink.KnownService.Mastodon.usernameRegex.matcher("peergos@mastodon.social").matches());
+        Assert.assertFalse(IdentityLink.KnownService.Mastodon.usernameRegex.matcher("first.last@mastodon.social").matches());
+    }
 }

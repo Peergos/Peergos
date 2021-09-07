@@ -2,6 +2,7 @@ package peergos.shared.user;
 
 import jsinterop.annotations.*;
 import peergos.shared.cbor.*;
+import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.symmetric.*;
@@ -9,26 +10,29 @@ import peergos.shared.io.ipfs.multibase.*;
 import peergos.shared.util.*;
 
 import java.util.*;
+import java.util.regex.*;
 
 public class IdentityLink implements Cborable {
 
     @JsType
     public enum KnownService {
-        Peergos(0),
-        Twitter(1),
-        Facebook(2),
-        Website(3),
-        Reddit(4),
-        Github(5),
-        HackerNews(6),
-        Lobsters(7),
-        LinkedIn(8),
-        Mastodon(9);
+        Peergos(0, Pattern.compile(Usernames.REGEX)),
+        Twitter(1, Pattern.compile("^[A-Za-z0-9_]{1,15}$")),
+        Facebook(2, Pattern.compile("^[a-z\\d.]{5,}$")),
+        Website(3, Pattern.compile("^((?!-)[A-Za-z0-9-]{1,63}(?<!-)\\.)+[A-Za-z]{2,6}$")),
+        Reddit(4, Pattern.compile("^[A-Za-z0-9]{1,20}$")),
+        Github(5, Pattern.compile("^[a-z\\d](?:[a-z\\d]|-(?=[a-z\\d])){0,38}$")),
+        HackerNews(6, Pattern.compile("^[a-z0-9_-]{2,15}$")),
+        Lobsters(7, Pattern.compile("^[a-z0-9]{1,18}$")),
+        LinkedIn(8, Pattern.compile("^[A-Za-z0-9-]{5,30}$")),
+        Mastodon(9, Pattern.compile("@((?!-)[A-Za-z0-9-]{1,63}(?<!-)\\.)+[A-Za-z]{2,6}"));
 
         public int code;
+        public Pattern usernameRegex;
 
-        KnownService(int code) {
+        KnownService(int code, Pattern usernameRegex) {
             this.code = code;
+            this.usernameRegex = usernameRegex;
         }
 
         private static Map<Integer, KnownService> lookup = new TreeMap<>();
@@ -49,6 +53,13 @@ public class IdentityLink implements Cborable {
 
         public IdentityService(Either<KnownService, String> name) {
             this.name = name;
+        }
+
+        public boolean isValidUsername(String username) {
+            if (name.isB())
+                return true;
+            KnownService service = name.a();
+            return service.usernameRegex.matcher(username).matches();
         }
 
         @JsMethod
@@ -103,6 +114,10 @@ public class IdentityLink implements Cborable {
     public final IdentityService serviceA, serviceB;
 
     public IdentityLink(String usernameA, IdentityService serviceA, String usernameB, IdentityService serviceB) {
+        if (! serviceA.isValidUsername(usernameA))
+            throw new IllegalStateException("Invalid username for " + serviceA);
+        if (! serviceB.isValidUsername(usernameB))
+            throw new IllegalStateException("Invalid username for " + serviceA);
         this.usernameA = usernameA;
         this.serviceA = serviceA;
         this.usernameB = usernameB;
