@@ -25,7 +25,7 @@ public class IdentityLink implements Cborable {
         Lobsters(7, "^[a-z0-9]{1,18}$"),
         LinkedIn(8, "^[A-Za-z0-9-]{5,30}$"),
         Mastodon(9, "[a-z0-9_]{1,30}@((?!-)[A-Za-z0-9-]{1,63}(?<!-)\\.)+[A-Za-z]{2,6}"),
-        Matrix(10, "@[a-z0-9_.-=/]{1,255}:((?!-)[A-Za-z0-9-]{1,63}(?<!-)\\.)+[A-Za-z]{2,6}");
+        Matrix(10, "@[a-z0-9_.-=/]{1,249}:((?!-)[A-Za-z0-9-]{1,63}(?<!-)\\.)+[A-Za-z]{2,6}");
 
         public int code;
         public String usernameRegex;
