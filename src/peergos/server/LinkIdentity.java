@@ -12,6 +12,7 @@ import peergos.shared.user.fs.*;
 import java.io.*;
 import java.nio.file.*;
 import java.util.*;
+import java.util.regex.*;
 
 public class LinkIdentity {
 
@@ -29,6 +30,12 @@ public class LinkIdentity {
         UserContext context = UserContext.signIn(username, password, network, crypto).join();
         String usernameB = a.getArg("service-username");
         String serviceB = a.getArg("service");
+        if (! Pattern.compile(IdentityLink.KnownService.Peergos.usernameRegex).matcher(username).matches())
+            throw new IllegalStateException("Invalid username for Peergos");
+        IdentityLink.IdentityService B = IdentityLink.IdentityService.parse(serviceB);
+        if (! Pattern.compile(B.usernameRegex()).matcher(usernameB).matches())
+            throw new IllegalStateException("Invalid username for " + serviceB);
+
         boolean encrypted = a.getBoolean("encrypted");
         boolean publish = ! encrypted && a.getBoolean("publish", false);
 
