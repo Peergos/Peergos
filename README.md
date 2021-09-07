@@ -142,7 +142,7 @@ java -jar Peergos.jar daemon -pki-node-id QmdM1TrjBJnYzzESATtrrMNPAtjJdqfcV2vF1k
 ```
 You can then access the web interface over http:/localhost:8000/
 
-Note that whichever Peergos server you sign up through will be storing your data (we plan to enable migration later), so if you don't intend on leaving your Peergos server running permanently, then we recommend signing up on https://demo.peergos.net and then you can log in through a local Peergos instance and all your data will magically end up on the demo.peergos.net server. 
+Note that whichever Peergos server you sign up through will be storing your data, so if you don't intend on leaving your Peergos server running permanently, then we recommend signing up on https://demo.peergos.net and then you can log in through a local Peergos instance and all your data will magically end up on the demo.peergos.net server. 
 
 ### CLI
 There are a range of commands available from a command line. You can run -help to find the available commands or details on any command. Most users should only need the *daemon* and *shell* commands, and maybe *fuse*. You can use the *migrate* command to move all your data to a new server (where the command is run). 
@@ -152,12 +152,13 @@ There are a range of commands available from a command line. You can run -help t
 Main: Run a Peergos command
 Sub commands:
 	daemon: The user facing Peergos server
-	shell: An interactive command-line-interface to a Peergos server.
+	shell: An interactive command-line-interface to a Peergos server
 	fuse: Mount a Peergos user's filesystem natively
 	quota: Manage quota of users on this server
 	server-msg: Send and receive messages to/from users of this server
 	gateway: Serve websites directly from Peergos
-	migrate: Move a Peergos account to this server.
+	migrate: Move a Peergos account to this server
+	identity: Create or verify an identity proof
 	ipfs: Install, configure and start IPFS daemon
 	pki: Start the Peergos PKI Server that has already been bootstrapped
 	pki-init: Bootstrap and start the Peergos PKI Server
