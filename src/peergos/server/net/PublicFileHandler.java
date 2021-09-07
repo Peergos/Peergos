@@ -27,6 +27,10 @@ public class PublicFileHandler implements HttpHandler {
         this.network = NetworkAccess.buildPublicNetworkAccess(hasher, core, mutable, dht).join();
     }
 
+    private static boolean contains(String body, String text) {
+        return body != null && body.contains(text);
+    }
+
     @Override
     public void handle(HttpExchange httpExchange) {
         long t1 = System.currentTimeMillis();
@@ -42,7 +46,7 @@ public class PublicFileHandler implements HttpHandler {
 
             AbsoluteCapability cap = UserContext.getPublicCapability(Paths.get(originalPath), network).join();
 
-            boolean open = httpExchange.getRequestURI().getQuery().contains("open=true");
+            boolean open = contains(httpExchange.getRequestURI().getQuery(), "open=true");
             String link = "/#{\"secretLink\":true%2c\"path\":\""
                     + URLEncoder.encode("/" + originalPath, "UTF-8")
                     + (open ? "\"%2c\"open\":true" : "\"")
