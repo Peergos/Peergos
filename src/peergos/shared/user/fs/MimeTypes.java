@@ -37,6 +37,7 @@ public class MimeTypes {
 
     final static int[] PDF = new int[]{0x25, 'P', 'D', 'F'};
     final static int[] ZIP = new int[]{'P', 'K', 3, 4};
+    final static int[] WASM = new int[]{0, 'a', 's', 'm'};
 
     final static int[] ICS = new int[]{'B','E','G','I','N',':','V','C','A','L','E','N','D','A','R'};
     final static int[] VCF = new int[]{'B','E','G','I','N',':','V','C','A','R','D'};
@@ -130,6 +131,9 @@ public class MimeTypes {
 
         if (equalArrays(start, PDF))
             return "application/pdf";
+
+        if (equalArrays(start, WASM))
+            return "application/wasm";
 
         if (equalArrays(start, ZIP)) {
             if (filename.endsWith(".jar"))
