@@ -121,8 +121,9 @@ public abstract class StaticHandler implements HttpHandler
                         "img-src 'self' " + this.host + " data: blob:;" +
                         "object-src 'none';"
                 );
-            // Don't anyone to load Peergos site in an iframe
-            httpExchange.getResponseHeaders().set("x-frame-options", "sameorigin");
+            // Don't let anyone to load main Peergos site in an iframe (legacy header)
+            if (!isSubdomain)
+                httpExchange.getResponseHeaders().set("x-frame-options", "sameorigin");
             // Enable cross site scripting protection
             httpExchange.getResponseHeaders().set("x-xss-protection", "1; mode=block");
             // Don't let browser sniff mime types
