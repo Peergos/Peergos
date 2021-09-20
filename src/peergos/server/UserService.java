@@ -122,6 +122,7 @@ public class UserService {
                                 Optional<TlsProperties> tlsProps,
                                 Optional<String> publicHostname,
                                 List<String> blockstoreDomains,
+                                List<String> frameDomains,
                                 List<String> appSubdomains,
                                 boolean includeCsp,
                                 Optional<String> basicAuth,
@@ -215,8 +216,8 @@ public class UserService {
                 .orElse(isPublicServer ?
                         new CspHost("https://", publicHostname.get())  :
                         new CspHost("http://",  local.getHostName(), local.getPort()));
-        StaticHandler handler = webroot.map(p -> (StaticHandler) new FileHandler(host, blockstoreDomains, appSubdomains, p, includeCsp, true))
-                .orElseGet(() -> new JarHandler(host, blockstoreDomains, appSubdomains, includeCsp, true, Paths.get("/webroot")));
+        StaticHandler handler = webroot.map(p -> (StaticHandler) new FileHandler(host, blockstoreDomains, frameDomains, appSubdomains, p, includeCsp, true))
+                .orElseGet(() -> new JarHandler(host, blockstoreDomains, frameDomains, appSubdomains, includeCsp, true, Paths.get("/webroot")));
 
         if (useWebCache) {
             LOG.info("Caching web-resources");

@@ -574,8 +574,10 @@ public class Main extends Builder {
             boolean isPublicServer = a.getBoolean("public-server", false);
             Optional<String> basicAuth = a.getOptionalArg("basic-auth");
             List<String> blockstoreDomains = S3Config.getBlockstoreDomains(a);
+            Optional<String> paymentDomain = a.getOptionalArg("payment-domain");
             List<String> appSubdomains = Arrays.asList(a.getArg("apps", "email,calendar,todo-board,code-editor,pdf").split(","));
-            peergos.initAndStart(localAddress, nodeId, tlsProps, publicHostname, blockstoreDomains, appSubdomains,
+            List<String> frameDomains = paymentDomain.map(Arrays::asList).orElse(Collections.emptyList());
+            peergos.initAndStart(localAddress, nodeId, tlsProps, publicHostname, blockstoreDomains, frameDomains, appSubdomains,
                     a.getBoolean("include-csp", true), basicAuth, webroot, useWebAssetCache, isPublicServer, maxConnectionQueue, handlerThreads);
             boolean isPkiNode = nodeId.equals(pkiServerNodeId);
             if (! isPkiNode && useIPFS) {

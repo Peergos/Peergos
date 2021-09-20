@@ -13,7 +13,7 @@ public class FileHandlerTests {
     @Test
     public  void  test_read() throws IOException {
         FileHandler fileHandler = new FileHandler(new CspHost("http://", "localhost"),
-                Collections.emptyList(), Collections.emptyList(), TEST_ROOT, false, false);
+                Collections.emptyList(), Collections.emptyList(), Collections.emptyList(), TEST_ROOT, false, false);
         for (String path : Arrays.asList("something.txt", "/something.txt")) {
             StaticHandler.Asset asset = fileHandler.getAsset(path);
             Assert.assertEquals(new String(asset.data), "The thing!");
