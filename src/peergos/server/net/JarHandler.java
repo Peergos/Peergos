@@ -9,11 +9,12 @@ public class JarHandler extends StaticHandler {
 
     public JarHandler(CspHost host,
                       List<String> blockstoreDomain,
+                      List<String> frameDomains,
                       List<String> appSubdomains,
                       boolean includeCsp,
                       boolean isGzip,
                       Path root) {
-        super(host, blockstoreDomain, appSubdomains, includeCsp, isGzip);
+        super(host, blockstoreDomain, frameDomains, appSubdomains, includeCsp, isGzip);
         this.root = root;
     }
 

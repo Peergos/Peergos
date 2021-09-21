@@ -19,16 +19,19 @@ public abstract class StaticHandler implements HttpHandler
     private final CspHost host;
     private final List<String> blockstoreDomain;
     private final List<String> appsubdomains;
+    private final List<String> frameDomains;
     private final Map<String, String> appDomains;
 
     public StaticHandler(CspHost host,
                          List<String> blockstoreDomain,
+                         List<String> frameDomains,
                          List<String> appSubdomains,
                          boolean includeCsp,
                          boolean isGzip) {
         this.host = host;
         this.includeCsp = includeCsp;
         this.blockstoreDomain = blockstoreDomain;
+        this.frameDomains = frameDomains;
         this.appsubdomains = appSubdomains;
         this.appDomains = appSubdomains.stream()
                 .collect(Collectors.toMap(s -> s + "." + host.domain + host.port.map(p -> ":" + p).orElse(""), s -> s));
@@ -113,7 +116,7 @@ public abstract class StaticHandler implements HttpHandler
                         (isSubdomain ? " 'unsafe-inline' https://" + reqHost : "") + // calendar, editor, todoboard, pdfviewer
                         ";" +
                         (isSubdomain ? "sandbox allow-scripts allow-forms;" : "") +
-                        "frame-src 'self' " + (isSubdomain ? "" : this.host.wildcard()) + ";" +
+                        "frame-src 'self' " + frameDomains.stream().collect(Collectors.joining(" ")) + " " + (isSubdomain ? "" : this.host.wildcard()) + ";" +
                         "frame-ancestors 'self' " + this.host + ";" +
                         "connect-src 'self' " + this.host +
                         (isSubdomain ? "" : blockstoreDomain.stream().map(d -> " https://" + d).collect(Collectors.joining())) + ";" +
@@ -171,7 +174,7 @@ public abstract class StaticHandler implements HttpHandler
         Map<String, Asset> cache = new ConcurrentHashMap<>();
         StaticHandler that = this;
 
-        return new StaticHandler(host, blockstoreDomain, appsubdomains, includeCsp, isGzip) {
+        return new StaticHandler(host, blockstoreDomain, frameDomains, appsubdomains, includeCsp, isGzip) {
             @Override
             public Asset getAsset(String resourcePath) throws IOException {
                 if (! cache.containsKey(resourcePath))

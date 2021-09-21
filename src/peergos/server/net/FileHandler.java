@@ -9,11 +9,12 @@ public class FileHandler extends StaticHandler
     private final Path root;
     public FileHandler(CspHost host,
                        List<String> blockstoreDomain,
+                       List<String> frameDomains,
                        List<String> appSubdomains,
                        Path root,
                        boolean includeCsp,
                        boolean isGzip) {
-        super(host, blockstoreDomain, appSubdomains, includeCsp, isGzip);
+        super(host, blockstoreDomain, frameDomains, appSubdomains, includeCsp, isGzip);
         this.root = root;
     }
 
