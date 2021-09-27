@@ -313,7 +313,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
 
     @Override
     public CompletableFuture<Long> getQuota(PublicKeyHash owner, byte[] signedTime) {
-        TimeLimited.isAllowedTime(signedTime, 120, dht, owner);
+        TimeLimited.isAllowedTime(signedTime, 24*3600, dht, owner);
         WriterUsage writerUsage = usageStore.getUsage(owner);
         if (writerUsage == null)
             return Futures.errored(new IllegalStateException("Unknown identity key: " + owner));
