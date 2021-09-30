@@ -567,6 +567,16 @@ public class FileWrapper {
                             false, 0, fileSize, Optional.empty(), overwriteExisting, truncateExisting,
                             network, crypto, monitor, crypto.random.randomBytes(32))
             ).thenCompose(finished -> getUpdated(finished, network));
+        if (fileSize <= Chunk.MAX_SIZE) {
+            // don't bother with file upload transaction store as single chunk uploads are atomic anyway
+            // (nothing to resume or cleanup later in case of failure)
+            return getPath(network).thenCompose(path ->
+                    network.synchronizer.applyComplexUpdate(owner(), signingPair(),
+                            (s, committer) -> uploadFileSection(s, committer, filename, fileData,
+                                    false, 0, fileSize, Optional.empty(), overwriteExisting, truncateExisting,
+                                    network, crypto, monitor, crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH))
+                    )).thenCompose(finished -> getUpdated(finished, network));
+        }
         return getPath(network).thenCompose(path ->
                 Transaction.buildFileUploadTransaction(Paths.get(path).resolve(filename).toString(), fileSize, fileData, signingPair(),
                         generateChildLocationsFromSize(fileSize, crypto.random)))
