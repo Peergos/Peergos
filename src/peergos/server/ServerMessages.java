@@ -108,7 +108,7 @@ public class ServerMessages extends Builder {
         UsageStore usageStore = new JdbcUsageStore(getDBConnector(a, "space-usage-sql-file", dbConnectionPool), getSqlCommands(a));
         JdbcAccount account = new JdbcAccount(getDBConnector(a, "account-sql-file", dbConnectionPool), getSqlCommands(a));
         CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable,
-                rawSocial, usageStore, account, account, hasher);
+                rawSocial, usageStore, account, new AccountWithStorage(localStorage, localPointers, account), hasher);
         return buildSpaceQuotas(a, localStorage, core,
                 getDBConnector(a, "space-requests-sql-file", dbConnectionPool),
                 getDBConnector(a, "quotas-sql-file", dbConnectionPool));

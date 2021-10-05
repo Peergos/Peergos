@@ -13,7 +13,7 @@ import java.util.concurrent.*;
 import java.util.function.*;
 import java.util.logging.*;
 
-public class JdbcAccount implements Account {
+public class JdbcAccount {
     private static final Logger LOG = Logging.LOG();
 
     private static final String CREATE = "INSERT INTO login (username, entry, reader) VALUES(?, ?, ?)";
@@ -66,8 +66,7 @@ public class JdbcAccount implements Account {
             }
     }
 
-    @Override
-    public CompletableFuture<Boolean> setLoginData(LoginData login, byte[] auth) {
+    public CompletableFuture<Boolean> setLoginData(LoginData login) {
         if (hasEntry(login.username)) {
             try (Connection conn = getConnection();
                  PreparedStatement insert = conn.prepareStatement(UPDATE)) {
@@ -97,8 +96,7 @@ public class JdbcAccount implements Account {
         }
     }
 
-    @Override
-    public CompletableFuture<UserStaticData> getLoginData(String username, PublicSigningKey authorisedReader, byte[] auth) {
+    public CompletableFuture<UserStaticData> getEntryData(String username) {
         try (Connection conn = getConnection();
              PreparedStatement stmt = conn.prepareStatement(GET)) {
             stmt.setString(1, username);

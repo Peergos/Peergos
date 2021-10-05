@@ -13,9 +13,9 @@ public class AccountWithStorage implements Account {
 
     private final ContentAddressedStorage storage;
     private final MutablePointers pointers;
-    private final Account target;
+    private final JdbcAccount target;
 
-    public AccountWithStorage(ContentAddressedStorage storage, MutablePointers pointers, Account target) {
+    public AccountWithStorage(ContentAddressedStorage storage, MutablePointers pointers, JdbcAccount target) {
         this.storage = storage;
         this.pointers = pointers;
         this.target = target;
@@ -32,11 +32,11 @@ public class AccountWithStorage implements Account {
             pointers.setPointer(pointer.writer, pointer.writer, pointer.writerSignedChampRootCas).join();
             storage.closeTransaction(pointer.writer, tid).join();
         }
-        return target.setLoginData(login, auth);
+        return target.setLoginData(login);
     }
 
     @Override
     public CompletableFuture<UserStaticData> getLoginData(String username, PublicSigningKey authorisedReader, byte[] auth) {
-        return target.getLoginData(username, authorisedReader, auth);
+        return target.getEntryData(username);
     }
 }

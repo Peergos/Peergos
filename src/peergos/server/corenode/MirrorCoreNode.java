@@ -367,7 +367,7 @@ public class MirrorCoreNode implements CoreNode {
             // pick up the new pki data locally
             update();
 
-            res.login.ifPresent(login -> rawAccount.setLoginData(login, new byte[0]));
+            res.login.ifPresent(login -> rawAccount.setLoginData(login));
 
             // commit diff since our mirror above
             for (Map.Entry<PublicKeyHash, byte[]> e : res.pointerState.entrySet()) {
