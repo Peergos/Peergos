@@ -231,7 +231,8 @@ public abstract class UserTests {
     public void expiredSigninAfterPasswordChange() {
         String username = generateUsername();
         String password = "password";
-        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        UserContext context = UserContext.signUpGeneral(username, password, "", LocalDate.now().minusDays(2),
+                network, crypto, SecretGenerationAlgorithm.getDefault(crypto.random), x -> {}).join();
         String newPassword = "G'day mate!";
 
         // change password and set username claim to an expiry in the past
