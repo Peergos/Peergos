@@ -719,6 +719,8 @@ public class UserContext {
     @JsMethod
     public CompletableFuture<UserContext> changePassword(String oldPassword, String newPassword) {
         return getKeyGenAlgorithm().thenCompose(alg -> {
+            if (oldPassword.equals(newPassword))
+                throw new IllegalStateException("You must change to a different password.");
             // Use a new salt, and if this is a legacy account with generated boxer, remove it from generation and use
             // a new generated identity independent of the password
             SecretGenerationAlgorithm newAlgorithm = SecretGenerationAlgorithm.withNewSalt(alg, crypto.random).withoutBoxerOrIdentity();

@@ -260,7 +260,7 @@ public abstract class UserTests {
         try {
             context2.changePassword(password2, password1).join();
         } catch (Throwable t) {
-            Assert.assertTrue(t.getMessage().contains("You cannot reuse a previous password"));
+            Assert.assertTrue(t.getMessage().contains("You must change to a different password."));
         }
     }
 
