@@ -31,6 +31,7 @@ public class NetworkAccess {
 
     public final Hasher hasher;
     public final CoreNode coreNode;
+    public final Account account;
     public final SocialNetwork social;
     public final ContentAddressedStorage dhtClient;
     public final MutablePointers mutable;
@@ -47,6 +48,7 @@ public class NetworkAccess {
     private final boolean isJavascript;
 
     public NetworkAccess(CoreNode coreNode,
+                         Account account,
                          SocialNetwork social,
                          ContentAddressedStorage dhtClient,
                          MutablePointers mutable,
@@ -60,6 +62,7 @@ public class NetworkAccess {
                          CryptreeCache cache,
                          boolean isJavascript) {
         this.coreNode = coreNode;
+        this.account = account;
         this.social = social;
         this.dhtClient = dhtClient;
         this.mutable = mutable;
@@ -76,6 +79,7 @@ public class NetworkAccess {
     }
 
     public NetworkAccess(CoreNode coreNode,
+                         Account account,
                          SocialNetwork social,
                          ContentAddressedStorage dhtClient,
                          MutablePointers mutable,
@@ -87,7 +91,7 @@ public class NetworkAccess {
                          Hasher hasher,
                          List<String> usernames,
                          boolean isJavascript) {
-        this(coreNode, social, dhtClient, mutable, tree, synchronizer, instanceAdmin, spaceUsage, serverMessager,
+        this(coreNode, account, social, dhtClient, mutable, tree, synchronizer, instanceAdmin, spaceUsage, serverMessager,
                 hasher, usernames, new CryptreeCache(), isJavascript);
     }
 
@@ -96,7 +100,7 @@ public class NetworkAccess {
     }
 
     public NetworkAccess withCorenode(CoreNode newCore) {
-        return new NetworkAccess(newCore, social, dhtClient, mutable, tree, synchronizer, instanceAdmin,
+        return new NetworkAccess(newCore, account, social, dhtClient, mutable, tree, synchronizer, instanceAdmin,
                 spaceUsage, serverMessager, hasher, usernames, cache, isJavascript);
     }
 
@@ -104,16 +108,17 @@ public class NetworkAccess {
         ContentAddressedStorage directDht = dhtClient.directToOrigin();
         WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, directDht, hasher);
         MutableTree tree = new MutableTreeImpl(mutable, directDht, hasher, synchronizer);
-        return new NetworkAccess(coreNode, social, directDht, mutable, tree, synchronizer, instanceAdmin,
+        return new NetworkAccess(coreNode, account, social, directDht, mutable, tree, synchronizer, instanceAdmin,
                 spaceUsage, serverMessager, hasher, usernames, isJavascript);
     }
 
-    public static NetworkAccess nonCommittingForSignup(ContentAddressedStorage directDht,
+    public static NetworkAccess nonCommittingForSignup(Account account,
+                                                       ContentAddressedStorage directDht,
                                                        MutablePointers mutable,
                                                        Hasher hasher) {
         WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, directDht, hasher);
         MutableTree tree = new MutableTreeImpl(mutable, directDht, hasher, synchronizer);
-        return new NetworkAccess(null, null, directDht, mutable, tree, synchronizer, null,
+        return new NetworkAccess(null, account, null, directDht, mutable, tree, synchronizer, null,
                 null, null, hasher, Collections.emptyList(), false);
     }
 
@@ -133,7 +138,7 @@ public class NetworkAccess {
     public NetworkAccess clear() {
         WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, dhtClient, hasher);
         MutableTree mutableTree = new MutableTreeImpl(mutable, dhtClient, hasher, synchronizer);
-        return new NetworkAccess(coreNode, social, dhtClient, mutable, mutableTree, synchronizer, instanceAdmin,
+        return new NetworkAccess(coreNode, account, social, dhtClient, mutable, mutableTree, synchronizer, instanceAdmin,
                 spaceUsage, serverMessager, hasher, usernames, isJavascript);
     }
 
@@ -141,7 +146,7 @@ public class NetworkAccess {
         CachingPointers mutable = new CachingPointers(this.mutable, ttl);
         WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, dhtClient, hasher);
         MutableTree mutableTree = new MutableTreeImpl(mutable, dhtClient, hasher, synchronizer);
-        return new NetworkAccess(coreNode, social, dhtClient, mutable, mutableTree, synchronizer, instanceAdmin,
+        return new NetworkAccess(coreNode, account, social, dhtClient, mutable, mutableTree, synchronizer, instanceAdmin,
                 spaceUsage, serverMessager, hasher, usernames, isJavascript);
     }
 
@@ -251,6 +256,7 @@ public class NetworkAccess {
                     ContentAddressedStorage p2pDht = new CachingVerifyingStorage(new RetryStorage(storage, 3),
                             50 * 1024, 1_000, hasher);
                     MutablePointersProxy httpMutable = new HttpMutablePointers(apiPoster, p2pPoster);
+                    Account account = new HttpAccount(apiPoster);
                     MutablePointers p2pMutable =
                             isPeergosServer ?
                                     httpMutable :
@@ -265,13 +271,14 @@ public class NetworkAccess {
                             httpUsage :
                             new ProxyingSpaceUsage(nodeId, core, httpUsage, httpUsage);
                     ServerMessager serverMessager = new ServerMessager.HTTP(apiPoster);
-                    return build(new CommittableStorage(p2pDht), core, p2pMutable, p2pSocial,
+                    return build(new CommittableStorage(p2pDht), core, account, p2pMutable, p2pSocial,
                             new HttpInstanceAdmin(apiPoster), p2pUsage, serverMessager, hasher, usernames, isJavascript);
                 });
     }
 
     private static NetworkAccess build(ContentAddressedStorage dht,
                                        CoreNode coreNode,
+                                       Account account,
                                        MutablePointers mutable,
                                        SocialNetwork social,
                                        InstanceAdmin instanceAdmin,
@@ -282,7 +289,7 @@ public class NetworkAccess {
                                        boolean isJavascript) {
         WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, dht, hasher);
         MutableTree btree = new MutableTreeImpl(mutable, dht, hasher, synchronizer);
-        return new NetworkAccess(coreNode, social, dht, mutable, btree, synchronizer, instanceAdmin,
+        return new NetworkAccess(coreNode, account,social, dht, mutable, btree, synchronizer, instanceAdmin,
                 usage, serverMessager, hasher, usernames, isJavascript);
     }
 
@@ -292,7 +299,7 @@ public class NetworkAccess {
                                                                             ContentAddressedStorage storage) {
         WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, storage, hasher);
         MutableTree mutableTree = new MutableTreeImpl(mutable, storage, null, synchronizer);
-        return CompletableFuture.completedFuture(new NetworkAccess(core, null, storage, mutable, mutableTree,
+        return CompletableFuture.completedFuture(new NetworkAccess(core, null, null, storage, mutable, mutableTree,
                 synchronizer, null, null, null, hasher, Collections.emptyList(), false));
     }
 

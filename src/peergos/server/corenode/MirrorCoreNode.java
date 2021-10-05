@@ -30,6 +30,7 @@ public class MirrorCoreNode implements CoreNode {
     private static final Logger LOG = Logging.LOG();
 
     private final CoreNode writeTarget;
+    private final Account account;
     private final MutablePointers p2pMutable;
     private final DeletableContentAddressedStorage ipfs;
     private final JdbcIpnsAndSocial localPointers;
@@ -45,6 +46,7 @@ public class MirrorCoreNode implements CoreNode {
     private volatile boolean running = true;
 
     public MirrorCoreNode(CoreNode writeTarget,
+                          Account account,
                           MutablePointers p2pMutable,
                           DeletableContentAddressedStorage ipfs,
                           JdbcIpnsAndSocial localPointers,
@@ -55,6 +57,7 @@ public class MirrorCoreNode implements CoreNode {
                           Path statePath,
                           Hasher hasher) {
         this.writeTarget = writeTarget;
+        this.account = account;
         this.p2pMutable = p2pMutable;
         this.ipfs = ipfs;
         this.localPointers = localPointers;
@@ -285,7 +288,7 @@ public class MirrorCoreNode implements CoreNode {
         update();
         usageStore.addUserIfAbsent(username);
         usageStore.addWriter(username, chain.owner);
-        IpfsCoreNode.applyOpLog(chain.owner, setupOperations, ipfs, p2pMutable);
+        IpfsCoreNode.applyOpLog(username, chain.owner, setupOperations, ipfs, p2pMutable, account);
         return Futures.of(Optional.empty());
     }
 

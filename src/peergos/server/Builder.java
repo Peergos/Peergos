@@ -217,7 +217,7 @@ public class Builder {
         return new HttpQuotaAdmin(poster);
     }
 
-    public static CoreNode buildPkiCorenode(MutablePointers mutable, ContentAddressedStorage dht, Args a) {
+    public static CoreNode buildPkiCorenode(MutablePointers mutable, Account account, ContentAddressedStorage dht, Args a) {
         try {
             Crypto crypto = initCrypto();
             PublicKeyHash peergosIdentity = PublicKeyHash.fromString(a.getArg("peergos.identity.hash"));
@@ -246,7 +246,8 @@ public class Builder {
                                 .commit(peergosIdentity, pkiSigner, MaybeMultihash.empty(), mutable, dht, crypto.hasher, tid)
                                 .thenApply(version -> version.get(pkiSigner).hash), dht).join();
 
-            return new IpfsCoreNode(pkiSigner, a.getInt("max-daily-signups"), currentPkiRoot, dht, crypto.hasher, mutable, peergosIdentity);
+            return new IpfsCoreNode(pkiSigner, a.getInt("max-daily-signups"), currentPkiRoot, dht, crypto.hasher,
+                    mutable, account, peergosIdentity);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -264,6 +265,7 @@ public class Builder {
                                          MutablePointersProxy proxingMutable,
                                          JdbcIpnsAndSocial localSocial,
                                          UsageStore usageStore,
+                                         Account account,
                                          Hasher hasher) {
         Multihash nodeId = localStorage.id().join();
         PublicKeyHash peergosId = PublicKeyHash.fromString(a.getArg("peergos.identity.hash"));
@@ -271,9 +273,9 @@ public class Builder {
         // build a mirroring proxying corenode, unless we are the pki node
         boolean isPkiNode = nodeId.equals(pkiServerId);
         return isPkiNode ?
-                buildPkiCorenode(new PinningMutablePointers(localPointers, localStorage), localStorage, a) :
-                new MirrorCoreNode(new HTTPCoreNode(buildP2pHttpProxy(a), pkiServerId), proxingMutable, localStorage,
-                        rawPointers, transactions, localSocial, usageStore, peergosId,
+                buildPkiCorenode(new PinningMutablePointers(localPointers, localStorage), account, localStorage, a) :
+                new MirrorCoreNode(new HTTPCoreNode(buildP2pHttpProxy(a), pkiServerId), account, proxingMutable,
+                        localStorage, rawPointers, transactions, localSocial, usageStore, peergosId,
                         a.fromPeergosDir("pki-mirror-state-path","pki-state.cbor"), hasher);
     }
 

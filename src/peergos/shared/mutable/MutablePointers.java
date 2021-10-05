@@ -1,6 +1,7 @@
 package peergos.shared.mutable;
 
 import peergos.shared.cbor.CborObject;
+import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
@@ -20,6 +21,11 @@ public interface MutablePointers {
      * @return True when successfully completed
      */
     CompletableFuture<Boolean> setPointer(PublicKeyHash owner, PublicKeyHash writer, byte[] writerSignedBtreeRootHash);
+
+    default CompletableFuture<Boolean> setPointer(PublicKeyHash owner, SigningPrivateKeyAndPublicHash writer, HashCasPair casUpdate) {
+        byte[] signed = writer.secret.signMessage(casUpdate.serialize());
+        return setPointer(owner, writer.publicKeyHash, signed);
+    }
 
     /** Get the current hash a public key maps to
      *

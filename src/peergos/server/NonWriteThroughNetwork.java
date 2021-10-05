@@ -1,6 +1,7 @@
 package peergos.server;
 
 import peergos.server.corenode.*;
+import peergos.server.login.*;
 import peergos.server.mutable.*;
 import peergos.server.social.*;
 import peergos.server.storage.*;
@@ -18,6 +19,7 @@ import java.util.*;
 public class NonWriteThroughNetwork extends NetworkAccess {
 
     protected NonWriteThroughNetwork(CoreNode coreNode,
+                                     Account account,
                                      SocialNetwork social,
                                      ContentAddressedStorage ipfs,
                                      MutablePointers mutable,
@@ -28,17 +30,19 @@ public class NonWriteThroughNetwork extends NetworkAccess {
                                      Hasher hasher,
                                      List<String> usernames,
                                      boolean isJavascript) {
-        super(coreNode, social, ipfs, mutable, tree, synchronizer, instanceAdmin, spaceUsage, null, hasher, usernames, isJavascript);
+        super(coreNode, account, social, ipfs, mutable, tree, synchronizer, instanceAdmin, spaceUsage, null, hasher, usernames, isJavascript);
     }
 
     public static NetworkAccess build(NetworkAccess source) {
         ContentAddressedStorage nonWriteThroughIpfs = new NonWriteThroughStorage(source.dhtClient, source.hasher);
         MutablePointers nonWriteThroughPointers = new NonWriteThroughMutablePointers(source.mutable, nonWriteThroughIpfs);
         NonWriteThroughCoreNode nonWriteThroughCoreNode = new NonWriteThroughCoreNode(source.coreNode, nonWriteThroughIpfs);
+        NonWriteThroughAccount nonWriteThroughAccount = new NonWriteThroughAccount(source.account);
         NonWriteThroughSocialNetwork nonWriteThroughSocial = new NonWriteThroughSocialNetwork(source.social, nonWriteThroughIpfs);
         WriteSynchronizer synchronizer = new WriteSynchronizer(nonWriteThroughPointers, nonWriteThroughIpfs, source.hasher);
         MutableTree nonWriteThroughTree = new MutableTreeImpl(nonWriteThroughPointers, nonWriteThroughIpfs, source.hasher, synchronizer);
         return new NonWriteThroughNetwork(nonWriteThroughCoreNode,
+                nonWriteThroughAccount,
                 nonWriteThroughSocial,
                 nonWriteThroughIpfs,
                 nonWriteThroughPointers,

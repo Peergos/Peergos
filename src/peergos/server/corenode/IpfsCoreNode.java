@@ -29,6 +29,7 @@ public class IpfsCoreNode implements CoreNode {
     private final ContentAddressedStorage ipfs;
     private final Hasher hasher;
     private final MutablePointers mutable;
+    private final Account account;
     private final SigningPrivateKeyAndPublicHash signer;
 
     private final Map<String, List<UserPublicKeyLink>> chains = new ConcurrentHashMap<>();
@@ -44,11 +45,13 @@ public class IpfsCoreNode implements CoreNode {
                         ContentAddressedStorage ipfs,
                         Hasher hasher,
                         MutablePointers mutable,
+                        Account account,
                         PublicKeyHash peergosIdentity) {
         this.currentRoot = MaybeMultihash.empty();
         this.ipfs = ipfs;
         this.hasher = hasher;
         this.mutable = mutable;
+        this.account = account;
         this.peergosIdentity = peergosIdentity;
         this.signer = pkiSigner;
         this.update(currentRoot);
@@ -150,7 +153,7 @@ public class IpfsCoreNode implements CoreNode {
      * @param ipfs
      * @param mutable
      */
-    public static void applyOpLog(PublicKeyHash owner, OpLog ops, ContentAddressedStorage ipfs, MutablePointers mutable) {
+    public static void applyOpLog(String username, PublicKeyHash owner, OpLog ops, ContentAddressedStorage ipfs, MutablePointers mutable, Account account) {
         TransactionId tid = ipfs.startTransaction(owner).join();
         for (Either<OpLog.PointerWrite, OpLog.BlockWrite> op : ops.operations) {
             if (op.isA()) {
@@ -163,6 +166,11 @@ public class IpfsCoreNode implements CoreNode {
                 else
                     ipfs.put(owner, block.writer, block.signature, block.block, tid).join();
             }
+        }
+        if (ops.loginData != null) {
+            if (! ops.loginData.left.username.equals(username))
+                throw new IllegalStateException("Invalid signup data!");
+            account.setLoginData(ops.loginData.left, ops.loginData.right).join();
         }
         ipfs.closeTransaction(owner, tid).join();
     }
@@ -177,7 +185,7 @@ public class IpfsCoreNode implements CoreNode {
         if (pkiResult.isPresent())
             return Futures.of(pkiResult);
 
-        applyOpLog(chain.owner, setupOperations, ipfs, mutable);
+        applyOpLog(username, chain.owner, setupOperations, ipfs, mutable, account);
 
         return Futures.of(Optional.empty());
     }

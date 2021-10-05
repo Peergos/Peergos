@@ -1,6 +1,7 @@
 package peergos.server;
 
 import peergos.server.cli.CLI;
+import peergos.server.login.*;
 import peergos.server.messages.*;
 import peergos.server.space.*;
 import peergos.server.sql.*;
@@ -131,6 +132,7 @@ public class Main extends Builder {
                     new Command.Arg("mutable-pointers-file", "The filename for the mutable pointers datastore", true, "mutable.sql"),
                     new Command.Arg("social-sql-file", "The filename for the follow requests datastore", true, "social.sql"),
                     new Command.Arg("space-requests-sql-file", "The filename for the space requests datastore", true, "space-requests.sql"),
+                    new Command.Arg("account-sql-file", "The filename for the login datastore", true, "login.sql"),
                     new Command.Arg("quotas-sql-file", "The filename for the quotas datastore", true, "quotas.sql"),
                     new Command.Arg("space-usage-sql-file", "The filename for the space usage datastore", true, "space-usage.sql"),
                     new Command.Arg("server-messages-sql-file", "The filename for the server messages datastore", true, "server-messages.sql"),
@@ -204,11 +206,7 @@ public class Main extends Builder {
             // recreate peergos user and pki keys
             String password = args.getArg("peergos.password");
             String pkiUsername = "peergos";
-            UserWithRoot peergos = UserUtil.generateUser(pkiUsername, password, crypto.hasher, crypto.symmetricProvider,
-                    crypto.random, crypto.signer, crypto.boxer, SecretGenerationAlgorithm.getDefaultWithoutExtraSalt()).get();
 
-            SigningKeyPair peergosIdentityKeys = peergos.getUser();
-            PublicKeyHash peergosPublicHash = ContentAddressedStorage.hashKey(peergosIdentityKeys.publicSigningKey);
             PublicSigningKey pkiPublic =
                     PublicSigningKey.fromByteArray(
                             Files.readAllBytes(args.fromPeergosDir("pki.public.key.path")));
@@ -233,10 +231,10 @@ public class Main extends Builder {
                 SigningPrivateKeyAndPublicHash pkiKeyPair = new SigningPrivateKeyAndPublicHash(pkiPublicHash, pkiSecret);
 
                 // write pki public key to ipfs
-                IpfsTransaction.call(peergosPublicHash,
-                        tid -> network.dhtClient.putSigningKey(peergosIdentityKeys.secretSigningKey
-                                .signMessage(pkiPublic.serialize()), peergosPublicHash, pkiPublic, tid),
-                        network.dhtClient).get();
+                IpfsTransaction.call(context.signer.publicKeyHash,
+                        tid -> network.dhtClient.putSigningKey(context.signer.secret
+                                .signMessage(pkiPublic.serialize()), context.signer.publicKeyHash, pkiPublic, tid),
+                        network.dhtClient).join();
                 context.addNamedOwnedKeyAndCommit("pki", pkiKeyPair).join();
             }
             // Create /peergos/releases and make it public
@@ -295,6 +293,7 @@ public class Main extends Builder {
                     new Command.Arg("social-sql-file", "The filename for the follow requests (or :memory: for ram based)", true, "social.sql"),
                     new Command.Arg("transactions-sql-file", "The filename for the open transactions datastore", true, "transactions.sql"),
                     new Command.Arg("space-requests-sql-file", "The filename for the space requests datastore", true, "space-requests.sql"),
+                    new Command.Arg("account-sql-file", "The filename for the login datastore", true, "login.sql"),
                     new Command.Arg("space-usage-sql-file", "The filename for the space usage datastore", true, "space-usage.sql"),
                     new Command.Arg("ipfs-api-address", "ipfs api port", true, "/ip4/127.0.0.1/tcp/5001"),
                     new Command.Arg("ipfs-gateway-address", "ipfs gateway port", true, "/ip4/127.0.0.1/tcp/8080"),
@@ -517,9 +516,10 @@ public class Main extends Builder {
             UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
             JdbcIpnsAndSocial rawSocial = new JdbcIpnsAndSocial(getDBConnector(a, "social-sql-file", dbConnectionPool), sqlCommands);
             HttpSpaceUsage httpSpaceUsage = new HttpSpaceUsage(p2pHttpProxy, p2pHttpProxy);
+            Account rawAccount = new AccountWithStorage(localStorage, localPointers, new JdbcAccount(getDBConnector(a, "account-sql-file", dbConnectionPool), sqlCommands));
 
             CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable,
-                    rawSocial, usageStore, hasher);
+                    rawSocial, usageStore, rawAccount, hasher);
 
             QuotaAdmin userQuotas = buildSpaceQuotas(a, localStorage, core,
                     getDBConnector(a, "space-requests-sql-file", dbConnectionPool),
@@ -556,7 +556,9 @@ public class Main extends Builder {
             boolean enableWaitlist = a.getBoolean("enable-wait-list", false);
             Admin storageAdmin = new Admin(adminUsernames, userQuotas, core, localStorage, enableWaitlist);
             ProxyingSpaceUsage p2pSpaceUsage = new ProxyingSpaceUsage(nodeId, corePropagator, spaceChecker, httpSpaceUsage);
-            UserService peergos = new UserService(p2pDht, crypto, corePropagator, p2pSocial, p2mMutable, storageAdmin,
+
+            VerifyingAccount account = new VerifyingAccount(rawAccount, core, localStorage);
+            UserService peergos = new UserService(p2pDht, crypto, corePropagator, account, p2pSocial, p2mMutable, storageAdmin,
                     p2pSpaceUsage, new ServerMessageStore(getDBConnector(a, "server-messages-sql-file", dbConnectionPool),
                     sqlCommands, core, p2pDht), gc);
             InetSocketAddress localAddress = new InetSocketAddress("localhost", userAPIAddress.getPort());

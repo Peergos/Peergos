@@ -21,12 +21,12 @@ public class RandomSecretType implements SecretGenerationAlgorithm {
     }
 
     @Override
-    public boolean includesBoxerGeneration() {
+    public boolean generateBoxerAndIdentity() {
         return false;
     }
 
     @Override
-    public SecretGenerationAlgorithm withoutBoxer() {
+    public SecretGenerationAlgorithm withoutBoxerOrIdentity() {
         return this;
     }
 

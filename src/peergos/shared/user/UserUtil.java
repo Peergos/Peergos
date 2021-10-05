@@ -25,7 +25,7 @@ public class UserUtil {
         CompletableFuture<byte[]> fut = hasher.hashToKeyBytes(username + algorithm.getExtraSalt(), password, algorithm);
         return fut.thenApply(keyBytes -> {
             byte[] signBytesSeed = Arrays.copyOfRange(keyBytes, 0, 32);
-            boolean hasBoxer = algorithm.includesBoxerGeneration();
+            boolean hasBoxer = algorithm.generateBoxerAndIdentity();
             byte[] secretBoxBytes = hasBoxer ? Arrays.copyOfRange(keyBytes, 32, 64) : random.randomBytes(32);
 
             byte[] rootKeyBytes = Arrays.copyOfRange(keyBytes, hasBoxer ? 64 : 32, hasBoxer ? 96 : 64);

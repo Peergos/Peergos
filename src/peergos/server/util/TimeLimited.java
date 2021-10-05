@@ -23,19 +23,23 @@ public class TimeLimited {
             Optional<PublicSigningKey> ownerOpt = ipfs.getSigningKey(owner).join();
             if (! ownerOpt.isPresent())
                 throw new IllegalStateException("Couldn't retrieve owner key!");
-            byte[] raw = ownerOpt.get().unsignMessage(signedTime);
-            CborObject cbor = CborObject.fromByteArray(raw);
-            if (! (cbor instanceof CborObject.CborLong))
-                throw new IllegalStateException("Invalid cbor for time in authorisation!");
-            long utcMillis = ((CborObject.CborLong) cbor).value;
-            long now = System.currentTimeMillis();
-            if (Math.abs(now - utcMillis) > durationSeconds * 1_000)
-                throw new IllegalStateException("Stale auth time, is your clock accurate?");
-            // This is a valid request
-            return utcMillis;
+            return isAllowedTime(signedTime, durationSeconds, ownerOpt.get());
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public static long isAllowedTime(byte[] signedTime, int durationSeconds, PublicSigningKey pubKey) {
+        byte[] raw = pubKey.unsignMessage(signedTime);
+        CborObject cbor = CborObject.fromByteArray(raw);
+        if (! (cbor instanceof CborObject.CborLong))
+            throw new IllegalStateException("Invalid cbor for time in authorisation!");
+        long utcMillis = ((CborObject.CborLong) cbor).value;
+        long now = System.currentTimeMillis();
+        if (Math.abs(now - utcMillis) > durationSeconds * 1_000)
+            throw new IllegalStateException("Stale auth time, is your clock accurate?");
+        // This is a valid request
+        return utcMillis;
     }
 
     /**

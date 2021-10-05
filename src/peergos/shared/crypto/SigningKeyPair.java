@@ -54,7 +54,7 @@ public class SigningKeyPair implements Cborable
         return fromCbor(CborObject.fromByteArray(raw));
     }
 
-    public static SigningKeyPair fromCbor(CborObject cbor) {
+    public static SigningKeyPair fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Incorrect cbor for SigningKeyPair: " + cbor);
 

@@ -295,13 +295,18 @@ public abstract class UserTests {
         String username = generateUsername();
         String password = "password";
         UserContext userContext = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
-        PublicBoxingKey initialBoxer = userContext.getPublicKeys(username).join().get().right;
+        Pair<PublicKeyHash, PublicBoxingKey> keyPairs = userContext.getPublicKeys(username).join().get();
+        PublicBoxingKey initialBoxer = keyPairs.right;
+        PublicKeyHash initialIdentity = keyPairs.left;
         String newPassword = "newPassword";
-        userContext.changePassword(password, newPassword).get();
+        UserContext updated = userContext.changePassword(password, newPassword).join();
         MultiUserTests.checkUserValidity(network, username);
 
-        PublicBoxingKey newBoxer = userContext.getPublicKeys(username).join().get().right;
+        Pair<PublicKeyHash, PublicBoxingKey> updatedPairs = updated.getPublicKeys(username).join().get();
+        PublicBoxingKey newBoxer = updatedPairs.right;
+        PublicKeyHash newIdentity = updatedPairs.left;
         Assert.assertTrue(newBoxer.equals(initialBoxer));
+        Assert.assertTrue(newIdentity.equals(initialIdentity));
         UserContext changedPassword = PeergosNetworkUtils.ensureSignedUp(username, newPassword, network, crypto);
 
         // change it again
@@ -318,8 +323,12 @@ public abstract class UserTests {
         UserContext userContext = UserContext.signUpGeneral(username, password, "", LocalDate.now().plusMonths(2),
                 network, crypto, SecretGenerationAlgorithm.getLegacy(crypto.random), x -> {}).join();
         SecretGenerationAlgorithm originalAlg = WriterData.fromCbor(UserContext.getWriterDataCbor(network, username).join().right).generationAlgorithm.get();
-        Assert.assertTrue("legacy accounts generate boxer", originalAlg.includesBoxerGeneration());
-        PublicBoxingKey initialBoxer = userContext.getPublicKeys(username).join().get().right;
+        Assert.assertTrue("legacy accounts generate boxer", originalAlg.generateBoxerAndIdentity());
+        Pair<PublicKeyHash, PublicBoxingKey> keyPairs = userContext.getPublicKeys(username).join().get();
+        PublicBoxingKey initialBoxer = keyPairs.right;
+        PublicKeyHash initialIdentity = keyPairs.left;
+        WriterData initialWd = WriterData.getWriterData(initialIdentity, initialIdentity, network.mutable, network.dhtClient).join().props;
+        Assert.assertTrue(initialWd.staticData.isPresent());
 
         UserContext login = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
 
@@ -328,11 +337,16 @@ public abstract class UserTests {
         MultiUserTests.checkUserValidity(network, username);
 
         UserContext changedPassword = PeergosNetworkUtils.ensureSignedUp(username, newPassword, network, crypto);
-        PublicBoxingKey newBoxer = changedPassword.getPublicKeys(username).join().get().right;
+        Pair<PublicKeyHash, PublicBoxingKey> newKeyPairs = changedPassword.getPublicKeys(username).join().get();
+        PublicBoxingKey newBoxer = newKeyPairs.right;
+        PublicKeyHash newIdentity = newKeyPairs.left;
         Assert.assertTrue(newBoxer.equals(initialBoxer));
+        Assert.assertTrue(! newIdentity.equals(initialIdentity));
 
         SecretGenerationAlgorithm alg = WriterData.fromCbor(UserContext.getWriterDataCbor(network, username).join().right).generationAlgorithm.get();
-        Assert.assertTrue("password change upgrades legacy accounts", ! alg.includesBoxerGeneration());
+        Assert.assertTrue("password change upgrades legacy accounts", ! alg.generateBoxerAndIdentity());
+        WriterData finalWd = WriterData.getWriterData(newIdentity, newIdentity, network.mutable, network.dhtClient).join().props;
+        Assert.assertTrue(finalWd.staticData.isEmpty());
     }
 
     @Test
@@ -373,10 +387,10 @@ public abstract class UserTests {
     public void changeLoginAlgorithm() throws Exception {
         String username = generateUsername();
         String password = "password";
-        UserContext userContext = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
-        SecretGenerationAlgorithm algo = userContext.getKeyGenAlgorithm().get();
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        SecretGenerationAlgorithm algo = context.getKeyGenAlgorithm().get();
         ScryptGenerator newAlgo = new ScryptGenerator(19, 8, 1, 96, algo.getExtraSalt());
-        userContext.changePassword(password, password, algo, newAlgo, LocalDate.now().plusMonths(2)).get();
+        context.changePassword(password, password, algo, newAlgo, LocalDate.now().plusMonths(2)).get();
         PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
     }
 
