@@ -389,7 +389,7 @@ public abstract class UserTests {
         String password = "password";
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         SecretGenerationAlgorithm algo = context.getKeyGenAlgorithm().get();
-        ScryptGenerator newAlgo = new ScryptGenerator(19, 8, 1, 96, algo.getExtraSalt());
+        ScryptGenerator newAlgo = new ScryptGenerator(19, 8, 1, 64, algo.getExtraSalt());
         context.changePassword(password, password, algo, newAlgo, LocalDate.now().plusMonths(2)).get();
         PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
     }
