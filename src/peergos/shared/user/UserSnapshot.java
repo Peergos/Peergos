@@ -11,10 +11,14 @@ public class UserSnapshot implements Cborable {
 
     public final Map<PublicKeyHash, byte[]> pointerState;
     public final List<BlindFollowRequest> pendingFollowReqs;
+    public final Optional<LoginData> login;
 
-    public UserSnapshot(Map<PublicKeyHash, byte[]> pointerState, List<BlindFollowRequest> pendingFollowReqs) {
+    public UserSnapshot(Map<PublicKeyHash, byte[]> pointerState,
+                        List<BlindFollowRequest> pendingFollowReqs,
+                        Optional<LoginData> login) {
         this.pointerState = pointerState;
         this.pendingFollowReqs = pendingFollowReqs;
+        this.login = login;
     }
 
     @Override
@@ -30,6 +34,7 @@ public class UserSnapshot implements Cborable {
                     TreeMap::new
                 ));
         state.put("p", new CborObject.CborList(pointerMap));
+        login.ifPresent(d -> state.put("l", d));
         return CborObject.CborMap.build(state);
     }
 
@@ -40,10 +45,11 @@ public class UserSnapshot implements Cborable {
         List<BlindFollowRequest> pendingFollowReqs = m.getList("f", BlindFollowRequest::fromCbor);
         Map<PublicKeyHash, byte[]> pointerState = ((CborObject.CborList)m.get("p"))
                 .getMap(PublicKeyHash::fromCbor, c -> ((CborObject.CborByteArray)c).value);
-        return new UserSnapshot(pointerState, pendingFollowReqs);
+        Optional<LoginData> login = m.getOptional("l", LoginData::fromCbor);
+        return new UserSnapshot(pointerState, pendingFollowReqs, login);
     }
 
     public static UserSnapshot empty() {
-        return new UserSnapshot(Collections.emptyMap(), Collections.emptyList());
+        return new UserSnapshot(Collections.emptyMap(), Collections.emptyList(), Optional.empty());
     }
 }

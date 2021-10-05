@@ -516,10 +516,11 @@ public class Main extends Builder {
             UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
             JdbcIpnsAndSocial rawSocial = new JdbcIpnsAndSocial(getDBConnector(a, "social-sql-file", dbConnectionPool), sqlCommands);
             HttpSpaceUsage httpSpaceUsage = new HttpSpaceUsage(p2pHttpProxy, p2pHttpProxy);
-            Account rawAccount = new AccountWithStorage(localStorage, localPointers, new JdbcAccount(getDBConnector(a, "account-sql-file", dbConnectionPool), sqlCommands));
+            JdbcAccount rawAccount = new JdbcAccount(getDBConnector(a, "account-sql-file", dbConnectionPool), sqlCommands);
+            Account account = new AccountWithStorage(localStorage, localPointers, rawAccount);
 
             CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable,
-                    rawSocial, usageStore, rawAccount, hasher);
+                    rawSocial, usageStore, rawAccount, account, hasher);
 
             QuotaAdmin userQuotas = buildSpaceQuotas(a, localStorage, core,
                     getDBConnector(a, "space-requests-sql-file", dbConnectionPool),
@@ -557,8 +558,8 @@ public class Main extends Builder {
             Admin storageAdmin = new Admin(adminUsernames, userQuotas, core, localStorage, enableWaitlist);
             ProxyingSpaceUsage p2pSpaceUsage = new ProxyingSpaceUsage(nodeId, corePropagator, spaceChecker, httpSpaceUsage);
 
-            VerifyingAccount account = new VerifyingAccount(rawAccount, core, localStorage);
-            UserService peergos = new UserService(p2pDht, crypto, corePropagator, account, p2pSocial, p2mMutable, storageAdmin,
+            VerifyingAccount verifyingAccount = new VerifyingAccount(rawAccount, core, localStorage);
+            UserService peergos = new UserService(p2pDht, crypto, corePropagator, verifyingAccount, p2pSocial, p2mMutable, storageAdmin,
                     p2pSpaceUsage, new ServerMessageStore(getDBConnector(a, "server-messages-sql-file", dbConnectionPool),
                     sqlCommands, core, p2pDht), gc);
             InetSocketAddress localAddress = new InetSocketAddress("localhost", userAPIAddress.getPort());

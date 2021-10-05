@@ -1,6 +1,7 @@
 package peergos.server.corenode;
 
 import peergos.server.*;
+import peergos.server.login.*;
 import peergos.server.space.*;
 import peergos.server.storage.*;
 import peergos.server.util.*;
@@ -30,6 +31,7 @@ public class MirrorCoreNode implements CoreNode {
     private static final Logger LOG = Logging.LOG();
 
     private final CoreNode writeTarget;
+    private final JdbcAccount rawAccount;
     private final Account account;
     private final MutablePointers p2pMutable;
     private final DeletableContentAddressedStorage ipfs;
@@ -46,6 +48,7 @@ public class MirrorCoreNode implements CoreNode {
     private volatile boolean running = true;
 
     public MirrorCoreNode(CoreNode writeTarget,
+                          JdbcAccount rawAccount,
                           Account account,
                           MutablePointers p2pMutable,
                           DeletableContentAddressedStorage ipfs,
@@ -57,6 +60,7 @@ public class MirrorCoreNode implements CoreNode {
                           Path statePath,
                           Hasher hasher) {
         this.writeTarget = writeTarget;
+        this.rawAccount = rawAccount;
         this.account = account;
         this.p2pMutable = p2pMutable;
         this.ipfs = ipfs;
@@ -321,7 +325,8 @@ public class MirrorCoreNode implements CoreNode {
                         .map(v -> new Pair<>(e.getKey(), v))
                         .stream())
                 .collect(Collectors.toMap(p -> p.left, p -> p.right)),
-                in.pendingFollowReqs);
+                in.pendingFollowReqs,
+                in.login);
     }
 
     @Override
@@ -343,7 +348,8 @@ public class MirrorCoreNode implements CoreNode {
             ProofOfWork work = ProofOfWork.empty();
 
             UserSnapshot snapshot = WriterData.getUserSnapshot(username, this, p2pMutable, ipfs, hasher)
-                    .thenApply(pointers -> new UserSnapshot(pointers, localSocial.getAndParseFollowRequests(owner))).join();
+                    .thenApply(pointers -> new UserSnapshot(pointers, localSocial.getAndParseFollowRequests(owner),
+                            rawAccount.getLoginData(username))).join();
             updateChain(username, newChain, work, "").join();
             // from this point on new writes are proxied to the new storage server
             return Futures.of(update(snapshot));
@@ -360,6 +366,8 @@ public class MirrorCoreNode implements CoreNode {
             UserSnapshot res = writeTarget.migrateUser(username, newChain, currentStorageId).join();
             // pick up the new pki data locally
             update();
+
+            res.login.ifPresent(login -> rawAccount.setLoginData(login, new byte[0]));
 
             // commit diff since our mirror above
             for (Map.Entry<PublicKeyHash, byte[]> e : res.pointerState.entrySet()) {

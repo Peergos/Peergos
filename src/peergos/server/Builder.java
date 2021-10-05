@@ -7,6 +7,7 @@ import peergos.server.crypto.asymmetric.curve25519.*;
 import peergos.server.crypto.hash.*;
 import peergos.server.crypto.random.*;
 import peergos.server.crypto.symmetric.*;
+import peergos.server.login.*;
 import peergos.server.mutable.*;
 import peergos.server.space.*;
 import peergos.server.sql.*;
@@ -265,6 +266,7 @@ public class Builder {
                                          MutablePointersProxy proxingMutable,
                                          JdbcIpnsAndSocial localSocial,
                                          UsageStore usageStore,
+                                         JdbcAccount rawAccount,
                                          Account account,
                                          Hasher hasher) {
         Multihash nodeId = localStorage.id().join();
@@ -274,7 +276,7 @@ public class Builder {
         boolean isPkiNode = nodeId.equals(pkiServerId);
         return isPkiNode ?
                 buildPkiCorenode(new PinningMutablePointers(localPointers, localStorage), account, localStorage, a) :
-                new MirrorCoreNode(new HTTPCoreNode(buildP2pHttpProxy(a), pkiServerId), account, proxingMutable,
+                new MirrorCoreNode(new HTTPCoreNode(buildP2pHttpProxy(a), pkiServerId), rawAccount, account, proxingMutable,
                         localStorage, rawPointers, transactions, localSocial, usageStore, peergosId,
                         a.fromPeergosDir("pki-mirror-state-path","pki-state.cbor"), hasher);
     }

@@ -114,6 +114,24 @@ public class JdbcAccount implements Account {
         }
     }
 
+    public Optional<LoginData> getLoginData(String username) {
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(GET)) {
+            stmt.setString(1, username);
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                UserStaticData entry = UserStaticData.fromCbor(CborObject.fromByteArray(Base64.getDecoder().decode(rs.getString("entry"))));
+                PublicSigningKey authorisedReader = PublicSigningKey.fromCbor(CborObject.fromByteArray(Base64.getDecoder().decode(rs.getString("reader"))));
+                return Optional.of(new LoginData(username, entry, authorisedReader, Optional.empty()));
+            }
+
+            return Optional.empty();
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
+
     public synchronized void close() {
         if (isClosed)
             return;
