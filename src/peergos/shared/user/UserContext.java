@@ -175,7 +175,6 @@ public class UserContext {
             boolean legacyAccount = userData.staticData.isPresent();
             PublicSigningKey loginPub = generatedCredentials.getUser().publicSigningKey;
             SecretSigningKey loginSecret = generatedCredentials.getUser().secretSigningKey;
-//            PublicKeyHash loginHash = ContentAddressedStorage.hashKey(loginPub);
             return (legacyAccount ?
                     Futures.of(userData.staticData.get()) :
                     network.account.getLoginData(username, loginPub, TimeLimitedClient.signNow(loginSecret))).thenCompose(entryData -> {
@@ -764,8 +763,8 @@ public class UserContext {
                                                 HashCasPair pointerCas = new HashCasPair(cwd.hash, MaybeMultihash.of(new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256, blockHash)));
                                                 OpLog.PointerWrite pointerWrite = new OpLog.PointerWrite(signer.publicKeyHash, signer.secret.signMessage(pointerCas.serialize()));
                                                 LoginData updatedLoginData = new LoginData(username, updatedEntry, newLoginPublicKey, Optional.of(new Pair<>(blockWrite, pointerWrite)));
-                                                return network.account.setLoginData(updatedLoginData, TimeLimitedClient.signNow(signer.secret))
-                                                        .thenCompose(b -> UserContext.signIn(username, newPassword, network, crypto));
+                                                return network.account.setLoginData(updatedLoginData, signer)
+                                                        .thenCompose(b -> UserContext.signIn(username, newPassword, network.clear(), crypto));
                                             });
                                         });
                                     });

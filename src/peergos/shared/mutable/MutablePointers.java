@@ -47,6 +47,10 @@ public interface MutablePointers {
                         CompletableFuture.completedFuture(MaybeMultihash.empty()));
     }
 
+    default MutablePointers clearCache() {
+        return this;
+    }
+
     static CompletableFuture<MaybeMultihash> parsePointerTarget(byte[] pointerCas,
                                                                 PublicKeyHash writerKeyHash,
                                                                 ContentAddressedStorage ipfs) {
