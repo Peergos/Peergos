@@ -37,6 +37,6 @@ public class AccountWithStorage implements Account {
 
     @Override
     public CompletableFuture<UserStaticData> getLoginData(String username, PublicSigningKey authorisedReader, byte[] auth) {
-        return target.getEntryData(username);
+        return target.getEntryData(username, authorisedReader);
     }
 }

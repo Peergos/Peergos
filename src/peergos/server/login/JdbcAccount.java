@@ -18,6 +18,7 @@ public class JdbcAccount {
 
     private static final String CREATE = "INSERT INTO login (username, entry, reader) VALUES(?, ?, ?)";
     private static final String UPDATE = "UPDATE login SET entry=?, reader=? WHERE username = ?";
+    private static final String GET_AUTH = "SELECT * FROM login WHERE username = ? AND reader = ? LIMIT 1;";
     private static final String GET = "SELECT * FROM login WHERE username = ? LIMIT 1;";
 
     private volatile boolean isClosed;
@@ -96,16 +97,17 @@ public class JdbcAccount {
         }
     }
 
-    public CompletableFuture<UserStaticData> getEntryData(String username) {
+    public CompletableFuture<UserStaticData> getEntryData(String username, PublicSigningKey authorisedReader) {
         try (Connection conn = getConnection();
-             PreparedStatement stmt = conn.prepareStatement(GET)) {
+             PreparedStatement stmt = conn.prepareStatement(GET_AUTH)) {
             stmt.setString(1, username);
+            stmt.setString(2, new String(Base64.getEncoder().encode(authorisedReader.serialize())));
             ResultSet rs = stmt.executeQuery();
             if (rs.next()) {
                 return CompletableFuture.completedFuture(UserStaticData.fromCbor(CborObject.fromByteArray(Base64.getDecoder().decode(rs.getString("entry")))));
             }
 
-            return Futures.errored(new IllegalStateException("No login data for " + username));
+            return Futures.errored(new IllegalStateException("Incorrect password"));
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             return Futures.errored(sqe);
