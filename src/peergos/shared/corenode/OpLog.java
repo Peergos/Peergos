@@ -230,8 +230,10 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
         state.put("ops", new CborObject.CborList(operations.stream()
                 .map(e -> e.map(PointerWrite::toCbor, BlockWrite::toCbor))
                 .collect(Collectors.toList())));
-        state.put("login", loginData.left);
-        state.put("loginAuth", new CborObject.CborByteArray(loginData.right));
+        if (loginData != null) {
+            state.put("login", loginData.left);
+            state.put("loginAuth", new CborObject.CborByteArray(loginData.right));
+        }
         return CborObject.CborMap.build(state);
     }
 
@@ -240,8 +242,11 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
             throw new IllegalStateException("Invalid cbor for OpLog!");
         CborObject.CborMap m = (CborObject.CborMap) cbor;
         List<Either<PointerWrite, BlockWrite>> ops = m.getList("ops", OpLog::parseOperation);
-        LoginData login = m.get("login", LoginData::fromCbor);
-        byte[] loginAuth = m.getByteArray("loginAuth");
-        return new OpLog(ops, new Pair<>(login, loginAuth));
+        if (m.containsKey("login")) {
+            LoginData login = m.get("login", LoginData::fromCbor);
+            byte[] loginAuth = m.getByteArray("loginAuth");
+            return new OpLog(ops, new Pair<>(login, loginAuth));
+        }
+        return new OpLog(ops, null);
     }
 }
