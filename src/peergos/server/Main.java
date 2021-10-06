@@ -558,7 +558,9 @@ public class Main extends Builder {
             Admin storageAdmin = new Admin(adminUsernames, userQuotas, core, localStorage, enableWaitlist);
             ProxyingSpaceUsage p2pSpaceUsage = new ProxyingSpaceUsage(nodeId, corePropagator, spaceChecker, httpSpaceUsage);
 
-            VerifyingAccount verifyingAccount = new VerifyingAccount(account, core, localStorage);
+            AccountProxy accountProxy = new HttpAccount(p2pHttpProxy, pkiServerNodeId);
+            Account p2pAccount = new ProxyingAccount(nodeId, core, account, accountProxy);
+            VerifyingAccount verifyingAccount = new VerifyingAccount(p2pAccount, core, localStorage);
             UserService peergos = new UserService(p2pDht, crypto, corePropagator, verifyingAccount, p2pSocial, p2mMutable, storageAdmin,
                     p2pSpaceUsage, new ServerMessageStore(getDBConnector(a, "server-messages-sql-file", dbConnectionPool),
                     sqlCommands, core, p2pDht), gc);

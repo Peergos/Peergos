@@ -107,7 +107,9 @@ public class JdbcAccount {
                 return CompletableFuture.completedFuture(UserStaticData.fromCbor(CborObject.fromByteArray(Base64.getDecoder().decode(rs.getString("entry")))));
             }
 
-            return Futures.errored(new IllegalStateException("Incorrect password"));
+            if (hasEntry(username))
+                return Futures.errored(new IllegalStateException("Incorrect password"));
+            return Futures.errored(new IllegalStateException("Unknown username. Did you enter it correctly?"));
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             return Futures.errored(sqe);

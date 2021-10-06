@@ -257,7 +257,7 @@ public class NetworkAccess {
                     ContentAddressedStorage p2pDht = new CachingVerifyingStorage(new RetryStorage(storage, 3),
                             50 * 1024, 1_000, hasher);
                     MutablePointersProxy httpMutable = new HttpMutablePointers(apiPoster, p2pPoster);
-                    Account account = new HttpAccount(apiPoster);
+                    Account account = new HttpAccount(apiPoster, p2pPoster);
                     MutablePointers p2pMutable =
                             isPeergosServer ?
                                     httpMutable :
