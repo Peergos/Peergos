@@ -518,6 +518,7 @@ public class Main extends Builder {
             HttpSpaceUsage httpSpaceUsage = new HttpSpaceUsage(p2pHttpProxy, p2pHttpProxy);
             JdbcAccount rawAccount = new JdbcAccount(getDBConnector(a, "account-sql-file", dbConnectionPool), sqlCommands);
             Account account = new AccountWithStorage(localStorage, localPointers, rawAccount);
+            AccountProxy accountProxy = new HttpAccount(p2pHttpProxy, pkiServerNodeId);
 
             CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable,
                     rawSocial, usageStore, rawAccount, account, hasher);
@@ -558,7 +559,6 @@ public class Main extends Builder {
             Admin storageAdmin = new Admin(adminUsernames, userQuotas, core, localStorage, enableWaitlist);
             ProxyingSpaceUsage p2pSpaceUsage = new ProxyingSpaceUsage(nodeId, corePropagator, spaceChecker, httpSpaceUsage);
 
-            AccountProxy accountProxy = new HttpAccount(p2pHttpProxy, pkiServerNodeId);
             Account p2pAccount = new ProxyingAccount(nodeId, core, account, accountProxy);
             VerifyingAccount verifyingAccount = new VerifyingAccount(p2pAccount, core, localStorage);
             UserService peergos = new UserService(p2pDht, crypto, corePropagator, verifyingAccount, p2pSocial, p2mMutable, storageAdmin,
@@ -615,8 +615,10 @@ public class Main extends Builder {
                 new Thread(() -> {
                     while (true) {
                         try {
-                            Mirror.mirrorUser(a.getArg("mirror.username"), core, p2mMutable, localStorage,
-                                    rawPointers, transactions, hasher);
+                            Optional<SigningKeyPair> mirrorLoginDataPair = a.getOptionalArg("login-keypair").map(SigningKeyPair::fromString);
+                            String username = a.getArg("mirror.username");
+                            Mirror.mirrorUser(username, mirrorLoginDataPair, core, p2mMutable, p2pAccount, localStorage,
+                                    rawPointers, rawAccount, transactions, hasher);
                             try {
                                 Thread.sleep(60_000);
                             } catch (InterruptedException f) {}

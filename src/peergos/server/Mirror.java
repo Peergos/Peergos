@@ -1,15 +1,18 @@
 package peergos.server;
 
 import peergos.server.corenode.*;
+import peergos.server.login.*;
 import peergos.server.storage.*;
 import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.corenode.*;
+import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
+import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.logging.*;
@@ -30,7 +33,7 @@ public class Mirror {
             List<UserPublicKeyLink> chain = core.getChain(username).join();
             if (chain.get(chain.size() - 1).claim.storageProviders.contains(nodeId)) {
                 try {
-                    mirrorUser(username, core, p2pPointers, storage, targetPointers, transactions, hasher);
+                    mirrorUser(username, Optional.empty(), core, p2pPointers, null, storage, targetPointers, null, transactions, hasher);
                     userCount++;
                 } catch (Exception e) {
                     Logging.LOG().log(Level.WARNING, "Couldn't mirror user: " + username, e);
@@ -52,10 +55,13 @@ public class Mirror {
      * @return The version mirrored
      */
     public static Map<PublicKeyHash, byte[]> mirrorUser(String username,
+                                                        Optional<SigningKeyPair> loginAuth,
                                                         CoreNode core,
                                                         MutablePointers p2pPointers,
+                                                        Account p2pAccount,
                                                         DeletableContentAddressedStorage storage,
                                                         JdbcIpnsAndSocial targetPointers,
+                                                        JdbcAccount targetAccount,
                                                         TransactionStore transactions,
                                                         Hasher hasher) {
         Logging.LOG().log(Level.INFO, "Mirroring data for " + username);
@@ -70,6 +76,11 @@ public class Mirror {
                     targetPointers, transactions);
             if (version.isPresent())
                 versions.put(ownedKey, version.get());
+        }
+        if (loginAuth.isPresent()) {
+            SigningKeyPair login = loginAuth.get();
+            UserStaticData entryData = p2pAccount.getLoginData(username, login.publicSigningKey, TimeLimitedClient.signNow(login.secretSigningKey)).join();
+            targetAccount.setLoginData(new LoginData(username, entryData, login.publicSigningKey, Optional.empty())).join();
         }
         Logging.LOG().log(Level.INFO, "Finished mirroring data for " + username);
         return versions;
