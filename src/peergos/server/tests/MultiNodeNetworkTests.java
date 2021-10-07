@@ -64,8 +64,8 @@ public class MultiNodeNetworkTests {
     @Parameterized.Parameters(name="nodes: {0}, {1} (0 == PKI, > 0 normal)")
     public static Collection<Object[]> parameters() {
         return Arrays.asList(new Object[][] {
-//                {0, 1}, // PKI, normal-1
-//                {1, 0}, // normal-2, PKI
+                {0, 1}, // PKI, normal-1
+                {1, 0}, // normal-2, PKI
                 {2, 1}  // normal-1, normal-2
         });
     }
