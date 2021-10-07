@@ -157,8 +157,8 @@ public class MultiNodeNetworkTests {
     @Test
     public void migrate() {
         migrate(0);
-//        migrate(1);
-//        migrate(2);
+        migrate(1);
+        migrate(2);
     }
 
     public void migrate(int nPasswordChanges) {
