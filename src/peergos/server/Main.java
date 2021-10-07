@@ -617,7 +617,8 @@ public class Main extends Builder {
                     while (true) {
                         try {
                             Optional<SigningKeyPair> mirrorLoginDataPair = a.getOptionalArg("login-keypair").map(SigningKeyPair::fromString);
-                            System.out.println("WARNING: Mirroring users data, but not their login, see option 'login-keypair'");
+                            if (mirrorLoginDataPair.isEmpty())
+                                System.out.println("WARNING: Mirroring users data, but not their login, see option 'login-keypair'");
                             String username = a.getArg("mirror.username");
                             Mirror.mirrorUser(username, mirrorLoginDataPair, core, p2mMutable, p2pAccount, localStorage,
                                     rawPointers, rawAccount, transactions, hasher);
