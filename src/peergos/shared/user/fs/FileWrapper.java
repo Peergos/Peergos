@@ -1197,6 +1197,7 @@ public class FileWrapper {
      * @param crypto
      * @return
      */
+    @JsMethod
     public CompletableFuture<FileWrapper> getOrMkdirs(Path subPath,
                                                       NetworkAccess network,
                                                       boolean isSystemFolder,
