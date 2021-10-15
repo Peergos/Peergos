@@ -1,7 +1,7 @@
 package peergos.server.storage;
 
 import peergos.server.util.*;
-import peergos.shared.io.ipfs.cid.*;
+import peergos.shared.io.ipfs.api.*;
 import peergos.shared.io.ipfs.multiaddr.MultiAddress;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
@@ -126,9 +126,7 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
 
         if (config.bootstrapNode.isPresent()) {
             LOG().info("Setting ipfs bootstrap nodes " + config.bootstrapNode.get());
-            runIpfsCmd("bootstrap", "rm", "all");
-            for (MultiAddress bootstrapNode : config.bootstrapNode.get())
-                runIpfsCmd("bootstrap", "add", bootstrapNode.toString());
+            runIpfsCmd("config", "--json", "Bootstrap", JSONParser.toString(config.bootstrapNode.get().stream().map(a -> a.toString()).collect(Collectors.toList())));
         }
 
         LOG().info("Running ipfs config");
@@ -142,11 +140,6 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
         for (IpfsInstaller.Plugin plugin : config.plugins) {
             plugin.configure(this);
         }
-    }
-
-    public synchronized Multihash nodeId() {
-        String peerId = runIpfsCmdAndGetOutput("config", "Identity.PeerID");
-        return Cid.decodePeerId(peerId);
     }
 
     public synchronized void setConfig(String key, String val) {
