@@ -581,9 +581,9 @@ public class Main extends Builder {
                     a.getBoolean("include-csp", true), basicAuth, webroot, useWebAssetCache, isPublicServer, maxConnectionQueue, handlerThreads);
             boolean isPkiNode = nodeId.equals(pkiServerNodeId);
             if (! isPkiNode && useIPFS) {
-                int pkiNodeSwarmPort = a.getInt("pki.node.swarm.port");
-                InetAddress pkiNodeIpAddress = InetAddress.getByName(a.getArg("pki.node.ipaddress"));
-                ipfsWrapper.connectToNode(new InetSocketAddress(pkiNodeIpAddress, pkiNodeSwarmPort), pkiServerNodeId);
+//                int pkiNodeSwarmPort = a.getInt("pki.node.swarm.port");
+//                InetAddress pkiNodeIpAddress = InetAddress.getByName(a.getArg("pki.node.ipaddress"));
+//                ipfsWrapper.connectToNode(new InetSocketAddress(pkiNodeIpAddress, pkiNodeSwarmPort), pkiServerNodeId);
                 ((MirrorCoreNode) core).start();
             }
             spaceChecker.calculateUsage();

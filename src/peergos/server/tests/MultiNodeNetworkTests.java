@@ -124,8 +124,8 @@ public class MultiNodeNetworkTests {
             UserService service = Main.PEERGOS.main(normalNode);
             services.add(service);
 
-            IPFS ipfs = new IPFS(Main.getLocalMultiAddress(ipfsApiPort));
-            ipfs.swarm.connect(Main.getLocalBootstrapAddress(bootstrapSwarmPort, pkiNodeId).toString());
+//            IPFS ipfs = new IPFS(Main.getLocalMultiAddress(ipfsApiPort));
+//            ipfs.swarm.connect(Main.getLocalBootstrapAddress(bootstrapSwarmPort, pkiNodeId).toString());
             nodes.add(buildApi(normalNode));
         }
     }
