@@ -22,7 +22,7 @@ public class IpfsInstaller {
 
     public enum DownloadTarget {
         LINUX_AMD64("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.1.0/linux-amd64/ipfs?raw=true",
-                Cid.decode("QmNsQvCAefREYRirS1Nk1VicoHq3R9UJtEixBrdt968NRh"));
+                Cid.decode("QmbbNj8zw4Bj6Yuji5uN8WNyK18JA7SsRdr75hu8i43bj8"));
 
         public final String url;
         public final Multihash multihash;
@@ -329,7 +329,7 @@ public class IpfsInstaller {
     }
 
     private static void codegen(Path root) throws Exception {
-        String urlBase = "https://github.com/peergos/ipfs-nucleus-releases/blob/master/" + root.getFileName() + "/";
+        String urlBase = "https://github.com/peergos/ipfs-nucleus-releases/blob/main/" + root.getFileName() + "/";
         for (File arch: Arrays.asList(root.toFile().listFiles()).stream().sorted().collect(Collectors.toList())) {
             for (File binary: arch.listFiles()) {
                 if (binary.isDirectory())

@@ -129,6 +129,8 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
             runIpfsCmd("config", "--json", "Bootstrap", JSONParser.toString(config.bootstrapNode.get().stream().map(a -> a.toString()).collect(Collectors.toList())));
         }
 
+        runIpfsCmd("config", "Addresses.ProxyTarget", proxyTarget.toString());
+
         LOG().info("Running ipfs config");
         // Windows cmd requires and extra escape for quotes
         boolean extraQuoteEscape = System.getProperty("os.name").toLowerCase().contains("windows");
@@ -386,7 +388,7 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
                 synchronized (this) {
                     if (process == null || !process.isAlive()) {
                         start();
-                        startP2pProxy(proxyTarget);
+//                        startP2pProxy(proxyTarget);
                     }
                 }
 
