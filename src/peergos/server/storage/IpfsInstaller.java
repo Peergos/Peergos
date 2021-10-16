@@ -110,7 +110,6 @@ public class IpfsInstaller {
             public void configure(IpfsWrapper ipfs) {
                 // Do the configuration dance..
                 System.out.println("Configuring S3 datastore IPFS plugin");
-                Multihash nodeId = ipfs.nodeId();
 
                 // update the config file
                 List<Object> mount = Arrays.asList(
