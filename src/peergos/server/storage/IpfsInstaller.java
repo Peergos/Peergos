@@ -70,14 +70,16 @@ public class IpfsInstaller {
         final class S3 implements Plugin {
             public static final String TYPE = "S3";
             public final String path, bucket, region, accessKey, secretKey, regionEndpoint;
+            public final int workers;
 
-            public S3(S3Config config) {
+            public S3(S3Config config, int workers) {
                 this.path = config.path;
                 this.bucket = config.bucket;
                 this.region = config.region;
                 this.accessKey = config.accessKey;
                 this.secretKey = config.secretKey;
                 this.regionEndpoint = config.regionEndpoint;
+                this.workers = workers;
             }
 
             public String getFileName() {
@@ -91,6 +93,7 @@ public class IpfsInstaller {
                 child.put("bucket", bucket);
                 child.put("accessKey", accessKey);
                 child.put("secretKey", secretKey);
+                child.put("workers", workers);
                 child.put("region", region);
                 child.put("regionEndpoint", regionEndpoint);
                 child.put("type", "s3ds");
@@ -103,7 +106,8 @@ public class IpfsInstaller {
 
             public static S3 build(Args a) {
                 S3Config config = S3Config.build(a);
-                return new S3(config);
+                int workers = Integer.parseInt(a.getArg("ipfs-s3-workers", "5"));
+                return new S3(config, workers);
             }
 
             @Override
