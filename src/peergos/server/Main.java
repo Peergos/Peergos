@@ -581,6 +581,7 @@ public class Main extends Builder {
                     a.getBoolean("include-csp", true), basicAuth, webroot, useWebAssetCache, isPublicServer, maxConnectionQueue, handlerThreads);
             boolean isPkiNode = nodeId.equals(pkiServerNodeId);
             if (! isPkiNode && useIPFS) {
+                // ipfs-nucleus doesn't implement swarm. We may reinstate these in the bootstrap list in the future
 //                int pkiNodeSwarmPort = a.getInt("pki.node.swarm.port");
 //                InetAddress pkiNodeIpAddress = InetAddress.getByName(a.getArg("pki.node.ipaddress"));
 //                ipfsWrapper.connectToNode(new InetSocketAddress(pkiNodeIpAddress, pkiNodeSwarmPort), pkiServerNodeId);
