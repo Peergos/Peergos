@@ -21,8 +21,18 @@ import java.util.stream.*;
 public class IpfsInstaller {
 
     public enum DownloadTarget {
+        DARWIN_AMD64("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.1.0/darwin-amd64/ipfs?raw=true",
+                Cid.decode("QmR2mBThFfZvAXvKRryu5tRJrx6DMW9Y48PFPnzXSGwzHf")),
+        DARWIN_ARM64("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.1.0/darwin-arm64/ipfs?raw=true",
+                Cid.decode("QmY2V9XCqFq1pHXHSjoseUPE3MZp1dowdYXndaMkQiRRzy")),
         LINUX_AMD64("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.1.0/linux-amd64/ipfs?raw=true",
-                Cid.decode("QmbbNj8zw4Bj6Yuji5uN8WNyK18JA7SsRdr75hu8i43bj8"));
+                Cid.decode("QmRXGv44Xr19YJ6aSpiwABnPp91Y2NDnMFp3ji4QgNyq4w")),
+        LINUX_ARM("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.1.0/linux-arm/ipfs?raw=true",
+                Cid.decode("QmZhUCekSs5nAUiGTZUhnm7Q1RXYbkb2CycNm1HfG51e2W")),
+        LINUX_ARM64("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.1.0/linux-arm64/ipfs?raw=true",
+                Cid.decode("QmZ5Hs4jbPSDpZnSNUsof1CjxocCs4mkP2RVBxNhYKzppk")),
+        WINDOWS_AMD64("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.1.0/windows-amd64/ipfs.exe?raw=true",
+                Cid.decode("QmcHYbWUHNpZX6FJ5nuTEDWkyp49Bv2DukqTkLnayE3p3C")),;
 
         public final String url;
         public final Multihash multihash;
