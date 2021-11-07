@@ -25,6 +25,16 @@ public class ScryptGenerator implements SecretGenerationAlgorithm {
     }
 
     @Override
+    public boolean generateBoxerAndIdentity() {
+        return outputBytes == 96;
+    }
+
+    @Override
+    public SecretGenerationAlgorithm withoutBoxerOrIdentity() {
+        return new ScryptGenerator(memoryCost, cpuCost, parallelism, 64, extraSalt);
+    }
+
+    @Override
     public String getExtraSalt() {
         return extraSalt;
     }

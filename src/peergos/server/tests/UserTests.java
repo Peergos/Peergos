@@ -136,6 +136,7 @@ public abstract class UserTests {
         String extraSalt = ArrayOps.bytesToHex(crypto.random.randomBytes(32));
         List<ScryptGenerator> params = Arrays.asList(
                 new ScryptGenerator(17, 8, 1, 96, extraSalt),
+                new ScryptGenerator(17, 8, 1, 64, extraSalt),
                 new ScryptGenerator(18, 8, 1, 96, extraSalt),
                 new ScryptGenerator(19, 8, 1, 96, extraSalt),
                 new ScryptGenerator(17, 9, 1, 96, extraSalt)
@@ -156,7 +157,7 @@ public abstract class UserTests {
 
         SafeRandomJava random = new SafeRandomJava();
         UserUtil.generateUser(username, password, new ScryptJava(), new Salsa20Poly1305Java(),
-                random, new Ed25519Java(), new Curve25519Java(), SecretGenerationAlgorithm.getDefault(random)).thenAccept(userWithRoot -> {
+                random, new Ed25519Java(), new Curve25519Java(), SecretGenerationAlgorithm.getLegacy(random)).thenAccept(userWithRoot -> {
 		    PublicSigningKey expected = PublicSigningKey.fromString("7HvEWP6yd1UD8rOorfFrieJ8S7yC8+l3VisV9kXNiHmI7Eav7+3GTRSVBRCymItrzebUUoCi39M6rdgeOU9sXXFD");
 		    if (! expected.equals(userWithRoot.getUser().publicSigningKey))
 		        throw new IllegalStateException("Generated user different from the Javascript! \n"+userWithRoot.getUser().publicSigningKey + " != \n"+expected);
@@ -230,7 +231,8 @@ public abstract class UserTests {
     public void expiredSigninAfterPasswordChange() {
         String username = generateUsername();
         String password = "password";
-        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        UserContext context = UserContext.signUpGeneral(username, password, "", LocalDate.now().minusDays(2),
+                network, crypto, SecretGenerationAlgorithm.getDefault(crypto.random), x -> {}).join();
         String newPassword = "G'day mate!";
 
         // change password and set username claim to an expiry in the past
@@ -258,7 +260,7 @@ public abstract class UserTests {
         try {
             context2.changePassword(password2, password1).join();
         } catch (Throwable t) {
-            Assert.assertTrue(t.getMessage().contains("You cannot reuse a previous password"));
+            Assert.assertTrue(t.getMessage().contains("You must change to a different password."));
         }
     }
 
@@ -294,10 +296,18 @@ public abstract class UserTests {
         String username = generateUsername();
         String password = "password";
         UserContext userContext = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        Pair<PublicKeyHash, PublicBoxingKey> keyPairs = userContext.getPublicKeys(username).join().get();
+        PublicBoxingKey initialBoxer = keyPairs.right;
+        PublicKeyHash initialIdentity = keyPairs.left;
         String newPassword = "newPassword";
-        userContext.changePassword(password, newPassword).get();
+        UserContext updated = userContext.changePassword(password, newPassword).join();
         MultiUserTests.checkUserValidity(network, username);
 
+        Pair<PublicKeyHash, PublicBoxingKey> updatedPairs = updated.getPublicKeys(username).join().get();
+        PublicBoxingKey newBoxer = updatedPairs.right;
+        PublicKeyHash newIdentity = updatedPairs.left;
+        Assert.assertTrue(newBoxer.equals(initialBoxer));
+        Assert.assertTrue(newIdentity.equals(initialIdentity));
         UserContext changedPassword = PeergosNetworkUtils.ensureSignedUp(username, newPassword, network, crypto);
 
         // change it again
@@ -308,21 +318,36 @@ public abstract class UserTests {
     }
 
     @Test
-    public void ownerUpdateAfterPasswordChange() throws Exception {
+    public void legacyLogin() throws Exception {
         String username = generateUsername();
         String password = "password";
-        UserContext userContext = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        UserContext userContext = UserContext.signUpGeneral(username, password, "", LocalDate.now().plusMonths(2),
+                network, crypto, SecretGenerationAlgorithm.getLegacy(crypto.random), x -> {}).join();
+        SecretGenerationAlgorithm originalAlg = WriterData.fromCbor(UserContext.getWriterDataCbor(network, username).join().right).generationAlgorithm.get();
+        Assert.assertTrue("legacy accounts generate boxer", originalAlg.generateBoxerAndIdentity());
+        Pair<PublicKeyHash, PublicBoxingKey> keyPairs = userContext.getPublicKeys(username).join().get();
+        PublicBoxingKey initialBoxer = keyPairs.right;
+        PublicKeyHash initialIdentity = keyPairs.left;
+        WriterData initialWd = WriterData.getWriterData(initialIdentity, initialIdentity, network.mutable, network.dhtClient).join().props;
+        Assert.assertTrue(initialWd.staticData.isPresent());
 
-        PublicKeyHash originalOwner = userContext.getUserRoot().join().owner();
+        UserContext login = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
 
         String newPassword = "newPassword";
         userContext.changePassword(password, newPassword).get();
         MultiUserTests.checkUserValidity(network, username);
 
         UserContext changedPassword = PeergosNetworkUtils.ensureSignedUp(username, newPassword, network, crypto);
-        PublicKeyHash updatedOwner = changedPassword.getUserRoot().join().owner();
+        Pair<PublicKeyHash, PublicBoxingKey> newKeyPairs = changedPassword.getPublicKeys(username).join().get();
+        PublicBoxingKey newBoxer = newKeyPairs.right;
+        PublicKeyHash newIdentity = newKeyPairs.left;
+        Assert.assertTrue(newBoxer.equals(initialBoxer));
+        Assert.assertTrue(! newIdentity.equals(initialIdentity));
 
-        Assert.assertTrue(! updatedOwner.equals(originalOwner));
+        SecretGenerationAlgorithm alg = WriterData.fromCbor(UserContext.getWriterDataCbor(network, username).join().right).generationAlgorithm.get();
+        Assert.assertTrue("password change upgrades legacy accounts", ! alg.generateBoxerAndIdentity());
+        WriterData finalWd = WriterData.getWriterData(newIdentity, newIdentity, network.mutable, network.dhtClient).join().props;
+        Assert.assertTrue(finalWd.staticData.isEmpty());
     }
 
     @Test
@@ -336,7 +361,7 @@ public abstract class UserTests {
         try {
             UserContext oldContext = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         } catch (Exception e) {
-            if (! e.getMessage().contains("Incorrect password"))
+            if (! e.getMessage().contains("Incorrect password") && ! e.getMessage().contains("Incorrect+password"))
                 throw e;
         }
     }
@@ -345,10 +370,10 @@ public abstract class UserTests {
     public void changeLoginAlgorithm() throws Exception {
         String username = generateUsername();
         String password = "password";
-        UserContext userContext = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
-        SecretGenerationAlgorithm algo = userContext.getKeyGenAlgorithm().get();
-        ScryptGenerator newAlgo = new ScryptGenerator(19, 8, 1, 96, algo.getExtraSalt());
-        userContext.changePassword(password, password, algo, newAlgo, LocalDate.now().plusMonths(2)).get();
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        SecretGenerationAlgorithm algo = context.getKeyGenAlgorithm().get();
+        ScryptGenerator newAlgo = new ScryptGenerator(19, 8, 1, 64, algo.getExtraSalt());
+        context.changePassword(password, password, algo, newAlgo, LocalDate.now().plusMonths(2)).get();
         PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
     }
 

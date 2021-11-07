@@ -1,6 +1,7 @@
 package peergos.server;
 
 import peergos.server.corenode.*;
+import peergos.server.login.*;
 import peergos.server.messages.*;
 import peergos.server.space.*;
 import peergos.server.sql.*;
@@ -105,8 +106,9 @@ public class ServerMessages extends Builder {
         MutablePointersProxy proxingMutable = new HttpMutablePointers(buildP2pHttpProxy(a), getPkiServerId(a));
         JdbcIpnsAndSocial rawSocial = new JdbcIpnsAndSocial(getDBConnector(a, "social-sql-file", dbConnectionPool), getSqlCommands(a));
         UsageStore usageStore = new JdbcUsageStore(getDBConnector(a, "space-usage-sql-file", dbConnectionPool), getSqlCommands(a));
+        JdbcAccount account = new JdbcAccount(getDBConnector(a, "account-sql-file", dbConnectionPool), getSqlCommands(a));
         CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable,
-                rawSocial, usageStore, hasher);
+                rawSocial, usageStore, account, new AccountWithStorage(localStorage, localPointers, account), hasher);
         return buildSpaceQuotas(a, localStorage, core,
                 getDBConnector(a, "space-requests-sql-file", dbConnectionPool),
                 getDBConnector(a, "quotas-sql-file", dbConnectionPool));

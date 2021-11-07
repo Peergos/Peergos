@@ -20,6 +20,7 @@ import peergos.shared.storage.*;
 
 import peergos.server.net.*;
 import peergos.shared.storage.controller.*;
+import peergos.shared.user.*;
 import peergos.shared.util.*;
 
 import javax.net.ssl.*;
@@ -81,6 +82,7 @@ public class UserService {
     public final ContentAddressedStorage storage;
     public final Crypto crypto;
     public final CoreNode coreNode;
+    public final Account account;
     public final SocialNetwork social;
     public final MutablePointers mutable;
     public final InstanceAdmin controller;
@@ -91,6 +93,7 @@ public class UserService {
     public UserService(ContentAddressedStorage storage,
                        Crypto crypto,
                        CoreNode coreNode,
+                       Account account,
                        SocialNetwork social,
                        MutablePointers mutable,
                        InstanceAdmin controller,
@@ -100,6 +103,7 @@ public class UserService {
         this.storage = new CachingStorage(storage, 1000, 50 * 1024);
         this.crypto = crypto;
         this.coreNode = coreNode;
+        this.account = account;
         this.social = social;
         this.mutable = mutable;
         this.controller = controller;
@@ -233,6 +237,8 @@ public class UserService {
                 new SocialHandler(this.social, isPublicServer), basicAuth, local, host, nodeId, false);
         addHandler(localhostServer, tlsServer, "/" + Constants.MUTABLE_POINTERS_URL,
                 new MutationHandler(this.mutable, isPublicServer), basicAuth, local, host, nodeId, false);
+        addHandler(localhostServer, tlsServer, "/" + Constants.LOGIN_URL,
+                new AccountHandler(this.account, isPublicServer), basicAuth, local, host, nodeId, false);
         addHandler(localhostServer, tlsServer, "/" + Constants.ADMIN_URL,
                 new AdminHandler(this.controller, isPublicServer), basicAuth, local, host, nodeId, false);
         addHandler(localhostServer, tlsServer, "/" + Constants.SPACE_USAGE_URL,

@@ -21,6 +21,16 @@ public class RandomSecretType implements SecretGenerationAlgorithm {
     }
 
     @Override
+    public boolean generateBoxerAndIdentity() {
+        return false;
+    }
+
+    @Override
+    public SecretGenerationAlgorithm withoutBoxerOrIdentity() {
+        return this;
+    }
+
+    @Override
     public Type getType() {
         return Type.Random;
     }

@@ -21,6 +21,11 @@ public interface SqlSupplier {
                 "CREATE UNIQUE INDEX IF NOT EXISTS index_name ON metadatablobs (writingkey);";
     }
 
+    default String createAccountTableCommand() {
+        return "CREATE TABLE IF NOT EXISTS login (username text primary key not null, entry text not null, reader text not null); " +
+                "CREATE UNIQUE INDEX IF NOT EXISTS login_index ON login (username);";
+    }
+
     default String createSpaceRequestsTableCommand() {
         return "CREATE TABLE IF NOT EXISTS spacerequests (name text primary key not null, spacerequest text not null);";
     }

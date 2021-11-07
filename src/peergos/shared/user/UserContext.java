@@ -5,6 +5,7 @@ import java.util.logging.*;
 
 import peergos.shared.fingerprint.*;
 import peergos.shared.inode.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.user.fs.transaction.TransactionService;
 import peergos.shared.user.fs.transaction.TransactionServiceImpl;
@@ -164,37 +165,48 @@ public class UserContext {
     }
 
     private static CompletableFuture<UserContext> login(String username,
-                                                        UserWithRoot userWithRoot,
+                                                        UserWithRoot generatedCredentials,
                                                         Pair<Multihash, CborObject> pair,
                                                         NetworkAccess network,
                                                         Crypto crypto,
                                                         Consumer<String> progressCallback) {
         try {
             WriterData userData = WriterData.fromCbor(pair.right);
-            return createOurFileTreeOnly(username, userWithRoot.getRoot(), userData, network, crypto)
-                    .thenCompose(root -> TofuCoreNode.load(username, root, network, crypto)
-                            .thenCompose(tofuCorenode -> {
-                                SigningPrivateKeyAndPublicHash signer = new SigningPrivateKeyAndPublicHash(userData.controller, userWithRoot.getUser().secretSigningKey);
-                                return buildTransactionService(root, username, network, crypto)
-                                        .thenCompose(transactions -> buildCapCache(root, username, network, crypto)
-                                                .thenCompose(capCache -> SharedWithCache.initOrBuild(root, username, network, crypto)
+            boolean legacyAccount = userData.staticData.isPresent();
+            PublicSigningKey loginPub = generatedCredentials.getUser().publicSigningKey;
+            SecretSigningKey loginSecret = generatedCredentials.getUser().secretSigningKey;
+            return (legacyAccount ?
+                    Futures.of(userData.staticData.get()) :
+                    network.account.getLoginData(username, loginPub, TimeLimitedClient.signNow(loginSecret))).thenCompose(entryData -> {
+                UserStaticData.EntryPoints staticData = entryData.getData(generatedCredentials.getRoot());
+                // Use generated signer for legacy logins, or get from UserStaticData for newer logins
+                SigningPrivateKeyAndPublicHash signer =
+                        new SigningPrivateKeyAndPublicHash(userData.controller,
+                                legacyAccount ? loginSecret : staticData.identity.get().secretSigningKey);
+                return createOurFileTreeOnly(username, staticData, userData, network)
+                        .thenCompose(root -> TofuCoreNode.load(username, root, network, crypto)
+                                .thenCompose(tofuCorenode -> {
+                                    return buildTransactionService(root, username, network, crypto)
+                                            .thenCompose(transactions -> buildCapCache(root, username, network, crypto)
+                                                    .thenCompose(capCache -> SharedWithCache.initOrBuild(root, username, network, crypto)
                                                         .thenCompose(sharedWith -> {
-                                                            UserContext result = new UserContext(username,
-                                                                    signer,
-                                                                    userWithRoot.getBoxingPair(),
-                                                                    userWithRoot.getRoot(),
-                                                                    network.withCorenode(tofuCorenode),
-                                                                    crypto,
-                                                                    new CommittedWriterData(MaybeMultihash.of(pair.left), userData),
-                                                                    root,
-                                                                    transactions,
-                                                                    capCache,
-                                                                    sharedWith);
+                                                        UserContext result = new UserContext(username,
+                                                                signer,
+                                                                staticData.boxer.orElse(generatedCredentials.getBoxingPair()),
+                                                                generatedCredentials.getRoot(),
+                                                                network.withCorenode(tofuCorenode),
+                                                                crypto,
+                                                                new CommittedWriterData(MaybeMultihash.of(pair.left), userData),
+                                                                root,
+                                                                transactions,
+                                                                capCache,
+                                                                sharedWith);
 
-                                                            return result.init(progressCallback)
-                                                                    .exceptionally(Futures::logAndThrow);
-                                                        })));
-                            }));
+                                                        return result.init(progressCallback)
+                                                                .exceptionally(Futures::logAndThrow);
+                                                    })));
+                                }));
+            });
         } catch (Throwable t) {
             throw new IllegalStateException("Incorrect password");
         }
@@ -233,8 +245,8 @@ public class UserContext {
                                                                SecretGenerationAlgorithm algorithm,
                                                                Consumer<String> progressCallback) {
         // Using a local OpLog that doesn't commit anything allows us to group all the updates into a single atomic call
-        OpLog opLog = new OpLog(new ArrayList<>());
-        NetworkAccess network = NetworkAccess.nonCommittingForSignup(opLog, opLog, crypto.hasher);
+        OpLog opLog = new OpLog(new ArrayList<>(), null);
+        NetworkAccess network = NetworkAccess.nonCommittingForSignup(opLog, opLog, opLog, crypto.hasher);
         progressCallback.accept("Generating keys");
         return initialNetwork.coreNode.getChain(username)
                 .thenApply(existing -> {
@@ -245,40 +257,47 @@ public class UserContext {
                 .thenCompose(x -> UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider,
                         crypto.random, crypto.signer, crypto.boxer, algorithm))
                 .thenCompose(userWithRoot -> {
-                    PublicSigningKey publicSigningKey = userWithRoot.getUser().publicSigningKey;
-                    SecretSigningKey secretSigningKey = userWithRoot.getUser().secretSigningKey;
-                    PublicKeyHash signerHash = ContentAddressedStorage.hashKey(publicSigningKey);
-                    SigningPrivateKeyAndPublicHash signer = new SigningPrivateKeyAndPublicHash(signerHash, secretSigningKey);
+                    PublicSigningKey loginPublicKey = userWithRoot.getUser().publicSigningKey;
+
+                    boolean isLegacy = algorithm.generateBoxerAndIdentity();
+                    SigningKeyPair identityPair = isLegacy ?
+                            userWithRoot.getUser() :
+                            SigningKeyPair.random(crypto.random, crypto.signer);
+                    PublicKeyHash identityHash = ContentAddressedStorage.hashKey(identityPair.publicSigningKey);
+                    SigningPrivateKeyAndPublicHash identity = new SigningPrivateKeyAndPublicHash(identityHash, identityPair.secretSigningKey);
+
+                    Optional<BoxingKeyPair> boxer = isLegacy ? Optional.empty() : Optional.of(userWithRoot.getBoxingPair());
+                    UserStaticData entryData = new UserStaticData(Collections.emptyList(), userWithRoot.getRoot(), Optional.of(identityPair), boxer);
                     progressCallback.accept("Registering username");
                     return initialNetwork.dhtClient.id()
-                            .thenApply(id -> UserPublicKeyLink.createInitial(signer, username, expiry, Arrays.asList(id)))
-                            .thenCompose(chain -> IpfsTransaction.call(signerHash, tid -> network.dhtClient.putSigningKey(
-                                    secretSigningKey.signMessage(publicSigningKey.serialize()),
-                                    signerHash,
-                                    publicSigningKey, tid).thenCompose(returnedSignerHash -> {
+                            .thenApply(id -> UserPublicKeyLink.createInitial(identity, username, expiry, Arrays.asList(id)))
+                            .thenCompose(chain -> IpfsTransaction.call(identityHash, tid -> network.dhtClient.putSigningKey(
+                                    identityPair.secretSigningKey.signMessage(identityPair.publicSigningKey.serialize()),
+                                    identityHash,
+                                    identityPair.publicSigningKey, tid).thenCompose(returnedIdentityHash -> {
                                 PublicBoxingKey publicBoxingKey = userWithRoot.getBoxingPair().publicBoxingKey;
                                 return crypto.hasher.sha256(publicBoxingKey.serialize())
-                                        .thenCompose(boxerHash -> network.dhtClient.putBoxingKey(signerHash,
-                                                secretSigningKey.signMessage(boxerHash), publicBoxingKey, tid));
+                                        .thenCompose(boxerHash -> network.dhtClient.putBoxingKey(identityHash,
+                                                identityPair.secretSigningKey.signMessage(boxerHash), publicBoxingKey, tid));
                             }).thenCompose(boxerHash -> {
                                 progressCallback.accept("Creating filesystem");
-                                return WriterData.createEmptyWithStaticData(signerHash,
-                                        signer,
+                                return WriterData.createIdentity(identityHash,
+                                        identity,
                                         Optional.of(new PublicKeyHash(boxerHash)),
-                                        userWithRoot.getRoot(),
+                                        isLegacy ? Optional.of(entryData) : Optional.empty(),
                                         algorithm,
                                         network.dhtClient, network.hasher, tid).thenCompose(newUserData -> {
 
                                     CommittedWriterData notCommitted = new CommittedWriterData(MaybeMultihash.empty(), newUserData);
-                                    network.synchronizer.put(signer.publicKeyHash, signer.publicKeyHash, notCommitted);
-                                    return network.synchronizer.applyComplexUpdate(signerHash, signer,
-                                            (s, committer) -> newUserData.commit(signerHash, signer, MaybeMultihash.empty(), network, tid));
+                                    network.synchronizer.put(identity.publicKeyHash, identity.publicKeyHash, notCommitted);
+                                    return network.synchronizer.applyComplexUpdate(identityHash, identity,
+                                            (s, committer) -> newUserData.commit(identityHash, identity, MaybeMultihash.empty(), network, tid));
                                 });
                             }), network.dhtClient)
                                     .thenCompose(snapshot -> {
                                         LOG.info("Creating user's root directory");
                                         long t1 = System.currentTimeMillis();
-                                        return createEntryDirectory(signer, username, userWithRoot.getRoot(), network, crypto)
+                                        return createEntryDirectory(identity, username, entryData, loginPublicKey, userWithRoot.getRoot(), network, crypto)
                                                 .thenCompose(globalRoot -> {
                                                     LOG.info("Creating root directory took " + (System.currentTimeMillis() - t1) + " mS");
                                                     return createSpecialDirectory(globalRoot, username, SHARED_DIR_NAME, network, crypto);
@@ -700,7 +719,11 @@ public class UserContext {
     @JsMethod
     public CompletableFuture<UserContext> changePassword(String oldPassword, String newPassword) {
         return getKeyGenAlgorithm().thenCompose(alg -> {
-            SecretGenerationAlgorithm newAlgorithm = SecretGenerationAlgorithm.withNewSalt(alg, crypto.random);
+            if (oldPassword.equals(newPassword))
+                throw new IllegalStateException("You must change to a different password.");
+            // Use a new salt, and if this is a legacy account with generated boxer, remove it from generation and use
+            // a new generated identity independent of the password
+            SecretGenerationAlgorithm newAlgorithm = SecretGenerationAlgorithm.withNewSalt(alg, crypto.random).withoutBoxerOrIdentity();
             // set claim expiry to two months from now
             return changePassword(oldPassword, newPassword, alg, newAlgorithm, LocalDate.now().plusMonths(2));
         });
@@ -712,26 +735,56 @@ public class UserContext {
                                                          SecretGenerationAlgorithm newAlgorithm,
                                                          LocalDate expiry) {
         LOG.info("Changing password and setting expiry to: " + expiry);
+        boolean isLegacy = existingAlgorithm.generateBoxerAndIdentity();
+        if (! isLegacy && newAlgorithm.generateBoxerAndIdentity())
+            throw new IllegalStateException("Cannot migrate from an upgraded style account to a legacy style account!");
 
         return UserUtil.generateUser(username, oldPassword, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer, existingAlgorithm)
-                .thenCompose(existingUser -> {
-                    if (!existingUser.getUser().secretSigningKey.equals(this.signer.secret))
+                .thenCompose(existingLogin -> {
+                    SecretSigningKey existingLoginSecret = existingLogin.getUser().secretSigningKey;
+                    if (isLegacy && !existingLoginSecret.equals(this.signer.secret))
                         throw new IllegalArgumentException("Incorrect existing password during change password attempt!");
+
                     return UserUtil.generateUser(username, newPassword, crypto.hasher, crypto.symmetricProvider,
                             crypto.random, crypto.signer, crypto.boxer, newAlgorithm)
-                            .thenCompose(updatedUser -> {
-                                PublicSigningKey newPublicSigningKey = updatedUser.getUser().publicSigningKey;
-                                PublicKeyHash existingOwner = ContentAddressedStorage.hashKey(existingUser.getUser().publicSigningKey);
+                            .thenCompose(updatedLogin -> {
+                                PublicSigningKey newLoginPublicKey = updatedLogin.getUser().publicSigningKey;
+                                PublicKeyHash existingOwner = ContentAddressedStorage.hashKey(existingLogin.getUser().publicSigningKey);
+                                if (! isLegacy) {
+                                    // identity doesn't change here, just need to update the secret UserStaticData
+                                    byte[] auth = TimeLimitedClient.signNow(existingLoginSecret);
+                                    return network.account.getLoginData(username, existingLogin.getUser().publicSigningKey, auth).thenCompose(usd -> {
+                                        UserStaticData.EntryPoints entry = usd.getData(existingLogin.getRoot());
+                                        UserStaticData updatedEntry = new UserStaticData(entry.entries, updatedLogin.getRoot(), entry.identity, entry.boxer);
+                                        // need to commit new login algorithm too in the same call
+                                        return WriterData.getWriterData(signer.publicKeyHash, signer.publicKeyHash, network.mutable, network.dhtClient).thenCompose(cwd -> {
+                                            WriterData newIdBlock = cwd.props.withAlgorithm(newAlgorithm);
+                                            byte[] rawBlock = newIdBlock.serialize();
+                                            return crypto.hasher.sha256(rawBlock).thenCompose(blockHash -> {
+                                                OpLog.BlockWrite blockWrite = new OpLog.BlockWrite(signer.publicKeyHash, signer.secret.signMessage(blockHash), rawBlock, false);
+                                                HashCasPair pointerCas = new HashCasPair(cwd.hash, MaybeMultihash.of(new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256, blockHash)));
+                                                OpLog.PointerWrite pointerWrite = new OpLog.PointerWrite(signer.publicKeyHash, signer.secret.signMessage(pointerCas.serialize()));
+                                                LoginData updatedLoginData = new LoginData(username, updatedEntry, newLoginPublicKey, Optional.of(new Pair<>(blockWrite, pointerWrite)));
+                                                return network.account.setLoginData(updatedLoginData, signer)
+                                                        .thenCompose(b -> UserContext.signIn(username, newPassword, network.clear(), crypto));
+                                            });
+                                        });
+                                    });
+                                }
+                                // upgrading a legacy account to new style
+                                BoxingKeyPair newBoxingKeypair = newAlgorithm.generateBoxerAndIdentity() ? updatedLogin.getBoxingPair() : boxer;
+                                SigningKeyPair newIdentityPair = SigningKeyPair.random(crypto.random, crypto.signer);
+                                PublicSigningKey newIdentityPub = newIdentityPair.publicSigningKey;
                                 return IpfsTransaction.call(existingOwner,
                                         tid -> network.dhtClient.putSigningKey(
-                                                existingUser.getUser().secretSigningKey.signMessage(newPublicSigningKey.serialize()),
+                                                existingLoginSecret.signMessage(newIdentityPub.serialize()),
                                                 existingOwner,
-                                                newPublicSigningKey,
+                                                newIdentityPub,
                                                 tid),
                                         network.dhtClient
-                                ).thenCompose(newSignerHash -> {
-                                    SigningPrivateKeyAndPublicHash newSigner =
-                                            new SigningPrivateKeyAndPublicHash(newSignerHash, updatedUser.getUser().secretSigningKey);
+                                ).thenCompose(newIdentityHash -> {
+                                    SigningPrivateKeyAndPublicHash newIdentity =
+                                            new SigningPrivateKeyAndPublicHash(newIdentityHash, newIdentityPair.secretSigningKey);
                                     Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> ownedKeys = new HashMap<>();
                                     return getUserRoot().thenCompose(homeDir -> {
                                         // If we ever implement plausibly deniable dual (N) login this will need to include all the other keys
@@ -740,22 +793,23 @@ public class UserContext {
                                         // TODO need to get the pki keypair here if were are the 'peergos' user
 
                                         // auth new key by adding to existing writer data first
-                                        OwnerProof proof = OwnerProof.build(newSigner, signer.publicKeyHash);
+                                        OwnerProof proof = OwnerProof.build(newIdentity, signer.publicKeyHash);
                                         return writeSynchronizer.applyUpdate(signer.publicKeyHash, signer, (wd, tid) ->
                                                 wd.addOwnedKey(signer.publicKeyHash, signer, proof, network.dhtClient, network.hasher))
-                                                .thenCompose(version -> version.get(signer).props.changeKeys(signer,
-                                                        newSigner,
-                                                        updatedUser.getBoxingPair().publicBoxingKey,
-                                                        existingUser.getRoot(),
-                                                        updatedUser.getRoot(),
+                                                .thenCompose(version -> version.get(signer).props.changeKeys(username,
+                                                        signer,
+                                                        newIdentity,
+                                                        newIdentityPair,
+                                                        newLoginPublicKey,
+                                                        newBoxingKeypair,
+                                                        existingLogin.getRoot(),
+                                                        updatedLogin.getRoot(),
                                                         newAlgorithm,
                                                         ownedKeys,
                                                         network)).thenCompose(writerData -> {
-                                                    SigningPrivateKeyAndPublicHash newUser =
-                                                            new SigningPrivateKeyAndPublicHash(newSignerHash, updatedUser.getUser().secretSigningKey);
                                                     return network.coreNode.getChain(username).thenCompose(existing -> {
                                                         List<Multihash> storage = existing.get(existing.size() - 1).claim.storageProviders;
-                                                        List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createChain(signer, newUser, username, expiry, storage);
+                                                        List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createChain(signer, newIdentity, username, expiry, storage);
                                                         return updateChainWithRetry(username, claimChain, "", crypto.hasher, network, x -> {})
                                                                 .thenCompose(updatedChain -> {
                                                                     if (!updatedChain)
@@ -773,6 +827,8 @@ public class UserContext {
 
     private static CompletableFuture<TrieNode> createEntryDirectory(SigningPrivateKeyAndPublicHash owner,
                                                                     String directoryName,
+                                                                    UserStaticData current,
+                                                                    PublicSigningKey loginPublic,
                                                                     SymmetricKey userRootKey,
                                                                     NetworkAccess network,
                                                                     Crypto crypto) {
@@ -784,7 +840,7 @@ public class UserContext {
         // 2. Commit authorisation for writer to owner WriterData
         // 3. Add empty WriterData for writer
         // 4. Add root directory writer's WriterData
-        // 5. Add entry point to root dir to owner WriterData
+        // 5. Add entry point to root dir to owner WriterData's UserStaticData (legacy account) or LoginData
 
         byte[] rootMapKey = crypto.random.randomBytes(32); // root will be stored under this label
         SymmetricKey rootRKey = SymmetricKey.random();
@@ -826,7 +882,7 @@ public class UserContext {
                                                                 LOG.info("Uploading root dir metadata took " + (t3 - t2) + " mS");
                                                                 return finalSnapshot;
                                                             }))
-                                                    .thenCompose(x -> addRootEntryPointAndCommit(x.merge(s2), entry, owner, userRootKey, network, tid));
+                                                    .thenCompose(x -> addRootEntryPointAndCommit(x.merge(s2), entry, current, loginPublic, owner, userRootKey, network, tid));
                                         });
                             }));
         }), network.dhtClient).thenApply(s -> TrieNodeImpl.empty().put("/" + directoryName, entry));
@@ -1711,18 +1767,23 @@ public class UserContext {
 
     private static CompletableFuture<Snapshot> addRootEntryPointAndCommit(Snapshot version,
                                                                           EntryPoint entry,
+                                                                          UserStaticData current,
+                                                                          PublicSigningKey loginPublic,
                                                                           SigningPrivateKeyAndPublicHash owner,
                                                                           SymmetricKey rootKey,
                                                                           NetworkAccess network,
                                                                           TransactionId tid) {
         CommittedWriterData cwd = version.get(owner.publicKeyHash);
         WriterData wd = cwd.props;
-        Optional<UserStaticData> updated = wd.staticData.map(sd -> {
-            List<EntryPoint> entryPoints = sd.getEntryPoints(rootKey);
-            entryPoints.add(entry);
-            return new UserStaticData(entryPoints, rootKey);
-        });
-        return wd.withStaticData(updated).commit(owner.publicKeyHash, owner, cwd.hash, network, tid);
+        if (wd.staticData.isEmpty()) {
+            UserStaticData updated = new UserStaticData(current.getData(rootKey).addEntryPoint(entry), rootKey);
+            return network.account.setLoginData(new LoginData(entry.ownerName, updated, loginPublic, Optional.empty()), owner)
+                    .thenApply(b -> version);
+        } else {
+            // legacy account
+            Optional<UserStaticData> updated = wd.staticData.map(sd -> new UserStaticData(sd.getData(rootKey).addEntryPoint(entry), rootKey));
+            return wd.withStaticData(updated).commit(owner.publicKeyHash, owner, cwd.hash, network, tid);
+        }
     }
 
     private synchronized CompletableFuture<FileWrapper> addExternalEntryPoint(EntryPoint entry) {
@@ -1907,15 +1968,11 @@ public class UserContext {
      * @return TrieNode for root of filesystem containing only our files
      */
     private static CompletableFuture<TrieNode> createOurFileTreeOnly(String ourName,
-                                                                     SymmetricKey rootKey,
+                                                                     UserStaticData.EntryPoints entry,
                                                                      WriterData userData,
-                                                                     NetworkAccess network,
-                                                                     Crypto crypto) {
+                                                                     NetworkAccess network) {
         TrieNode root = TrieNodeImpl.empty();
-        if (!userData.staticData.isPresent())
-            throw new IllegalStateException("Cannot retrieve file tree for a filesystem without entrypoints!");
-        List<EntryPoint> ourFileSystemEntries = userData.staticData.get()
-                .getEntryPoints(rootKey)
+        List<EntryPoint> ourFileSystemEntries = entry.entries
                 .stream()
                 .filter(e -> e.ownerName.equals(ourName))
                 .map(e -> e.withOwner(userData.controller))

@@ -1,25 +1,29 @@
 package peergos.shared.corenode;
 
 import peergos.shared.cbor.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
+import peergos.shared.user.*;
 import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.*;
 
-public class OpLog implements Cborable, MutablePointers, ContentAddressedStorage {
+public class OpLog implements Cborable, Account, MutablePointers, ContentAddressedStorage {
     private static final int ED25519_SIGNATURE_SIZE = 64;
 
     public final List<Either<PointerWrite, BlockWrite>> operations;
     private final Map<Multihash, byte[]> storage = new HashMap<>();
+    public Pair<LoginData, byte[]> loginData;
 
-    public OpLog(List<Either<PointerWrite, BlockWrite>> operations) {
+    public OpLog(List<Either<PointerWrite, BlockWrite>> operations, Pair<LoginData, byte[]> loginData) {
         this.operations = operations;
+        this.loginData = loginData;
     }
 
     @Override
@@ -36,6 +40,25 @@ public class OpLog implements Cborable, MutablePointers, ContentAddressedStorage
                 return Futures.of(Optional.of(op.a().writerSignedChampRootCas));
         }
         throw new IllegalStateException("Unknown writer: " + writer);
+    }
+
+    @Override
+    public synchronized CompletableFuture<Boolean> setLoginData(LoginData login, byte[] auth) {
+        loginData = new Pair<>(login, auth);
+        return Futures.of(true);
+    }
+
+    @Override
+    public synchronized CompletableFuture<UserStaticData> getLoginData(String username,
+                                                                       PublicSigningKey authorisedReader,
+                                                                       byte[] auth) {
+        if (loginData == null)
+            throw new IllegalStateException("No login data present!");
+        if (! loginData.left.username.equals(username))
+            throw new IllegalStateException("No login data present for " + username);
+        if (! loginData.left.authorisedReader.equals(authorisedReader))
+            throw new IllegalStateException("You are not authorised to login as " + username);
+        return Futures.of(loginData.left.entryPoints);
     }
 
     @Override
@@ -207,6 +230,10 @@ public class OpLog implements Cborable, MutablePointers, ContentAddressedStorage
         state.put("ops", new CborObject.CborList(operations.stream()
                 .map(e -> e.map(PointerWrite::toCbor, BlockWrite::toCbor))
                 .collect(Collectors.toList())));
+        if (loginData != null) {
+            state.put("login", loginData.left);
+            state.put("loginAuth", new CborObject.CborByteArray(loginData.right));
+        }
         return CborObject.CborMap.build(state);
     }
 
@@ -215,6 +242,11 @@ public class OpLog implements Cborable, MutablePointers, ContentAddressedStorage
             throw new IllegalStateException("Invalid cbor for OpLog!");
         CborObject.CborMap m = (CborObject.CborMap) cbor;
         List<Either<PointerWrite, BlockWrite>> ops = m.getList("ops", OpLog::parseOperation);
-        return new OpLog(ops);
+        if (m.containsKey("login")) {
+            LoginData login = m.get("login", LoginData::fromCbor);
+            byte[] loginAuth = m.getByteArray("loginAuth");
+            return new OpLog(ops, new Pair<>(login, loginAuth));
+        }
+        return new OpLog(ops, null);
     }
 }

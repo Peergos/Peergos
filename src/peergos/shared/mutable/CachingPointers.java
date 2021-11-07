@@ -49,4 +49,10 @@ public class CachingPointers implements MutablePointers {
             return res;
         });
     }
+
+    @Override
+    public MutablePointers clearCache() {
+        cache.clear();
+        return this;
+    }
 }

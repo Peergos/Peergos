@@ -81,6 +81,10 @@ public class WriterData implements Cborable {
         return new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver, Optional.of(ownedRoot), namedOwnedKeys, staticData, tree);
     }
 
+    public WriterData withAlgorithm(SecretGenerationAlgorithm newAlg) {
+        return new WriterData(controller, Optional.of(newAlg), publicData, followRequestReceiver, ownedKeys, namedOwnedKeys, staticData, tree);
+    }
+
     public CompletableFuture<WriterData> addOwnedKey(PublicKeyHash owner,
                                                      SigningPrivateKeyAndPublicHash signer,
                                                      OwnerProof newOwned,
@@ -183,14 +187,14 @@ public class WriterData implements Cborable {
                         Optional.empty()));
     }
 
-    public static CompletableFuture<WriterData> createEmptyWithStaticData(PublicKeyHash owner,
-                                                                          SigningPrivateKeyAndPublicHash writer,
-                                                                          Optional<PublicKeyHash> followRequestReceiver,
-                                                                          SymmetricKey rootKey,
-                                                                          SecretGenerationAlgorithm algorithm,
-                                                                          ContentAddressedStorage ipfs,
-                                                                          Hasher hasher,
-                                                                          TransactionId tid) {
+    public static CompletableFuture<WriterData> createIdentity(PublicKeyHash owner,
+                                                               SigningPrivateKeyAndPublicHash writer,
+                                                               Optional<PublicKeyHash> followRequestReceiver,
+                                                               Optional<UserStaticData> entryData,
+                                                               SecretGenerationAlgorithm algorithm,
+                                                               ContentAddressedStorage ipfs,
+                                                               Hasher hasher,
+                                                               TransactionId tid) {
         return OwnedKeyChamp.createEmpty(owner, writer, ipfs, hasher, tid)
                 .thenApply(ownedRoot -> new WriterData(writer.publicKeyHash,
                         Optional.of(algorithm),
@@ -198,7 +202,7 @@ public class WriterData implements Cborable {
                         followRequestReceiver,
                         Optional.of(ownedRoot),
                         Collections.emptyMap(),
-                        Optional.of(new UserStaticData(rootKey)),
+                        entryData,
                         Optional.empty()));
     }
 
@@ -206,25 +210,34 @@ public class WriterData implements Cborable {
         return new CommittedWriterData(hash, this);
     }
 
-    public CompletableFuture<WriterData> changeKeys(SigningPrivateKeyAndPublicHash oldSigner,
+    public CompletableFuture<WriterData> changeKeys(String username,
+                                                    SigningPrivateKeyAndPublicHash oldSigner,
                                                     SigningPrivateKeyAndPublicHash signer,
-                                                    PublicBoxingKey followRequestReceiver,
+                                                    SigningKeyPair newIdentity,
+                                                    PublicSigningKey newLogin,
+                                                    BoxingKeyPair followRequestReceiver,
                                                     SymmetricKey currentKey,
                                                     SymmetricKey newKey,
                                                     SecretGenerationAlgorithm newAlgorithm,
                                                     Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> ownedKeys,
                                                     NetworkAccess network) {
-
+        // This will upgrade legacy accounts to the new structure with secret UserStaticData
         network.synchronizer.putEmpty(oldSigner.publicKeyHash, signer.publicKeyHash);
         return network.synchronizer.applyUpdate(oldSigner.publicKeyHash, signer,
                 (wd, tid) -> {
                     Optional<UserStaticData> newEntryPoints = staticData
-                            .map(sd -> new UserStaticData(sd.getEntryPoints(currentKey), newKey));
-                    return network.hasher.sha256(followRequestReceiver.serialize())
+                            .map(sd -> {
+                                UserStaticData.EntryPoints staticData = sd.getData(currentKey);
+                                Optional<BoxingKeyPair> boxer = Optional.of(staticData.boxer.orElse(followRequestReceiver));
+                                Optional<SigningKeyPair> identity = Optional.of(staticData.identity.orElse(newIdentity));
+                                return new UserStaticData(staticData.entries, newKey, identity, boxer);
+                            });
+                    return network.account.setLoginData(new LoginData(username, newEntryPoints.get(), newLogin, Optional.empty()), oldSigner)
+                            .thenCompose(b -> network.hasher.sha256(followRequestReceiver.serialize())
                             .thenCompose(boxerHash -> network.dhtClient.putBoxingKey(oldSigner.publicKeyHash,
-                            oldSigner.secret.signMessage(boxerHash),
-                            followRequestReceiver, tid
-                    )).thenCompose(boxerHash -> OwnedKeyChamp.createEmpty(oldSigner.publicKeyHash, oldSigner,
+                                    oldSigner.secret.signMessage(boxerHash),
+                                    followRequestReceiver.publicBoxingKey, tid
+                            ))).thenCompose(boxerHash -> OwnedKeyChamp.createEmpty(oldSigner.publicKeyHash, oldSigner,
                             network.dhtClient, network.hasher, tid)
                             .thenCompose(ownedRoot -> {
                                 Map<String, OwnerProof> newNamedOwnedKeys = namedOwnedKeys.entrySet()
@@ -239,7 +252,7 @@ public class WriterData implements Cborable {
                                         Optional.of(new PublicKeyHash(boxerHash)),
                                         Optional.of(ownedRoot),
                                         newNamedOwnedKeys,
-                                        newEntryPoints,
+                                        Optional.empty(),
                                         tree);
                                 return getOwnedKeyChamp(network.dhtClient, network.hasher)
                                         .thenCompose(okChamp -> okChamp.applyToAllMappings(base, (nwd, p) ->
@@ -286,8 +299,7 @@ public class WriterData implements Cborable {
                         return CompletableFuture.completedFuture(new Snapshot(signer.publicKeyHash, committed));
                     }
                     HashCasPair cas = new HashCasPair(currentHash, newHash);
-                    byte[] signed = signer.secret.signMessage(cas.serialize());
-                    return mutable.setPointer(owner, signer.publicKeyHash, signed)
+                    return mutable.setPointer(owner, signer, cas)
                             .thenApply(res -> {
                                 if (!res)
                                     throw new IllegalStateException("Corenode Crypto CAS failed!");

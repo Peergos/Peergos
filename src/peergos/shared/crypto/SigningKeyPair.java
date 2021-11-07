@@ -5,6 +5,7 @@ import peergos.shared.crypto.asymmetric.PublicSigningKey;
 import peergos.shared.crypto.asymmetric.SecretSigningKey;
 import peergos.shared.crypto.asymmetric.curve25519.*;
 import peergos.shared.crypto.random.*;
+import peergos.shared.io.ipfs.multibase.*;
 
 import java.util.*;
 
@@ -50,11 +51,20 @@ public class SigningKeyPair implements Cborable
                 secretSigningKey.toCbor()));
     }
 
+    @Override
+    public String toString() {
+        return Multibase.encode(Multibase.Base.Base58BTC, serialize());
+    }
+
+    public static SigningKeyPair fromString(String multibaseEncoded) {
+        return fromByteArray(Multibase.decode(multibaseEncoded));
+    }
+
     public static SigningKeyPair fromByteArray(byte[] raw) {
         return fromCbor(CborObject.fromByteArray(raw));
     }
 
-    public static SigningKeyPair fromCbor(CborObject cbor) {
+    public static SigningKeyPair fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Incorrect cbor for SigningKeyPair: " + cbor);
 
