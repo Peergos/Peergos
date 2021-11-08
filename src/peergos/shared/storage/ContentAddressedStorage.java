@@ -353,9 +353,6 @@ public interface ContentAddressedStorage {
         public static final String BLOCK_GET = "block/get";
         public static final String BLOCK_RM = "block/rm";
         public static final String BLOCK_STAT = "block/stat";
-        public static final String PIN_ADD = "pin/add";
-        public static final String PIN_RM = "pin/rm";
-        public static final String PIN_UPDATE = "pin/update";
         public static final String REFS = "refs";
         public static final String REFS_LOCAL = "refs/local";
 
@@ -604,22 +601,6 @@ public interface ContentAddressedStorage {
         @Override
         public CompletableFuture<List<Multihash>> pinUpdate(PublicKeyHash owner, Multihash existing, Multihash updated) {
             return Futures.of(Arrays.asList(updated));
-        }
-
-        private List<Multihash> getPins(byte[] raw) {
-            Map res = (Map)JSONParser.parse(new String(raw));
-            List<String> pins = (List<String>)res.get("Pins");
-            return pins.stream().map(Cid::decode).collect(Collectors.toList());
-        }
-
-        @Override
-        public CompletableFuture<List<Multihash>> getLinks(Multihash block) {
-            return poster.get(apiPrefix + REFS + "?arg=" + block.toString())
-                    .thenApply(raw -> JSONParser.parseStream(new String(raw))
-                            .stream()
-                            .map(obj -> (String) (((Map) obj).get("Ref")))
-                            .map(Cid::decode)
-                            .collect(Collectors.toList()));
         }
 
         @Override
