@@ -244,14 +244,9 @@ public class IpfsInstaller {
                     //all present and correct
                     return;
                 }
-                ProcessBuilder pb = new ProcessBuilder(Arrays.asList(targetFile.toString(), "version"));
-                Process started = pb.start();
-                InputStream in = started.getInputStream();
-                String output = new String(Serialize.readFully(in)).trim();
-                Version ipfsVersion = Version.parse(output.substring(output.lastIndexOf(" ") + 1));
-                LOG().info("Upgrading IPFS from " + ipfsVersion);
+                LOG().info("Upgrading IPFS version");
                 targetFile.toFile().delete();
-                install(targetFile, downloadTarget, Optional.of(ipfsVersion));
+                install(targetFile, downloadTarget, Optional.empty());
                 return;
             } catch (IOException ioe) {
                 throw new IllegalStateException(ioe.getMessage(), ioe);
