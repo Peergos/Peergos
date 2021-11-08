@@ -54,14 +54,6 @@ public class IPFS {
         this.host = host;
         this.port = port;
         this.version = version;
-        // Check IPFS is sufficiently recent
-        try {
-            Version ipfsVersion = Version.parse(version());
-            if (ipfsVersion.isBefore(MIN_VERSION))
-                throw new IllegalStateException("You need to use a more recent version of IPFS! >= " + MIN_VERSION);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
     }
 
     public MerkleNode add(NamedStreamable file) throws IOException {

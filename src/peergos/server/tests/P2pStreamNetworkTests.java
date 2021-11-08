@@ -55,8 +55,8 @@ public class P2pStreamNetworkTests {
         ENSURE_IPFS_INSTALLED.main(normalNode);
         IPFS.main(normalNode);
 
-        IPFS node2 = new IPFS(Main.getLocalMultiAddress(ipfsApiPort));
-        node2.swarm.connect(Main.getLocalBootstrapAddress(bootstrapSwarmPort, pkiNodeId).toString());
+//        IPFS node2 = new IPFS(Main.getLocalMultiAddress(ipfsApiPort));
+//        node2.swarm.connect(Main.getLocalBootstrapAddress(bootstrapSwarmPort, pkiNodeId).toString());
 
         nodes.add(buildProxiedApi(ipfsApiPort, ipfsGatewayPort, pkiNodeId));
     }

@@ -593,21 +593,17 @@ public interface ContentAddressedStorage {
 
         @Override
         public CompletableFuture<List<Multihash>> recursivePin(PublicKeyHash owner, Multihash hash) {
-            return poster.get(apiPrefix + PIN_ADD + "?stream-channels=true&arg=" + hash.toString()
-                    + "&owner=" + encode(owner.toString())).thenApply(this::getPins);
+            return Futures.of(Arrays.asList(hash));
         }
 
         @Override
         public CompletableFuture<List<Multihash>> recursiveUnpin(PublicKeyHash owner, Multihash hash) {
-            return poster.get(apiPrefix + PIN_RM + "?stream-channels=true&r=true&arg=" + hash.toString()
-                    + "&owner=" + encode(owner.toString())).thenApply(this::getPins);
+            return Futures.of(Arrays.asList(hash));
         }
 
         @Override
         public CompletableFuture<List<Multihash>> pinUpdate(PublicKeyHash owner, Multihash existing, Multihash updated) {
-            return poster.get(apiPrefix + PIN_UPDATE + "?stream-channels=true&arg=" + existing.toString()
-                    + "&arg=" + updated + "&unpin=false"
-                    + "&owner=" + encode(owner.toString())).thenApply(this::getPins);
+            return Futures.of(Arrays.asList(updated));
         }
 
         private List<Multihash> getPins(byte[] raw) {
