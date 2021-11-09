@@ -22,17 +22,17 @@ public class IpfsInstaller {
 
     public enum DownloadTarget {
         DARWIN_AMD64("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.1.2/darwin-amd64/ipfs?raw=true",
-                Cid.decode("Qme6GQefU2UYXxb4hMnYtZd5cT6RPc8uEXSpgCHQhYV5pR")),
+                Cid.decode("QmV4DAfguGNB2zB78tTsS39TFhpah5zrtrQZy92Te3vB14")),
         DARWIN_ARM64("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.1.2/darwin-arm64/ipfs?raw=true",
-                Cid.decode("Qmf11pLs9Tn3282yLFWVF5r7rUcbrw8DFNnDVsxzXJJ2rV")),
+                Cid.decode("QmayeuvCQDTejQvPeBRwdodjRhEzjv5uRp6Mqr3NkRBZTC")),
         LINUX_AMD64("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.1.2/linux-amd64/ipfs?raw=true",
-                Cid.decode("QmZKrg3VDAuw3dEidHieHrvPP2saofYvAFxGpCntENWnmX")),
+                Cid.decode("QmX2pAEZRhhWyWQc3jtYHZjEitEk1fZtEQevfGkHNmBPua")),
         LINUX_ARM("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.1.2/linux-arm/ipfs?raw=true",
-                Cid.decode("QmRbHdndGrPd5nc9SQ2Cj55ALFARUM9pr8QVgCX3ETn2GX")),
+                Cid.decode("QmTr37RA8HqUByf8Xceu3PhHKpof48tetrRmoMh8ok6WHL")),
         LINUX_ARM64("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.1.2/linux-arm64/ipfs?raw=true",
-                Cid.decode("QmPZNV23hooWKvFzutZudDnmGsEvKK4sUMqLiSoBQQ8SsS")),
+                Cid.decode("QmY9dACdtKoxE1W15tRrCM2PpyBnWzfVcykqsPkHR9AwXY")),
         WINDOWS_AMD64("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.1.2/windows-amd64/ipfs.exe?raw=true",
-                Cid.decode("QmUsnHRKSpBpFH5nkcPkrNT7mXX7td7xQxPBjTRGxheMi8")),;
+                Cid.decode("Qmc35tdyWtFkLBHFoeFQ8Yv191VT9m4pV5LwzYNVL9kWfm")),;
 
         public final String url;
         public final Multihash multihash;
@@ -347,7 +347,7 @@ public class IpfsInstaller {
                 Multihash hash = new Multihash(Multihash.Type.sha2_256, Hash.sha256(bytes));
                 System.out.println(arch.getName().toUpperCase().replaceAll("-", "_")
                         + "(\"" + urlBase + arch.getName() + "/" + binary.getName()
-                        + "?raw=true\", Cid.decode(\"" + hash + "\")),");
+                        + "?raw=true\", \nCid.decode(\"" + hash + "\")),");
             }
         }
     }
