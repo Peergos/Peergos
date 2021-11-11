@@ -4,7 +4,8 @@ package peergos.shared.user.fs;
  *
  */
 public class Fragment {
-    public static final int MAX_LENGTH = 512*1024; // max size allowed by bitswap protocol is 1 MiB
+    // max message size allowed by bitswap protocol is 2 MiB, and the block must fit within that
+    public static final int MAX_LENGTH = 1024*1024;
 
     public final byte[] data;
 
