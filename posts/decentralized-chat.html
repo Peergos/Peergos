@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <head>
-    <title>Blog</title>
+    <title>Decentralized encrypted chat</title>
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta charset="utf-8">
     <meta http-equiv="Content-Security-Policy" content="default-src https: 'self'">
@@ -25,31 +25,31 @@
         <a href="#" data-activates="mobile" class="button-collapse"><i class="material-icons">menu</i></a>
             <ul class="right hide-on-med-and-down">
                     <li >
-                        <a href="./features"
+                        <a href="../features"
 >
                             Features
                         </a>
                     </li>
                     <li >
-                        <a href="./pricing"
+                        <a href="../pricing"
 >
                             Pricing
                         </a>
                     </li>
                     <li >
-                        <a href="./security"
+                        <a href="../security"
 >
                             Security
                         </a>
                     </li>
                     <li class="active">
-                        <a href="./blog"
+                        <a href="../blog"
 >
                             Blog
                         </a>
                     </li>
                     <li >
-                        <a href="./about"
+                        <a href="../about"
 >
                             About
                         </a>
@@ -78,25 +78,25 @@
                 <a href="/" class="brand-logo"><img src="/theme/img/peergos/logo-tower-only-green.svg" width="180"/></a>
             </li>
                 <li >
-                    <a href="./features"
+                    <a href="../features"
 >
                         Features
                     </a>
                 </li>
                 <li >
-                    <a href="./pricing"
+                    <a href="../pricing"
 >
                         Pricing
                     </a>
                 </li>
                 <li >
-                    <a href="./security"
+                    <a href="../security"
 >
                         Security
                     </a>
                 </li>
                 <li class="active">
-                    <a href="./blog"
+                    <a href="../blog"
 >
                         Blog
                     </a>
@@ -109,7 +109,7 @@
                         </a>
                     </li>
                 <li >
-                    <a href="./about"
+                    <a href="../about"
 >
                         About
                     </a>
@@ -121,78 +121,100 @@
     <div class="container bs-docs-container">
     <div class="row">
     <div class="col m3 col s4">
-    <div id="full-toc" class="bs-docs-sidebar hidden-print affix-top hidden-xs hidden-sm" role="complementary">
-  
-    </div>
     </div>
     <div class="col m9 col s8" role="main" style="overflow-x:auto; padding-bottom: 10px;">
-    <h1 class="page-header main-title">Blog</h1>
+    <h1 class="page-header main-title">Decentralized encrypted chat</h1>
     <div class="bs-docs-section">
-    
+    <p>We're pleased to announce the latest feature built as part of our NGI grant - decentralized encrypted chat. Why build yet another chat protocol you ask? Our implementation of chat is just an application inside Peergos. That means without doing any cryptography itself the chat app already benefits from all the privacy guarantees and access control that Peergos implements. First lets see how it looks.</p>
+<p><center>
+<img alt="chat" class="class" id="id" src="/theme/img/blog/chat.png" width="500px" />
+<br/>
+Decentralized encrypted chat.
+</center></p>
+<p>The user interface is fairly familiar. However, one difference to most messengers is that it is built to respect you and your attention. This means no notifications and no nagging pop ups to "install our native app where we can track you more". You can only chat with your friends on Peergos. This means no unwanted messages - you have to accept someone as a friend before they can send you a message. You invite someone via their public username - unlike some messengers that require your phone number, and require you to share that with those you chat with. </p>
+<p>You can do all the usual things, textual messages, images, videos, emoji. It allows one-to-one chats or group chats. Group chats can have any number of members and any number of admins. Admins can grant and revoke admin status to others. Your Peergos server doesn't even know you're sending chat messages, because they are just regular files in your peergos space.</p>
+<p><center>
+<img alt="group chat" class="class" id="id" src="/theme/img/blog/group-chat.png" width="500px" />
+<br/>
+Group chat.
+</center></p>
+<p>Under the hood, each chat stores it's messages as an append only file in Peergos. Messages are not pushed to other recipients - to send a message you just append it to your own copy of the chat log. Other members will then pull the message and copy it into their log the next time they open chat. This means that messages propagate peer-to-peer from member to member. The messages themselves form a merkle dag with each message containing a merkle link to previous messages. With this structure we are able to maintain causal order. That means you only see a reply to a message after seeing the message it is replying to. In group chats, when a member leaves or is removed from a chat then all the keys for the chat are rotated. </p>
+<p>Want to try it out already? To enable chat just login or create an account at <a href="https://beta.peergos.net/?chat=true">https://beta.peergos.net/?chat=true</a> - note the "?chat=true" in the URL. We will enable chat by default once the UX is more polished. If you're just signing up you get 200 MiB of space for free. If you want more, you can upgrade and get 50 GiB for £5 per month. This is to keep our business model aligned with our users interests - if you're not paying for the product, then you are the product. </p>
+<p>Don't forget to let us know what you think. We're always looking for feedback, so either <a href="mailto://peergos@peergos.org">drop us a line</a> or come say hi in our <a href="https://app.element.io/#/room/#peergos-chat:matrix.org">Matrix chatroom</a>.</p>
+<p>This work was built as part of our <a href="/posts/next-generation-internet">grant</a> from the Next Generation Internet program (<a href="https://pointer.ngi.eu/">NGI POINTER</a>).</p>
+<p><br/><br/></p>
+<hr />
+<p><center>
+<img alt="NGI Pointer" class="class" height="65px" id="id" src="/theme/img/ngi-logo.png" />
+<img alt="NGI Pointer" class="class" height="65" id="id" src="/theme/img/eu.png" />
+</center>
+<br/>
+This project has received funding from the European Union’s Horizon 2020 research and innovation programme within the framework of the NGI-POINTER Project funded under grant agreement No 871528</p>
+<p><br/><br/><br/></p>
 <h4>RECENT POSTS</h4>
 <ul id="recent-posts">
     <li>
-      <a href="./posts/decentralized-chat">Decentralized encrypted chat</a>
+      <a href="../posts/decentralized-chat">Decentralized encrypted chat</a>
     </li>
     <li>
-      <a href="./posts/decentralized-social-media">Peergos launches decentralized & encrypted social media</a>
+      <a href="../posts/decentralized-social-media">Peergos launches decentralized & encrypted social media</a>
     </li>
     <li>
-      <a href="./posts/social-profile">Private and customizable profiles</a>
+      <a href="../posts/social-profile">Private and customizable profiles</a>
     </li>
     <li>
-      <a href="./posts/p2p-web-hosting">Simple decentralized web hosting on Peergos</a>
+      <a href="../posts/p2p-web-hosting">Simple decentralized web hosting on Peergos</a>
     </li>
     <li>
-      <a href="./posts/calendar">Encrypted shareable calendar</a>
+      <a href="../posts/calendar">Encrypted shareable calendar</a>
     </li>
     <li>
-      <a href="./posts/file-search">Fast Encrypted File Search</a>
+      <a href="../posts/file-search">Fast Encrypted File Search</a>
     </li>
     <li>
-      <a href="./posts/private-kanban">Private Planning Boards in Peergos</a>
+      <a href="../posts/private-kanban">Private Planning Boards in Peergos</a>
     </li>
     <li>
-      <a href="./posts/the-social-dilemma">How to solve the social dilemma and fix social media</a>
+      <a href="../posts/the-social-dilemma">How to solve the social dilemma and fix social media</a>
     </li>
     <li>
-      <a href="./posts/next-generation-internet">Peergos wins EU Next Generation Internet grant</a>
+      <a href="../posts/next-generation-internet">Peergos wins EU Next Generation Internet grant</a>
     </li>
     <li>
-      <a href="./posts/direct-s3">Direct S3 access</a>
+      <a href="../posts/direct-s3">Direct S3 access</a>
     </li>
     <li>
-      <a href="./posts/release-v0.3.0">Peergos release v0.3.0</a>
+      <a href="../posts/release-v0.3.0">Peergos release v0.3.0</a>
     </li>
     <li>
-      <a href="./posts/keybase-left-building">Keybase has left the building</a>
+      <a href="../posts/keybase-left-building">Keybase has left the building</a>
     </li>
     <li>
-      <a href="./posts/perfect-social-network">The perfect social network</a>
+      <a href="../posts/perfect-social-network">The perfect social network</a>
     </li>
     <li>
-      <a href="./posts/atomic-access-control">Atomic access control</a>
+      <a href="../posts/atomic-access-control">Atomic access control</a>
     </li>
     <li>
-      <a href="./posts/release-v0.1.3">Peergos release v0.1.3</a>
+      <a href="../posts/release-v0.1.3">Peergos release v0.1.3</a>
     </li>
     <li>
-      <a href="./posts/applications">Applications on Peergos</a>
+      <a href="../posts/applications">Applications on Peergos</a>
     </li>
     <li>
-      <a href="./posts/fast-seeking">Fast seeking and encrypted history</a>
+      <a href="../posts/fast-seeking">Fast seeking and encrypted history</a>
     </li>
     <li>
-      <a href="./posts/ipfs-camp">IPFS Camp, new features</a>
+      <a href="../posts/ipfs-camp">IPFS Camp, new features</a>
     </li>
     <li>
-      <a href="./posts/alpha-release">Alpha Release</a>
+      <a href="../posts/alpha-release">Alpha Release</a>
     </li>
     <li>
-      <a href="./posts/security-audit">Security Audit</a>
+      <a href="../posts/security-audit">Security Audit</a>
     </li>
     <li>
-      <a href="./posts/dev-update">Development update</a>
+      <a href="../posts/dev-update">Development update</a>
     </li>
 </ul>    </div>
     <span class="pull-right">
