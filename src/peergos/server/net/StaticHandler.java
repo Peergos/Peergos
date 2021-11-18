@@ -118,6 +118,7 @@ public abstract class StaticHandler implements HttpHandler
                         (isSubdomain ? "sandbox allow-scripts allow-forms;" : "") +
                         "frame-src 'self' " + frameDomains.stream().collect(Collectors.joining(" ")) + " " + (isSubdomain ? "" : this.host.wildcard()) + ";" +
                         "frame-ancestors 'self' " + this.host + ";" +
+                        "prefetch-src 'self' " + this.host + ";" + // prefetch can be used to leak data via DNS
                         "connect-src 'self' " + this.host +
                         (isSubdomain ? "" : blockstoreDomain.stream().map(d -> " https://" + d).collect(Collectors.joining())) + ";" +
                         "media-src 'self' " + this.host + " blob:;" +
@@ -129,6 +130,8 @@ public abstract class StaticHandler implements HttpHandler
                 httpExchange.getResponseHeaders().set("x-frame-options", "sameorigin");
             // Enable cross site scripting protection
             httpExchange.getResponseHeaders().set("x-xss-protection", "1; mode=block");
+            // Disable prefetch which can be used to exfiltrate data cross domain
+            httpExchange.getResponseHeaders().set("x-dns-prefetch-control", "off");
             // Don't let browser sniff mime types
             httpExchange.getResponseHeaders().set("x-content-type-options", "nosniff");
             // Don't send Peergos referrer to anyone
