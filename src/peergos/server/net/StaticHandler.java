@@ -109,13 +109,14 @@ public abstract class StaticHandler implements HttpHandler
 
             // Only allow assets to be loaded from the original host
             // Todo work on removing unsafe-inline from sub domains
+
             if (includeCsp)
                 httpExchange.getResponseHeaders().set("content-security-policy", "default-src 'self' " + this.host + ";" +
                         "style-src 'self' " +
                         " " + this.host +
                         (isSubdomain ? " 'unsafe-inline' https://" + reqHost : "") + // calendar, editor, todoboard, pdfviewer
                         ";" +
-                        (isSubdomain ? "sandbox allow-scripts allow-forms;" : "") +
+                        (isSubdomain ? "sandbox allow-same-origin allow-scripts allow-forms;" : "") +
                         "frame-src 'self' " + frameDomains.stream().collect(Collectors.joining(" ")) + " " + (isSubdomain ? "" : this.host.wildcard()) + ";" +
                         "frame-ancestors 'self' " + this.host + ";" +
                         "prefetch-src 'self' " + this.host + ";" + // prefetch can be used to leak data via DNS
@@ -125,9 +126,11 @@ public abstract class StaticHandler implements HttpHandler
                         "img-src 'self' " + this.host + " data: blob:;" +
                         "object-src 'none';"
                 );
+
             // Don't let anyone to load main Peergos site in an iframe (legacy header)
             if (!isSubdomain)
                 httpExchange.getResponseHeaders().set("x-frame-options", "sameorigin");
+
             // Enable cross site scripting protection
             httpExchange.getResponseHeaders().set("x-xss-protection", "1; mode=block");
             // Disable prefetch which can be used to exfiltrate data cross domain

@@ -581,7 +581,7 @@ public class Main extends Builder {
             Optional<String> basicAuth = a.getOptionalArg("basic-auth");
             List<String> blockstoreDomains = S3Config.getBlockstoreDomains(a);
             Optional<String> paymentDomain = a.getOptionalArg("payment-domain");
-            List<String> appSubdomains = Arrays.asList(a.getArg("apps", "email,calendar,todo-board,code-editor,pdf").split(","));
+            List<String> appSubdomains = Arrays.asList(a.getArg("apps", "markdown,browser,sandbox,email,calendar,todo-board,code-editor,pdf").split(","));
             List<String> frameDomains = paymentDomain.map(Arrays::asList).orElse(Collections.emptyList());
             peergos.initAndStart(localAddress, nodeId, tlsProps, publicHostname, blockstoreDomains, frameDomains, appSubdomains,
                     a.getBoolean("include-csp", true), basicAuth, webroot, useWebAssetCache, isPublicServer, maxConnectionQueue, handlerThreads);
