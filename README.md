@@ -11,6 +11,11 @@ The foundation of Peergos is a peer-to-peer encrypted global filesystem with fin
 
 The name Peergos comes from the Greek word Πύργος (Pyrgos), which means stronghold or tower, but phonetically spelt with the nice connection to being peer-to-peer. Pronuniation: peer-goss (as in gossip).
 
+Screenshots
+----
+
+See screenshots in the web-ui repository [https://github.com/Peergos/web-ui](https://github.com/Peergos/web-ui).
+
 Demo
 ----
 Want to try it out now? Here's our demo [https://demo.peergos.net](https://demo.peergos.net). 
