@@ -10,8 +10,11 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileTime;
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.*;
 import java.util.function.BiConsumer;
@@ -153,7 +156,14 @@ public class NativeFileSystemImpl implements FileSystem {
 
                 LocalDateTime lastModified = LocalDateTime.ofInstant(Instant.ofEpochSecond(file.lastModified() / 1000),
                         ZoneOffset.systemDefault());
-
+                LocalDateTime created = lastModified;
+                try {
+                    BasicFileAttributes attr = Files.readAttributes(file.toPath(), BasicFileAttributes.class);
+                    FileTime creationTime = attr.creationTime();
+                    created = LocalDateTime.ofInstant(creationTime.toInstant(), ZoneId.systemDefault());
+                } catch (IOException ioe) {
+                    System.err.println("Unable to extract file creation time");
+                }
                 // These things are a bit awkward, not supporting them for now
                 Optional<Thumbnail> thumbnail = Optional.empty();
                 boolean isHidden = false;
@@ -162,7 +172,7 @@ public class NativeFileSystemImpl implements FileSystem {
                 //TODO make files use the new format with a stream secret
                 Optional<byte[]> streamSecret = file.isDirectory() ? Optional.empty() : Optional.empty();
                 return new FileProperties(file.getName(), file.isDirectory(), false, mimeType, sizeHi, sizeLo, lastModified,
-                        isHidden, thumbnail, streamSecret);
+                        created, isHidden, thumbnail, streamSecret);
 
             }
 

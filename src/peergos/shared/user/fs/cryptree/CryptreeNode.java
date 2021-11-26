@@ -891,8 +891,9 @@ public class CryptreeNode implements Cborable {
         RelativeCapability ourCap = new RelativeCapability(Optional.empty(), us.getMapKey(), ourParentKey, Optional.empty());
         RelativeCapability nextChunk = new RelativeCapability(Optional.empty(), crypto.random.randomBytes(32), dirReadKey, Optional.empty());
         WritableAbsoluteCapability childCap = us.withBaseKey(dirReadKey).withBaseWriteKey(dirWriteKey).withMapKey(dirMapKey);
+        LocalDateTime timestamp = LocalDateTime.now();
         return CryptreeNode.createEmptyDir(MaybeMultihash.empty(), dirReadKey, dirWriteKey, Optional.empty(),
-                new FileProperties(name, true, false, "", 0, LocalDateTime.now(), isSystemFolder,
+                new FileProperties(name, true, false, "", 0, timestamp, timestamp, isSystemFolder,
                         Optional.empty(), Optional.empty()), Optional.of(ourCap), SymmetricKey.random(), nextChunk, crypto.hasher)
                 .thenCompose(child -> {
 
