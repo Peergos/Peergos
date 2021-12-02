@@ -19,6 +19,7 @@ public class IpfsUserTests extends UserTests {
             .with("useIPFS", "true")
 //            .with("enable-gc", "true")
 //            .with("gc.period.millis", "10000")
+            .with("allow-target", "http://localhost:8001")
             .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, ""); // no bootstrapping
 
     public IpfsUserTests(NetworkAccess network, UserService service) {

@@ -1,7 +1,6 @@
 package peergos.server.storage;
 
 import org.w3c.dom.*;
-import peergos.server.util.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
@@ -24,7 +23,7 @@ import java.util.stream.*;
 public class S3Request {
 
     private static final String ALGORITHM = "AWS4-HMAC-SHA256";
-    private static final String UNSIGNED = "UNSIGNED-PAYLOAD";
+    public static final String UNSIGNED = "UNSIGNED-PAYLOAD";
 
     public final String verb, host;
     public final String key;
@@ -36,7 +35,35 @@ public class S3Request {
     public final String region;
     public final Map<String, String> extraQueryParameters;
     public final Map<String, String> extraHeaders;
-    public final Instant date;
+    public final String shortDate, datetime;
+
+    public S3Request(String verb,
+                     String host,
+                     String key,
+                     String contentSha256,
+                     Optional<Integer> expiresSeconds,
+                     boolean allowPublicReads,
+                     boolean useAuthHeader,
+                     Map<String, String> extraQueryParameters,
+                     Map<String, String> extraHeaders,
+                     String accessKeyId,
+                     String region,
+                     String shortDate,
+                     String datetime) {
+        this.verb = verb;
+        this.host = host;
+        this.key = key;
+        this.contentSha256 = contentSha256;
+        this.expiresSeconds = expiresSeconds;
+        this.allowPublicReads = allowPublicReads;
+        this.useAuthHeader = useAuthHeader;
+        this.extraQueryParameters = extraQueryParameters;
+        this.extraHeaders = extraHeaders;
+        this.accessKeyId = accessKeyId;
+        this.region = region;
+        this.shortDate = shortDate;
+        this.datetime = datetime;
+    }
 
     public S3Request(String verb,
                      String host,
@@ -50,18 +77,8 @@ public class S3Request {
                      String accessKeyId,
                      String region,
                      ZonedDateTime timestamp) {
-        this.verb = verb;
-        this.host = host;
-        this.key = key;
-        this.contentSha256 = contentSha256;
-        this.expiresSeconds = expiresSeconds;
-        this.allowPublicReads = allowPublicReads;
-        this.useAuthHeader = useAuthHeader;
-        this.extraQueryParameters = extraQueryParameters;
-        this.extraHeaders = extraHeaders;
-        this.accessKeyId = accessKeyId;
-        this.region = region;
-        this.date = timestamp.withNano(0).withZoneSameInstant(ZoneId.of("UTC")).toInstant();
+        this(verb, host, key, contentSha256, expiresSeconds, allowPublicReads, useAuthHeader, extraQueryParameters,
+                extraHeaders, accessKeyId, region, asAwsShortDate(normaliseDate(timestamp)), asAwsDate(normaliseDate(timestamp)));
     }
 
     public static class ObjectMetadata {
@@ -344,7 +361,7 @@ public class S3Request {
     public static String computeSignature(S3Request policy,
                                           String s3SecretKey) {
         String stringToSign = policy.stringToSign();
-        String shortDate = S3Request.asAwsShortDate(policy.date);
+        String shortDate = policy.shortDate;
 
         byte[] dateKey = hmacSha256("AWS4" + s3SecretKey, shortDate.getBytes());
         byte[] dateRegionKey = hmacSha256(dateKey, policy.region.getBytes());
@@ -357,7 +374,7 @@ public class S3Request {
     public String stringToSign() {
         StringBuilder res = new StringBuilder();
         res.append(ALGORITHM + "\n");
-        res.append(asAwsDate(date) + "\n");
+        res.append(datetime + "\n");
         res.append(scope() + "\n");
         res.append(ArrayOps.bytesToHex(Hash.sha256(toCanonicalRequest().getBytes())));
         return res.toString();
@@ -407,7 +424,7 @@ public class S3Request {
         res.put("Host", host);
         if (! useAuthHeader)
             return res;
-        res.put("x-amz-date", asAwsDate(date));
+        res.put("x-amz-date", datetime);
         res.put("x-amz-content-sha256", contentSha256);
         for (Map.Entry<String, String> e : extraHeaders.entrySet()) {
             res.put(e.getKey(), e.getValue());
@@ -435,7 +452,7 @@ public class S3Request {
         if (! useAuthHeader) {
             res.put("X-Amz-Algorithm", ALGORITHM);
             res.put("X-Amz-Credential", credential());
-            res.put("X-Amz-Date", asAwsDate(date));
+            res.put("X-Amz-Date", datetime);
             expiresSeconds.ifPresent(seconds -> res.put("X-Amz-Expires", "" + seconds));
             res.put("X-Amz-SignedHeaders", "host");
         }
@@ -461,7 +478,7 @@ public class S3Request {
     private String scope() {
         return String.format(
                 "%s/%s/%s/%s",
-                asAwsShortDate(date),
+                shortDate,
                 region,
                 "s3",
                 "aws4_request");
@@ -471,7 +488,7 @@ public class S3Request {
         return String.format(
                 "%s/%s/%s/%s/%s",
                 accessKeyId,
-                asAwsShortDate(date),
+                shortDate,
                 region,
                 "s3",
                 "aws4_request"
@@ -484,6 +501,14 @@ public class S3Request {
 
     public boolean isHead() {
         return "HEAD".equals(verb);
+    }
+
+    public static String asAwsTime(ZonedDateTime timestamp) {
+        return asAwsDate(normaliseDate(timestamp));
+    }
+
+    private static Instant normaliseDate(ZonedDateTime timestamp) {
+        return timestamp.withNano(0).withZoneSameInstant(ZoneId.of("UTC")).toInstant();
     }
 
     private static String asAwsDate(Instant instant) {

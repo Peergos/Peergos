@@ -40,8 +40,8 @@ public class IpfsDHT implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Multihash> id() {
-        CompletableFuture<Multihash> res = new CompletableFuture<>();
+    public CompletableFuture<Cid> id() {
+        CompletableFuture<Cid> res = new CompletableFuture<>();
         try {
             Map id = ipfs.id();
             String peerId = (String)id.get("ID");
@@ -111,10 +111,10 @@ public class IpfsDHT implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Multihash hash) {
+    public CompletableFuture<Optional<CborObject>> get(Multihash hash, String auth) {
         CompletableFuture<Optional<CborObject>> res = new CompletableFuture<>();
         try {
-            byte[] raw = ipfs.block.get(hash);
+            byte[] raw = ipfs.block.get(hash, auth);
             res.complete(Optional.of(CborObject.fromByteArray(raw)));
         } catch (Exception e) {
             res.completeExceptionally(e);
@@ -123,10 +123,10 @@ public class IpfsDHT implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash) {
+    public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash, String auth) {
         CompletableFuture<Optional<byte[]>> res = new CompletableFuture<>();
         try {
-            byte[] raw = ipfs.block.get(hash);
+            byte[] raw = ipfs.block.get(hash, auth);
             res.complete(Optional.of(raw));
         } catch (Exception e) {
             res.completeExceptionally(e);
@@ -164,17 +164,6 @@ public class IpfsDHT implements ContentAddressedStorage {
         try {
             List<Multihash> removed = ipfs.pin.rm(h, true);
             res.complete(removed);
-        } catch (Exception e) {
-            res.completeExceptionally(e);
-        }
-        return res;
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> getLinks(Multihash root) {
-        CompletableFuture<List<Multihash>> res = new CompletableFuture<>();
-        try {
-            res.complete(ipfs.refs(root, false));
         } catch (Exception e) {
             res.completeExceptionally(e);
         }

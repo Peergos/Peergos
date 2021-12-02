@@ -108,7 +108,7 @@ public class IpfsCoreNode implements CoreNode {
                                      Map<PublicKeyHash, String> reverseLookup,
                                      List<String> usernames) {
         try {
-            Optional<CborObject> cborOpt = ipfs.get(newValue.get().target).get();
+            Optional<CborObject> cborOpt = ipfs.get(newValue.get().target, "").get();
             if (!cborOpt.isPresent()) {
                 LOG.severe("Couldn't retrieve new claim chain from " + newValue);
                 return;
@@ -121,7 +121,7 @@ public class IpfsCoreNode implements CoreNode {
             String username = new String(key.data);
 
             if (oldValue.isPresent()) {
-                Optional<CborObject> existingCborOpt = ipfs.get(oldValue.get().target).get();
+                Optional<CborObject> existingCborOpt = ipfs.get(oldValue.get().target, "").get();
                 if (!existingCborOpt.isPresent()) {
                     LOG.severe("Couldn't retrieve existing claim chain from " + newValue);
                     return;
@@ -215,7 +215,7 @@ public class IpfsCoreNode implements CoreNode {
                             ipfs).get();
             Optional<CborObject.CborMerkleLink> existing = champ.get(username.getBytes()).get();
             Optional<CborObject> cborOpt = existing.isPresent() ?
-                    ipfs.get(existing.get().target).get() :
+                    ipfs.get(existing.get().target, "").get() :
                     Optional.empty();
             if (! cborOpt.isPresent() && existing.isPresent()) {
                 LOG.severe("Couldn't retrieve existing claim chain from " + existing + " for " + username);

@@ -253,7 +253,7 @@ public class MirrorCoreNode implements CoreNode {
                         Optional<CborObject.CborMerkleLink> newVal = t.right;
                         if (newVal.isPresent()) {
                             transactions.addBlock(newVal.get().target, tid, peergosKey);
-                            ipfs.get(newVal.get().target).join();
+                            ipfs.get(newVal.get().target, "").join();
                         }
                     };
             Champ.applyToDiff(currentTree, updatedTree, 0, IpfsCoreNode::keyHash,

@@ -49,8 +49,8 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     }
 
     @Override
-    public CompletableFuture<Multihash> id() {
-        return CompletableFuture.completedFuture(new Multihash(Multihash.Type.sha2_256, RAMStorage.hash("FileStorage".getBytes())));
+    public CompletableFuture<Cid> id() {
+        return CompletableFuture.completedFuture(new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, RAMStorage.hash("FileStorage".getBytes())));
     }
 
     @Override
@@ -144,14 +144,14 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Multihash hash) {
+    public CompletableFuture<Optional<CborObject>> get(Multihash hash, String auth) {
         if (hash instanceof Cid && ((Cid) hash).codec == Cid.Codec.Raw)
             throw new IllegalStateException("Need to call getRaw if cid is not cbor!");
-        return getRaw(hash).thenApply(opt -> opt.map(CborObject::fromByteArray));
+        return getRaw(hash, auth).thenApply(opt -> opt.map(CborObject::fromByteArray));
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash) {
+    public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash, String auth) {
         try {
             if (hash.isIdentity())
                 return Futures.of(Optional.of(hash.getHash()));

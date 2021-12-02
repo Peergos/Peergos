@@ -1,7 +1,9 @@
 package peergos.shared.storage;
 
+import peergos.server.storage.auth.*;
 import peergos.shared.cbor.CborObject;
 import peergos.shared.crypto.hash.PublicKeyHash;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.Multihash;
 import peergos.shared.user.fs.FragmentWithHash;
 import peergos.shared.util.ProgressConsumer;
@@ -76,7 +78,7 @@ public class RetryStorage implements ContentAddressedStorage {
         return runWithRetry(() -> target.blockStoreProperties());
     }
     @Override
-    public CompletableFuture<Multihash> id() {
+    public CompletableFuture<Cid> id() {
         return runWithRetry(() -> target.id());
     }
 
@@ -96,8 +98,8 @@ public class RetryStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Multihash hash) {
-        return runWithRetry(() -> target.get(hash));
+    public CompletableFuture<Optional<CborObject>> get(Multihash hash, String auth) {
+        return runWithRetry(() -> target.get(hash, auth));
     }
 
     @Override
@@ -111,8 +113,8 @@ public class RetryStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash) {
-        return runWithRetry(() -> target.getRaw(hash));
+    public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash, String auth) {
+        return runWithRetry(() -> target.getRaw(hash, auth));
     }
 
     @Override
@@ -141,8 +143,8 @@ public class RetryStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> getLinks(Multihash root) {
-        return runWithRetry(() -> target.getLinks(root));
+    public CompletableFuture<List<Multihash>> getLinks(Multihash root, String auth) {
+        return runWithRetry(() -> target.getLinks(root, auth));
     }
 
     @Override
@@ -151,10 +153,11 @@ public class RetryStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Multihash> hashes,
+    public CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Cid> hashes,
+                                                                       List<BatWithId> bats,
                                                                        ProgressConsumer<Long> monitor,
                                                                        double spaceIncreaseFactor) {
-        return runWithRetry(() -> target.downloadFragments(hashes, monitor, spaceIncreaseFactor));
+        return runWithRetry(() -> target.downloadFragments(hashes, bats, monitor, spaceIncreaseFactor));
     }
 
     @Override

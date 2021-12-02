@@ -36,8 +36,8 @@ public class PeergosBackedStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Multihash> id() {
-        return CompletableFuture.completedFuture(new Multihash(Multihash.Type.sha2_256, new byte[32]));
+    public CompletableFuture<Cid> id() {
+        return CompletableFuture.completedFuture(new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, new byte[32]));
     }
 
     @Override
@@ -60,8 +60,8 @@ public class PeergosBackedStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Multihash hash) {
-        return getRaw(hash)
+    public CompletableFuture<Optional<CborObject>> get(Multihash hash, String auth) {
+        return getRaw(hash, auth)
                 .thenApply(opt -> opt.map(CborObject::fromByteArray));
     }
 
@@ -117,7 +117,7 @@ public class PeergosBackedStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash) {
+    public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash, String auth) {
         return baseDir.getDescendentByPath(getPath(hash).toString(), crypto.hasher, network)
                 .thenCompose(fopt -> {
                     if (fopt.isEmpty())
@@ -156,6 +156,6 @@ public class PeergosBackedStorage implements ContentAddressedStorage {
 
     @Override
     public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
-        return getRaw(block).thenApply(b -> b.map(d -> d.length));
+        return getRaw(block, "").thenApply(b -> b.map(d -> d.length));
     }
 }

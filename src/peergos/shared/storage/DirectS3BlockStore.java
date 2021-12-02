@@ -1,5 +1,6 @@
 package peergos.shared.storage;
 
+import peergos.server.storage.auth.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
@@ -69,7 +70,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Multihash> id() {
+    public CompletableFuture<Cid> id() {
         return fallback.id();
     }
 
@@ -186,17 +187,18 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Multihash> hashes,
+    public CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Cid> hashes,
+                                                                       List<BatWithId> bats,
                                                                        ProgressConsumer<Long> monitor,
                                                                        double spaceIncreaseFactor) {
         if (publicReads || ! authedReads)
-            return NetworkAccess.downloadFragments(hashes, this, monitor, spaceIncreaseFactor);
+            return NetworkAccess.downloadFragments(hashes, bats, this, monitor, spaceIncreaseFactor);
 
         // Do a bulk auth in a single call
-        List<Pair<Integer, Multihash>> indexAndHash = IntStream.range(0, hashes.size())
+        List<Pair<Integer, Cid>> indexAndHash = IntStream.range(0, hashes.size())
                 .mapToObj(i -> new Pair<>(i, hashes.get(i)))
                 .collect(Collectors.toList());
-        List<Pair<Integer, Multihash>> nonIdentity = indexAndHash.stream()
+        List<Pair<Integer, Cid>> nonIdentity = indexAndHash.stream()
                 .filter(p -> ! p.right.isIdentity())
                 .collect(Collectors.toList());
         CompletableFuture<List<PresignedUrl>> auths = nonIdentity.isEmpty() ?
@@ -210,7 +212,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                                 .mapToObj(i -> direct.get(preAuthedGets.get(i).base, preAuthedGets.get(i).fields)
                                         .thenApply(b -> {
                                             monitor.accept((long)b.length);
-                                            Pair<Integer, Multihash> hashAndIndex = nonIdentity.get(i);
+                                            Pair<Integer, Cid> hashAndIndex = nonIdentity.get(i);
                                             return new Pair<>(hashAndIndex.left,
                                                     new FragmentWithHash(new Fragment(b), Optional.of(hashAndIndex.right)));
                                         }))
@@ -231,7 +233,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                     return Arrays.asList(res);
                 }).thenAccept(allResults::complete)
                 .exceptionally(t -> {
-                    NetworkAccess.downloadFragments(hashes, this, monitor, spaceIncreaseFactor)
+                    NetworkAccess.downloadFragments(hashes, bats, this, monitor, spaceIncreaseFactor)
                             .thenAccept(allResults::complete)
                             .exceptionally(e -> {
                                 allResults.completeExceptionally(e);
@@ -243,12 +245,12 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Multihash hash) {
-        return getRaw(hash).thenApply(opt -> opt.map(CborObject::fromByteArray));
+    public CompletableFuture<Optional<CborObject>> get(Multihash hash, String auth) {
+        return getRaw(hash, auth).thenApply(opt -> opt.map(CborObject::fromByteArray));
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash) {
+    public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash, String auth) {
         if (hash.isIdentity())
                 return CompletableFuture.completedFuture(Optional.of(hash.getHash()));
         if (publicReads) {
@@ -262,7 +264,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                                 .thenApply(Optional::of)
                                 .thenAccept(res::complete)
                                 .exceptionally(e -> {
-                                    fallback.getRaw(hash)
+                                    fallback.getRaw(hash, auth)
                                             .thenAccept(res::complete)
                                             .exceptionally(f -> {
                                                 res.completeExceptionally(f);
@@ -281,7 +283,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                     .thenApply(Optional::of)
                     .thenAccept(res::complete)
                     .exceptionally(t -> {
-                        fallback.getRaw(hash)
+                        fallback.getRaw(hash, auth)
                                 .thenAccept(res::complete)
                                 .exceptionally(e -> {
                                     res.completeExceptionally(e);
@@ -291,7 +293,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                     });
             return res;
         }
-        return fallback.getRaw(hash);
+        return fallback.getRaw(hash, auth);
     }
 
     @Override

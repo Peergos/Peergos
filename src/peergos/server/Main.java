@@ -6,6 +6,7 @@ import peergos.server.messages.*;
 import peergos.server.space.*;
 import peergos.server.sql.*;
 import peergos.server.storage.admin.*;
+import peergos.server.storage.auth.*;
 import peergos.shared.*;
 import peergos.server.corenode.*;
 import peergos.server.fuse.*;
@@ -124,6 +125,7 @@ public class Main extends Builder {
                     new Command.Arg("pki.node.ipaddress", "IP address of the pki node", true, "172.104.157.121"),
                     new Command.Arg("ipfs-api-address", "IPFS API port", false, "/ip4/127.0.0.1/tcp/5001"),
                     new Command.Arg("ipfs-gateway-address", "IPFS Gateway port", false, "/ip4/127.0.0.1/tcp/8080"),
+                    new Command.Arg("allow-target", "Local address to listen on for IPFS allow calls", false, "/ip4/127.0.0.1/tcp/8001"),
                     new Command.Arg("pki.node.swarm.port", "Swarm port of the pki node", true, "5001"),
                     new Command.Arg("domain", "Domain name to bind to", false, "localhost"),
                     new Command.Arg("public-domain", "The public domain name for this server (required if TLS is managed upstream)", false),
@@ -498,14 +500,6 @@ public class Main extends Builder {
             DeletableContentAddressedStorage localStorage = buildLocalStorage(a, transactions, crypto.hasher);
             JdbcIpnsAndSocial rawPointers = buildRawPointers(a,
                     getDBConnector(a, "mutable-pointers-file", dbConnectionPool));
-            boolean enableGC = a.getBoolean("enable-gc", false);
-            GarbageCollector gc = null;
-            if (enableGC) {
-                if (S3Config.useS3(a))
-                    throw new IllegalStateException("GC should be run separately when using S3!");
-                gc = new GarbageCollector(localStorage, rawPointers);
-                gc.start(a.getInt("gc.period.millis", 60 * 60 * 1000), s -> Futures.of(true));
-            }
 
             String hostname = a.getArg("domain");
             Multihash nodeId = localStorage.id().get();
@@ -515,11 +509,50 @@ public class Main extends Builder {
 
             Supplier<Connection> usageDb = getDBConnector(a, "space-usage-sql-file", dbConnectionPool);
             UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
+            boolean enableGC = a.getBoolean("enable-gc", false);
+            GarbageCollector gc = null;
+            if (enableGC) {
+                if (S3Config.useS3(a))
+                    throw new IllegalStateException("GC should be run separately when using S3!");
+                gc = new GarbageCollector(localStorage, rawPointers, usageStore);
+                gc.start(a.getInt("gc.period.millis", 60 * 60 * 1000), s -> Futures.of(true));
+            }
+
             JdbcIpnsAndSocial rawSocial = new JdbcIpnsAndSocial(getDBConnector(a, "social-sql-file", dbConnectionPool), sqlCommands);
             HttpSpaceUsage httpSpaceUsage = new HttpSpaceUsage(p2pHttpProxy, p2pHttpProxy);
             JdbcAccount rawAccount = new JdbcAccount(getDBConnector(a, "account-sql-file", dbConnectionPool), sqlCommands);
             Account account = new AccountWithStorage(localStorage, localPointers, rawAccount);
             AccountProxy accountProxy = new HttpAccount(p2pHttpProxy, pkiServerNodeId);
+
+            InetSocketAddress allowListener = new InetSocketAddress("localhost", AddressUtil.getListenPort(a.getArg("allow-target")));
+            System.out.println("Block allow listener for " + nodeId + " on " + allowListener);
+            BlockRequestAuthoriser blockRequestAuthoriser = (b, s, auth) -> {
+                System.out.println("Allow: " + b + ", auth=" + auth + ", from: " + s + " received by " + nodeId + " " + allowListener);
+                if (b.codec == Cid.Codec.Raw) {
+                    boolean isPreUpgradeBlock = false; //TODO lookup list of raw cids at upgrade time in DB
+                    if (isPreUpgradeBlock)
+                        return Futures.of(true);
+//                    if (true) return Futures.of(true); // DEBUG ALLOW ALL
+                    byte[] block = localStorage.getRaw(b, "").join().get();
+                    Bat bat = Bat.deriveFromRawBlock(block);
+                    return Futures.of(bat.isValidAuth(BlockAuth.fromString(auth), b, s));
+                } else if (b.codec == Cid.Codec.DagCbor) {
+//                    CborObject block = localStorage.get(b, "").join().get();
+//                    if (block instanceof CborObject.CborMap) {
+//                        if (((CborObject.CborMap) block).containsKey("bats")) {
+//                            List<Bat> bats = ((CborObject.CborMap) block).getList("bats", Bat::fromCbor);
+//                            for (Bat bat : bats) {
+//                                if (bat.isValidAuth(BlockAuth.fromString(auth), b, s))
+//                                    return Futures.of(true);
+//                            }
+//                            return Futures.of(false);
+//                        } else return Futures.of(true); // This is a public block
+//                    } else // e.g. inner CHAMP nodes
+                        return Futures.of(true);
+                }
+                return Futures.of(false);
+            };
+            BlockAuthServer.startListener(blockRequestAuthoriser, allowListener, 100, 4);
 
             CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable,
                     rawSocial, usageStore, rawAccount, account, hasher);

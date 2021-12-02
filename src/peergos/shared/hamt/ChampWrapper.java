@@ -46,7 +46,7 @@ public class ChampWrapper<V extends Cborable> implements ImmutableTree<V>
                                                                                  ContentAddressedStorage dht,
                                                                                  Hasher writeHasher,
                                                                                  Function<Cborable, V> fromCbor) {
-        return dht.get(rootHash).thenApply(rawOpt -> {
+        return dht.get(rootHash, "").thenApply(rawOpt -> {
             if (! rawOpt.isPresent())
                 throw new IllegalStateException("Champ root not present: " + rootHash);
             return new ChampWrapper<>(Champ.fromCbor(rawOpt.get(), fromCbor), rootHash, hasher, dht, writeHasher, BIT_WIDTH);

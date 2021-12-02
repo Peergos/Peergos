@@ -67,8 +67,8 @@ public class HashVerifyingStorage extends DelegatingStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Multihash hash) {
-        return source.get(hash)
+    public CompletableFuture<Optional<CborObject>> get(Multihash hash, String auth) {
+        return source.get(hash, auth)
                 .thenCompose(cborOpt -> cborOpt.map(cbor -> verify(cbor.toByteArray(), hash, () -> cbor)
                         .thenApply(Optional::of))
                         .orElseGet(() -> Futures.of(Optional.empty())));
@@ -88,8 +88,8 @@ public class HashVerifyingStorage extends DelegatingStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash) {
-        return source.getRaw(hash)
+    public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash, String auth) {
+        return source.getRaw(hash, auth)
                 .thenCompose(arrOpt -> arrOpt.map(bytes -> verify(bytes, hash, () -> bytes)
                         .thenApply(Optional::of))
                         .orElseGet(() -> Futures.of(Optional.empty())));

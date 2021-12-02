@@ -2,6 +2,7 @@ package peergos.shared;
 import java.util.logging.*;
 
 import jsinterop.annotations.*;
+import peergos.server.storage.auth.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
@@ -248,7 +249,7 @@ public class NetworkAccess {
                                                           boolean isPeergosServer,
                                                           boolean isJavascript) {
         return localDht.id()
-                .exceptionally(t -> new Multihash(Multihash.Type.sha2_256, new byte[32]))
+                .exceptionally(t -> new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, new byte[32]))
                 .thenApply(nodeId -> {
                     ContentAddressedStorageProxy proxingDht = new ContentAddressedStorageProxy.HTTP(p2pPoster);
                     ContentAddressedStorage storage = isPeergosServer ?
@@ -452,7 +453,7 @@ public class NetworkAccess {
                 .thenApply(c -> c.map(x -> x.target).map(MaybeMultihash::of).orElse(MaybeMultihash.empty()))
                 .thenCompose(btreeValue -> {
                     if (btreeValue.isPresent())
-                        return dhtClient.get(btreeValue.get())
+                        return dhtClient.get(btreeValue.get(), "TODO")
                                 .thenApply(value -> value.map(cbor -> CryptreeNode.fromCbor(cbor, cap.rBaseKey, btreeValue.get())))
                                 .thenApply(res -> {
                                     cache.put(cacheKey, res);
@@ -570,25 +571,32 @@ public class NetworkAccess {
                 .thenApply(committed -> current.withVersion(writer.publicKeyHash, committed.get(writer)));
     }
 
-    public static CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Multihash> hashes,
+    public static CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Cid> hashes,
+                                                                              List<BatWithId> bats,
                                                                               ContentAddressedStorage dhtClient,
                                                                               ProgressConsumer<Long> monitor,
                                                                               double spaceIncreaseFactor) {
-        List<CompletableFuture<Optional<FragmentWithHash>>> futures = hashes.stream().parallel()
-                .map(h -> (h.isIdentity() ?
-                        CompletableFuture.completedFuture(Optional.of(h.getHash())) :
-                        (h instanceof Cid) && ((Cid) h).codec == Cid.Codec.Raw ?
-                                dhtClient.getRaw(h) :
-                                dhtClient.get(h)
-                                        .thenApply(cborOpt -> cborOpt.map(cbor -> ((CborObject.CborByteArray) cbor).value))) // for backwards compatibility
-                        .thenApply(dataOpt -> {
-                            Optional<byte[]> bytes = dataOpt;
-                            bytes.ifPresent(arr -> monitor.accept((long)(arr.length / spaceIncreaseFactor)));
-                            return bytes.map(data -> new FragmentWithHash(new Fragment(data), h.isIdentity() ? Optional.empty() : Optional.of(h)));
-                        }))
-                .collect(Collectors.toList());
+        return dhtClient.id().thenCompose(id -> {
+            List<CompletableFuture<Optional<FragmentWithHash>>> futures = IntStream.range(0, hashes.size()).mapToObj(i -> i)
+                    .parallel()
+                    .map(i -> {
+                        Cid h = hashes.get(i);
+                        String auth = bats.isEmpty() ? "" : bats.get(i).bat.generateAuth(h, id, 300, ZonedDateTime.now(), bats.get(i).id).encode();
+                        return (h.isIdentity() ?
+                                CompletableFuture.completedFuture(Optional.of(h.getHash())) :
+                                h.codec == Cid.Codec.Raw ?
+                                        dhtClient.getRaw(h, auth) :
+                                        dhtClient.get(h, auth)
+                                                .thenApply(cborOpt -> cborOpt.map(cbor -> ((CborObject.CborByteArray) cbor).value))) // for backwards compatibility
+                                .thenApply(dataOpt -> {
+                                    Optional<byte[]> bytes = dataOpt;
+                                    bytes.ifPresent(arr -> monitor.accept((long) (arr.length / spaceIncreaseFactor)));
+                                    return bytes.map(data -> new FragmentWithHash(new Fragment(data), h.isIdentity() ? Optional.empty() : Optional.of(h)));
+                                });
+                    }).collect(Collectors.toList());
 
-        return Futures.combineAllInOrder(futures)
-                .thenApply(optList -> optList.stream().filter(Optional::isPresent).map(Optional::get).collect(Collectors.toList()));
+            return Futures.combineAllInOrder(futures)
+                    .thenApply(optList -> optList.stream().filter(Optional::isPresent).map(Optional::get).collect(Collectors.toList()));
+        });
     }
 }

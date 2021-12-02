@@ -200,9 +200,10 @@ public class DHTHandler implements HttpHandler {
                 case BLOCK_GET:{
                     AggregatedMetrics.DHT_BLOCK_GET.inc();
                     Multihash hash = Cid.decode(args.get(0));
+                    String auth = params.containsKey("auth") ? last.apply("auth") : "";
                     (hash instanceof Cid && ((Cid) hash).codec == Cid.Codec.Raw ?
-                            dht.getRaw(hash) :
-                            dht.get(hash).thenApply(opt -> opt.map(CborObject::toByteArray)))
+                            dht.getRaw(hash, auth) :
+                            dht.get(hash, auth).thenApply(opt -> opt.map(CborObject::toByteArray)))
                             .thenAccept(opt -> replyBytes(httpExchange,
                                     opt.orElse(new byte[0]), opt.map(x -> hash)))
                             .exceptionally(Futures::logAndThrow).get();
@@ -216,17 +217,6 @@ public class DHTHandler implements HttpHandler {
                         res.put("Size", sizeOpt.orElse(0));
                         String json = JSONParser.toString(res);
                         replyJson(httpExchange, json, Optional.of(block));
-                    }).exceptionally(Futures::logAndThrow).get();
-                    break;
-                }
-                case REFS: {
-                    AggregatedMetrics.DHT_BLOCK_REFS.inc();
-                    Multihash block = Cid.decode(args.get(0));
-                    dht.getLinks(block).thenAccept(links -> {
-                        List<Object> json = links.stream().map(h -> wrapHash("Ref", h)).collect(Collectors.toList());
-                        // make stream of JSON objects
-                        String jsonStream = json.stream().map(m -> JSONParser.toString(m)).reduce("", (a, b) -> a + b);
-                        replyJson(httpExchange, jsonStream, Optional.of(block));
                     }).exceptionally(Futures::logAndThrow).get();
                     break;
                 }

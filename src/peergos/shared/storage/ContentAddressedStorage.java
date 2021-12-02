@@ -1,5 +1,6 @@
 package peergos.shared.storage;
 
+import peergos.server.storage.auth.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
@@ -86,7 +87,7 @@ public interface ContentAddressedStorage {
      *
      * @return The identity (hash of the public key) of the storage node we are talking to
      */
-    CompletableFuture<Multihash> id();
+    CompletableFuture<Cid> id();
 
     /**
      *
@@ -125,7 +126,7 @@ public interface ContentAddressedStorage {
      * @param hash
      * @return The data with the requested hash, deserialized into cbor, or Optional.empty() if no object can be found
      */
-    CompletableFuture<Optional<CborObject>> get(Multihash hash);
+    CompletableFuture<Optional<CborObject>> get(Multihash hash, String auth);
 
     /**
      * Write a block of data that is just raw bytes, not ipld structured cbor
@@ -149,7 +150,7 @@ public interface ContentAddressedStorage {
      * @param hash
      * @return
      */
-    CompletableFuture<Optional<byte[]>> getRaw(Multihash hash);
+    CompletableFuture<Optional<byte[]>> getRaw(Multihash hash, String auth);
 
     /**
      * Update an existing pin with a new root. This is useful when modifying a tree of ipld objects where only a small
@@ -186,7 +187,7 @@ public interface ContentAddressedStorage {
                 .thenApply(c -> c.map(x -> x.target).map(MaybeMultihash::of).orElse(MaybeMultihash.empty()))
                 .thenApply(btreeValue -> {
                     if (btreeValue.isPresent())
-                        return cache.get(btreeValue.get());
+                        return cache.get(btreeValue.get(), "TODO");
                     return Optional.empty();
                 }).thenApply(x -> new ArrayList<>(cache.getCached()));
     }
@@ -202,10 +203,10 @@ public interface ContentAddressedStorage {
      * @param root The hash of the object whose links we want
      * @return A list of the multihashes referenced with ipld links in this object
      */
-    default CompletableFuture<List<Multihash>> getLinks(Multihash root) {
+    default CompletableFuture<List<Multihash>> getLinks(Multihash root, String auth) {
         if (root instanceof Cid && ((Cid) root).codec == Cid.Codec.Raw)
             return CompletableFuture.completedFuture(Collections.emptyList());
-        return get(root).thenApply(opt -> opt
+        return get(root, auth).thenApply(opt -> opt
                 .map(cbor -> cbor.links())
                 .orElse(Collections.emptyList())
         );
@@ -227,10 +228,11 @@ public interface ContentAddressedStorage {
         return new Cid(Cid.V1, isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor, Multihash.Type.sha2_256, sha256);
     }
 
-    default CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Multihash> hashes,
+    default CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Cid> hashes,
+                                                                        List<BatWithId> bats,
                                                                         ProgressConsumer<Long> monitor,
                                                                         double spaceIncreaseFactor) {
-        return NetworkAccess.downloadFragments(hashes, this, monitor, spaceIncreaseFactor);
+        return NetworkAccess.downloadFragments(hashes, bats, this, monitor, spaceIncreaseFactor);
     }
 
     default CompletableFuture<PublicKeyHash> putSigningKey(byte[] signature,
@@ -266,19 +268,19 @@ public interface ContentAddressedStorage {
     default CompletableFuture<Optional<PublicSigningKey>> getSigningKey(PublicKeyHash hash) {
         return (hash.isIdentity() ?
                 CompletableFuture.completedFuture(Optional.of(CborObject.fromByteArray(hash.getHash()))) :
-                get(hash.multihash))
+                get(hash.multihash, ""))
                 .thenApply(opt -> Optional.ofNullable(opt).orElse(Optional.empty()).map(PublicSigningKey::fromCbor));
     }
 
     default CompletableFuture<Optional<PublicBoxingKey>> getBoxingKey(PublicKeyHash hash) {
         return (hash.isIdentity() ?
                 CompletableFuture.completedFuture(Optional.of(CborObject.fromByteArray(hash.getHash()))) :
-                get(hash.multihash))
+                get(hash.multihash, ""))
                 .thenApply(opt -> Optional.ofNullable(opt).orElse(Optional.empty()).map(PublicBoxingKey::fromCbor));
     }
 
     default CompletableFuture<Long> getRecursiveBlockSize(Multihash block) {
-        return getLinks(block).thenCompose(links -> {
+        return getLinks(block, "").thenCompose(links -> {
             List<CompletableFuture<Long>> subtrees = links.stream()
                     .filter(m -> ! m.isIdentity())
                     .map(this::getRecursiveBlockSize)
@@ -299,8 +301,8 @@ public interface ContentAddressedStorage {
     }
 
     default CompletableFuture<Long> getChangeInContainedSize(Multihash original, Multihash updated) {
-        return getLinksAndSize(original)
-                .thenCompose(before -> getLinksAndSize(updated).thenCompose(after -> {
+        return getLinksAndSize(original, "")
+                .thenCompose(before -> getLinksAndSize(updated, "").thenCompose(after -> {
                     int objectDelta = after.left - before.left;
                     List<Multihash> onlyBefore = new ArrayList<>(before.right);
                     onlyBefore.removeAll(after.right);
@@ -332,8 +334,8 @@ public interface ContentAddressedStorage {
                 }));
     }
 
-    default CompletableFuture<Pair<Integer, List<Multihash>>> getLinksAndSize(Multihash block) {
-        return getLinks(block)
+    default CompletableFuture<Pair<Integer, List<Multihash>>> getLinksAndSize(Multihash block, String auth) {
+        return getLinks(block, auth)
                 .thenCompose(links -> getSize(block).thenApply(size -> new Pair<>(size.orElse(0), links)));
     }
 
@@ -395,7 +397,7 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<Multihash> id() {
+        public CompletableFuture<Cid> id() {
             return poster.get(apiPrefix + ID)
                     .thenApply(raw -> Cid.decodePeerId((String)((Map)JSONParser.parse(new String(raw))).get("ID")));
         }
@@ -573,18 +575,18 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<Optional<CborObject>> get(Multihash hash) {
+        public CompletableFuture<Optional<CborObject>> get(Multihash hash, String auth) {
             if (hash.isIdentity())
                 return CompletableFuture.completedFuture(Optional.of(CborObject.fromByteArray(hash.getHash())));
-            return poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash.toString())
+            return poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash + "&auth=" + auth)
                     .thenApply(raw -> raw.length == 0 ? Optional.empty() : Optional.of(CborObject.fromByteArray(raw)));
         }
 
         @Override
-        public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash) {
+        public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash, String auth) {
             if (hash.isIdentity())
                 return CompletableFuture.completedFuture(Optional.of(hash.getHash()));
-            return poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash.toString())
+            return poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash + "&auth=" + auth)
                     .thenApply(raw -> raw.length == 0 ? Optional.empty() : Optional.of(raw));
         }
 
@@ -605,7 +607,7 @@ public interface ContentAddressedStorage {
 
         @Override
         public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
-            return poster.get(apiPrefix + BLOCK_STAT + "?stream-channels=true&arg=" + block.toString())
+            return poster.get(apiPrefix + BLOCK_STAT + "?stream-channels=true&arg=" + block.toString() + "&auth=letmein")
                     .thenApply(raw -> Optional.of((Integer)((Map)JSONParser.parse(new String(raw))).get("Size")));
         }
     }
@@ -629,7 +631,7 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<Multihash> id() {
+        public CompletableFuture<Cid> id() {
             return local.id();
         }
 
@@ -686,18 +688,18 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<Optional<CborObject>> get(Multihash object) {
-            return local.get(object);
+        public CompletableFuture<Optional<CborObject>> get(Multihash object, String auth) {
+            return local.get(object, auth);
         }
 
         @Override
-        public CompletableFuture<Optional<byte[]>> getRaw(Multihash object) {
-            return local.getRaw(object);
+        public CompletableFuture<Optional<byte[]>> getRaw(Multihash object, String auth) {
+            return local.getRaw(object, auth);
         }
 
         @Override
-        public CompletableFuture<List<Multihash>> getLinks(Multihash root) {
-            return local.getLinks(root);
+        public CompletableFuture<List<Multihash>> getLinks(Multihash root, String auth) {
+            return local.getLinks(root, auth);
         }
 
         @Override

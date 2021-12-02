@@ -20,7 +20,7 @@ public interface Hasher {
 
     byte[] blake2b(byte[] input, int outputBytes);
 
-    default CompletableFuture<Multihash> hash(byte[] input, boolean isRaw) {
+    default CompletableFuture<Cid> hash(byte[] input, boolean isRaw) {
         return sha256(input)
                 .thenApply(h -> Cid.buildCidV1(isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor, Multihash.Type.sha2_256, h));
     }
@@ -30,7 +30,7 @@ public interface Hasher {
                 .thenApply(h -> new Multihash(Multihash.Type.sha2_256, h));
     }
 
-    default Multihash identityHash(byte[] input, boolean isRaw) {
+    default Cid identityHash(byte[] input, boolean isRaw) {
         if (input.length > Multihash.MAX_IDENTITY_HASH_SIZE)
             throw new IllegalStateException("Exceeded maximum size for identity multihashes!");
         return Cid.buildCidV1(isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor, Multihash.Type.id, input);

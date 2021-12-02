@@ -67,7 +67,7 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
     }
 
     @Override
-    public CompletableFuture<Multihash> id() {
+    public CompletableFuture<Cid> id() {
         throw new IllegalStateException("Unsupported operation!");
     }
 
@@ -93,7 +93,7 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Multihash hash) {
+    public CompletableFuture<Optional<CborObject>> get(Multihash hash, String auth) {
         return Futures.of(Optional.ofNullable(storage.get(hash)).map(CborObject::fromByteArray));
     }
 
@@ -119,7 +119,7 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash) {
+    public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash, String auth) {
         return Futures.of(Optional.ofNullable(storage.get(hash)));
     }
 

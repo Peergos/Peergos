@@ -55,7 +55,7 @@ public class OwnedKeyChamp {
     public CompletableFuture<Optional<OwnerProof>> get(PublicKeyHash ownedKey) {
         return champ.get(keyToBytes(ownedKey))
                 .thenCompose(res -> res.isPresent() ?
-                        ipfs.get(res.get().target).thenApply(raw -> raw.map(OwnerProof::fromCbor)) :
+                        ipfs.get(res.get().target, "").thenApply(raw -> raw.map(OwnerProof::fromCbor)) :
                         CompletableFuture.completedFuture(Optional.empty()));
     }
 
@@ -88,7 +88,7 @@ public class OwnedKeyChamp {
                                                        ContentAddressedStorage ipfs) {
         return champ.applyToAllMappings(identity,
                 (acc, pair) -> ! pair.right.isPresent() ? CompletableFuture.completedFuture(acc) :
-                        ipfs.get(pair.right.get().target)
+                        ipfs.get(pair.right.get().target, "")
                                 .thenApply(raw -> OwnerProof.fromCbor(raw.get()))
                                 .thenCompose(proof -> consumer.apply(acc,
                                         new Pair<>(PublicKeyHash.fromCbor(CborObject.fromByteArray(reverse(pair.left.data))), proof))));

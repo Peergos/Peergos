@@ -1,6 +1,7 @@
 package peergos.server.storage;
 
 import peergos.server.corenode.*;
+import peergos.server.space.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
@@ -22,14 +23,18 @@ public class GarbageCollector {
 
     private final DeletableContentAddressedStorage storage;
     private final JdbcIpnsAndSocial pointers;
+    private final UsageStore usage;
 
-    public GarbageCollector(DeletableContentAddressedStorage storage, JdbcIpnsAndSocial pointers) {
+    public GarbageCollector(DeletableContentAddressedStorage storage,
+                            JdbcIpnsAndSocial pointers,
+                            UsageStore usage) {
         this.storage = storage;
         this.pointers = pointers;
+        this.usage = usage;
     }
 
     public synchronized void collect(Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver) {
-        collect(storage, pointers, snapshotSaver);
+        collect(storage, pointers, usage, snapshotSaver);
     }
 
     public void start(long periodMillis, Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver) {
@@ -55,6 +60,7 @@ public class GarbageCollector {
      */
     public static void collect(DeletableContentAddressedStorage storage,
                                JdbcIpnsAndSocial pointers,
+                               UsageStore usage,
                                Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver) {
         System.out.println("Starting blockstore garbage collection on node " + storage.id().join() + "...");
         // TODO: do this more efficiently with a bloom filter, and actual streaming and multithreading
@@ -67,10 +73,14 @@ public class GarbageCollector {
         long t2 = System.nanoTime();
         System.out.println("Listing " + pending.size() + " pending blocks took " + (t2-t1)/1_000_000_000 + "s");
 
-        // This pointers call must happen AFTER the previous two for correctness
+        // This pointers call must happen AFTER the block and pending listing for correctness
         Map<PublicKeyHash, byte[]> allPointers = pointers.getAllEntries();
         long t3 = System.nanoTime();
         System.out.println("Listing " + allPointers.size() + " pointers took " + (t3-t2)/1_000_000_000 + "s");
+
+        // Get the current roots from the usage store which shouldn't be GC'd until usage has been updated
+        List<Multihash> usageRoots = usage.getAllTargets();
+
 
         Map<Multihash, Integer> toIndex = new HashMap<>();
         for (int i=0; i < present.size(); i++)
@@ -79,6 +89,10 @@ public class GarbageCollector {
 
         int markParallelism = 10;
         ForkJoinPool markPool = new ForkJoinPool(markParallelism);
+        List<ForkJoinTask<Boolean>> usageMarked = usageRoots.stream()
+                .map(r -> markPool.submit(() -> markReachable(storage, r, toIndex, reachable)))
+                .collect(Collectors.toList());
+        usageMarked.forEach(f -> f.join());
         List<ForkJoinTask<Boolean>> marked = allPointers.entrySet().stream()
                 .map(e -> markPool.submit(() -> markReachable(e.getKey(), e.getValue(), reachable, toIndex, storage)))
                 .collect(Collectors.toList());
@@ -178,20 +192,21 @@ public class GarbageCollector {
         return new Pair<>(deletedBlocks, deletedSize);
     }
 
-    private static void markReachable(ContentAddressedStorage storage,
-                                      Multihash root,
-                                      Map<Multihash, Integer> toIndex,
-                                      BitSet reachable) {
+    private static boolean markReachable(ContentAddressedStorage storage,
+                                         Multihash root,
+                                         Map<Multihash, Integer> toIndex,
+                                         BitSet reachable) {
         int index = toIndex.getOrDefault(root, -1);
         if (index >= 0) {
             synchronized (reachable) {
                 reachable.set(index);
             }
         }
-        List<Multihash> links = getWithBackoff(() -> storage.getLinks(root).join());
+        List<Multihash> links = getWithBackoff(() -> storage.getLinks(root, "").join());
         for (Multihash link : links) {
             markReachable(storage, link, toIndex, reachable);
         }
+        return true;
     }
 
     private static <V> V getWithBackoff(Supplier<V> req) {

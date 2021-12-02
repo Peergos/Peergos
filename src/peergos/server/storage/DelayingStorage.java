@@ -3,6 +3,7 @@ package peergos.server.storage;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
@@ -26,7 +27,7 @@ public class DelayingStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Multihash> id() {
+    public CompletableFuture<Cid> id() {
         return source.id();
     }
 
@@ -73,20 +74,20 @@ public class DelayingStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Multihash object) {
+    public CompletableFuture<Optional<byte[]>> getRaw(Multihash object, String auth) {
         try {
             sleep(readDelay);
-            return source.getRaw(object);
+            return source.getRaw(object, auth);
         } catch (Exception e) {
             throw new RuntimeException(e.getMessage(), e);
         }
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Multihash hash) {
+    public CompletableFuture<Optional<CborObject>> get(Multihash hash, String auth) {
         try {
             sleep(readDelay);
-            return source.get(hash);
+            return source.get(hash, auth);
         } catch (Exception e) {
             throw new RuntimeException(e.getMessage(), e);
         }
@@ -114,9 +115,9 @@ public class DelayingStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> getLinks(Multihash root) {
+    public CompletableFuture<List<Multihash>> getLinks(Multihash root, String auth) {
         try {
-            return source.getLinks(root);
+            return source.getLinks(root, auth);
         } catch (Exception e) {
             throw new RuntimeException(e.getMessage(), e);
         }

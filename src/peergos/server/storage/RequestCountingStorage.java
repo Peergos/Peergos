@@ -84,8 +84,8 @@ public class RequestCountingStorage extends DelegatingStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Multihash key) {
-        return target.get(key).thenApply(cborOpt -> {
+    public CompletableFuture<Optional<CborObject>> get(Multihash key, String auth) {
+        return target.get(key, auth).thenApply(cborOpt -> {
             get.incrementAndGet();
             return cborOpt;
         });
@@ -106,8 +106,8 @@ public class RequestCountingStorage extends DelegatingStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Multihash key) {
-        return target.getRaw(key).thenApply(rawOpt -> {
+    public CompletableFuture<Optional<byte[]>> getRaw(Multihash key, String auth) {
+        return target.getRaw(key, auth).thenApply(rawOpt -> {
             getRaw.incrementAndGet();
             return rawOpt;
         });

@@ -94,7 +94,7 @@ public class MultiNodeNetworkTests {
     @BeforeClass
     public static void init() throws Exception {
         // start pki node
-        UserService pki = Main.PKI_INIT.main(args);
+        UserService pki = Main.PKI_INIT.main(args.with("allow-target", "http://localhost:8001"));
         PublicKeyHash peergosId = pki.coreNode.getPublicKeyHash("peergos").join().get();
         args = args.setArg("peergos.identity.hash", peergosId.toString());
         NetworkAccess toPki = buildApi(args);
@@ -109,6 +109,7 @@ public class MultiNodeNetworkTests {
             int ipfsGatewayPort = 9000 + random.nextInt(8000);
             int ipfsSwarmPort = 9000 + random.nextInt(8000);
             int peergosPort = 9000 + random.nextInt(8000);
+            int allowPort = 9000 + random.nextInt(8000);
             Args normalNode = UserTests.buildArgs()
                     .with("useIPFS", "true")
                     .with("port", "" + peergosPort)
@@ -116,6 +117,7 @@ public class MultiNodeNetworkTests {
                     .with("peergos.identity.hash", peergosId.toString())
                     .with("ipfs-api-address", "/ip4/127.0.0.1/tcp/" + ipfsApiPort)
                     .with("ipfs-gateway-address", "/ip4/127.0.0.1/tcp/" + ipfsGatewayPort)
+                    .with("allow-target", "http://localhost:" + allowPort)
                     .with("ipfs-swarm-port", "" + ipfsSwarmPort)
                     .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, "" + Main.getLocalBootstrapAddress(bootstrapSwarmPort, pkiNodeId))
                     .with("proxy-target", Main.getLocalMultiAddress(peergosPort).toString())

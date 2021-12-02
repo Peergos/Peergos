@@ -187,8 +187,8 @@ public class IPFS {
     /* 'ipfs block' is a plumbing command used to manipulate raw ipfs blocks.
      */
     public class Block {
-        public byte[] get(Multihash hash) throws IOException {
-            return retrieve("block/get?stream-channels=true&arg=" + hash);
+        public byte[] get(Multihash hash, String auth) throws IOException {
+            return retrieve("block/get?stream-channels=true&arg=" + hash + "&auth=" + auth);
         }
 
         public byte[] rm(Multihash hash) throws IOException {

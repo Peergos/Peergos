@@ -1,7 +1,9 @@
 package peergos.shared.storage;
 
+import peergos.server.storage.auth.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
@@ -22,7 +24,7 @@ public abstract class DelegatingStorage implements ContentAddressedStorage {
         return target.blockStoreProperties();
     }
     @Override
-    public CompletableFuture<Multihash> id() {
+    public CompletableFuture<Cid> id() {
         return target.id();
     }
 
@@ -42,8 +44,8 @@ public abstract class DelegatingStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Multihash hash) {
-        return target.get(hash);
+    public CompletableFuture<Optional<CborObject>> get(Multihash hash, String auth) {
+        return target.get(hash, auth);
     }
 
     @Override
@@ -62,8 +64,8 @@ public abstract class DelegatingStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash) {
-        return target.getRaw(hash);
+    public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash, String auth) {
+        return target.getRaw(hash, auth);
     }
 
     @Override
@@ -92,8 +94,8 @@ public abstract class DelegatingStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> getLinks(Multihash root) {
-        return target.getLinks(root);
+    public CompletableFuture<List<Multihash>> getLinks(Multihash root, String auth) {
+        return target.getLinks(root, auth);
     }
 
     @Override
@@ -102,10 +104,11 @@ public abstract class DelegatingStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Multihash> hashes,
+    public CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Cid> hashes,
+                                                                       List<BatWithId> bats,
                                                                        ProgressConsumer<Long> monitor,
                                                                        double spaceIncreaseFactor) {
-        return target.downloadFragments(hashes, monitor, spaceIncreaseFactor);
+        return target.downloadFragments(hashes, bats, monitor, spaceIncreaseFactor);
     }
 
     @Override

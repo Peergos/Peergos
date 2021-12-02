@@ -25,8 +25,8 @@ public class IpfsInstaller {
                 Cid.decode("QmV4DAfguGNB2zB78tTsS39TFhpah5zrtrQZy92Te3vB14")),
         DARWIN_ARM64("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.1.2/darwin-arm64/ipfs?raw=true",
                 Cid.decode("QmayeuvCQDTejQvPeBRwdodjRhEzjv5uRp6Mqr3NkRBZTC")),
-        LINUX_AMD64("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.1.2/linux-amd64/ipfs?raw=true",
-                Cid.decode("QmX2pAEZRhhWyWQc3jtYHZjEitEk1fZtEQevfGkHNmBPua")),
+        LINUX_AMD64("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.2.0/linux-amd64/ipfs?raw=true",
+                Cid.decode("QmRSUynz4UhgXoKd383mSctM7bgu91PsZvomqjmWA9N6SV")),
         LINUX_ARM("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.1.2/linux-arm/ipfs?raw=true",
                 Cid.decode("QmTr37RA8HqUByf8Xceu3PhHKpof48tetrRmoMh8ok6WHL")),
         LINUX_ARM64("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.1.2/linux-arm64/ipfs?raw=true",
@@ -327,7 +327,7 @@ public class IpfsInstaller {
     }
 
     public static void main(String[] args) throws Exception {
-        String version = "v0.1.2";
+        String version = "v0.2.0";
 //        String s3Filename = "s3plugin.so";
 //        byte[] bytes = Files.readAllBytes(Paths.get("/home", "ian", "ipfs-releases", version,
 //                "linux-amd64", "plugins", s3Filename));

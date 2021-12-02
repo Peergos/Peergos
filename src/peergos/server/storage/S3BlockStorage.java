@@ -3,6 +3,7 @@ package peergos.server.storage;
 import io.prometheus.client.*;
 import peergos.server.*;
 import peergos.server.corenode.*;
+import peergos.server.space.*;
 import peergos.server.sql.*;
 import peergos.server.util.*;
 import peergos.shared.*;
@@ -46,7 +47,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             .help("Number of block gets which fell back to p2p retrieval")
             .register();
 
-    private final Multihash id;
+    private final Cid id;
     private final String region, bucket, folder, regionEndpoint, host;
     private final String accessKeyId, secretKey;
     private final BlockStoreProperties props;
@@ -55,7 +56,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     private final ContentAddressedStorage p2pFallback;
 
     public S3BlockStorage(S3Config config,
-                          Multihash id,
+                          Cid id,
                           BlockStoreProperties props,
                           TransactionStore transactions,
                           Hasher hasher,
@@ -144,14 +145,14 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Multihash hash) {
+    public CompletableFuture<Optional<CborObject>> get(Multihash hash, String auth) {
         if (hash instanceof Cid && ((Cid) hash).codec == Cid.Codec.Raw)
             throw new IllegalStateException("Need to call getRaw if cid is not cbor!");
-        return getRaw(hash).thenApply(opt -> opt.map(CborObject::fromByteArray));
+        return getRaw(hash, auth).thenApply(opt -> opt.map(CborObject::fromByteArray));
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash) {
+    public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash, String auth) {
         String path = folder + hashToKey(hash);
         PresignedUrl getUrl = S3Request.preSignGet(path, Optional.of(600),
                 ZonedDateTime.now(), host, region, accessKeyId, secretKey);
@@ -171,7 +172,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             }
 
             nonLocalGets.inc();
-            return p2pFallback.getRaw(hash);
+            return p2pFallback.getRaw(hash, auth);
         } finally {
             readTimer.observeDuration();
         }
@@ -188,7 +189,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         if (existing.equals(updated))
             return Futures.of(Collections.singletonList(newRoot));
         boolean isRaw = (newRoot instanceof Cid) && ((Cid) newRoot).codec == Cid.Codec.Raw;
-        Optional<byte[]> newVal = p2pFallback.getRaw(newRoot).join();
+        Optional<byte[]> newVal = p2pFallback.getRaw(newRoot, "TODO").join();
         if (newVal.isEmpty())
             throw new IllegalStateException("Couldn't retrieve block: " + newRoot);
 
@@ -198,7 +199,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             return Futures.of(Collections.singletonList(newRoot));
 
         List<Multihash> newLinks = CborObject.fromByteArray(newBlock).links();
-        List<Multihash> existingLinks = existing.map(h -> get(h).join())
+        List<Multihash> existingLinks = existing.map(h -> get(h, "TODO").join())
                 .flatMap(copt -> copt.map(CborObject::links))
                 .orElse(Collections.emptyList());
 
@@ -242,8 +243,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         return transactions.getOpenTransactionBlocks();
     }
 
-    private void collectGarbage(JdbcIpnsAndSocial pointers) {
-        GarbageCollector.collect(this, pointers, this::savePointerSnapshot);
+    private void collectGarbage(JdbcIpnsAndSocial pointers, UsageStore usage) {
+        GarbageCollector.collect(this, pointers, usage, this::savePointerSnapshot);
     }
 
     private CompletableFuture<Boolean> savePointerSnapshot(Stream<Map.Entry<PublicKeyHash, byte[]>> pointers) {
@@ -319,7 +320,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Multihash> id() {
+    public CompletableFuture<Cid> id() {
         return Futures.of(id);
     }
 
@@ -493,7 +494,9 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         S3BlockStorage s3 = new S3BlockStorage(config, Cid.decode(a.getArg("ipfs.id")),
                 BlockStoreProperties.empty(), transactions, hasher, new RAMStorage(hasher));
         JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(database, sqlCommands);
-        s3.collectGarbage(rawPointers);
+        Supplier<Connection> usageDb = Main.getDBConnector(a, "space-usage-sql-file");
+        UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
+        s3.collectGarbage(rawPointers, usageStore);
     }
 
     public static void test(String[] args) throws Exception {
@@ -502,7 +505,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         Hasher hasher = crypto.hasher;
         S3Config config = S3Config.build(Args.parse(args));
         System.out.println("Testing S3 bucket: " + config.bucket + " in region " + config.region + " with base dir: " + config.path);
-        Multihash id = new Multihash(Multihash.Type.sha2_256, RAMStorage.hash("S3Storage".getBytes()));
+        Cid id = new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, RAMStorage.hash("S3Storage".getBytes()));
         TransactionStore transactions = JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands());
         S3BlockStorage s3 = new S3BlockStorage(config, id, BlockStoreProperties.empty(), transactions, hasher, new RAMStorage(hasher));
 
@@ -512,7 +515,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         System.out.println("Success! found " + files.size());
 
         System.out.println("Testing read...");
-        byte[] data = s3.getRaw(files.get(0)).join().get();
+        byte[] data = s3.getRaw(files.get(0), "").join().get();
         System.out.println("Success: read blob of size " + data.length);
 
         System.out.println("Testing write...");

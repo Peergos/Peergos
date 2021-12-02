@@ -484,7 +484,7 @@ public class WriterData implements Cborable {
     }
 
     public static CompletableFuture<CommittedWriterData> getWriterData(Multihash hash, ContentAddressedStorage dht) {
-        return dht.get(hash)
+        return dht.get(hash, "")
                 .thenApply(cborOpt -> {
                     if (! cborOpt.isPresent())
                         throw new IllegalStateException("Couldn't retrieve WriterData from dht! " + hash);

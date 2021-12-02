@@ -435,7 +435,7 @@ public class UserContext {
                 if (! publicData.isPresent())
                     throw new IllegalStateException("User " + ownerName + " has not made any files public.");
 
-                return network.dhtClient.get(publicData.get())
+                return network.dhtClient.get(publicData.get(), "")
                         .thenCompose(rootCbor -> InodeFileSystem.build(rootCbor.get(), network.hasher, network.dhtClient))
                         .thenCompose(publicCaps -> publicCaps.getByPath(originalPath.toString()))
                         .thenApply(resOpt -> {
@@ -889,11 +889,11 @@ public class UserContext {
     }
 
     public CompletableFuture<PublicSigningKey> getSigningKey(PublicKeyHash keyhash) {
-        return network.dhtClient.get(keyhash).thenApply(cborOpt -> cborOpt.map(PublicSigningKey::fromCbor).get());
+        return network.dhtClient.get(keyhash, "").thenApply(cborOpt -> cborOpt.map(PublicSigningKey::fromCbor).get());
     }
 
     public CompletableFuture<PublicBoxingKey> getBoxingKey(PublicKeyHash keyhash) {
-        return network.dhtClient.get(keyhash).thenApply(cborOpt -> cborOpt.map(PublicBoxingKey::fromCbor).get());
+        return network.dhtClient.get(keyhash, "").thenApply(cborOpt -> cborOpt.map(PublicBoxingKey::fromCbor).get());
     }
 
     /**
@@ -987,7 +987,7 @@ public class UserContext {
             Optional<Multihash> publicData = wd.publicData;
             if (publicData.isEmpty())
                 return Futures.of(wd);
-            return network.dhtClient.get(publicData.get())
+            return network.dhtClient.get(publicData.get(), "")
                     .thenCompose(rootCbor -> InodeFileSystem.build(rootCbor.get(), crypto.hasher, network.dhtClient))
                     .thenCompose(pubCaps -> pubCaps.removeCap(signer.publicKeyHash, signer, path, tid))
                     .thenCompose(updated -> network.dhtClient.put(signer.publicKeyHash, signer, updated.serialize(), crypto.hasher, tid))
@@ -1005,7 +1005,7 @@ public class UserContext {
             Optional<Multihash> publicData = wd.publicData;
 
             CompletableFuture<InodeFileSystem> publicCaps = publicData.isPresent() ?
-                    network.dhtClient.get(publicData.get())
+                    network.dhtClient.get(publicData.get(), "")
                             .thenCompose(rootCbor -> InodeFileSystem.build(rootCbor.get(), crypto.hasher, network.dhtClient)) :
                     InodeFileSystem.createEmpty(signer.publicKeyHash, signer, network.dhtClient, crypto.hasher, tid);
 
@@ -2150,7 +2150,7 @@ public class UserContext {
                         .thenApply(signer -> casOpt.map(raw -> HashCasPair.fromCbor(CborObject.fromByteArray(
                                 signer.get().unsignMessage(raw))).updated)
                                 .orElse(MaybeMultihash.empty())))
-                .thenCompose(key -> ipfs.get(key.get())
+                .thenCompose(key -> ipfs.get(key.get(), "")
                         .thenApply(Optional::get)
                         .thenApply(cbor -> new Pair<>(key.get(), cbor))
                 );

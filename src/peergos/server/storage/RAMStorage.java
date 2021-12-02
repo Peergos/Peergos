@@ -1,14 +1,10 @@
 package peergos.server.storage;
 
-import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.hamt.*;
-import peergos.shared.io.ipfs.multiaddr.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.storage.*;
-import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.*;
 
 import java.security.*;
@@ -34,8 +30,8 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Multihash> id() {
-        return CompletableFuture.completedFuture(new Multihash(Multihash.Type.sha2_256, new byte[32]));
+    public CompletableFuture<Cid> id() {
+        return CompletableFuture.completedFuture(new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, new byte[32]));
     }
 
     @Override
@@ -113,14 +109,14 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Multihash object) {
+    public CompletableFuture<Optional<byte[]>> getRaw(Multihash object, String auth) {
         return CompletableFuture.completedFuture(storage.containsKey(object) ?
                 Optional.of(storage.get(object)) :
                 Optional.empty());
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Multihash hash) {
+    public CompletableFuture<Optional<CborObject>> get(Multihash hash, String auth) {
         if (hash instanceof Cid && ((Cid) hash).codec == Cid.Codec.Raw)
             throw new IllegalStateException("Need to call getRaw if cid is not cbor!");
         return CompletableFuture.completedFuture(getAndParseObject(hash));
@@ -156,10 +152,10 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> getLinks(Multihash root) {
+    public CompletableFuture<List<Multihash>> getLinks(Multihash root, String auth) {
         if (root instanceof Cid && ((Cid) root).codec == Cid.Codec.Raw)
             return CompletableFuture.completedFuture(Collections.emptyList());
-        return get(root).thenApply(opt -> opt
+        return get(root, auth).thenApply(opt -> opt
                 .map(cbor -> cbor.links())
                 .orElse(Collections.emptyList())
         );

@@ -55,6 +55,9 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                     MutableEvent event = mutableQueue.take();
                     processMutablePointerEvent(event);
                 } catch (InterruptedException e) {}
+                catch (Exception e) {
+                    e.printStackTrace();
+                }
             }
         }, "SpaceCheckingKeyFilter").start();
         //add shutdown-hook to call close

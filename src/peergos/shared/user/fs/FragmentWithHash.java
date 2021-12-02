@@ -1,15 +1,14 @@
 package peergos.shared.user.fs;
 
-
-import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.cid.*;
 
 import java.util.*;
 
 public class FragmentWithHash {
     public final Fragment fragment;
-    public final Optional<Multihash> hash;
+    public final Optional<Cid> hash;
 
-    public FragmentWithHash(Fragment fragment, Optional<Multihash> hash) {
+    public FragmentWithHash(Fragment fragment, Optional<Cid> hash) {
         this.fragment = fragment;
         this.hash = hash;
     }

@@ -99,7 +99,7 @@ public class CachingVerifyingStorage extends DelegatingStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Multihash key) {
+    public CompletableFuture<Optional<CborObject>> get(Multihash key, String auth) {
         if (cache.containsKey(key))
             return CompletableFuture.completedFuture(Optional.of(CborObject.fromByteArray(cache.get(key))));
 
@@ -110,7 +110,7 @@ public class CachingVerifyingStorage extends DelegatingStorage {
         pending.put(key, pipe);
 
         CompletableFuture<Optional<CborObject>> result = new CompletableFuture<>();
-        target.get(key)
+        target.get(key, auth)
                 .thenCompose(cborOpt -> cborOpt.map(cbor -> verify(cbor.toByteArray(), key, () -> cbor)
                         .thenApply(Optional::of))
                         .orElseGet(() -> Futures.of(Optional.empty())))
@@ -153,7 +153,7 @@ public class CachingVerifyingStorage extends DelegatingStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Multihash key) {
+    public CompletableFuture<Optional<byte[]>> getRaw(Multihash key, String auth) {
         if (cache.containsKey(key))
             return CompletableFuture.completedFuture(Optional.of(cache.get(key)));
 
@@ -162,7 +162,7 @@ public class CachingVerifyingStorage extends DelegatingStorage {
 
         CompletableFuture<Optional<byte[]>> pipe = new CompletableFuture<>();
         pendingRaw.put(key, pipe);
-        return target.getRaw(key)
+        return target.getRaw(key, auth)
                 .thenCompose(arrOpt -> arrOpt.map(bytes -> verify(bytes, key, () -> bytes)
                         .thenApply(Optional::of))
                         .orElseGet(() -> Futures.of(Optional.empty())))
