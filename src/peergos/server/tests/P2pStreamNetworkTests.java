@@ -45,9 +45,11 @@ public class P2pStreamNetworkTests {
         int ipfsApiPort = 9000 + random.nextInt(8000);
         int ipfsGatewayPort = 9000 + random.nextInt(8000);
         int ipfsSwarmPort = 9000 + random.nextInt(8000);
+        int allowPort = 9000 + random.nextInt(8000);
         Args normalNode = UserTests.buildArgs()
                 .with("ipfs-api-address", "/ip4/127.0.0.1/tcp/" + ipfsApiPort)
                 .with("ipfs-gateway-address", "/ip4/127.0.0.1/tcp/" + ipfsGatewayPort)
+                .with("allow-target", "http://localhost:" + allowPort)
                 .with("ipfs-swarm-port", "" + ipfsSwarmPort)
                 .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, "" + Main.getLocalBootstrapAddress(bootstrapSwarmPort, pkiNodeId))
                 .with("proxy-target", new MultiAddress(args.getArg("ipfs-gateway-address")).toString())
