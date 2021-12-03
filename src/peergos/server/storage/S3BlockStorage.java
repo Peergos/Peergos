@@ -13,6 +13,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.storage.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.util.*;
 
 import java.io.*;
@@ -102,7 +103,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
         for (Multihash block : blocks) {
             String s3Key = hashToKey(block);
-            res.add(S3Request.preSignGet(s3Key, Optional.of(600), ZonedDateTime.now(), host, region, accessKeyId, secretKey));
+
+            res.add(S3Request.preSignGet(s3Key, Optional.of(600), S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKeyId, secretKey, hasher).join());
         }
         return Futures.of(res);
     }
@@ -136,7 +138,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 Map<String, String> extraHeaders = new LinkedHashMap<>();
                 extraHeaders.put("Content-Type", "application/octet-stream");
                 res.add(S3Request.preSignPut(s3Key, props.right, contentSha256, false,
-                        ZonedDateTime.now(), host, extraHeaders, region, accessKeyId, secretKey));
+                        S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, extraHeaders, region, accessKeyId, secretKey, hasher).join());
             }
             return Futures.of(res);
         } catch (Exception e) {
@@ -155,7 +157,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash, String auth) {
         String path = folder + hashToKey(hash);
         PresignedUrl getUrl = S3Request.preSignGet(path, Optional.of(600),
-                ZonedDateTime.now(), host, region, accessKeyId, secretKey);
+                S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKeyId, secretKey, hasher).join();
         Histogram.Timer readTimer = readTimerLog.labels("read").startTimer();
         try {
             return Futures.of(Optional.of(HttpUtil.get(getUrl)));
@@ -287,7 +289,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         Histogram.Timer readTimer = readTimerLog.labels("size").startTimer();
         try {
             PresignedUrl headUrl = S3Request.preSignHead(folder + hashToKey(hash), Optional.of(60),
-                    ZonedDateTime.now(), host, region, accessKeyId, secretKey);
+                    S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKeyId, secretKey, hasher).join();
             Map<String, List<String>> headRes = HttpUtil.head(headUrl);
             long size = Long.parseLong(headRes.get("Content-Length").get(0));
             return Futures.of(Optional.of((int)size));
@@ -311,7 +313,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     public boolean contains(Multihash hash) {
         try {
             PresignedUrl headUrl = S3Request.preSignHead(folder + hashToKey(hash), Optional.of(60),
-                    ZonedDateTime.now(), host, region, accessKeyId, secretKey);
+                    S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKeyId, secretKey, hasher).join();
             Map<String, List<String>> headRes = HttpUtil.head(headUrl);
             return true;
         } catch (Exception e) {
@@ -380,7 +382,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             boolean hashContent = true;
             String contentHash = hashContent ? ArrayOps.bytesToHex(hash.getHash()) : "UNSIGNED-PAYLOAD";
             PresignedUrl putUrl = S3Request.preSignPut(s3Key, data.length, contentHash, false,
-                    ZonedDateTime.now(), host, extraHeaders, region, accessKeyId, secretKey);
+                    S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, extraHeaders, region, accessKeyId, secretKey, hasher).join();
             HttpUtil.put(putUrl, data);
             return cid;
         } catch (IOException e) {
@@ -414,22 +416,22 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         return results;
     }
 
-    private void applyToAll(Consumer<S3Request.ObjectMetadata> processor, long maxObjects) {
+    private void applyToAll(Consumer<S3AdminRequests.ObjectMetadata> processor, long maxObjects) {
         try {
             Optional<String> continuationToken = Optional.empty();
-            S3Request.ListObjectsReply result;
+            S3AdminRequests.ListObjectsReply result;
             long processedObjects = 0;
             do {
-                result = S3Request.listObjects(folder, 1_000, continuationToken,
+                result = S3AdminRequests.listObjects(folder, 1_000, continuationToken,
                         ZonedDateTime.now(), host, region, accessKeyId, secretKey, url -> {
                             try {
                                 return HttpUtil.get(url);
                             } catch (IOException e) {
                                 throw new RuntimeException(e);
                             }
-                        });
+                        }, S3AdminRequests.builder::get, hasher);
 
-                for (S3Request.ObjectMetadata objectSummary : result.objects) {
+                for (S3AdminRequests.ObjectMetadata objectSummary : result.objects) {
                     if (objectSummary.key.endsWith("/")) {
                         LOG.fine(" - " + objectSummary.key + "  " + "(directory)");
                         continue;
@@ -450,8 +452,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     public void delete(Multihash hash) {
         try {
-            PresignedUrl delUrl = S3Request.preSignDelete(folder + hashToKey(hash), ZonedDateTime.now(), host,
-                    region, accessKeyId, secretKey);
+            PresignedUrl delUrl = S3Request.preSignDelete(folder + hashToKey(hash), S3AdminRequests.asAwsDate(ZonedDateTime.now()), host,
+                    region, accessKeyId, secretKey, hasher).join();
             HttpUtil.delete(delUrl);
         } catch (Exception e) {
             throw new RuntimeException(e);
@@ -462,7 +464,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         List<String> keys = hash.stream()
                 .map(h -> folder + hashToKey(h))
                 .collect(Collectors.toList());
-        S3Request.bulkDelete(keys, ZonedDateTime.now(), host, region, accessKeyId, secretKey,
+        S3AdminRequests.bulkDelete(keys, ZonedDateTime.now(), host, region, accessKeyId, secretKey,
                 b -> ArrayOps.bytesToHex(Hash.sha256(b)),
                 (url, body) -> {
                     try {
@@ -475,7 +477,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                         }
                         throw new RuntimeException(e);
                     }
-                });
+                }, S3AdminRequests.builder::get, hasher);
     }
 
     public static void main(String[] args) throws Exception {

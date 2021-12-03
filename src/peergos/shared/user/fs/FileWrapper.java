@@ -208,7 +208,7 @@ public class FileWrapper {
         int slash = path.indexOf("/");
         String prefix = slash > 0 ? path.substring(0, slash) : path;
         String suffix = slash > 0 ? path.substring(slash + 1) : "";
-        return getChild(version, prefix, hasher, network).thenCompose(child -> {
+        return getChild(version, prefix, network).thenCompose(child -> {
             if (child.isPresent())
                 return child.get().getDescendentByPath(suffix, child.get().version, hasher, network);
             return CompletableFuture.completedFuture(Optional.empty());
@@ -240,7 +240,7 @@ public class FileWrapper {
 
     public CompletableFuture<Boolean> hasChildWithName(Snapshot version, String name, Hasher hasher, NetworkAccess network) {
         ensureUnmodified();
-        return getChild(version, name, hasher, network)
+        return getChild(version, name, network)
                 .thenApply(Optional::isPresent);
     }
 
@@ -402,16 +402,15 @@ public class FileWrapper {
 
     @JsMethod
     public CompletableFuture<Optional<FileWrapper>> getChild(String name, Hasher hasher, NetworkAccess network) {
-        return getChild(version, name, hasher, network);
+        return getChild(version, name, network);
     }
 
     public CompletableFuture<Optional<FileWrapper>> getChild(Snapshot version,
                                                              String name,
-                                                             Hasher hasher,
                                                              NetworkAccess network) {
         if (capTrie.isPresent())
-            return capTrie.get().getByPath("/" + name, version.merge(this.version), hasher, network);
-        return pointer.fileAccess.getChild(name, pointer.capability, version, hasher, network)
+            return capTrie.get().getByPath("/" + name, version.merge(this.version), network.hasher, network);
+        return pointer.fileAccess.getChild(name, pointer.capability, version, network.hasher, network)
                 .thenCompose(rcOpt -> {
                     if (rcOpt.isEmpty())
                         return Futures.of(Optional.empty());
@@ -922,7 +921,7 @@ public class FileWrapper {
         }
         return intialVersion.withWriter(owner(), writer(), network)
                 .thenCompose(current -> getUpdated(current, network)
-                        .thenCompose(latest -> latest.getChild(current, filename, crypto.hasher, network)
+                        .thenCompose(latest -> latest.getChild(current, filename, network)
                                         .thenCompose(childOpt -> {
                                             if (childOpt.isPresent()) {
                                                 if (! overwriteExisting)
@@ -1238,7 +1237,7 @@ public class FileWrapper {
             return Futures.errored(new IllegalStateException("Illegal directory name: " + newFolderName));
         }
         Snapshot fullVersion = this.version.mergeAndOverwriteWith(version);
-        return getChild(fullVersion, newFolderName, crypto.hasher, network).thenCompose(childOpt -> {
+        return getChild(fullVersion, newFolderName, network).thenCompose(childOpt -> {
             if (childOpt.isPresent()) {
                 return Futures.of(new Pair<>(fullVersion, childOpt.get()));
             }

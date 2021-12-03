@@ -6,6 +6,7 @@ import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 
+import java.nio.charset.*;
 import java.util.concurrent.CompletableFuture;
 
 public interface Hasher {
@@ -15,6 +16,8 @@ public interface Hasher {
     CompletableFuture<ProofOfWork> generateProofOfWork(int difficulty, byte[] data);
 
     CompletableFuture<byte[]> sha256(byte[] input);
+
+    CompletableFuture<byte[]> hmacSha256(byte[] secretKey, byte[] message);
 
     CompletableFuture<Multihash> hash(AsyncReader stream, long length);
 

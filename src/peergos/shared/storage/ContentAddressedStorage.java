@@ -1,6 +1,5 @@
 package peergos.shared.storage;
 
-import peergos.server.storage.auth.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
@@ -12,6 +11,7 @@ import peergos.shared.hamt.*;
 import peergos.shared.io.ipfs.api.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
@@ -230,9 +230,10 @@ public interface ContentAddressedStorage {
 
     default CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Cid> hashes,
                                                                         List<BatWithId> bats,
+                                                                        Hasher h,
                                                                         ProgressConsumer<Long> monitor,
                                                                         double spaceIncreaseFactor) {
-        return NetworkAccess.downloadFragments(hashes, bats, this, monitor, spaceIncreaseFactor);
+        return NetworkAccess.downloadFragments(hashes, bats, this, h, monitor, spaceIncreaseFactor);
     }
 
     default CompletableFuture<PublicKeyHash> putSigningKey(byte[] signature,

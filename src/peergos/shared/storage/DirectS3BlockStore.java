@@ -1,6 +1,5 @@
 package peergos.shared.storage;
 
-import peergos.server.storage.auth.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
@@ -8,6 +7,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multibase.binary.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
@@ -189,10 +189,11 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
     @Override
     public CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Cid> hashes,
                                                                        List<BatWithId> bats,
+                                                                       Hasher h,
                                                                        ProgressConsumer<Long> monitor,
                                                                        double spaceIncreaseFactor) {
         if (publicReads || ! authedReads)
-            return NetworkAccess.downloadFragments(hashes, bats, this, monitor, spaceIncreaseFactor);
+            return NetworkAccess.downloadFragments(hashes, bats, this, h, monitor, spaceIncreaseFactor);
 
         // Do a bulk auth in a single call
         List<Pair<Integer, Cid>> indexAndHash = IntStream.range(0, hashes.size())
@@ -233,7 +234,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                     return Arrays.asList(res);
                 }).thenAccept(allResults::complete)
                 .exceptionally(t -> {
-                    NetworkAccess.downloadFragments(hashes, bats, this, monitor, spaceIncreaseFactor)
+                    NetworkAccess.downloadFragments(hashes, bats, this, h, monitor, spaceIncreaseFactor)
                             .thenAccept(allResults::complete)
                             .exceptionally(e -> {
                                 allResults.completeExceptionally(e);

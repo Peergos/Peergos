@@ -1,4 +1,4 @@
-package peergos.server.storage.auth;
+package peergos.shared.storage.auth;
 
 import peergos.shared.cbor.*;
 import peergos.shared.io.ipfs.cid.*;
@@ -53,7 +53,13 @@ public class BlockAuth implements Cborable {
         int hour = (int) (packed >> 12) & 0x1F;
         int minute = (int) (packed >> 6) & 0x3F;
         int second = (int) packed & 0x3F;
-        return String.format("%04d%02d%02dT%02d%02d%02dZ", year, month, day, hour, minute, second);
+        // Can't use String.format with gwtc :-(
+        return year + "" +
+                (month < 10 ? "0" + month : month) +
+                (day < 10 ? "0" + day : day) + "T" +
+                (hour < 10 ? "0" + hour : hour) +
+                (minute < 10 ? "0" + minute : minute) +
+                (second < 10 ? "0" + second : second) + "Z";
     }
 
     @Override

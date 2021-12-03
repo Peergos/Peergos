@@ -2,7 +2,6 @@ package peergos.shared;
 import java.util.logging.*;
 
 import jsinterop.annotations.*;
-import peergos.server.storage.auth.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
@@ -13,6 +12,7 @@ import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.mutable.*;
 import peergos.shared.social.*;
 import peergos.shared.storage.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.storage.controller.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
@@ -574,6 +574,7 @@ public class NetworkAccess {
     public static CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Cid> hashes,
                                                                               List<BatWithId> bats,
                                                                               ContentAddressedStorage dhtClient,
+                                                                              Hasher hasher,
                                                                               ProgressConsumer<Long> monitor,
                                                                               double spaceIncreaseFactor) {
         return dhtClient.id().thenCompose(id -> {
@@ -581,13 +582,15 @@ public class NetworkAccess {
                     .parallel()
                     .map(i -> {
                         Cid h = hashes.get(i);
-                        String auth = bats.isEmpty() ? "" : bats.get(i).bat.generateAuth(h, id, 300, ZonedDateTime.now(), bats.get(i).id).encode();
-                        return (h.isIdentity() ?
-                                CompletableFuture.completedFuture(Optional.of(h.getHash())) :
-                                h.codec == Cid.Codec.Raw ?
-                                        dhtClient.getRaw(h, auth) :
-                                        dhtClient.get(h, auth)
-                                                .thenApply(cborOpt -> cborOpt.map(cbor -> ((CborObject.CborByteArray) cbor).value))) // for backwards compatibility
+                        return (bats.isEmpty() ? Futures.of("") :
+                                bats.get(i).bat.generateAuth(h, id, 300, S3Request.currentDatetime(), bats.get(i).id, hasher)
+                                        .thenApply(BlockAuth::encode)).thenCompose(auth ->
+                                (h.isIdentity() ?
+                                        CompletableFuture.completedFuture(Optional.of(h.getHash())) :
+                                        h.codec == Cid.Codec.Raw ?
+                                                dhtClient.getRaw(h, auth) :
+                                                dhtClient.get(h, auth)
+                                                        .thenApply(cborOpt -> cborOpt.map(cbor -> ((CborObject.CborByteArray) cbor).value)))) // for backwards compatibility
                                 .thenApply(dataOpt -> {
                                     Optional<byte[]> bytes = dataOpt;
                                     bytes.ifPresent(arr -> monitor.accept((long) (arr.length / spaceIncreaseFactor)));

@@ -1,7 +1,7 @@
-package peergos.server.storage.auth;
+package peergos.shared.storage.auth;
 
-import peergos.server.storage.*;
 import peergos.shared.cbor.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multibase.*;
@@ -11,6 +11,7 @@ import java.nio.charset.*;
 import java.security.*;
 import java.time.*;
 import java.util.*;
+import java.util.concurrent.*;
 
 /** Block Access token
  *  This is used as a secret key in AWS S3 V4 signatures to authorise retrieving a block
@@ -26,7 +27,7 @@ public class Bat implements Cborable {
         this.secret = secret;
     }
 
-    private String encodeSecret() {
+    public String encodeSecret() {
         return Base58.encode(secret);
     }
 
@@ -45,27 +46,19 @@ public class Bat implements Cborable {
         return new Bat(m.getByteArray("s"));
     }
 
-    public BlockAuth generateAuth(Cid block, Cid sourceNode, int expirySeconds, ZonedDateTime now, Cid batId) {
+    public CompletableFuture<BlockAuth> generateAuth(Cid block,
+                                                     Cid sourceNode,
+                                                     int expirySeconds,
+                                                     String datetime,
+                                                     Cid batId,
+                                                     Hasher h) {
         if (batId.isIdentity())
             throw new IllegalStateException("Cannot use identity multihash in S3 signatures!");
         S3Request req = new S3Request("GET", sourceNode.toBase58(), "api/v0/block/get?arg=" + block.toBase58(), S3Request.UNSIGNED,
                 Optional.of(expirySeconds), false, true,
-                Collections.emptyMap(), Collections.emptyMap(), batId.toBase58(), "eu-central-1", now);
-        String signature = S3Request.computeSignature(req, encodeSecret());
-        return new BlockAuth(ArrayOps.hexToBytes(signature), expirySeconds, S3Request.asAwsTime(now), batId);
-    }
-
-    public boolean isValidAuth(BlockAuth auth, Cid block, Cid sourceNode) {
-        String t = auth.awsDatetime;
-        S3Request req = new S3Request("GET", sourceNode.toBase58(), "api/v0/block/get?arg=" + block.toBase58(), S3Request.UNSIGNED,
-                Optional.of(auth.expirySeconds), false, true,
-                Collections.emptyMap(), Collections.emptyMap(), auth.batId.toBase58(), "eu-central-1", auth.shortDate(), t);
-        Instant timestamp = Instant.parse(String.format("%s-%s-%sT%s:%s:%sZ", t.substring(0, 4), t.substring(4, 6), t.substring(6, 8), t.substring(9, 11), t.substring(11, 13), t.substring(13, 15)));
-        Instant expiry = timestamp.plusSeconds(auth.expirySeconds);
-        if (expiry.isBefore(Instant.now()))
-            return false;
-        String signature = S3Request.computeSignature(req, encodeSecret());
-        return signature.equals(ArrayOps.bytesToHex(auth.signature));
+                Collections.emptyMap(), Collections.emptyMap(), batId.toBase58(), "eu-central-1", datetime);
+        return S3Request.computeSignature(req, encodeSecret(), h)
+                .thenApply(signature -> new BlockAuth(ArrayOps.hexToBytes(signature), expirySeconds, datetime, batId));
     }
 
     public static Bat deriveFromRawBlock(byte[] block) {

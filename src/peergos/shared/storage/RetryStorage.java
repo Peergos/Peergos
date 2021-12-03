@@ -1,10 +1,10 @@
 package peergos.shared.storage;
 
-import peergos.server.storage.auth.*;
 import peergos.shared.cbor.CborObject;
-import peergos.shared.crypto.hash.PublicKeyHash;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.Multihash;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.fs.FragmentWithHash;
 import peergos.shared.util.ProgressConsumer;
 
@@ -155,9 +155,10 @@ public class RetryStorage implements ContentAddressedStorage {
     @Override
     public CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Cid> hashes,
                                                                        List<BatWithId> bats,
+                                                                       Hasher h,
                                                                        ProgressConsumer<Long> monitor,
                                                                        double spaceIncreaseFactor) {
-        return runWithRetry(() -> target.downloadFragments(hashes, bats, monitor, spaceIncreaseFactor));
+        return runWithRetry(() -> target.downloadFragments(hashes, bats, h, monitor, spaceIncreaseFactor));
     }
 
     @Override

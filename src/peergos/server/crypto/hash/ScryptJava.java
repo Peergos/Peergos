@@ -13,6 +13,9 @@ import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
+import javax.crypto.*;
+import javax.crypto.spec.*;
+
 public class ScryptJava implements Hasher {
 	private static final Logger LOG = Logger.getGlobal();
     private static final int LOG_2_MIN_RAM = 17;
@@ -69,6 +72,18 @@ public class ScryptJava implements Hasher {
     @Override
     public CompletableFuture<byte[]> sha256(byte[] input) {
         return CompletableFuture.completedFuture(Hash.sha256(input));
+    }
+
+    @Override
+    public CompletableFuture<byte[]> hmacSha256(byte[] secretKeyBytes, byte[] message) {
+        try {
+            Mac mac = Mac.getInstance("HMACSHA256");
+            SecretKey secretKey = new SecretKeySpec(secretKeyBytes, "HMACSHA256");
+            mac.init(secretKey);
+            return Futures.of(mac.doFinal(message));
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override

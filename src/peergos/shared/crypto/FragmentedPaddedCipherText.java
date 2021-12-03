@@ -1,12 +1,11 @@
 package peergos.shared.crypto;
 
-import peergos.server.storage.auth.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.cid.*;
-import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
@@ -143,6 +142,7 @@ public class FragmentedPaddedCipherText implements Cborable {
 
     public <T> CompletableFuture<T> getAndDecrypt(SymmetricKey from,
                                                   Function<CborObject, T> fromCbor,
+                                                  Hasher h,
                                                   NetworkAccess network,
                                                   ProgressConsumer<Long> monitor) {
         if (inlinedCipherText.isPresent()) {
@@ -150,7 +150,7 @@ public class FragmentedPaddedCipherText implements Cborable {
                 return Futures.of(new CipherText(nonce, ArrayOps.concat(header.get(), inlinedCipherText.get())).decrypt(from, fromCbor, monitor));
             return Futures.of(new CipherText(nonce, inlinedCipherText.get()).decrypt(from, fromCbor, monitor));
         }
-        return network.dhtClient.downloadFragments(cipherTextFragments, bats, monitor, 1.0)
+        return network.dhtClient.downloadFragments(cipherTextFragments, bats, h, monitor, 1.0)
                 .thenApply(fargs -> new CipherText(nonce, recombine(header, fargs)).decrypt(from, fromCbor));
     }
 

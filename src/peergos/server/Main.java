@@ -25,6 +25,7 @@ import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.mutable.*;
 import peergos.shared.social.*;
 import peergos.shared.storage.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.storage.controller.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
@@ -532,22 +533,21 @@ public class Main extends Builder {
                     boolean isPreUpgradeBlock = false; //TODO lookup list of raw cids at upgrade time in DB
                     if (isPreUpgradeBlock)
                         return Futures.of(true);
-//                    if (true) return Futures.of(true); // DEBUG ALLOW ALL
                     byte[] block = localStorage.getRaw(b, "").join().get();
                     Bat bat = Bat.deriveFromRawBlock(block);
-                    return Futures.of(bat.isValidAuth(BlockAuth.fromString(auth), b, s));
+                    return Futures.of(BlockRequestAuthoriser.isValidAuth(BlockAuth.fromString(auth), b, s, bat, hasher));
                 } else if (b.codec == Cid.Codec.DagCbor) {
-//                    CborObject block = localStorage.get(b, "").join().get();
-//                    if (block instanceof CborObject.CborMap) {
-//                        if (((CborObject.CborMap) block).containsKey("bats")) {
-//                            List<Bat> bats = ((CborObject.CborMap) block).getList("bats", Bat::fromCbor);
-//                            for (Bat bat : bats) {
-//                                if (bat.isValidAuth(BlockAuth.fromString(auth), b, s))
-//                                    return Futures.of(true);
-//                            }
-//                            return Futures.of(false);
-//                        } else return Futures.of(true); // This is a public block
-//                    } else // e.g. inner CHAMP nodes
+                    CborObject block = localStorage.get(b, "").join().get();
+                    if (block instanceof CborObject.CborMap) {
+                        if (((CborObject.CborMap) block).containsKey("bats")) {
+                            List<Bat> bats = ((CborObject.CborMap) block).getList("bats", Bat::fromCbor);
+                            for (Bat bat : bats) {
+                                if (BlockRequestAuthoriser.isValidAuth(BlockAuth.fromString(auth), b, s, bat, hasher))
+                                    return Futures.of(true);
+                            }
+                            return Futures.of(false);
+                        } else return Futures.of(true); // This is a public block
+                    } else // e.g. inner CHAMP nodes
                         return Futures.of(true);
                 }
                 return Futures.of(false);

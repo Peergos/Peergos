@@ -208,13 +208,13 @@ public class IncomingCapCache {
                                                                Snapshot version,
                                                                NetworkAccess network) {
         Supplier<CompletableFuture<Optional<FileWrapper>>> recurse =
-                () -> mirrorDir.getChild(version, path.get(childIndex), hasher, network)
+                () -> mirrorDir.getChild(version, path.get(childIndex), network)
                         .thenCompose(childOpt -> childOpt.map(c ->
                                 getByPath(c, path, childIndex + 1, version, network))
                                 .orElseGet(() -> Futures.of(Optional.empty())));
         if (childIndex >= path.size())
             return getAnyValidParentOfAChild(mirrorDir, hasher, network);
-        return mirrorDir.getChild(version, DIR_STATE, hasher, network)
+        return mirrorDir.getChild(version, DIR_STATE, network)
                 .thenCompose(capsOpt -> {
                     if (capsOpt.isEmpty())
                         return recurse.get();
@@ -254,7 +254,7 @@ public class IncomingCapCache {
     }
 
     private CompletableFuture<CapsInDirectory> getCaps(FileWrapper dir, Snapshot version, NetworkAccess network) {
-        return dir.getChild(version, DIR_STATE, hasher, network)
+        return dir.getChild(version, DIR_STATE, network)
                 .thenCompose(capsOpt -> {
                     if (capsOpt.isEmpty())
                         return Futures.of(CapsInDirectory.empty());
@@ -327,7 +327,7 @@ public class IncomingCapCache {
                                                             Hasher hasher,
                                                             NetworkAccess network) {
         Supplier<CompletableFuture<Set<FileWrapper>>> recurse =
-                () -> mirrorDir.getChild(version, path.get(childIndex), hasher, network)
+                () -> mirrorDir.getChild(version, path.get(childIndex), network)
                         .thenCompose(childOpt -> childOpt.map(c ->
                                 getChildren(c, path, childIndex + 1, version, hasher, network))
                                 .orElseGet(() -> Futures.of(Collections.emptySet())));
@@ -344,7 +344,7 @@ public class IncomingCapCache {
                                     .thenApply(indirectChildren -> Stream.concat(direct.stream(), indirectChildren.stream())
                                             .collect(Collectors.toSet()))));
 
-        return mirrorDir.getChild(version, DIR_STATE, hasher, network)
+        return mirrorDir.getChild(version, DIR_STATE, network)
                 .thenCompose(capsOpt -> {
                     if (capsOpt.isEmpty())
                         return recurse.get();
