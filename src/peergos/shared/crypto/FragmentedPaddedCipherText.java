@@ -35,8 +35,6 @@ public class FragmentedPaddedCipherText implements Cborable {
         this.header = header;
         this.cipherTextFragments = cipherTextFragments;
         this.bats = bats;
-        if (bats.size() != cipherTextFragments.size())
-            throw new IllegalStateException("Incorrect number of block access tokens!");
         this.inlinedCipherText = inlinedCipherText;
         if (inlinedCipherText.isPresent() && ! cipherTextFragments.isEmpty())
             throw new IllegalStateException("Cannot have an inlined block and merkle linked blocks!");
