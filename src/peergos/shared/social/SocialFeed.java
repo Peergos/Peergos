@@ -4,6 +4,7 @@ import jsinterop.annotations.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.display.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
@@ -327,7 +328,7 @@ public class SocialFeed {
                                 if (feedOpt.isEmpty())
                                     return updated.uploadFileSection(updated.version, c, FEED_FILE, AsyncReader.build(data),
                                             false, 0, data.length, Optional.empty(), false,
-                                            false, network, crypto, x -> {}, crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH));
+                                            false, network, crypto, x -> {}, crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH), Optional.of(Bat.random(crypto.random)));
                                 if (feedOpt.get().getSize() != feedSizeBytes)
                                     throw new IllegalStateException("Feed size incorrect!");
                                 return feedOpt.get().append(data, network, crypto, c, x -> {});

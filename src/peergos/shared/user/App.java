@@ -1,6 +1,7 @@
 package peergos.shared.user;
 
 import jsinterop.annotations.JsMethod;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.app.*;
 import peergos.shared.user.fs.AsyncReader;
 import peergos.shared.user.fs.FileWrapper;
@@ -9,9 +10,7 @@ import peergos.shared.util.Serialize;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -91,7 +90,7 @@ public class App implements StoreAppData {
         return ctx.getByPath(ctx.username).thenCompose(userRoot -> userRoot.get().getOrMkdirs(pathWithoutUsername.getParent(), ctx.network, true, ctx.crypto)
                 .thenCompose(dir -> dir.uploadOrReplaceFile(path.getFileName().toString(), AsyncReader.build(data),
                         data.length, ctx.network, ctx.crypto, x -> {
-                        }, ctx.crypto.random.randomBytes(32))
+                        }, ctx.crypto.random.randomBytes(32), Optional.of(Bat.random(ctx.crypto.random)))
                         .thenApply(fw -> true)
                 ));
     }

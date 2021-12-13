@@ -527,6 +527,8 @@ public class Main extends Builder {
 
             InetSocketAddress allowListener = new InetSocketAddress("localhost", AddressUtil.getListenPort(a.getArg("allow-target")));
             System.out.println("Block allow listener for " + nodeId + " on " + allowListener);
+            Map<BatId, Bat> mirrorBats = new HashMap<>();
+            Function<BatId, Optional<Bat>> batStore = id -> Optional.ofNullable(mirrorBats.getOrDefault(id, null));
             BlockRequestAuthoriser blockRequestAuthoriser = (b, s, auth) -> {
                 System.out.println("Allow: " + b + ", auth=" + auth + ", from: " + s + " received by " + nodeId + " " + allowListener);
                 if (b.codec == Cid.Codec.Raw) {
@@ -540,9 +542,10 @@ public class Main extends Builder {
                     CborObject block = localStorage.get(b, "").join().get();
                     if (block instanceof CborObject.CborMap) {
                         if (((CborObject.CborMap) block).containsKey("bats")) {
-                            List<Bat> bats = ((CborObject.CborMap) block).getList("bats", Bat::fromCbor);
-                            for (Bat bat : bats) {
-                                if (BlockRequestAuthoriser.isValidAuth(BlockAuth.fromString(auth), b, s, bat, hasher))
+                            List<BatId> batids = ((CborObject.CborMap) block).getList("bats", BatId::fromCbor);
+                            for (BatId bid : batids) {
+                                Optional<Bat> bat = bid.getInline().or(() -> batStore.apply(bid));
+                                if (bat.isPresent() && BlockRequestAuthoriser.isValidAuth(BlockAuth.fromString(auth), b, s, bat.get(), hasher))
                                     return Futures.of(true);
                             }
                             return Futures.of(false);

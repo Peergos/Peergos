@@ -11,6 +11,8 @@ public class BatWithId implements Cborable {
     public final Cid id;
 
     public BatWithId(Bat bat, Cid id) {
+        if (id.isIdentity())
+            throw new IllegalStateException("Cannot use identity cid here!");
         this.bat = bat;
         this.id = id;
     }

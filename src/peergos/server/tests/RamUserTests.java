@@ -7,6 +7,7 @@ import peergos.server.*;
 import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.social.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
@@ -59,7 +60,7 @@ public class RamUserTests extends UserTests {
         byte[] data = "<html><body><h1>You are AWESOME!</h1></body></html>".getBytes();
         context.getByPath(username + "/" + dirName).join().get()
                 .uploadOrReplaceFile("index.html", AsyncReader.build(data), data.length, network, crypto, x -> {},
-                        crypto.random.randomBytes(32)).join();
+                        crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).join();
         ProfilePaths.setWebRoot(context, "/" + username + "/" + dirName).join();
         ProfilePaths.publishWebroot(context).join();
 
@@ -108,7 +109,7 @@ public class RamUserTests extends UserTests {
         random.nextBytes(fileData);
 
         FileWrapper userRoot2 = userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(fileData), fileData.length,
-                context.network, context.crypto, l -> {}, context.crypto.random.randomBytes(32)).join();
+                context.network, context.crypto, l -> {}, context.crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).join();
 
         FileWrapper file = context.getByPath(Paths.get(username, filename)).join().get();
         FileProperties props = file.getFileProperties();
@@ -156,7 +157,7 @@ public class RamUserTests extends UserTests {
         random.nextBytes(fileData);
         FileWrapper userRoot2 = userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(fileData), fileData.length,
                 context.network, context.crypto, l -> {
-                }, context.crypto.random.randomBytes(32)).join();
+                }, context.crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).join();
 
         FileWrapper file = context.getByPath(Paths.get(username, filename)).join().get();
         FileProperties props = file.getFileProperties();
@@ -198,7 +199,7 @@ public class RamUserTests extends UserTests {
 
         FileWrapper userRoot2 = userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(fileData), fileData.length,
                 context.network, context.crypto, l -> {
-                }, context.crypto.random.randomBytes(32)).join();
+                }, context.crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).join();
 
         FileWrapper file = context.getByPath(Paths.get(username, filename)).join().get();
         FileProperties props = file.getFileProperties();
@@ -302,7 +303,7 @@ public class RamUserTests extends UserTests {
         byte[] data = new byte[0];
         user1.getByPath(Paths.get(username1, folder1, folder11)).join().get()
                 .uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length, user1.network,
-                crypto, l -> {}, crypto.random.randomBytes(32)).join();
+                crypto, l -> {}, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).join();
 
         // create 2nd user and friend user1
         String username2 = generateUsername();

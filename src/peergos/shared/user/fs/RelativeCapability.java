@@ -5,6 +5,7 @@ import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.SymmetricKey;
+import peergos.shared.storage.auth.*;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -20,18 +21,21 @@ public class RelativeCapability implements Cborable {
     // writer is only present when it is not implicit (an entry point, or a child link to a different writing key)
     public final Optional<PublicKeyHash> writer;
     private final byte[] mapKey;
+    public final Optional<Bat> bat; // Only absent on legacy data
     public final SymmetricKey rBaseKey;
     public final Optional<SymmetricLink> wBaseKeyLink;
 
     @JsConstructor
     public RelativeCapability(Optional<PublicKeyHash> writer,
                               byte[] mapKey,
+                              Optional<Bat> bat,
                               SymmetricKey rBaseKey,
                               Optional<SymmetricLink> wBaseKeyLink) {
         this.writer = writer;
-        if (mapKey.length != Location.MAP_KEY_LENGTH)
+        if (mapKey.length != RelativeCapability.MAP_KEY_LENGTH)
             throw new IllegalStateException("Invalid map key length: " + mapKey.length);
         this.mapKey = mapKey;
+        this.bat = bat;
         this.rBaseKey = rBaseKey;
         this.wBaseKeyLink = wBaseKeyLink;
     }
@@ -53,24 +57,16 @@ public class RelativeCapability implements Cborable {
         Optional<SymmetricKey> wBaseKey = source.wBaseKey.flatMap(w -> wBaseKeyLink.map(link -> link.target(w)));
         PublicKeyHash writer = this.writer.orElse(source.writer);
         if (wBaseKey.isPresent())
-            return new WritableAbsoluteCapability(source.owner, writer, mapKey, rBaseKey, wBaseKey.get());
-        return new AbsoluteCapability(source.owner, writer, mapKey, rBaseKey, wBaseKey);
-    }
-
-    public RelativeCapability withBaseKey(SymmetricKey newReadBaseKey) {
-        return new RelativeCapability(writer, mapKey, newReadBaseKey, wBaseKeyLink);
-    }
-
-    public RelativeCapability withWritingKey(PublicKeyHash writingKey) {
-        return new RelativeCapability(Optional.of(writingKey), mapKey, rBaseKey, wBaseKeyLink);
+            return new WritableAbsoluteCapability(source.owner, writer, mapKey, bat, rBaseKey, wBaseKey.get());
+        return new AbsoluteCapability(source.owner, writer, mapKey, bat, rBaseKey, wBaseKey);
     }
 
     public RelativeCapability withWritingKey(Optional<PublicKeyHash> writingKey) {
-        return new RelativeCapability(writingKey, mapKey, rBaseKey, wBaseKeyLink);
+        return new RelativeCapability(writingKey, mapKey, bat, rBaseKey, wBaseKeyLink);
     }
 
-    public static RelativeCapability buildSubsequentChunk(byte[] mapkey, SymmetricKey baseKey) {
-        return new RelativeCapability(Optional.empty(), mapkey, baseKey, Optional.empty());
+    public static RelativeCapability buildSubsequentChunk(byte[] mapkey, Optional<Bat> bat, SymmetricKey baseKey) {
+        return new RelativeCapability(Optional.empty(), mapkey, bat, baseKey, Optional.empty());
     }
 
     @Override
@@ -78,6 +74,7 @@ public class RelativeCapability implements Cborable {
         Map<String, Cborable> cbor = new TreeMap<>();
         writer.ifPresent(w -> cbor.put("w", w.toCbor()));
         cbor.put("m", new CborObject.CborByteArray(mapKey));
+        bat.ifPresent(b -> cbor.put("a", b));
         cbor.put("k", rBaseKey.toCbor());
         wBaseKeyLink.ifPresent(w -> cbor.put("l", w.toCbor()));
         return CborObject.CborMap.build(cbor);
@@ -95,9 +92,10 @@ public class RelativeCapability implements Cborable {
         Optional<PublicKeyHash> writer = Optional.ofNullable(map.get("w"))
                 .map(PublicKeyHash::fromCbor);
         byte[] mapKey = ((CborObject.CborByteArray)map.get("m")).value;
+        Optional<Bat> bat = map.getOptional("a", Bat::fromCbor);
         SymmetricKey baseKey = SymmetricKey.fromCbor(map.get("k"));
         Optional<SymmetricLink> writerLink = Optional.ofNullable(map.get("l")).map(SymmetricLink::fromCbor);
-        return new RelativeCapability(writer, mapKey, baseKey, writerLink);
+        return new RelativeCapability(writer, mapKey, bat, baseKey, writerLink);
     }
 
     @Override

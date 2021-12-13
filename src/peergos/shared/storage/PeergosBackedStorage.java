@@ -5,6 +5,7 @@ import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
@@ -112,7 +113,7 @@ public class PeergosBackedStorage implements ContentAddressedStorage {
         Path toBlock = getPath(cid);
         return baseDir.getOrMkdirs(toBlock.getParent(), network, false, crypto)
                 .thenCompose(dir -> dir.uploadOrReplaceFile(toBlock.getFileName().toString(), AsyncReader.build(block),
-                        block.length, network, crypto, progressCounter, crypto.random.randomBytes(32)))
+                        block.length, network, crypto, progressCounter, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))))
                 .thenApply(x -> Collections.singletonList(cid));
     }
 

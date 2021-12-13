@@ -6,6 +6,7 @@ import java.util.logging.*;
 import peergos.shared.fingerprint.*;
 import peergos.shared.inode.*;
 import peergos.shared.io.ipfs.cid.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.user.fs.transaction.TransactionService;
 import peergos.shared.user.fs.transaction.TransactionServiceImpl;
@@ -843,6 +844,7 @@ public class UserContext {
         // 5. Add entry point to root dir to owner WriterData's UserStaticData (legacy account) or LoginData
 
         byte[] rootMapKey = crypto.random.randomBytes(32); // root will be stored under this label
+        Optional<Bat> rootBat = Optional.of(Bat.random(crypto.random));
         SymmetricKey rootRKey = SymmetricKey.random();
         SymmetricKey rootWKey = SymmetricKey.random();
         LOG.info("Random keys generation took " + (System.currentTimeMillis() - t1) + " mS");
@@ -851,7 +853,7 @@ public class UserContext {
         SigningPrivateKeyAndPublicHash writerPair =
                 new SigningPrivateKeyAndPublicHash(preHash, writer.secretSigningKey);
         WritableAbsoluteCapability rootPointer =
-                new WritableAbsoluteCapability(owner.publicKeyHash, preHash, rootMapKey, rootRKey, rootWKey);
+                new WritableAbsoluteCapability(owner.publicKeyHash, preHash, rootMapKey, rootBat, rootRKey, rootWKey);
         EntryPoint entry = new EntryPoint(rootPointer, directoryName);
         return IpfsTransaction.call(owner.publicKeyHash, tid -> network.dhtClient.putSigningKey(
                 owner.secret.signMessage(writer.publicSigningKey.serialize()),
@@ -866,11 +868,11 @@ public class UserContext {
                             .thenCompose(s2 -> {
                                 long t2 = System.currentTimeMillis();
                                 RelativeCapability nextChunk =
-                                        RelativeCapability.buildSubsequentChunk(crypto.random.randomBytes(32), rootRKey);
+                                        RelativeCapability.buildSubsequentChunk(crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random)), rootRKey);
                                 return CryptreeNode.createEmptyDir(MaybeMultihash.empty(), rootRKey, rootWKey, Optional.of(writerPair),
                                                 new FileProperties(directoryName, true, false, "", 0, LocalDateTime.now(),
                                                         false, Optional.empty(), Optional.empty()),
-                                                Optional.empty(), SymmetricKey.random(), nextChunk, crypto.hasher)
+                                                Optional.empty(), SymmetricKey.random(), nextChunk, crypto.random, crypto.hasher)
                                         .thenCompose(root -> {
                                             LOG.info("Uploading entry point directory");
                                             return WriterData.createEmpty(owner.publicKeyHash, writerPair,
@@ -1104,17 +1106,18 @@ public class UserContext {
                 }
             }
             return getUserRoot().thenCompose(home -> home.uploadFileSection(
-                                    FRIEND_ANNOTATIONS_FILE_NAME,
-                                    AsyncReader.build(serialized.toByteArray()),
-                                    true,
-                                    0,
-                                    serialized.size(),
-                                    Optional.empty(),
-                                    true,
-                                    network,
-                                    crypto,
-                                    x -> {},
-                                    crypto.random.randomBytes(32)))
+                    FRIEND_ANNOTATIONS_FILE_NAME,
+                    AsyncReader.build(serialized.toByteArray()),
+                    true,
+                    0,
+                    serialized.size(),
+                    Optional.empty(),
+                    true,
+                    network,
+                    crypto,
+                    x -> {},
+                    crypto.random.randomBytes(32),
+                    Optional.of(Bat.random(crypto.random))))
                     .thenApply(x -> true);
         });
     }
@@ -1247,7 +1250,7 @@ public class UserContext {
                             return sharing.getChild(theirUsername, crypto.hasher, network)
                                     .thenCompose(existingFriendDir -> {
                                         if (existingFriendDir.isEmpty())
-                                            return sharing.mkdir(theirUsername, network, initialRequest.key.get(), true, crypto)
+                                            return sharing.mkdir(theirUsername, network, initialRequest.key.get(), Optional.of(Bat.random(crypto.random)), true, crypto)
                                                     .thenCompose(updatedSharing -> updatedSharing.getChild(theirUsername, crypto.hasher, network));
                                         // If we already have a sharing dir for them, don't rotate the keys
                                         return Futures.of(existingFriendDir);
@@ -1345,7 +1348,7 @@ public class UserContext {
                                                     byte[] raw = updated.toCbor().serialize();
                                                     return getUserRoot().thenCompose(home -> home.uploadFileSection(
                                                             SOCIAL_STATE_FILENAME, AsyncReader.build(raw), true, 0, raw.length, Optional.empty(),
-                                                            true, network, crypto, x -> {}, crypto.random.randomBytes(32)))
+                                                            true, network, crypto, x -> {}, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))))
                                                             .thenApply(x -> b);
                                                 }));
                             });
@@ -1397,11 +1400,13 @@ public class UserContext {
                                     new RelativeCapability(
                                             Optional.of(parent.writer()),
                                             crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH),
+                                            Optional.of(Bat.random(crypto.random)),
                                             SymmetricKey.random(),
                                             Optional.empty()):
                                     new RelativeCapability(
                                             Optional.empty(),
                                             parent.getPointer().capability.getMapKey(),
+                                            parent.getPointer().capability.bat,
                                             parent.getParentKey(),
                                             Optional.empty())
                     );
@@ -1413,6 +1418,7 @@ public class UserContext {
                                     owner,
                                     p.right.publicKeyHash,
                                     crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH),
+                                    Optional.of(Bat.random(crypto.random)),
                                     SymmetricKey.random(),
                                     SymmetricKey.random()),
                                     p.right),
@@ -1432,8 +1438,9 @@ public class UserContext {
                                     SymmetricKey linkParent = newParentLink.get().rBaseKey;
                                     SymmetricKey linkWBase = SymmetricKey.random();
                                     byte[] linkMapKey = newParentLink.get().getMapKey();
+                                    Optional<Bat> linkBat = newParentLink.get().bat;
                                     WritableAbsoluteCapability linkCap = new WritableAbsoluteCapability(owner,
-                                            parentCap.writer, linkMapKey, linkRBase, linkWBase);
+                                            parentCap.writer, linkMapKey, linkBat, linkRBase, linkWBase);
                                     return CryptreeNode.createAndCommitLink(parent, rotated.right,
                                             file.getFileProperties(), linkCap, linkParent,
                                             crypto, network, rotated.left, c)
@@ -1804,7 +1811,7 @@ public class UserContext {
                     return getUserRoot().thenCompose(home ->
                             home.uploadFileSection(filename, reader, true, offset,
                                     offset + data.length, base, true, network, crypto, x -> {},
-                                    crypto.random.randomBytes(32)));
+                                    crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))));
                 });
     }
 
@@ -2085,7 +2092,7 @@ public class UserContext {
 
                             return home.uploadFileSection(ENTRY_POINTS_FROM_FRIENDS_GROUPS_FILENAME, reader, true,
                                     0, raw.length, Optional.empty(), false, network, crypto, x -> {},
-                                    crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH));
+                                    crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH), Optional.of(Bat.random(crypto.random)));
                         })).thenApply(x -> true);
     }
 

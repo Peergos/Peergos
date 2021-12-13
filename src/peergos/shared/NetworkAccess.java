@@ -453,7 +453,12 @@ public class NetworkAccess {
                 .thenApply(c -> c.map(x -> x.target).map(MaybeMultihash::of).orElse(MaybeMultihash.empty()))
                 .thenCompose(btreeValue -> {
                     if (btreeValue.isPresent())
-                        return dhtClient.get(btreeValue.get(), "TODO")
+                        return dhtClient.id()
+                                .thenCompose(id -> cap.bat.map(b ->
+                                        b.calculateId(hasher)
+                                                .thenCompose(batId -> b.generateAuth((Cid)btreeValue.get(), id, 300, S3Request.currentDatetime(), batId.id, hasher))
+                                        .thenApply(BlockAuth::encode)).orElse(Futures.of("")))
+                                .thenCompose(auth -> dhtClient.get(btreeValue.get(), auth))
                                 .thenApply(value -> value.map(cbor -> CryptreeNode.fromCbor(cbor, cap.rBaseKey, btreeValue.get())))
                                 .thenApply(res -> {
                                     cache.put(cacheKey, res);

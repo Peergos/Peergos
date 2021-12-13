@@ -4,6 +4,7 @@ import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.SafeRandom;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.Futures;
@@ -43,7 +44,7 @@ public class TransactionServiceImpl implements TransactionService {
         return transactionDirUpdater.updated(version).thenCompose(dir ->
                 dir.uploadFileSection(version, committer, transaction.name(), asyncReader, false,
                         0, data.length, Optional.empty(), false, false, networkAccess,
-                        crypto, VOID_PROGRESS, crypto.random.randomBytes(32)));
+                        crypto, VOID_PROGRESS, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))));
     }
 
     @Override

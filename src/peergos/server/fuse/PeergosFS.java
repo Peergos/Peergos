@@ -5,6 +5,7 @@ import peergos.server.util.Logging;
 
 import jnr.ffi.Pointer;
 import jnr.ffi.types.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.UserContext;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.Serialize;
@@ -579,7 +580,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
                     parentNode = parentNode.uploadFileSection(file.properties.name, AsyncReader.build(data),
                             file.properties.isHidden, currentPos, currentPos + sizeInChunk, Optional.empty(),
                             true, context.network, context.crypto, x -> {},
-                            file.treeNode.getLocation().getMapKey()).get();
+                            file.treeNode.getLocation().getMapKey(), file.treeNode.getPointer().capability.bat).get();
                     currentPos += sizeInChunk;
                 }
             } else
@@ -602,7 +603,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
             FileWrapper b = parent.treeNode.uploadFileSection(name, new AsyncReader.ArrayBacked(toWrite), false, offset,
                     offset + size, Optional.empty(), true, context.network,
                     context.crypto, l -> {},
-                    context.crypto.random.randomBytes(32)).get();
+                    context.crypto.random.randomBytes(32), Optional.of(Bat.random(context.crypto.random))).get();
             return (int) size;
         } catch (Throwable t) {
             LOG.log(Level.WARNING, t.getMessage(), t);

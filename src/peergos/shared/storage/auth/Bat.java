@@ -31,6 +31,10 @@ public class Bat implements Cborable {
         return Base58.encode(secret);
     }
 
+    public CompletableFuture<BatId> calculateId(Hasher h) {
+        return h.hash(serialize(), false).thenApply(BatId::new);
+    }
+
     @Override
     public CborObject toCbor() {
         SortedMap<String, Cborable> state = new TreeMap<>();

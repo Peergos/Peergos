@@ -6,6 +6,7 @@ import peergos.server.storage.*;
 import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.symmetric.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.user.fs.cryptree.*;
 
@@ -26,8 +27,8 @@ public class BlockSizeTests {
                 LocalDateTime.now(), false, Optional.empty(), Optional.empty());
         SigningPrivateKeyAndPublicHash signingPair = ChampTests.createUser(new RAMStorage(crypto.hasher), crypto);
 
-        Optional<RelativeCapability> parentCap = Optional.of(new RelativeCapability(Optional.empty(), crypto.random.randomBytes(32), parentParent, Optional.empty()));
-        RelativeCapability nextChunk = new RelativeCapability(Optional.empty(), crypto.random.randomBytes(32), parentParent, Optional.empty());
+        Optional<RelativeCapability> parentCap = Optional.of(new RelativeCapability(Optional.empty(), crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random)), parentParent, Optional.empty()));
+        RelativeCapability nextChunk = new RelativeCapability(Optional.empty(), crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random)), parentParent, Optional.empty());
 
         String nameBase = IntStream.range(0, 252).mapToObj(i -> "A").collect(Collectors.joining());
         List<NamedRelativeCapability> children = IntStream.range(0, 500)
@@ -35,7 +36,7 @@ public class BlockSizeTests {
                 .collect(Collectors.toList());
         CryptreeNode.ChildrenLinks childrenLinks = new CryptreeNode.ChildrenLinks(children);
         CryptreeNode.DirAndChildren dir = CryptreeNode.createDir(MaybeMultihash.empty(), rBase,
-                wBase, Optional.of(signingPair), props, parentCap, parent, nextChunk, childrenLinks, crypto.hasher).join();
+                wBase, Optional.of(signingPair), props, parentCap, parent, nextChunk, childrenLinks, crypto.random, crypto.hasher).join();
 
         byte[] raw = dir.dir.serialize();
         Assert.assertTrue(raw.length < Fragment.MAX_LENGTH);

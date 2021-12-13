@@ -14,6 +14,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.social.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
@@ -299,7 +300,7 @@ public class MultiNodeNetworkTests {
         String filename = "hey.txt";
         FileWrapper root = u1.getUserRoot().get();
         FileWrapper upload = root.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length,
-                getNode(iNode1), crypto, x -> {}, crypto.random.randomBytes(32)).get();
+                getNode(iNode1), crypto, x -> {}, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).get();
         Optional<FileWrapper> file = u1.getByPath("/" + username1 + "/" + filename).get();
         Assert.assertTrue(file.isPresent());
     }

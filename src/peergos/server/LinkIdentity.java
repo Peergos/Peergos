@@ -6,6 +6,7 @@ import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.multibase.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 
@@ -65,7 +66,7 @@ public class LinkIdentity {
 
         byte[] raw = proof.serialize();
         idsDir.uploadOrReplaceFile(filename, AsyncReader.build(raw), raw.length,
-                context.network, context.crypto, x -> {}, context.crypto.random.randomBytes(32)).join();
+                context.network, context.crypto, x -> {}, context.crypto.random.randomBytes(32), Optional.of(Bat.random(context.crypto.random))).join();
 
         if (makePublic)
             context.makePublic(context.getByPath(Paths.get(context.username).resolve(subPath).resolve(filename)).join().get()).join();

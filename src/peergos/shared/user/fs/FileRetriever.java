@@ -5,6 +5,7 @@ import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
@@ -22,12 +23,12 @@ public interface FileRetriever {
                                            MaybeMultihash ourExistingHash,
                                            ProgressConsumer<Long> monitor);
 
-    CompletableFuture<Optional<byte[]>> getMapLabelAt(WriterData version,
-                                                      AbsoluteCapability startCap,
-                                                      Optional<byte[]> streamSecret,
-                                                      long offset,
-                                                      Hasher hasher,
-                                                      NetworkAccess network);
+    CompletableFuture<Optional<Pair<byte[], Optional<Bat>>>> getMapLabelAt(WriterData version,
+                                                                           AbsoluteCapability startCap,
+                                                                           Optional<byte[]> streamSecret,
+                                                                           long offset,
+                                                                           Hasher hasher,
+                                                                           NetworkAccess network);
 
     CompletableFuture<Optional<LocatedChunk>> getChunk(WriterData version,
                                                        NetworkAccess network,

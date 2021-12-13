@@ -132,7 +132,7 @@ public class FragmentedPaddedCipherText implements Cborable {
                             .map(f -> Bat.deriveFromRawBlock(f.fragment.data))
                             .collect(Collectors.toList());
                     return Futures.combineAllInOrder(bats.stream()
-                            .map(b -> hasher.hash(b.serialize(), false).thenApply(c -> new BatWithId(b, c)))
+                            .map(b -> b.calculateId(hasher).thenApply(id -> new BatWithId(b, id.id)))
                             .collect(Collectors.toList()))
                             .thenApply(batsAndIds -> new Pair<>(new FragmentedPaddedCipherText(nonce, header, hashes, batsAndIds, Optional.empty()), frags));
                 });

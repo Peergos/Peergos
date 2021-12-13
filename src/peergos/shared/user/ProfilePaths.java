@@ -1,6 +1,7 @@
 package peergos.shared.user;
 
 import jsinterop.annotations.JsMethod;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
@@ -44,7 +45,7 @@ public class ProfilePaths {
                 .thenCompose(home -> home.getOrMkdirs(p.getParent(), user.network, true, user.crypto))
                 .thenCompose(parent -> parent.uploadOrReplaceFile(p.getFileName().toString(),
                         AsyncReader.build(raw), raw.length, user.network, user.crypto, x -> {},
-                        user.crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH)))
+                        user.crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH), Optional.of(Bat.random(user.crypto.random))))
                 .thenApply(x -> true);
     }
 

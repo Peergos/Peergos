@@ -13,6 +13,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.inode.*;
 import peergos.shared.storage.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
@@ -151,7 +152,7 @@ public class InodeFilesystemTests {
         byte[] mapKey = new byte[32];
         r.nextBytes(mapKey);
         SymmetricKey readKey = SymmetricKey.random();
-        return new AbsoluteCapability(owner, owner, mapKey, readKey);
+        return new AbsoluteCapability(owner, owner, mapKey, Optional.of(Bat.random(crypto.random)), readKey);
     }
 
     private static String randomPath(Random r, int maxDepth) {

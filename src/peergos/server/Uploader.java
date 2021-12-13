@@ -2,6 +2,7 @@ package peergos.server;
 
 import peergos.server.storage.*;
 import peergos.shared.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 
@@ -110,7 +111,7 @@ public class Uploader {
                 FileWrapper parent = context.getByPath(targetParent.toString()).join().get();
                 parent.uploadOrReplaceFile(file.getName(), fileData, file.length(),
                         context.network, context.crypto, l -> {},
-                        context.crypto.random.randomBytes(32)).get();
+                        context.crypto.random.randomBytes(32), Optional.of(Bat.random(context.crypto.random))).get();
             } catch (Exception e) {
                 System.err.println("Error uploading " + source);
                 e.printStackTrace();

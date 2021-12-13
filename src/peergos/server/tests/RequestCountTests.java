@@ -9,6 +9,7 @@ import peergos.shared.crypto.symmetric.*;
 import peergos.shared.display.*;
 import peergos.shared.social.*;
 import peergos.shared.storage.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.user.fs.cryptree.*;
@@ -146,7 +147,7 @@ public class RequestCountTests {
         String filename = file.getFileName().toString();
         sharer.getByPath(file.getParent()).join().get()
                 .uploadOrReplaceFile(filename, AsyncReader.build(data), data.length,
-                        sharer.network, crypto, l -> {}, crypto.random.randomBytes(32)).join();
+                        sharer.network, crypto, l -> {}, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).join();
         sharer.shareReadAccessWith(file, Set.of(sharee)).join();
     }
 }

@@ -3,6 +3,7 @@ package peergos.shared.user.fs;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
@@ -57,7 +58,7 @@ public class CapabilityStore {
                     long startIndex = capStore.map(f -> f.getSize()).orElse(0L);
                     return sharedDir.uploadFileSection(sharedDir.version, c, capStoreFilename, newCapability, false,
                             startIndex, startIndex + serializedCapability.length, Optional.empty(), true,
-                            false, network, crypto, x -> {}, crypto.random.randomBytes(32));
+                            false, network, crypto, x -> {}, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random)));
                 });
     }
 

@@ -5,6 +5,7 @@ import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.inode.*;
 import peergos.shared.social.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
@@ -506,7 +507,7 @@ public class IncomingCapCache {
                     return getAndUpdateRoot(network)
                             .thenCompose(root -> root.uploadOrReplaceFile(friend + FRIEND_STATE_SUFFIX, reader, raw.length,
                                     network, crypto, x -> {
-                                    }, crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH)))
+                                    }, crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH), Optional.of(Bat.random(crypto.random))))
                             .thenApply(x -> diff);
                 });
     }
@@ -528,7 +529,7 @@ public class IncomingCapCache {
                                 byte[] raw = single.serialize();
                                 AsyncReader reader = AsyncReader.build(raw);
                                 return parent.uploadOrReplaceFile(DIR_STATE, reader, raw.length, network, crypto,
-                                        x -> {}, crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH));
+                                        x -> {}, crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH), Optional.of(Bat.random(crypto.random)));
                             }
                             return Serialize.readFully(capsOpt.get(), crypto, network)
                                     .thenApply(CborObject::fromByteArray)
