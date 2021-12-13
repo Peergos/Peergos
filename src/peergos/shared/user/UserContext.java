@@ -178,7 +178,14 @@ public class UserContext {
             return (legacyAccount ?
                     Futures.of(userData.staticData.get()) :
                     network.account.getLoginData(username, loginPub, TimeLimitedClient.signNow(loginSecret))).thenCompose(entryData -> {
-                UserStaticData.EntryPoints staticData = entryData.getData(generatedCredentials.getRoot());
+                UserStaticData.EntryPoints staticData;
+                try {
+                    staticData = entryData.getData(generatedCredentials.getRoot());
+                } catch (Exception e) {
+                    if (legacyAccount)
+                        throw new IllegalStateException("Incorrect password");
+                    else throw new RuntimeException(e);
+                }
                 // Use generated signer for legacy logins, or get from UserStaticData for newer logins
                 SigningPrivateKeyAndPublicHash signer =
                         new SigningPrivateKeyAndPublicHash(userData.controller,
