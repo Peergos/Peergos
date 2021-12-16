@@ -3,6 +3,7 @@
     <title>Peergos</title>
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta charset="utf-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src https: 'self'; style-src 'unsafe-inline' 'self'; script-src 'unsafe-inline' 'self';">
     <meta name="viewport"
           content="width=device-width, initial-scale=1.0, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -143,9 +144,9 @@
     <div class="feature-light" align="center">
       <div class="row">
 	<div id="tour">
-	  <div id="tourimages" style="height:300px">
+	  <div id="tourimages" style="height:500px; max-height:50%;">
 	  </div>
-	  <h5 id="tourdesc"></h5>
+	  <h5 id="tourdesc" style="height:2em;"></h5>
 	  <center>
 	    <div style="display:flex; justify-content:center;">
 	      <button style="font-size:xx-large; border-radius:45%; padding:0 1rem;"
@@ -446,43 +447,35 @@
       const tourData = [
 	  {
 	      text: "Store your files and arrange them in folders.",
-	      image: "theme/img/tour/upload.png"
-	  },
-	  {
-	      text: "Add friends with a secure follow request.",
-	      image: "theme/img/tour/social.png"
-	  },
-	  {
-	      text: "Securely share files or folders with friends.",
-	      image: "theme/img/tour/share.png"
-	  },
-	  {
-	      text: "Create a secret link to share with anyone.",
-	      image: "theme/img/tour/secret.png"
+	      image: "theme/img/tour/drive.png"
 	  },
 	  {
 	      text: "View slideshows of your photos.",
-	      image: "theme/img/tour/images.png"
-	  },
-	  {
-	      text: "View and edit your text documents.",
-	      image: "theme/img/tour/text.png"
+	      image: "theme/img/tour/images.jpg"
 	  },
 	  {
 	      text: "Play your music collection.",
-	      image: "theme/img/tour/music.png"
+	      image: "theme/img/tour/music.jpg"
 	  },
 	  {
 	      text: "Watch your videos and movies from any device.",
-	      image: "theme/img/tour/video.png"
+	      image: "theme/img/tour/video.jpg"
+	  },
+	  {
+	      text: "View and edit your text documents.",
+	      image: "theme/img/tour/markdown.png"
 	  },
 	  {
 	      text: "View PDF documents.",
-	      image: "theme/img/tour/pdf.png"
+	      image: "theme/img/tour/pdf.jpg"
 	  },
 	  {
-	      text: "Organise and plan things with our planning boards.",
-	      image: "theme/img/tour/kanban.png"
+	      text: "Securely share files or folders.",
+	      image: "theme/img/tour/share.jpg"
+	  },
+	  {
+	      text: "Organise and plan things with a planning board.",
+	      image: "theme/img/tour/tasks.jpg"
 	  },
 	  {
 	      text: "Create events and manage your calendar.",
@@ -490,7 +483,7 @@
 	  },
 	  {
 	      text: "Share posts and comments with your friends and followers.",
-	      image: "theme/img/tour/social-feed.png"
+	      image: "theme/img/tour/social-feed.jpg"
 	  }];
       var currentElementIndex = 0;
       function showElement(i){
@@ -518,7 +511,9 @@
 	  for (var i=0; i < tourData.length; i++) {
 	      // add images
 	      var image = document.createElement("img");
-	      image.style.height = "300px";
+	      image.style.objectFit = "contain";
+	      image.style.objectPosition = "center center";
+	      image.style.height = "500px";
 	      image.style.maxWidth = "100%";
 	      image.style.cursor = "pointer";
 	      image.src = tourData[i].image;
@@ -545,7 +540,7 @@
     </script>
     <script src="/theme/js/particles.min.js"></script>
     <script src="/theme/js/stats.min.js"></script>
-    <script>
+    <script>/*
         particlesJS("particles", {
   "particles": {
     "number": {
@@ -655,7 +650,7 @@
     }
   },
   "retina_detect": true
-});
+});*/
     </script>
 </body>
 </html>
