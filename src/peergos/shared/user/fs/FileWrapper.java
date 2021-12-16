@@ -1000,6 +1000,19 @@ public class FileWrapper {
                 );
     }
 
+    @JsMethod
+    public CompletableFuture<Boolean> calculateAndUpdateThumbnail(NetworkAccess network, Crypto crypto) {
+        return network.synchronizer.applyComplexComputation(owner(), signingPair(),
+                (latestSnapshot, committer) -> getInputStream(latestSnapshot.get(writer()).props, network, crypto, l -> {})
+                        .thenCompose(is -> recalculateThumbnail(
+                                latestSnapshot, committer, getName(), is, props.isHidden,
+                                getSize(), network, (WritableAbsoluteCapability)pointer.capability,
+                                getFileProperties().streamSecret))
+                        .thenApply(res -> new Pair<>(res, true))
+                        .exceptionally(ex -> new Pair<>(latestSnapshot, false))
+        ).thenApply(p -> p.right);
+    }
+    
     private CompletableFuture<Snapshot> recalculateThumbnail(Snapshot snapshot, Committer committer, String filename, AsyncReader fileData
              , boolean isHidden, long fileSize, NetworkAccess network, WritableAbsoluteCapability fileWriteCap, Optional<byte[]> streamSecret
     ) {
