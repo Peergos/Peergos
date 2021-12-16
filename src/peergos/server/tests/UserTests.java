@@ -899,7 +899,7 @@ public abstract class UserTests {
         FileWrapper file = context.getByPath(Paths.get(username, filename).toString()).get().get();
         String thumbnail = file.getBase64Thumbnail();
         Assert.assertTrue("Has thumbnail", thumbnail.length() > 0);
-        boolean res = file.calculateThumbnail(context.network, context.crypto).join();
+        boolean res = file.calculateAndUpdateThumbnail(context.network, context.crypto).join();
         Assert.assertTrue("Has updated Thumbnail", res);
     }
 

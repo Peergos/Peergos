@@ -1001,7 +1001,7 @@ public class FileWrapper {
     }
 
     @JsMethod
-    public CompletableFuture<Boolean> calculateThumbnail(NetworkAccess network, Crypto crypto) {
+    public CompletableFuture<Boolean> calculateAndUpdateThumbnail(NetworkAccess network, Crypto crypto) {
         return network.synchronizer.applyComplexComputation(owner(), signingPair(),
                 (latestSnapshot, committer) -> getInputStream(latestSnapshot.get(writer()).props, network, crypto, l -> {})
                         .thenCompose(is -> recalculateThumbnail(
