@@ -15,7 +15,7 @@ public interface BatCave {
 
     default CompletableFuture<List<BatWithId>> getUserBats(String username, SigningPrivateKeyAndPublicHash identity) {
         TimeLimitedClient.SignedRequest req =
-                new TimeLimitedClient.SignedRequest(Constants.BATS_URL + "getUser", System.currentTimeMillis());
+                new TimeLimitedClient.SignedRequest(Constants.BATS_URL + "getUserBats", System.currentTimeMillis());
         byte[] auth = req.sign(identity.secret);
         return getUserBats(username, auth);
     }
@@ -38,7 +38,7 @@ public interface BatCave {
 
         @Override
         public CompletableFuture<List<BatWithId>> getUserBats(String username, byte[] auth) {
-            return poster.get(Constants.BATS_URL + "getUser?username=" + username + "&auth=" + ArrayOps.bytesToHex(auth))
+            return poster.get(Constants.BATS_URL + "getUserBats?username=" + username + "&auth=" + ArrayOps.bytesToHex(auth))
                     .thenApply(res ->
                             ((CborObject.CborList)CborObject.fromByteArray(res)).value
                                     .stream()
@@ -48,7 +48,7 @@ public interface BatCave {
 
         @Override
         public CompletableFuture<Boolean> addBat(String username, BatId id, Bat bat, byte[] auth) {
-            return poster.get(Constants.BATS_URL + "add?username=" + username
+            return poster.get(Constants.BATS_URL + "addBat?username=" + username
                     + "&batid=" + id.id
                     + "&bat=" + bat.encodeSecret()
                     + "&auth=" + ArrayOps.bytesToHex(auth))

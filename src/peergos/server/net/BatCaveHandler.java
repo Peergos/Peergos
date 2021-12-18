@@ -51,7 +51,7 @@ public class BatCaveHandler implements HttpHandler {
                     bats.addBat(username, batid, bat, auth);
                     result = new CborObject.CborBoolean(true);
                     break;
-                case "getBats":
+                case "getUserBats":
                     AggregatedMetrics.BATS_GET.inc();
                     List<BatWithId> userBats = bats.getUserBats(username, auth).join();
                     result = new CborObject.CborList(userBats);
