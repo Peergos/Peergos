@@ -38,7 +38,7 @@ public class TokenSignupTests {
         // use actual http messager
         ServerMessager.HTTP serverMessager = new ServerMessager.HTTP(new JavaPoster(new URI("http://localhost:" + args.getArg("port")).toURL(), false));
         NetworkAccess network = new NetworkAccess(service.coreNode, service.account, service.social, service.storage,
-                service.mutable, mutableTree, synchronizer, service.controller, service.usage,
+                service.bats, service.mutable, mutableTree, synchronizer, service.controller, service.usage,
                 serverMessager, service.crypto.hasher,
                 Arrays.asList("peergos"), false);
         return Arrays.asList(new Object[][] {

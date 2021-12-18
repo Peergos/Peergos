@@ -28,7 +28,11 @@ public class Bat implements Cborable {
     }
 
     public String encodeSecret() {
-        return Base58.encode(secret);
+        return Multibase.encode(Multibase.Base.Base58BTC, secret);
+    }
+
+    public static Bat fromString(String encoded) {
+        return new Bat(Multibase.decode(encoded));
     }
 
     public CompletableFuture<BatId> calculateId(Hasher h) {

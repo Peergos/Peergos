@@ -5,6 +5,7 @@ import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
@@ -161,8 +162,9 @@ public class TofuCoreNode implements CoreNode {
     @Override
     public CompletableFuture<UserSnapshot> migrateUser(String username,
                                                        List<UserPublicKeyLink> newChain,
-                                                       Multihash currentStorageId) {
-        return source.migrateUser(username, newChain, currentStorageId)
+                                                       Multihash currentStorageId,
+                                                       Optional<BatWithId> mirrorBat) {
+        return source.migrateUser(username, newChain, currentStorageId, mirrorBat)
                 .thenCompose(res -> source.getChain(username)
                         .thenCompose(chain -> tofu.updateChain(username, chain, network.dhtClient)
                                 .thenCompose(x -> commit())

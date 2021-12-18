@@ -11,6 +11,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
@@ -20,6 +21,7 @@ import java.util.logging.*;
 public class Mirror {
 
     public static void mirrorNode(Multihash nodeId,
+                                  BatWithId mirrorBat,
                                   CoreNode core,
                                   MutablePointers p2pPointers,
                                   DeletableContentAddressedStorage storage,
@@ -33,7 +35,8 @@ public class Mirror {
             List<UserPublicKeyLink> chain = core.getChain(username).join();
             if (chain.get(chain.size() - 1).claim.storageProviders.contains(nodeId)) {
                 try {
-                    mirrorUser(username, Optional.empty(), core, p2pPointers, null, storage, targetPointers, null, transactions, hasher);
+                    mirrorUser(username, Optional.empty(), Optional.of(mirrorBat), core, p2pPointers, null,
+                            storage, targetPointers, null, transactions, hasher);
                     userCount++;
                 } catch (Exception e) {
                     Logging.LOG().log(Level.WARNING, "Couldn't mirror user: " + username, e);
@@ -56,6 +59,7 @@ public class Mirror {
      */
     public static Map<PublicKeyHash, byte[]> mirrorUser(String username,
                                                         Optional<SigningKeyPair> loginAuth,
+                                                        Optional<BatWithId> mirrorBat,
                                                         CoreNode core,
                                                         MutablePointers p2pPointers,
                                                         Account p2pAccount,

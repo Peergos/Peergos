@@ -36,7 +36,7 @@ public class RequestCountTests {
         this.storageCounter = requestCounter;
         CachingVerifyingStorage dhtClient = new CachingVerifyingStorage(requestCounter, 50 * 1024, 1_000, crypto.hasher);
         this.network = new NetworkAccess(service.coreNode, service.account, service.social, dhtClient,
-                service.mutable, mutableTree, synchronizer, service.controller, service.usage, service.serverMessages,
+                service.bats, service.mutable, mutableTree, synchronizer, service.controller, service.usage, service.serverMessages,
                 crypto.hasher, Arrays.asList("peergos"), false);
     }
 

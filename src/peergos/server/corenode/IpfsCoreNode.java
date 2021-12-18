@@ -12,6 +12,7 @@ import peergos.shared.hamt.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
@@ -287,7 +288,8 @@ public class IpfsCoreNode implements CoreNode {
     @Override
     public CompletableFuture<UserSnapshot> migrateUser(String username,
                                                        List<UserPublicKeyLink> newChain,
-                                                       Multihash currentStorageId) {
+                                                       Multihash currentStorageId,
+                                                       Optional<BatWithId> mirrorBat) {
         throw new IllegalStateException("Migration from pki node unimplemented!");
     }
 

@@ -37,6 +37,9 @@ public class AggregatedMetrics {
     public static final Counter LOGIN_SET  = build("login_set", "Total login set calls.");
     public static final Counter LOGIN_GET  = build("login_get", "Total login get calls.");
 
+    public static final Counter BAT_ADD  = build("bat_add", "Total addBat calls.");
+    public static final Counter BATS_GET  = build("bats_get", "Total getBats calls.");
+
     public static final Counter GET_ALL_USERNAMES  = build("core_node_get_all_usernames", "Total get-all-usernames calls.");
     public static final Counter GET_USERNAME  = build("core_node_get_username", "Total get-username calls.");
     public static final Counter GET_PUBLIC_KEY  = build("core_node_get_public_key", "Total get-public-key calls.");

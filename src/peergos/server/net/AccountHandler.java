@@ -11,7 +11,7 @@ import peergos.shared.util.*;
 import java.io.*;
 import java.util.*;
 
-/** This is the http endpoint for MutablePointer calls
+/** This is the http endpoint for getting and setting encrypted login blobs
  *
  */
 public class AccountHandler implements HttpHandler {

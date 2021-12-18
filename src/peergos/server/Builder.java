@@ -13,6 +13,7 @@ import peergos.server.space.*;
 import peergos.server.sql.*;
 import peergos.server.storage.*;
 import peergos.server.storage.admin.*;
+import peergos.server.storage.auth.*;
 import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
@@ -267,6 +268,7 @@ public class Builder {
                                          JdbcIpnsAndSocial localSocial,
                                          UsageStore usageStore,
                                          JdbcAccount rawAccount,
+                                         BatCave bats,
                                          Account account,
                                          Hasher hasher) {
         Multihash nodeId = localStorage.id().join();
@@ -276,7 +278,7 @@ public class Builder {
         boolean isPkiNode = nodeId.equals(pkiServerId);
         return isPkiNode ?
                 buildPkiCorenode(new PinningMutablePointers(localPointers, localStorage), account, localStorage, a) :
-                new MirrorCoreNode(new HTTPCoreNode(buildP2pHttpProxy(a), pkiServerId), rawAccount, account, proxingMutable,
+                new MirrorCoreNode(new HTTPCoreNode(buildP2pHttpProxy(a), pkiServerId), rawAccount, bats, account, proxingMutable,
                         localStorage, rawPointers, transactions, localSocial, usageStore, peergosId,
                         a.fromPeergosDir("pki-mirror-state-path","pki-state.cbor"), hasher);
     }

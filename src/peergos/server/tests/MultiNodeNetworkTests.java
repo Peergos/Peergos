@@ -65,8 +65,8 @@ public class MultiNodeNetworkTests {
     @Parameterized.Parameters(name="nodes: {0}, {1} (0 == PKI, > 0 normal)")
     public static Collection<Object[]> parameters() {
         return Arrays.asList(new Object[][] {
-                {0, 1}, // PKI, normal-1
-                {1, 0}, // normal-2, PKI
+//                {0, 1}, // PKI, normal-1
+//                {1, 0}, // normal-2, PKI
                 {2, 1}  // normal-1, normal-2
         });
     }
@@ -188,7 +188,9 @@ public class MultiNodeNetworkTests {
         List<UserPublicKeyLink> existing = user.network.coreNode.getChain(username).join();
         List<UserPublicKeyLink> newChain = Migrate.buildMigrationChain(existing, newStorageNodeId, user.signer.secret);
         UserContext userViaNewServer = ensureSignedUp(username, password, node2, crypto);
-        userViaNewServer.network.coreNode.migrateUser(username, newChain, originalNodeId).join();
+        List<BatWithId> bats = userViaNewServer.network.batCave.getUserBats(username, userViaNewServer.signer).join();
+        Optional<BatWithId> mirrorBat = Optional.of(bats.get(bats.size() - 1));
+        userViaNewServer.network.coreNode.migrateUser(username, newChain, originalNodeId, mirrorBat).join();
 
         List<UserPublicKeyLink> chain = userViaNewServer.network.coreNode.getChain(username).join();
         Multihash storageNode = chain.get(chain.size() - 1).claim.storageProviders.stream().findFirst().get();
@@ -205,9 +207,13 @@ public class MultiNodeNetworkTests {
         List<FollowRequestWithCipherText> followRequests = postMigration.processFollowRequests().join();
         Assert.assertTrue(followRequests.size() == 1);
 
+        // check bats were transferred
+        List<BatWithId> postBats = postMigration.network.batCave.getUserBats(username, postMigration.signer).join();
+        Assert.assertTrue("mirror bats transferred", postBats.equals(bats));
+
         // check a reverse migration can't be triggered by anyone else
         try {
-            node1.coreNode.migrateUser(username, existing, newStorageNodeId).join();
+            node1.coreNode.migrateUser(username, existing, newStorageNodeId, mirrorBat).join();
             throw new RuntimeException("Shouldn't get here!");
         } catch (CompletionException e) {
             if (! e.getCause().getMessage().startsWith("Migration+claim+has+earlier+expiry+than+current+one"))
@@ -249,8 +255,10 @@ public class MultiNodeNetworkTests {
         UserPublicKeyLink evilUpdate = evilLast.withClaim(newClaim);
         List<UserPublicKeyLink> newChain = Arrays.asList(evilUpdate);
         UserContext userViaNewServer = ensureSignedUp(username, password, getNode(iNode2), crypto);
+        List<BatWithId> bats = userViaNewServer.network.batCave.getUserBats(username, userViaNewServer.signer).join();
+        Optional<BatWithId> mirrorBat = Optional.of(bats.get(bats.size() - 1));
         try {
-            userViaNewServer.network.coreNode.migrateUser(username, newChain, originalNodeId).join();
+            userViaNewServer.network.coreNode.migrateUser(username, newChain, originalNodeId, mirrorBat).join();
             throw new RuntimeException("Shouldn't get here!");
         } catch (CompletionException e) {}
 

@@ -2,6 +2,7 @@ package peergos.shared.storage.auth;
 
 import peergos.shared.cbor.*;
 import peergos.shared.io.ipfs.cid.*;
+import peergos.shared.io.ipfs.multibase.*;
 
 import java.util.*;
 
@@ -15,6 +16,18 @@ public class BatWithId implements Cborable {
             throw new IllegalStateException("Cannot use identity cid here!");
         this.bat = bat;
         this.id = id;
+    }
+
+    public BatId id() {
+        return new BatId(id);
+    }
+
+    public String encode() {
+        return Multibase.encode(Multibase.Base.Base58BTC, serialize());
+    }
+
+    public static BatWithId decode(String in) {
+        return fromCbor(CborObject.fromByteArray(Multibase.decode(in)));
     }
 
     @Override

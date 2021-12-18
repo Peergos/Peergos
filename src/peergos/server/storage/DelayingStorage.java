@@ -134,8 +134,8 @@ public class DelayingStorage implements ContentAddressedStorage {
 
     public static NetworkAccess buildNetwork(NetworkAccess source, int readDelay, int writeDelay) {
         ContentAddressedStorage delayingBlocks = new DelayingStorage(source.dhtClient, readDelay, writeDelay);
-        return new NetworkAccess(source.coreNode, source.account, source.social, delayingBlocks, source.mutable, source.tree,
-                source.synchronizer, source.instanceAdmin, source.spaceUsage, source.serverMessager,
-                source.hasher, source.usernames, false);
+        return new NetworkAccess(source.coreNode, source.account, source.social, delayingBlocks, source.batCave,
+                source.mutable, source.tree, source.synchronizer, source.instanceAdmin, source.spaceUsage,
+                source.serverMessager, source.hasher, source.usernames, false);
     }
 }

@@ -527,8 +527,7 @@ public class Main extends Builder {
 
             InetSocketAddress allowListener = new InetSocketAddress("localhost", AddressUtil.getListenPort(a.getArg("allow-target")));
             System.out.println("Block allow listener for " + nodeId + " on " + allowListener);
-            Map<BatId, Bat> mirrorBats = new HashMap<>();
-            Function<BatId, Optional<Bat>> batStore = id -> Optional.ofNullable(mirrorBats.getOrDefault(id, null));
+            BatCave batStore = new RamBatCave();
             BlockRequestAuthoriser blockRequestAuthoriser = (b, s, auth) -> {
                 System.out.println("Allow: " + b + ", auth=" + auth + ", from: " + s + " received by " + nodeId + " " + allowListener);
                 if (b.codec == Cid.Codec.Raw) {
@@ -544,7 +543,7 @@ public class Main extends Builder {
                         if (((CborObject.CborMap) block).containsKey("bats")) {
                             List<BatId> batids = ((CborObject.CborMap) block).getList("bats", BatId::fromCbor);
                             for (BatId bid : batids) {
-                                Optional<Bat> bat = bid.getInline().or(() -> batStore.apply(bid));
+                                Optional<Bat> bat = bid.getInline().or(() -> batStore.getBat(bid));
                                 if (bat.isPresent() && BlockRequestAuthoriser.isValidAuth(BlockAuth.fromString(auth), b, s, bat.get(), hasher))
                                     return Futures.of(true);
                             }
@@ -558,7 +557,7 @@ public class Main extends Builder {
             BlockAuthServer.startListener(blockRequestAuthoriser, allowListener, 100, 4);
 
             CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable,
-                    rawSocial, usageStore, rawAccount, account, hasher);
+                    rawSocial, usageStore, rawAccount, batStore, account, hasher);
 
             QuotaAdmin userQuotas = buildSpaceQuotas(a, localStorage, core,
                     getDBConnector(a, "space-requests-sql-file", dbConnectionPool),
@@ -598,7 +597,9 @@ public class Main extends Builder {
 
             Account p2pAccount = new ProxyingAccount(nodeId, core, account, accountProxy);
             VerifyingAccount verifyingAccount = new VerifyingAccount(p2pAccount, core, localStorage);
-            UserService peergos = new UserService(p2pDht, crypto, corePropagator, verifyingAccount, p2pSocial, p2mMutable, storageAdmin,
+            CachingStorage cachingStorage = new CachingStorage(p2pDht, 1000, 50 * 1024);
+
+            UserService peergos = new UserService(cachingStorage, batStore, crypto, corePropagator, verifyingAccount, p2pSocial, p2mMutable, storageAdmin,
                     p2pSpaceUsage, new ServerMessageStore(getDBConnector(a, "server-messages-sql-file", dbConnectionPool),
                     sqlCommands, core, p2pDht), gc);
             InetSocketAddress localAddress = new InetSocketAddress("localhost", userAPIAddress.getPort());
@@ -636,7 +637,8 @@ public class Main extends Builder {
                 new Thread(() -> {
                     while (true) {
                         try {
-                            Mirror.mirrorNode(nodeToMirrorId, core, p2mMutable, localStorage, rawPointers, transactions, hasher);
+                            BatWithId mirrorBat = BatWithId.decode(a.getArg("mirror.bat"));
+                            Mirror.mirrorNode(nodeToMirrorId, mirrorBat, core, p2mMutable, localStorage, rawPointers, transactions, hasher);
                             try {
                                 Thread.sleep(60_000);
                             } catch (InterruptedException f) {}
@@ -657,7 +659,9 @@ public class Main extends Builder {
                             if (mirrorLoginDataPair.isEmpty())
                                 System.out.println("WARNING: Mirroring users data, but not their login, see option 'login-keypair'");
                             String username = a.getArg("mirror.username");
-                            Mirror.mirrorUser(username, mirrorLoginDataPair, core, p2mMutable, p2pAccount, localStorage,
+
+                            Optional<BatWithId> mirrorBat = a.getOptionalArg("mirror.bat").map(BatWithId::decode);
+                            Mirror.mirrorUser(username, mirrorLoginDataPair, mirrorBat, core, p2mMutable, p2pAccount, localStorage,
                                     rawPointers, rawAccount, transactions, hasher);
                             try {
                                 Thread.sleep(60_000);
@@ -806,7 +810,9 @@ public class Main extends Builder {
             }
             System.out.println("Migrating user from node " + currentStorageNodeId + " to " + newStorageNodeId);
             List<UserPublicKeyLink> newChain = Migrate.buildMigrationChain(existing, newStorageNodeId, user.signer.secret);
-            user.network.coreNode.migrateUser(username, newChain, currentStorageNodeId).join();
+            List<BatWithId> mirrorBats = user.network.batCave.getUserBats(username, user.signer).join();
+            BatWithId current = mirrorBats.get(mirrorBats.size() - 1);
+            user.network.coreNode.migrateUser(username, newChain, currentStorageNodeId, Optional.of(current)).join();
             List<UserPublicKeyLink> updatedChain = user.network.coreNode.getChain(username).join();
             if (!updatedChain.get(updatedChain.size() - 1).claim.storageProviders.contains(newStorageNodeId))
                 throw new IllegalStateException("Migration failed. Please try again later");
