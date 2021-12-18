@@ -4,7 +4,6 @@ import peergos.server.*;
 import peergos.server.login.*;
 import peergos.server.space.*;
 import peergos.server.storage.*;
-import peergos.server.storage.auth.*;
 import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;

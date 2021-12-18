@@ -13,7 +13,6 @@ import peergos.server.space.*;
 import peergos.server.sql.*;
 import peergos.server.storage.*;
 import peergos.server.storage.admin.*;
-import peergos.server.storage.auth.*;
 import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
@@ -29,6 +28,7 @@ import peergos.shared.io.ipfs.multiaddr.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 
 import java.net.*;

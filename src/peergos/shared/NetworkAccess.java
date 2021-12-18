@@ -2,7 +2,6 @@ package peergos.shared;
 import java.util.logging.*;
 
 import jsinterop.annotations.*;
-import peergos.server.storage.auth.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;

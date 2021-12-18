@@ -1,8 +1,7 @@
-package peergos.server.storage.auth;
+package peergos.shared.storage.auth;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
-import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 

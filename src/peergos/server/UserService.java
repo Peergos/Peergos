@@ -1,12 +1,10 @@
 package peergos.server;
 import java.util.*;
-import java.util.function.*;
 import java.util.logging.Logger;
 
 import peergos.server.storage.*;
 import peergos.server.messages.*;
 import peergos.server.storage.admin.*;
-import peergos.server.storage.auth.*;
 import peergos.server.util.*;
 
 import java.util.logging.Level;
@@ -20,6 +18,7 @@ import peergos.shared.social.*;
 import peergos.shared.storage.*;
 
 import peergos.server.net.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.storage.controller.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;

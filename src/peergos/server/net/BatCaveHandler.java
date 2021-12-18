@@ -2,13 +2,10 @@ package peergos.server.net;
 
 import com.sun.net.httpserver.*;
 import peergos.server.*;
-import peergos.server.storage.auth.*;
 import peergos.server.util.*;
 import peergos.shared.cbor.*;
-import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.storage.auth.*;
-import peergos.shared.user.*;
 import peergos.shared.util.*;
 
 import java.io.*;
