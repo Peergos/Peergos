@@ -528,6 +528,7 @@ public class Main extends Builder {
             InetSocketAddress allowListener = new InetSocketAddress("localhost", AddressUtil.getListenPort(a.getArg("allow-target")));
             System.out.println("Block allow listener for " + nodeId + " on " + allowListener);
             BatCave batStore = new RamBatCave();
+            Optional<BatWithId> instanceBat = a.getOptionalArg("instance-bat").map(BatWithId::decode);
             BlockRequestAuthoriser blockRequestAuthoriser = (b, s, auth) -> {
                 System.out.println("Allow: " + b + ", auth=" + auth + ", from: " + s + " received by " + nodeId + " " + allowListener);
                 if (b.codec == Cid.Codec.Raw) {
@@ -545,6 +546,10 @@ public class Main extends Builder {
                             for (BatId bid : batids) {
                                 Optional<Bat> bat = bid.getInline().or(() -> batStore.getBat(bid));
                                 if (bat.isPresent() && BlockRequestAuthoriser.isValidAuth(BlockAuth.fromString(auth), b, s, bat.get(), hasher))
+                                    return Futures.of(true);
+                            }
+                            if (instanceBat.isPresent()) {
+                                if (BlockRequestAuthoriser.isValidAuth(BlockAuth.fromString(auth), b, s, instanceBat.get().bat, hasher))
                                     return Futures.of(true);
                             }
                             return Futures.of(false);
