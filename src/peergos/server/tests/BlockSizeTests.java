@@ -23,6 +23,7 @@ public class BlockSizeTests {
         SymmetricKey wBase = SymmetricKey.random();
         SymmetricKey parent = SymmetricKey.random();
         SymmetricKey parentParent = SymmetricKey.random();
+        Optional<BatId> mirrorBatId = Optional.of(BatId.sha256(Bat.random(crypto.random), crypto.hasher).join());
         FileProperties props = new FileProperties("a-directory", true, false, "", 0, 0,
                 LocalDateTime.now(), false, Optional.empty(), Optional.empty());
         SigningPrivateKeyAndPublicHash signingPair = ChampTests.createUser(new RAMStorage(crypto.hasher), crypto);
@@ -36,7 +37,7 @@ public class BlockSizeTests {
                 .collect(Collectors.toList());
         CryptreeNode.ChildrenLinks childrenLinks = new CryptreeNode.ChildrenLinks(children);
         CryptreeNode.DirAndChildren dir = CryptreeNode.createDir(MaybeMultihash.empty(), rBase,
-                wBase, Optional.of(signingPair), props, parentCap, parent, nextChunk, childrenLinks, crypto.random, crypto.hasher).join();
+                wBase, Optional.of(signingPair), props, parentCap, parent, nextChunk, childrenLinks, mirrorBatId, crypto.random, crypto.hasher).join();
 
         byte[] raw = dir.dir.serialize();
         Assert.assertTrue(raw.length < Fragment.MAX_LENGTH);

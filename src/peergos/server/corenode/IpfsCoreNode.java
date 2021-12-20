@@ -31,6 +31,7 @@ public class IpfsCoreNode implements CoreNode {
     private final Hasher hasher;
     private final MutablePointers mutable;
     private final Account account;
+    private final BatCave batCave;
     private final SigningPrivateKeyAndPublicHash signer;
 
     private final Map<String, List<UserPublicKeyLink>> chains = new ConcurrentHashMap<>();
@@ -47,12 +48,14 @@ public class IpfsCoreNode implements CoreNode {
                         Hasher hasher,
                         MutablePointers mutable,
                         Account account,
+                        BatCave batCave,
                         PublicKeyHash peergosIdentity) {
         this.currentRoot = MaybeMultihash.empty();
         this.ipfs = ipfs;
         this.hasher = hasher;
         this.mutable = mutable;
         this.account = account;
+        this.batCave = batCave;
         this.peergosIdentity = peergosIdentity;
         this.signer = pkiSigner;
         this.update(currentRoot);
@@ -154,7 +157,13 @@ public class IpfsCoreNode implements CoreNode {
      * @param ipfs
      * @param mutable
      */
-    public static void applyOpLog(String username, PublicKeyHash owner, OpLog ops, ContentAddressedStorage ipfs, MutablePointers mutable, Account account) {
+    public static void applyOpLog(String username,
+                                  PublicKeyHash owner,
+                                  OpLog ops,
+                                  ContentAddressedStorage ipfs,
+                                  MutablePointers mutable,
+                                  Account account,
+                                  BatCave batCave) {
         TransactionId tid = ipfs.startTransaction(owner).join();
         for (Either<OpLog.PointerWrite, OpLog.BlockWrite> op : ops.operations) {
             if (op.isA()) {
@@ -173,6 +182,10 @@ public class IpfsCoreNode implements CoreNode {
                 throw new IllegalStateException("Invalid signup data!");
             account.setLoginData(ops.loginData.left, ops.loginData.right).join();
         }
+        if (ops.mirrorBat.isPresent()) {
+            Pair<BatWithId, byte[]> p = ops.mirrorBat.get();
+            batCave.addBat(username, p.left.id(), p.left.bat, p.right);
+        }
         ipfs.closeTransaction(owner, tid).join();
     }
 
@@ -186,7 +199,7 @@ public class IpfsCoreNode implements CoreNode {
         if (pkiResult.isPresent())
             return Futures.of(pkiResult);
 
-        applyOpLog(username, chain.owner, setupOperations, ipfs, mutable, account);
+        applyOpLog(username, chain.owner, setupOperations, ipfs, mutable, account, batCave);
 
         return Futures.of(Optional.empty());
     }

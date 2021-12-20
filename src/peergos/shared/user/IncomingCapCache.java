@@ -45,7 +45,7 @@ public class IncomingCapCache {
     }
 
     public static CompletableFuture<IncomingCapCache> build(FileWrapper cacheRoot, Crypto crypto, NetworkAccess network) {
-        return cacheRoot.getOrMkdirs(Paths.get(WORLD_ROOT_NAME), network, true, crypto)
+        return cacheRoot.getOrMkdirs(Paths.get(WORLD_ROOT_NAME), network, true, cacheRoot.getPointer().fileAccess.mirrorBatId(), crypto)
                 .thenApply(worldRoot -> new IncomingCapCache(cacheRoot, worldRoot, crypto));
     }
 
@@ -507,7 +507,9 @@ public class IncomingCapCache {
                     return getAndUpdateRoot(network)
                             .thenCompose(root -> root.uploadOrReplaceFile(friend + FRIEND_STATE_SUFFIX, reader, raw.length,
                                     network, crypto, x -> {
-                                    }, crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH), Optional.of(Bat.random(crypto.random))))
+                                    }, crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH),
+                                    Optional.of(Bat.random(crypto.random)),
+                                    root.mirrorBatId()))
                             .thenApply(x -> diff);
                 });
     }
@@ -521,7 +523,7 @@ public class IncomingCapCache {
         Path parentPath = fullPath.getParent();
         String owner = fullPath.getName(0).toString();
         String filename = fullPath.getFileName().toString();
-        return root.getOrMkdirs(parentPath, network, false, crypto)
+        return root.getOrMkdirs(parentPath, network, false, root.mirrorBatId(), crypto)
                 .thenCompose(parent -> parent.getChild(DIR_STATE, crypto.hasher, network)
                         .thenCompose(capsOpt -> {
                             if (capsOpt.isEmpty()) {
@@ -529,7 +531,8 @@ public class IncomingCapCache {
                                 byte[] raw = single.serialize();
                                 AsyncReader reader = AsyncReader.build(raw);
                                 return parent.uploadOrReplaceFile(DIR_STATE, reader, raw.length, network, crypto,
-                                        x -> {}, crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH), Optional.of(Bat.random(crypto.random)));
+                                        x -> {}, crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH),
+                                        Optional.of(Bat.random(crypto.random)), root.mirrorBatId());
                             }
                             return Serialize.readFully(capsOpt.get(), crypto, network)
                                     .thenApply(CborObject::fromByteArray)

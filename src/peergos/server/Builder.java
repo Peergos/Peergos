@@ -219,7 +219,7 @@ public class Builder {
         return new HttpQuotaAdmin(poster);
     }
 
-    public static CoreNode buildPkiCorenode(MutablePointers mutable, Account account, ContentAddressedStorage dht, Args a) {
+    public static CoreNode buildPkiCorenode(MutablePointers mutable, Account account, BatCave batCave, ContentAddressedStorage dht, Args a) {
         try {
             Crypto crypto = initCrypto();
             PublicKeyHash peergosIdentity = PublicKeyHash.fromString(a.getArg("peergos.identity.hash"));
@@ -249,7 +249,7 @@ public class Builder {
                                 .thenApply(version -> version.get(pkiSigner).hash), dht).join();
 
             return new IpfsCoreNode(pkiSigner, a.getInt("max-daily-signups"), currentPkiRoot, dht, crypto.hasher,
-                    mutable, account, peergosIdentity);
+                    mutable, account, batCave, peergosIdentity);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -277,7 +277,7 @@ public class Builder {
         // build a mirroring proxying corenode, unless we are the pki node
         boolean isPkiNode = nodeId.equals(pkiServerId);
         return isPkiNode ?
-                buildPkiCorenode(new PinningMutablePointers(localPointers, localStorage), account, localStorage, a) :
+                buildPkiCorenode(new PinningMutablePointers(localPointers, localStorage), account, bats, localStorage, a) :
                 new MirrorCoreNode(new HTTPCoreNode(buildP2pHttpProxy(a), pkiServerId), rawAccount, bats, account, proxingMutable,
                         localStorage, rawPointers, transactions, localSocial, usageStore, peergosId,
                         a.fromPeergosDir("pki-mirror-state-path","pki-state.cbor"), hasher);

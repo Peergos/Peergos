@@ -89,6 +89,7 @@ public class FileUploader implements AutoCloseable {
                                                    long chunkIndex,
                                                    MaybeMultihash ourExistingHash,
                                                    ProgressConsumer<Long> monitor,
+                                                   Optional<BatId> mirrorBat,
                                                    SafeRandom random,
                                                    Hasher hasher) {
         LOG.info("uploading chunk: "+chunkIndex + " of "+name);
@@ -109,7 +110,7 @@ public class FileUploader implements AutoCloseable {
                                 .thenCompose(nextMapKeyAndBat -> {
                                     Location nextLocation = new Location(owner, writer.publicKeyHash, nextMapKeyAndBat.left);
                                     return uploadChunk(current, committer, writer, props, parentLocation, parentBat, parentparentKey, baseKey, locatedChunk,
-                                            nextLocation, nextMapKeyAndBat.right, Optional.empty(), random, hasher, network, monitor);
+                                            nextLocation, nextMapKeyAndBat.right, Optional.empty(), mirrorBat, random, hasher, network, monitor);
                                 });
                     });
         });
@@ -120,13 +121,14 @@ public class FileUploader implements AutoCloseable {
                                               NetworkAccess network,
                                               PublicKeyHash owner,
                                               SigningPrivateKeyAndPublicHash writer,
+                                              Optional<BatId> mirrorBat,
                                               SafeRandom random,
                                               Hasher hasher) {
         long t1 = System.currentTimeMillis();
 
         List<Integer> input = IntStream.range(0, (int) nchunks).mapToObj(i -> Integer.valueOf(i)).collect(Collectors.toList());
         return Futures.reduceAll(input, current, (cwd, i) -> uploadChunk(cwd, committer, network, owner, writer, i,
-                MaybeMultihash.empty(), monitor, random, hasher), (a, b) -> b)
+                MaybeMultihash.empty(), monitor, mirrorBat, random, hasher), (a, b) -> b)
                 .thenApply(x -> {
                     LOG.info("File encryption, upload took: " +(System.currentTimeMillis()-t1) + " mS");
                     return x;
@@ -145,6 +147,7 @@ public class FileUploader implements AutoCloseable {
                                                           Location nextChunkLocation,
                                                           Optional<Bat> nextChunkBat,
                                                           Optional<SymmetricLinkToSigner> writerLink,
+                                                          Optional<BatId> mirrorBat,
                                                           SafeRandom random,
                                                           Hasher hasher,
                                                           NetworkAccess network,
@@ -155,7 +158,7 @@ public class FileUploader implements AutoCloseable {
         RelativeCapability nextChunk = RelativeCapability.buildSubsequentChunk(nextChunkLocation.getMapKey(), nextChunkBat, baseKey);
         return CryptreeNode.createFile(chunk.existingHash, chunk.location.writer, baseKey,
                 chunk.chunk.key(), props, chunk.chunk.data(), parentLocation, parentBat, parentparentKey, nextChunk,
-                random, hasher, network.isJavascript())
+                mirrorBat, random, hasher, network.isJavascript())
                 .thenCompose(file -> {
                     CryptreeNode metadata = file.left.withWriterLink(baseKey, writerLink);
 

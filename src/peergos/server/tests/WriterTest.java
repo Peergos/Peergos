@@ -58,7 +58,7 @@ public class WriterTest {
         for(String dir : dirs) {
             Path dirFromHome = attachmentsDir.resolve(Paths.get(dir));
             Optional<FileWrapper> homeOpt = userContext.getByPath(userContext.username).join();
-            homeOpt.get().getOrMkdirs(dirFromHome, userContext.network, true, userContext.crypto).join();
+            homeOpt.get().getOrMkdirs(dirFromHome, userContext.network, true, userContext.mirrorBatId(), userContext.crypto).join();
         }
         
         //the shareWriteAccessWith call leads to the problem...
@@ -86,7 +86,7 @@ public class WriterTest {
         for(String dir : dirs) {
             Path dirFromHome = attachmentsDir.resolve(Paths.get(dir));
             Optional<FileWrapper> homeOpt = userContext.getByPath(userContext.username).join();
-            homeOpt.get().getOrMkdirs(dirFromHome, userContext.network, true, userContext.crypto).join();
+            homeOpt.get().getOrMkdirs(dirFromHome, userContext.network, true, userContext.mirrorBatId(), userContext.crypto).join();
         }
         List<String> sharees = Arrays.asList(emailBridgeContext.username);
         String dirStr = userContext.username + "/.apps/email/data/pending";

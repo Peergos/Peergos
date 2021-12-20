@@ -106,7 +106,8 @@ public abstract class UserTests {
                                                                     Crypto crypto,
                                                                     ProgressConsumer<Long> monitor) {
         return parent.uploadFileSection(filename, fileData, false, startIndex, endIndex, Optional.empty(),
-                true, network, crypto, monitor, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random)));
+                true, network, crypto, monitor, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random)),
+                parent.mirrorBatId());
     }
 
     @Test
@@ -413,8 +414,7 @@ public abstract class UserTests {
         Path filePath = Paths.get(username, filename);
         byte[] data = new byte[3];
         userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
-                context.crypto, l -> {
-                }, context.crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).get();
+                context.crypto, l -> {}).get();
         checkFileContents(data, context.getByPath(filePath).join().get(), context);
         FileWrapper file = context.getByPath(filePath).join().get();
         FileProperties props = file.getFileProperties();
@@ -436,7 +436,7 @@ public abstract class UserTests {
         // write empty file
         byte[] data = new byte[120*1024];
         userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
-                context.crypto, l -> {}, context.crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).get();
+                context.crypto, l -> {}).get();
         checkFileContents(data, context.getByPath(filePath).join().get(), context);
 
         FileWrapper fileV1 = context.getByPath(filePath).join().get();
@@ -473,7 +473,7 @@ public abstract class UserTests {
         // write empty file
         byte[] data = new byte[0];
         userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
-                context.crypto, l -> {}, context.crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).get();
+                context.crypto, l -> {}).get();
         checkFileContents(data, context.getUserRoot().get().getDescendentByPath(filename, crypto.hasher, context.network).get().get(), context);
 
         // write small 1 chunk file
@@ -541,13 +541,13 @@ public abstract class UserTests {
         String filename = "file1.bin";
         byte[] data = randomData(6*1024*1024);
         userRoot.uploadFileJS(filename, new AsyncReader.ArrayBacked(data), 0,data.length, false, false,
-                network, crypto, l -> {}, context.getTransactionService()).join();
+                userRoot.mirrorBatId(), network, crypto, l -> {}, context.getTransactionService()).join();
         checkFileContents(data, context.getUserRoot().join().getDescendentByPath(filename, crypto.hasher, context.network).join().get(), context);
 
         String file2name = "file2.bin";
         byte[] data2 = randomData(6*1024*1024);
         userRootCopy.uploadFileJS(file2name, new AsyncReader.ArrayBacked(data2), 0,data2.length, false, false,
-                network, crypto, l -> {}, context.getTransactionService()).join();
+                userRootCopy.mirrorBatId(), network, crypto, l -> {}, context.getTransactionService()).join();
         checkFileContents(data2, context.getUserRoot().join().getDescendentByPath(file2name, crypto.hasher, context.network).join().get(), context);
     }
 
@@ -562,7 +562,7 @@ public abstract class UserTests {
         // write empty file
         byte[] data = new byte[0];
         userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
-                context.crypto, l -> {}, context.crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).get();
+                context.crypto, l -> {}).get();
         checkFileContents(data, context.getUserRoot().get().getDescendentByPath(filename, crypto.hasher, context.network).get().get(), context);
 
         //rename
@@ -587,7 +587,7 @@ public abstract class UserTests {
         String filename = "somedata.txt";
         byte[] data = randomData(1024);
         userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
-                context.crypto, l -> {}, context.crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).get();
+                context.crypto, l -> {}).get();
 
         userRoot = context.getUserRoot().get();
 
@@ -619,7 +619,7 @@ public abstract class UserTests {
         FileWrapper userRoot = context.getUserRoot().get();
 
         String dirname = "somedir";
-        userRoot.mkdir(dirname, network, false, crypto).join();
+        userRoot.mkdir(dirname, network, false, userRoot.mirrorBatId(), crypto).join();
 
         FileWrapper dir = context.getByPath("/" + username + "/" + dirname).get().get();
         RetrievedCapability pointer = dir.getPointer();
@@ -640,7 +640,7 @@ public abstract class UserTests {
         String filename = "somedir";
         byte[] data = new byte[200*1024];
         userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
-                context.crypto, l -> {}, context.crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).join();
+                context.crypto, l -> {}).join();
 
         FileWrapper file = context.getByPath("/" + username + "/" + filename).join().get();
         RetrievedCapability pointer = file.getPointer();
@@ -667,7 +667,7 @@ public abstract class UserTests {
                     FileWrapper userRoot = context.getUserRoot().join();
                     FileWrapper result = userRoot.uploadOrReplaceFile(filename,
                             new AsyncReader.ArrayBacked(data),
-                            data.length, context.network, context.crypto, l -> {}, context.crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).join();
+                            data.length, context.network, context.crypto, l -> {}).join();
                     Optional<FileWrapper> childOpt = result.getChild(filename, crypto.hasher, network).join();
                     checkFileContents(data, childOpt.get(), context);
                     LOG.info("Finished a file");
@@ -698,8 +698,7 @@ public abstract class UserTests {
                     String filename = "folder" + i;
                         FileWrapper userRoot = context.getUserRoot().join();
                         FileWrapper result = userRoot.uploadOrReplaceFile(filename,
-                                new AsyncReader.ArrayBacked(data), data.length, context.network, context.crypto, l -> {},
-                                context.crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).join();
+                                new AsyncReader.ArrayBacked(data), data.length, context.network, context.crypto, l -> {}).join();
                         return true;
                 }, pool)).collect(Collectors.toSet());
 
@@ -725,8 +724,7 @@ public abstract class UserTests {
         FileWrapper userRoot = context.getUserRoot().get();
         FileWrapper newRoot = userRoot.uploadOrReplaceFile(filename,
                 new AsyncReader.ArrayBacked(randomData(fileSize)),
-                fileSize, context.network, context.crypto, l -> {},
-                context.crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).get();
+                fileSize, context.network, context.crypto, l -> {}).get();
 
         List<byte[]> sections = Collections.synchronizedList(new ArrayList<>(concurrency));
         for (int i=0; i < concurrency; i++)
@@ -767,7 +765,7 @@ public abstract class UserTests {
         byte[] data = "G'day mate".getBytes();
         AtomicLong writeCount = new AtomicLong(0);
         userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
-                context.crypto, writeCount::addAndGet, context.crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).get();
+                context.crypto, writeCount::addAndGet).get();
         FileWrapper file = context.getByPath(Paths.get(username, filename).toString()).get().get();
         String mimeType = file.getFileProperties().mimeType;
         Assert.assertTrue("Incorrect mimetype: " + mimeType, mimeType.equals("text/plain"));
@@ -850,7 +848,7 @@ public abstract class UserTests {
                 (s, committer) -> transactions.open(s, committer, transaction)).join();
         try {
             userRoot.uploadOrReplaceFile(filename, throwingReader, data.length, context.network,
-                    context.crypto, l -> {}, transaction.getLocations().get(0).getMapKey(), Optional.of(Bat.random(crypto.random))).get();
+                    context.crypto, l -> {}, transaction.getLocations().get(0).getMapKey(), Optional.of(Bat.random(crypto.random)), userRoot.mirrorBatId()).get();
         } catch (Exception e) {}
         int during = context.getTotalSpaceUsed(context.signer.publicKeyHash, context.signer.publicKeyHash).get().intValue();
         Assert.assertTrue("One chunk uploaded", during > 5 * 1024*1024);
@@ -878,12 +876,12 @@ public abstract class UserTests {
 
         TransactionService transactions = context.getTransactionService();
         try {
-            userRoot.uploadFileJS(filename, throwingReader, 0, data.length, false, false, context.network,
-                    context.crypto, l -> {}, transactions).join();
+            userRoot.uploadFileJS(filename, throwingReader, 0, data.length, false, false,
+                    userRoot.mirrorBatId(), context.network, context.crypto, l -> {}, transactions).join();
         } catch (Exception e) {}
 
-        userRoot.uploadFileJS(filename, AsyncReader.build(data), 0, data.length, false, false, context.network,
-                    context.crypto, l -> {}, transactions).join();
+        userRoot.uploadFileJS(filename, AsyncReader.build(data), 0, data.length, false, false,
+                userRoot.mirrorBatId(), context.network, context.crypto, l -> {}, transactions).join();
     }
 
     @Test
@@ -896,7 +894,7 @@ public abstract class UserTests {
         String filename = "small.png";
         byte[] data = Files.readAllBytes(Paths.get("assets", "logo.png"));
         userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
-                context.crypto, l -> {}, context.crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).get();
+                context.crypto, l -> {}).get();
         FileWrapper file = context.getByPath(Paths.get(username, filename).toString()).get().get();
         String thumbnail = file.getBase64Thumbnail();
         Assert.assertTrue("Has thumbnail", thumbnail.length() > 0);
@@ -913,7 +911,7 @@ public abstract class UserTests {
         String filename = "trailer.mp4";
         byte[] data = Files.readAllBytes(Paths.get("assets", filename));
         userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
-                context.crypto, l -> {}, context.crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).get();
+                context.crypto, l -> {}).get();
         FileWrapper file = context.getByPath(Paths.get(username, filename).toString()).get().get();
         String thumbnail = file.getBase64Thumbnail();
         Assert.assertTrue("Has thumbnail", thumbnail.length() > 0);
@@ -929,7 +927,7 @@ public abstract class UserTests {
         String filename = "mediumfile.bin";
         byte[] data = new byte[0];
         FileWrapper userRoot2 = userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length,
-                context.network, context.crypto, l -> {}, context.crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).get();
+                context.network, context.crypto, l -> {}).get();
 
         //overwrite with 2 chunk file
         byte[] data5 = new byte[10*1024*1024];
@@ -966,7 +964,7 @@ public abstract class UserTests {
         byte[] data = new byte[15*1024*1024];
         random.nextBytes(data);
         FileWrapper userRoot2 = userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length,
-                context.network, context.crypto, l -> {}, context.crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).join();
+                context.network, context.crypto, l -> {}).join();
 
         FileWrapper original = context.getByPath(Paths.get(username, filename)).join().get();
         Pair<byte[], Optional<Bat>> thirdChunkLabel = original.getMapKey(12 * 1024 * 1024, network, crypto).join();
@@ -1041,7 +1039,7 @@ public abstract class UserTests {
         String filename = "mediumfile.bin";
         byte[] data = new byte[0];
         FileWrapper updatedRoot = userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length,
-                context.network, context.crypto, l -> {}, context.crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).get();
+                context.network, context.crypto, l -> {}).get();
 
         //overwrite with 2 chunk file
         byte[] data5 = new byte[10*1024*1024];
@@ -1086,7 +1084,7 @@ public abstract class UserTests {
         byte[] data = new byte[128*1024];
         random.nextBytes(data);
         String dirName = "subdir";
-        userRoot.mkdir(dirName, network, false, crypto).get();
+        userRoot.mkdir(dirName, network, false, userRoot.mirrorBatId(), crypto).get();
         String dirPath = "/" + username + "/" + dirName;
         FileWrapper subdir = context.getByPath(dirPath).get().get();
         FileWrapper updatedSubdir = uploadFileSection(subdir, filename, new AsyncReader.ArrayBacked(data), 0,
@@ -1114,10 +1112,10 @@ public abstract class UserTests {
         byte[] data = new byte[128*1024];
         random.nextBytes(data);
         String dirName = "subdir";
-        userRoot.mkdir(dirName, context.network, false, context.crypto).get();
+        userRoot.mkdir(dirName, context.network, false, userRoot.mirrorBatId(), context.crypto).get();
         FileWrapper subdir = context.getByPath("/" + username + "/" + dirName).get().get();
         String anotherDirName = "anotherDir";
-        subdir.mkdir(anotherDirName, context.network, false, context.crypto).get();
+        subdir.mkdir(anotherDirName, context.network, false, userRoot.mirrorBatId(), context.crypto).get();
         FileWrapper anotherDir = context.getByPath("/" + username + "/" + dirName + "/" + anotherDirName).get().get();
         uploadFileSection(anotherDir, filename, new AsyncReader.ArrayBacked(data), 0, data.length, context.network,
                 context.crypto, l -> {}).get();
@@ -1147,10 +1145,10 @@ public abstract class UserTests {
         byte[] data = new byte[128*1024];
         random.nextBytes(data);
         String dirName = "subdir";
-        userRoot.mkdir(dirName, context.network, false, context.crypto).get();
+        userRoot.mkdir(dirName, context.network, false, userRoot.mirrorBatId(), context.crypto).get();
         FileWrapper subdir = context.getByPath("/" + username + "/" + dirName).get().get();
         String anotherDirName = "anotherDir";
-        subdir.mkdir(anotherDirName, context.network, false, context.crypto).get();
+        subdir.mkdir(anotherDirName, context.network, false, userRoot.mirrorBatId(), context.crypto).get();
         FileWrapper anotherDir = context.getByPath("/" + username + "/" + dirName + "/" + anotherDirName).get().get();
         uploadFileSection(anotherDir, filename, new AsyncReader.ArrayBacked(data), 0, data.length, context.network,
                 context.crypto, l -> {}).get();
@@ -1173,7 +1171,7 @@ public abstract class UserTests {
 
         byte[] newData = "Some dataaa".getBytes();
         dirThroughLink.get().uploadFileJS("anoterfile", AsyncReader.build(newData), 0, newData.length,
-                false, false, linkContext.network, linkContext.crypto, x -> {}, null).join();
+                false, false, dirThroughLink.get().mirrorBatId(), linkContext.network, linkContext.crypto, x -> {}, null).join();
     }
 
     @Test
@@ -1185,11 +1183,11 @@ public abstract class UserTests {
         Path home = Paths.get(username);
 
         String foldername = "afolder";
-        userRoot.mkdir(foldername, context.network, false, crypto).join();
+        userRoot.mkdir(foldername, context.network, false, userRoot.mirrorBatId(), crypto).join();
         FileWrapper folder = context.getByPath(home.resolve(foldername)).join().get();
 
         String subfoldername = "subfolder";
-        folder = folder.mkdir(subfoldername, context.network, false, crypto).join();
+        folder = folder.mkdir(subfoldername, context.network, false, userRoot.mirrorBatId(), crypto).join();
         Path subfolderPath = Paths.get(username, foldername, subfoldername);
         FileWrapper subfolder = context.getByPath(subfolderPath).join().get();
 
@@ -1223,7 +1221,7 @@ public abstract class UserTests {
         FileWrapper userRoot = context.getUserRoot().join();
         final String TODO_FILE_EXTENSION = ".todo";
         FileWrapper updatedRoot = userRoot.uploadOrReplaceFile(todoBoardName + TODO_FILE_EXTENSION, new AsyncReader.ArrayBacked(data), data.length,
-                context.network, context.crypto, l -> {}, context.crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).get();
+                context.network, context.crypto, l -> {}).get();
 
         FileWrapper file = updatedRoot.getChild(todoBoardName + TODO_FILE_EXTENSION, context.crypto.hasher, context.network).join().get();
         long size = file.getSize();
@@ -1254,7 +1252,7 @@ public abstract class UserTests {
         String status = "busy";
         String dir = "webroot";
         String webroot = "/" + username + "/" + dir;
-        context.getUserRoot().join().mkdir(dir, context.network, false, crypto).join();
+        context.getUserRoot().join().mkdir(dir, context.network, false, context.mirrorBatId(), crypto).join();
 
         byte[] thumbnail = randomData(100);
         byte[] hires = randomData(1000);
@@ -1309,10 +1307,10 @@ public abstract class UserTests {
         FileWrapper userRoot = context.getUserRoot().get();
 
         String dirName = "subdir";
-        userRoot.mkdir(dirName, context.network, false, context.crypto).get();
+        userRoot.mkdir(dirName, context.network, false, userRoot.mirrorBatId(), context.crypto).get();
         FileWrapper subdir = context.getByPath("/" + username + "/" + dirName).get().get();
         String anotherDirName = "anotherDir";
-        subdir.mkdir(anotherDirName, context.network, false, context.crypto).get();
+        subdir.mkdir(anotherDirName, context.network, false, userRoot.mirrorBatId(), context.crypto).get();
 
         String path = "/" + username + "/" + dirName;
         FileWrapper theDir = context.getByPath(path).get().get();
@@ -1332,7 +1330,7 @@ public abstract class UserTests {
 
         for (int i=0; i < names.size(); i++) {
             String filename = names.get(i);
-            context.getUserRoot().get().mkdir(filename, context.network, false, context.crypto);
+            context.getUserRoot().get().mkdir(filename, context.network, false, context.mirrorBatId(), context.crypto);
             Set<FileWrapper> children = context.getUserRoot().get().getChildren(crypto.hasher, context.network).get();
             Assert.assertTrue("All children present", children.size() == i + 3); // 3 due to .keystore and shared
         }
@@ -1399,7 +1397,7 @@ public abstract class UserTests {
 
         AsyncReader resetableFileInputStream = new AsyncReader.ArrayBacked(data);
         FileWrapper updatedRoot = userRoot.uploadOrReplaceFile(name, resetableFileInputStream, data.length,
-                context.network, context.crypto, l -> {}, context.crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).get();
+                context.network, context.crypto, l -> {}).get();
 
         Optional<FileWrapper> opt = updatedRoot.getChildren(crypto.hasher, context.network).get()
                 .stream()
@@ -1431,11 +1429,11 @@ public abstract class UserTests {
         AsyncReader fileData = new AsyncReader.ArrayBacked(data);
 
         FileWrapper updatedRoot = userRoot.uploadOrReplaceFile(name, fileData, data.length,
-                context.network, context.crypto, l -> {}, context.crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).get();
+                context.network, context.crypto, l -> {}).get();
         String otherName = name + ".other";
 
         FileWrapper updatedRoot2 = updatedRoot.uploadOrReplaceFile(otherName, fileData.reset().join(),
-                data.length, context.network, context.crypto, l -> {}, context.crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).get();
+                data.length, context.network, context.crypto, l -> {}).get();
 
         Optional<FileWrapper> opt = updatedRoot2.getChildren(crypto.hasher, context.network).get()
                         .stream()
@@ -1495,11 +1493,11 @@ public abstract class UserTests {
         byte[] data = randomData(10*1024*1024); // 2 chunks to test block chaining
 
         FileWrapper updatedUserRoot = userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data),
-                data.length, context.network, crypto, x -> {}, context.crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).join();
+                data.length, context.network, crypto, x -> {}).join();
 
         // copy the file
         String foldername = "afolder";
-        updatedUserRoot.mkdir(foldername, context.network, false, crypto).join();
+        updatedUserRoot.mkdir(foldername, context.network, false, userRoot.mirrorBatId(), crypto).join();
         FileWrapper subfolder = context.getByPath(home.resolve(foldername)).join().get();
         FileWrapper original = context.getByPath(home.resolve(filename)).join().get();
         Boolean res = original.copyTo(subfolder, context).join();
@@ -1522,15 +1520,15 @@ public abstract class UserTests {
         byte[] data = randomData(10*1024*1024); // 2 chunks to test block chaining
 
         String foldername = "afolder";
-        userRoot = userRoot.mkdir(foldername, context.network, false, crypto).join();
+        userRoot = userRoot.mkdir(foldername, context.network, false, userRoot.mirrorBatId(), crypto).join();
         String foldername2 = "bfolder";
-        userRoot.mkdir(foldername2, context.network, false, crypto).join();
+        userRoot.mkdir(foldername2, context.network, false, userRoot.mirrorBatId(), crypto).join();
         FileWrapper folder2 = context.getByPath(home.resolve(foldername2)).join().get();
 
 
         FileWrapper subfolder = context.getByPath(home.resolve(foldername)).join().get();
         subfolder = subfolder.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data),
-                data.length, context.network, crypto, x -> {}, context.crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).join();
+                data.length, context.network, crypto, x -> {}).join();
 
         subfolder.copyTo(folder2, context).join();
         Optional<FileWrapper> file = context.getByPath(Paths.get(username, foldername2, foldername, filename)).join();
@@ -1632,7 +1630,7 @@ public abstract class UserTests {
         boolean isSystemFolder = false;
 
         //create the directory
-        userRoot.mkdir(folderName, context.network, isSystemFolder, context.crypto).get();
+        userRoot.mkdir(folderName, context.network, isSystemFolder, userRoot.mirrorBatId(), context.crypto).get();
 
         FileWrapper updatedUserRoot = context.getUserRoot().get();
         FileWrapper directory = updatedUserRoot.getChildren(crypto.hasher, context.network)
@@ -1685,7 +1683,7 @@ public abstract class UserTests {
         Path filePath = Paths.get(username, filename);
         byte[] data = randomData(6);
         userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
-                context.crypto, l -> {}, context.crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).get();
+                context.crypto, l -> {}).get();
         checkFileContents(data, context.getByPath(filePath).join().get(), context);
 
         FileWrapper fileV2 = context.getByPath(filePath).join().get();
@@ -1715,7 +1713,7 @@ public abstract class UserTests {
             }
         }
         userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
-                context.crypto, l -> {}, context.crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).get();
+                context.crypto, l -> {}).get();
         checkFileContents(data, context.getByPath(filePath).join().get(), context);
 
         FileWrapper fileV2 = context.getByPath(filePath).join().get();

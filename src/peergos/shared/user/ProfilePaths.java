@@ -42,10 +42,9 @@ public class ProfilePaths {
     private static <V> CompletableFuture<Boolean> serializeAndSet(Path p, V val, Function<V, byte[]> serialize, UserContext user) {
         byte[] raw = serialize.apply(val);
         return user.getUserRoot()
-                .thenCompose(home -> home.getOrMkdirs(p.getParent(), user.network, true, user.crypto))
+                .thenCompose(home -> home.getOrMkdirs(p.getParent(), user.network, true, user.mirrorBatId(), user.crypto))
                 .thenCompose(parent -> parent.uploadOrReplaceFile(p.getFileName().toString(),
-                        AsyncReader.build(raw), raw.length, user.network, user.crypto, x -> {},
-                        user.crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH), Optional.of(Bat.random(user.crypto.random))))
+                        AsyncReader.build(raw), raw.length, user.network, user.crypto, x -> {}))
                 .thenApply(x -> true);
     }
 

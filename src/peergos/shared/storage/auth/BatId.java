@@ -1,10 +1,12 @@
 package peergos.shared.storage.auth;
 
 import peergos.shared.cbor.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 
 import java.util.*;
+import java.util.concurrent.*;
 
 public class BatId implements Cborable {
 
@@ -25,7 +27,12 @@ public class BatId implements Cborable {
     }
 
     public static BatId inline(Bat b) {
-        return new BatId(new Cid(1, Cid.Codec.DagCbor, Multihash.Type.id, b.secret));
+        return new BatId(new Cid(1, Cid.Codec.Raw, Multihash.Type.id, b.secret));
+    }
+
+    public static CompletableFuture<BatId> sha256(Bat b, Hasher h) {
+        return h.sha256(b.secret)
+                .thenApply(hash -> new BatId(new Cid(1, Cid.Codec.Raw, Multihash.Type.sha2_256, hash)));
     }
 
     @Override

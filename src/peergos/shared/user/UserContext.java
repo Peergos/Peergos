@@ -61,6 +61,7 @@ public class UserContext {
     private final WriteSynchronizer writeSynchronizer;
     private final TransactionService transactions;
     private final IncomingCapCache capCache;
+    private final Optional<BatWithId> mirrorBat;
     public final SharedWithCache sharedWithCache;
 
     // The root of the global filesystem as viewed by this context
@@ -85,7 +86,8 @@ public class UserContext {
                        TrieNode entrie,
                        TransactionService transactions,
                        IncomingCapCache capCache,
-                       SharedWithCache sharedWithCache) {
+                       SharedWithCache sharedWithCache,
+                       Optional<BatWithId> mirrorBat) {
         this.username = username;
         this.signer = signer;
         this.boxer = boxer;
@@ -100,6 +102,7 @@ public class UserContext {
         this.transactions = transactions;
         this.capCache = capCache;
         this.sharedWithCache = sharedWithCache;
+        this.mirrorBat = mirrorBat;
     }
 
     private static CompletableFuture<TransactionService> buildTransactionService(TrieNode root,
@@ -115,11 +118,12 @@ public class UserContext {
 
     private static CompletableFuture<IncomingCapCache> buildCapCache(TrieNode root,
                                                                      String username,
+                                                                     Optional<BatId> mirrorBatId,
                                                                      NetworkAccess network,
                                                                      Crypto crypto) {
         return root.getByPath(username, crypto.hasher, network)
                 .thenApply(Optional::get)
-                .thenCompose(home -> home.getOrMkdirs(Paths.get(CapabilityStore.CAPABILITY_CACHE_DIR), network, true, crypto))
+                .thenCompose(home -> home.getOrMkdirs(Paths.get(CapabilityStore.CAPABILITY_CACHE_DIR), network, true, mirrorBatId, crypto))
                 .thenCompose(cacheRoot -> IncomingCapCache.build(cacheRoot, crypto, network));
     }
 
@@ -188,24 +192,26 @@ public class UserContext {
                         .thenCompose(root -> TofuCoreNode.load(username, root, network, crypto)
                                 .thenCompose(tofuCorenode -> {
                                     return buildTransactionService(root, username, network, crypto)
-                                            .thenCompose(transactions -> buildCapCache(root, username, network, crypto)
-                                                    .thenCompose(capCache -> SharedWithCache.initOrBuild(root, username, network, crypto)
-                                                        .thenCompose(sharedWith -> {
-                                                        UserContext result = new UserContext(username,
-                                                                signer,
-                                                                staticData.boxer.orElse(generatedCredentials.getBoxingPair()),
-                                                                generatedCredentials.getRoot(),
-                                                                network.withCorenode(tofuCorenode),
-                                                                crypto,
-                                                                new CommittedWriterData(MaybeMultihash.of(pair.left), userData),
-                                                                root,
-                                                                transactions,
-                                                                capCache,
-                                                                sharedWith);
+                                            .thenCompose(transactions -> getMirrorBat(username, signer, network)
+                                                    .thenCompose(mirrorBatId -> buildCapCache(root, username, mirrorBatId.map(BatWithId::id), network, crypto)
+                                                            .thenCompose(capCache -> SharedWithCache.initOrBuild(root, username, network, crypto)
+                                                                    .thenCompose(sharedWith -> {
+                                                                        UserContext result = new UserContext(username,
+                                                                                signer,
+                                                                                staticData.boxer.orElse(generatedCredentials.getBoxingPair()),
+                                                                                generatedCredentials.getRoot(),
+                                                                                network.withCorenode(tofuCorenode),
+                                                                                crypto,
+                                                                                new CommittedWriterData(MaybeMultihash.of(pair.left), userData),
+                                                                                root,
+                                                                                transactions,
+                                                                                capCache,
+                                                                                sharedWith,
+                                                                                mirrorBatId);
 
-                                                        return result.init(progressCallback)
-                                                                .exceptionally(Futures::logAndThrow);
-                                                    })));
+                                                                        return result.init(progressCallback)
+                                                                                .exceptionally(Futures::logAndThrow);
+                                                                    }))));
                                 }));
             });
         } catch (Throwable t) {
@@ -246,8 +252,8 @@ public class UserContext {
                                                                SecretGenerationAlgorithm algorithm,
                                                                Consumer<String> progressCallback) {
         // Using a local OpLog that doesn't commit anything allows us to group all the updates into a single atomic call
-        OpLog opLog = new OpLog(new ArrayList<>(), null);
-        NetworkAccess network = NetworkAccess.nonCommittingForSignup(opLog, opLog, opLog, crypto.hasher);
+        OpLog opLog = new OpLog(new ArrayList<>(), null, Optional.empty());
+        NetworkAccess network = NetworkAccess.nonCommittingForSignup(opLog, opLog, opLog, opLog, crypto.hasher);
         progressCallback.accept("Generating keys");
         return initialNetwork.coreNode.getChain(username)
                 .thenApply(existing -> {
@@ -270,7 +276,10 @@ public class UserContext {
                     Optional<BoxingKeyPair> boxer = isLegacy ? Optional.empty() : Optional.of(userWithRoot.getBoxingPair());
                     UserStaticData entryData = new UserStaticData(Collections.emptyList(), userWithRoot.getRoot(), Optional.of(identityPair), boxer);
                     progressCallback.accept("Registering username");
-                    return initialNetwork.dhtClient.id()
+                    Bat mirror = Bat.random(crypto.random);
+                    return BatId.sha256(mirror, crypto.hasher)
+                            .thenCompose(batid -> opLog.addBat(username, batid, mirror, identity)
+                                    .thenCompose(b -> initialNetwork.dhtClient.id()
                             .thenApply(id -> UserPublicKeyLink.createInitial(identity, username, expiry, Arrays.asList(id)))
                             .thenCompose(chain -> IpfsTransaction.call(identityHash, tid -> network.dhtClient.putSigningKey(
                                     identityPair.secretSigningKey.signMessage(identityPair.publicSigningKey.serialize()),
@@ -298,18 +307,18 @@ public class UserContext {
                                     .thenCompose(snapshot -> {
                                         LOG.info("Creating user's root directory");
                                         long t1 = System.currentTimeMillis();
-                                        return createEntryDirectory(identity, username, entryData, loginPublicKey, userWithRoot.getRoot(), network, crypto)
+                                        return createEntryDirectory(identity, username, entryData, loginPublicKey, userWithRoot.getRoot(), Optional.of(batid), network, crypto)
                                                 .thenCompose(globalRoot -> {
                                                     LOG.info("Creating root directory took " + (System.currentTimeMillis() - t1) + " mS");
-                                                    return createSpecialDirectory(globalRoot, username, SHARED_DIR_NAME, network, crypto);
+                                                    return createSpecialDirectory(globalRoot, username, SHARED_DIR_NAME, Optional.of(batid), network, crypto);
                                                 })
                                                 .thenCompose(globalRoot -> createSpecialDirectory(globalRoot, username,
-                                                        TRANSACTIONS_DIR_NAME, network, crypto))
+                                                        TRANSACTIONS_DIR_NAME, Optional.of(batid), network, crypto))
                                                 .thenCompose(globalRoot -> createSpecialDirectory(globalRoot, username,
-                                                        CapabilityStore.CAPABILITY_CACHE_DIR, network, crypto))
+                                                        CapabilityStore.CAPABILITY_CACHE_DIR, Optional.of(batid), network, crypto))
                                                 .thenCompose(x -> signupWithRetry(username, chain.get(0), token, opLog, crypto.hasher, initialNetwork, progressCallback))
                                                 .thenCompose(y -> signIn(username, userWithRoot, initialNetwork, crypto, progressCallback));
-                                    }));
+                                    }))));
                 }).exceptionally(Futures::logAndThrow);
     }
 
@@ -324,10 +333,11 @@ public class UserContext {
     private static CompletableFuture<TrieNode> createSpecialDirectory(TrieNode globalRoot,
                                                                       String username,
                                                                       String dirName,
+                                                                      Optional<BatId> mirrorBatId,
                                                                       NetworkAccess network,
                                                                       Crypto crypto) {
         return globalRoot.getByPath(username, crypto.hasher, network)
-                .thenCompose(root -> root.get().mkdir(dirName, network, true, crypto))
+                .thenCompose(root -> root.get().mkdir(dirName, network, true, mirrorBatId, crypto))
                 .thenApply(x -> globalRoot);
     }
 
@@ -403,7 +413,8 @@ public class UserContext {
                         Optional.empty());
         CommittedWriterData userData = new CommittedWriterData(MaybeMultihash.empty(), empty);
         UserContext context = new UserContext(null, null, null, null, network,
-                crypto, userData, TrieNodeImpl.empty(), null, null, new SharedWithCache(null, null, network, crypto));
+                crypto, userData, TrieNodeImpl.empty(), null, null,
+                new SharedWithCache(null, null, network, crypto), Optional.empty());
         return buildTrieFromCap(cap, context.entrie, network, crypto)
                 .thenApply(trieNode -> {
                     context.entrie = trieNode;
@@ -492,6 +503,36 @@ public class UserContext {
                             return this;
                         })
                 );
+    }
+
+    public static CompletableFuture<Optional<BatWithId>> getMirrorBat(String username,
+                                                                      SigningPrivateKeyAndPublicHash identity,
+                                                                      NetworkAccess network) {
+        return network.batCave.getUserBats(username, identity)
+                .thenApply(bats -> bats.isEmpty() ?
+                        Optional.empty() :
+                        Optional.of(bats.get(bats.size() - 1)));
+    }
+
+    public CompletableFuture<Optional<BatWithId>> getMirrorBat() {
+        return getMirrorBat(username, signer, network);
+    }
+
+    public CompletableFuture<Optional<BatId>> setIfEmptyMirrorId() {
+        return getMirrorBat()
+                .thenCompose(current -> {
+                    if (current.isPresent())
+                        return Futures.of(current.map(BatWithId::id));
+                    // generate a mirror bat
+                    Bat mirror = Bat.random(crypto.random);
+                    return BatId.sha256(mirror, crypto.hasher)
+                            .thenCompose(id -> network.batCave.addBat(username, id, mirror, signer)
+                                    .thenApply(b -> Optional.of(id)));
+                });
+    }
+
+    public Optional<BatId> mirrorBatId() {
+        return mirrorBat.map(BatWithId::id);
     }
 
     public CompletableFuture<FileWrapper> getSharingFolder() {
@@ -831,6 +872,7 @@ public class UserContext {
                                                                     UserStaticData current,
                                                                     PublicSigningKey loginPublic,
                                                                     SymmetricKey userRootKey,
+                                                                    Optional<BatId> mirrorBatId,
                                                                     NetworkAccess network,
                                                                     Crypto crypto) {
         long t1 = System.currentTimeMillis();
@@ -872,7 +914,7 @@ public class UserContext {
                                 return CryptreeNode.createEmptyDir(MaybeMultihash.empty(), rootRKey, rootWKey, Optional.of(writerPair),
                                                 new FileProperties(directoryName, true, false, "", 0, LocalDateTime.now(),
                                                         false, Optional.empty(), Optional.empty()),
-                                                Optional.empty(), SymmetricKey.random(), nextChunk, crypto.random, crypto.hasher)
+                                                Optional.empty(), SymmetricKey.random(), nextChunk, mirrorBatId, crypto.random, crypto.hasher)
                                         .thenCompose(root -> {
                                             LOG.info("Uploading entry point directory");
                                             return WriterData.createEmpty(owner.publicKeyHash, writerPair,
@@ -1117,7 +1159,8 @@ public class UserContext {
                     crypto,
                     x -> {},
                     crypto.random.randomBytes(32),
-                    Optional.of(Bat.random(crypto.random))))
+                    Optional.of(Bat.random(crypto.random)),
+                    mirrorBatId()))
                     .thenApply(x -> true);
         });
     }
@@ -1142,7 +1185,7 @@ public class UserContext {
                 .thenCompose(friends -> {
                     return Futures.reduceAll(g.uidToGroupName.entrySet(), true,
                             (b, e) -> getUserRoot()
-                                    .thenCompose(home -> home.getOrMkdirs(Paths.get(SHARED_DIR_NAME, e.getKey()), network, true, crypto))
+                                    .thenCompose(home -> home.getOrMkdirs(Paths.get(SHARED_DIR_NAME, e.getKey()), network, true, mirrorBatId(), crypto))
                                     .thenCompose(x -> getUserRoot()
                                             .thenCompose(home -> network.synchronizer.applyComplexUpdate(signer.publicKeyHash, home.signingPair(),
                                                     (s, c) -> shareReadAccessWith(Paths.get(username, SHARED_DIR_NAME, e.getKey()),
@@ -1250,7 +1293,7 @@ public class UserContext {
                             return sharing.getChild(theirUsername, crypto.hasher, network)
                                     .thenCompose(existingFriendDir -> {
                                         if (existingFriendDir.isEmpty())
-                                            return sharing.mkdir(theirUsername, network, initialRequest.key.get(), Optional.of(Bat.random(crypto.random)), true, crypto)
+                                            return sharing.mkdir(theirUsername, network, initialRequest.key.get(), Optional.of(Bat.random(crypto.random)), true, mirrorBatId(), crypto)
                                                     .thenCompose(updatedSharing -> updatedSharing.getChild(theirUsername, crypto.hasher, network));
                                         // If we already have a sharing dir for them, don't rotate the keys
                                         return Futures.of(existingFriendDir);
@@ -1333,7 +1376,7 @@ public class UserContext {
                         return Futures.errored(new Exception("User " + targetUsername + " does not exist!"));
                     }
                     PublicBoxingKey targetUser = targetUserOpt.get().right;
-                    return sharing.getOrMkdirs(Paths.get(targetUsername), network, true, crypto)
+                    return sharing.getOrMkdirs(Paths.get(targetUsername), network, true, mirrorBatId(), crypto)
                             .thenCompose(friendRoot -> {
 
                                 EntryPoint entry = new EntryPoint(friendRoot.getPointer().capability.readOnly(), username);
@@ -1348,7 +1391,8 @@ public class UserContext {
                                                     byte[] raw = updated.toCbor().serialize();
                                                     return getUserRoot().thenCompose(home -> home.uploadFileSection(
                                                             SOCIAL_STATE_FILENAME, AsyncReader.build(raw), true, 0, raw.length, Optional.empty(),
-                                                            true, network, crypto, x -> {}, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))))
+                                                            true, network, crypto, x -> {}, crypto.random.randomBytes(32),
+                                                            Optional.of(Bat.random(crypto.random)), mirrorBatId()))
                                                             .thenApply(x -> b);
                                                 }));
                             });
@@ -1426,6 +1470,7 @@ public class UserContext {
                             new CryptreeNode.CapAndSigner((WritableAbsoluteCapability) parentCap, parent.signingPair()),
                             newParentLink,
                             Optional.empty(),
+                            mirrorBatId(),
                             rotateSigners,
                             network,
                             crypto,
@@ -1443,7 +1488,7 @@ public class UserContext {
                                             parentCap.writer, linkMapKey, linkBat, linkRBase, linkWBase);
                                     return CryptreeNode.createAndCommitLink(parent, rotated.right,
                                             file.getFileProperties(), linkCap, linkParent,
-                                            crypto, network, rotated.left, c)
+                                            mirrorBatId(), crypto, network, rotated.left, c)
                                             .thenApply(newSnapshot -> new Pair<>(newSnapshot, linkCap));
                                 } else
                                     return Futures.of(rotated);
@@ -1811,7 +1856,7 @@ public class UserContext {
                     return getUserRoot().thenCompose(home ->
                             home.uploadFileSection(filename, reader, true, offset,
                                     offset + data.length, base, true, network, crypto, x -> {},
-                                    crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))));
+                                    crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random)), mirrorBatId()));
                 });
     }
 
@@ -2092,7 +2137,8 @@ public class UserContext {
 
                             return home.uploadFileSection(ENTRY_POINTS_FROM_FRIENDS_GROUPS_FILENAME, reader, true,
                                     0, raw.length, Optional.empty(), false, network, crypto, x -> {},
-                                    crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH), Optional.of(Bat.random(crypto.random)));
+                                    crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH),
+                                    Optional.of(Bat.random(crypto.random)), mirrorBatId());
                         })).thenApply(x -> true);
     }
 
@@ -2170,7 +2216,7 @@ public class UserContext {
                 .thenCompose(home -> home.getChild(BLOCKED_USERNAMES_FILE, crypto.hasher, network)
                         .thenCompose(fopt -> home.appendToChild(BLOCKED_USERNAMES_FILE,
                                 fopt.map(f -> f.getSize()).orElse(0L), (friendName + "\n").getBytes(), true,
-                                network, crypto, x -> {})))
+                                mirrorBatId(), network, crypto, x -> {})))
                 .thenApply(b -> {
                     entrie = entrie.removeEntry("/" + friendName + "/");
                     return true;

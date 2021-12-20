@@ -56,11 +56,10 @@ public class RamUserTests extends UserTests {
         String password = "password";
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         String dirName = "website";
-        context.getUserRoot().join().mkdir(dirName, context.network, false, crypto).join();
+        context.getUserRoot().join().mkdir(dirName, context.network, false, context.mirrorBatId(), crypto).join();
         byte[] data = "<html><body><h1>You are AWESOME!</h1></body></html>".getBytes();
         context.getByPath(username + "/" + dirName).join().get()
-                .uploadOrReplaceFile("index.html", AsyncReader.build(data), data.length, network, crypto, x -> {},
-                        crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).join();
+                .uploadOrReplaceFile("index.html", AsyncReader.build(data), data.length, network, crypto, x -> {}).join();
         ProfilePaths.setWebRoot(context, "/" + username + "/" + dirName).join();
         ProfilePaths.publishWebroot(context).join();
 
@@ -109,7 +108,7 @@ public class RamUserTests extends UserTests {
         random.nextBytes(fileData);
 
         FileWrapper userRoot2 = userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(fileData), fileData.length,
-                context.network, context.crypto, l -> {}, context.crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).join();
+                context.network, context.crypto, l -> {}).join();
 
         FileWrapper file = context.getByPath(Paths.get(username, filename)).join().get();
         FileProperties props = file.getFileProperties();
@@ -156,8 +155,7 @@ public class RamUserTests extends UserTests {
         byte[] fileData = new byte[14621544];
         random.nextBytes(fileData);
         FileWrapper userRoot2 = userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(fileData), fileData.length,
-                context.network, context.crypto, l -> {
-                }, context.crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).join();
+                context.network, context.crypto, l -> {}).join();
 
         FileWrapper file = context.getByPath(Paths.get(username, filename)).join().get();
         FileProperties props = file.getFileProperties();
@@ -198,8 +196,7 @@ public class RamUserTests extends UserTests {
         random.nextBytes(fileData);
 
         FileWrapper userRoot2 = userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(fileData), fileData.length,
-                context.network, context.crypto, l -> {
-                }, context.crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).join();
+                context.network, context.crypto, l -> {}).join();
 
         FileWrapper file = context.getByPath(Paths.get(username, filename)).join().get();
         FileProperties props = file.getFileProperties();
@@ -292,18 +289,18 @@ public class RamUserTests extends UserTests {
         FileWrapper user1Root = user1.getUserRoot().join();
 
         String folder1 = "folder1";
-        user1Root.mkdir(folder1, user1.network, false, crypto).join();
+        user1Root.mkdir(folder1, user1.network, false, user1.mirrorBatId(), crypto).join();
 
         String folder11 = "folder1.1";
         user1.getByPath(Paths.get(username1, folder1)).join().get()
-                .mkdir(folder11, user1.network, false, crypto).join();
+                .mkdir(folder11, user1.network, false, user1.mirrorBatId(), crypto).join();
 
         String filename = "somedata.txt";
         // write empty file
         byte[] data = new byte[0];
         user1.getByPath(Paths.get(username1, folder1, folder11)).join().get()
                 .uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length, user1.network,
-                crypto, l -> {}, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).join();
+                crypto, l -> {}).join();
 
         // create 2nd user and friend user1
         String username2 = generateUsername();

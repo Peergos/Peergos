@@ -134,7 +134,7 @@ public class SocialBenchmark {
             byte[] fileData = "dataaaa".getBytes();
             String filename = "File" + i;
             us.getUserRoot().join().uploadOrReplaceFile(filename, AsyncReader.build(fileData),
-                    fileData.length, network, crypto, x -> {}, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).join();
+                    fileData.length, network, crypto, x -> {}).join();
             String sharee = otherUsers.get(random.nextInt(otherUsers.size())).left;
             us.shareReadAccessWith(Paths.get(username, filename), Collections.singleton(sharee)).join();
         }
@@ -148,7 +148,7 @@ public class SocialBenchmark {
             String filename = "File" + i;
             UserContext friend = friends.get(random.nextInt(friends.size()));
             friend.getUserRoot().join().uploadOrReplaceFile(filename, AsyncReader.build(fileData),
-                    fileData.length, network, crypto, x -> {}, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).join();
+                    fileData.length, network, crypto, x -> {}).join();
             friend.shareReadAccessWith(Paths.get(friend.username, filename), Collections.singleton(username)).join();
         }
 
@@ -160,7 +160,7 @@ public class SocialBenchmark {
             byte[] fileData = "dataaaa".getBytes();
             String filename = "FileW" + i;
             us.getUserRoot().join().uploadOrReplaceFile(filename, AsyncReader.build(fileData),
-                    fileData.length, network, crypto, x -> {}, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).join();
+                    fileData.length, network, crypto, x -> {}).join();
             String sharee = otherUsers.get(random.nextInt(otherUsers.size())).left;
             us.shareWriteAccessWith(Paths.get(username, filename), Collections.singleton(sharee)).join();
         }
@@ -174,7 +174,7 @@ public class SocialBenchmark {
             String filename = "FileW" + i;
             UserContext friend = friends.get(random.nextInt(friends.size()));
             friend.getUserRoot().join().uploadOrReplaceFile(filename, AsyncReader.build(fileData),
-                    fileData.length, network, crypto, x -> {}, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).join();
+                    fileData.length, network, crypto, x -> {}).join();
             friend.shareWriteAccessWith(Paths.get(friend.username, filename), Collections.singleton(username)).join();
         }
 
@@ -222,7 +222,7 @@ public class SocialBenchmark {
             byte[] fileData = "dataaaa".getBytes();
             String filename = "File" + i;
             us.getUserRoot().join().uploadOrReplaceFile(filename, AsyncReader.build(fileData),
-                    fileData.length, network, crypto, x -> {}, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).join();
+                    fileData.length, network, crypto, x -> {}).join();
             String sharee = otherUsers.get(random.nextInt(otherUsers.size())).left;
             us.shareReadAccessWith(Paths.get(username, filename), Collections.singleton(sharee)).join();
         }
@@ -260,7 +260,7 @@ public class SocialBenchmark {
         String filename = "File1";
         byte[] fileData = "dataaaa".getBytes();
         us.getUserRoot().join().uploadOrReplaceFile(filename, AsyncReader.build(fileData),
-                fileData.length, network, crypto, x -> {}, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).join();
+                fileData.length, network, crypto, x -> {}).join();
         long t0 = System.currentTimeMillis();
         for (Pair<String, String> sharee : otherUsers) {
             us.shareReadAccessWith(Paths.get(username, filename), Collections.singleton(sharee.left)).join();
@@ -271,7 +271,7 @@ public class SocialBenchmark {
         String file2name = "File2";
         String friendsGroup = us.getSocialState().join().getFriendsGroupUid();
         us.getUserRoot().join().uploadOrReplaceFile(file2name, AsyncReader.build(fileData),
-                fileData.length, network, crypto, x -> {}, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).join();
+                fileData.length, network, crypto, x -> {}).join();
         long groupShareDuration = time(() -> us.shareReadAccessWith(Paths.get(username, file2name), Collections.singleton(friendsGroup)).join()).right;
         double ratio = (double) (t1 - t0) / groupShareDuration;
         Assert.assertTrue(ratio > nFriends - 1);

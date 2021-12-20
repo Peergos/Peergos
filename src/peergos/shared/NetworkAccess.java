@@ -120,10 +120,11 @@ public class NetworkAccess {
     public static NetworkAccess nonCommittingForSignup(Account account,
                                                        ContentAddressedStorage directDht,
                                                        MutablePointers mutable,
+                                                       BatCave bats,
                                                        Hasher hasher) {
         WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, directDht, hasher);
         MutableTree tree = new MutableTreeImpl(mutable, directDht, hasher, synchronizer);
-        return new NetworkAccess(null, account, null, directDht, null, mutable, tree, synchronizer, null,
+        return new NetworkAccess(null, account, null, directDht, bats, mutable, tree, synchronizer, null,
                 null, null, hasher, Collections.emptyList(), false);
     }
 

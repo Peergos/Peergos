@@ -67,9 +67,9 @@ public class SocialFeed {
         byte[] raw = post.serialize();
         AsyncReader reader = AsyncReader.build(raw);
         return context.getUserRoot()
-                .thenCompose(home -> home.getOrMkdirs(dir, network, true, crypto))
+                .thenCompose(home -> home.getOrMkdirs(dir, network, true, home.mirrorBatId(), crypto))
                 .thenCompose(postDir -> postDir.uploadAndReturnFile(postFilename, reader, raw.length, false,
-                        network, crypto)
+                        postDir.mirrorBatId(), network, crypto)
                         .thenApply(f -> new Pair<>(Paths.get(post.author).resolve(dir).resolve(postFilename), f)))
                 .thenCompose(p -> addToFeed(Arrays.asList(new SharedItem(p.right.readOnlyPointer(),
                         context.username, context.username, p.left.toString())))
@@ -97,7 +97,7 @@ public class SocialFeed {
         String uuid = UUID.randomUUID().toString();
         return getOrMkdirToStoreMedia("media", postTime)
                 .thenCompose(p -> p.right.uploadAndReturnFile(uuid, media, length, false, monitor,
-                        network, crypto)
+                        p.right.mirrorBatId(), network, crypto)
                         .thenCompose(f ->  media.reset().thenCompose(r -> crypto.hasher.hash(r, length))
                                 .thenApply(hash -> new Pair<>(f.getFileProperties().getType(),
                                         new FileRef(p.left.resolve(uuid).toString(), f.readOnlyPointer(), hash)))));
@@ -108,7 +108,7 @@ public class SocialFeed {
                 Integer.toString(postTime.getYear()),
                 mediaType);
         return context.getUserRoot()
-                .thenCompose(home -> home.getOrMkdirs(dirFromHome, network, true, crypto)
+                .thenCompose(home -> home.getOrMkdirs(dirFromHome, network, true, home.mirrorBatId(), crypto)
                 .thenApply(dir -> new Pair<>(Paths.get("/" + context.username).resolve(dirFromHome), dir)));
     }
 
@@ -328,7 +328,9 @@ public class SocialFeed {
                                 if (feedOpt.isEmpty())
                                     return updated.uploadFileSection(updated.version, c, FEED_FILE, AsyncReader.build(data),
                                             false, 0, data.length, Optional.empty(), false,
-                                            false, network, crypto, x -> {}, crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH), Optional.of(Bat.random(crypto.random)));
+                                            false, network, crypto, x -> {},
+                                            crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH),
+                                            Optional.of(Bat.random(crypto.random)), updated.mirrorBatId());
                                 if (feedOpt.get().getSize() != feedSizeBytes)
                                     throw new IllegalStateException("Feed size incorrect!");
                                 return feedOpt.get().append(data, network, crypto, c, x -> {});
@@ -382,12 +384,12 @@ public class SocialFeed {
 
     public static CompletableFuture<SocialFeed> create(UserContext c) {
         return c.getUserRoot()
-                .thenCompose(home -> home.getOrMkdirs(Paths.get(UserContext.FEED_DIR_NAME), c.network, true, c.crypto))
+                .thenCompose(home -> home.getOrMkdirs(Paths.get(UserContext.FEED_DIR_NAME), c.network, true, home.mirrorBatId(), c.crypto))
                 .thenCompose(feedDir -> {
                     FeedState empty = new FeedState(0, 0, 0L, Collections.emptyMap());
                     byte[] rawEmpty = empty.serialize();
                     return feedDir.uploadAndReturnFile(FEED_STATE, AsyncReader.build(rawEmpty), rawEmpty.length,
-                            false, c.network, c.crypto)
+                            false, feedDir.mirrorBatId(), c.network, c.crypto)
                             .thenApply(stateFile -> new SocialFeed(feedDir, stateFile, empty, c))
                             .thenCompose(SocialFeed::update);
                 });

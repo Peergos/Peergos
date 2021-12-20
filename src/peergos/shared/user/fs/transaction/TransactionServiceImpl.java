@@ -44,7 +44,7 @@ public class TransactionServiceImpl implements TransactionService {
         return transactionDirUpdater.updated(version).thenCompose(dir ->
                 dir.uploadFileSection(version, committer, transaction.name(), asyncReader, false,
                         0, data.length, Optional.empty(), false, false, networkAccess,
-                        crypto, VOID_PROGRESS, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))));
+                        crypto, VOID_PROGRESS, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random)), dir.mirrorBatId()));
     }
 
     @Override

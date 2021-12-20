@@ -91,14 +91,14 @@ public class IpfsStressTest {
 
     public static void mkdir(UserContext context, Path parentPath, String name, Random rnd) throws Exception {
         context.getByPath(parentPath.toString()).get().get()
-                .mkdir(name, context.network, false, context.crypto).get();
+                .mkdir(name, context.network, false, context.mirrorBatId(), context.crypto).get();
     }
 
     public static void generateFile(UserContext context, Path parentPath, String name, Random rnd) throws Exception {
         int size = rnd.nextInt(15*1024*1024);
         FileWrapper parent = context.getByPath(parentPath.toString()).get().get();
         parent.uploadOrReplaceFile(name, new AsyncReader.ArrayBacked(randomData(rnd, size)), size,
-                        context.network, context.crypto, x -> {}, context.crypto.random.randomBytes(32), Optional.of(Bat.random(context.crypto.random))).get();
+                        context.network, context.crypto, x -> {}).get();
     }
 
     public static void checkFileContents(byte[] expected, FileWrapper f, UserContext context) throws Exception {

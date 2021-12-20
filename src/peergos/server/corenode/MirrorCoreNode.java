@@ -296,7 +296,7 @@ public class MirrorCoreNode implements CoreNode {
         update();
         usageStore.addUserIfAbsent(username);
         usageStore.addWriter(username, chain.owner);
-        IpfsCoreNode.applyOpLog(username, chain.owner, setupOperations, ipfs, p2pMutable, account);
+        IpfsCoreNode.applyOpLog(username, chain.owner, setupOperations, ipfs, p2pMutable, account, batCave);
         return Futures.of(Optional.empty());
     }
 

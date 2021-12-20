@@ -146,8 +146,7 @@ public class RequestCountTests {
     private static void uploadAndShare(byte[] data, Path file, UserContext sharer, String sharee) {
         String filename = file.getFileName().toString();
         sharer.getByPath(file.getParent()).join().get()
-                .uploadOrReplaceFile(filename, AsyncReader.build(data), data.length,
-                        sharer.network, crypto, l -> {}, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).join();
+                .uploadOrReplaceFile(filename, AsyncReader.build(data), data.length, sharer.network, crypto, l -> {}).join();
         sharer.shareReadAccessWith(file, Set.of(sharee)).join();
     }
 }

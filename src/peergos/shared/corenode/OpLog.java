@@ -7,6 +7,7 @@ import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
@@ -14,16 +15,20 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.*;
 
-public class OpLog implements Cborable, Account, MutablePointers, ContentAddressedStorage {
+public class OpLog implements Cborable, Account, MutablePointers, ContentAddressedStorage, BatCave {
     private static final int ED25519_SIGNATURE_SIZE = 64;
 
     public final List<Either<PointerWrite, BlockWrite>> operations;
     private final Map<Multihash, byte[]> storage = new HashMap<>();
     public Pair<LoginData, byte[]> loginData;
+    public Optional<Pair<BatWithId, byte[]>> mirrorBat;
 
-    public OpLog(List<Either<PointerWrite, BlockWrite>> operations, Pair<LoginData, byte[]> loginData) {
+    public OpLog(List<Either<PointerWrite, BlockWrite>> operations,
+                 Pair<LoginData, byte[]> loginData,
+                 Optional<Pair<BatWithId, byte[]>> mirrorBat) {
         this.operations = operations;
         this.loginData = loginData;
+        this.mirrorBat = mirrorBat;
     }
 
     @Override
@@ -59,6 +64,24 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
         if (! loginData.left.authorisedReader.equals(authorisedReader))
             throw new IllegalStateException("You are not authorised to login as " + username);
         return Futures.of(loginData.left.entryPoints);
+    }
+
+    @Override
+    public Optional<Bat> getBat(BatId id) {
+        throw new IllegalStateException("Unsupported operation!");
+    }
+
+    @Override
+    public CompletableFuture<List<BatWithId>> getUserBats(String username, byte[] auth) {
+        throw new IllegalStateException("Unsupported operation!");
+    }
+
+    @Override
+    public CompletableFuture<Boolean> addBat(String username, BatId id, Bat bat, byte[] auth) {
+        if (mirrorBat.isPresent())
+            throw new IllegalStateException("Only 1 mirror BAT allowed in OpLog!");
+        mirrorBat = Optional.of(new Pair<>(new BatWithId(bat, id.id), auth));
+        return Futures.of(true);
     }
 
     @Override
@@ -234,6 +257,10 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
             state.put("login", loginData.left);
             state.put("loginAuth", new CborObject.CborByteArray(loginData.right));
         }
+        mirrorBat.ifPresent(t -> {
+            state.put("b", t.left);
+            state.put("a", new CborObject.CborByteArray(t.right));
+        });
         return CborObject.CborMap.build(state);
     }
 
@@ -242,11 +269,17 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
             throw new IllegalStateException("Invalid cbor for OpLog!");
         CborObject.CborMap m = (CborObject.CborMap) cbor;
         List<Either<PointerWrite, BlockWrite>> ops = m.getList("ops", OpLog::parseOperation);
+        Optional<Pair<BatWithId, byte[]>> mirrorBat;
+        if (m.containsKey("b")) {
+            mirrorBat = Optional.of(new Pair<>(m.get("b", BatWithId::fromCbor), m.getByteArray("a")));
+        } else
+            mirrorBat = Optional.empty();
+
         if (m.containsKey("login")) {
             LoginData login = m.get("login", LoginData::fromCbor);
             byte[] loginAuth = m.getByteArray("loginAuth");
-            return new OpLog(ops, new Pair<>(login, loginAuth));
+            return new OpLog(ops, new Pair<>(login, loginAuth), mirrorBat);
         }
-        return new OpLog(ops, null);
+        return new OpLog(ops, null, mirrorBat);
     }
 }

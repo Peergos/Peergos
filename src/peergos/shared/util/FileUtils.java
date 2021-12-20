@@ -35,7 +35,7 @@ public class FileUtils {
             AsyncReader reader = AsyncReader.build(raw);
             return initializer.apply(val).thenCompose(x -> context.getByPath(file.getParent()))
                     .thenCompose(dopt -> dopt.get()
-                            .uploadAndReturnFile(filename, reader, raw.length, false, context.network, context.crypto))
+                            .uploadAndReturnFile(filename, reader, raw.length, false, dopt.get().mirrorBatId(), context.network, context.crypto))
                     .thenApply(x -> val);
         });
     }

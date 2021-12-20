@@ -99,15 +99,15 @@ public class PeergosNetworkUtils {
         // upload a file to "a"'s space
         FileWrapper u1Root = sharerUser.getUserRoot().join();
         String folderName = "folder";
-        u1Root.mkdir(folderName, network, false, crypto).join();
+        u1Root.mkdir(folderName, network, false, u1Root.mirrorBatId(), crypto).join();
         byte[] data = "Some text".getBytes();
         String filename = "Afile.txt";
         sharerUser.getByPath(Paths.get(sharerUsername, folderName)).join().get()
                 .uploadOrReplaceFile(filename, AsyncReader.build(data), data.length, sharerUser.network, crypto,
-                        x -> {}, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).join();
+                        x -> {}).join();
         String subdirName = "subdir";
         sharerUser.getByPath(Paths.get(sharerUsername, folderName)).join().get()
-                .mkdir(subdirName, sharerUser.network, false, crypto).join();
+                .mkdir(subdirName, sharerUser.network, false, sharerUser.mirrorBatId(), crypto).join();
 
         // share
         Set<String> shareeNames = new HashSet();
@@ -145,15 +145,15 @@ public class PeergosNetworkUtils {
         // upload a file to /a/folder/subdir/file.txt
         FileWrapper u1Root = sharerUser.getUserRoot().join();
         String folderName = "folder";
-        u1Root.mkdir(folderName, network, false, crypto).join();
+        u1Root.mkdir(folderName, network, false, u1Root.mirrorBatId(), crypto).join();
         String subdirName = "subdir";
         sharerUser.getByPath(Paths.get(sharerUsername, folderName)).join().get()
-                .mkdir(subdirName, sharerUser.network, false, crypto).join();
+                .mkdir(subdirName, sharerUser.network, false, sharerUser.mirrorBatId(), crypto).join();
         byte[] data = "Some text".getBytes();
         String filename = "file.txt";
         sharerUser.getByPath(Paths.get(sharerUsername, folderName, subdirName)).join().get()
                 .uploadOrReplaceFile(filename, AsyncReader.build(data), data.length, sharerUser.network, crypto,
-                        x -> {}, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).join();
+                        x -> {}).join();
 
         // share
         Set<String> shareeNames = new HashSet<>();
@@ -200,7 +200,7 @@ public class PeergosNetworkUtils {
         Files.write(f.toPath(), originalFileContents);
         ResetableFileInputStream resetableFileInputStream = new ResetableFileInputStream(f);
         FileWrapper uploaded = u1Root.uploadOrReplaceFile(filename, resetableFileInputStream, f.length(),
-                sharerUser.network, crypto, l -> {}, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).join();
+                sharerUser.network, crypto, l -> {}).join();
 
         // share the file from sharer to each of the sharees
         Set<String> shareeNames = shareeUsers.stream()
@@ -270,7 +270,7 @@ public class PeergosNetworkUtils {
         FileWrapper parent = updatedSharerUser.getByPath(updatedSharerUser.username).join().get();
         parent.uploadFileSection(filename, suffixStream, false, originalFileContents.length, originalFileContents.length + suffix.length,
                 Optional.empty(), true, updatedSharerUser.network, crypto, l -> {},
-                null, null).join();
+                null, null, parent.mirrorBatId()).join();
         AsyncReader extendedContents = updatedSharerUser.getByPath(sharerUser.username + "/" + filename).join().get()
                 .getInputStream(updatedSharerUser.network, crypto, l -> {}).join();
         byte[] newFileContents = Serialize.readFully(extendedContents, originalFileContents.length + suffix.length).join();
@@ -303,7 +303,7 @@ public class PeergosNetworkUtils {
         Files.write(f.toPath(), originalFileContents);
         ResetableFileInputStream resetableFileInputStream = new ResetableFileInputStream(f);
         FileWrapper uploaded = u1Root.uploadOrReplaceFile(filename, resetableFileInputStream, f.length(),
-                sharer.network, crypto, l -> {}, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).join();
+                sharer.network, crypto, l -> {}).join();
 
         // share the file from sharer to each of the sharees
         Set<String> shareeNames = shareeUsers.stream()
@@ -358,7 +358,7 @@ public class PeergosNetworkUtils {
         byte[] originalFileContents = sharerUser.crypto.random.randomBytes(10*1024*1024);
         AsyncReader resetableFileInputStream = AsyncReader.build(originalFileContents);
         FileWrapper uploaded = u1Root.uploadOrReplaceFile(filename, resetableFileInputStream, originalFileContents.length,
-                sharerUser.network, crypto, l -> {}, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).join();
+                sharerUser.network, crypto, l -> {}).join();
 
         // share the file from sharer to each of the sharees
         String filePath = sharerUser.username + "/" + filename;
@@ -436,7 +436,7 @@ public class PeergosNetworkUtils {
         FileWrapper parent = updatedSharerUser.getByPath(updatedSharerUser.username).join().get();
         parent.uploadFileSection(filename, suffixStream, false, originalFileContents.length, originalFileContents.length + suffix.length,
                 Optional.empty(), true, updatedSharerUser.network, crypto, l -> {},
-                null, null).join();
+                null, null, parent.mirrorBatId()).join();
         AsyncReader extendedContents = updatedSharerUser.getByPath(filePath).join().get().getInputStream(updatedSharerUser.network,
                 updatedSharerUser.crypto, l -> {}).join();
         byte[] newFileContents = Serialize.readFully(extendedContents, originalFileContents.length + suffix.length).join();
@@ -452,7 +452,7 @@ public class PeergosNetworkUtils {
                 originalFileContents.length + suffix.length,
                 originalFileContents.length + suffix.length + suffix2.length,
                 Optional.empty(), true, shareeNode, crypto, l -> {},
-                null, null).join();
+                null, null, parent.mirrorBatId()).join();
         AsyncReader extendedContents2 = sharee.getByPath(filePath).join().get()
                 .getInputStream(updatedSharerUser.network,
                 updatedSharerUser.crypto, l -> {}).join();
@@ -490,7 +490,7 @@ public class PeergosNetworkUtils {
 
         // make directory /sharer/dir and grant write access to it to a friend
         String dirName = "dir";
-        sharer.getUserRoot().join().mkdir(dirName, sharer.network, false, crypto).join();
+        sharer.getUserRoot().join().mkdir(dirName, sharer.network, false, sharer.mirrorBatId(), crypto).join();
         Path dirPath = Paths.get(sharerUsername, dirName);
         sharer.shareWriteAccessWith(dirPath, Collections.singleton(sharee.username)).join();
 
@@ -507,7 +507,7 @@ public class PeergosNetworkUtils {
         byte[] originalFileContents = sharer.crypto.random.randomBytes(10*1024*1024);
         AsyncReader resetableFileInputStream = AsyncReader.build(originalFileContents);
         FileWrapper uploaded = dir.uploadOrReplaceFile(filename, resetableFileInputStream, originalFileContents.length,
-                sharer.network, crypto, l -> {}, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).join();
+                sharer.network, crypto, l -> {}).join();
 
         // share the file read only with the sharee
         Path filePath = dirPath.resolve(filename);
@@ -547,7 +547,7 @@ public class PeergosNetworkUtils {
         // share a file from u1 to the others
         FileWrapper u1Root = sharer.getUserRoot().join();
         String folderName = "afolder";
-        u1Root.mkdir(folderName, sharer.network, SymmetricKey.random(), Optional.of(Bat.random(crypto.random)), false, crypto).join();
+        u1Root.mkdir(folderName, sharer.network, SymmetricKey.random(), Optional.of(Bat.random(crypto.random)), false, sharer.mirrorBatId(), crypto).join();
         Path p = Paths.get(sharerUsername, folderName);
 
         FileSharedWithState result = sharer.sharedWith(p).join();
@@ -604,7 +604,7 @@ public class PeergosNetworkUtils {
         // share a file from u1 to the others
         FileWrapper u1Root = sharer.getUserRoot().join();
         String dirName = "afolder";
-        u1Root.mkdir(dirName, sharer.network, SymmetricKey.random(), Optional.of(Bat.random(crypto.random)), false, crypto).join();
+        u1Root.mkdir(dirName, sharer.network, SymmetricKey.random(), Optional.of(Bat.random(crypto.random)), false, sharer.mirrorBatId(), crypto).join();
 
         Path dirPath = Paths.get(sharerUsername, dirName);
         FileWrapper dir = sharer.getByPath(dirPath).join().get();
@@ -612,7 +612,7 @@ public class PeergosNetworkUtils {
         byte[] originalFileContents = sharer.crypto.random.randomBytes(409);
         AsyncReader resetableFileInputStream = AsyncReader.build(originalFileContents);
         FileWrapper uploaded = dir.uploadOrReplaceFile(filename, resetableFileInputStream, originalFileContents.length,
-                sharer.network, crypto, l -> {}, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).join();
+                sharer.network, crypto, l -> {}).join();
 
         Path filePath = Paths.get(sharerUsername, dirName, filename);
         FileWrapper file = sharer.getByPath(filePath).join().get();
@@ -626,7 +626,7 @@ public class PeergosNetworkUtils {
         resetableFileInputStream = AsyncReader.build(updatedFileContents);
 
         uploaded = dir.uploadOrReplaceFile(filename, resetableFileInputStream, updatedFileContents.length,
-                sharer.network, crypto, l -> {}, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).join();
+                sharer.network, crypto, l -> {}).join();
         file = sharer.getByPath(filePath).join().get();
         long newFileSize = file.getFileProperties().size;
         System.out.println("filesize=" + newFileSize);
@@ -653,7 +653,7 @@ public class PeergosNetworkUtils {
 
         FileWrapper u1Root = sharer.getUserRoot().join();
         String folderName = "afolder";
-        u1Root.mkdir(folderName, sharer.network, SymmetricKey.random(), Optional.of(Bat.random(crypto.random)), false, crypto).join();
+        u1Root.mkdir(folderName, sharer.network, SymmetricKey.random(), Optional.of(Bat.random(crypto.random)), false, sharer.mirrorBatId(), crypto).join();
         Path p = Paths.get(sharerUsername, folderName);
 
         sharer.shareReadAccessWith(p, Set.of(shareeUsername)).join();
@@ -692,7 +692,7 @@ public class PeergosNetworkUtils {
         // share a file from u1 to the others
         FileWrapper u1Root = sharer.getUserRoot().join();
         String folderName = "afolder";
-        u1Root.mkdir(folderName, sharer.network, SymmetricKey.random(), Optional.of(Bat.random(crypto.random)), false, crypto).join();
+        u1Root.mkdir(folderName, sharer.network, SymmetricKey.random(), Optional.of(Bat.random(crypto.random)), false, sharer.mirrorBatId(), crypto).join();
         String path = Paths.get(sharerUsername, folderName).toString();
         System.out.println("PATH "+ path);
         FileWrapper folder = sharer.getByPath(path).join().get();
@@ -700,12 +700,12 @@ public class PeergosNetworkUtils {
         byte[] originalFileContents = "Hello Peergos friend!".getBytes();
         AsyncReader resetableFileInputStream = new AsyncReader.ArrayBacked(originalFileContents);
         FileWrapper updatedFolder = folder.uploadOrReplaceFile(filename, resetableFileInputStream,
-                originalFileContents.length, sharer.network, crypto, l -> {},crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).join();
+                originalFileContents.length, sharer.network, crypto, l -> {}).join();
         String originalFilePath = sharer.username + "/" + folderName + "/" + filename;
 
         for (int i=0; i< 20; i++) {
             sharer.getByPath(path).join().get()
-                    .mkdir("subdir"+i, sharer.network, false, crypto).join();
+                    .mkdir("subdir"+i, sharer.network, false, sharer.mirrorBatId(), crypto).join();
         }
 
         Set<String> childNames = sharer.getByPath(path).join().get().getChildren(crypto.hasher, sharer.network).join()
@@ -766,7 +766,7 @@ public class PeergosNetworkUtils {
             parent.uploadFileSection(filename, suffixStream, false, originalFileContents.length,
                     originalFileContents.length + suffix.length, Optional.empty(), true,
                     updatedSharer.network, crypto, l -> {},
-                    null, null).join();
+                    null, null, parent.mirrorBatId()).join();
             FileWrapper extendedFile = updatedSharer.getByPath(originalFilePath).join().get();
             AsyncReader extendedContents = extendedFile.getInputStream(updatedSharer.network, crypto, l -> {}).join();
             byte[] newFileContents = Serialize.readFully(extendedContents, extendedFile.getSize()).join();
@@ -814,7 +814,7 @@ public class PeergosNetworkUtils {
         // share a file from u1 to the others
         FileWrapper u1Root = sharer.getUserRoot().join();
         String folderName = "afolder";
-        u1Root.mkdir(folderName, sharer.network, SymmetricKey.random(), Optional.of(Bat.random(crypto.random)), false, crypto).join();
+        u1Root.mkdir(folderName, sharer.network, SymmetricKey.random(), Optional.of(Bat.random(crypto.random)), false, sharer.mirrorBatId(), crypto).join();
         String path = Paths.get(sharerUsername, folderName).toString();
         System.out.println("PATH "+ path);
         FileWrapper folder = sharer.getByPath(path).join().get();
@@ -822,12 +822,12 @@ public class PeergosNetworkUtils {
         byte[] originalFileContents = "Hello Peergos friend!".getBytes();
         AsyncReader resetableFileInputStream = new AsyncReader.ArrayBacked(originalFileContents);
         folder.uploadOrReplaceFile(filename, resetableFileInputStream,
-                originalFileContents.length, sharer.network, crypto, l -> {}, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).join();
+                originalFileContents.length, sharer.network, crypto, l -> {}).join();
         String originalFilePath = sharer.username + "/" + folderName + "/" + filename;
 
         for (int i=0; i< 20; i++) {
             sharer.getByPath(path).join().get()
-                    .mkdir("subdir"+i, sharer.network, false, crypto).join();
+                    .mkdir("subdir"+i, sharer.network, false, sharer.mirrorBatId(), crypto).join();
         }
 
         // file is uploaded, do the actual sharing
@@ -840,11 +840,11 @@ public class PeergosNetworkUtils {
         byte[] data = Files.readAllBytes(Paths.get("assets", "logo.png"));
         FileWrapper sharedFolderv0 = sharer.getByPath(path).join().get();
         sharedFolderv0.uploadOrReplaceFile(imagename, AsyncReader.build(data), data.length,
-                sharer.network, crypto, x -> {}, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).join();
+                sharer.network, crypto, x -> {}).join();
 
         // create a directory
         FileWrapper sharedFolderv1 = sharer.getByPath(path).join().get();
-        sharedFolderv1.mkdir("asubdir", sharer.network, false, crypto).join();
+        sharedFolderv1.mkdir("asubdir", sharer.network, false, sharer.mirrorBatId(), crypto).join();
 
         UserContext shareeUploader = shareeUsers.get(0);
         // check sharee can see folder via getChildren() which is used by the web-ui
@@ -858,7 +858,7 @@ public class PeergosNetworkUtils {
         // check a sharee can upload a file
         FileWrapper sharedDir = shareeUploader.getByPath(path).join().get();
         sharedDir.uploadFileJS("a-new-file.png", AsyncReader.build(data), 0, data.length,
-                false, false, shareeUploader.network, crypto, x -> {}, shareeUploader.getTransactionService()).join();
+                false, false, sharedDir.mirrorBatId(), shareeUploader.network, crypto, x -> {}, shareeUploader.getTransactionService()).join();
 
         Set<String> childNames = sharer.getByPath(path).join().get().getChildren(crypto.hasher, sharer.network).join()
                 .stream()
@@ -906,7 +906,7 @@ public class PeergosNetworkUtils {
             parent.uploadFileSection(filename, suffixStream, false, originalFileContents.length,
                     originalFileContents.length + suffix.length, Optional.empty(), true,
                     updatedSharer.network, crypto, l -> {},
-                    null, null).join();
+                    null, null, parent.mirrorBatId()).join();
             FileWrapper extendedFile = updatedSharer.getByPath(originalFilePath).join().get();
             AsyncReader extendedContents = extendedFile.getInputStream(updatedSharer.network, updatedSharer.crypto, l -> {
             }).join();
@@ -952,7 +952,7 @@ public class PeergosNetworkUtils {
         // share a directory from u1 to u2
         FileWrapper u1Root = sharer.getUserRoot().join();
         String folderName = "folder";
-        u1Root.mkdir(folderName, sharer.network, SymmetricKey.random(), Optional.of(Bat.random(crypto.random)), false, crypto).join();
+        u1Root.mkdir(folderName, sharer.network, SymmetricKey.random(), Optional.of(Bat.random(crypto.random)), false, sharer.mirrorBatId(), crypto).join();
         Path dirPath = Paths.get(sharer.username, folderName);
 
         FileWrapper folder = sharer.getByPath(dirPath).join().get();
@@ -960,12 +960,12 @@ public class PeergosNetworkUtils {
         byte[] data = "Hello Peergos friend!".getBytes();
         AsyncReader resetableFileInputStream = new AsyncReader.ArrayBacked(data);
         folder.uploadOrReplaceFile(filename, resetableFileInputStream,
-                data.length, sharer.network, crypto, l -> {}, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).join();
+                data.length, sharer.network, crypto, l -> {}).join();
         String originalFilePath = sharer.username + "/" + folderName + "/" + filename;
 
         for (int i=0; i< 20; i++) {
             sharer.getByPath(dirPath).join().get()
-                    .mkdir("subdir"+i, sharer.network, false, crypto).join();
+                    .mkdir("subdir"+i, sharer.network, false, sharer.mirrorBatId(), crypto).join();
         }
 
         // share /u1/folder with 'a'
@@ -974,7 +974,7 @@ public class PeergosNetworkUtils {
         // create a directory
         FileWrapper sharedFolderv1 = sharer.getByPath(dirPath).join().get();
         String subdirName = "subdir";
-        sharedFolderv1.mkdir(subdirName, sharer.network, false, crypto).join();
+        sharedFolderv1.mkdir(subdirName, sharer.network, false, sharer.mirrorBatId(), crypto).join();
 
         // share /u1/folder with 'b'
         Path subdirPath = Paths.get(sharer.username, folderName, subdirName);
@@ -984,7 +984,7 @@ public class PeergosNetworkUtils {
         UserContext shareeUploader = shareeUsers.get(0);
         FileWrapper sharedDir = shareeUploader.getByPath(subdirPath).join().get();
         sharedDir.uploadFileJS("a-new-file.png", AsyncReader.build(data), 0, data.length,
-                false, false, shareeUploader.network, crypto, x -> {}, shareeUploader.getTransactionService()).join();
+                false, false, sharedDir.mirrorBatId(), shareeUploader.network, crypto, x -> {}, shareeUploader.getTransactionService()).join();
 
         Set<String> childNames = sharer.getByPath(dirPath).join().get().getChildren(crypto.hasher, sharer.network).join()
                 .stream()
@@ -1030,7 +1030,7 @@ public class PeergosNetworkUtils {
         parent.uploadFileSection(filename, suffixStream, false, data.length,
                 data.length + suffix.length, Optional.empty(), true,
                 updatedSharer.network, crypto, l -> {},
-                null, null).join();
+                null, null, parent.mirrorBatId()).join();
         FileWrapper extendedFile = updatedSharer.getByPath(originalFilePath).join().get();
         AsyncReader extendedContents = extendedFile.getInputStream(updatedSharer.network, updatedSharer.crypto, l -> {}).join();
         byte[] newFileContents = Serialize.readFully(extendedContents, extendedFile.getSize()).join();
@@ -1073,13 +1073,13 @@ public class PeergosNetworkUtils {
         // share a directory from u1 to u2
         FileWrapper u1Root = sharer.getUserRoot().join();
         String folderName = "folder";
-        u1Root.mkdir(folderName, sharer.network, SymmetricKey.random(), Optional.of(Bat.random(crypto.random)), false, crypto).join();
+        u1Root.mkdir(folderName, sharer.network, SymmetricKey.random(), Optional.of(Bat.random(crypto.random)), false, sharer.mirrorBatId(), crypto).join();
         Path dirPath = Paths.get(sharer.username, folderName);
 
         // create a directory
         String subdirName = "subdir";
         sharer.getByPath(dirPath).join().get()
-                .mkdir(subdirName, sharer.network, false, crypto).join();
+                .mkdir(subdirName, sharer.network, false, sharer.mirrorBatId(), crypto).join();
 
         // share /u1/folder/subdir with 'b'
         Path subdirPath = Paths.get(sharer.username, folderName, subdirName);
@@ -1120,7 +1120,7 @@ public class PeergosNetworkUtils {
         // share a directory from u1 to u2
         FileWrapper u1Root = sharer.getUserRoot().join();
         String folderName = "folder";
-        u1Root.mkdir(folderName, sharer.network, SymmetricKey.random(), Optional.of(Bat.random(crypto.random)), false, crypto).join();
+        u1Root.mkdir(folderName, sharer.network, SymmetricKey.random(), Optional.of(Bat.random(crypto.random)), false, sharer.mirrorBatId(), crypto).join();
         Path dirPath = Paths.get(sharer.username, folderName);
 
 
@@ -1133,7 +1133,7 @@ public class PeergosNetworkUtils {
         FileWrapper dir = sharer.getByPath(dirPath).join().get();
 
         FileWrapper uploaded = dir.uploadOrReplaceFile(filename, resetableFileInputStream, f.length(),
-                sharer.network, crypto, l -> {}, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).join();
+                sharer.network, crypto, l -> {}).join();
 
 
         Path fileToShare = Paths.get(sharer.username, folderName, filename);
@@ -1170,7 +1170,7 @@ public class PeergosNetworkUtils {
         // share a directory from u1 to u2
         FileWrapper u1Root = sharer.getUserRoot().join();
         String folderName = "folder";
-        u1Root.mkdir(folderName, sharer.network, SymmetricKey.random(), Optional.of(Bat.random(crypto.random)), false, crypto).join();
+        u1Root.mkdir(folderName, sharer.network, SymmetricKey.random(), Optional.of(Bat.random(crypto.random)), false, sharer.mirrorBatId(), crypto).join();
         Path dirPath = Paths.get(sharer.username, folderName);
 
         // share /u1/folder with 'a'
@@ -1224,7 +1224,7 @@ public class PeergosNetworkUtils {
         // friends are now connected
         FileWrapper u1Root = sharer.getUserRoot().join();
         String folderName = "folder";
-        u1Root.mkdir(folderName, sharer.network, SymmetricKey.random(), Optional.of(Bat.random(crypto.random)), false, crypto).join();
+        u1Root.mkdir(folderName, sharer.network, SymmetricKey.random(), Optional.of(Bat.random(crypto.random)), false, sharer.mirrorBatId(), crypto).join();
         Path dirPath = Paths.get(sharer.username, folderName);
 
         // put a file and some sub-dirs into the dir
@@ -1233,11 +1233,11 @@ public class PeergosNetworkUtils {
         byte[] data = "Hello Peergos friend!".getBytes();
         AsyncReader resetableFileInputStream = new AsyncReader.ArrayBacked(data);
         folder.uploadOrReplaceFile(filename, resetableFileInputStream,
-                data.length, sharer.network, crypto, l -> {}, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).join();
+                data.length, sharer.network, crypto, l -> {}).join();
 
         for (int i=0; i< 20; i++) {
             sharer.getByPath(dirPath).join().get()
-                    .mkdir("subdir"+i, sharer.network, false, crypto).join();
+                    .mkdir("subdir"+i, sharer.network, false, sharer.mirrorBatId(), crypto).join();
         }
 
         // grant write access to a directory to user 'a'
@@ -1246,7 +1246,7 @@ public class PeergosNetworkUtils {
         // create another sub-directory
         FileWrapper sharedFolderv1 = sharer.getByPath(dirPath).join().get();
         String subdirName = "subdir";
-        sharedFolderv1.mkdir(subdirName, sharer.network, false, crypto).join();
+        sharedFolderv1.mkdir(subdirName, sharer.network, false, sharer.mirrorBatId(), crypto).join();
 
         // grant write access to a sub-directory to user 'b'
         Path subdirPath = Paths.get(sharer.username, folderName, subdirName);
@@ -1261,7 +1261,7 @@ public class PeergosNetworkUtils {
         UserContext shareeUploader = shareeUsers.get(0);
         FileWrapper sharedDir = shareeUploader.getByPath(subdirPath).join().get();
         sharedDir.uploadFileJS("a-new-file.png", AsyncReader.build(data), 0, data.length,
-                false, false, shareeUploader.network, crypto, x -> {}, shareeUploader.getTransactionService()).join();
+                false, false, sharedDir.mirrorBatId(), shareeUploader.network, crypto, x -> {}, shareeUploader.getTransactionService()).join();
 
         // check 'a' can see the shared directory
         FileWrapper sharedFolder = a.getByPath(sharer.username + "/" + folderName).join()
@@ -1607,7 +1607,7 @@ public class PeergosNetworkUtils {
         String filename = file.getFileName().toString();
         sharer.getByPath(file.getParent()).join().get()
                 .uploadOrReplaceFile(filename, AsyncReader.build(data), data.length,
-                        sharer.network, crypto, l -> {}, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).join();
+                        sharer.network, crypto, l -> {}).join();
         sharer.shareReadAccessWith(file, Set.of(sharee)).join();
     }
 
@@ -1624,8 +1624,8 @@ public class PeergosNetworkUtils {
         friendBetweenGroups(Arrays.asList(sharer), shareeUsers);
         String dir1 = "one";
         String dir2 = "two";
-        sharer.getUserRoot().join().mkdir(dir1, sharer.network, false, sharer.crypto).join();
-        sharer.getUserRoot().join().mkdir(dir2, sharer.network, false, sharer.crypto).join();
+        sharer.getUserRoot().join().mkdir(dir1, sharer.network, false, sharer.mirrorBatId(), sharer.crypto).join();
+        sharer.getUserRoot().join().mkdir(dir2, sharer.network, false, sharer.mirrorBatId(), sharer.crypto).join();
 
         Path dirToShare1 = Paths.get(sharer.username, dir1);
         Path dirToShare2 = Paths.get(sharer.username, dir2);
@@ -1636,7 +1636,7 @@ public class PeergosNetworkUtils {
         List<SharedItem> items = feed.getShared(0, 1000, sharee.crypto, sharee.network).join();
         Assert.assertTrue(items.size() == 2 + 2);
 
-        sharee.getUserRoot().join().mkdir("mine", sharee.network, false, sharer.crypto).join();
+        sharee.getUserRoot().join().mkdir("mine", sharee.network, false, sharer.mirrorBatId(), sharer.crypto).join();
     }
 
     public static void socialFeedFailsInUI(NetworkAccess network, Random random) {
@@ -1652,8 +1652,8 @@ public class PeergosNetworkUtils {
         friendBetweenGroups(Arrays.asList(sharer), shareeUsers);
         String dir1 = "one";
         String dir2 = "two";
-        sharer.getUserRoot().join().mkdir(dir1, sharer.network, false, sharer.crypto).join();
-        sharer.getUserRoot().join().mkdir(dir2, sharer.network, false, sharer.crypto).join();
+        sharer.getUserRoot().join().mkdir(dir1, sharer.network, false, sharer.mirrorBatId(), sharer.crypto).join();
+        sharer.getUserRoot().join().mkdir(dir2, sharer.network, false, sharer.mirrorBatId(), sharer.crypto).join();
 
         Path dirToShare1 = Paths.get(sharer.username, dir1);
         Path dirToShare2 = Paths.get(sharer.username, dir2);
@@ -1666,7 +1666,7 @@ public class PeergosNetworkUtils {
         Assert.assertTrue(items.size() == initialFeedSize + 2);
 
         sharee = PeergosNetworkUtils.ensureSignedUp(sharee.username, password, network, crypto);
-        sharee.getUserRoot().join().mkdir("mine", sharer.network, false, sharer.crypto).join();
+        sharee.getUserRoot().join().mkdir("mine", sharer.network, false, sharer.mirrorBatId(), sharer.crypto).join();
 
         feed = sharee.getSocialFeed().join();
         items = feed.getShared(0, 1000, sharee.crypto, sharee.network).join();
@@ -1704,8 +1704,8 @@ public class PeergosNetworkUtils {
         friendBetweenGroups(Arrays.asList(sharer), shareeUsers);
         String dir1 = "one";
         String dir2 = "two";
-        sharer.getUserRoot().join().mkdir(dir1, sharer.network, false, sharer.crypto).join();
-        sharer.getUserRoot().join().mkdir(dir2, sharer.network, false, sharer.crypto).join();
+        sharer.getUserRoot().join().mkdir(dir1, sharer.network, false, sharer.mirrorBatId(), sharer.crypto).join();
+        sharer.getUserRoot().join().mkdir(dir2, sharer.network, false, sharer.mirrorBatId(), sharer.crypto).join();
 
         Path dirToShare1 = Paths.get(sharer.username, dir1);
         Path dirToShare2 = Paths.get(sharer.username, dir2);
@@ -1719,7 +1719,7 @@ public class PeergosNetworkUtils {
 
         //Add another file and share
         String dir3 = "three";
-        sharer.getUserRoot().join().mkdir(dir3, sharer.network, false, sharer.crypto).join();
+        sharer.getUserRoot().join().mkdir(dir3, sharer.network, false, sharer.mirrorBatId(), sharer.crypto).join();
 
         Path dirToShare3 = Paths.get(sharer.username, dir3);
         sharer.shareReadAccessWith(dirToShare3, Set.of(a.username)).join();
@@ -2126,7 +2126,7 @@ public class PeergosNetworkUtils {
         // friend sharer with others
         friendBetweenGroups(Arrays.asList(sharer), shareeUsers);
         String dirName = "one";
-        sharer.getUserRoot().join().mkdir(dirName, sharer.network, false, sharer.crypto).join();
+        sharer.getUserRoot().join().mkdir(dirName, sharer.network, false, sharer.mirrorBatId(), sharer.crypto).join();
 
         Path dirToShare1 = Paths.get(sharer.username, dirName);
         SocialState social = sharer.getSocialState().join();
@@ -2178,7 +2178,7 @@ public class PeergosNetworkUtils {
         // make others follow sharer
         followBetweenGroups(Arrays.asList(sharer), shareeUsers);
         String dir1 = "one";
-        sharer.getUserRoot().join().mkdir(dir1, sharer.network, false, sharer.crypto).join();
+        sharer.getUserRoot().join().mkdir(dir1, sharer.network, false, sharer.mirrorBatId(), sharer.crypto).join();
 
         Path dirToShare1 = Paths.get(sharer.username, dir1);
         SocialState social = sharer.getSocialState().join();
@@ -2211,7 +2211,7 @@ public class PeergosNetworkUtils {
         // friend sharer with others
         friendBetweenGroups(Arrays.asList(sharer), shareeUsers);
         String dirName = "one";
-        sharer.getUserRoot().join().mkdir(dirName, sharer.network, false, sharer.crypto).join();
+        sharer.getUserRoot().join().mkdir(dirName, sharer.network, false, sharer.mirrorBatId(), sharer.crypto).join();
 
         Path dirToShare1 = Paths.get(sharer.username, dirName);
         SocialState social = sharer.getSocialState().join();
@@ -2248,7 +2248,7 @@ public class PeergosNetworkUtils {
         friendBetweenGroups(Arrays.asList(sharer), Arrays.asList(shareeFriend));
 
         String dir1 = "one";
-        sharer.getUserRoot().join().mkdir(dir1, sharer.network, false, sharer.crypto).join();
+        sharer.getUserRoot().join().mkdir(dir1, sharer.network, false, sharer.mirrorBatId(), sharer.crypto).join();
         Path dirToShare1 = Paths.get(sharer.username, dir1);
         SocialState social = sharer.getSocialState().join();
         String followers = social.getFollowersGroupUid();
@@ -2325,7 +2325,7 @@ public class PeergosNetworkUtils {
         // share a directory from u1 to the others
         FileWrapper u1Root = sharer.getUserRoot().join();
         String folderName = "awritefolder";
-        u1Root.mkdir(folderName, sharer.network, SymmetricKey.random(), Optional.of(Bat.random(crypto.random)), false, crypto).join();
+        u1Root.mkdir(folderName, sharer.network, SymmetricKey.random(), Optional.of(Bat.random(crypto.random)), false, sharer.mirrorBatId(), crypto).join();
         String path = Paths.get(sharerUsername, folderName).toString();
         System.out.println("PATH "+ path);
 
@@ -2340,7 +2340,7 @@ public class PeergosNetworkUtils {
             FileWrapper sharedFolder = sharee.getByPath(sharer.username + "/" + folderName).join().orElseThrow(() -> new AssertionError("shared folder is present after sharing"));
             Assert.assertEquals(sharedFolder.getFileProperties().name, folderName);
 
-            sharedFolder.mkdir(sharee.username, shareeNode, false, crypto).join();
+            sharedFolder.mkdir(sharee.username, shareeNode, false, sharedFolder.mirrorBatId(), crypto).join();
         }
 
         Set<FileWrapper> children = sharer.getByPath(path).join().get().getChildren(crypto.hasher, sharerNode).get();
@@ -2358,7 +2358,7 @@ public class PeergosNetworkUtils {
         random.nextBytes(data);
         long t1 = System.currentTimeMillis();
         userRoot.uploadFileSection(filename, new AsyncReader.ArrayBacked(data), false, 0, data.length, Optional.empty(),
-                true, context.network, crypto, l -> {}, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).join();
+                true, context.network, crypto, l -> {}).join();
         long t2 = System.currentTimeMillis();
         String path = "/" + username + "/" + filename;
         FileWrapper file = context.getByPath(path).join().get();

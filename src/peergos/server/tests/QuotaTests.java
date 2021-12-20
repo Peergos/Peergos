@@ -59,11 +59,11 @@ public class QuotaTests {
         byte[] data = new byte[1024*1024];
         random.nextBytes(data);
         FileWrapper newHome = home.uploadOrReplaceFile("file-1", new AsyncReader.ArrayBacked(data), data.length,
-                network, crypto, x -> {}, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).get();
+                network, crypto, x -> {}).get();
 
         try {
             newHome.uploadOrReplaceFile("file-2", new AsyncReader.ArrayBacked(data), data.length, network,
-                    crypto, x -> {}, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).get();
+                    crypto, x -> {}).get();
             Assert.fail("Quota wasn't enforced");
         } catch (Exception e) {}
     }
@@ -80,7 +80,7 @@ public class QuotaTests {
         for (int i=0; i < 5; i++) {
             String filename = "file-1";
             home = home.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length,
-                    network, crypto, x -> {}, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).get();
+                    network, crypto, x -> {}).get();
             Path filePath = Paths.get(username, filename);
             FileWrapper file = context.getByPath(filePath).get().get();
             home = file.remove(home, filePath, context).get();
@@ -100,7 +100,7 @@ public class QuotaTests {
         random.nextBytes(data);
         String filename = "file-1";
         home = home.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length,
-                network, crypto, x -> {}, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).get();
+                network, crypto, x -> {}).get();
         Path filePath = Paths.get(username, filename);
         FileWrapper file = context.getByPath(filePath).get().get();
         file.remove(home, filePath, context).get();
@@ -119,12 +119,12 @@ public class QuotaTests {
         random.nextBytes(data);
         String filename = "file-1";
         home = home.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length,
-                network, crypto, x -> {}, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).get();
+                network, crypto, x -> {}).get();
         Path filePath = Paths.get(username, filename);
         FileWrapper file = context.getByPath(filePath).get().get();
         try {
             home = home.uploadOrReplaceFile("file-2", new AsyncReader.ArrayBacked(data), data.length,
-                    network, crypto, x -> {}, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))).get();
+                    network, crypto, x -> {}).get();
             Assert.fail();
         } catch (Exception e) {}
         file.remove(home, filePath, context).get();

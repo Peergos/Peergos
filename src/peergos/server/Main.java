@@ -245,7 +245,7 @@ public class Main extends Builder {
             Optional<FileWrapper> releaseDir = context.getByPath(Paths.get(pkiUsername, "releases")).join();
             if (! releaseDir.isPresent()) {
                 context.getUserRoot().join().mkdir("releases", network, false,
-                        crypto).join();
+                        Optional.empty(), crypto).join();
                 FileWrapper releases = context.getByPath(Paths.get(pkiUsername, "releases")).join().get();
                 context.makePublic(releases).join();
             }

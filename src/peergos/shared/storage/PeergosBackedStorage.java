@@ -111,9 +111,9 @@ public class PeergosBackedStorage implements ContentAddressedStorage {
         byte[] sha256 = Arrays.copyOfRange(signature, signature.length - 32, signature.length);
         Cid cid = buildCid(sha256, isRaw);
         Path toBlock = getPath(cid);
-        return baseDir.getOrMkdirs(toBlock.getParent(), network, false, crypto)
+        return baseDir.getOrMkdirs(toBlock.getParent(), network, false, baseDir.mirrorBatId(), crypto)
                 .thenCompose(dir -> dir.uploadOrReplaceFile(toBlock.getFileName().toString(), AsyncReader.build(block),
-                        block.length, network, crypto, progressCounter, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random))))
+                        block.length, network, crypto, progressCounter))
                 .thenApply(x -> Collections.singletonList(cid));
     }
 
