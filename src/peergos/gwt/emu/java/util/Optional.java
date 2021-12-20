@@ -66,6 +66,16 @@ public final class Optional<T> {
         }
     }
 
+    public Optional<T> or(Supplier<? extends Optional<? extends T>> supplier) {
+        Objects.requireNonNull(supplier);
+        if (this.isPresent()) {
+            return this;
+        } else {
+            Optional<T> r = (Optional)supplier.get();
+            return (Optional)Objects.requireNonNull(r);
+        }
+    }
+
     public Stream<T> stream() {
         return ! isPresent() ? Stream.empty() : Stream.of(ref);
     }
