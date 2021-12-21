@@ -93,21 +93,6 @@ public class NonWriteThroughStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> recursivePin(PublicKeyHash owner, Multihash h) {
-        return modifications.recursivePin(owner, h);
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> recursiveUnpin(PublicKeyHash owner, Multihash h) {
-        return modifications.recursiveUnpin(owner, h);
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> pinUpdate(PublicKeyHash owner, Multihash existing, Multihash updated) {
-        return modifications.pinUpdate(owner, existing, updated);
-    }
-
-    @Override
     public CompletableFuture<List<Multihash>> getLinks(Multihash root, String auth) {
         try {
             Optional<CborObject> modified = modifications.get(root, auth).get();

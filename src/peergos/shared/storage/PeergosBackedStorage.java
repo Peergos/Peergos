@@ -131,21 +131,6 @@ public class PeergosBackedStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> recursivePin(PublicKeyHash owner, Multihash h) {
-        return CompletableFuture.completedFuture(Arrays.asList(h));
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> recursiveUnpin(PublicKeyHash owner, Multihash h) {
-        return CompletableFuture.completedFuture(Arrays.asList(h));
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> pinUpdate(PublicKeyHash owner, Multihash existing, Multihash updated) {
-        return CompletableFuture.completedFuture(Arrays.asList(existing, updated));
-    }
-
-    @Override
     public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey) {
         return Futures.of(Collections.emptyList());
     }

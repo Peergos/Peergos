@@ -118,21 +118,6 @@ public class RetryStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> pinUpdate(PublicKeyHash owner, Multihash existing, Multihash updated) {
-        return runWithRetry(() -> target.pinUpdate(owner, existing, updated));
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> recursivePin(PublicKeyHash owner, Multihash hash) {
-        return runWithRetry(() -> target.recursivePin(owner, hash));
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> recursiveUnpin(PublicKeyHash owner, Multihash hash) {
-        return runWithRetry(() -> target.recursiveUnpin(owner, hash));
-    }
-
-    @Override
     public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey) {
         return runWithRetry(() -> target.getChampLookup(owner, root, champKey));
     }

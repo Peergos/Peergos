@@ -121,6 +121,14 @@ public interface ContentAddressedStorage {
                                            List<byte[]> blocks,
                                            TransactionId tid);
 
+    default CompletableFuture<Optional<CborObject>> get(Multihash hash, Optional<BatWithId> bat, Cid ourId, Hasher h) {
+        if (bat.isEmpty())
+            return get(hash, "");
+        return bat.get().bat.generateAuth((Cid) hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, h)
+                .thenApply(BlockAuth::encode)
+                .thenCompose(auth -> get(hash, auth));
+    }
+
     /**
      *
      * @param hash
@@ -145,38 +153,20 @@ public interface ContentAddressedStorage {
                                               TransactionId tid,
                                               ProgressConsumer<Long> progressCounter);
 
+    default CompletableFuture<Optional<byte[]>> getRaw(Multihash hash, Optional<BatWithId> bat, Cid ourId, Hasher h) {
+        if (bat.isEmpty())
+            return getRaw(hash, "");
+        return bat.get().bat.generateAuth((Cid) hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, h)
+                .thenApply(BlockAuth::encode)
+                .thenCompose(auth -> getRaw(hash, auth));
+    }
+
     /**
      * Get a block of data that is not in ipld cbor format, just raw bytes
      * @param hash
      * @return
      */
     CompletableFuture<Optional<byte[]>> getRaw(Multihash hash, String auth);
-
-    /**
-     * Update an existing pin with a new root. This is useful when modifying a tree of ipld objects where only a small
-     * number of components are changed
-     * @param owner The owner of the data
-     * @param existing The present root hash
-     * @param updated The new root hash
-     * @return
-     */
-    CompletableFuture<List<Multihash>> pinUpdate(PublicKeyHash owner, Multihash existing, Multihash updated);
-
-    /**
-     * Recursively pin all the objects referenced via ipld merkle links from a root object
-     * @param owner The owner of the data
-     * @param hash The root hash of the merkle-tree
-     * @return A list of the multihashes pinned
-     */
-    CompletableFuture<List<Multihash>> recursivePin(PublicKeyHash owner, Multihash hash);
-
-    /**
-     * Recursively unpin a merkle tree of objects. This releases the objects to be collected by garbage collection
-     * @param owner The owner of the data
-     * @param hash The root hash of the merkle-tree
-     * @return
-     */
-    CompletableFuture<List<Multihash>> recursiveUnpin(PublicKeyHash owner, Multihash hash);
 
     CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey);
 
@@ -592,21 +582,6 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<List<Multihash>> recursivePin(PublicKeyHash owner, Multihash hash) {
-            return Futures.of(Arrays.asList(hash));
-        }
-
-        @Override
-        public CompletableFuture<List<Multihash>> recursiveUnpin(PublicKeyHash owner, Multihash hash) {
-            return Futures.of(Arrays.asList(hash));
-        }
-
-        @Override
-        public CompletableFuture<List<Multihash>> pinUpdate(PublicKeyHash owner, Multihash existing, Multihash updated) {
-            return Futures.of(Arrays.asList(updated));
-        }
-
-        @Override
         public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
             return poster.get(apiPrefix + BLOCK_STAT + "?stream-channels=true&arg=" + block.toString() + "&auth=letmein")
                     .thenApply(raw -> Optional.of((Integer)((Map)JSONParser.parse(new String(raw))).get("Size")));
@@ -729,33 +704,6 @@ public interface ContentAddressedStorage {
                     owner,
                     () -> local.putRaw(owner, writer, signatures, blocks, tid, progressConsumer),
                     target -> p2p.putRaw(target, owner, writer, signatures, blocks, tid, progressConsumer));
-        }
-
-        @Override
-        public CompletableFuture<List<Multihash>> pinUpdate(PublicKeyHash owner, Multihash existing, Multihash updated) {
-            return Proxy.redirectCall(core,
-                    ourNodeId,
-                    owner,
-                    () -> local.pinUpdate(owner, existing, updated),
-                    target -> p2p.pinUpdate(target, owner,  existing, updated));
-        }
-
-        @Override
-        public CompletableFuture<List<Multihash>> recursivePin(PublicKeyHash owner, Multihash h) {
-            return Proxy.redirectCall(core,
-                    ourNodeId,
-                    owner,
-                    () -> local.recursivePin(owner, h),
-                    target -> p2p.recursivePin(target, owner,  h));
-        }
-
-        @Override
-        public CompletableFuture<List<Multihash>> recursiveUnpin(PublicKeyHash owner, Multihash h) {
-            return Proxy.redirectCall(core,
-                    ourNodeId,
-                    owner,
-                    () -> local.recursiveUnpin(owner, h),
-                    target -> p2p.recursiveUnpin(target, owner,  h));
         }
     }
 }

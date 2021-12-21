@@ -184,14 +184,20 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     public CompletableFuture<List<Multihash>> mirror(PublicKeyHash owner,
                                                      Optional<Multihash> existing,
                                                      Optional<Multihash> updated,
-                                                     TransactionId tid) {
+                                                     Optional<BatWithId> mirrorBat,
+                                                     Cid ourNodeId,
+                                                     TransactionId tid,
+                                                     Hasher hasher) {
         if (updated.isEmpty())
             return Futures.of(Collections.emptyList());
         Multihash newRoot = updated.get();
         if (existing.equals(updated))
             return Futures.of(Collections.singletonList(newRoot));
         boolean isRaw = (newRoot instanceof Cid) && ((Cid) newRoot).codec == Cid.Codec.Raw;
-        Optional<byte[]> newVal = p2pFallback.getRaw(newRoot, "TODO").join();
+
+        Optional<byte[]> newVal = isRaw ?
+                p2pFallback.getRaw(newRoot, mirrorBat, id, hasher).join() :
+                p2pFallback.get(newRoot, mirrorBat, id, hasher).join().map(Cborable::serialize);
         if (newVal.isEmpty())
             throw new IllegalStateException("Couldn't retrieve block: " + newRoot);
 
@@ -201,7 +207,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             return Futures.of(Collections.singletonList(newRoot));
 
         List<Multihash> newLinks = CborObject.fromByteArray(newBlock).links();
-        List<Multihash> existingLinks = existing.map(h -> get(h, "TODO").join())
+        List<Multihash> existingLinks = existing.map(h -> get(h, mirrorBat, id, hasher).join())
                 .flatMap(copt -> copt.map(CborObject::links))
                 .orElse(Collections.emptyList());
 
@@ -210,24 +216,9 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                     Optional.of(existingLinks.get(i)) :
                     Optional.empty();
             Optional<Multihash> updatedLink = Optional.of(newLinks.get(i));
-            mirror(owner, existingLink, updatedLink, tid);
+            mirror(owner, existingLink, updatedLink, mirrorBat, ourNodeId, tid, hasher).join();
         }
         return Futures.of(Collections.singletonList(newRoot));
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> pinUpdate(PublicKeyHash owner, Multihash existing, Multihash updated) {
-        return Futures.of(Collections.singletonList(updated));
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> recursivePin(PublicKeyHash owner, Multihash hash) {
-        return Futures.of(Collections.singletonList(hash));
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> recursiveUnpin(PublicKeyHash owner, Multihash hash) {
-        return Futures.of(Collections.singletonList(hash));
     }
 
     @Override

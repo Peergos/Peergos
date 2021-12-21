@@ -6,6 +6,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.util.*;
 
 import java.io.*;
@@ -107,21 +108,6 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
         return CompletableFuture.completedFuture(blocks.stream()
                 .map(b -> put(b, isRaw, tid, owner))
                 .collect(Collectors.toList()));
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> pinUpdate(PublicKeyHash owner, Multihash existing, Multihash updated) {
-        return CompletableFuture.completedFuture(Arrays.asList(existing, updated));
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> recursivePin(PublicKeyHash owner, Multihash h) {
-        return CompletableFuture.completedFuture(Arrays.asList(h));
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> recursiveUnpin(PublicKeyHash owner, Multihash h) {
-        return CompletableFuture.completedFuture(Arrays.asList(h));
     }
 
     private Path getFilePath(Multihash h) {

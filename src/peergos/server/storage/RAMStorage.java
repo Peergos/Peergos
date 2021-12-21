@@ -5,6 +5,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.storage.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.util.*;
 
 import java.security.*;
@@ -134,21 +135,6 @@ public class RAMStorage implements DeletableContentAddressedStorage {
 
     public synchronized int size() {
         return storage.size();
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> recursivePin(PublicKeyHash owner, Multihash h) {
-        return CompletableFuture.completedFuture(Arrays.asList(h));
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> recursiveUnpin(PublicKeyHash owner, Multihash h) {
-        return CompletableFuture.completedFuture(Arrays.asList(h));
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> pinUpdate(PublicKeyHash owner, Multihash existing, Multihash updated) {
-        return CompletableFuture.completedFuture(Arrays.asList(existing, updated));
     }
 
     @Override

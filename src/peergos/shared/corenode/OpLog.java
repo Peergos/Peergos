@@ -152,21 +152,6 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> pinUpdate(PublicKeyHash owner, Multihash existing, Multihash updated) {
-        throw new IllegalStateException("Unsupported operation!");
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> recursivePin(PublicKeyHash owner, Multihash hash) {
-        throw new IllegalStateException("Unsupported operation!");
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> recursiveUnpin(PublicKeyHash owner, Multihash hash) {
-        throw new IllegalStateException("Unsupported operation!");
-    }
-
-    @Override
     public CompletableFuture<Boolean> gc() {
         throw new IllegalStateException("Unsupported operation!");
     }

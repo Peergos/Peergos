@@ -126,7 +126,7 @@ public class Builder {
     }
 
     public static JavaPoster buildIpfsApi(Args a) {
-        URL ipfsApiAddress = AddressUtil.getAddress(new MultiAddress(a.getArg("ipfs-api-address")));
+        URL ipfsApiAddress = AddressUtil.getAddress(new MultiAddress(a.getArg("ipfs-api-address", "/ip4/127.0.0.1/tcp/5001")));
         return new JavaPoster(ipfsApiAddress, false);
     }
 
@@ -277,7 +277,7 @@ public class Builder {
         // build a mirroring proxying corenode, unless we are the pki node
         boolean isPkiNode = nodeId.equals(pkiServerId);
         return isPkiNode ?
-                buildPkiCorenode(new PinningMutablePointers(localPointers, localStorage), account, bats, localStorage, a) :
+                buildPkiCorenode(localPointers, account, bats, localStorage, a) :
                 new MirrorCoreNode(new HTTPCoreNode(buildP2pHttpProxy(a), pkiServerId), rawAccount, bats, account, proxingMutable,
                         localStorage, rawPointers, transactions, localSocial, usageStore, peergosId,
                         a.fromPeergosDir("pki-mirror-state-path","pki-state.cbor"), hasher);

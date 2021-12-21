@@ -165,9 +165,8 @@ public class Main extends Builder {
                     crypto.random, crypto.signer, crypto.boxer, SecretGenerationAlgorithm.getDefaultWithoutExtraSalt()).get();
 
             boolean useIPFS = args.getBoolean("useIPFS");
-            String ipfsApiAddress = args.getArg("ipfs-api-address", "/ip4/127.0.0.1/tcp/5001");
             ContentAddressedStorage dht = useIPFS ?
-                    new IpfsDHT(new MultiAddress(ipfsApiAddress)) :
+                    new ContentAddressedStorage.HTTP(Builder.buildIpfsApi(args), false, crypto.hasher) :
                     new FileContentAddressedStorage(blockstorePath(args),
                             JdbcTransactionStore.build(getDBConnector(args, "transactions-sql-file"), new SqliteCommands()),
                             crypto.hasher);
@@ -274,7 +273,7 @@ public class Main extends Builder {
                     args = bootstrap(args);
 
                     Multihash pkiIpfsNodeId = useIPFS ?
-                            new IpfsDHT(ipfsApi).id().get() :
+                            new ContentAddressedStorage.HTTP(Builder.buildIpfsApi(args), false, crypto.hasher).id().join() :
                             new FileContentAddressedStorage(blockstorePath(args),
                                     JdbcTransactionStore.build(getDBConnector(args, "transactions-sql-file"), new SqliteCommands()),
                                     crypto.hasher).id().get();
@@ -330,10 +329,10 @@ public class Main extends Builder {
                     Supplier<Connection> transactionDb = getDBConnector(args, "transactions-sql-file");
                     JdbcTransactionStore transactions = JdbcTransactionStore.build(transactionDb, new SqliteCommands());
                     ContentAddressedStorage storage = useIPFS ?
-                            new IpfsDHT(ipfsApi) :
+                            new ContentAddressedStorage.HTTP(Builder.buildIpfsApi(args), false, crypto.hasher) :
                             S3Config.useS3(args) ?
                                     new S3BlockStorage(S3Config.build(args), Cid.decode(args.getArg("ipfs.id")),
-                                            BlockStoreProperties.empty(), transactions, crypto.hasher, new IpfsDHT(ipfsApi)) :
+                                            BlockStoreProperties.empty(), transactions, crypto.hasher, new ContentAddressedStorage.HTTP(Builder.buildIpfsApi(args), false, crypto.hasher)) :
                                     new FileContentAddressedStorage(blockstorePath(args),
                                             transactions, crypto.hasher);
                     Multihash pkiIpfsNodeId = storage.id().get();
@@ -585,7 +584,7 @@ public class Main extends Builder {
 
             Path blacklistPath = a.fromPeergosDir("blacklist_file", "blacklist.txt");
             PublicKeyBlackList blacklist = new UserBasedBlacklist(blacklistPath, core, localMutable, p2pDht, hasher);
-            MutablePointers blockingMutablePointers = new BlockingMutablePointers(new PinningMutablePointers(localMutable, p2pDht), blacklist);
+            MutablePointers blockingMutablePointers = new BlockingMutablePointers(localMutable, blacklist);
             MutablePointers p2mMutable = new ProxyingMutablePointers(nodeId, core, blockingMutablePointers, proxingMutable);
 
             SocialNetworkProxy httpSocial = new HttpSocialNetwork(p2pHttpProxy, p2pHttpProxy);
