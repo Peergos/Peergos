@@ -188,7 +188,7 @@ public class MultiNodeNetworkTests {
         List<UserPublicKeyLink> existing = user.network.coreNode.getChain(username).join();
         List<UserPublicKeyLink> newChain = Migrate.buildMigrationChain(existing, newStorageNodeId, user.signer.secret);
         UserContext userViaNewServer = ensureSignedUp(username, password, node2, crypto);
-        List<BatWithId> bats = user.network.batCave.getUserBats(username, userViaNewServer.signer).join();
+        List<BatWithId> bats = node1.batCave.getUserBats(username, userViaNewServer.signer).join();
         Optional<BatWithId> mirrorBat = Optional.of(bats.get(bats.size() - 1));
         userViaNewServer.network.coreNode.migrateUser(username, newChain, originalNodeId, mirrorBat).join();
 
