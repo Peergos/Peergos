@@ -392,13 +392,8 @@ public abstract class UserTests {
         MaybeMultihash target = network.mutable.getPointerTarget(aContext.signer.publicKeyHash, aRoot.writer(), network.dhtClient).join();
         MaybeMultihash current = network.mutable.getPointerTarget(bContext.signer.publicKeyHash, bRoot.writer(), network.dhtClient).join();
         HashCasPair cas = new HashCasPair(current, target);
-        try {
-            network.mutable.setPointer(bContext.signer.publicKeyHash, bRoot.writer(),
-                    bRoot.signingPair().secret.signMessage(cas.serialize())).join();
-            throw new Throwable("Should not get here!");
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        Assert.assertFalse(network.mutable.setPointer(bContext.signer.publicKeyHash, bRoot.writer(),
+                bRoot.signingPair().secret.signMessage(cas.serialize())).join());
         MaybeMultihash updated = network.mutable.getPointerTarget(bContext.signer.publicKeyHash, bRoot.writer(), network.dhtClient).join();
         Assert.assertTrue("Malicious pointer update failed", updated.equals(current));
     }
