@@ -45,4 +45,16 @@ public class BatId implements Cborable {
             throw new IllegalStateException("Incorrect cbor for BatId: " + cbor);
         return new BatId(Cid.cast(((CborObject.CborByteArray) cbor).value));
     }
+
+    @Override
+    public int hashCode() {
+        return id.hashCode();
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (! (o instanceof BatId)) return false;
+        return id.equals(((BatId) o).id);
+    }
 }

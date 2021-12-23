@@ -45,4 +45,16 @@ public class BatWithId implements Cborable {
         CborObject.CborMap m = (CborObject.CborMap) cbor;
         return new BatWithId(m.get("b", Bat::fromCbor), m.get("i", c -> Cid.cast(((CborObject.CborByteArray)c).value)));
     }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(bat, id);
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (!(obj instanceof BatWithId))
+            return false;
+        return bat.equals(((BatWithId) obj).bat) && id.equals(((BatWithId) obj).id);
+    }
 }

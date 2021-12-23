@@ -50,7 +50,7 @@ public class JavaPoster implements HttpPoster {
         try
         {
             conn = (HttpURLConnection) buildURL(url).openConnection();
-//            conn.setReadTimeout(15000);
+            conn.setReadTimeout(15000);
             conn.setDoInput(true);
             conn.setDoOutput(true);
             for (Map.Entry<String, String> e : headers.entrySet()) {

@@ -54,6 +54,18 @@ public class Bat implements Cborable {
         return new Bat(m.getByteArray("s"));
     }
 
+    @Override
+    public int hashCode() {
+        return Arrays.hashCode(secret);
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (!(obj instanceof Bat))
+            return false;
+        return Arrays.equals(secret, ((Bat) obj).secret);
+    }
+
     public CompletableFuture<BlockAuth> generateAuth(Cid block,
                                                      Cid sourceNode,
                                                      int expirySeconds,
