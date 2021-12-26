@@ -42,11 +42,6 @@ public class DelayingStorage implements ContentAddressedStorage {
         return source.closeTransaction(owner, tid);
     }
 
-    @Override
-    public CompletableFuture<Boolean> gc() {
-        return source.gc();
-    }
-
     private static void sleep(int millis) {
         try {
             Thread.sleep(millis);

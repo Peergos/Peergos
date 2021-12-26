@@ -74,11 +74,6 @@ public abstract class DelegatingStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Boolean> gc() {
-        return target.gc();
-    }
-
-    @Override
     public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
         return target.getSize(block);
     }

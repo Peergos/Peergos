@@ -123,11 +123,6 @@ public class RetryStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Boolean> gc() {
-        return runWithRetry(() -> target.gc());
-    }
-
-    @Override
     public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
         return runWithRetry(() -> target.getSize(block));
     }

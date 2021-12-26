@@ -62,16 +62,6 @@ public class RetryStorageTests {
         }
 
         @Override
-        public CompletableFuture<Boolean> gc() {
-            if(counter++ % retryLimit != 0) {
-                return CompletableFuture.failedFuture(new Error("failure!"));
-            }else {
-                counter=1;
-                return CompletableFuture.completedFuture(true);
-            }
-        }
-
-        @Override
         public CompletableFuture<List<Cid>> put(PublicKeyHash owner,
                                                 PublicKeyHash writer,
                                                 List<byte[]> signatures,
@@ -152,7 +142,7 @@ public class RetryStorageTests {
     public void retryMethodSuccess() {
         ContentAddressedStorage storage = new RetryStorage(new FailingStorage(3), 3);
 
-        Boolean result = storage.gc().join();
+        Cid result = storage.id().join();
         Assert.assertNotNull("Retry should succeed", result);
     }
     @Test
@@ -160,7 +150,7 @@ public class RetryStorageTests {
         ContentAddressedStorage storage = new RetryStorage(new FailingStorage(4), 3);
 
         try {
-            Boolean result = storage.gc().join();
+            Cid result = storage.id().join();
             Assert.assertTrue("Should throw exception", false);
         } catch (Exception e) {
             System.currentTimeMillis();

@@ -46,11 +46,6 @@ public class NonWriteThroughStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Boolean> gc() {
-        return modifications.gc();
-    }
-
-    @Override
     public CompletableFuture<List<Cid>> put(PublicKeyHash owner,
                                             PublicKeyHash writer,
                                             List<byte[]> signedHashes,

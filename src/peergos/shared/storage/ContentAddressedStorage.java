@@ -167,12 +167,6 @@ public interface ContentAddressedStorage {
                 }).thenApply(x -> new ArrayList<>(cache.getCached()));
     }
 
-    /** Run a garbage collection on the ipfs block store. This is only callable internally to a Peergos server.
-     *
-     * @return true
-     */
-    CompletableFuture<Boolean> gc();
-
     /**
      * Get the size in bytes of the object with the requested hash
      * @param block The hash of the object
@@ -378,21 +372,6 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<Boolean> gc() {
-            return poster.get(apiPrefix + GC)
-                    .thenApply(raw -> {
-                        if (DEBUG_GC) {
-                            List<Multihash> removed = JSONParser.parseStream(new String(raw))
-                                    .stream()
-                                    .map(json -> getObjectHash(json))
-                                    .collect(Collectors.toList());
-                            System.out.println("GCed:\n" + removed);
-                        }
-                        return true;
-                    });
-        }
-
-        @Override
         public CompletableFuture<List<Cid>> put(PublicKeyHash owner,
                                                 PublicKeyHash writer,
                                                 List<byte[]> signedHashes,
@@ -570,11 +549,6 @@ public interface ContentAddressedStorage {
                     owner,
                     () -> local.getChampLookup(owner, root, champKey, bat),
                     target -> p2p.getChampLookup(target, owner, root, champKey, bat));
-        }
-
-        @Override
-        public CompletableFuture<Boolean> gc() {
-            return CompletableFuture.completedFuture(true);
         }
 
         @Override

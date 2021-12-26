@@ -54,11 +54,6 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Boolean> gc() {
-        return CompletableFuture.completedFuture(true);
-    }
-
-    @Override
     public Stream<Cid> getAllBlockHashes() {
         return storage.keySet().stream();
     }

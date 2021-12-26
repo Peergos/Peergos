@@ -245,11 +245,6 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Boolean> gc() {
-        return Futures.errored(new IllegalStateException("S3 doesn't implement GC!"));
-    }
-
-    @Override
     public List<Multihash> getOpenTransactionBlocks() {
         return transactions.getOpenTransactionBlocks();
     }

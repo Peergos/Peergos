@@ -74,11 +74,6 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     }
 
     @Override
-    public CompletableFuture<Boolean> gc() {
-        return CompletableFuture.completedFuture(true);
-    }
-
-    @Override
     public List<Multihash> getOpenTransactionBlocks() {
         return transactions.getOpenTransactionBlocks();
     }

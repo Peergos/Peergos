@@ -136,11 +136,6 @@ public class PeergosBackedStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Boolean> gc() {
-        return Futures.of(true);
-    }
-
-    @Override
     public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
         return getRaw((Cid)block, Optional.empty()).thenApply(b -> b.map(d -> d.length));
     }

@@ -152,11 +152,6 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
     }
 
     @Override
-    public CompletableFuture<Boolean> gc() {
-        throw new IllegalStateException("Unsupported operation!");
-    }
-
-    @Override
     public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
         throw new IllegalStateException("Unsupported operation!");
     }
