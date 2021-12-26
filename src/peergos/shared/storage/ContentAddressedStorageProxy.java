@@ -6,6 +6,7 @@ import peergos.shared.io.ipfs.api.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multiaddr.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
@@ -21,7 +22,7 @@ public interface ContentAddressedStorageProxy {
 
     CompletableFuture<Boolean> closeTransaction(Multihash targetServerId, PublicKeyHash owner, TransactionId tid);
 
-    CompletableFuture<List<byte[]>> getChampLookup(Multihash targetServerId, PublicKeyHash owner, Multihash root, byte[] champKey);
+    CompletableFuture<List<byte[]>> getChampLookup(Multihash targetServerId, PublicKeyHash owner, Multihash root, byte[] champKey, Optional<BatWithId> bat);
 
     CompletableFuture<List<Cid>> put(Multihash targetServerId,
                                      PublicKeyHash owner,
@@ -89,9 +90,13 @@ public interface ContentAddressedStorageProxy {
         public CompletableFuture<List<byte[]>> getChampLookup(Multihash targetServerId,
                                                               PublicKeyHash owner,
                                                               Multihash root,
-                                                              byte[] champKey) {
+                                                              byte[] champKey,
+                                                              Optional<BatWithId> bat) {
             return poster.get(getProxyUrlPrefix(targetServerId) + apiPrefix
-                    + "champ/get?arg=" + root.toString() + "&arg=" + ArrayOps.bytesToHex(champKey) + "&owner=" + encode(owner.toString()))
+                    + "champ/get?arg=" + root.toString()
+                    + "&arg=" + ArrayOps.bytesToHex(champKey)
+                    + "&owner=" + encode(owner.toString())
+                    + bat.map(b -> "&bat=" + b.encode()))
                     .thenApply(CborObject::fromByteArray)
                     .thenApply(c -> (CborObject.CborList)c)
                     .thenApply(res -> res.map(c -> ((CborObject.CborByteArray)c).value));

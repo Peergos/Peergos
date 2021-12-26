@@ -121,7 +121,7 @@ public class RetryStorageTests {
         }
 
         @Override
-        public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey) {
+        public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey, Optional<BatWithId> bat) {
             if(counter++ % retryLimit != 0) {
                 return CompletableFuture.failedFuture(new Error("failure!"));
             }else {

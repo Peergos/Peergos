@@ -153,16 +153,16 @@ public interface ContentAddressedStorage {
      */
     CompletableFuture<Optional<byte[]>> getRaw(Cid hash, Optional<BatWithId> bat);
 
-    CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey);
+    CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey, Optional<BatWithId> bat);
 
-    default CompletableFuture<List<byte[]>> getChampLookup(Multihash root, byte[] champKey, Hasher hasher) {
+    default CompletableFuture<List<byte[]>> getChampLookup(Multihash root, byte[] champKey, Optional<BatWithId> bat, Hasher hasher) {
         CachingStorage cache = new CachingStorage(this, 100, 100 * 1024);
         return ChampWrapper.create((Cid)root, x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c)
                 .thenCompose(tree -> tree.get(champKey))
                 .thenApply(c -> c.map(x -> x.target).map(MaybeMultihash::of).orElse(MaybeMultihash.empty()))
                 .thenApply(btreeValue -> {
                     if (btreeValue.isPresent())
-                        return cache.get((Cid) btreeValue.get(), Optional.empty());
+                        return cache.get((Cid) btreeValue.get(), bat);
                     return Optional.empty();
                 }).thenApply(x -> new ArrayList<>(cache.getCached()));
     }
@@ -364,11 +364,14 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey) {
+        public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey, Optional<BatWithId> bat) {
             if (! isPeergosServer) {
-                return getChampLookup(root, champKey, hasher);
+                return getChampLookup(root, champKey, bat, hasher);
             }
-            return poster.get(apiPrefix + CHAMP_GET + "?arg=" + root.toString() + "&arg=" + ArrayOps.bytesToHex(champKey) + "&owner=" + encode(owner.toString()))
+            return poster.get(apiPrefix + CHAMP_GET + "?arg=" + root.toString()
+                    + "&arg=" + ArrayOps.bytesToHex(champKey)
+                    + "&owner=" + encode(owner.toString())
+                    + bat.map(b -> "&bat=" + b.encode()))
                     .thenApply(CborObject::fromByteArray)
                     .thenApply(c -> (CborObject.CborList)c)
                     .thenApply(res -> res.map(c -> ((CborObject.CborByteArray)c).value));
@@ -561,12 +564,12 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey) {
+        public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey, Optional<BatWithId> bat) {
             return Proxy.redirectCall(core,
                     ourNodeId,
                     owner,
-                    () -> local.getChampLookup(owner, root, champKey),
-                    target -> p2p.getChampLookup(target, owner, root, champKey));
+                    () -> local.getChampLookup(owner, root, champKey, bat),
+                    target -> p2p.getChampLookup(target, owner, root, champKey, bat));
         }
 
         @Override

@@ -118,8 +118,8 @@ public class RetryStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey) {
-        return runWithRetry(() -> target.getChampLookup(owner, root, champKey));
+    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey, Optional<BatWithId> bat) {
+        return runWithRetry(() -> target.getChampLookup(owner, root, champKey, bat));
     }
 
     @Override

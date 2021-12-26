@@ -67,8 +67,11 @@ public class TransactionalIpfs extends DelegatingStorage implements DeletableCon
     }
 
     @Override
-    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey) {
-        return getChampLookup(root, champKey, hasher);
+    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner,
+                                                          Multihash root,
+                                                          byte[] champKey,
+                                                          Optional<BatWithId> bat) {
+        return getChampLookup(root, champKey, bat, hasher);
     }
 
     @Override

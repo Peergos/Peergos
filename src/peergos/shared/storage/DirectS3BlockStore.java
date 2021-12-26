@@ -303,13 +303,13 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey) {
+    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey, Optional<BatWithId> bat) {
         return Futures.asyncExceptionally(
-                () -> fallback.getChampLookup(owner, root, champKey),
+                () -> fallback.getChampLookup(owner, root, champKey, bat),
                 t -> {
                     if (!(t instanceof RateLimitException))
                         return Futures.errored(t);
-                    return getChampLookup(root, champKey, hasher);
+                    return getChampLookup(root, champKey, bat, hasher);
                 });
     }
 

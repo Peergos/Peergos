@@ -131,7 +131,7 @@ public class PeergosBackedStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey) {
+    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey, Optional<BatWithId> bat) {
         return Futures.of(Collections.emptyList());
     }
 

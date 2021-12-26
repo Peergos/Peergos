@@ -123,7 +123,10 @@ public class DHTHandler implements HttpHandler {
                     PublicKeyHash ownerHash = PublicKeyHash.fromString(last.apply("owner"));
                     Multihash root = Cid.decode(args.get(0));
                     byte[] champKey = ArrayOps.hexToBytes(args.get(1));
-                    dht.getChampLookup(ownerHash, root, champKey).thenAccept(blocks -> {
+                    Optional<BatWithId> bat = params.containsKey("bat") ?
+                            Optional.of(BatWithId.decode(last.apply("bat"))) :
+                            Optional.empty();
+                    dht.getChampLookup(ownerHash, root, champKey, bat).thenAccept(blocks -> {
                         replyBytes(httpExchange, new CborObject.CborList(blocks.stream()
                                 .map(CborObject.CborByteArray::new).collect(Collectors.toList())).serialize(), Optional.of(root));
                     }).exceptionally(Futures::logAndThrow).get();

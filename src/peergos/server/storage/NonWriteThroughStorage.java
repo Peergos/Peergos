@@ -41,8 +41,8 @@ public class NonWriteThroughStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey) {
-        return modifications.getChampLookup(owner, root, champKey);
+    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey, Optional<BatWithId> bat) {
+        return modifications.getChampLookup(owner, root, champKey, bat);
     }
 
     @Override

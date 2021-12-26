@@ -452,23 +452,23 @@ public class NetworkAccess {
         Pair<Multihash, ByteArrayWrapper> cacheKey = new Pair<>(base.tree.get(), new ByteArrayWrapper(cap.getMapKey()));
         if (cache.containsKey(cacheKey))
             return Futures.of(cache.get(cacheKey));
-        return Futures.asyncExceptionally(
-                () -> dhtClient.getChampLookup(cap.owner, base.tree.get(), cap.getMapKey()),
-                t -> dhtClient.getChampLookup(base.tree.get(), cap.getMapKey(), hasher)
-        ).thenCompose(blocks -> ChampWrapper.create((Cid)base.tree.get(), x -> Futures.of(x.data), dhtClient, hasher, c -> (CborObject.CborMerkleLink) c)
-                .thenCompose(tree -> tree.get(cap.getMapKey()))
-                .thenApply(c -> c.map(x -> x.target))
-                .thenCompose(btreeValue -> {
-                    if (btreeValue.isPresent())
-                        return cap.bat.map(b -> b.calculateId(hasher).thenApply(Optional::of)).orElse(Futures.of(Optional.empty()))
-                                .thenCompose(batId -> dhtClient.get((Cid)btreeValue.get(), batId.map(id -> new BatWithId(cap.bat.get(), id.id))))
-                                .thenApply(value -> value.map(cbor -> CryptreeNode.fromCbor(cbor, cap.rBaseKey, btreeValue.get())))
-                                .thenApply(res -> {
-                                    cache.put(cacheKey, res);
-                                    return res;
-                                });
-                    return CompletableFuture.completedFuture(Optional.empty());
-                }));
+        return cap.bat.map(b -> b.calculateId(hasher).thenApply(id -> Optional.of(new BatWithId(b, id.id)))).orElse(Futures.of(Optional.empty()))
+                .thenCompose(bat -> Futures.asyncExceptionally(
+                        () -> dhtClient.getChampLookup(cap.owner, base.tree.get(), cap.getMapKey(), bat),
+                        t -> dhtClient.getChampLookup(base.tree.get(), cap.getMapKey(), bat, hasher)
+                ).thenCompose(blocks -> ChampWrapper.create((Cid)base.tree.get(), x -> Futures.of(x.data), dhtClient, hasher, c -> (CborObject.CborMerkleLink) c)
+                        .thenCompose(tree -> tree.get(cap.getMapKey()))
+                        .thenApply(c -> c.map(x -> x.target))
+                        .thenCompose(btreeValue -> {
+                            if (btreeValue.isPresent())
+                                return dhtClient.get((Cid)btreeValue.get(), bat)
+                                        .thenApply(value -> value.map(cbor -> CryptreeNode.fromCbor(cbor, cap.rBaseKey, btreeValue.get())))
+                                        .thenApply(res -> {
+                                            cache.put(cacheKey, res);
+                                            return res;
+                                        });
+                            return CompletableFuture.completedFuture(Optional.empty());
+                        })));
     }
 
     private CompletableFuture<List<Cid>> bulkUploadFragments(List<Fragment> fragments,
