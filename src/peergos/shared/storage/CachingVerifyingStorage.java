@@ -4,6 +4,7 @@ import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -80,11 +81,11 @@ public class CachingVerifyingStorage extends DelegatingStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
-                                                  PublicKeyHash writer,
-                                                  List<byte[]> signedHashes,
-                                                  List<byte[]> blocks,
-                                                  TransactionId tid) {
+    public CompletableFuture<List<Cid>> put(PublicKeyHash owner,
+                                            PublicKeyHash writer,
+                                            List<byte[]> signedHashes,
+                                            List<byte[]> blocks,
+                                            TransactionId tid) {
         return target.put(owner, writer, signedHashes, blocks, tid)
                 .thenCompose(hashes -> Futures.combineAllInOrder(hashes.stream()
                         .map(h -> verify(blocks.get(hashes.indexOf(h)), h, () -> h))
@@ -99,7 +100,7 @@ public class CachingVerifyingStorage extends DelegatingStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Multihash key, String auth) {
+    public CompletableFuture<Optional<CborObject>> get(Cid key, Optional<BatWithId> bat) {
         if (cache.containsKey(key))
             return CompletableFuture.completedFuture(Optional.of(CborObject.fromByteArray(cache.get(key))));
 
@@ -110,7 +111,7 @@ public class CachingVerifyingStorage extends DelegatingStorage {
         pending.put(key, pipe);
 
         CompletableFuture<Optional<CborObject>> result = new CompletableFuture<>();
-        target.get(key, auth)
+        target.get(key, bat)
                 .thenCompose(cborOpt -> cborOpt.map(cbor -> verify(cbor.toByteArray(), key, () -> cbor)
                         .thenApply(Optional::of))
                         .orElseGet(() -> Futures.of(Optional.empty())))
@@ -133,12 +134,12 @@ public class CachingVerifyingStorage extends DelegatingStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner,
-                                                     PublicKeyHash writer,
-                                                     List<byte[]> signatures,
-                                                     List<byte[]> blocks,
-                                                     TransactionId tid,
-                                                     ProgressConsumer<Long> progressConsumer) {
+    public CompletableFuture<List<Cid>> putRaw(PublicKeyHash owner,
+                                               PublicKeyHash writer,
+                                               List<byte[]> signatures,
+                                               List<byte[]> blocks,
+                                               TransactionId tid,
+                                               ProgressConsumer<Long> progressConsumer) {
         return target.putRaw(owner, writer, signatures, blocks, tid, progressConsumer)
                 .thenCompose(hashes -> Futures.combineAllInOrder(hashes.stream()
                         .map(h -> verify(blocks.get(hashes.indexOf(h)), h, () -> h))
@@ -153,7 +154,7 @@ public class CachingVerifyingStorage extends DelegatingStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Multihash key, String auth) {
+    public CompletableFuture<Optional<byte[]>> getRaw(Cid key, Optional<BatWithId> bat) {
         if (cache.containsKey(key))
             return CompletableFuture.completedFuture(Optional.of(cache.get(key)));
 
@@ -162,7 +163,7 @@ public class CachingVerifyingStorage extends DelegatingStorage {
 
         CompletableFuture<Optional<byte[]>> pipe = new CompletableFuture<>();
         pendingRaw.put(key, pipe);
-        return target.getRaw(key, auth)
+        return target.getRaw(key, bat)
                 .thenCompose(arrOpt -> arrOpt.map(bytes -> verify(bytes, key, () -> bytes)
                         .thenApply(Optional::of))
                         .orElseGet(() -> Futures.of(Optional.empty())))

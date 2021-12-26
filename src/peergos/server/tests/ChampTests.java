@@ -52,7 +52,7 @@ public class ChampTests {
     @Test
     public void insertAndRetrieve() throws Exception {
         ContentAddressedStorage storage = new FileContentAddressedStorage(Files.createTempDirectory("peergos-tmp"),
-                JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()), crypto.hasher);
+                JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()), (a, b, c, d) -> Futures.of(true), crypto.hasher);
         SigningPrivateKeyAndPublicHash user = createUser(storage, crypto);
         Random r = new Random(28);
 
@@ -167,7 +167,7 @@ public class ChampTests {
     @Test
     public void diff() throws Exception {
         ContentAddressedStorage storage = new FileContentAddressedStorage(Files.createTempDirectory("peergos-tmp"),
-                JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()), crypto.hasher);
+                JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()), (a, b, c, d) -> Futures.of(true), crypto.hasher);
         SigningPrivateKeyAndPublicHash user = createUser(storage, crypto);
         Random r = new Random(28);
 
@@ -285,7 +285,7 @@ public class ChampTests {
     @Test
     public void correctDelete() throws Exception {
         ContentAddressedStorage storage = new FileContentAddressedStorage(Files.createTempDirectory("peergos-tmp"),
-                JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()), crypto.hasher);
+                JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()), (a, b, c, d) -> Futures.of(true), crypto.hasher);
         SigningPrivateKeyAndPublicHash user = createUser(storage, crypto);
         Random r = new Random(28);
 

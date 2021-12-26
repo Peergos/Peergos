@@ -6,6 +6,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -53,41 +54,41 @@ public class DelayingStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
-                                                  PublicKeyHash writer,
-                                                  List<byte[]> signedHashes,
-                                                  List<byte[]> blocks,
-                                                  TransactionId tid) {
+    public CompletableFuture<List<Cid>> put(PublicKeyHash owner,
+                                            PublicKeyHash writer,
+                                            List<byte[]> signedHashes,
+                                            List<byte[]> blocks,
+                                            TransactionId tid) {
         sleep(writeDelay);
         return source.put(owner, writer, signedHashes, blocks, tid);
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner,
-                                                     PublicKeyHash writer,
-                                                     List<byte[]> signatures,
-                                                     List<byte[]> blocks,
-                                                     TransactionId tid,
-                                                     ProgressConsumer<Long> progressConsumer) {
+    public CompletableFuture<List<Cid>> putRaw(PublicKeyHash owner,
+                                               PublicKeyHash writer,
+                                               List<byte[]> signatures,
+                                               List<byte[]> blocks,
+                                               TransactionId tid,
+                                               ProgressConsumer<Long> progressConsumer) {
         sleep(writeDelay);
         return source.putRaw(owner, writer, signatures, blocks, tid, progressConsumer);
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Multihash object, String auth) {
+    public CompletableFuture<Optional<byte[]>> getRaw(Cid object, Optional<BatWithId> bat) {
         try {
             sleep(readDelay);
-            return source.getRaw(object, auth);
+            return source.getRaw(object, bat);
         } catch (Exception e) {
             throw new RuntimeException(e.getMessage(), e);
         }
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Multihash hash, String auth) {
+    public CompletableFuture<Optional<CborObject>> get(Cid hash, Optional<BatWithId> bat) {
         try {
             sleep(readDelay);
-            return source.get(hash, auth);
+            return source.get(hash, bat);
         } catch (Exception e) {
             throw new RuntimeException(e.getMessage(), e);
         }
@@ -97,15 +98,6 @@ public class DelayingStorage implements ContentAddressedStorage {
     public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey) {
         sleep(readDelay);
         return source.getChampLookup(owner, root, champKey);
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> getLinks(Multihash root, String auth) {
-        try {
-            return source.getLinks(root, auth);
-        } catch (Exception e) {
-            throw new RuntimeException(e.getMessage(), e);
-        }
     }
 
     @Override

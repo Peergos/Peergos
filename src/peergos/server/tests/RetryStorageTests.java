@@ -12,6 +12,7 @@ import peergos.shared.storage.BlockStoreProperties;
 import peergos.shared.storage.ContentAddressedStorage;
 import peergos.shared.storage.RetryStorage;
 import peergos.shared.storage.TransactionId;
+import peergos.shared.storage.auth.*;
 import peergos.shared.util.ProgressConsumer;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -71,25 +72,25 @@ public class RetryStorageTests {
         }
 
         @Override
-        public CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
-                                                      PublicKeyHash writer,
-                                                      List<byte[]> signatures,
-                                                      List<byte[]> blocks,
-                                                      TransactionId tid) {
+        public CompletableFuture<List<Cid>> put(PublicKeyHash owner,
+                                                PublicKeyHash writer,
+                                                List<byte[]> signatures,
+                                                List<byte[]> blocks,
+                                                TransactionId tid) {
             return put(writer, blocks, false);
         }
 
         @Override
-        public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner,
-                                                         PublicKeyHash writer,
-                                                         List<byte[]> signatures,
-                                                         List<byte[]> blocks,
-                                                         TransactionId tid,
-                                                         ProgressConsumer<Long> progressConsumer) {
+        public CompletableFuture<List<Cid>> putRaw(PublicKeyHash owner,
+                                                   PublicKeyHash writer,
+                                                   List<byte[]> signatures,
+                                                   List<byte[]> blocks,
+                                                   TransactionId tid,
+                                                   ProgressConsumer<Long> progressConsumer) {
             return put(writer, blocks, true);
         }
 
-        private CompletableFuture<List<Multihash>> put(PublicKeyHash writer, List<byte[]> blocks, boolean isRaw) {
+        private CompletableFuture<List<Cid>> put(PublicKeyHash writer, List<byte[]> blocks, boolean isRaw) {
             if(counter++ % retryLimit != 0) {
                 return CompletableFuture.failedFuture(new Error("failure!"));
             }else{
@@ -100,7 +101,7 @@ public class RetryStorageTests {
 
 
         @Override
-        public CompletableFuture<Optional<byte[]>> getRaw(Multihash object, String auth) {
+        public CompletableFuture<Optional<byte[]>> getRaw(Cid object, Optional<BatWithId> bat) {
             if(counter++ % retryLimit != 0) {
                 return CompletableFuture.failedFuture(new Error("failure!"));
             }else {
@@ -110,7 +111,7 @@ public class RetryStorageTests {
         }
 
         @Override
-        public CompletableFuture<Optional<CborObject>> get(Multihash hash, String auth) {
+        public CompletableFuture<Optional<CborObject>> get(Cid hash, Optional<BatWithId> bat) {
             if(counter++ % retryLimit != 0) {
                 return CompletableFuture.failedFuture(new Error("failure!"));
             }else {
@@ -121,16 +122,6 @@ public class RetryStorageTests {
 
         @Override
         public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey) {
-            if(counter++ % retryLimit != 0) {
-                return CompletableFuture.failedFuture(new Error("failure!"));
-            }else {
-                counter=1;
-                return CompletableFuture.completedFuture(Collections.emptyList());
-            }
-        }
-
-        @Override
-        public CompletableFuture<List<Multihash>> getLinks(Multihash root, String auth) {
             if(counter++ % retryLimit != 0) {
                 return CompletableFuture.failedFuture(new Error("failure!"));
             }else {

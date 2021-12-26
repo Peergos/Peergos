@@ -455,17 +455,13 @@ public class NetworkAccess {
         return Futures.asyncExceptionally(
                 () -> dhtClient.getChampLookup(cap.owner, base.tree.get(), cap.getMapKey()),
                 t -> dhtClient.getChampLookup(base.tree.get(), cap.getMapKey(), hasher)
-        ).thenCompose(blocks -> ChampWrapper.create(base.tree.get(), x -> Futures.of(x.data), dhtClient, hasher, c -> (CborObject.CborMerkleLink) c)
+        ).thenCompose(blocks -> ChampWrapper.create((Cid)base.tree.get(), x -> Futures.of(x.data), dhtClient, hasher, c -> (CborObject.CborMerkleLink) c)
                 .thenCompose(tree -> tree.get(cap.getMapKey()))
-                .thenApply(c -> c.map(x -> x.target).map(MaybeMultihash::of).orElse(MaybeMultihash.empty()))
+                .thenApply(c -> c.map(x -> x.target))
                 .thenCompose(btreeValue -> {
                     if (btreeValue.isPresent())
-                        return dhtClient.id()
-                                .thenCompose(id -> cap.bat.map(b ->
-                                        b.calculateId(hasher)
-                                                .thenCompose(batId -> b.generateAuth((Cid)btreeValue.get(), id, 300, S3Request.currentDatetime(), batId.id, hasher))
-                                        .thenApply(BlockAuth::encode)).orElse(Futures.of("")))
-                                .thenCompose(auth -> dhtClient.get(btreeValue.get(), auth))
+                        return cap.bat.map(b -> b.calculateId(hasher).thenApply(Optional::of)).orElse(Futures.of(Optional.empty()))
+                                .thenCompose(batId -> dhtClient.get((Cid)btreeValue.get(), batId.map(id -> new BatWithId(cap.bat.get(), id.id))))
                                 .thenApply(value -> value.map(cbor -> CryptreeNode.fromCbor(cbor, cap.rBaseKey, btreeValue.get())))
                                 .thenApply(res -> {
                                     cache.put(cacheKey, res);
@@ -475,19 +471,19 @@ public class NetworkAccess {
                 }));
     }
 
-    private CompletableFuture<List<Multihash>> bulkUploadFragments(List<Fragment> fragments,
-                                                                   PublicKeyHash owner,
-                                                                   PublicKeyHash writer,
-                                                                   List<byte[]> signatures,
-                                                                   TransactionId tid,
-                                                                   ProgressConsumer<Long> progressCounter) {
+    private CompletableFuture<List<Cid>> bulkUploadFragments(List<Fragment> fragments,
+                                                             PublicKeyHash owner,
+                                                             PublicKeyHash writer,
+                                                             List<byte[]> signatures,
+                                                             TransactionId tid,
+                                                             ProgressConsumer<Long> progressCounter) {
         return dhtClient.putRaw(owner, writer, signatures, fragments
                 .stream()
                 .map(f -> f.data)
                 .collect(Collectors.toList()), tid, progressCounter);
     }
 
-    public CompletableFuture<List<Multihash>> uploadFragments(List<Fragment> fragments,
+    public CompletableFuture<List<Cid>> uploadFragments(List<Fragment> fragments,
                                                               PublicKeyHash owner,
                                                               SigningPrivateKeyAndPublicHash writer,
                                                               ProgressConsumer<Long> progressCounter,
@@ -594,15 +590,12 @@ public class NetworkAccess {
                     .parallel()
                     .map(i -> {
                         Cid h = hashes.get(i);
-                        return (bats.isEmpty() ? Futures.of("") :
-                                bats.get(i).bat.generateAuth(h, id, 300, S3Request.currentDatetime(), bats.get(i).id, hasher)
-                                        .thenApply(BlockAuth::encode)).thenCompose(auth ->
-                                (h.isIdentity() ?
+                        return (h.isIdentity() ?
                                         CompletableFuture.completedFuture(Optional.of(h.getHash())) :
                                         h.codec == Cid.Codec.Raw ?
-                                                dhtClient.getRaw(h, auth) :
-                                                dhtClient.get(h, auth)
-                                                        .thenApply(cborOpt -> cborOpt.map(cbor -> ((CborObject.CborByteArray) cbor).value)))) // for backwards compatibility
+                                                dhtClient.getRaw(h, Optional.of(bats.get(i))) :
+                                                dhtClient.get(h, Optional.of(bats.get(i)))
+                                                        .thenApply(cborOpt -> cborOpt.map(cbor -> ((CborObject.CborByteArray) cbor).value))) // for backwards compatibility
                                 .thenApply(dataOpt -> {
                                     Optional<byte[]> bytes = dataOpt;
                                     bytes.ifPresent(arr -> monitor.accept((long) (arr.length / spaceIncreaseFactor)));

@@ -1,5 +1,6 @@
 package peergos.server.storage;
 
+import peergos.server.storage.auth.*;
 import peergos.server.util.Logging;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
@@ -28,11 +29,13 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     private static final int DIRECTORY_DEPTH = 5;
     private final Path root;
     private final TransactionStore transactions;
+    private final BlockRequestAuthoriser authoriser;
     private final Hasher hasher;
 
-    public FileContentAddressedStorage(Path root, TransactionStore transactions, Hasher hasher) {
+    public FileContentAddressedStorage(Path root, TransactionStore transactions, BlockRequestAuthoriser authoriser, Hasher hasher) {
         this.root = root;
         this.transactions = transactions;
+        this.authoriser = authoriser;
         this.hasher = hasher;
         File rootDir = root.toFile();
         if (!rootDir.exists()) {
@@ -81,36 +84,36 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
-                                                  PublicKeyHash writer,
-                                                  List<byte[]> signedHashes,
-                                                  List<byte[]> blocks,
-                                                  TransactionId tid) {
+    public CompletableFuture<List<Cid>> put(PublicKeyHash owner,
+                                            PublicKeyHash writer,
+                                            List<byte[]> signedHashes,
+                                            List<byte[]> blocks,
+                                            TransactionId tid) {
         return put(owner, writer, signedHashes, blocks, false, tid);
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner,
-                                                     PublicKeyHash writer,
-                                                     List<byte[]> signatures,
-                                                     List<byte[]> blocks,
-                                                     TransactionId tid,
-                                                     ProgressConsumer<Long> progressConsumer) {
+    public CompletableFuture<List<Cid>> putRaw(PublicKeyHash owner,
+                                               PublicKeyHash writer,
+                                               List<byte[]> signatures,
+                                               List<byte[]> blocks,
+                                               TransactionId tid,
+                                               ProgressConsumer<Long> progressConsumer) {
         return put(owner, writer, signatures, blocks, true, tid);
     }
 
-    private CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
-                                                   PublicKeyHash writer,
-                                                   List<byte[]> signatures,
-                                                   List<byte[]> blocks,
-                                                   boolean isRaw,
-                                                   TransactionId tid) {
+    private CompletableFuture<List<Cid>> put(PublicKeyHash owner,
+                                             PublicKeyHash writer,
+                                             List<byte[]> signatures,
+                                             List<byte[]> blocks,
+                                             boolean isRaw,
+                                             TransactionId tid) {
         return CompletableFuture.completedFuture(blocks.stream()
                 .map(b -> put(b, isRaw, tid, owner))
                 .collect(Collectors.toList()));
     }
 
-    private Path getFilePath(Multihash h) {
+    private Path getFilePath(Cid h) {
         String name = h.toString();
 
         int depth = DIRECTORY_DEPTH;
@@ -130,14 +133,24 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Multihash hash, String auth) {
-        if (hash instanceof Cid && ((Cid) hash).codec == Cid.Codec.Raw)
+    public CompletableFuture<Optional<CborObject>> get(Cid hash, String auth) {
+        if (hash.codec == Cid.Codec.Raw)
             throw new IllegalStateException("Need to call getRaw if cid is not cbor!");
         return getRaw(hash, auth).thenApply(opt -> opt.map(CborObject::fromByteArray));
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash, String auth) {
+    public CompletableFuture<Optional<CborObject>> get(Cid hash, Optional<BatWithId> bat) {
+        return get(hash, bat, id().join(), hasher);
+    }
+
+    @Override
+    public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, Optional<BatWithId> bat) {
+        return getRaw(hash, bat, id().join(), hasher);
+    }
+
+    @Override
+    public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, String auth) {
         try {
             if (hash.isIdentity())
                 return Futures.of(Optional.of(hash.getHash()));
@@ -147,14 +160,17 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
                 return CompletableFuture.completedFuture(Optional.empty());
             }
             try (DataInputStream din = new DataInputStream(new BufferedInputStream(new FileInputStream(file)))) {
-                return CompletableFuture.completedFuture(Optional.of(Serialize.readFully(din)));
+                byte[] block = Serialize.readFully(din);
+                if (! authoriser.allowRead(hash, block, id().join(), auth).join())
+                    throw new IllegalStateException("Unauthorised!");
+                return CompletableFuture.completedFuture(Optional.of(block));
             }
         } catch (IOException e) {
             throw new RuntimeException(e.getMessage(), e);
         }
     }
 
-    public Multihash put(byte[] data, boolean isRaw, TransactionId tid, PublicKeyHash owner) {
+    public Cid put(byte[] data, boolean isRaw, TransactionId tid, PublicKeyHash owner) {
         try {
             Cid cid = new Cid(CID_V1, isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor,
                     Multihash.Type.sha2_256, RAMStorage.hash(data));
@@ -206,33 +222,33 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
         }
     }
 
-    protected List<Multihash> getFiles() {
-        List<Multihash> existing = new ArrayList<>();
+    protected List<Cid> getFiles() {
+        List<Cid> existing = new ArrayList<>();
         getFilesRecursive(root, existing::add);
         return existing;
     }
 
     @Override
     public CompletableFuture<Optional<Integer>> getSize(Multihash h) {
-        Path path = getFilePath(h);
+        Path path = getFilePath((Cid)h);
         File file = root.resolve(path).toFile();
         return CompletableFuture.completedFuture(file.exists() ? Optional.of((int) file.length()) : Optional.empty());
     }
 
     @Override
-    public Stream<Multihash> getAllBlockHashes() {
+    public Stream<Cid> getAllBlockHashes() {
         return getFiles().stream();
     }
 
     @Override
     public void delete(Multihash h) {
-        Path path = getFilePath(h);
+        Path path = getFilePath((Cid)h);
         File file = root.resolve(path).toFile();
         if (file.exists())
             file.delete();
     }
 
-    public Optional<Long> getLastAccessTimeMillis(Multihash h) {
+    public Optional<Long> getLastAccessTimeMillis(Cid h) {
         Path path = getFilePath(h);
         File file = root.resolve(path).toFile();
         if (! file.exists())
@@ -248,14 +264,14 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
         }
     }
 
-    public void applyToAll(Consumer<Multihash> processor) {
+    public void applyToAll(Consumer<Cid> processor) {
         getFilesRecursive(root, processor);
     }
 
-    private void getFilesRecursive(Path path, Consumer<Multihash> accumulator) {
+    private void getFilesRecursive(Path path, Consumer<Cid> accumulator) {
         File pathFile = path.toFile();
         if (pathFile.isFile()) {
-            accumulator.accept(Multihash.fromBase58(pathFile.getName()));
+            accumulator.accept(Cid.decode(pathFile.getName()));
             return;
         }
         else if (!  pathFile.isDirectory())
@@ -279,10 +295,10 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
         }
     }
 
-    public Set<Multihash> retainOnly(Set<Multihash> pins) {
-        List<Multihash> existing = getFiles();
-        Set<Multihash> removed = new HashSet<>();
-        for (Multihash h : existing) {
+    public Set<Cid> retainOnly(Set<Cid> pins) {
+        List<Cid> existing = getFiles();
+        Set<Cid> removed = new HashSet<>();
+        for (Cid h : existing) {
             if (! pins.contains(h)) {
                 removed.add(h);
                 File file = root.resolve(getFilePath(h)).toFile();
@@ -297,7 +313,7 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     }
 
     public boolean contains(Multihash multihash) {
-        Path path = getFilePath(multihash);
+        Path path = getFilePath((Cid)multihash);
         File file = root.resolve(path).toFile();
         if (! file.exists()) { // for backwards compatibility with existing data
             file = root.resolve(path.getFileName()).toFile();

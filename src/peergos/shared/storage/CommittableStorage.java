@@ -26,7 +26,7 @@ public class CommittableStorage extends DelegatingStorage {
             local = new ArrayList<>(pending);
             pending.clear();
         }
-        List<CompletableFuture<Multihash>> uploads = local.stream()
+        List<CompletableFuture<Cid>> uploads = local.stream()
                 .map(p -> target.put(p.owner, p.writer, p.signature, p.block, p.tid)
                         .thenApply(h -> {
                             if (! h.equals(p.expected))
@@ -49,11 +49,11 @@ public class CommittableStorage extends DelegatingStorage {
     }
 
     @Override
-    public CompletableFuture<Multihash> put(PublicKeyHash owner,
-                                            PublicKeyHash writer,
-                                            byte[] signature,
-                                            byte[] block,
-                                            TransactionId tid) {
+    public CompletableFuture<Cid> put(PublicKeyHash owner,
+                                      PublicKeyHash writer,
+                                      byte[] signature,
+                                      byte[] block,
+                                      TransactionId tid) {
         byte[] sha256 = Arrays.copyOfRange(signature, signature.length - 32, signature.length);
         Cid cid = hashToCid(sha256, false);
         synchronized (pending) {
@@ -68,11 +68,11 @@ public class CommittableStorage extends DelegatingStorage {
 
     private static class PutArgs {
         public final PublicKeyHash owner, writer;
-        public final Multihash expected;
+        public final Cid expected;
         public final byte[] signature, block;
         public final TransactionId tid;
 
-        public PutArgs(PublicKeyHash owner, PublicKeyHash writer, Multihash expected, byte[] signature, byte[] block, TransactionId tid) {
+        public PutArgs(PublicKeyHash owner, PublicKeyHash writer, Cid expected, byte[] signature, byte[] block, TransactionId tid) {
             this.owner = owner;
             this.writer = writer;
             this.expected = expected;

@@ -7,6 +7,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.inode.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
@@ -181,7 +182,7 @@ public class CryptreeNode implements Cborable {
                     .thenCompose(hashes -> dir.commit(current, committer, us, signer, network, tid));
         }
 
-        public CompletableFuture<List<Multihash>> commitChildrenLinks(WritableAbsoluteCapability us,
+        public CompletableFuture<List<Cid>> commitChildrenLinks(WritableAbsoluteCapability us,
                                                                       Optional<SigningPrivateKeyAndPublicHash> entryWriter,
                                                                       NetworkAccess network,
                                                                       TransactionId tid) {
@@ -189,10 +190,10 @@ public class CryptreeNode implements Cborable {
             return commitChildrenLinks(us, signer, network, tid);
         }
 
-        public CompletableFuture<List<Multihash>> commitChildrenLinks(WritableAbsoluteCapability us,
-                                                                      SigningPrivateKeyAndPublicHash signer,
-                                                                      NetworkAccess network,
-                                                                      TransactionId tid) {
+        public CompletableFuture<List<Cid>> commitChildrenLinks(WritableAbsoluteCapability us,
+                                                                SigningPrivateKeyAndPublicHash signer,
+                                                                NetworkAccess network,
+                                                                TransactionId tid) {
             List<Fragment> frags = childData.stream()
                     .filter(f -> ! f.isInlined())
                     .map(f -> f.fragment)

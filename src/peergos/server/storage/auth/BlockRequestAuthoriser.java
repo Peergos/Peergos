@@ -11,7 +11,7 @@ import java.util.concurrent.*;
 
 public interface BlockRequestAuthoriser {
 
-    CompletableFuture<Boolean> allowRead(Cid block, Cid sourceNodeId, String auth);
+    CompletableFuture<Boolean> allowRead(Cid block, byte[] blockData, Cid sourceNodeId, String auth);
 
     static boolean isValidAuth(BlockAuth auth, Cid block, Cid sourceNode, Bat bat, Hasher h) {
         String t = auth.awsDatetime;

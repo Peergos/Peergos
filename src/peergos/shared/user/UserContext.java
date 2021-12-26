@@ -447,7 +447,7 @@ public class UserContext {
                 if (! publicData.isPresent())
                     throw new IllegalStateException("User " + ownerName + " has not made any files public.");
 
-                return network.dhtClient.get(publicData.get(), "")
+                return network.dhtClient.get((Cid)publicData.get(), Optional.empty())
                         .thenCompose(rootCbor -> InodeFileSystem.build(rootCbor.get(), network.hasher, network.dhtClient))
                         .thenCompose(publicCaps -> publicCaps.getByPath(originalPath.toString()))
                         .thenApply(resOpt -> {
@@ -724,26 +724,8 @@ public class UserContext {
         });
     }
 
-    @JsMethod
-    public CompletableFuture<Pair<Integer, Integer>> getTotalSpaceUsedJS(PublicKeyHash owner) {
-        return getTotalSpaceUsed(owner, owner)
-                .thenApply(size -> new Pair<>((int) (size >> 32), size.intValue()));
-    }
-
     public CompletableFuture<Long> getTotalSpaceUsed() {
-        return getTotalSpaceUsed(signer.publicKeyHash, signer.publicKeyHash);
-    }
-
-    public CompletableFuture<Long> getTotalSpaceUsed(PublicKeyHash ownerHash, PublicKeyHash writerHash) {
-        // assume no cycles in owned keys
-        return WriterData.getOwnedKeysRecursive(ownerHash, writerHash, network.mutable, network.dhtClient, network.hasher)
-                .thenCompose(allOwned -> Futures.reduceAll(allOwned.stream()
-                                .map(w -> network.mutable.getPointerTarget(ownerHash, w, network.dhtClient)
-                                        .thenCompose(root -> root.isPresent() ?
-                                                network.dhtClient.getRecursiveBlockSize(root.get()) :
-                                                CompletableFuture.completedFuture(0L)))
-                                .collect(Collectors.toList()),
-                        0L, (t, fut) -> fut.thenApply(x -> x + t), (a, b) -> a + b));
+        return network.spaceUsage.getUsage(signer.publicKeyHash);
     }
 
     public CompletableFuture<SecretGenerationAlgorithm> getKeyGenAlgorithm() {
@@ -933,11 +915,11 @@ public class UserContext {
     }
 
     public CompletableFuture<PublicSigningKey> getSigningKey(PublicKeyHash keyhash) {
-        return network.dhtClient.get(keyhash, "").thenApply(cborOpt -> cborOpt.map(PublicSigningKey::fromCbor).get());
+        return network.dhtClient.get(keyhash, Optional.empty()).thenApply(cborOpt -> cborOpt.map(PublicSigningKey::fromCbor).get());
     }
 
     public CompletableFuture<PublicBoxingKey> getBoxingKey(PublicKeyHash keyhash) {
-        return network.dhtClient.get(keyhash, "").thenApply(cborOpt -> cborOpt.map(PublicBoxingKey::fromCbor).get());
+        return network.dhtClient.get(keyhash, Optional.empty()).thenApply(cborOpt -> cborOpt.map(PublicBoxingKey::fromCbor).get());
     }
 
     /**
@@ -1031,7 +1013,7 @@ public class UserContext {
             Optional<Multihash> publicData = wd.publicData;
             if (publicData.isEmpty())
                 return Futures.of(wd);
-            return network.dhtClient.get(publicData.get(), "")
+            return network.dhtClient.get((Cid)publicData.get(), Optional.empty())
                     .thenCompose(rootCbor -> InodeFileSystem.build(rootCbor.get(), crypto.hasher, network.dhtClient))
                     .thenCompose(pubCaps -> pubCaps.removeCap(signer.publicKeyHash, signer, path, tid))
                     .thenCompose(updated -> network.dhtClient.put(signer.publicKeyHash, signer, updated.serialize(), crypto.hasher, tid))
@@ -1049,7 +1031,7 @@ public class UserContext {
             Optional<Multihash> publicData = wd.publicData;
 
             CompletableFuture<InodeFileSystem> publicCaps = publicData.isPresent() ?
-                    network.dhtClient.get(publicData.get(), "")
+                    network.dhtClient.get((Cid)publicData.get(), Optional.empty())
                             .thenCompose(rootCbor -> InodeFileSystem.build(rootCbor.get(), crypto.hasher, network.dhtClient)) :
                     InodeFileSystem.createEmpty(signer.publicKeyHash, signer, network.dhtClient, crypto.hasher, tid);
 
@@ -2203,7 +2185,7 @@ public class UserContext {
                         .thenApply(signer -> casOpt.map(raw -> HashCasPair.fromCbor(CborObject.fromByteArray(
                                 signer.get().unsignMessage(raw))).updated)
                                 .orElse(MaybeMultihash.empty())))
-                .thenCompose(key -> ipfs.get(key.get(), "")
+                .thenCompose(key -> ipfs.get((Cid)key.get(), Optional.empty())
                         .thenApply(Optional::get)
                         .thenApply(cbor -> new Pair<>(key.get(), cbor))
                 );

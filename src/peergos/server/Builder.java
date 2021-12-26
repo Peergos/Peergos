@@ -13,6 +13,7 @@ import peergos.server.space.*;
 import peergos.server.sql.*;
 import peergos.server.storage.*;
 import peergos.server.storage.admin.*;
+import peergos.server.storage.auth.*;
 import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
@@ -30,6 +31,7 @@ import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
+import peergos.shared.util.*;
 
 import java.net.*;
 import java.nio.file.*;
@@ -152,6 +154,7 @@ public class Builder {
 
     public static DeletableContentAddressedStorage buildLocalStorage(Args a,
                                                                      TransactionStore transactions,
+                                                                     BlockRequestAuthoriser authoriser,
                                                                      Hasher hasher) {
         boolean useIPFS = a.getBoolean("useIPFS");
         boolean enableGC = a.getBoolean("enable-gc", false);
@@ -159,7 +162,7 @@ public class Builder {
         if (useIPFS) {
             DeletableContentAddressedStorage.HTTP ipfs = new DeletableContentAddressedStorage.HTTP(ipfsApi, false, hasher);
             if (enableGC) {
-                return new TransactionalIpfs(ipfs, transactions, hasher);
+                return new TransactionalIpfs(ipfs, transactions, ipfs.id().join(), hasher);
             } else
                 return ipfs;
         } else {
@@ -167,7 +170,7 @@ public class Builder {
             if (S3Config.useS3(a)) {
                 if (enableGC)
                     throw new IllegalStateException("GC should be run separately when using S3!");
-                ContentAddressedStorage.HTTP ipfs = new ContentAddressedStorage.HTTP(ipfsApi, false, hasher);
+                DeletableContentAddressedStorage.HTTP ipfs = new DeletableContentAddressedStorage.HTTP(ipfsApi, false, hasher);
                 Optional<String> publicReadUrl = S3Config.getPublicReadUrl(a);
                 boolean directWrites = a.getBoolean("direct-s3-writes", false);
                 boolean publicReads = a.getBoolean("public-s3-reads", false);
@@ -175,11 +178,44 @@ public class Builder {
                 S3Config config = S3Config.build(a);
                 Optional<String> authedUrl = Optional.of("https://" + config.getHost() + "/");
                 BlockStoreProperties props = new BlockStoreProperties(directWrites, publicReads, authedReads, publicReadUrl, authedUrl);
-                return new S3BlockStorage(config, Cid.decode(a.getArg("ipfs.id")), props, transactions, hasher, ipfs);
+                return new S3BlockStorage(config, Cid.decode(a.getArg("ipfs.id")), props, transactions, authoriser, hasher, ipfs);
             } else {
-                return new FileContentAddressedStorage(blockstorePath(a), transactions, hasher);
+                return new FileContentAddressedStorage(blockstorePath(a), transactions, authoriser, hasher);
             }
         }
+    }
+
+    public static BlockRequestAuthoriser blockAuthoriser(Args a, BatCave batStore, Hasher hasher) {
+        Optional<BatWithId> instanceBat = a.getOptionalArg("instance-bat").map(BatWithId::decode);
+        return (b, d, s, auth) -> {
+            System.out.println("Allow: " + b + ", auth=" + auth + ", from: " + s);
+            if (b.codec == Cid.Codec.Raw) {
+                boolean isPreUpgradeBlock = false; //TODO lookup list of raw cids at upgrade time in DB
+                if (isPreUpgradeBlock)
+                    return Futures.of(true);
+                Bat bat = Bat.deriveFromRawBlock(d);
+                return Futures.of(BlockRequestAuthoriser.isValidAuth(BlockAuth.fromString(auth), b, s, bat, hasher));
+            } else if (b.codec == Cid.Codec.DagCbor) {
+                CborObject block = CborObject.fromByteArray(d);
+                if (block instanceof CborObject.CborMap) {
+                    if (((CborObject.CborMap) block).containsKey("bats")) {
+                        List<BatId> batids = ((CborObject.CborMap) block).getList("bats", BatId::fromCbor);
+                        for (BatId bid : batids) {
+                            Optional<Bat> bat = bid.getInline().or(() -> batStore.getBat(bid));
+                            if (bat.isPresent() && BlockRequestAuthoriser.isValidAuth(BlockAuth.fromString(auth), b, s, bat.get(), hasher))
+                                return Futures.of(true);
+                        }
+                        if (instanceBat.isPresent()) {
+                            if (BlockRequestAuthoriser.isValidAuth(BlockAuth.fromString(auth), b, s, instanceBat.get().bat, hasher))
+                                return Futures.of(true);
+                        }
+                        return Futures.of(false);
+                    } else return Futures.of(true); // This is a public block
+                } else // e.g. inner CHAMP nodes
+                    return Futures.of(true);
+            }
+            return Futures.of(false);
+        };
     }
 
     public static SqlSupplier getSqlCommands(Args a) {

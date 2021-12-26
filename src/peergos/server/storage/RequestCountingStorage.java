@@ -2,8 +2,10 @@ package peergos.server.storage;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -71,11 +73,11 @@ public class RequestCountingStorage extends DelegatingStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
-                                                  PublicKeyHash writer,
-                                                  List<byte[]> signedHashes,
-                                                  List<byte[]> blocks,
-                                                  TransactionId tid) {
+    public CompletableFuture<List<Cid>> put(PublicKeyHash owner,
+                                            PublicKeyHash writer,
+                                            List<byte[]> signedHashes,
+                                            List<byte[]> blocks,
+                                            TransactionId tid) {
         return target.put(owner, writer, signedHashes, blocks, tid)
                 .thenApply(res -> {
                     put.incrementAndGet();
@@ -84,20 +86,20 @@ public class RequestCountingStorage extends DelegatingStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Multihash key, String auth) {
-        return target.get(key, auth).thenApply(cborOpt -> {
+    public CompletableFuture<Optional<CborObject>> get(Cid key, Optional<BatWithId> bat) {
+        return target.get(key, bat).thenApply(cborOpt -> {
             get.incrementAndGet();
             return cborOpt;
         });
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner,
-                                                     PublicKeyHash writer,
-                                                     List<byte[]> signatures,
-                                                     List<byte[]> blocks,
-                                                     TransactionId tid,
-                                                     ProgressConsumer<Long> progressConsumer) {
+    public CompletableFuture<List<Cid>> putRaw(PublicKeyHash owner,
+                                               PublicKeyHash writer,
+                                               List<byte[]> signatures,
+                                               List<byte[]> blocks,
+                                               TransactionId tid,
+                                               ProgressConsumer<Long> progressConsumer) {
         return target.putRaw(owner, writer, signatures, blocks, tid, progressConsumer)
                 .thenApply(res -> {
                     putRaw.incrementAndGet();
@@ -106,8 +108,8 @@ public class RequestCountingStorage extends DelegatingStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Multihash key, String auth) {
-        return target.getRaw(key, auth).thenApply(rawOpt -> {
+    public CompletableFuture<Optional<byte[]>> getRaw(Cid key, Optional<BatWithId> bat) {
+        return target.getRaw(key, bat).thenApply(rawOpt -> {
             getRaw.incrementAndGet();
             return rawOpt;
         });

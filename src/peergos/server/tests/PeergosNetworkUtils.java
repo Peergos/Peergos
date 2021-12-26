@@ -10,6 +10,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.SymmetricKey;
 import peergos.shared.display.*;
 import peergos.shared.email.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.Multihash;
 import peergos.shared.messaging.*;
 import peergos.shared.messaging.messages.*;
@@ -2282,7 +2283,7 @@ public class PeergosNetworkUtils {
         AbsoluteCapability nextChunkCap = cap.withMapKey(nextLoc.left, nextLoc.right);
 
         Snapshot version = new Snapshot(cap.writer,
-                WriterData.getWriterData(network.mutable.getPointerTarget(cap.owner, cap.writer,
+                WriterData.getWriterData((Cid)network.mutable.getPointerTarget(cap.owner, cap.writer,
                         network.dhtClient).join().get(), network.dhtClient).join());
 
         Optional<CryptreeNode> next = network.getMetadata(version.get(nextChunkCap.writer).props, nextChunkCap).join();
@@ -2301,7 +2302,7 @@ public class PeergosNetworkUtils {
 
     public static Set<AbsoluteCapability> getAllChildCaps(AbsoluteCapability cap, CryptreeNode dir, NetworkAccess network) {
             return dir.getAllChildrenCapabilities(new Snapshot(cap.writer,
-                    WriterData.getWriterData(network.mutable.getPointerTarget(cap.owner, cap.writer,
+                    WriterData.getWriterData((Cid)network.mutable.getPointerTarget(cap.owner, cap.writer,
                             network.dhtClient).join().get(), network.dhtClient).join()), cap, crypto.hasher, network).join()
                     .stream().map(n -> n.cap).collect(Collectors.toSet());
     }

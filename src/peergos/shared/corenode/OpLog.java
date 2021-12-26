@@ -105,7 +105,7 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
+    public CompletableFuture<List<Cid>> put(PublicKeyHash owner,
                                                   PublicKeyHash writer,
                                                   List<byte[]> signedHashes,
                                                   List<byte[]> blocks,
@@ -116,12 +116,12 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Multihash hash, String auth) {
+    public CompletableFuture<Optional<CborObject>> get(Cid hash, Optional<BatWithId> bat) {
         return Futures.of(Optional.ofNullable(storage.get(hash)).map(CborObject::fromByteArray));
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner,
+    public CompletableFuture<List<Cid>> putRaw(PublicKeyHash owner,
                                                      PublicKeyHash writer,
                                                      List<byte[]> signedHashes,
                                                      List<byte[]> blocks,
@@ -132,17 +132,17 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
                 .collect(Collectors.toList()));
     }
 
-    private CompletableFuture<Multihash> put(PublicKeyHash writer, byte[] signedHash, byte[] block, boolean isRaw) {
+    private CompletableFuture<Cid> put(PublicKeyHash writer, byte[] signedHash, byte[] block, boolean isRaw) {
         // Assume we are using ed25519 for now
         byte[] hash = Arrays.copyOfRange(signedHash, ED25519_SIGNATURE_SIZE, signedHash.length);
-        Multihash h = new Cid(1, isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor, Multihash.Type.sha2_256, hash);
+        Cid h = new Cid(1, isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor, Multihash.Type.sha2_256, hash);
         storage.put(h, block);
         operations.add(Either.b(new BlockWrite(writer, signedHash, block, isRaw)));
         return Futures.of(h);
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash, String auth) {
+    public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, Optional<BatWithId> bat) {
         return Futures.of(Optional.ofNullable(storage.get(hash)));
     }
 

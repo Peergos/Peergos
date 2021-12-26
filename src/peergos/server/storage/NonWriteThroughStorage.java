@@ -5,6 +5,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -50,55 +51,43 @@ public class NonWriteThroughStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
-                                                  PublicKeyHash writer,
-                                                  List<byte[]> signedHashes,
-                                                  List<byte[]> blocks,
-                                                  TransactionId tid) {
+    public CompletableFuture<List<Cid>> put(PublicKeyHash owner,
+                                            PublicKeyHash writer,
+                                            List<byte[]> signedHashes,
+                                            List<byte[]> blocks,
+                                            TransactionId tid) {
         return modifications.put(owner, writer, signedHashes, blocks, tid);
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner,
-                                                     PublicKeyHash writer,
-                                                     List<byte[]> signatures,
-                                                     List<byte[]> blocks,
-                                                     TransactionId tid,
-                                                     ProgressConsumer<Long> progressConsumer) {
+    public CompletableFuture<List<Cid>> putRaw(PublicKeyHash owner,
+                                               PublicKeyHash writer,
+                                               List<byte[]> signatures,
+                                               List<byte[]> blocks,
+                                               TransactionId tid,
+                                               ProgressConsumer<Long> progressConsumer) {
         return modifications.putRaw(owner, writer, signatures, blocks, tid, progressConsumer);
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Multihash object, String auth) {
+    public CompletableFuture<Optional<byte[]>> getRaw(Cid object, Optional<BatWithId> bat) {
         try {
-            Optional<byte[]> modified = modifications.getRaw(object, auth).get();
+            Optional<byte[]> modified = modifications.getRaw(object, bat).get();
             if ( modified.isPresent())
                 return CompletableFuture.completedFuture(modified);
-            return source.getRaw(object, auth);
+            return source.getRaw(object, bat);
         } catch (Exception e) {
             throw new RuntimeException(e.getMessage(), e);
         }
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Multihash hash, String auth) {
+    public CompletableFuture<Optional<CborObject>> get(Cid hash, Optional<BatWithId> bat) {
         try {
-            Optional<CborObject> modified = modifications.get(hash, auth).get();
+            Optional<CborObject> modified = modifications.get(hash, bat).get();
             if ( modified.isPresent())
                 return CompletableFuture.completedFuture(modified);
-            return source.get(hash, auth);
-        } catch (Exception e) {
-            throw new RuntimeException(e.getMessage(), e);
-        }
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> getLinks(Multihash root, String auth) {
-        try {
-            Optional<CborObject> modified = modifications.get(root, auth).get();
-            if (modified.isPresent())
-                return CompletableFuture.completedFuture(modified.get().links());
-            return source.getLinks(root, auth);
+            return source.get(hash, bat);
         } catch (Exception e) {
             throw new RuntimeException(e.getMessage(), e);
         }
@@ -107,7 +96,7 @@ public class NonWriteThroughStorage implements ContentAddressedStorage {
     @Override
     public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
         try {
-            Optional<CborObject> modified = modifications.get(block, "").get();
+            Optional<CborObject> modified = modifications.get((Cid)block, Optional.empty()).get();
             if (modified.isPresent())
                 return CompletableFuture.completedFuture(modified.map(cbor -> cbor.toByteArray().length));
             return source.getSize(block);

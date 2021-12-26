@@ -39,22 +39,22 @@ public abstract class DelegatingStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> put(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signedHashes, List<byte[]> blocks, TransactionId tid) {
+    public CompletableFuture<List<Cid>> put(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signedHashes, List<byte[]> blocks, TransactionId tid) {
         return target.put(owner, writer, signedHashes, blocks, tid);
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Multihash hash, String auth) {
-        return target.get(hash, auth);
+    public CompletableFuture<Optional<CborObject>> get(Cid hash, Optional<BatWithId> bat) {
+        return target.get(hash, bat);
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner,
-                                                     PublicKeyHash writer,
-                                                     List<byte[]> signatures,
-                                                     List<byte[]> blocks,
-                                                     TransactionId tid,
-                                                     ProgressConsumer<Long> progressCounter) {
+    public CompletableFuture<List<Cid>> putRaw(PublicKeyHash owner,
+                                               PublicKeyHash writer,
+                                               List<byte[]> signatures,
+                                               List<byte[]> blocks,
+                                               TransactionId tid,
+                                               ProgressConsumer<Long> progressCounter) {
         return target.putRaw(owner, writer, signatures, blocks, tid, progressCounter);
     }
 
@@ -64,8 +64,8 @@ public abstract class DelegatingStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash, String auth) {
-        return target.getRaw(hash, auth);
+    public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, Optional<BatWithId> bat) {
+        return target.getRaw(hash, bat);
     }
 
     @Override
@@ -76,11 +76,6 @@ public abstract class DelegatingStorage implements ContentAddressedStorage {
     @Override
     public CompletableFuture<Boolean> gc() {
         return target.gc();
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> getLinks(Multihash root, String auth) {
-        return target.getLinks(root, auth);
     }
 
     @Override

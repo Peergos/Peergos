@@ -6,6 +6,7 @@ import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
@@ -90,7 +91,7 @@ public class GarbageCollector {
         int markParallelism = 10;
         ForkJoinPool markPool = new ForkJoinPool(markParallelism);
         List<ForkJoinTask<Boolean>> usageMarked = usageRoots.stream()
-                .map(r -> markPool.submit(() -> markReachable(storage, r, toIndex, reachable)))
+                .map(r -> markPool.submit(() -> markReachable(storage, (Cid)r, toIndex, reachable)))
                 .collect(Collectors.toList());
         usageMarked.forEach(f -> f.join());
         List<ForkJoinTask<Boolean>> marked = allPointers.entrySet().stream()
@@ -137,7 +138,7 @@ public class GarbageCollector {
         HashCasPair cas = HashCasPair.fromCbor(CborObject.fromByteArray(bothHashes));
         MaybeMultihash updated = cas.updated;
         if (updated.isPresent())
-            markReachable(storage, updated.get(), toIndex, reachable);
+            markReachable(storage, (Cid) updated.get(), toIndex, reachable);
         return true;
     }
 
@@ -192,8 +193,8 @@ public class GarbageCollector {
         return new Pair<>(deletedBlocks, deletedSize);
     }
 
-    private static boolean markReachable(ContentAddressedStorage storage,
-                                         Multihash root,
+    private static boolean markReachable(DeletableContentAddressedStorage storage,
+                                         Cid root,
                                          Map<Multihash, Integer> toIndex,
                                          BitSet reachable) {
         int index = toIndex.getOrDefault(root, -1);
@@ -202,8 +203,8 @@ public class GarbageCollector {
                 reachable.set(index);
             }
         }
-        List<Multihash> links = getWithBackoff(() -> storage.getLinks(root, "").join());
-        for (Multihash link : links) {
+        List<Cid> links = getWithBackoff(() -> storage.getLinks(root, "").join());
+        for (Cid link : links) {
             markReachable(storage, link, toIndex, reachable);
         }
         return true;

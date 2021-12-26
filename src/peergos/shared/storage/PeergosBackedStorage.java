@@ -61,37 +61,37 @@ public class PeergosBackedStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Multihash hash, String auth) {
-        return getRaw(hash, auth)
+    public CompletableFuture<Optional<CborObject>> get(Cid hash, Optional<BatWithId> bat) {
+        return getRaw(hash, bat)
                 .thenApply(opt -> opt.map(CborObject::fromByteArray));
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
-                                                  PublicKeyHash writer,
-                                                  List<byte[]> signedHashes,
-                                                  List<byte[]> blocks,
-                                                  TransactionId tid) {
+    public CompletableFuture<List<Cid>> put(PublicKeyHash owner,
+                                            PublicKeyHash writer,
+                                            List<byte[]> signedHashes,
+                                            List<byte[]> blocks,
+                                            TransactionId tid) {
         return put(owner, writer, signedHashes, blocks, tid, x -> {}, false);
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner,
-                                                     PublicKeyHash writer,
-                                                     List<byte[]> signedHashes,
-                                                     List<byte[]> blocks,
-                                                     TransactionId tid,
-                                                     ProgressConsumer<Long> progressCounter) {
+    public CompletableFuture<List<Cid>> putRaw(PublicKeyHash owner,
+                                               PublicKeyHash writer,
+                                               List<byte[]> signedHashes,
+                                               List<byte[]> blocks,
+                                               TransactionId tid,
+                                               ProgressConsumer<Long> progressCounter) {
         return put(owner, writer, signedHashes, blocks, tid, progressCounter, true);
     }
 
-    private CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
-                                                   PublicKeyHash writer,
-                                                   List<byte[]> signatures,
-                                                   List<byte[]> blocks,
-                                                   TransactionId tid,
-                                                   ProgressConsumer<Long> progressCounter,
-                                                   boolean isRaw) {
+    private CompletableFuture<List<Cid>> put(PublicKeyHash owner,
+                                             PublicKeyHash writer,
+                                             List<byte[]> signatures,
+                                             List<byte[]> blocks,
+                                             TransactionId tid,
+                                             ProgressConsumer<Long> progressCounter,
+                                             boolean isRaw) {
         List<Pair<byte[], byte[]>> paired = IntStream.range(0, blocks.size())
                 .mapToObj(i -> new Pair<>(signatures.get(i), blocks.get(i)))
                 .collect(Collectors.toList());
@@ -101,13 +101,13 @@ public class PeergosBackedStorage implements ContentAddressedStorage {
                 (a, b) -> Stream.concat(a.stream(), b.stream()).collect(Collectors.toList()));
     }
 
-    private CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
-                                                   PublicKeyHash writer,
-                                                   byte[] signature,
-                                                   byte[] block,
-                                                   TransactionId tid,
-                                                   ProgressConsumer<Long> progressCounter,
-                                                   boolean isRaw) {
+    private CompletableFuture<List<Cid>> put(PublicKeyHash owner,
+                                             PublicKeyHash writer,
+                                             byte[] signature,
+                                             byte[] block,
+                                             TransactionId tid,
+                                             ProgressConsumer<Long> progressCounter,
+                                             boolean isRaw) {
         byte[] sha256 = Arrays.copyOfRange(signature, signature.length - 32, signature.length);
         Cid cid = buildCid(sha256, isRaw);
         Path toBlock = getPath(cid);
@@ -118,7 +118,7 @@ public class PeergosBackedStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash, String auth) {
+    public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, Optional<BatWithId> bat) {
         return baseDir.getDescendentByPath(getPath(hash).toString(), crypto.hasher, network)
                 .thenCompose(fopt -> {
                     if (fopt.isEmpty())
@@ -142,6 +142,6 @@ public class PeergosBackedStorage implements ContentAddressedStorage {
 
     @Override
     public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
-        return getRaw(block, "").thenApply(b -> b.map(d -> d.length));
+        return getRaw((Cid)block, Optional.empty()).thenApply(b -> b.map(d -> d.length));
     }
 }

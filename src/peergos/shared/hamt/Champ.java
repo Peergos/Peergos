@@ -4,6 +4,7 @@ import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
@@ -152,7 +153,7 @@ public class Champ<V extends Cborable> implements Cborable {
         int bitpos = mask(hash, depth, bitWidth);
         int index = contents.length - 1 - getIndex(this.nodeMap, bitpos);
         Multihash childHash = contents[index].link.get();
-        return storage.get(childHash, "")
+        return storage.get((Cid) childHash, Optional.empty())
                 .thenApply(x -> new Pair<>(childHash, x.map(y -> Champ.fromCbor(y, fromCbor))));
     }
 
@@ -166,7 +167,7 @@ public class Champ<V extends Cborable> implements Cborable {
             HashPrefixPayload<V> pointer = contents[i];
             if (! pointer.isShard())
                 break; // we reach the key section
-            childCounts.add(storage.get(pointer.link.get(), "")
+            childCounts.add(storage.get((Cid) pointer.link.get(), Optional.empty())
                     .thenApply(x -> new Pair<>(pointer.link.get(), x.map(y -> Champ.fromCbor(y, fromCbor))))
                     .thenCompose(child -> child.right.map(c -> c.size(depth + 1, storage))
                             .orElse(CompletableFuture.completedFuture(0L)))
@@ -599,7 +600,7 @@ public class Champ<V extends Cborable> implements Cborable {
                         CompletableFuture.completedFuture(res)
                 ).thenCompose(newRes ->
                         payload.isShard() && payload.link.isPresent() ?
-                                storage.get(payload.link.get(), "")
+                                storage.get((Cid)payload.link.get(), Optional.empty())
                                         .thenApply(rawOpt -> Champ.fromCbor(rawOpt.orElseThrow(() -> new IllegalStateException("Hash not present! " + payload.link)), fromCbor))
                                         .thenCompose(child -> child.applyToAllMappings(newRes, consumer, storage)) :
                                 CompletableFuture.completedFuture(newRes)
@@ -665,9 +666,9 @@ public class Champ<V extends Cborable> implements Cborable {
 
         if (updated.equals(original))
             return CompletableFuture.completedFuture(true);
-        return original.map(h -> storage.get(h, "")).orElseGet(() -> CompletableFuture.completedFuture(Optional.empty()))
+        return original.map(h -> storage.get((Cid)h, Optional.empty())).orElseGet(() -> CompletableFuture.completedFuture(Optional.empty()))
                 .thenApply(rawOpt -> rawOpt.map(y -> Champ.fromCbor(y, fromCbor)))
-                .thenCompose(left -> updated.map(h -> storage.get(h, "")).orElseGet(() -> CompletableFuture.completedFuture(Optional.empty()))
+                .thenCompose(left -> updated.map(h -> storage.get((Cid)h, Optional.empty())).orElseGet(() -> CompletableFuture.completedFuture(Optional.empty()))
                         .thenApply(rawOpt -> rawOpt.map(y -> Champ.fromCbor(y, fromCbor)))
                         .thenCompose(right -> hashAndMaskKeys(higherLeftMappings, depth, bitWidth, hasher)
                                 .thenCompose(leftHigherMappingsByBit -> hashAndMaskKeys(higherRightMappings, depth, bitWidth, hasher)

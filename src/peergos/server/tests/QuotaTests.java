@@ -94,7 +94,7 @@ public class QuotaTests {
 
         UserContext context = ensureSignedUp(username, password, network, crypto);
         FileWrapper home = context.getByPath(Paths.get(username).toString()).get().get();
-        int used = context.getTotalSpaceUsed(context.signer.publicKeyHash, context.signer.publicKeyHash).get().intValue();
+        int used = context.getTotalSpaceUsed().get().intValue();
         // use within a few KiB of our quota, before deletion
         byte[] data = new byte[2 * 1024 * 1024 - used - 16 * 1024];
         random.nextBytes(data);
@@ -114,7 +114,7 @@ public class QuotaTests {
         UserContext context = ensureSignedUp(username, password, network, crypto);
         FileWrapper home = context.getByPath(Paths.get(username).toString()).get().get();
         // signing up uses just under 32k and the quota is 2 MiB, so use close to our quota
-        int used = context.getTotalSpaceUsed(context.signer.publicKeyHash, context.signer.publicKeyHash).get().intValue();
+        int used = context.getTotalSpaceUsed().get().intValue();
         byte[] data = new byte[2 * 1024 * 1024 - used - 16 * 1024];
         random.nextBytes(data);
         String filename = "file-1";

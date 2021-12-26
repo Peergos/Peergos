@@ -51,7 +51,7 @@ public interface ContentAddressedStorage {
         return Futures.errored(new IllegalStateException("Unimplemented call!"));
     }
 
-    default CompletableFuture<Multihash> put(PublicKeyHash owner,
+    default CompletableFuture<Cid> put(PublicKeyHash owner,
                                              SigningPrivateKeyAndPublicHash writer,
                                              byte[] block,
                                              Hasher hasher,
@@ -60,7 +60,7 @@ public interface ContentAddressedStorage {
                 .thenCompose(hash -> put(owner, writer.publicKeyHash, writer.secret.signMessage(hash), block, tid));
     }
 
-    default CompletableFuture<Multihash> put(PublicKeyHash owner,
+    default CompletableFuture<Cid> put(PublicKeyHash owner,
                                              PublicKeyHash writer,
                                              byte[] signature,
                                              byte[] block,
@@ -115,26 +115,19 @@ public interface ContentAddressedStorage {
      * @param tid The transaction to group these writes under
      * @return
      */
-    CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
-                                           PublicKeyHash writer,
-                                           List<byte[]> signedHashes,
-                                           List<byte[]> blocks,
-                                           TransactionId tid);
+    CompletableFuture<List<Cid>> put(PublicKeyHash owner,
+                                     PublicKeyHash writer,
+                                     List<byte[]> signedHashes,
+                                     List<byte[]> blocks,
+                                     TransactionId tid);
 
-    default CompletableFuture<Optional<CborObject>> get(Multihash hash, Optional<BatWithId> bat, Cid ourId, Hasher h) {
-        if (bat.isEmpty())
-            return get(hash, "");
-        return bat.get().bat.generateAuth((Cid) hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, h)
-                .thenApply(BlockAuth::encode)
-                .thenCompose(auth -> get(hash, auth));
-    }
 
     /**
      *
      * @param hash
      * @return The data with the requested hash, deserialized into cbor, or Optional.empty() if no object can be found
      */
-    CompletableFuture<Optional<CborObject>> get(Multihash hash, String auth);
+    CompletableFuture<Optional<CborObject>> get(Cid hash, Optional<BatWithId> bat);
 
     /**
      * Write a block of data that is just raw bytes, not ipld structured cbor
@@ -146,38 +139,30 @@ public interface ContentAddressedStorage {
      * @param progressCounter
      * @return
      */
-    CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner,
-                                              PublicKeyHash writer,
-                                              List<byte[]> signedHashes,
-                                              List<byte[]> blocks,
-                                              TransactionId tid,
-                                              ProgressConsumer<Long> progressCounter);
-
-    default CompletableFuture<Optional<byte[]>> getRaw(Multihash hash, Optional<BatWithId> bat, Cid ourId, Hasher h) {
-        if (bat.isEmpty())
-            return getRaw(hash, "");
-        return bat.get().bat.generateAuth((Cid) hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, h)
-                .thenApply(BlockAuth::encode)
-                .thenCompose(auth -> getRaw(hash, auth));
-    }
+    CompletableFuture<List<Cid>> putRaw(PublicKeyHash owner,
+                                        PublicKeyHash writer,
+                                        List<byte[]> signedHashes,
+                                        List<byte[]> blocks,
+                                        TransactionId tid,
+                                        ProgressConsumer<Long> progressCounter);
 
     /**
      * Get a block of data that is not in ipld cbor format, just raw bytes
      * @param hash
      * @return
      */
-    CompletableFuture<Optional<byte[]>> getRaw(Multihash hash, String auth);
+    CompletableFuture<Optional<byte[]>> getRaw(Cid hash, Optional<BatWithId> bat);
 
     CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey);
 
     default CompletableFuture<List<byte[]>> getChampLookup(Multihash root, byte[] champKey, Hasher hasher) {
         CachingStorage cache = new CachingStorage(this, 100, 100 * 1024);
-        return ChampWrapper.create(root, x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c)
+        return ChampWrapper.create((Cid)root, x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c)
                 .thenCompose(tree -> tree.get(champKey))
                 .thenApply(c -> c.map(x -> x.target).map(MaybeMultihash::of).orElse(MaybeMultihash.empty()))
                 .thenApply(btreeValue -> {
                     if (btreeValue.isPresent())
-                        return cache.get(btreeValue.get(), "TODO");
+                        return cache.get((Cid) btreeValue.get(), Optional.empty());
                     return Optional.empty();
                 }).thenApply(x -> new ArrayList<>(cache.getCached()));
     }
@@ -187,20 +172,6 @@ public interface ContentAddressedStorage {
      * @return true
      */
     CompletableFuture<Boolean> gc();
-
-    /**
-     * Get all the merkle-links referenced directly from this object
-     * @param root The hash of the object whose links we want
-     * @return A list of the multihashes referenced with ipld links in this object
-     */
-    default CompletableFuture<List<Multihash>> getLinks(Multihash root, String auth) {
-        if (root instanceof Cid && ((Cid) root).codec == Cid.Codec.Raw)
-            return CompletableFuture.completedFuture(Collections.emptyList());
-        return get(root, auth).thenApply(opt -> opt
-                .map(cbor -> cbor.links())
-                .orElse(Collections.emptyList())
-        );
-    }
 
     /**
      * Get the size in bytes of the object with the requested hash
@@ -259,75 +230,15 @@ public interface ContentAddressedStorage {
     default CompletableFuture<Optional<PublicSigningKey>> getSigningKey(PublicKeyHash hash) {
         return (hash.isIdentity() ?
                 CompletableFuture.completedFuture(Optional.of(CborObject.fromByteArray(hash.getHash()))) :
-                get(hash.multihash, ""))
+                get(hash.target, Optional.empty()))
                 .thenApply(opt -> Optional.ofNullable(opt).orElse(Optional.empty()).map(PublicSigningKey::fromCbor));
     }
 
     default CompletableFuture<Optional<PublicBoxingKey>> getBoxingKey(PublicKeyHash hash) {
         return (hash.isIdentity() ?
                 CompletableFuture.completedFuture(Optional.of(CborObject.fromByteArray(hash.getHash()))) :
-                get(hash.multihash, ""))
+                get(hash.target, Optional.empty()))
                 .thenApply(opt -> Optional.ofNullable(opt).orElse(Optional.empty()).map(PublicBoxingKey::fromCbor));
-    }
-
-    default CompletableFuture<Long> getRecursiveBlockSize(Multihash block) {
-        return getLinks(block, "").thenCompose(links -> {
-            List<CompletableFuture<Long>> subtrees = links.stream()
-                    .filter(m -> ! m.isIdentity())
-                    .map(this::getRecursiveBlockSize)
-                    .collect(Collectors.toList());
-            return getSize(block)
-                    .thenCompose(sizeOpt -> {
-                        CompletableFuture<Long> reduced = Futures.reduceAll(subtrees,
-                                0L, (t, fut) -> fut.thenApply(x -> x + t), (a, b) -> a + b);
-                        return reduced.thenApply(sum -> sum + sizeOpt.orElse(0));
-                    });
-        });
-    }
-
-    default CompletableFuture<Long> getChangeInContainedSize(MaybeMultihash original, Multihash updated) {
-        if (! original.isPresent())
-            return getRecursiveBlockSize(updated);
-        return getChangeInContainedSize(original.get(), updated);
-    }
-
-    default CompletableFuture<Long> getChangeInContainedSize(Multihash original, Multihash updated) {
-        return getLinksAndSize(original, "")
-                .thenCompose(before -> getLinksAndSize(updated, "").thenCompose(after -> {
-                    int objectDelta = after.left - before.left;
-                    List<Multihash> onlyBefore = new ArrayList<>(before.right);
-                    onlyBefore.removeAll(after.right);
-                    List<Multihash> onlyAfter = new ArrayList<>(after.right);
-                    onlyAfter.removeAll(before.right);
-
-                    int nPairs = Math.min(onlyBefore.size(), onlyAfter.size());
-                    List<Pair<Multihash, Multihash>> pairs = IntStream.range(0, nPairs)
-                            .mapToObj(i -> new Pair<>(onlyBefore.get(i), onlyAfter.get(i)))
-                            .collect(Collectors.toList());
-
-                    List<Multihash> extraBefore = onlyBefore.subList(nPairs, onlyBefore.size());
-                    List<Multihash> extraAfter = onlyAfter.subList(nPairs, onlyAfter.size());
-                    Function<List<Multihash>, CompletableFuture<Long>> getAllRecursiveSizes =
-                            extra -> Futures.reduceAll(extra,
-                                    0L,
-                                    (s, h) -> getRecursiveBlockSize(h).thenApply(size -> size + s),
-                                    (a, b) -> a + b);
-
-                    Function<List<Pair<Multihash, Multihash>>, CompletableFuture<Long>> getSizeDiff =
-                            ps -> Futures.reduceAll(ps,
-                                    0L,
-                                    (s, p) -> getChangeInContainedSize(p.left, p.right).thenApply(size -> size + s),
-                                    (a, b) -> a + b);
-                    return getAllRecursiveSizes.apply(extraBefore)
-                            .thenCompose(priorSize -> getAllRecursiveSizes.apply(extraAfter)
-                                    .thenApply(postSize -> postSize - priorSize + objectDelta))
-                            .thenCompose(total -> getSizeDiff.apply(pairs).thenApply(res -> res + total));
-                }));
-    }
-
-    default CompletableFuture<Pair<Integer, List<Multihash>>> getLinksAndSize(Multihash block, String auth) {
-        return getLinks(block, auth)
-                .thenCompose(links -> getSize(block).thenApply(size -> new Pair<>(size.orElse(0), links)));
     }
 
     class HTTP implements ContentAddressedStorage {
@@ -364,7 +275,7 @@ public interface ContentAddressedStorage {
             return this;
         }
 
-        private static Multihash getObjectHash(Object rawJson) {
+        private static Cid getObjectHash(Object rawJson) {
             Map json = (Map)rawJson;
             String hash = (String)json.get("Hash");
             if (hash == null) {
@@ -479,21 +390,21 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
-                                                      PublicKeyHash writer,
-                                                      List<byte[]> signedHashes,
-                                                      List<byte[]> blocks,
-                                                      TransactionId tid) {
+        public CompletableFuture<List<Cid>> put(PublicKeyHash owner,
+                                                PublicKeyHash writer,
+                                                List<byte[]> signedHashes,
+                                                List<byte[]> blocks,
+                                                TransactionId tid) {
             return bulkPut(owner, writer, signedHashes, blocks, "cbor", tid, x -> {});
         }
 
         @Override
-        public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner,
-                                                         PublicKeyHash writer,
-                                                         List<byte[]> signatures,
-                                                         List<byte[]> blocks,
-                                                         TransactionId tid,
-                                                         ProgressConsumer<Long> progressConsumer) {
+        public CompletableFuture<List<Cid>> putRaw(PublicKeyHash owner,
+                                                   PublicKeyHash writer,
+                                                   List<byte[]> signatures,
+                                                   List<byte[]> blocks,
+                                                   TransactionId tid,
+                                                   ProgressConsumer<Long> progressConsumer) {
             return bulkPut(owner, writer, signatures, blocks, "raw", tid, progressConsumer)
                     .thenApply(hashes -> {
                         if (DEBUG_GC)
@@ -502,13 +413,13 @@ public interface ContentAddressedStorage {
                     });
         }
 
-        private CompletableFuture<List<Multihash>> bulkPut(PublicKeyHash owner,
-                                                           PublicKeyHash writer,
-                                                           List<byte[]> signatures,
-                                                           List<byte[]> blocks,
-                                                           String format,
-                                                           TransactionId tid,
-                                                           ProgressConsumer<Long> progressConsumer) {
+        private CompletableFuture<List<Cid>> bulkPut(PublicKeyHash owner,
+                                                     PublicKeyHash writer,
+                                                     List<byte[]> signatures,
+                                                     List<byte[]> blocks,
+                                                     String format,
+                                                     TransactionId tid,
+                                                     ProgressConsumer<Long> progressConsumer) {
             // Do 8 fragments per query to spread the 40 fragments in a chunk over the 5 connections in a browser
             // Unless we are talking to IPFS directly, then upload one per query because IPFS doesn't support more than one
             int FRAGMENTs_PER_QUERY = isPeergosServer ? 1 : 1;
@@ -517,7 +428,7 @@ public interface ContentAddressedStorage {
             List<Integer> sizes = grouped.stream()
                     .map(frags -> frags.stream().mapToInt(f -> f.length).sum())
                     .collect(Collectors.toList());
-            List<CompletableFuture<List<Multihash>>> futures = IntStream.range(0, grouped.size())
+            List<CompletableFuture<List<Cid>>> futures = IntStream.range(0, grouped.size())
                     .parallel()
                     .mapToObj(i -> put(
                             owner,
@@ -536,12 +447,12 @@ public interface ContentAddressedStorage {
                             .flatMap(g -> g.stream()).collect(Collectors.toList()));
         }
 
-        private CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
-                                                       PublicKeyHash writer,
-                                                       List<byte[]> signatures,
-                                                       List<byte[]> blocks,
-                                                       String format,
-                                                       TransactionId tid) {
+        private CompletableFuture<List<Cid>> put(PublicKeyHash owner,
+                                                 PublicKeyHash writer,
+                                                 List<byte[]> signatures,
+                                                 List<byte[]> blocks,
+                                                 String format,
+                                                 TransactionId tid) {
             for (byte[] block : blocks) {
                 if (block.length > MAX_BLOCK_SIZE)
                     throw new IllegalStateException("Invalid block size: " + block.length
@@ -566,18 +477,18 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<Optional<CborObject>> get(Multihash hash, String auth) {
+        public CompletableFuture<Optional<CborObject>> get(Cid hash, Optional<BatWithId> bat) {
             if (hash.isIdentity())
                 return CompletableFuture.completedFuture(Optional.of(CborObject.fromByteArray(hash.getHash())));
-            return poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash + "&auth=" + auth)
+            return poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash + bat.map(b -> "&bat=" + b.encode()))
                     .thenApply(raw -> raw.length == 0 ? Optional.empty() : Optional.of(CborObject.fromByteArray(raw)));
         }
 
         @Override
-        public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash, String auth) {
+        public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, Optional<BatWithId> bat) {
             if (hash.isIdentity())
                 return CompletableFuture.completedFuture(Optional.of(hash.getHash()));
-            return poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash + "&auth=" + auth)
+            return poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash + bat.map(b -> "&bat=" + b.encode()))
                     .thenApply(raw -> raw.length == 0 ? Optional.empty() : Optional.of(raw));
         }
 
@@ -664,18 +575,13 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<Optional<CborObject>> get(Multihash object, String auth) {
-            return local.get(object, auth);
+        public CompletableFuture<Optional<CborObject>> get(Cid object, Optional<BatWithId> bat) {
+            return local.get(object, bat);
         }
 
         @Override
-        public CompletableFuture<Optional<byte[]>> getRaw(Multihash object, String auth) {
-            return local.getRaw(object, auth);
-        }
-
-        @Override
-        public CompletableFuture<List<Multihash>> getLinks(Multihash root, String auth) {
-            return local.getLinks(root, auth);
+        public CompletableFuture<Optional<byte[]>> getRaw(Cid object, Optional<BatWithId> bat) {
+            return local.getRaw(object, bat);
         }
 
         @Override
@@ -684,7 +590,11 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<List<Multihash>> put(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signedHashes, List<byte[]> blocks, TransactionId tid) {
+        public CompletableFuture<List<Cid>> put(PublicKeyHash owner,
+                                                PublicKeyHash writer,
+                                                List<byte[]> signedHashes,
+                                                List<byte[]> blocks,
+                                                TransactionId tid) {
             return Proxy.redirectCall(core,
                     ourNodeId,
                     owner,
@@ -693,12 +603,12 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner,
-                                                         PublicKeyHash writer,
-                                                         List<byte[]> signatures,
-                                                         List<byte[]> blocks,
-                                                         TransactionId tid,
-                                                         ProgressConsumer<Long> progressConsumer) {
+        public CompletableFuture<List<Cid>> putRaw(PublicKeyHash owner,
+                                                   PublicKeyHash writer,
+                                                   List<byte[]> signatures,
+                                                   List<byte[]> blocks,
+                                                   TransactionId tid,
+                                                   ProgressConsumer<Long> progressConsumer) {
             return Proxy.redirectCall(core,
                     ourNodeId,
                     owner,

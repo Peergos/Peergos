@@ -12,6 +12,7 @@ import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.storage.*;
 import com.sun.net.httpserver.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.util.*;
 
 import static peergos.shared.storage.ContentAddressedStorage.HTTP.*;
@@ -184,7 +185,7 @@ public class DHTHandler implements HttpHandler {
                             throw new IllegalStateException("Invalid signature for block!");
                     }
 
-                    List<Multihash> hashes = (isRaw ?
+                    List<Cid> hashes = (isRaw ?
                             dht.putRaw(ownerHash, writerHash, signatures, data, tid, x -> {}) :
                             dht.put(ownerHash, writerHash, signatures, data, tid)).get();
                     List<Object> json = hashes.stream()
@@ -199,11 +200,13 @@ public class DHTHandler implements HttpHandler {
                 }
                 case BLOCK_GET:{
                     AggregatedMetrics.DHT_BLOCK_GET.inc();
-                    Multihash hash = Cid.decode(args.get(0));
-                    String auth = params.containsKey("auth") ? last.apply("auth") : "";
-                    (hash instanceof Cid && ((Cid) hash).codec == Cid.Codec.Raw ?
-                            dht.getRaw(hash, auth) :
-                            dht.get(hash, auth).thenApply(opt -> opt.map(CborObject::toByteArray)))
+                    Cid hash = Cid.decode(args.get(0));
+                    Optional<BatWithId> bat = params.containsKey("bat") ?
+                            Optional.of(BatWithId.decode(last.apply("bat"))) :
+                            Optional.empty();
+                    (hash.codec == Cid.Codec.Raw ?
+                            dht.getRaw(hash, bat) :
+                            dht.get(hash, bat).thenApply(opt -> opt.map(CborObject::toByteArray)))
                             .thenAccept(opt -> replyBytes(httpExchange,
                                     opt.orElse(new byte[0]), opt.map(x -> hash)))
                             .exceptionally(Futures::logAndThrow).get();

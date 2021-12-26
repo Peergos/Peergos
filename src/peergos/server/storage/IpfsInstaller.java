@@ -26,7 +26,7 @@ public class IpfsInstaller {
         DARWIN_ARM64("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.1.2/darwin-arm64/ipfs?raw=true",
                 Cid.decode("QmayeuvCQDTejQvPeBRwdodjRhEzjv5uRp6Mqr3NkRBZTC")),
         LINUX_AMD64("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.2.0/linux-amd64/ipfs?raw=true",
-                Cid.decode("QmRSUynz4UhgXoKd383mSctM7bgu91PsZvomqjmWA9N6SV")),
+                Cid.decode("QmYySj1CDArWWncjYoiQ9yCa4Xu3VvwvY9NbWX8gFWhgBT")),
         LINUX_ARM("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.1.2/linux-arm/ipfs?raw=true",
                 Cid.decode("QmTr37RA8HqUByf8Xceu3PhHKpof48tetrRmoMh8ok6WHL")),
         LINUX_ARM64("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.1.2/linux-arm64/ipfs?raw=true",

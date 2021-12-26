@@ -836,7 +836,7 @@ public abstract class UserTests {
         FileUploadTransaction transaction = Transaction.buildFileUploadTransaction(filePath.toString(), data.length,
                 AsyncReader.build(data), userRoot.signingPair(), userRoot.generateChildLocationsFromSize(data.length,
                         context.crypto.random)).join();
-        int prior = context.getTotalSpaceUsed(context.signer.publicKeyHash, context.signer.publicKeyHash).get().intValue();
+        int prior = context.getTotalSpaceUsed().get().intValue();
 
         TransactionService transactions = context.getTransactionService();
         context.network.synchronizer.applyComplexUpdate(userRoot.owner(), transactions.getSigner(),
@@ -845,7 +845,7 @@ public abstract class UserTests {
             userRoot.uploadOrReplaceFile(filename, throwingReader, data.length, context.network,
                     context.crypto, l -> {}, transaction.getLocations().get(0).getMapKey(), Optional.of(Bat.random(crypto.random)), userRoot.mirrorBatId()).get();
         } catch (Exception e) {}
-        int during = context.getTotalSpaceUsed(context.signer.publicKeyHash, context.signer.publicKeyHash).get().intValue();
+        int during = context.getTotalSpaceUsed().get().intValue();
         Assert.assertTrue("One chunk uploaded", during > 5 * 1024*1024);
 
         context.network.synchronizer.applyComplexUpdate(userRoot.owner(), transactions.getSigner(),
@@ -854,7 +854,7 @@ public abstract class UserTests {
                     return Futures.reduceAll(pending, current,
                             (version, t) -> transactions.clearAndClose(version, committer, t), (a, b) -> b);
                 }).join();
-        int post = context.getTotalSpaceUsed(context.signer.publicKeyHash, context.signer.publicKeyHash).get().intValue();
+        int post = context.getTotalSpaceUsed().get().intValue();
         Assert.assertTrue("Space from failed upload reclaimed", post < prior + 5000); //TODO these should be equal figure out why not
     }
 
@@ -944,7 +944,7 @@ public abstract class UserTests {
 
         // check used space
         PublicKeyHash signer = context.signer.publicKeyHash;
-        long totalSpaceUsed = context.getTotalSpaceUsed(signer, signer).get();
+        long totalSpaceUsed = context.getTotalSpaceUsed().get();
         Assert.assertTrue("Correct used space", totalSpaceUsed > 10*1024*1024);
     }
 

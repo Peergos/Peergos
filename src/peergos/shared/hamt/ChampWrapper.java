@@ -3,6 +3,7 @@ package peergos.shared.hamt;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
@@ -41,12 +42,12 @@ public class ChampWrapper<V extends Cborable> implements ImmutableTree<V>
         return root.right;
     }
 
-    public static <V extends Cborable> CompletableFuture<ChampWrapper<V>> create(Multihash rootHash,
+    public static <V extends Cborable> CompletableFuture<ChampWrapper<V>> create(Cid rootHash,
                                                                                  Function<ByteArrayWrapper, CompletableFuture<byte[]>> hasher,
                                                                                  ContentAddressedStorage dht,
                                                                                  Hasher writeHasher,
                                                                                  Function<Cborable, V> fromCbor) {
-        return dht.get(rootHash, "").thenApply(rawOpt -> {
+        return dht.get(rootHash, Optional.empty()).thenApply(rawOpt -> {
             if (! rawOpt.isPresent())
                 throw new IllegalStateException("Champ root not present: " + rootHash);
             return new ChampWrapper<>(Champ.fromCbor(rawOpt.get(), fromCbor), rootHash, hasher, dht, writeHasher, BIT_WIDTH);

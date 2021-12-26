@@ -11,6 +11,7 @@ import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.hamt.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.mutable.*;
 import peergos.shared.social.*;
@@ -230,7 +231,7 @@ public class MirrorCoreNode implements CoreNode {
 
             MaybeMultihash newPeergosRoot = p2pMutable.getPointerTarget(peergosKey, peergosKey, ipfs).get();
 
-            CommittedWriterData currentPeergosWd = WriterData.getWriterData(newPeergosRoot.get(), ipfs).get();
+            CommittedWriterData currentPeergosWd = WriterData.getWriterData((Cid)newPeergosRoot.get(), ipfs).get();
             PublicKeyHash pkiKey = currentPeergosWd.props.namedOwnedKeys.get("pki").ownedKey;
             if (pkiKey == null)
                 throw new IllegalStateException("No pki key on owner: " + pkiOwnerIdentity);
@@ -257,7 +258,7 @@ public class MirrorCoreNode implements CoreNode {
                         Optional<CborObject.CborMerkleLink> newVal = t.right;
                         if (newVal.isPresent()) {
                             transactions.addBlock(newVal.get().target, tid, peergosKey);
-                            ipfs.get(newVal.get().target, "").join();
+                            ipfs.get((Cid) newVal.get().target, Optional.empty()).join();
                         }
                     };
             Champ.applyToDiff(currentTree, updatedTree, 0, IpfsCoreNode::keyHash,

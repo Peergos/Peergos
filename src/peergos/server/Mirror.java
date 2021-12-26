@@ -8,6 +8,7 @@ import peergos.shared.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
@@ -134,7 +135,7 @@ public class Mirror {
         // use a mirror call to distinguish from normal pin calls
         TransactionId tid = transactions.startTransaction(owner);
         try {
-            storage.mirror(owner, existingTarget.toOptional(), updatedTarget.toOptional(), mirrorBat, storage.id().join(), tid, hasher);
+            storage.mirror(owner, existingTarget.toOptional().map(c -> (Cid)c), updatedTarget.toOptional().map(c -> (Cid)c), mirrorBat, storage.id().join(), tid, hasher);
             targetPointers.setPointer(writer, existing, newPointer).join();
         } finally {
             transactions.closeTransaction(owner, tid);

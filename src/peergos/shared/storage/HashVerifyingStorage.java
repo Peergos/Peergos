@@ -4,6 +4,7 @@ import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -55,11 +56,11 @@ public class HashVerifyingStorage extends DelegatingStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
-                                                  PublicKeyHash writer,
-                                                  List<byte[]> signedHashes,
-                                                  List<byte[]> blocks,
-                                                  TransactionId tid) {
+    public CompletableFuture<List<Cid>> put(PublicKeyHash owner,
+                                            PublicKeyHash writer,
+                                            List<byte[]> signedHashes,
+                                            List<byte[]> blocks,
+                                            TransactionId tid) {
         return source.put(owner, writer, signedHashes, blocks, tid)
                 .thenCompose(hashes -> Futures.combineAllInOrder(hashes.stream()
                         .map(h -> verify(blocks.get(hashes.indexOf(h)), h, () -> h))
@@ -67,20 +68,20 @@ public class HashVerifyingStorage extends DelegatingStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Multihash hash, String auth) {
-        return source.get(hash, auth)
+    public CompletableFuture<Optional<CborObject>> get(Cid hash, Optional<BatWithId> bat) {
+        return source.get(hash, bat)
                 .thenCompose(cborOpt -> cborOpt.map(cbor -> verify(cbor.toByteArray(), hash, () -> cbor)
                         .thenApply(Optional::of))
                         .orElseGet(() -> Futures.of(Optional.empty())));
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner,
-                                                     PublicKeyHash writer,
-                                                     List<byte[]> signatures,
-                                                     List<byte[]> blocks,
-                                                     TransactionId tid,
-                                                     ProgressConsumer<Long> progressConsumer) {
+    public CompletableFuture<List<Cid>> putRaw(PublicKeyHash owner,
+                                               PublicKeyHash writer,
+                                               List<byte[]> signatures,
+                                               List<byte[]> blocks,
+                                               TransactionId tid,
+                                               ProgressConsumer<Long> progressConsumer) {
         return source.putRaw(owner, writer, signatures, blocks, tid, progressConsumer)
                 .thenCompose(hashes -> Futures.combineAllInOrder(hashes.stream()
                         .map(h -> verify(blocks.get(hashes.indexOf(h)), h, () -> h))
@@ -88,8 +89,8 @@ public class HashVerifyingStorage extends DelegatingStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash, String auth) {
-        return source.getRaw(hash, auth)
+    public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, Optional<BatWithId> bat) {
+        return source.getRaw(hash, bat)
                 .thenCompose(arrOpt -> arrOpt.map(bytes -> verify(bytes, hash, () -> bytes)
                         .thenApply(Optional::of))
                         .orElseGet(() -> Futures.of(Optional.empty())));

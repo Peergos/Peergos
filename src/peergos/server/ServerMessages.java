@@ -12,6 +12,7 @@ import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.mutable.*;
 import peergos.shared.user.*;
+import peergos.shared.util.*;
 
 import java.io.*;
 import java.nio.file.*;
@@ -100,7 +101,7 @@ public class ServerMessages extends Builder {
         Supplier<Connection> dbConnectionPool = getDBConnector(a, "transactions-sql-file");
         TransactionStore transactions = buildTransactionStore(a, dbConnectionPool);
         Hasher hasher = Main.initCrypto().hasher;
-        DeletableContentAddressedStorage localStorage = buildLocalStorage(a, transactions, hasher);
+        DeletableContentAddressedStorage localStorage = buildLocalStorage(a, transactions, (b, d, s, auth) -> Futures.of(true), hasher);
         JdbcIpnsAndSocial rawPointers = buildRawPointers(a, getDBConnector(a, "mutable-pointers-file", dbConnectionPool));
         MutablePointers localPointers = UserRepository.build(localStorage, rawPointers);
         MutablePointersProxy proxingMutable = new HttpMutablePointers(buildP2pHttpProxy(a), getPkiServerId(a));

@@ -1,5 +1,6 @@
 package peergos.server.storage;
 
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
@@ -15,14 +16,17 @@ public class TransactionalIpfs extends DelegatingStorage implements DeletableCon
 
     private final TransactionStore transactions;
     private final DeletableContentAddressedStorage target;
+    private final Cid id;
     private final Hasher hasher;
 
     public TransactionalIpfs(DeletableContentAddressedStorage target,
                              TransactionStore transactions,
+                             Cid id,
                              Hasher hasher) {
         super(target);
         this.target = target;
         this.transactions = transactions;
+        this.id = id;
         this.hasher = hasher;
     }
 
@@ -43,16 +47,36 @@ public class TransactionalIpfs extends DelegatingStorage implements DeletableCon
     }
 
     @Override
+    public CompletableFuture<Optional<CborObject>> get(Cid object, Optional<BatWithId> bat) {
+        return get(object, bat, id, hasher);
+    }
+
+    @Override
+    public CompletableFuture<Optional<CborObject>> get(Cid hash, String auth) {
+        return target.get(hash, auth);
+    }
+
+    @Override
+    public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, Optional<BatWithId> bat) {
+        return getRaw(hash, bat, id, hasher);
+    }
+
+    @Override
+    public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, String auth) {
+        return target.getRaw(hash, auth);
+    }
+
+    @Override
     public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey) {
         return getChampLookup(root, champKey, hasher);
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
-                                                  PublicKeyHash writer,
-                                                  List<byte[]> signedHashes,
-                                                  List<byte[]> blocks,
-                                                  TransactionId tid) {
+    public CompletableFuture<List<Cid>> put(PublicKeyHash owner,
+                                            PublicKeyHash writer,
+                                            List<byte[]> signedHashes,
+                                            List<byte[]> blocks,
+                                            TransactionId tid) {
         for (byte[] signedHash : signedHashes) {
             Multihash hash = new Multihash(Multihash.Type.sha2_256, Arrays.copyOfRange(signedHash, signedHash.length - 32, signedHash.length));
             Cid cid = new Cid(1, Cid.Codec.DagCbor, hash.type, hash.getHash());
@@ -62,12 +86,12 @@ public class TransactionalIpfs extends DelegatingStorage implements DeletableCon
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner,
-                                                     PublicKeyHash writer,
-                                                     List<byte[]> signedHashes,
-                                                     List<byte[]> blocks,
-                                                     TransactionId tid,
-                                                     ProgressConsumer<Long> progressConsumer) {
+    public CompletableFuture<List<Cid>> putRaw(PublicKeyHash owner,
+                                               PublicKeyHash writer,
+                                               List<byte[]> signedHashes,
+                                               List<byte[]> blocks,
+                                               TransactionId tid,
+                                               ProgressConsumer<Long> progressConsumer) {
         for (byte[] signedHash : signedHashes) {
             Multihash hash = new Multihash(Multihash.Type.sha2_256, Arrays.copyOfRange(signedHash, signedHash.length - 32, signedHash.length));
             Cid cid = new Cid(1, Cid.Codec.Raw, hash.type, hash.getHash());
@@ -77,7 +101,7 @@ public class TransactionalIpfs extends DelegatingStorage implements DeletableCon
     }
 
     @Override
-    public Stream<Multihash> getAllBlockHashes() {
+    public Stream<Cid> getAllBlockHashes() {
         return target.getAllBlockHashes();
     }
 

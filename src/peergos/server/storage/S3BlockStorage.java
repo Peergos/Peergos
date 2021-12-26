@@ -5,6 +5,7 @@ import peergos.server.*;
 import peergos.server.corenode.*;
 import peergos.server.space.*;
 import peergos.server.sql.*;
+import peergos.server.storage.auth.*;
 import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
@@ -53,15 +54,17 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     private final String accessKeyId, secretKey;
     private final BlockStoreProperties props;
     private final TransactionStore transactions;
+    private final BlockRequestAuthoriser authoriser;
     private final Hasher hasher;
-    private final ContentAddressedStorage p2pFallback;
+    private final DeletableContentAddressedStorage p2pFallback;
 
     public S3BlockStorage(S3Config config,
                           Cid id,
                           BlockStoreProperties props,
                           TransactionStore transactions,
+                          BlockRequestAuthoriser authoriser,
                           Hasher hasher,
-                          ContentAddressedStorage p2pFallback) {
+                          DeletableContentAddressedStorage p2pFallback) {
         this.id = id;
         this.region = config.region;
         this.bucket = config.bucket;
@@ -73,6 +76,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         LOG.info("Using S3 Block Storage at " + config.regionEndpoint + ", bucket " + config.bucket + ", path: " + config.path);
         this.props = props;
         this.transactions = transactions;
+        this.authoriser = authoriser;
         this.hasher = hasher;
         this.p2pFallback = p2pFallback;
     }
@@ -86,7 +90,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         return DirectS3BlockStore.hashToKey(hash);
     }
 
-    private Multihash keyToHash(String key) {
+    private Cid keyToHash(String key) {
         return DirectS3BlockStore.keyToHash(key.substring(folder.length()));
     }
 
@@ -147,20 +151,34 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Multihash hash, String auth) {
-        if (hash instanceof Cid && ((Cid) hash).codec == Cid.Codec.Raw)
+    public CompletableFuture<Optional<CborObject>> get(Cid object, Optional<BatWithId> bat) {
+        return get(object, bat, id, hasher);
+    }
+
+    @Override
+    public CompletableFuture<Optional<CborObject>> get(Cid hash, String auth) {
+        if (hash.codec == Cid.Codec.Raw)
             throw new IllegalStateException("Need to call getRaw if cid is not cbor!");
         return getRaw(hash, auth).thenApply(opt -> opt.map(CborObject::fromByteArray));
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash, String auth) {
+    public CompletableFuture<Optional<byte[]>> getRaw(Cid object, Optional<BatWithId> bat) {
+        return getRaw(object, bat, id, hasher);
+    }
+
+    @Override
+    public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, String auth) {
         String path = folder + hashToKey(hash);
         PresignedUrl getUrl = S3Request.preSignGet(path, Optional.of(600),
                 S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKeyId, secretKey, hasher).join();
         Histogram.Timer readTimer = readTimerLog.labels("read").startTimer();
         try {
-            return Futures.of(Optional.of(HttpUtil.get(getUrl)));
+            byte[] block = HttpUtil.get(getUrl);
+            // validate auth
+            if (! authoriser.allowRead(hash, block, id, auth).join())
+                throw new IllegalStateException("Unauthorised!");
+            return Futures.of(Optional.of(block));
         } catch (IOException e) {
             String msg = e.getMessage();
             boolean rateLimited = msg.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>SlowDown</Code>");
@@ -181,19 +199,19 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> mirror(PublicKeyHash owner,
-                                                     Optional<Multihash> existing,
-                                                     Optional<Multihash> updated,
-                                                     Optional<BatWithId> mirrorBat,
-                                                     Cid ourNodeId,
-                                                     TransactionId tid,
-                                                     Hasher hasher) {
+    public CompletableFuture<List<Cid>> mirror(PublicKeyHash owner,
+                                               Optional<Cid> existing,
+                                               Optional<Cid> updated,
+                                               Optional<BatWithId> mirrorBat,
+                                               Cid ourNodeId,
+                                               TransactionId tid,
+                                               Hasher hasher) {
         if (updated.isEmpty())
             return Futures.of(Collections.emptyList());
-        Multihash newRoot = updated.get();
+        Cid newRoot = updated.get();
         if (existing.equals(updated))
             return Futures.of(Collections.singletonList(newRoot));
-        boolean isRaw = (newRoot instanceof Cid) && ((Cid) newRoot).codec == Cid.Codec.Raw;
+        boolean isRaw = newRoot.codec == Cid.Codec.Raw;
 
         Optional<byte[]> newVal = isRaw ?
                 p2pFallback.getRaw(newRoot, mirrorBat, id, hasher).join() :
@@ -212,10 +230,10 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 .orElse(Collections.emptyList());
 
         for (int i=0; i < newLinks.size(); i++) {
-            Optional<Multihash> existingLink = i < existingLinks.size() ?
-                    Optional.of(existingLinks.get(i)) :
+            Optional<Cid> existingLink = i < existingLinks.size() ?
+                    Optional.of((Cid)existingLinks.get(i)) :
                     Optional.empty();
-            Optional<Multihash> updatedLink = Optional.of(newLinks.get(i));
+            Optional<Cid> updatedLink = Optional.of((Cid)newLinks.get(i));
             mirror(owner, existingLink, updatedLink, mirrorBat, ourNodeId, tid, hasher).join();
         }
         return Futures.of(Collections.singletonList(newRoot));
@@ -329,28 +347,28 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
-                                                  PublicKeyHash writer,
-                                                  List<byte[]> signedHashes,
-                                                  List<byte[]> blocks,
-                                                  TransactionId tid) {
+    public CompletableFuture<List<Cid>> put(PublicKeyHash owner,
+                                            PublicKeyHash writer,
+                                            List<byte[]> signedHashes,
+                                            List<byte[]> blocks,
+                                            TransactionId tid) {
         return put(owner, blocks, false, tid);
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner,
-                                                     PublicKeyHash writer,
-                                                     List<byte[]> signedHashes,
-                                                     List<byte[]> blocks,
-                                                     TransactionId tid,
-                                                     ProgressConsumer<Long> progressConsumer) {
+    public CompletableFuture<List<Cid>> putRaw(PublicKeyHash owner,
+                                               PublicKeyHash writer,
+                                               List<byte[]> signedHashes,
+                                               List<byte[]> blocks,
+                                               TransactionId tid,
+                                               ProgressConsumer<Long> progressConsumer) {
         return put(owner, blocks, true, tid);
     }
 
-    private CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
-                                                   List<byte[]> blocks,
-                                                   boolean isRaw,
-                                                   TransactionId tid) {
+    private CompletableFuture<List<Cid>> put(PublicKeyHash owner,
+                                             List<byte[]> blocks,
+                                             boolean isRaw,
+                                             TransactionId tid) {
         return CompletableFuture.completedFuture(blocks.stream()
                 .map(b -> put(b, isRaw, tid, owner))
                 .collect(Collectors.toList()));
@@ -360,7 +378,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
      *
      * @param data
      */
-    public Multihash put(byte[] data, boolean isRaw, TransactionId tid, PublicKeyHash owner) {
+    public Cid put(byte[] data, boolean isRaw, TransactionId tid, PublicKeyHash owner) {
         Histogram.Timer writeTimer = writeTimerLog.labels("write").startTimer();
         Multihash hash = new Multihash(Multihash.Type.sha2_256, Hash.sha256(data));
         Cid cid = new Cid(1, isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor, hash.type, hash.getHash());
@@ -384,13 +402,13 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         }
     }
 
-    public Stream<Multihash> getAllBlockHashes() {
+    public Stream<Cid> getAllBlockHashes() {
         // todo make this actually streaming
         return getFiles(Long.MAX_VALUE).stream();
     }
 
-    private List<Multihash> getFiles(long maxReturned) {
-        List<Multihash> results = new ArrayList<>();
+    private List<Cid> getFiles(long maxReturned) {
+        List<Cid> results = new ArrayList<>();
         applyToAll(obj -> {
             try {
                 results.add(keyToHash(obj.key));
@@ -484,8 +502,9 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         Supplier<Connection> database = Main.getDBConnector(a, "mutable-pointers-file");
         Supplier<Connection> transactionsDb = Main.getDBConnector(a, "transactions-sql-file");
         TransactionStore transactions = JdbcTransactionStore.build(transactionsDb, sqlCommands);
+        BlockRequestAuthoriser authoriser = (c, b, s, auth) -> Futures.of(true);
         S3BlockStorage s3 = new S3BlockStorage(config, Cid.decode(a.getArg("ipfs.id")),
-                BlockStoreProperties.empty(), transactions, hasher, new RAMStorage(hasher));
+                BlockStoreProperties.empty(), transactions, authoriser, hasher, new RAMStorage(hasher));
         JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(database, sqlCommands);
         Supplier<Connection> usageDb = Main.getDBConnector(a, "space-usage-sql-file");
         UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
@@ -500,11 +519,12 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         System.out.println("Testing S3 bucket: " + config.bucket + " in region " + config.region + " with base dir: " + config.path);
         Cid id = new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, RAMStorage.hash("S3Storage".getBytes()));
         TransactionStore transactions = JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands());
-        S3BlockStorage s3 = new S3BlockStorage(config, id, BlockStoreProperties.empty(), transactions, hasher, new RAMStorage(hasher));
+        BlockRequestAuthoriser authoriser = (c, b, s, a) -> Futures.of(true);
+        S3BlockStorage s3 = new S3BlockStorage(config, id, BlockStoreProperties.empty(), transactions, authoriser, hasher, new RAMStorage(hasher));
 
         System.out.println("***** Testing ls and read");
         System.out.println("Testing ls...");
-        List<Multihash> files = s3.getFiles(1000);
+        List<Cid> files = s3.getFiles(1000);
         System.out.println("Success! found " + files.size());
 
         System.out.println("Testing read...");

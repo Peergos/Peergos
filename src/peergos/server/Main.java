@@ -169,7 +169,7 @@ public class Main extends Builder {
                     new ContentAddressedStorage.HTTP(Builder.buildIpfsApi(args), false, crypto.hasher) :
                     new FileContentAddressedStorage(blockstorePath(args),
                             JdbcTransactionStore.build(getDBConnector(args, "transactions-sql-file"), new SqliteCommands()),
-                            crypto.hasher);
+                            (a, b, c, d) -> Futures.of(true), crypto.hasher);
 
             SigningKeyPair peergosIdentityKeys = peergos.getUser();
             PublicKeyHash peergosPublicHash = ContentAddressedStorage.hashKey(peergosIdentityKeys.publicSigningKey);
@@ -261,7 +261,6 @@ public class Main extends Builder {
                     Crypto crypto = initCrypto();
                     int peergosPort = args.getInt("port");
                     args = args.setIfAbsent("proxy-target", getLocalMultiAddress(peergosPort).toString());
-                    MultiAddress ipfsApi = new MultiAddress(args.getArg("ipfs-api-address"));
 
                     IpfsWrapper ipfs = null;
                     boolean useIPFS = args.getBoolean("useIPFS");
@@ -272,11 +271,13 @@ public class Main extends Builder {
 
                     args = bootstrap(args);
 
+                    BatCave batStore = new RamBatCave();
+                    BlockRequestAuthoriser blockRequestAuthoriser = Builder.blockAuthoriser(args, batStore, crypto.hasher);
                     Multihash pkiIpfsNodeId = useIPFS ?
                             new ContentAddressedStorage.HTTP(Builder.buildIpfsApi(args), false, crypto.hasher).id().join() :
                             new FileContentAddressedStorage(blockstorePath(args),
                                     JdbcTransactionStore.build(getDBConnector(args, "transactions-sql-file"), new SqliteCommands()),
-                                    crypto.hasher).id().get();
+                                    blockRequestAuthoriser, crypto.hasher).id().get();
 
                     if (ipfs != null)
                         ipfs.stop();
@@ -324,17 +325,19 @@ public class Main extends Builder {
                         ipfs = startIpfs(args);
                     }
 
-                    MultiAddress ipfsApi = new MultiAddress(args.getArg("ipfs-api-address"));
-
                     Supplier<Connection> transactionDb = getDBConnector(args, "transactions-sql-file");
                     JdbcTransactionStore transactions = JdbcTransactionStore.build(transactionDb, new SqliteCommands());
+                    BatCave batStore = new RamBatCave();
+                    BlockRequestAuthoriser authoriser = Builder.blockAuthoriser(args, batStore, crypto.hasher);
+
                     ContentAddressedStorage storage = useIPFS ?
                             new ContentAddressedStorage.HTTP(Builder.buildIpfsApi(args), false, crypto.hasher) :
                             S3Config.useS3(args) ?
                                     new S3BlockStorage(S3Config.build(args), Cid.decode(args.getArg("ipfs.id")),
-                                            BlockStoreProperties.empty(), transactions, crypto.hasher, new ContentAddressedStorage.HTTP(Builder.buildIpfsApi(args), false, crypto.hasher)) :
+                                            BlockStoreProperties.empty(), transactions, authoriser,
+                                            crypto.hasher, new DeletableContentAddressedStorage.HTTP(Builder.buildIpfsApi(args), false, crypto.hasher)) :
                                     new FileContentAddressedStorage(blockstorePath(args),
-                                            transactions, crypto.hasher);
+                                            transactions, authoriser, crypto.hasher);
                     Multihash pkiIpfsNodeId = storage.id().get();
 
                     if (ipfs != null)
@@ -497,7 +500,9 @@ public class Main extends Builder {
             Supplier<Connection> dbConnectionPool = getDBConnector(a, "transactions-sql-file");
             TransactionStore transactions = buildTransactionStore(a, dbConnectionPool);
 
-            DeletableContentAddressedStorage localStorage = buildLocalStorage(a, transactions, crypto.hasher);
+            BatCave batStore = new RamBatCave();
+            BlockRequestAuthoriser blockRequestAuthoriser = Builder.blockAuthoriser(a, batStore, hasher);
+            DeletableContentAddressedStorage localStorage = buildLocalStorage(a, transactions, blockRequestAuthoriser, crypto.hasher);
             JdbcIpnsAndSocial rawPointers = buildRawPointers(a,
                     getDBConnector(a, "mutable-pointers-file", dbConnectionPool));
 
@@ -526,38 +531,6 @@ public class Main extends Builder {
 
             InetSocketAddress allowListener = new InetSocketAddress("localhost", AddressUtil.getListenPort(a.getArg("allow-target")));
             System.out.println("Block allow listener for " + nodeId + " on " + allowListener);
-            BatCave batStore = new RamBatCave();
-            Optional<BatWithId> instanceBat = a.getOptionalArg("instance-bat").map(BatWithId::decode);
-            BlockRequestAuthoriser blockRequestAuthoriser = (b, s, auth) -> {
-                System.out.println("Allow: " + b + ", auth=" + auth + ", from: " + s + " received by " + nodeId + " " + allowListener);
-                if (b.codec == Cid.Codec.Raw) {
-                    boolean isPreUpgradeBlock = false; //TODO lookup list of raw cids at upgrade time in DB
-                    if (isPreUpgradeBlock)
-                        return Futures.of(true);
-                    byte[] block = localStorage.getRaw(b, "").join().get();
-                    Bat bat = Bat.deriveFromRawBlock(block);
-                    return Futures.of(BlockRequestAuthoriser.isValidAuth(BlockAuth.fromString(auth), b, s, bat, hasher));
-                } else if (b.codec == Cid.Codec.DagCbor) {
-                    CborObject block = localStorage.get(b, "").join().get();
-                    if (block instanceof CborObject.CborMap) {
-                        if (((CborObject.CborMap) block).containsKey("bats")) {
-                            List<BatId> batids = ((CborObject.CborMap) block).getList("bats", BatId::fromCbor);
-                            for (BatId bid : batids) {
-                                Optional<Bat> bat = bid.getInline().or(() -> batStore.getBat(bid));
-                                if (bat.isPresent() && BlockRequestAuthoriser.isValidAuth(BlockAuth.fromString(auth), b, s, bat.get(), hasher))
-                                    return Futures.of(true);
-                            }
-                            if (instanceBat.isPresent()) {
-                                if (BlockRequestAuthoriser.isValidAuth(BlockAuth.fromString(auth), b, s, instanceBat.get().bat, hasher))
-                                    return Futures.of(true);
-                            }
-                            return Futures.of(false);
-                        } else return Futures.of(true); // This is a public block
-                    } else // e.g. inner CHAMP nodes
-                        return Futures.of(true);
-                }
-                return Futures.of(false);
-            };
             BlockAuthServer.startListener(blockRequestAuthoriser, allowListener, 100, 4);
 
             CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable,

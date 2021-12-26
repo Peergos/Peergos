@@ -39,7 +39,8 @@ public class BlockAuthServer {
                 throw new IllegalStateException("Host doesn't match!");
             String auth = last.apply("auth");
             Cid cid = Cid.decode(last.apply("cid"));
-            author.allowRead(cid, source, auth).thenAccept(res -> {
+            byte[] block = Serialize.readFully(httpExchange.getRequestBody());
+            author.allowRead(cid, block, source, auth).thenAccept(res -> {
                 replyBytes(httpExchange, (res ? "true" : "false").getBytes(StandardCharsets.UTF_8));
             }).exceptionally(Futures::logAndThrow).get();
         } catch (Exception e) {

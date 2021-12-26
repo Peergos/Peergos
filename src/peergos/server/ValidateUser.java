@@ -40,7 +40,7 @@ public class ValidateUser {
     }
 
     private static void validateBlock(Multihash target, NetworkAccess network) {
-        Optional<CborObject> block = network.dhtClient.get(target, "").join();
+        Optional<CborObject> block = network.dhtClient.get((Cid)target, Optional.empty()).join();
         if (! block.isPresent())
             throw new IllegalStateException("Couldn't retrieve " + target);
 
