@@ -896,7 +896,7 @@ public class UserContext {
                                 return CryptreeNode.createEmptyDir(MaybeMultihash.empty(), rootRKey, rootWKey, Optional.of(writerPair),
                                                 new FileProperties(directoryName, true, false, "", 0, LocalDateTime.now(),
                                                         false, Optional.empty(), Optional.empty()),
-                                                Optional.empty(), SymmetricKey.random(), nextChunk, mirrorBatId, crypto.random, crypto.hasher)
+                                                Optional.empty(), SymmetricKey.random(), nextChunk, rootBat, mirrorBatId, crypto.random, crypto.hasher)
                                         .thenCompose(root -> {
                                             LOG.info("Uploading entry point directory");
                                             return WriterData.createEmpty(owner.publicKeyHash, writerPair,

@@ -36,7 +36,7 @@ public class Bat implements Cborable {
     }
 
     public CompletableFuture<BatId> calculateId(Hasher h) {
-        return h.hash(serialize(), false).thenApply(BatId::new);
+        return h.hash(serialize(), true).thenApply(BatId::new);
     }
 
     @Override

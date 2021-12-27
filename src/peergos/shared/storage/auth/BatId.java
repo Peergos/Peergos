@@ -47,6 +47,11 @@ public class BatId implements Cborable {
     }
 
     @Override
+    public String toString() {
+        return id.toString();
+    }
+
+    @Override
     public int hashCode() {
         return id.hashCode();
     }

@@ -14,6 +14,8 @@ public class BatWithId implements Cborable {
     public BatWithId(Bat bat, Cid id) {
         if (id.isIdentity())
             throw new IllegalStateException("Cannot use identity cid here!");
+        if (id.codec != Cid.Codec.Raw)
+            throw new IllegalStateException("BatId codec must be Raw!");
         this.bat = bat;
         this.id = id;
     }

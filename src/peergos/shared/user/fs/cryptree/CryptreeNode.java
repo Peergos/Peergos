@@ -738,7 +738,7 @@ public class CryptreeNode implements Cborable {
                                                     .collect(Collectors.toList());
                                             return createDir(MaybeMultihash.empty(), newUs.cap.rBaseKey,
                                                     newUs.cap.wBaseKey.get(), signer, props, newParentCap, newParentKey,
-                                                    nextChunkRel, new ChildrenLinks(relativeChildLinks), mirrorBat, crypto.random, crypto.hasher)
+                                                    nextChunkRel, new ChildrenLinks(relativeChildLinks), newUs.cap.bat, mirrorBat, crypto.random, crypto.hasher)
                                                     .thenCompose(newUsDir ->
                                                             IpfsTransaction.call(us.cap.owner, tid -> newUsDir.commit(newChildCaps.left,
                                                                     committer, newUs.cap, newUs.signer, network, tid), network.dhtClient));
@@ -868,24 +868,22 @@ public class CryptreeNode implements Cborable {
                                     List<NamedRelativeCapability> remaining = addToNext.stream()
                                             .skip(getMaxChildLinksPerBlob())
                                             .collect(Collectors.toList());
-                                    return CryptreeNode.createDir(MaybeMultihash.empty(), nextSubfoldersKey,
-                                            null, Optional.empty(), FileProperties.EMPTY, parentCap,
-                                            ourParentKey, nextChunk, new ChildrenLinks(addToNextChunk), mirrorBat, crypto.random, crypto.hasher)
-                                            .thenCompose(next -> {
-                                                return getNextChunkLocation(us.rBaseKey, Optional.empty(), null, Optional.empty(), null)
-                                                        .thenCompose(nextMapKeyAndBat -> {
-                                                            WritableAbsoluteCapability nextPointer = new WritableAbsoluteCapability(us.owner,
-                                                                    us.writer, nextMapKeyAndBat.left, nextMapKeyAndBat.right, nextSubfoldersKey, us.wBaseKey.get());
-                                                            return IpfsTransaction.call(us.owner,
-                                                                    tid -> next.commit(newBase, committer, nextPointer, signer, network, tid)
-                                                                            .thenCompose(updatedBase ->
-                                                                                    network.getMetadata(updatedBase.get(nextPointer.writer).props, nextPointer)
-                                                                                            .thenCompose(nextOpt -> nextOpt.get().
-                                                                                                    addChildrenAndCommit(updatedBase, committer, remaining,
-                                                                                                            nextPointer, signer, mirrorBat, network, crypto)))
-                                                                    , network.dhtClient);
-                                                        });
-                                            });
+                                    return getNextChunkLocation(us.rBaseKey, Optional.empty(), null, Optional.empty(), null)
+                                            .thenCompose(nextMapKeyAndBat -> CryptreeNode.createDir(MaybeMultihash.empty(), nextSubfoldersKey,
+                                                    null, Optional.empty(), FileProperties.EMPTY, parentCap,
+                                                    ourParentKey, nextChunk, new ChildrenLinks(addToNextChunk), nextMapKeyAndBat.right, mirrorBat, crypto.random, crypto.hasher)
+                                                    .thenCompose(next -> {
+                                                        WritableAbsoluteCapability nextPointer = new WritableAbsoluteCapability(us.owner,
+                                                                us.writer, nextMapKeyAndBat.left, nextMapKeyAndBat.right, nextSubfoldersKey, us.wBaseKey.get());
+                                                        return IpfsTransaction.call(us.owner,
+                                                                tid -> next.commit(newBase, committer, nextPointer, signer, network, tid)
+                                                                        .thenCompose(updatedBase ->
+                                                                                network.getMetadata(updatedBase.get(nextPointer.writer).props, nextPointer)
+                                                                                        .thenCompose(nextOpt -> nextOpt.get().
+                                                                                                addChildrenAndCommit(updatedBase, committer, remaining,
+                                                                                                        nextPointer, signer, mirrorBat, network, crypto)))
+                                                                , network.dhtClient);
+                                                    }));
                                 });
                     }
                 });
@@ -926,7 +924,7 @@ public class CryptreeNode implements Cborable {
         WritableAbsoluteCapability childCap = us.withBaseKey(dirReadKey).withBaseWriteKey(dirWriteKey).withMapKey(dirMapKey, dirBat);
         return CryptreeNode.createEmptyDir(MaybeMultihash.empty(), dirReadKey, dirWriteKey, Optional.empty(),
                 new FileProperties(name, true, false, "", 0, LocalDateTime.now(), isSystemFolder,
-                        Optional.empty(), Optional.empty()), Optional.of(ourCap), SymmetricKey.random(), nextChunk, mirrorBat, crypto.random, crypto.hasher)
+                        Optional.empty(), Optional.empty()), Optional.of(ourCap), SymmetricKey.random(), nextChunk, dirBat, mirrorBat, crypto.random, crypto.hasher)
                 .thenCompose(child -> {
 
                     SymmetricLink toChildWriteKey = SymmetricLink.fromPair(us.wBaseKey.get(), dirWriteKey);
@@ -1205,7 +1203,7 @@ public class CryptreeNode implements Cborable {
         return createDir(MaybeMultihash.empty(), linkCap.rBaseKey, linkCap.wBaseKey.get(), empty, targetProps.asLink(),
                 Optional.of(toParent), parentKey, nextChunk,
                 new ChildrenLinks(Collections.singletonList(new NamedRelativeCapability(new PathElement(targetProps.name), toTarget))),
-                mirrorBat, crypto.random, crypto.hasher);
+                linkCap.bat, mirrorBat, crypto.random, crypto.hasher);
     }
 
     public static CompletableFuture<DirAndChildren> createEmptyDir(
@@ -1217,11 +1215,12 @@ public class CryptreeNode implements Cborable {
             Optional<RelativeCapability> parentCap,
             SymmetricKey parentKey,
             RelativeCapability nextChunk,
+            Optional<Bat> inlineBat,
             Optional<BatId> mirrorBat,
             SafeRandom random,
             Hasher hasher) {
         return createDir(lastCommittedHash, rBaseKey, wBaseKey, signingPair, props, parentCap, parentKey, nextChunk,
-                ChildrenLinks.empty(), mirrorBat, random, hasher);
+                ChildrenLinks.empty(), inlineBat, mirrorBat, random, hasher);
     }
 
     public static CompletableFuture<DirAndChildren> createDir(
@@ -1234,6 +1233,7 @@ public class CryptreeNode implements Cborable {
             SymmetricKey parentKey,
             RelativeCapability nextChunk,
             ChildrenLinks children,
+            Optional<Bat> inlineBat,
             Optional<BatId> mirrorBat,
             SafeRandom random,
             Hasher hasher) {
@@ -1245,9 +1245,7 @@ public class CryptreeNode implements Cborable {
 
         PaddedCipherText encryptedBaseBlock = PaddedCipherText.build(rBaseKey, fromBase, BASE_BLOCK_PADDING_BLOCKSIZE);
         PaddedCipherText encryptedParentBlock = PaddedCipherText.build(parentKey, fromParent, META_DATA_PADDING_BLOCKSIZE);
-        Bat inlineBat = Bat.random(random);
-        BatId inline = BatId.inline(inlineBat);
-        List<BatId> bats = mirrorBat.isEmpty() ? Arrays.asList(inline) : Arrays.asList(inline, mirrorBat.get());
+        List<BatId> bats = Stream.concat(inlineBat.stream().map(BatId::inline), mirrorBat.stream()).collect(Collectors.toList());
         return FragmentedPaddedCipherText.build(rBaseKey, children, MIN_FRAGMENT_SIZE, Fragment.MAX_LENGTH, hasher, false)
                 .thenApply(linksAndData -> {
                     CryptreeNode metadata = new CryptreeNode(lastCommittedHash, true, bats, encryptedBaseBlock, linksAndData.left, encryptedParentBlock);

@@ -365,7 +365,7 @@ public interface ContentAddressedStorage {
             return poster.get(apiPrefix + CHAMP_GET + "?arg=" + root.toString()
                     + "&arg=" + ArrayOps.bytesToHex(champKey)
                     + "&owner=" + encode(owner.toString())
-                    + bat.map(b -> "&bat=" + b.encode()))
+                    + bat.map(b -> "&bat=" + b.encode()).orElse(""))
                     .thenApply(CborObject::fromByteArray)
                     .thenApply(c -> (CborObject.CborList)c)
                     .thenApply(res -> res.map(c -> ((CborObject.CborByteArray)c).value));
@@ -462,7 +462,7 @@ public interface ContentAddressedStorage {
         public CompletableFuture<Optional<CborObject>> get(Cid hash, Optional<BatWithId> bat) {
             if (hash.isIdentity())
                 return CompletableFuture.completedFuture(Optional.of(CborObject.fromByteArray(hash.getHash())));
-            return poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash + bat.map(b -> "&bat=" + b.encode()))
+            return poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash + bat.map(b -> "&bat=" + b.encode()).orElse(""))
                     .thenApply(raw -> raw.length == 0 ? Optional.empty() : Optional.of(CborObject.fromByteArray(raw)));
         }
 
@@ -470,7 +470,7 @@ public interface ContentAddressedStorage {
         public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, Optional<BatWithId> bat) {
             if (hash.isIdentity())
                 return CompletableFuture.completedFuture(Optional.of(hash.getHash()));
-            return poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash + bat.map(b -> "&bat=" + b.encode()))
+            return poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash + bat.map(b -> "&bat=" + b.encode()).orElse(""))
                     .thenApply(raw -> raw.length == 0 ? Optional.empty() : Optional.of(raw));
         }
 

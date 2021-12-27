@@ -146,6 +146,10 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, String auth) {
+        return getRaw(hash, auth, true);
+    }
+
+    private CompletableFuture<Optional<byte[]>> getRaw(Cid hash, String auth, boolean doAuth) {
         try {
             if (hash.isIdentity())
                 return Futures.of(Optional.of(hash.getHash()));
@@ -156,13 +160,25 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
             }
             try (DataInputStream din = new DataInputStream(new BufferedInputStream(new FileInputStream(file)))) {
                 byte[] block = Serialize.readFully(din);
-                if (! authoriser.allowRead(hash, block, id().join(), auth).join())
+                if (doAuth && ! authoriser.allowRead(hash, block, id().join(), auth).join())
                     throw new IllegalStateException("Unauthorised!");
                 return CompletableFuture.completedFuture(Optional.of(block));
             }
         } catch (IOException e) {
             throw new RuntimeException(e.getMessage(), e);
         }
+    }
+
+    @Override
+    public CompletableFuture<List<Cid>> getLinks(Cid root, String auth) {
+        if (root.codec == Cid.Codec.Raw)
+            return CompletableFuture.completedFuture(Collections.emptyList());
+        return getRaw(root, auth, false)
+                .thenApply(opt -> opt.map(CborObject::fromByteArray))
+                .thenApply(opt -> opt
+                        .map(cbor -> cbor.links().stream().map(c -> (Cid) c).collect(Collectors.toList()))
+                        .orElse(Collections.emptyList())
+                );
     }
 
     public Cid put(byte[] data, boolean isRaw, TransactionId tid, PublicKeyHash owner) {

@@ -23,6 +23,7 @@ public interface BlockRequestAuthoriser {
         if (expiry.isBefore(Instant.now()))
             return false;
         String signature = S3Request.computeSignature(req, bat.encodeSecret(), h).join();
-        return signature.equals(ArrayOps.bytesToHex(auth.signature));
+        String expected = ArrayOps.bytesToHex(auth.signature);
+        return signature.equals(expected);
     }
 }

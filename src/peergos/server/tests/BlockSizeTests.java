@@ -37,7 +37,7 @@ public class BlockSizeTests {
                 .collect(Collectors.toList());
         CryptreeNode.ChildrenLinks childrenLinks = new CryptreeNode.ChildrenLinks(children);
         CryptreeNode.DirAndChildren dir = CryptreeNode.createDir(MaybeMultihash.empty(), rBase,
-                wBase, Optional.of(signingPair), props, parentCap, parent, nextChunk, childrenLinks, mirrorBatId, crypto.random, crypto.hasher).join();
+                wBase, Optional.of(signingPair), props, parentCap, parent, nextChunk, childrenLinks, Optional.of(Bat.random(crypto.random)), mirrorBatId, crypto.random, crypto.hasher).join();
 
         byte[] raw = dir.dir.serialize();
         Assert.assertTrue(raw.length < Fragment.MAX_LENGTH);

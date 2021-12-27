@@ -96,7 +96,7 @@ public interface ContentAddressedStorageProxy {
                     + "champ/get?arg=" + root.toString()
                     + "&arg=" + ArrayOps.bytesToHex(champKey)
                     + "&owner=" + encode(owner.toString())
-                    + bat.map(b -> "&bat=" + b.encode()))
+                    + bat.map(b -> "&bat=" + b.encode()).orElse(""))
                     .thenApply(CborObject::fromByteArray)
                     .thenApply(c -> (CborObject.CborList)c)
                     .thenApply(res -> res.map(c -> ((CborObject.CborByteArray)c).value));
