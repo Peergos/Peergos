@@ -754,7 +754,7 @@ public class CryptreeNode implements Cborable {
                                         streamSecret.map(props::withNewStreamSecret).orElse(props),
                                         this.childrenOrData, newParentCap, RelativeCapability.buildSubsequentChunk(
                                                 nextChunk.right.getMapKey(), nextChunk.right.bat, nextChunk.right.rBaseKey),
-                                        mirrorBat, crypto.random);
+                                        newUs.cap.bat, mirrorBat, crypto.random);
                                 return IpfsTransaction.call(us.cap.owner, tid -> newFileChunk.commit(nextChunk.left,
                                         committer, newUs.cap, newUs.signer, network, tid), network.dhtClient);
                             }
@@ -1102,6 +1102,7 @@ public class CryptreeNode implements Cborable {
             Optional<Bat> parentBat,
             SymmetricKey parentparentKey,
             RelativeCapability nextChunk,
+            Optional<Bat> inlineBat,
             Optional<BatId> mirrorBat,
             SafeRandom random,
             Hasher hasher,
@@ -1116,7 +1117,7 @@ public class CryptreeNode implements Cborable {
                             parentparentKey,
                             Optional.empty());
                     CryptreeNode cryptree = createFile(existingHash, Optional.empty(), parentKey, dataKey, props,
-                            linksAndData.left, toParent, nextChunk, mirrorBat, random);
+                            linksAndData.left, toParent, nextChunk, inlineBat, mirrorBat, random);
                     return new Pair<>(cryptree, linksAndData.right);
                 });
     }
@@ -1129,9 +1130,11 @@ public class CryptreeNode implements Cborable {
                                           FragmentedPaddedCipherText data,
                                           RelativeCapability toParentDir,
                                           RelativeCapability nextChunk,
+                                          Optional<Bat> inlineBat,
                                           Optional<BatId> mirrorBat,
                                           SafeRandom random) {
-        return createFile(existingHash, signerLink, parentKey, dataKey, props, data, Optional.of(toParentDir), nextChunk, mirrorBat, random);
+        return createFile(existingHash, signerLink, parentKey, dataKey, props, data, Optional.of(toParentDir),
+                nextChunk, inlineBat, mirrorBat, random);
     }
 
     public static CryptreeNode createSubsequentFileChunk(MaybeMultihash existingHash,
@@ -1141,9 +1144,11 @@ public class CryptreeNode implements Cborable {
                                                          FileProperties props,
                                                          FragmentedPaddedCipherText data,
                                                          RelativeCapability nextChunk,
+                                                         Optional<Bat> inlineBat,
                                                          Optional<BatId> mirrorBat,
                                                          SafeRandom random) {
-        return createFile(existingHash, signerLink, parentKey, dataKey, props, data, Optional.empty(), nextChunk, mirrorBat, random);
+        return createFile(existingHash, signerLink, parentKey, dataKey, props, data, Optional.empty(), nextChunk,
+                inlineBat, mirrorBat, random);
     }
 
     private static CryptreeNode createFile(MaybeMultihash existingHash,
@@ -1154,6 +1159,7 @@ public class CryptreeNode implements Cborable {
                                            FragmentedPaddedCipherText data,
                                            Optional<RelativeCapability> toParentDir,
                                            RelativeCapability nextChunk,
+                                           Optional<Bat> inlineBat,
                                            Optional<BatId> mirrorBat,
                                            SafeRandom random) {
         if (parentKey.equals(dataKey))
@@ -1161,9 +1167,7 @@ public class CryptreeNode implements Cborable {
         FromBase fromBase = new FromBase(dataKey, signerLink, nextChunk);
         FromParent fromParent = new FromParent(toParentDir, props);
 
-        Bat inlineBat = Bat.random(random);
-        BatId inline = BatId.inline(inlineBat);
-        List<BatId> bats = mirrorBat.isEmpty() ? Arrays.asList(inline) : Arrays.asList(inline, mirrorBat.get());
+        List<BatId> bats = Stream.concat(inlineBat.stream().map(BatId::inline), mirrorBat.stream()).collect(Collectors.toList());
         PaddedCipherText encryptedBaseBlock = PaddedCipherText.build(parentKey, fromBase, BASE_BLOCK_PADDING_BLOCKSIZE);
         PaddedCipherText encryptedParentBlock = PaddedCipherText.build(parentKey, fromParent, META_DATA_PADDING_BLOCKSIZE);
         return new CryptreeNode(existingHash, false, bats, encryptedBaseBlock, data, encryptedParentBlock);

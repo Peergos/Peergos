@@ -51,4 +51,9 @@ public class NamedAbsoluteCapability implements Cborable {
     public int hashCode() {
         return Objects.hash(name, cap);
     }
+
+    @Override
+    public String toString() {
+        return name + "/" + cap;
+    }
 }

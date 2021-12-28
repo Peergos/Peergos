@@ -158,7 +158,7 @@ public class FileUploader implements AutoCloseable {
         RelativeCapability nextChunk = RelativeCapability.buildSubsequentChunk(nextChunkLocation.getMapKey(), nextChunkBat, baseKey);
         return CryptreeNode.createFile(chunk.existingHash, chunk.location.writer, baseKey,
                 chunk.chunk.key(), props, chunk.chunk.data(), parentLocation, parentBat, parentparentKey, nextChunk,
-                mirrorBat, random, hasher, network.isJavascript())
+                chunk.bat, mirrorBat, random, hasher, network.isJavascript())
                 .thenCompose(file -> {
                     CryptreeNode metadata = file.left.withWriterLink(baseKey, writerLink);
 

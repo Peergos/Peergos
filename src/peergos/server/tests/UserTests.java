@@ -1549,7 +1549,7 @@ public abstract class UserTests {
         context.requestSpace(quota * 2).join();
 
         // retrieve, decode and approve request as admin
-        UserContext admin = PeergosNetworkUtils.ensureSignedUp("peergos", "testpassword", network, crypto);
+        UserContext admin = PeergosNetworkUtils.ensureSignedUp("peergos", "testpassword", network.clear(), crypto);
         List<SpaceUsage.LabelledSignedSpaceRequest> spaceReqs = admin.getPendingSpaceRequests().join();
         List<DecodedSpaceRequest> parsed = admin.decodeSpaceRequests(spaceReqs).join();
         DecodedSpaceRequest req = parsed.stream().filter(r -> r.getUsername().equals(username)).findFirst().get();
