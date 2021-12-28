@@ -3,6 +3,7 @@ package peergos.shared.storage.auth;
 import peergos.shared.cbor.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multibase.*;
+import peergos.shared.util.*;
 
 import java.util.*;
 
@@ -26,14 +27,14 @@ public class BlockAuth implements Cborable {
         return awsDatetime.substring(0, 8);
     }
 
-    public String encode() { // TODO switch to byte[] auth in bitswap
-        return Base58.encode(serialize());
+    public String encode() {
+        return ArrayOps.bytesToHex(serialize());
     }
 
     public static BlockAuth fromString(String in) {
         if (in.isEmpty())
             throw new IllegalStateException("Empty block auth string!");
-        return fromCbor(CborObject.fromByteArray(Base58.decode(in)));
+        return fromCbor(CborObject.fromByteArray(ArrayOps.hexToBytes(in)));
     }
 
     private static long timeToPackedLong(String t) {
