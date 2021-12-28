@@ -204,7 +204,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                 .collect(Collectors.toList());
         CompletableFuture<List<PresignedUrl>> auths = nonIdentity.isEmpty() ?
                 Futures.of(Collections.emptyList()) :
-                fallback.authReads(nonIdentity.stream().map(p -> p.right).collect(Collectors.toList()));
+                fallback.authReads(nonIdentity.stream().map(p -> new MirrorCap(p.right, Optional.of(bats.get(p.left)))).collect(Collectors.toList()));
         CompletableFuture<List<FragmentWithHash>> allResults = new CompletableFuture();
         auths
                 .thenCompose(preAuthedGets ->
@@ -260,7 +260,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                     .thenApply(Optional::of)
                     .thenAccept(res::complete)
                     .exceptionally(t -> {
-                        fallback.authReads(Arrays.asList(hash))
+                        fallback.authReads(Arrays.asList(new MirrorCap(hash, bat)))
                                 .thenCompose(preAuthedGet -> direct.get(preAuthedGet.get(0).base))
                                 .thenApply(Optional::of)
                                 .thenAccept(res::complete)
@@ -279,7 +279,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
         }
         if (authedReads) {
             CompletableFuture<Optional<byte[]>> res = new CompletableFuture<>();
-            fallback.authReads(Arrays.asList(hash))
+            fallback.authReads(Arrays.asList(new MirrorCap(hash, bat)))
                     .thenCompose(preAuthedGet -> direct.get(preAuthedGet.get(0).base, preAuthedGet.get(0).fields))
                     .thenApply(Optional::of)
                     .thenAccept(res::complete)

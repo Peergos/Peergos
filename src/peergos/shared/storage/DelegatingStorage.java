@@ -88,7 +88,7 @@ public abstract class DelegatingStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<PresignedUrl>> authReads(List<Multihash> blocks) {
+    public CompletableFuture<List<PresignedUrl>> authReads(List<MirrorCap> blocks) {
         return target.authReads(blocks);
     }
 

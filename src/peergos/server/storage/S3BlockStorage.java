@@ -100,15 +100,23 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<PresignedUrl>> authReads(List<Multihash> blocks) {
+    public CompletableFuture<List<PresignedUrl>> authReads(List<MirrorCap> blocks) {
         if (blocks.size() > 50)
             throw new IllegalStateException("Too many reads to auth!");
         List<PresignedUrl> res = new ArrayList<>();
 
-        for (Multihash block : blocks) {
-            String s3Key = hashToKey(block);
+        // retrieve all blocks and verify BATs in aprallel
+        List<CompletableFuture<Optional<byte[]>>> data = blocks.stream()
+                .parallel()
+                .map(b -> getRaw(b.hash, b.bat, id, hasher))
+                .collect(Collectors.toList());
 
+        for (MirrorCap block : blocks) {
+            String s3Key = hashToKey(block.hash);
             res.add(S3Request.preSignGet(s3Key, Optional.of(600), S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKeyId, secretKey, hasher).join());
+        }
+        for (CompletableFuture<Optional<byte[]>> fut : data) {
+            fut.join(); // Any invalids BATs will cause this to throw
         }
         return Futures.of(res);
     }

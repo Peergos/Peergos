@@ -6,7 +6,7 @@ import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.Multihash;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.fs.FragmentWithHash;
-import peergos.shared.util.ProgressConsumer;
+import peergos.shared.util.*;
 
 import java.util.List;
 import java.util.Optional;
@@ -137,7 +137,7 @@ public class RetryStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<PresignedUrl>> authReads(List<Multihash> blocks) {
+    public CompletableFuture<List<PresignedUrl>> authReads(List<MirrorCap> blocks) {
         return runWithRetry(() -> target.authReads(blocks));
     }
 

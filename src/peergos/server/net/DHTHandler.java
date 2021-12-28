@@ -93,10 +93,9 @@ public class DHTHandler implements HttpHandler {
                     break;
                 }
                 case AUTH_READS: {
-                    List<Multihash> blockHashes = Arrays.stream(last.apply("hashes").split(","))
-                            .map(Cid::decode)
-                            .collect(Collectors.toList());
-                    dht.authReads(blockHashes).thenAccept(res -> {
+                    CborObject cbor = CborObject.fromByteArray(Serialize.readFully(httpExchange.getRequestBody()));
+                    List<MirrorCap> blockCaps = ((CborObject.CborList) cbor).map(MirrorCap::fromCbor);
+                    dht.authReads(blockCaps).thenAccept(res -> {
                         replyBytes(httpExchange, new CborObject.CborList(res).serialize(), Optional.empty());
                     }).exceptionally(Futures::logAndThrow).get();
                     break;

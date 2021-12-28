@@ -38,7 +38,7 @@ public interface ContentAddressedStorage {
      */
     ContentAddressedStorage directToOrigin();
 
-    default CompletableFuture<List<PresignedUrl>> authReads(List<Multihash> blocks) {
+    default CompletableFuture<List<PresignedUrl>> authReads(List<MirrorCap> blocks) {
         return Futures.errored(new IllegalStateException("Unimplemented call!"));
     }
 
@@ -52,29 +52,29 @@ public interface ContentAddressedStorage {
     }
 
     default CompletableFuture<Cid> put(PublicKeyHash owner,
-                                             SigningPrivateKeyAndPublicHash writer,
-                                             byte[] block,
-                                             Hasher hasher,
-                                             TransactionId tid) {
+                                       SigningPrivateKeyAndPublicHash writer,
+                                       byte[] block,
+                                       Hasher hasher,
+                                       TransactionId tid) {
         return hasher.sha256(block)
                 .thenCompose(hash -> put(owner, writer.publicKeyHash, writer.secret.signMessage(hash), block, tid));
     }
 
     default CompletableFuture<Cid> put(PublicKeyHash owner,
-                                             PublicKeyHash writer,
-                                             byte[] signature,
-                                             byte[] block,
-                                             TransactionId tid) {
+                                       PublicKeyHash writer,
+                                       byte[] signature,
+                                       byte[] block,
+                                       TransactionId tid) {
         return put(owner, writer, Collections.singletonList(signature), Collections.singletonList(block), tid)
                 .thenApply(hashes -> hashes.get(0));
     }
 
-    default CompletableFuture<Multihash> putRaw(PublicKeyHash owner,
-                                                PublicKeyHash writer,
-                                                byte[] signature,
-                                                byte[] block,
-                                                TransactionId tid,
-                                                ProgressConsumer<Long> progressConsumer) {
+    default CompletableFuture<Cid> putRaw(PublicKeyHash owner,
+                                          PublicKeyHash writer,
+                                          byte[] signature,
+                                          byte[] block,
+                                          TransactionId tid,
+                                          ProgressConsumer<Long> progressConsumer) {
         return putRaw(owner, writer, Collections.singletonList(signature), Collections.singletonList(block), tid, progressConsumer)
                 .thenApply(hashes -> hashes.get(0));
     }
@@ -307,11 +307,10 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<List<PresignedUrl>> authReads(List<Multihash> blocks) {
+        public CompletableFuture<List<PresignedUrl>> authReads(List<MirrorCap> blocks) {
             if (! isPeergosServer)
                 return Futures.errored(new IllegalStateException("Cannot auth reads when not talking to a Peergos server!"));
-            return poster.get(apiPrefix + AUTH_READS
-                    + "?hashes=" + blocks.stream().map(x -> x.toString()).collect(Collectors.joining(",")))
+            return poster.postUnzip(apiPrefix + AUTH_READS, new CborObject.CborList(blocks).serialize())
                     .thenApply(raw -> ((CborObject.CborList)CborObject.fromByteArray(raw)).value
                             .stream()
                             .map(PresignedUrl::fromCbor)
@@ -510,7 +509,7 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<List<PresignedUrl>> authReads(List<Multihash> blocks) {
+        public CompletableFuture<List<PresignedUrl>> authReads(List<MirrorCap> blocks) {
             return local.authReads(blocks);
         }
 
