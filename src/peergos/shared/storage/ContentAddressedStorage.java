@@ -246,7 +246,6 @@ public interface ContentAddressedStorage {
         public static final String TRANSACTION_START = "transaction/start";
         public static final String TRANSACTION_CLOSE = "transaction/close";
         public static final String CHAMP_GET = "champ/get";
-        public static final String GC = "repo/gc";
         public static final String BLOCK_PUT = "block/put";
         public static final String BLOCK_GET = "block/get";
         public static final String BLOCK_RM = "block/rm";
@@ -461,15 +460,29 @@ public interface ContentAddressedStorage {
         public CompletableFuture<Optional<CborObject>> get(Cid hash, Optional<BatWithId> bat) {
             if (hash.isIdentity())
                 return CompletableFuture.completedFuture(Optional.of(CborObject.fromByteArray(hash.getHash())));
-            return poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash + bat.map(b -> "&bat=" + b.encode()).orElse(""))
-                    .thenApply(raw -> raw.length == 0 ? Optional.empty() : Optional.of(CborObject.fromByteArray(raw)));
+            if (isPeergosServer)
+                return poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash + bat.map(b -> "&bat=" + b.encode()).orElse(""))
+                        .thenApply(raw -> raw.length == 0 ? Optional.empty() : Optional.of(CborObject.fromByteArray(raw)));
+
+            return id()
+                    .thenCompose(ourId -> bat.map(b -> b.bat.generateAuth(hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, hasher)
+                            .thenApply(BlockAuth::encode)).orElse(Futures.of("")))
+                    .thenCompose(auth -> poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash + "&auth=" + auth)
+                            .thenApply(raw -> raw.length == 0 ? Optional.empty() : Optional.of(CborObject.fromByteArray(raw))));
         }
 
         @Override
         public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, Optional<BatWithId> bat) {
             if (hash.isIdentity())
                 return CompletableFuture.completedFuture(Optional.of(hash.getHash()));
-            return poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash + bat.map(b -> "&bat=" + b.encode()).orElse(""))
+            if (isPeergosServer)
+                return poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash + bat.map(b -> "&bat=" + b.encode()).orElse(""))
+                        .thenApply(raw -> raw.length == 0 ? Optional.empty() : Optional.of(raw));
+
+            return id()
+                    .thenCompose(ourId -> bat.map(b -> b.bat.generateAuth(hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, hasher)
+                            .thenApply(BlockAuth::encode)).orElse(Futures.of("")))
+                    .thenCompose(auth -> poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash + "&auth=" + auth))
                     .thenApply(raw -> raw.length == 0 ? Optional.empty() : Optional.of(raw));
         }
 
