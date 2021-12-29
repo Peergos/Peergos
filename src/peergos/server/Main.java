@@ -132,6 +132,7 @@ public class Main extends Builder {
                     new Command.Arg("public-domain", "The public domain name for this server (required if TLS is managed upstream)", false),
                     new Command.Arg("max-users", "The maximum number of local users", false, "1"),
                     ARG_USE_IPFS,
+                    new Command.Arg("bat-store", "The filename for the BAT store (or :memory: for ram based)", true, "bats.sql"),
                     new Command.Arg("mutable-pointers-file", "The filename for the mutable pointers datastore", true, "mutable.sql"),
                     new Command.Arg("social-sql-file", "The filename for the follow requests datastore", true, "social.sql"),
                     new Command.Arg("space-requests-sql-file", "The filename for the space requests datastore", true, "space-requests.sql"),
@@ -271,7 +272,7 @@ public class Main extends Builder {
 
                     args = bootstrap(args);
 
-                    BatCave batStore = new RamBatCave();
+                    BatCave batStore = new JdbcBatCave(getDBConnector(args, "bat-store"), getSqlCommands(args));
                     BlockRequestAuthoriser blockRequestAuthoriser = Builder.blockAuthoriser(args, batStore, crypto.hasher);
                     Multihash pkiIpfsNodeId = useIPFS ?
                             new ContentAddressedStorage.HTTP(Builder.buildIpfsApi(args), false, crypto.hasher).id().join() :
@@ -293,6 +294,7 @@ public class Main extends Builder {
                     new Command.Arg("domain", "The hostname to listen on", true, "localhost"),
                     new Command.Arg("port", "The port for the local non tls server to listen on", true, "8000"),
                     new Command.Arg("useIPFS", "Whether to use IPFS or a local datastore", true, "false"),
+                    new Command.Arg("bat-store", "The filename for the BAT store (or :memory: for ram based)", true, "bats.sql"),
                     new Command.Arg("mutable-pointers-file", "The filename for the mutable pointers (or :memory: for ram based)", true, "mutable.sql"),
                     new Command.Arg("social-sql-file", "The filename for the follow requests (or :memory: for ram based)", true, "social.sql"),
                     new Command.Arg("transactions-sql-file", "The filename for the open transactions datastore", true, "transactions.sql"),
@@ -327,7 +329,7 @@ public class Main extends Builder {
 
                     Supplier<Connection> transactionDb = getDBConnector(args, "transactions-sql-file");
                     JdbcTransactionStore transactions = JdbcTransactionStore.build(transactionDb, new SqliteCommands());
-                    BatCave batStore = new RamBatCave();
+                    BatCave batStore = new JdbcBatCave(getDBConnector(args, "bat-store", transactionDb), new SqliteCommands());
                     BlockRequestAuthoriser authoriser = Builder.blockAuthoriser(args, batStore, crypto.hasher);
 
                     ContentAddressedStorage storage = useIPFS ?
@@ -353,6 +355,7 @@ public class Main extends Builder {
                     new Command.Arg("domain", "The hostname to listen on", true, "localhost"),
                     new Command.Arg("port", "The port for the local non tls server to listen on", true, "8000"),
                     new Command.Arg("useIPFS", "Whether to use IPFS or a local datastore", true, "false"),
+                    new Command.Arg("bat-store", "The filename for the BAT store (or :memory: for ram based)", true, "bats.sql"),
                     new Command.Arg("mutable-pointers-file", "The filename for the mutable pointers (or :memory: for ram based)", true, "mutable.sql"),
                     new Command.Arg("social-sql-file", "The filename for the follow requests (or :memory: for ram based)", true, "social.sql"),
                     new Command.Arg("transactions-sql-file", "The filename for the open transactions datastore", true, "transactions.sql"),
@@ -500,7 +503,7 @@ public class Main extends Builder {
             Supplier<Connection> dbConnectionPool = getDBConnector(a, "transactions-sql-file");
             TransactionStore transactions = buildTransactionStore(a, dbConnectionPool);
 
-            BatCave batStore = new RamBatCave();
+            BatCave batStore = new JdbcBatCave(getDBConnector(a, "bat-store", dbConnectionPool), sqlCommands);
             BlockRequestAuthoriser blockRequestAuthoriser = Builder.blockAuthoriser(a, batStore, hasher);
             DeletableContentAddressedStorage localStorage = buildLocalStorage(a, transactions, blockRequestAuthoriser, crypto.hasher);
             JdbcIpnsAndSocial rawPointers = buildRawPointers(a,

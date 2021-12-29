@@ -26,6 +26,11 @@ public interface SqlSupplier {
                 "CREATE UNIQUE INDEX IF NOT EXISTS login_index ON login (username);";
     }
 
+    default String createBatStoreTableCommand() {
+        return "CREATE TABLE IF NOT EXISTS bats (username text not null, id text primary key not null, bat text not null); " +
+                "CREATE UNIQUE INDEX IF NOT EXISTS bat_index ON bats (id);";
+    }
+
     default String createSpaceRequestsTableCommand() {
         return "CREATE TABLE IF NOT EXISTS spacerequests (name text primary key not null, spacerequest text not null);";
     }
