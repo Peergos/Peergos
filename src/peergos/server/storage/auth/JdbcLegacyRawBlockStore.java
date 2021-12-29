@@ -42,7 +42,10 @@ public class JdbcLegacyRawBlockStore {
                 return;
             commands.createTable(commands.createLegacyRawBlocksTableCommand(), conn);
             System.out.println("Upgrading to permissioned blocks...");
-            store.getAllBlockHashes().forEach(this::addBlock);
+            store.getAllBlockHashes().forEach(c -> {
+                if (c.codec == Cid.Codec.Raw)
+                    this.addBlock(c);
+            });
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
