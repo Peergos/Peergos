@@ -10,7 +10,7 @@ public class PostgresCommands implements SqlSupplier {
 
     @Override
     public String tableExistsCommand() {
-        return "SELECT table_name FROM information_schema.tables WHERE table_schema LIKE 'public' AND table_type LIKE 'BASE TABLE' AND table_name = '?';";
+        return "SELECT table_name FROM information_schema.tables WHERE table_schema LIKE 'public' AND table_type LIKE 'BASE TABLE' AND table_name = ?;";
     }
 
     @Override
