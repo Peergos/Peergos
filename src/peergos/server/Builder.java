@@ -185,13 +185,15 @@ public class Builder {
         }
     }
 
-    public static BlockRequestAuthoriser blockAuthoriser(Args a, BatCave batStore, Hasher hasher) {
+    public static BlockRequestAuthoriser blockAuthoriser(Args a,
+                                                         BatCave batStore,
+                                                         JdbcLegacyRawBlockStore legacyRawBlocks,
+                                                         Hasher hasher) {
         Optional<BatWithId> instanceBat = a.getOptionalArg("instance-bat").map(BatWithId::decode);
         return (b, d, s, auth) -> {
             System.out.println("Allow: " + b + ", auth=" + auth + ", from: " + s);
             if (b.codec == Cid.Codec.Raw) {
-                boolean isPreUpgradeBlock = false; //TODO lookup list of raw cids at upgrade time in DB
-                if (isPreUpgradeBlock)
+                if (legacyRawBlocks.hasBlock(b))
                     return Futures.of(true);
                 Bat bat = Bat.deriveFromRawBlock(d);
                 return Futures.of(BlockRequestAuthoriser.isValidAuth(BlockAuth.fromString(auth), b, s, bat, hasher));
