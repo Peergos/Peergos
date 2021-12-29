@@ -940,12 +940,31 @@ public abstract class UserTests {
         FileWrapper userRoot4 = uploadFileSection(userRoot3, filename, new AsyncReader.ArrayBacked(dataInsert), start, start + dataInsert.length,
                 context.network, context.crypto, l -> {}).get();
         System.arraycopy(dataInsert, 0, data5, start, dataInsert.length);
-        checkFileContents(data5, userRoot4.getDescendentByPath(filename, crypto.hasher, context.network).get().get(), context);
+        FileWrapper file = userRoot4.getDescendentByPath(filename, crypto.hasher, context.network).get().get();
+        checkFileContents(data5, file, context);
 
         // check used space
         PublicKeyHash signer = context.signer.publicKeyHash;
         long totalSpaceUsed = context.getTotalSpaceUsed().get();
         Assert.assertTrue("Correct used space", totalSpaceUsed > 10*1024*1024);
+
+        // check retrieval of cryptree node or data both fail wihtout bat
+        WritableAbsoluteCapability cap = file.writableFilePointer();
+        WritableAbsoluteCapability badCap = cap.withMapKey(cap.getMapKey(), Optional.empty());
+        NetworkAccess cleared = network.clear();
+        Assert.assertTrue(cleared.getFile(badCap, username).join().isEmpty());
+
+        Optional<byte[]> streamSecret = file.getFileProperties().streamSecret;
+        FileRetriever retriever = file.getPointer().fileAccess.retriever(cap.rBaseKey, streamSecret, cap.getMapKey(),
+                Optional.empty(), crypto.hasher).join();
+        AsyncReader reader = retriever.getFile(file.version.get(file.writer()).props, cleared, crypto, badCap, streamSecret, file.getSize(),
+                file.getPointer().fileAccess.committedHash(), x -> {}).join();
+        int size = (int) file.getSize();
+        byte[] res = new byte[size];
+        try {
+            reader.readIntoArray(res, 0, size).join();
+            Assert.fail();
+        } catch (Exception e) {}
     }
 
     @Test
