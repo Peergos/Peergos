@@ -9,7 +9,7 @@ public class SqliteCommands implements SqlSupplier {
 
     @Override
     public String tableExistsCommand() {
-        return "SELECT name FROM sqlite_master WHERE type='table' AND name='{?}';";
+        return "SELECT name FROM sqlite_master WHERE type='table' AND name=?;";
     }
 
     @Override
