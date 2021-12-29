@@ -577,7 +577,7 @@ public class Main extends Builder {
 
             Account p2pAccount = new ProxyingAccount(nodeId, core, account, accountProxy);
             VerifyingAccount verifyingAccount = new VerifyingAccount(p2pAccount, core, localStorage);
-            CachingStorage cachingStorage = new CachingStorage(p2pDht, 1000, 50 * 1024);
+            ContentAddressedStorage cachingStorage = new AuthedCachingStorage(p2pDht, blockRequestAuthoriser, hasher, 1000, 50 * 1024);
 
             ProxyingBatCave p2pBats = new ProxyingBatCave(nodeId, core, batStore, new HttpBatCave(p2pHttpProxy, p2pHttpProxy));
             UserService peergos = new UserService(cachingStorage, p2pBats, crypto, corePropagator, verifyingAccount, p2pSocial, p2mMutable, storageAdmin,
