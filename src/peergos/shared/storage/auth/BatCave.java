@@ -33,36 +33,4 @@ public interface BatCave {
         byte[] auth = req.sign(identity.secret);
         return addBat(username, id, bat, auth);
     }
-
-    class HTTP implements BatCave {
-        private final HttpPoster poster;
-
-        public HTTP(HttpPoster poster) {
-            this.poster = poster;
-        }
-
-        @Override
-        public Optional<Bat> getBat(BatId id) {
-            throw new IllegalStateException("Cannot be called over http!");
-        }
-
-        @Override
-        public CompletableFuture<List<BatWithId>> getUserBats(String username, byte[] auth) {
-            return poster.get(Constants.BATS_URL + "getUserBats?username=" + username + "&auth=" + ArrayOps.bytesToHex(auth))
-                    .thenApply(res ->
-                            ((CborObject.CborList)CborObject.fromByteArray(res)).value
-                                    .stream()
-                                    .map(BatWithId::fromCbor)
-                                    .collect(Collectors.toList()));
-        }
-
-        @Override
-        public CompletableFuture<Boolean> addBat(String username, BatId id, Bat bat, byte[] auth) {
-            return poster.get(Constants.BATS_URL + "addBat?username=" + username
-                    + "&batid=" + id.id
-                    + "&bat=" + bat.encodeSecret()
-                    + "&auth=" + ArrayOps.bytesToHex(auth))
-                    .thenApply(res -> ((CborObject.CborBoolean)CborObject.fromByteArray(res)).value);
-        }
-    }
 }

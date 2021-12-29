@@ -579,7 +579,8 @@ public class Main extends Builder {
             VerifyingAccount verifyingAccount = new VerifyingAccount(p2pAccount, core, localStorage);
             CachingStorage cachingStorage = new CachingStorage(p2pDht, 1000, 50 * 1024);
 
-            UserService peergos = new UserService(cachingStorage, batStore, crypto, corePropagator, verifyingAccount, p2pSocial, p2mMutable, storageAdmin,
+            ProxyingBatCave p2pBats = new ProxyingBatCave(nodeId, core, batStore, new HttpBatCave(p2pHttpProxy, p2pHttpProxy));
+            UserService peergos = new UserService(cachingStorage, p2pBats, crypto, corePropagator, verifyingAccount, p2pSocial, p2mMutable, storageAdmin,
                     p2pSpaceUsage, new ServerMessageStore(getDBConnector(a, "server-messages-sql-file", dbConnectionPool),
                     sqlCommands, core, p2pDht), gc);
             InetSocketAddress localAddress = new InetSocketAddress("localhost", userAPIAddress.getPort());

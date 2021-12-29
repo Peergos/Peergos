@@ -278,7 +278,7 @@ public class NetworkAccess {
                             httpUsage :
                             new ProxyingSpaceUsage(nodeId, core, httpUsage, httpUsage);
                     ServerMessager serverMessager = new ServerMessager.HTTP(apiPoster);
-                    BatCave batCave = new BatCave.HTTP(apiPoster);
+                    BatCave batCave = new HttpBatCave(apiPoster, p2pPoster);
                     return build(new CommittableStorage(p2pDht), batCave, core, account, p2pMutable, p2pSocial,
                             new HttpInstanceAdmin(apiPoster), p2pUsage, serverMessager, hasher, usernames, isJavascript);
                 });
