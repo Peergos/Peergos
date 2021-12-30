@@ -12,6 +12,7 @@ import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.social.*;
 import peergos.shared.storage.auth.*;
@@ -65,8 +66,8 @@ public class MultiNodeNetworkTests {
     @Parameterized.Parameters(name="nodes: {0}, {1} (0 == PKI, > 0 normal)")
     public static Collection<Object[]> parameters() {
         return Arrays.asList(new Object[][] {
-//                {0, 1}, // PKI, normal-1
-//                {1, 0}, // normal-2, PKI
+                {0, 1}, // PKI, normal-1
+                {1, 0}, // normal-2, PKI
                 {2, 1}  // normal-1, normal-2
         });
     }
@@ -181,8 +182,20 @@ public class MultiNodeNetworkTests {
             password = newPassword;
         }
         // make sure we have some raw fragments
-        user.getUserRoot().join().uploadOrReplaceFile("somedata.bin", AsyncReader.build(new byte[10*1024*1024]),
+        String filename = "somedata.bin";
+        user.getUserRoot().join().uploadOrReplaceFile(filename, AsyncReader.build(new byte[10*1024*1024]),
                 10*1024*1024, user.network, crypto, x -> {}).join();
+
+        // check retrieval of cryptree node or data both fail without bat
+        FileWrapper file = user.getByPath("/" + username + "/" + filename).join().get();
+        WritableAbsoluteCapability cap = file.writableFilePointer();
+        WritableAbsoluteCapability badCap = cap.withMapKey(cap.getMapKey(), Optional.empty());
+        Assert.assertTrue(node1.clear().getFile(badCap, username).join().isEmpty());
+
+        Multihash fragment = file.getPointer().fileAccess.toCbor().links().get(0);
+        CompletableFuture<Optional<byte[]>> raw = node1.clear().dhtClient.getRaw((Cid) fragment, Optional.empty());
+        Assert.assertTrue(raw.isCompletedExceptionally() || raw.join().isEmpty());
+
         UserContext friend = ensureSignedUp(generateUsername(random), password, node1, crypto);
         friend.sendInitialFollowRequest(username).join();
         long usageVia1 = user.getSpaceUsage().join();
