@@ -366,6 +366,13 @@ public class MirrorCoreNode implements CoreNode {
 
         if (migrationTargetNode.equals(ourNodeId)) {
             // We are copying data to this node
+            // Make sure we have the mirror bat stored in out batStore first
+            if (mirrorBat.isPresent()) {
+                BatWithId bat = mirrorBat.get();
+                List<BatWithId> localMirrorBats = batCave.getUserBats(username, new byte[0]).join();
+                if (! localMirrorBats.contains(bat))
+                    batCave.addBat(username, bat.id(), bat.bat, new byte[0]);
+            }
             // Mirror all the data locally
             Mirror.mirrorUser(username, Optional.empty(), mirrorBat, this, p2pMutable, null, ipfs, localPointers, rawAccount, transactions, hasher);
             Map<PublicKeyHash, byte[]> mirrored = Mirror.mirrorUser(username, Optional.empty(), mirrorBat, this, p2pMutable,
