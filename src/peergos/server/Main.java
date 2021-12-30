@@ -563,7 +563,8 @@ public class Main extends Builder {
 
             int blockCacheSize = a.getInt("max-cached-blocks", 1000);
             int maxCachedBlockSize = a.getInt("max-cached-block-size", 10 * 1024);
-            ContentAddressedStorage filteringDht = new WriteFilter(new CachingStorage(localStorage, blockCacheSize, maxCachedBlockSize), spaceChecker::allowWrite);
+            ContentAddressedStorage filteringDht = new WriteFilter(new AuthedCachingStorage(localStorage,
+                    blockRequestAuthoriser, hasher, blockCacheSize, maxCachedBlockSize), spaceChecker::allowWrite);
             ContentAddressedStorageProxy proxingDht = new ContentAddressedStorageProxy.HTTP(p2pHttpProxy);
             ContentAddressedStorage p2pDht = new ContentAddressedStorage.Proxying(filteringDht, proxingDht, nodeId, core);
 
