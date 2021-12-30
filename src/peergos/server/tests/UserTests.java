@@ -957,8 +957,8 @@ public abstract class UserTests {
         Assert.assertTrue(cleared.getFile(badCap, username).join().isEmpty());
 
         Multihash fragment = file.getPointer().fileAccess.toCbor().links().get(0);
-        Optional<byte[]> fragmentData = cleared.dhtClient.getRaw((Cid)fragment, Optional.empty()).join();
-        Assert.assertTrue(fragmentData.isEmpty());
+        CompletableFuture<Optional<byte[]>> raw = cleared.dhtClient.getRaw((Cid) fragment, Optional.empty());
+        Assert.assertTrue(raw.isCompletedExceptionally() || raw.join().isEmpty());
     }
 
     @Test
