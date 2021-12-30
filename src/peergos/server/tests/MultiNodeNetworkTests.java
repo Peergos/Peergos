@@ -180,6 +180,9 @@ public class MultiNodeNetworkTests {
             user = ensureSignedUp(username, password, node2, crypto).changePassword(password, newPassword).join();
             password = newPassword;
         }
+        // make sure we have some raw fragments
+        user.getUserRoot().join().uploadOrReplaceFile("somedata.bin", AsyncReader.build(new byte[10*1024*1024]),
+                10*1024*1024, user.network, crypto, x -> {}).join();
         UserContext friend = ensureSignedUp(generateUsername(random), password, node1, crypto);
         friend.sendInitialFollowRequest(username).join();
         long usageVia1 = user.getSpaceUsage().join();
