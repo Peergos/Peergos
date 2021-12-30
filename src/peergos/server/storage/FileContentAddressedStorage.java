@@ -161,7 +161,7 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
             try (DataInputStream din = new DataInputStream(new BufferedInputStream(new FileInputStream(file)))) {
                 byte[] block = Serialize.readFully(din);
                 if (doAuth && ! authoriser.allowRead(hash, block, id().join(), auth).join())
-                    throw new IllegalStateException("Unauthorised!");
+                    return Futures.errored(new IllegalStateException("Unauthorised!"));
                 return CompletableFuture.completedFuture(Optional.of(block));
             }
         } catch (IOException e) {

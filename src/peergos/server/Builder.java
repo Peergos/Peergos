@@ -196,7 +196,7 @@ public class Builder {
                 if (legacyRawBlocks.hasBlock(b))
                     return Futures.of(true);
                 Bat bat = Bat.deriveFromRawBlock(d);
-                return Futures.of(BlockRequestAuthoriser.isValidAuth(BlockAuth.fromString(auth), b, s, bat, hasher));
+                return Futures.of(!auth.isEmpty() && BlockRequestAuthoriser.isValidAuth(BlockAuth.fromString(auth), b, s, bat, hasher));
             } else if (b.codec == Cid.Codec.DagCbor) {
                 CborObject block = CborObject.fromByteArray(d);
                 if (block instanceof CborObject.CborMap) {
@@ -204,11 +204,11 @@ public class Builder {
                         List<BatId> batids = ((CborObject.CborMap) block).getList("bats", BatId::fromCbor);
                         for (BatId bid : batids) {
                             Optional<Bat> bat = bid.getInline().or(() -> batStore.getBat(bid));
-                            if (bat.isPresent() && BlockRequestAuthoriser.isValidAuth(BlockAuth.fromString(auth), b, s, bat.get(), hasher))
+                            if (bat.isPresent() && !auth.isEmpty() && BlockRequestAuthoriser.isValidAuth(BlockAuth.fromString(auth), b, s, bat.get(), hasher))
                                 return Futures.of(true);
                         }
                         if (instanceBat.isPresent()) {
-                            if (BlockRequestAuthoriser.isValidAuth(BlockAuth.fromString(auth), b, s, instanceBat.get().bat, hasher))
+                            if (!auth.isEmpty() && BlockRequestAuthoriser.isValidAuth(BlockAuth.fromString(auth), b, s, instanceBat.get().bat, hasher))
                                 return Futures.of(true);
                         }
                         return Futures.of(false);
