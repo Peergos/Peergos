@@ -128,7 +128,7 @@ public class CachingStorage extends DelegatingStorage {
         }).exceptionally(t -> {
             pending.remove(key);
             pipe.completeExceptionally(t);
-            return null;
+            return Optional.empty();
         });
     }
 }

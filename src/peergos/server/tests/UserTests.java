@@ -19,6 +19,8 @@ import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.server.*;
+import peergos.shared.io.ipfs.cid.*;
+import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
@@ -948,23 +950,15 @@ public abstract class UserTests {
         long totalSpaceUsed = context.getTotalSpaceUsed().get();
         Assert.assertTrue("Correct used space", totalSpaceUsed > 10*1024*1024);
 
-        // check retrieval of cryptree node or data both fail wihtout bat
+        // check retrieval of cryptree node or data both fail without bat
         WritableAbsoluteCapability cap = file.writableFilePointer();
         WritableAbsoluteCapability badCap = cap.withMapKey(cap.getMapKey(), Optional.empty());
         NetworkAccess cleared = network.clear();
         Assert.assertTrue(cleared.getFile(badCap, username).join().isEmpty());
 
-        Optional<byte[]> streamSecret = file.getFileProperties().streamSecret;
-        FileRetriever retriever = file.getPointer().fileAccess.retriever(cap.rBaseKey, streamSecret, cap.getMapKey(),
-                Optional.empty(), crypto.hasher).join();
-        AsyncReader reader = retriever.getFile(file.version.get(file.writer()).props, cleared, crypto, badCap, streamSecret, file.getSize(),
-                file.getPointer().fileAccess.committedHash(), x -> {}).join();
-        int size = (int) file.getSize();
-        byte[] res = new byte[size];
-        try {
-            reader.readIntoArray(res, 0, size).join();
-            Assert.fail();
-        } catch (Exception e) {}
+        Multihash fragment = file.getPointer().fileAccess.toCbor().links().get(0);
+        Optional<byte[]> fragmentData = cleared.dhtClient.getRaw((Cid)fragment, Optional.empty()).join();
+        Assert.assertTrue(fragmentData.isEmpty());
     }
 
     @Test

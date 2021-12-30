@@ -1,5 +1,6 @@
 package peergos.server.storage;
 
+import peergos.server.storage.auth.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
@@ -14,18 +15,21 @@ import java.util.stream.*;
 
 public class TransactionalIpfs extends DelegatingStorage implements DeletableContentAddressedStorage {
 
-    private final TransactionStore transactions;
     private final DeletableContentAddressedStorage target;
+    private final TransactionStore transactions;
+    private final BlockRequestAuthoriser authoriser;
     private final Cid id;
     private final Hasher hasher;
 
     public TransactionalIpfs(DeletableContentAddressedStorage target,
                              TransactionStore transactions,
+                             BlockRequestAuthoriser authoriser,
                              Cid id,
                              Hasher hasher) {
         super(target);
         this.target = target;
         this.transactions = transactions;
+        this.authoriser = authoriser;
         this.id = id;
         this.hasher = hasher;
     }
@@ -53,7 +57,7 @@ public class TransactionalIpfs extends DelegatingStorage implements DeletableCon
 
     @Override
     public CompletableFuture<Optional<CborObject>> get(Cid hash, String auth) {
-        return target.get(hash, auth);
+        return getRaw(hash, auth).thenApply(bopt -> bopt.map(CborObject::fromByteArray));
     }
 
     @Override
@@ -63,7 +67,30 @@ public class TransactionalIpfs extends DelegatingStorage implements DeletableCon
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, String auth) {
-        return target.getRaw(hash, auth);
+        return getRaw(hash, auth, true);
+    }
+
+    private CompletableFuture<Optional<byte[]>> getRaw(Cid hash, String auth, boolean doAuth) {
+        return target.getRaw(hash, auth).thenApply(bopt -> {
+            if (bopt.isEmpty())
+                return Optional.empty();
+            byte[] block = bopt.get();
+            if (doAuth && ! authoriser.allowRead(hash, block, id().join(), auth).join())
+                throw new IllegalStateException("Unauthorised!");
+            return bopt;
+        });
+    }
+
+    @Override
+    public CompletableFuture<List<Cid>> getLinks(Cid root, String auth) {
+        if (root.codec == Cid.Codec.Raw)
+            return CompletableFuture.completedFuture(Collections.emptyList());
+        return getRaw(root, auth, false)
+                .thenApply(opt -> opt.map(CborObject::fromByteArray))
+                .thenApply(opt -> opt
+                        .map(cbor -> cbor.links().stream().map(c -> (Cid) c).collect(Collectors.toList()))
+                        .orElse(Collections.emptyList())
+                );
     }
 
     @Override
