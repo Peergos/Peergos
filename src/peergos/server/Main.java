@@ -146,6 +146,7 @@ public class Main extends Builder {
                     new Command.Arg("default-quota", "default maximum storage per user", false, Long.toString(1024L * 1024 * 1024)),
                     new Command.Arg("mirror.node.id", "Mirror a server's data locally", false),
                     new Command.Arg("mirror.username", "Mirror a user's data locally", false),
+                    new Command.Arg("mirror.bat", "BatWithId to enable mirroring a user's private data", false),
                     new Command.Arg("login-keypair", "The keypair used to mirror the login data for a user (use with 'mirror.username' arg)", false),
                     new Command.Arg("public-server", "Are we a public server? (allow http GETs to API)", false, "false"),
                     new Command.Arg("run-gateway", "Run a local Peergos gateway", false, "true"),
@@ -650,6 +651,8 @@ public class Main extends Builder {
                             String username = a.getArg("mirror.username");
 
                             Optional<BatWithId> mirrorBat = a.getOptionalArg("mirror.bat").map(BatWithId::decode);
+                            if (mirrorBat.isEmpty())
+                                System.out.println("WARNING: Mirroring users public blocks only, see option 'mirror.bat'");
                             Mirror.mirrorUser(username, mirrorLoginDataPair, mirrorBat, core, p2mMutable, p2pAccount, localStorage,
                                     rawPointers, rawAccount, transactions, hasher);
                             try {
