@@ -164,7 +164,7 @@ public class Builder {
             if (enableGC) {
                 return new TransactionalIpfs(ipfs, transactions, authoriser, ipfs.id().join(), hasher);
             } else
-                return ipfs;
+                return new AuthedStorage(ipfs, authoriser, hasher);
         } else {
             // In S3 mode of operation we require the ipfs id to be supplied as we don't have a local ipfs running
             if (S3Config.useS3(a)) {
