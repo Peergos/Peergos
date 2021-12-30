@@ -185,7 +185,8 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
                 if (! renamedOriginal.isPresent())
                     return -ErrorCodes.ENOENT();
                 renamedOriginal.get().copyTo(newParent.get(), context).get();
-                FileWrapper updatedParent2 = renamedOriginal.get().remove(parent, renamedInPlacePath, context).get();
+                FileWrapper updatedParent2 = renamedOriginal.get().getUpdated(context.network).join()
+                        .remove(parent.getUpdated(context.network).join(), renamedInPlacePath, context).get();
             }
             return 0;
         } catch (Exception ioe) {
