@@ -60,7 +60,7 @@ public class FragmentedPaddedCipherText implements Cborable {
                     .stream()
                     .map(CborObject.CborMerkleLink::new)
                     .collect(Collectors.toList())));
-            state.put("b", new CborObject.CborList(bats));
+            state.put("bats", new CborObject.CborList(bats));
         }
         return CborObject.CborMap.build(state);
     }
@@ -83,7 +83,7 @@ public class FragmentedPaddedCipherText implements Cborable {
                 .filter(c -> c instanceof CborObject.CborByteArray)
                 .map(c -> ((CborObject.CborByteArray)c).value)
                 .findFirst();
-        List<BatWithId> bats = m.containsKey("b") ? m.getList("b", BatWithId::fromCbor) : Collections.emptyList();
+        List<BatWithId> bats = m.containsKey("bats") ? m.getList("bats", BatWithId::fromCbor) : Collections.emptyList();
         return new FragmentedPaddedCipherText(nonce, header, fragmentHashes, bats, inlinedCipherText);
     }
 

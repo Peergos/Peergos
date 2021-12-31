@@ -196,7 +196,13 @@ public class Builder {
                 if (legacyRawBlocks.hasBlock(b))
                     return Futures.of(true);
                 Bat bat = Bat.deriveFromRawBlock(d);
-                return Futures.of(!auth.isEmpty() && BlockRequestAuthoriser.isValidAuth(BlockAuth.fromString(auth), b, s, bat, hasher));
+                if (!auth.isEmpty() && BlockRequestAuthoriser.isValidAuth(BlockAuth.fromString(auth), b, s, bat, hasher))
+                    return Futures.of(true);
+                if (instanceBat.isPresent()) {
+                    if (!auth.isEmpty() && BlockRequestAuthoriser.isValidAuth(BlockAuth.fromString(auth), b, s, instanceBat.get().bat, hasher))
+                        return Futures.of(true);
+                }
+                return Futures.of(false);
             } else if (b.codec == Cid.Codec.DagCbor) {
                 CborObject block = CborObject.fromByteArray(d);
                 if (block instanceof CborObject.CborMap) {

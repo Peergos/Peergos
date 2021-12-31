@@ -210,6 +210,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     public CompletableFuture<List<Cid>> mirror(PublicKeyHash owner,
                                                Optional<Cid> existing,
                                                Optional<Cid> updated,
+                                               Optional<BatWithId> fragmentBat,
                                                Optional<BatWithId> mirrorBat,
                                                Cid ourNodeId,
                                                TransactionId tid,
@@ -221,28 +222,36 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             return Futures.of(Collections.singletonList(newRoot));
         boolean isRaw = newRoot.codec == Cid.Codec.Raw;
 
-        Optional<byte[]> newVal = isRaw ?
-                p2pFallback.getRaw(newRoot, mirrorBat, id, hasher).join() :
-                p2pFallback.get(newRoot, mirrorBat, id, hasher).join().map(Cborable::serialize);
-        if (newVal.isEmpty())
-            throw new IllegalStateException("Couldn't retrieve block: " + newRoot);
-
-        byte[] newBlock = newVal.get();
-        put(newBlock, isRaw, tid, owner);
-        if (isRaw)
+        if (isRaw) {
+            if (contains(newRoot))
+                return Futures.of(Collections.singletonList(newRoot));
+            Optional<byte[]> newBlock = p2pFallback.getRaw(newRoot, fragmentBat, ourNodeId, hasher).join();
+            if (newBlock.isEmpty())
+                throw new IllegalStateException("Couldn't retrieve block: " + newRoot);
+            put(newBlock.get(), true, tid, owner);
             return Futures.of(Collections.singletonList(newRoot));
+        }
 
-        List<Multihash> newLinks = CborObject.fromByteArray(newBlock).links();
+        if (contains(newRoot))
+            return Futures.of(Collections.singletonList(newRoot));
+        Optional<CborObject> newBlock = p2pFallback.get(newRoot, mirrorBat, id, hasher).join();
+        if (newBlock.isEmpty())
+            throw new IllegalStateException("Couldn't retrieve block: " + newRoot);
+        put(newBlock.get().serialize(), false, tid, owner);
+
+        List<Multihash> newLinks = newBlock.get().links();
         List<Multihash> existingLinks = existing.map(h -> get(h, mirrorBat, id, hasher).join())
                 .flatMap(copt -> copt.map(CborObject::links))
                 .orElse(Collections.emptyList());
 
+        List<BatWithId> rawBats = DeletableContentAddressedStorage.extractFragmentBats(newBlock.get());
         for (int i=0; i < newLinks.size(); i++) {
             Optional<Cid> existingLink = i < existingLinks.size() ?
                     Optional.of((Cid)existingLinks.get(i)) :
                     Optional.empty();
             Optional<Cid> updatedLink = Optional.of((Cid)newLinks.get(i));
-            mirror(owner, existingLink, updatedLink, mirrorBat, ourNodeId, tid, hasher).join();
+            Optional<BatWithId> linkedFragmentBat = rawBats.size() > i ? Optional.of(rawBats.get(i)) : Optional.empty();
+            mirror(owner, existingLink, updatedLink, linkedFragmentBat, mirrorBat, ourNodeId, tid, hasher).join();
         }
         return Futures.of(Collections.singletonList(newRoot));
     }

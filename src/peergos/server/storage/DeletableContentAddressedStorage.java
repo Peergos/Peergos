@@ -73,6 +73,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
     default CompletableFuture<List<Cid>> mirror(PublicKeyHash owner,
                                                 Optional<Cid> existing,
                                                 Optional<Cid> updated,
+                                                Optional<BatWithId> fragmentBat,
                                                 Optional<BatWithId> mirrorBat,
                                                 Cid ourNodeId,
                                                 TransactionId tid,
@@ -84,30 +85,49 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
             return Futures.of(Collections.singletonList(newRoot));
         boolean isRaw = newRoot.codec == Cid.Codec.Raw;
 
-        Optional<byte[]> newVal = isRaw ?
-                getRaw(newRoot, mirrorBat, ourNodeId, hasher).join() :
-                get(newRoot, mirrorBat, ourNodeId, hasher).join().map(Cborable::serialize);
+        if (isRaw) {
+            Optional<byte[]> newVal = getRaw(newRoot, fragmentBat, ourNodeId, hasher).join();
+            if (newVal.isEmpty())
+                throw new IllegalStateException("Couldn't retrieve block: " + newRoot);
+
+            return Futures.of(Collections.singletonList(newRoot));
+        }
+
+        Optional<CborObject> newVal = get(newRoot, mirrorBat, ourNodeId, hasher).join();
         if (newVal.isEmpty())
             throw new IllegalStateException("Couldn't retrieve block: " + newRoot);
 
-        byte[] newBlock = newVal.get();
-
-        if (isRaw)
-            return Futures.of(Collections.singletonList(newRoot));
-
-        List<Multihash> newLinks = CborObject.fromByteArray(newBlock).links();
+        CborObject newBlock = newVal.get();
+        List<Multihash> newLinks = newBlock.links();
         List<Multihash> existingLinks = existing.map(h -> get(h, mirrorBat, ourNodeId, hasher).join())
                 .flatMap(copt -> copt.map(CborObject::links))
                 .orElse(Collections.emptyList());
 
+        List<BatWithId> rawBats = extractFragmentBats(newBlock);
         for (int i=0; i < newLinks.size(); i++) {
             Optional<Cid> existingLink = i < existingLinks.size() ?
                     Optional.of((Cid)existingLinks.get(i)) :
                     Optional.empty();
             Optional<Cid> updatedLink = Optional.of((Cid)newLinks.get(i));
-            mirror(owner, existingLink, updatedLink, mirrorBat, ourNodeId, tid, hasher).join();
+            Optional<BatWithId> linkedFragmentBat = rawBats.size() > i ? Optional.of(rawBats.get(i)) : Optional.empty();
+            mirror(owner, existingLink, updatedLink, linkedFragmentBat, mirrorBat, ourNodeId, tid, hasher).join();
         }
         return Futures.of(Collections.singletonList(newRoot));
+    }
+
+    static List<BatWithId> extractFragmentBats(CborObject block) {
+        if (! (block instanceof CborObject.CborMap))
+            return Collections.emptyList();
+        CborObject.CborMap map = (CborObject.CborMap) block;
+        if (! map.containsKey("d"))
+            return Collections.emptyList();
+        Cborable data = map.get("d");
+        if (! (data instanceof CborObject.CborMap))
+            return Collections.emptyList();
+        CborObject.CborMap dataMap = (CborObject.CborMap) data;
+        if (! dataMap.containsKey("bats"))
+            return Collections.emptyList();
+        return dataMap.getList("bats", BatWithId::fromCbor);
     }
 
     /**
