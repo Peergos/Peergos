@@ -179,7 +179,7 @@ public class CachingVerifyingStorage extends DelegatingStorage {
                 }).exceptionally(t -> {
                     pending.remove(key);
                     pipe.completeExceptionally(t);
-                    return null;
+                    return Optional.empty();
                 });
     }
 }
