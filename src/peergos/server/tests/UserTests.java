@@ -903,6 +903,33 @@ public abstract class UserTests {
         Assert.assertTrue("Has updated Thumbnail", res);
     }
 
+    @Test
+    public void copyFileWithThumbnail() throws Exception {
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network.clear(), crypto);
+        FileWrapper userRoot = context.getUserRoot().join();
+        Path home = Paths.get(username);
+
+        String filename = "logo.png";
+        byte[] data = Files.readAllBytes(Paths.get("assets", filename));
+
+        FileWrapper updatedUserRoot = userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data),
+                data.length, context.network, crypto, x -> {}, context.crypto.random.randomBytes(32)).join();
+
+        // copy the file
+        String foldername = "afolder";
+        updatedUserRoot.mkdir(foldername, context.network, false, crypto).join();
+        FileWrapper subfolder = context.getByPath(home.resolve(foldername)).join().get();
+        FileWrapper original = context.getByPath(home.resolve(filename)).join().get();
+        Boolean res = original.copyTo(subfolder, context).join();
+        Assert.assertTrue("Copied", res);
+        FileWrapper copy = context.getByPath(home.resolve(foldername).resolve(filename)).join().get();
+        String thumbnail = copy.getBase64Thumbnail();
+        Assert.assertTrue("Has thumbnail", thumbnail.length() > 0);
+        checkFileContents(data, copy, context);
+    }
+
     @Ignore // until we figure out how to manage javafx in tests
     @Test
     public void javaVideoThumbnail() throws Exception {

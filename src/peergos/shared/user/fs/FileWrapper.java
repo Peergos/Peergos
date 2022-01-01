@@ -859,24 +859,6 @@ public class FileWrapper {
                 });
     }
 
-    private CompletableFuture<Snapshot> uploadFileSection(Snapshot intialVersion,
-                                                         Committer committer,
-                                                         String filename,
-                                                         AsyncReader fileData,
-                                                         boolean isHidden,
-                                                         long startIndex,
-                                                         long endIndex,
-                                                         Optional<SymmetricKey> baseKey,
-                                                         boolean overwriteExisting,
-                                                         NetworkAccess network,
-                                                         Crypto crypto,
-                                                         ProgressConsumer<Long> monitor,
-                                                         byte[] firstChunkMapKey) {
-        boolean truncateExisting = false;
-        return uploadFileSection(intialVersion, committer, filename, fileData, isHidden, startIndex, endIndex, baseKey,
-                overwriteExisting, truncateExisting, network, crypto, monitor, firstChunkMapKey);
-    }
-
     private CompletableFuture<Snapshot> updateSize(Committer committer,
                                                    long newSize,
                                                    NetworkAccess network) {
@@ -896,10 +878,29 @@ public class FileWrapper {
         ).thenCompose(finished -> getUpdated(finished, network));
     }
 
-    public CompletableFuture<Snapshot> uploadFileSection(Snapshot intialVersion,
+    public CompletableFuture<Snapshot> uploadFileSection(Snapshot initialVersion,
                                                          Committer committer,
                                                          String filename,
                                                          AsyncReader fileData,
+                                                         boolean isHidden,
+                                                         long startIndex,
+                                                         long endIndex,
+                                                         Optional<SymmetricKey> baseKey,
+                                                         boolean overwriteExisting,
+                                                         boolean truncateExisting,
+                                                         NetworkAccess network,
+                                                         Crypto crypto,
+                                                         ProgressConsumer<Long> monitor,
+                                                         byte[] firstChunkMapKey) {
+        return uploadFileSection(initialVersion, committer, filename, fileData, Optional.empty(), isHidden, startIndex, endIndex,
+                baseKey, overwriteExisting, truncateExisting, network, crypto, monitor, firstChunkMapKey);
+    }
+
+    private CompletableFuture<Snapshot> uploadFileSection(Snapshot initialVersion,
+                                                         Committer committer,
+                                                         String filename,
+                                                         AsyncReader fileData,
+                                                         Optional<Thumbnail> existingThumbnail,
                                                          boolean isHidden,
                                                          long startIndex,
                                                          long endIndex,
@@ -920,7 +921,7 @@ public class FileWrapper {
             res.completeExceptionally(new IllegalStateException("Cannot upload a sub file to a file!"));
             return res;
         }
-        return intialVersion.withWriter(owner(), writer(), network)
+        return initialVersion.withWriter(owner(), writer(), network)
                 .thenCompose(current -> getUpdated(current, network)
                         .thenCompose(latest -> latest.getChild(current, filename, crypto.hasher, network)
                                         .thenCompose(childOpt -> {
@@ -938,11 +939,12 @@ public class FileWrapper {
                                                         // update size only
                                                         return updatedChild.updateSize(committer, writeEnd, network);
                                                     }
-                                                    return updatedChild.getInputStream(latestSnapshot.get(updatedChild.writer()).props, network, crypto, l -> {})
+                                                    return updatedChild.getInputStream(latestSnapshot.get(updatedChild.writer()).props, network, crypto, l -> {
+                                                            })
                                                             .thenCompose(is -> updatedChild.recalculateThumbnail(
-                                                                latestSnapshot, committer, filename, is, isHidden,
-                                                                updatedChild.getSize(), network, (WritableAbsoluteCapability)updatedChild.pointer.capability,
-                                                                updatedChild.getFileProperties().streamSecret));
+                                                                    latestSnapshot, committer, filename, is, isHidden,
+                                                                    updatedChild.getSize(), network, (WritableAbsoluteCapability) updatedChild.pointer.capability,
+                                                                    updatedChild.getFileProperties().streamSecret));
                                                 };
 
                                                 if (truncateExisting && endIndex < childProps.size) {
@@ -972,9 +974,10 @@ public class FileWrapper {
                                             return calculateMimeType(fileData, endIndex, filename).thenCompose(mimeType -> fileData.reset()
                                                     .thenCompose(resetReader -> {
                                                         Optional<byte[]> streamSecret = Optional.of(crypto.random.randomBytes(32));
+                                                        String fileMimeType = existingThumbnail.isPresent() ? existingThumbnail.get().mimeType : mimeType;
                                                         FileProperties fileProps = new FileProperties(filename,
-                                                                false, false, mimeType, endIndex,
-                                                                LocalDateTime.now(), isHidden, Optional.empty(), streamSecret);
+                                                                false, false, fileMimeType, endIndex,
+                                                                LocalDateTime.now(), isHidden, existingThumbnail, streamSecret);
 
                                                         FileUploader chunks = new FileUploader(filename, mimeType, resetReader,
                                                                 startIndex, endIndex, fileKey, dataKey, parentLocation,
@@ -990,10 +993,11 @@ public class FileWrapper {
                                                         return chunks.upload(current, committer, network, parentLocation.owner, signer, crypto.hasher)
                                                                 .thenCompose(updatedWD -> latest.addChildPointer(updatedWD,
                                                                         committer, fileWriteCap, new PathElement(filename), network, crypto))
-                                                                .thenCompose(cwd -> fileData.reset().thenCompose(resetAgain ->
-                                                                        generateThumbnailAndUpdate(cwd, committer, fileWriteCap, filename, resetAgain,
+                                                                .thenCompose(cwd ->
+                                                                        fileData.reset().thenCompose(resetAgain -> generateThumbnailAndUpdate(cwd, committer, fileWriteCap, filename, resetAgain,
                                                                                 network, isHidden, mimeType,
-                                                                                endIndex, LocalDateTime.now(), streamSecret)));
+                                                                                endIndex, LocalDateTime.now(), streamSecret))
+                                                                );
                                                     }));
                                         })
                         )
@@ -1035,16 +1039,22 @@ public class FileWrapper {
                                                                    long fileSize,
                                                                    LocalDateTime updatedDateTime,
                                                                    Optional<byte[]> streamSecret) {
-        return generateThumbnail(network, fileData, (int) Math.min(fileSize, Integer.MAX_VALUE), fileName, mimeType)
-                .thenCompose(thumbData -> {
-                    if (thumbData.isEmpty())
-                        return Futures.of(base);
-                    FileProperties fileProps = new FileProperties(fileName, false, props.isLink, mimeType, fileSize,
-                            updatedDateTime, isHidden, thumbData, streamSecret);
+        return network.getFile(base, cap, getChildsEntryWriter(), ownername).thenCompose(fileOpt -> {
+            if (fileOpt.get().props.thumbnail.isEmpty()) {
+                return generateThumbnail(network, fileData, (int) Math.min(fileSize, Integer.MAX_VALUE), fileName, mimeType)
+                        .thenCompose(thumbData -> {
+                            if (thumbData.isEmpty())
+                                return Futures.of(base);
+                            FileProperties fileProps = new FileProperties(fileName, false, props.isLink, mimeType, fileSize,
+                                    updatedDateTime, isHidden, thumbData, streamSecret);
 
-                    return network.getFile(base, cap, getChildsEntryWriter(), ownername)
-                            .thenCompose(child -> child.get().updateProperties(base, committer, fileProps, network));
-                });
+                            return network.getFile(base, cap, getChildsEntryWriter(), ownername)
+                                    .thenCompose(child -> child.get().updateProperties(base, committer, fileProps, network));
+                        });
+            } else {
+                return Futures.of(base);
+            }
+        });
     }
 
     private CompletableFuture<Snapshot> updateProperties(Snapshot base,
@@ -1383,7 +1393,7 @@ public class FileWrapper {
 
         return context.network.synchronizer.applyComplexUpdate(target.owner(), target.signingPair(),
                 (version, committer) -> version.withWriter(owner(), writer(), network)
-                        .thenCompose(both -> copyTo(target, network, crypto, both, committer)))
+                        .thenCompose(both -> copyTo(target, network, crypto, both, committer, this.props.thumbnail)))
                 .thenApply(newAccess -> true);
     }
 
@@ -1391,7 +1401,8 @@ public class FileWrapper {
                                               NetworkAccess network,
                                               Crypto crypto,
                                               Snapshot version,
-                                              Committer committer) {
+                                              Committer committer,
+                                              Optional<Thumbnail> existingThumbnail) {
         if (! target.isDirectory()) {
             return Futures.errored(new IllegalStateException("CopyTo target " + target + " must be a directory"));
         }
@@ -1419,15 +1430,15 @@ public class FileWrapper {
                                                     return Futures.reduceAll(children, versionWithDir,
                                                             (s, child) -> newTarget.getUpdated(s, network)
                                                                     .thenCompose(updated ->
-                                                                            child.copyTo(updated, network, crypto, s, committer)),
+                                                                            child.copyTo(updated, network, crypto, s, committer, existingThumbnail)),
                                                             (a, b) -> a.merge(b));
                                                 })));
             } else {
                 return version.withWriter(owner(), writer(), network).thenCompose(snapshot ->
                         getInputStream(snapshot.get(writer()).props, network, crypto, x -> {})
                                 .thenCompose(stream -> target.uploadFileSection(snapshot, committer,
-                                        getName(), stream, false, 0, getSize(),
-                                        Optional.empty(), false, network, crypto, x -> {},
+                                        getName(), stream, existingThumbnail, false, 0, getSize(),
+                                        Optional.empty(), false, false, network, crypto, x -> {},
                                         crypto.random.randomBytes(32))));
             }
         });
