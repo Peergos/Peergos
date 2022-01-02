@@ -126,7 +126,7 @@ public class Main extends Builder {
                     new Command.Arg("pki.node.ipaddress", "IP address of the pki node", true, "172.104.157.121"),
                     new Command.Arg("ipfs-api-address", "IPFS API port", false, "/ip4/127.0.0.1/tcp/5001"),
                     new Command.Arg("ipfs-gateway-address", "IPFS Gateway port", false, "/ip4/127.0.0.1/tcp/8080"),
-                    new Command.Arg("allow-target", "Local address to listen on for IPFS allow calls", false, "http://localhost:8001"),
+                    new Command.Arg("allow-target", "Local address to listen on for IPFS allow calls", false, "http://localhost:8002"),
                     new Command.Arg("pki.node.swarm.port", "Swarm port of the pki node", true, "5001"),
                     new Command.Arg("domain", "Domain name to bind to", false, "localhost"),
                     new Command.Arg("public-domain", "The public domain name for this server (required if TLS is managed upstream)", false),

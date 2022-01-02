@@ -195,7 +195,7 @@ public class Builder {
             if (b.codec == Cid.Codec.Raw) {
                 if (legacyRawBlocks.hasBlock(b))
                     return Futures.of(true);
-                Bat bat = Bat.deriveFromRawBlock(d);
+                Bat bat = Bat.deriveFromRawBlock(d, hasher).join();
                 if (!auth.isEmpty() && BlockRequestAuthoriser.isValidAuth(BlockAuth.fromString(auth), b, s, bat, hasher))
                     return Futures.of(true);
                 if (instanceBat.isPresent()) {

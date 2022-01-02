@@ -3,8 +3,10 @@ package peergos.shared.crypto.hash;
 import peergos.shared.crypto.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
+import peergos.shared.util.*;
 
 import java.nio.charset.*;
 import java.util.concurrent.CompletableFuture;
@@ -31,6 +33,15 @@ public interface Hasher {
     default CompletableFuture<Multihash> bareHash(byte[] input) {
         return sha256(input)
                 .thenApply(h -> new Multihash(Multihash.Type.sha2_256, h));
+    }
+
+    byte[] hmacInfo = ArrayOps.concat("peergos".getBytes(StandardCharsets.UTF_8), new byte[]{1});
+
+    default CompletableFuture<Bat> hkdfKey(byte[] data) {
+        byte[] salt = new byte[32];
+        return hmacSha256(salt, data)
+                .thenCompose(prk -> hmacSha256(prk, hmacInfo))
+                .thenApply(Bat::new);
     }
 
     default Cid identityHash(byte[] input, boolean isRaw) {

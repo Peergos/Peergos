@@ -128,11 +128,11 @@ public class FragmentedPaddedCipherText implements Cborable {
                     List<Cid> hashes = frags.stream()
                             .map(f -> f.hash.get())
                             .collect(Collectors.toList());
-                    List<Bat> bats = frags.stream()
-                            .map(f -> Bat.deriveFromRawBlock(f.fragment.data))
+                    List<CompletableFuture<Bat>> bats = frags.stream()
+                            .map(f -> Bat.deriveFromRawBlock(f.fragment.data, hasher))
                             .collect(Collectors.toList());
                     return Futures.combineAllInOrder(bats.stream()
-                            .map(b -> b.calculateId(hasher).thenApply(id -> new BatWithId(b, id.id)))
+                            .map(fut -> fut.thenCompose(b -> b.calculateId(hasher).thenApply(id -> new BatWithId(b, id.id))))
                             .collect(Collectors.toList()))
                             .thenApply(batsAndIds -> new Pair<>(new FragmentedPaddedCipherText(nonce, header, hashes, batsAndIds, Optional.empty()), frags));
                 });

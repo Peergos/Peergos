@@ -81,17 +81,8 @@ public class Bat implements Cborable {
                 .thenApply(signature -> new BlockAuth(ArrayOps.hexToBytes(signature), expirySeconds, datetime, batId));
     }
 
-    public static Bat deriveFromRawBlock(byte[] block) {
-        // TODO need to analyse the cryptographic properties of this construction, might need to use hmac_sha256 instead
-        try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            md.update("peergos".getBytes(StandardCharsets.UTF_8));
-            md.update(block);
-            md.update("peergos".getBytes(StandardCharsets.UTF_8));
-            return new Bat(md.digest());
-        } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException(e);
-        }
+    public static CompletableFuture<Bat> deriveFromRawBlock(byte[] block, Hasher h) {
+        return h.hkdfKey(block);
     }
 
     public static Bat random(SafeRandom r) {
