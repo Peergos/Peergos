@@ -77,8 +77,9 @@ public class ScryptJava implements Hasher {
     @Override
     public CompletableFuture<byte[]> hmacSha256(byte[] secretKeyBytes, byte[] message) {
         try {
-            Mac mac = Mac.getInstance("HMACSHA256");
-            SecretKey secretKey = new SecretKeySpec(secretKeyBytes, "HMACSHA256");
+            String algorithm = "HMACSHA256";
+            Mac mac = Mac.getInstance(algorithm);
+            SecretKey secretKey = new SecretKeySpec(secretKeyBytes, algorithm);
             mac.init(secretKey);
             return Futures.of(mac.doFinal(message));
         } catch (Exception e) {

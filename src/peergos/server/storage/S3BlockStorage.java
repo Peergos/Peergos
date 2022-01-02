@@ -105,7 +105,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             throw new IllegalStateException("Too many reads to auth!");
         List<PresignedUrl> res = new ArrayList<>();
 
-        // retrieve all blocks and verify BATs in aprallel
+        // retrieve all blocks and verify BATs in parallel
         List<CompletableFuture<Optional<byte[]>>> data = blocks.stream()
                 .parallel()
                 .map(b -> getRaw(b.hash, b.bat, id, hasher))

@@ -74,7 +74,7 @@ public class AuthedCachingStorage extends DelegatingStorage {
         return bat.map(b -> b.bat.generateAuth(key, ourNodeId, 300, S3Request.currentDatetime(), bat.get().id, h)
                 .thenApply(BlockAuth::encode)).orElse(Futures.of(""))
                 .thenCompose(auth -> authoriser.allowRead(key, block, ourNodeId, auth))
-                .thenCompose(allow -> allow ? Futures.of(block) : Futures.errored(new Throwable("Unauthorised")));
+                .thenCompose(allow -> allow ? Futures.of(block) : Futures.errored(new Throwable("Unauthorised!")));
     }
 
     @Override

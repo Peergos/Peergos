@@ -369,7 +369,7 @@ public class MirrorCoreNode implements CoreNode {
             // Make sure we have the mirror bat stored in out batStore first
             if (mirrorBat.isPresent()) {
                 BatWithId bat = mirrorBat.get();
-                // double check if
+                // double check it
                 if (! BatId.sha256(bat.bat, hasher).join().equals(bat.id()))
                     throw new IllegalStateException("Invalid BAT id for BAT");
                 List<BatWithId> localMirrorBats = batCave.getUserBats(username, new byte[0]).join();

@@ -803,9 +803,9 @@ public class Main extends Builder {
             }
             System.out.println("Migrating user from node " + currentStorageNodeId + " to " + newStorageNodeId);
             List<UserPublicKeyLink> newChain = Migrate.buildMigrationChain(existing, newStorageNodeId, user.signer.secret);
-            List<BatWithId> mirrorBats = user.network.batCave.getUserBats(username, user.signer).join();
-            BatWithId current = mirrorBats.get(mirrorBats.size() - 1);
-            user.network.coreNode.migrateUser(username, newChain, currentStorageNodeId, Optional.of(current)).join();
+            user.ensureMirrorId().join().get();
+            Optional<BatWithId> current = user.getMirrorBat().join();
+            user.network.coreNode.migrateUser(username, newChain, currentStorageNodeId, current).join();
             List<UserPublicKeyLink> updatedChain = user.network.coreNode.getChain(username).join();
             if (!updatedChain.get(updatedChain.size() - 1).claim.storageProviders.contains(newStorageNodeId))
                 throw new IllegalStateException("Migration failed. Please try again later");

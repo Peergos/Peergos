@@ -518,7 +518,8 @@ public class UserContext {
         return getMirrorBat(username, signer, network);
     }
 
-    public CompletableFuture<Optional<BatId>> setIfEmptyMirrorId() {
+    @JsMethod
+    public CompletableFuture<Optional<BatId>> ensureMirrorId() {
         return getMirrorBat()
                 .thenCompose(current -> {
                     if (current.isPresent())
