@@ -858,8 +858,11 @@ public class PeergosNetworkUtils {
 
         // check a sharee can upload a file
         FileWrapper sharedDir = shareeUploader.getByPath(path).join().get();
-        sharedDir.uploadFileJS("a-new-file.png", AsyncReader.build(data), 0, data.length,
-                false, false, sharedDir.mirrorBatId(), shareeUploader.network, crypto, x -> {}, shareeUploader.getTransactionService()).join();
+        String shareeFilename = "a-new-file.png";
+        sharedDir.uploadFileJS(shareeFilename, AsyncReader.build(data), 0, data.length,
+                false, false, shareeUploader.mirrorBatId(), shareeUploader.network, crypto, x -> {}, shareeUploader.getTransactionService()).join();
+        FileWrapper newFile = shareeUploader.getByPath(path + "/" + shareeFilename).join().get();
+        Assert.assertTrue(newFile.mirrorBatId().equals(sharer.mirrorBatId()));
 
         Set<String> childNames = sharer.getByPath(path).join().get().getChildren(crypto.hasher, sharer.network).join()
                 .stream()
