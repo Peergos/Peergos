@@ -33,6 +33,7 @@ import static javaemul.internal.InternalPreconditions.checkNotNull;
  */
 public final class Optional<T> {
     @SuppressWarnings("unchecked")
+    @JsMethod
     public static <T> Optional<T> empty() {
         return (Optional<T>) EMPTY;
     }
