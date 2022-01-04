@@ -307,6 +307,7 @@ public class Main extends Builder {
                     new Command.Arg("space-usage-sql-file", "The filename for the space usage datastore", true, "space-usage.sql"),
                     new Command.Arg("ipfs-api-address", "ipfs api port", true, "/ip4/127.0.0.1/tcp/5001"),
                     new Command.Arg("ipfs-gateway-address", "ipfs gateway port", true, "/ip4/127.0.0.1/tcp/8080"),
+                    new Command.Arg("allow-target", "Local address to listen on for IPFS allow calls", false, "http://localhost:8002"),
                     new Command.Arg("pki.secret.key.path", "The path to the pki secret key file", true, "test.pki.secret.key"),
                     new Command.Arg("pki.public.key.path", "The path to the pki public key file", true, "test.pki.public.key"),
                     // Secret parameters
@@ -370,6 +371,7 @@ public class Main extends Builder {
                     new Command.Arg("space-usage-sql-file", "The filename for the space usage datastore", true, "space-usage.sql"),
                     ARG_IPFS_API_ADDRESS,
                     new Command.Arg("ipfs-gateway-address", "ipfs gateway port", true, "/ip4/127.0.0.1/tcp/8080"),
+                    new Command.Arg("allow-target", "Local address to listen on for IPFS allow calls", false, "http://localhost:8002"),
                     new Command.Arg("pki.secret.key.path", "The path to the pki secret key file", true, "test.pki.secret.key"),
                     new Command.Arg("pki.public.key.path", "The path to the pki public key file", true, "test.pki.public.key"),
                     // Secret parameters
