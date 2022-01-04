@@ -593,8 +593,8 @@ public class NetworkAccess {
                         return (h.isIdentity() ?
                                         CompletableFuture.completedFuture(Optional.of(h.getHash())) :
                                         h.codec == Cid.Codec.Raw ?
-                                                dhtClient.getRaw(h, Optional.of(bats.get(i))) :
-                                                dhtClient.get(h, Optional.of(bats.get(i)))
+                                                dhtClient.getRaw(h, i < bats.size() ? Optional.of(bats.get(i)) : Optional.empty()) :
+                                                dhtClient.get(h, i < bats.size() ? Optional.of(bats.get(i)) : Optional.empty())
                                                         .thenApply(cborOpt -> cborOpt.map(cbor -> ((CborObject.CborByteArray) cbor).value))) // for backwards compatibility
                                 .thenApply(dataOpt -> {
                                     Optional<byte[]> bytes = dataOpt;
