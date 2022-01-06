@@ -7,6 +7,7 @@ import peergos.server.crypto.asymmetric.curve25519.*;
 import peergos.server.crypto.hash.*;
 import peergos.server.crypto.random.*;
 import peergos.server.crypto.symmetric.*;
+import peergos.server.storage.auth.*;
 import peergos.server.util.*;
 
 import org.junit.*;
@@ -52,6 +53,8 @@ public abstract class UserTests {
         this.network = network;
         this.service = service;
     }
+
+    public abstract Args getArgs();
 
     public static Args buildArgs() {
         try {
@@ -912,6 +915,70 @@ public abstract class UserTests {
         FileWrapper file = context.getByPath(Paths.get(username, filename).toString()).get().get();
         String thumbnail = file.getBase64Thumbnail();
         Assert.assertTrue("Has thumbnail", thumbnail.length() > 0);
+    }
+
+    @Test
+    public void legacyFileModification() throws Exception {
+        // test that a legacy file without BATs can be modified and extended, and all new chunks and fragments have BATs
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        FileWrapper userRoot = context.getUserRoot().get();
+
+        String filename = "mediumfile.bin";
+        byte[] data = new byte[4*1024*1024];
+        random.nextBytes(data);
+        FileWrapper userRoot2 = userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length,
+                context.network, context.crypto, l -> {}, crypto.random.randomBytes(32), Optional.empty(), Optional.empty()).get();
+
+        // Remove BATs from cryptree node and fragments in file
+        FileWrapper file = context.getByPath(Paths.get(username, filename)).join().get();
+        CborObject.CborMap cbor = (CborObject.CborMap) file.getPointer().fileAccess.toCbor();
+        Map<String, Cborable> modified = new LinkedHashMap<>();
+        cbor.applyToAll(modified::put);
+        CborObject.CborMap d = (CborObject.CborMap) modified.get("d");
+        d.put("bats", new CborObject.CborList(Collections.emptyList()));
+        modified.put("d", d);
+        modified.remove("bats");
+        CborObject.CborMap noBats = CborObject.CborMap.build(modified);
+        PublicKeyHash owner = file.owner();
+        WriterData wd = WriterData.getWriterData(owner, file.writer(), network.mutable, network.dhtClient).join().props;
+        Cid cryptreeCid = network.dhtClient.put(owner, file.signingPair(), noBats.serialize(), crypto.hasher,
+                TransactionId.build("hey")).join();
+        network.tree.put(wd, owner, file.signingPair(), file.readOnlyPointer().getMapKey(),
+                file.getPointer().fileAccess.committedHash(), cryptreeCid, TransactionId.build("hey")).join();
+
+        // check there are no BATs for this file
+        file = context.getByPath(Paths.get(username, filename)).join().get();
+        Assert.assertTrue(file.writableFilePointer().bat.isEmpty());
+        // simulate these blocks being present before server upgrade by adding them to legacy block store
+        JdbcLegacyRawBlockStore legacyBlockStore = new JdbcLegacyRawBlockStore(Main.getDBConnector(
+                getArgs().with("legacy-raw-blocks-file", "legacyraw.sql"), "legacy-raw-blocks-file"));
+        cbor.links().forEach(h -> legacyBlockStore.addBlock((Cid)h));
+
+        // Check fragments are retrievable without a BAT
+        Multihash originalFragment = file.getPointer().fileAccess.toCbor().links().get(0);
+        CompletableFuture<Optional<byte[]>> originalRaw = network.clear().dhtClient.getRaw((Cid) originalFragment, Optional.empty());
+        Assert.assertTrue(originalRaw.join().isPresent());
+
+        //overwrite with 2 chunk file
+        byte[] data5 = new byte[10*1024*1024];
+        random.nextBytes(data5);
+        FileWrapper userRoot3 = uploadFileSection(userRoot2, filename, new AsyncReader.ArrayBacked(data5), 0,
+                data5.length, context.network, context.crypto, l -> {}).join();
+        FileWrapper updatedFile = context.getByPath(Paths.get(username, filename)).join().get();
+        checkFileContents(data5, updatedFile, context);
+        assertTrue("10MiB file size", data5.length == updatedFile.getFileProperties().size);
+
+        // check retrieval of cryptree node or data both fail without bat
+        WritableAbsoluteCapability cap = updatedFile.writableFilePointer();
+        WritableAbsoluteCapability badCap = cap.withMapKey(cap.getMapKey(), Optional.empty());
+        NetworkAccess cleared = network.clear();
+        Assert.assertTrue(cleared.getFile(badCap, username).join().isEmpty());
+
+        Multihash fragment = updatedFile.getPointer().fileAccess.toCbor().links().get(0);
+        CompletableFuture<Optional<byte[]>> raw = cleared.dhtClient.getRaw((Cid) fragment, Optional.empty());
+        Assert.assertTrue(raw.isCompletedExceptionally() || raw.join().isEmpty());
     }
 
     @Test

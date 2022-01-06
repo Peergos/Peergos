@@ -44,4 +44,9 @@ public class IpfsUserTests extends UserTests {
         System.out.println("Deleting " + peergosDir);
         deleteFiles(peergosDir.toFile());
     }
+
+    @Override
+    public Args getArgs() {
+        return args;
+    }
 }

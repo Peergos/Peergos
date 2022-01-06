@@ -61,4 +61,9 @@ public class PostgresUserTests extends UserTests {
         System.out.println("Deleting " + peergosDir);
         deleteFiles(peergosDir.toFile());
     }
+
+    @Override
+    public Args getArgs() {
+        return args;
+    }
 }

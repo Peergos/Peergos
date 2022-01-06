@@ -42,6 +42,11 @@ public class RamUserTests extends UserTests {
         });
     }
 
+    @Override
+    public Args getArgs() {
+        return args;
+    }
+
     @AfterClass
     public static void cleanup() {
         try {Thread.sleep(2000);}catch (InterruptedException e) {}
