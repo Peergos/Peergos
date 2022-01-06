@@ -202,6 +202,7 @@ public class PeergosNetworkUtils {
         ResetableFileInputStream resetableFileInputStream = new ResetableFileInputStream(f);
         FileWrapper uploaded = u1Root.uploadOrReplaceFile(filename, resetableFileInputStream, f.length(),
                 sharerUser.network, crypto, l -> {}).join();
+        Optional<Bat> originalBat = uploaded.writableFilePointer().bat;
 
         // share the file from sharer to each of the sharees
         Set<String> shareeNames = shareeUsers.stream()
@@ -259,6 +260,8 @@ public class PeergosNetworkUtils {
             Optional<FileWrapper> sharedFile = userContext.getByPath(path).join();
             Assert.assertTrue("path '" + path + "' is still available", sharedFile.isPresent());
             checkFileContents(originalFileContents, sharedFile.get(), userContext);
+            Optional<Bat> newBat = sharedFile.get().readOnlyPointer().bat;
+            Assert.assertTrue(! newBat.equals(originalBat));
         }
 
         // test that u1 can still access the original file
