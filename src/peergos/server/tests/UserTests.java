@@ -947,6 +947,14 @@ public abstract class UserTests {
                 TransactionId.build("hey")).join();
         network.tree.put(wd, owner, file.signingPair(), file.readOnlyPointer().getMapKey(),
                 file.getPointer().fileAccess.committedHash(), cryptreeCid, TransactionId.build("hey")).join();
+        // also update child pointer in parent
+        FileWrapper root = context.getUserRoot().join();
+        FileWrapper cFile = file;
+        WritableAbsoluteCapability cap = cFile.writableFilePointer();
+        WritableAbsoluteCapability batlessCap = cap.withMapKey(cFile.readOnlyPointer().getMapKey(), Optional.empty());
+        network.synchronizer.applyComplexUpdate(owner, file.signingPair(),
+                (s, c) -> root.getPointer().fileAccess.updateChildLink(s, c, root.writableFilePointer(), root.signingPair(),
+                        cap, new NamedAbsoluteCapability(filename, batlessCap), network, crypto.hasher)).join();
 
         // check there are no BATs for this file
         file = context.getByPath(Paths.get(username, filename)).join().get();
@@ -962,18 +970,26 @@ public abstract class UserTests {
         Assert.assertTrue(originalRaw.join().isPresent());
 
         //overwrite with 2 chunk file
-        byte[] data5 = new byte[10*1024*1024];
-        random.nextBytes(data5);
-        FileWrapper userRoot3 = uploadFileSection(userRoot2, filename, new AsyncReader.ArrayBacked(data5), 0,
-                data5.length, context.network, context.crypto, l -> {}).join();
+        byte[] threeChunkData = new byte[11*1024*1024];
+        random.nextBytes(threeChunkData);
+        FileWrapper userRoot3 = uploadFileSection(userRoot2, filename, new AsyncReader.ArrayBacked(threeChunkData), 0,
+                threeChunkData.length, context.network, context.crypto, l -> {}).join();
         FileWrapper updatedFile = context.getByPath(Paths.get(username, filename)).join().get();
-        checkFileContents(data5, updatedFile, context);
-        assertTrue("10MiB file size", data5.length == updatedFile.getFileProperties().size);
+        checkFileContents(threeChunkData, updatedFile, context);
+        assertTrue("10MiB file size", threeChunkData.length == updatedFile.getFileProperties().size);
+
+        WritableAbsoluteCapability newcap = updatedFile.writableFilePointer();
+        // check second chunk doesn't have a BAT (because of preexisting next chunk pointer), and 3rd does
+        Pair<byte[], Optional<Bat>> nextChunkRel = updatedFile.getPointer().fileAccess.getNextChunkLocation(updatedFile.getKey(),
+                updatedFile.getFileProperties().streamSecret, newcap.getMapKey(), Optional.empty(), crypto.hasher).join();
+        Assert.assertTrue(nextChunkRel.right.isEmpty());
+        NetworkAccess cleared = network.clear();
+        WriterData uwd = WriterData.getWriterData(owner, updatedFile.writer(), network.mutable, network.dhtClient).join().props;
+        Optional<CryptreeNode> secondChunk = cleared.getMetadata(uwd, newcap.withMapKey(nextChunkRel.left, Optional.empty())).join();
+        Assert.assertTrue(secondChunk.isPresent());
 
         // check retrieval of cryptree node or data both fail without bat
-        WritableAbsoluteCapability cap = updatedFile.writableFilePointer();
-        WritableAbsoluteCapability badCap = cap.withMapKey(cap.getMapKey(), Optional.empty());
-        NetworkAccess cleared = network.clear();
+        WritableAbsoluteCapability badCap = newcap.withMapKey(newcap.getMapKey(), Optional.empty());
         Assert.assertTrue(cleared.getFile(badCap, username).join().isEmpty());
 
         Multihash fragment = updatedFile.getPointer().fileAccess.toCbor().links().get(0);

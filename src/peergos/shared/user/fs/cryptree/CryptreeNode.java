@@ -1167,7 +1167,9 @@ public class CryptreeNode implements Cborable {
         FromBase fromBase = new FromBase(dataKey, signerLink, nextChunk);
         FromParent fromParent = new FromParent(toParentDir, props);
 
-        List<BatId> bats = Stream.concat(inlineBat.stream().map(BatId::inline), mirrorBat.stream()).collect(Collectors.toList());
+        List<BatId> bats = inlineBat.isEmpty() ?
+                Collections.emptyList() :
+                Stream.concat(inlineBat.stream().map(BatId::inline), mirrorBat.stream()).collect(Collectors.toList());
         PaddedCipherText encryptedBaseBlock = PaddedCipherText.build(parentKey, fromBase, BASE_BLOCK_PADDING_BLOCKSIZE);
         PaddedCipherText encryptedParentBlock = PaddedCipherText.build(parentKey, fromParent, META_DATA_PADDING_BLOCKSIZE);
         return new CryptreeNode(existingHash, false, bats, encryptedBaseBlock, data, encryptedParentBlock);
@@ -1261,7 +1263,8 @@ public class CryptreeNode implements Cborable {
     public CborObject toCbor() {
         SortedMap<String, Cborable> state = new TreeMap<>();
         state.put("v", new CborObject.CborLong(getVersion()));
-        state.put("bats", new CborObject.CborList(bats));
+        if (! bats.isEmpty())
+            state.put("bats", new CborObject.CborList(bats));
         state.put("b", fromBaseKey);
         state.put("p", fromParentKey);
         state.put("d", childrenOrData);
