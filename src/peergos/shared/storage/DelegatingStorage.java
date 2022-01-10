@@ -23,6 +23,12 @@ public abstract class DelegatingStorage implements ContentAddressedStorage {
     public CompletableFuture<BlockStoreProperties> blockStoreProperties() {
         return target.blockStoreProperties();
     }
+
+    @Override
+    public void clearBlockCache() {
+        target.clearBlockCache();
+    }
+
     @Override
     public CompletableFuture<Cid> id() {
         return target.id();

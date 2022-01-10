@@ -33,6 +33,11 @@ public interface ContentAddressedStorage {
     }
 
     /**
+     *  Clear any block caches
+     */
+    default void clearBlockCache() {}
+
+    /**
      *
      * @return an instance of the same type that doesn't do any cross domain requests
      */

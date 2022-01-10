@@ -61,7 +61,13 @@ public class CachingVerifyingStorage extends DelegatingStorage {
 
     @Override
     public ContentAddressedStorage directToOrigin() {
-        return new CachingStorage(target.directToOrigin(), cacheSize, maxValueSize);
+        return new CachingVerifyingStorage(target.directToOrigin(), cacheSize, maxValueSize, hasher);
+    }
+
+    @Override
+    public void clearBlockCache() {
+        cache.clear();
+        target.clearBlockCache();
     }
 
     private boolean cache(Multihash h, byte[] block) {

@@ -42,6 +42,12 @@ public class CachingStorage extends DelegatingStorage {
     }
 
     @Override
+    public void clearBlockCache() {
+        cache.clear();
+        target.clearBlockCache();
+    }
+
+    @Override
     public CompletableFuture<List<Cid>> put(PublicKeyHash owner,
                                             PublicKeyHash writer,
                                             List<byte[]> signedHashes,

@@ -143,6 +143,7 @@ public class NetworkAccess {
 
     public NetworkAccess clear() {
         MutablePointers mutable = this.mutable.clearCache();
+        dhtClient.clearBlockCache();
         WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, dhtClient, hasher);
         MutableTree mutableTree = new MutableTreeImpl(mutable, dhtClient, hasher, synchronizer);
         return new NetworkAccess(coreNode, account, social, dhtClient, batCave, mutable, mutableTree, synchronizer, instanceAdmin,
