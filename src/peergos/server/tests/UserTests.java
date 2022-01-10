@@ -919,7 +919,7 @@ public abstract class UserTests {
 
     @Test
     public void legacyFileModification() throws Exception {
-        // test that a legacy file without BATs can be modified and extended, and all new chunks and fragments have BATs
+        // test that a legacy file without BATs can be modified and extended, and all new fragments have BATs
         String username = generateUsername();
         String password = "test01";
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
@@ -979,7 +979,8 @@ public abstract class UserTests {
         assertTrue("10MiB file size", threeChunkData.length == updatedFile.getFileProperties().size);
 
         WritableAbsoluteCapability newcap = updatedFile.writableFilePointer();
-        // check second chunk doesn't have a BAT (because of preexisting next chunk pointer), and 3rd does
+        Assert.assertTrue(newcap.bat.isEmpty());
+        // check later chunks don't have BATs
         Pair<byte[], Optional<Bat>> nextChunkRel = updatedFile.getPointer().fileAccess.getNextChunkLocation(updatedFile.getKey(),
                 updatedFile.getFileProperties().streamSecret, newcap.getMapKey(), Optional.empty(), crypto.hasher).join();
         Assert.assertTrue(nextChunkRel.right.isEmpty());
@@ -987,13 +988,19 @@ public abstract class UserTests {
         WriterData uwd = WriterData.getWriterData(owner, updatedFile.writer(), network.mutable, network.dhtClient).join().props;
         Optional<CryptreeNode> secondChunk = cleared.getMetadata(uwd, newcap.withMapKey(nextChunkRel.left, Optional.empty())).join();
         Assert.assertTrue(secondChunk.isPresent());
+        // now the third chunk
+        Pair<byte[], Optional<Bat>> thirdChunkRel = secondChunk.get().getNextChunkLocation(updatedFile.getKey(),
+                updatedFile.getFileProperties().streamSecret, newcap.getMapKey(), Optional.empty(), crypto.hasher).join();
+        Assert.assertTrue(thirdChunkRel.right.isEmpty());
+        Optional<CryptreeNode> thirdChunk = cleared.getMetadata(uwd, newcap.withMapKey(thirdChunkRel.left, Optional.empty())).join();
+        Assert.assertTrue(thirdChunk.isPresent());
 
-        // check retrieval of cryptree node or data both fail without bat
-        WritableAbsoluteCapability badCap = newcap.withMapKey(newcap.getMapKey(), Optional.empty());
-        Assert.assertTrue(cleared.getFile(badCap, username).join().isEmpty());
+        // check cryptree node can still be retrieved without a BAT
+        Assert.assertTrue(network.clear().getFile(updatedFile.version, newcap, Optional.of(updatedFile.signingPair()), username).join().isPresent());
 
+        // check retrieval of fragments fail without bat
         Multihash fragment = updatedFile.getPointer().fileAccess.toCbor().links().get(0);
-        CompletableFuture<Optional<byte[]>> raw = cleared.dhtClient.getRaw((Cid) fragment, Optional.empty());
+        CompletableFuture<Optional<byte[]>> raw = network.clear().dhtClient.getRaw((Cid) fragment, Optional.empty());
         Assert.assertTrue(raw.isCompletedExceptionally() || raw.join().isEmpty());
     }
 
@@ -1037,7 +1044,8 @@ public abstract class UserTests {
         WritableAbsoluteCapability cap = file.writableFilePointer();
         WritableAbsoluteCapability badCap = cap.withMapKey(cap.getMapKey(), Optional.empty());
         NetworkAccess cleared = network.clear();
-        Assert.assertTrue(cleared.getFile(badCap, username).join().isEmpty());
+        CompletableFuture<Optional<FileWrapper>> badFileGet = cleared.getFile(file.version, badCap, Optional.of(file.signingPair()), username);
+        Assert.assertTrue(badFileGet.isCompletedExceptionally() || badFileGet.join().isEmpty());
 
         Multihash fragment = file.getPointer().fileAccess.toCbor().links().get(0);
         CompletableFuture<Optional<byte[]>> raw = cleared.dhtClient.getRaw((Cid) fragment, Optional.empty());
