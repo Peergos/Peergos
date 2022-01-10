@@ -1040,6 +1040,11 @@ public abstract class UserTests {
         long totalSpaceUsed = context.getTotalSpaceUsed().get();
         Assert.assertTrue("Correct used space", totalSpaceUsed > 10*1024*1024);
 
+        // check second chunk BAT is different from first
+        Pair<byte[], Optional<Bat>> nextChunkRel = file.getPointer().fileAccess.getNextChunkLocation(file.getKey(),
+                file.getFileProperties().streamSecret, file.writableFilePointer().getMapKey(), file.writableFilePointer().bat, crypto.hasher).join();
+        Assert.assertTrue(! nextChunkRel.right.get().equals(file.writableFilePointer().bat.get()));
+
         // check retrieval of cryptree node or data both fail without bat
         WritableAbsoluteCapability cap = file.writableFilePointer();
         WritableAbsoluteCapability badCap = cap.withMapKey(cap.getMapKey(), Optional.empty());
