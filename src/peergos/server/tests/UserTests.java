@@ -1050,11 +1050,11 @@ public abstract class UserTests {
         WritableAbsoluteCapability badCap = cap.withMapKey(cap.getMapKey(), Optional.empty());
         NetworkAccess cleared = network.clear();
         CompletableFuture<Optional<FileWrapper>> badFileGet = cleared.getFile(file.version, badCap, Optional.of(file.signingPair()), username);
-        Assert.assertTrue(badFileGet.isCompletedExceptionally() || badFileGet.join().isEmpty());
+        Assert.assertTrue(badFileGet.exceptionally(t -> Optional.empty()).join().isEmpty());
 
         Multihash fragment = file.getPointer().fileAccess.toCbor().links().get(0);
         CompletableFuture<Optional<byte[]>> raw = cleared.dhtClient.getRaw((Cid) fragment, Optional.empty());
-        Assert.assertTrue(raw.isCompletedExceptionally() || raw.join().isEmpty());
+        Assert.assertTrue(raw.exceptionally(t -> Optional.empty()).join().isEmpty());
     }
 
     @Test
