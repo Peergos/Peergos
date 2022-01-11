@@ -851,6 +851,10 @@ public abstract class UserTests {
                     context.crypto, l -> {}, transaction.getLocations().get(0).getMapKey(), Optional.of(Bat.random(crypto.random)), userRoot.mirrorBatId()).get();
         } catch (Exception e) {}
         int during = context.getTotalSpaceUsed().get().intValue();
+        if (during <= 5*1024*1024) { // give server a chance to recalculate usage
+            Thread.sleep(2_000);
+            during = context.getTotalSpaceUsed().get().intValue();
+        }
         Assert.assertTrue("One chunk uploaded", during > 5 * 1024*1024);
 
         context.network.synchronizer.applyComplexUpdate(userRoot.owner(), transactions.getSigner(),
