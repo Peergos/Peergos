@@ -6,6 +6,7 @@ import peergos.shared.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.util.*;
 
 import java.io.*;
@@ -24,7 +25,8 @@ class S3Exploration {
         String host = bucketName + "." + regionEndpoint;
 
         byte[] payload = "Hi Linode2!".getBytes();
-        RAMStorage ram = new RAMStorage(crypto.hasher);
+        Hasher h = crypto.hasher;
+        RAMStorage ram = new RAMStorage(h);
         TransactionId tid = ram.startTransaction(null).join();
         Multihash content = ram.put(null, null, null, Collections.singletonList(payload), tid).join().get(0);
         String s3Key = DirectS3BlockStore.hashToKey(content);// "AFYREIBF5Y4OUJXNGRCHBAR2ZMPQBSW62SZDHFNX2GA6V4J3W7I63LA4UQ"
@@ -37,48 +39,48 @@ class S3Exploration {
             boolean hashContent = true;
             String contentHash = hashContent ? ArrayOps.bytesToHex(content.getHash()) : "UNSIGNED-PAYLOAD";
             PresignedUrl putUrl = S3Request.preSignPut(s3Key, payload.length, contentHash, false,
-                    ZonedDateTime.now().minusMinutes(14), host, extraHeaders, region, accessKey, secretKey);
+                    S3AdminRequests.asAwsDate(ZonedDateTime.now().minusMinutes(14)), host, extraHeaders, region, accessKey, secretKey, h).join();
             String putRes = new String(write(new URI(putUrl.base).toURL(), "PUT", putUrl.fields, useIllegalPayload ? new byte[payload.length] : payload));
             System.out.println(putRes);
 
             // test copying over to reset modified time
-            PresignedUrl getaUrl = S3Request.preSignGet(s3Key, Optional.of(600), ZonedDateTime.now(), host, region, accessKey, secretKey);
+            PresignedUrl getaUrl = S3Request.preSignGet(s3Key, Optional.of(600), S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKey, secretKey, h).join();
             get(new URI(getaUrl.base).toURL(), getaUrl.fields);
             String tempKey = s3Key + "Z";
             {
                 PresignedUrl copyUrl = S3Request.preSignCopy(bucketName, s3Key, tempKey,
-                    ZonedDateTime.now(), host, Collections.emptyMap(), region, accessKey, secretKey);
+                        S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, Collections.emptyMap(), region, accessKey, secretKey, h).join();
                 String res = new String(write(new URI(copyUrl.base).toURL(), "PUT", copyUrl.fields, new byte[0]));
                 System.out.println(res);
             }
             {
                 PresignedUrl copyUrl = S3Request.preSignCopy(bucketName, tempKey, s3Key,
-                    ZonedDateTime.now(), host, Collections.emptyMap(), region, accessKey, secretKey);
+                        S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, Collections.emptyMap(), region, accessKey, secretKey, h).join();
                 String res = new String(write(new URI(copyUrl.base).toURL(), "PUT", copyUrl.fields, new byte[0]));
                 System.out.println(res);
             }
             get(new URI(getaUrl.base).toURL(), getaUrl.fields);
 
             // test a delete
-            PresignedUrl delUrl = S3Request.preSignDelete(tempKey, ZonedDateTime.now(), host, region, accessKey, secretKey);
+            PresignedUrl delUrl = S3Request.preSignDelete(tempKey, S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKey, secretKey, h).join();
             delete(new URI(delUrl.base).toURL(), delUrl.fields);
             System.out.println();
 
             // test bulk delete of two copies
             {
                 PresignedUrl copyUrl = S3Request.preSignCopy(bucketName, s3Key, tempKey,
-                        ZonedDateTime.now(), host, Collections.emptyMap(), region, accessKey, secretKey);
+                        S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, Collections.emptyMap(), region, accessKey, secretKey, h).join();
                 String res = new String(write(new URI(copyUrl.base).toURL(), "PUT", copyUrl.fields, new byte[0]));
             }
             String tempKey2 = s3Key + "ZZ";
             {
                 PresignedUrl copyUrl = S3Request.preSignCopy(bucketName, s3Key, tempKey2,
-                        ZonedDateTime.now(), host, Collections.emptyMap(), region, accessKey, secretKey);
+                        S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, Collections.emptyMap(), region, accessKey, secretKey, h).join();
                 String res = new String(write(new URI(copyUrl.base).toURL(), "PUT", copyUrl.fields, new byte[0]));
                 System.out.println(res);
             }
             String nonExistentKey = tempKey2 + "ZZ";
-            S3Request.BulkDeleteReply bulkDelete = S3Request.bulkDelete(Arrays.asList(tempKey, tempKey2, nonExistentKey),
+            S3AdminRequests.BulkDeleteReply bulkDelete = S3AdminRequests.bulkDelete(Arrays.asList(tempKey, tempKey2, nonExistentKey),
                     ZonedDateTime.now(), host, region, accessKey, secretKey, b -> ArrayOps.bytesToHex(Hash.sha256(b)),
                     (url, body) -> {
                         try {
@@ -86,36 +88,36 @@ class S3Exploration {
                         } catch (Exception e) {
                             throw new RuntimeException(e);
                         }
-                    });
+                    }, S3AdminRequests.builder::get, h);
             if (! bulkDelete.deletedKeys.containsAll(Arrays.asList(tempKey, tempKey2, nonExistentKey)))
                 throw new IllegalStateException("Delete failed");
         }
 
         // Test a list objects GET
-        S3Request.ListObjectsReply listing = S3Request.listObjects("", 10, Optional.empty(),
-                ZonedDateTime.now(), host, region, accessKey, secretKey, url -> get(url));
+        S3AdminRequests.ListObjectsReply listing = S3AdminRequests.listObjects("", 10, Optional.empty(),
+                ZonedDateTime.now(), host, region, accessKey, secretKey, url -> get(url), S3AdminRequests.builder::get, h);
 
         // Test a list objects GET continuation
-        S3Request.ListObjectsReply listing2 = S3Request.listObjects("", 10, Optional.of(s3Key),
-                ZonedDateTime.now(), host, region, accessKey, secretKey, url -> get(url));
+        S3AdminRequests.ListObjectsReply listing2 = S3AdminRequests.listObjects("", 10, Optional.of(s3Key),
+                ZonedDateTime.now(), host, region, accessKey, secretKey, url -> get(url), S3AdminRequests.builder::get, h);
         if (listing2.objects.get(0).key.equals(listing.objects.get(0).key))
             throw new IllegalStateException("Incorrect listing!");
 
         // test an authed HEAD
-        PresignedUrl headUrl = S3Request.preSignHead(s3Key, Optional.of(600), ZonedDateTime.now(), host, region, accessKey, secretKey);
+        PresignedUrl headUrl = S3Request.preSignHead(s3Key, Optional.of(600), S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKey, secretKey, h).join();
         Map<String, List<String>> headRes = HttpUtil.head(headUrl);
         int size = Integer.parseInt(headRes.get("Content-Length").get(0));
         if (size != payload.length)
             throw new IllegalStateException("Incorrect size: " + size);
 
         // test an authed read
-        PresignedUrl getUrl = S3Request.preSignGet(s3Key, Optional.of(600), ZonedDateTime.now(), host, region, accessKey, secretKey);
+        PresignedUrl getUrl = S3Request.preSignGet(s3Key, Optional.of(600), S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKey, secretKey, h).join();
         byte[] authReadBytes = get(new URI(getUrl.base).toURL(), getUrl.fields);
         if (! Arrays.equals(authReadBytes, payload))
             throw new IllegalStateException("Incorrect contents: " + new String(authReadBytes));
 
         // test an authed read which has expired
-        PresignedUrl failGetUrl = S3Request.preSignGet(s3Key, Optional.of(600), ZonedDateTime.now().minusMinutes(11), host, region, accessKey, secretKey);
+        PresignedUrl failGetUrl = S3Request.preSignGet(s3Key, Optional.of(600), S3AdminRequests.asAwsDate(ZonedDateTime.now().minusMinutes(11)), host, region, accessKey, secretKey, h).join();
         String failReadRes = new String(get(new URI(failGetUrl.base).toURL(), failGetUrl.fields));
         System.out.println(failReadRes);
 

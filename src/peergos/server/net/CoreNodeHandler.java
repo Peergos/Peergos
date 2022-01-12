@@ -11,6 +11,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.api.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
@@ -142,7 +143,11 @@ public class CoreNodeHandler implements HttpHandler
         byte[] raw = Serialize.deserializeByteArray(din, 4096);
         List<UserPublicKeyLink> newChain = ((CborObject.CborList)CborObject.fromByteArray(raw)).map(UserPublicKeyLink::fromCbor);
         Multihash currentStorageId = Cid.cast(Serialize.deserializeByteArray(din, 128));
-        UserSnapshot state = coreNode.migrateUser(username, newChain, currentStorageId).get();
+        boolean hasBat = din.readBoolean();
+        Optional<BatWithId> mirrorBat = hasBat ?
+                Optional.of(BatWithId.fromCbor(CborObject.fromByteArray(Serialize.deserializeByteArray(din, 128)))) :
+                Optional.empty();
+        UserSnapshot state = coreNode.migrateUser(username, newChain, currentStorageId, mirrorBat).join();
         dout.write(state.serialize());
     }
 

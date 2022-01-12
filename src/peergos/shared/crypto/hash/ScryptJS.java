@@ -27,6 +27,11 @@ public class ScryptJS implements Hasher {
     }
 
     @Override
+    public CompletableFuture<byte[]> hmacSha256(byte[] secretKey, byte[] message) {
+        return scriptJS.hmacSha256(secretKey, message);
+    }
+
+    @Override
     public byte[] blake2b(byte[] input, int outputBytes) {
         return scriptJS.blake2b(input, outputBytes);
     }

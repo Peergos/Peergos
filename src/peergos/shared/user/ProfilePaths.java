@@ -1,6 +1,7 @@
 package peergos.shared.user;
 
 import jsinterop.annotations.JsMethod;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
@@ -41,10 +42,9 @@ public class ProfilePaths {
     private static <V> CompletableFuture<Boolean> serializeAndSet(Path p, V val, Function<V, byte[]> serialize, UserContext user) {
         byte[] raw = serialize.apply(val);
         return user.getUserRoot()
-                .thenCompose(home -> home.getOrMkdirs(p.getParent(), user.network, true, user.crypto))
+                .thenCompose(home -> home.getOrMkdirs(p.getParent(), user.network, true, user.mirrorBatId(), user.crypto))
                 .thenCompose(parent -> parent.uploadOrReplaceFile(p.getFileName().toString(),
-                        AsyncReader.build(raw), raw.length, user.network, user.crypto, x -> {},
-                        user.crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH)))
+                        AsyncReader.build(raw), raw.length, user.network, user.crypto, x -> {}))
                 .thenApply(x -> true);
     }
 

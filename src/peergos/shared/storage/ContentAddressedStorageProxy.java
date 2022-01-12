@@ -6,6 +6,7 @@ import peergos.shared.io.ipfs.api.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multiaddr.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
@@ -21,35 +22,22 @@ public interface ContentAddressedStorageProxy {
 
     CompletableFuture<Boolean> closeTransaction(Multihash targetServerId, PublicKeyHash owner, TransactionId tid);
 
-    CompletableFuture<List<byte[]>> getChampLookup(Multihash targetServerId, PublicKeyHash owner, Multihash root, byte[] champKey);
+    CompletableFuture<List<byte[]>> getChampLookup(Multihash targetServerId, PublicKeyHash owner, Multihash root, byte[] champKey, Optional<BatWithId> bat);
 
-    CompletableFuture<List<Multihash>> put(Multihash targetServerId,
-                                           PublicKeyHash owner,
-                                           PublicKeyHash writer,
-                                           List<byte[]> signatures,
-                                           List<byte[]> blocks,
-                                           TransactionId tid);
+    CompletableFuture<List<Cid>> put(Multihash targetServerId,
+                                     PublicKeyHash owner,
+                                     PublicKeyHash writer,
+                                     List<byte[]> signatures,
+                                     List<byte[]> blocks,
+                                     TransactionId tid);
 
-    CompletableFuture<List<Multihash>> putRaw(Multihash targetServerId,
-                                              PublicKeyHash owner,
-                                              PublicKeyHash writer,
-                                              List<byte[]> signatures,
-                                              List<byte[]> blocks,
-                                              TransactionId tid,
-                                              ProgressConsumer<Long> progressConsumer);
-
-    CompletableFuture<List<Multihash>> pinUpdate(Multihash targetServerId,
-                                                    PublicKeyHash owner,
-                                                    Multihash existing,
-                                                    Multihash updated);
-
-    CompletableFuture<List<Multihash>> recursivePin(Multihash targetServerId,
-                                                    PublicKeyHash owner,
-                                                    Multihash h);
-
-    CompletableFuture<List<Multihash>> recursiveUnpin(Multihash targetServerId,
-                                                      PublicKeyHash owner,
-                                                      Multihash h);
+    CompletableFuture<List<Cid>> putRaw(Multihash targetServerId,
+                                        PublicKeyHash owner,
+                                        PublicKeyHash writer,
+                                        List<byte[]> signatures,
+                                        List<byte[]> blocks,
+                                        TransactionId tid,
+                                        ProgressConsumer<Long> progressConsumer);
 
     class HTTP implements ContentAddressedStorageProxy {
         private static final String P2P_PROXY_PROTOCOL = "/http";
@@ -61,7 +49,7 @@ public interface ContentAddressedStorageProxy {
             this.poster = poster;
         }
 
-        private static Multihash getObjectHash(Object rawJson) {
+        private static Cid getObjectHash(Object rawJson) {
             Map json = (Map)rawJson;
             String hash = (String)json.get("Hash");
             if (hash == null)
@@ -102,42 +90,46 @@ public interface ContentAddressedStorageProxy {
         public CompletableFuture<List<byte[]>> getChampLookup(Multihash targetServerId,
                                                               PublicKeyHash owner,
                                                               Multihash root,
-                                                              byte[] champKey) {
+                                                              byte[] champKey,
+                                                              Optional<BatWithId> bat) {
             return poster.get(getProxyUrlPrefix(targetServerId) + apiPrefix
-                    + "champ/get?arg=" + root.toString() + "&arg=" + ArrayOps.bytesToHex(champKey) + "&owner=" + encode(owner.toString()))
+                    + "champ/get?arg=" + root.toString()
+                    + "&arg=" + ArrayOps.bytesToHex(champKey)
+                    + "&owner=" + encode(owner.toString())
+                    + bat.map(b -> "&bat=" + b.encode()).orElse(""))
                     .thenApply(CborObject::fromByteArray)
                     .thenApply(c -> (CborObject.CborList)c)
                     .thenApply(res -> res.map(c -> ((CborObject.CborByteArray)c).value));
         }
 
         @Override
-        public CompletableFuture<List<Multihash>> put(Multihash targetServerId,
-                                                      PublicKeyHash owner,
-                                                      PublicKeyHash writer,
-                                                      List<byte[]> signatures,
-                                                      List<byte[]> blocks,
-                                                      TransactionId tid) {
+        public CompletableFuture<List<Cid>> put(Multihash targetServerId,
+                                                PublicKeyHash owner,
+                                                PublicKeyHash writer,
+                                                List<byte[]> signatures,
+                                                List<byte[]> blocks,
+                                                TransactionId tid) {
             return put(targetServerId, owner, writer, signatures, blocks, "cbor", tid);
         }
 
         @Override
-        public CompletableFuture<List<Multihash>> putRaw(Multihash targetServerId,
-                                                         PublicKeyHash owner,
-                                                         PublicKeyHash writer,
-                                                         List<byte[]> signatures,
-                                                         List<byte[]> blocks,
-                                                         TransactionId tid,
-                                                         ProgressConsumer<Long> progressConsumer) {
+        public CompletableFuture<List<Cid>> putRaw(Multihash targetServerId,
+                                                   PublicKeyHash owner,
+                                                   PublicKeyHash writer,
+                                                   List<byte[]> signatures,
+                                                   List<byte[]> blocks,
+                                                   TransactionId tid,
+                                                   ProgressConsumer<Long> progressConsumer) {
             return put(targetServerId, owner, writer, signatures, blocks, "raw", tid);
         }
 
-        private CompletableFuture<List<Multihash>> put(Multihash targetServerId,
-                                                       PublicKeyHash owner,
-                                                       PublicKeyHash writer,
-                                                       List<byte[]> signatures,
-                                                       List<byte[]> blocks,
-                                                       String format,
-                                                       TransactionId tid) {
+        private CompletableFuture<List<Cid>> put(Multihash targetServerId,
+                                                 PublicKeyHash owner,
+                                                 PublicKeyHash writer,
+                                                 List<byte[]> signatures,
+                                                 List<byte[]> blocks,
+                                                 String format,
+                                                 TransactionId tid) {
             return poster.postMultipart(getProxyUrlPrefix(targetServerId) + apiPrefix + "block/put?format=" + format
                     + "&owner=" + encode(owner.toString())
                     + "&transaction=" + encode(tid.toString())
@@ -147,31 +139,6 @@ public interface ContentAddressedStorageProxy {
                             .stream()
                             .map(json -> getObjectHash(json))
                             .collect(Collectors.toList()));
-        }
-
-        @Override
-        public CompletableFuture<List<Multihash>> recursivePin(Multihash targetServerId, PublicKeyHash owner, Multihash hash) {
-            return poster.get(getProxyUrlPrefix(targetServerId) + apiPrefix + "pin/add?stream-channels=true&arg=" + hash.toString()
-                    + "&owner=" + encode(owner.toString())).thenApply(this::getPins);
-        }
-
-        @Override
-        public CompletableFuture<List<Multihash>> recursiveUnpin(Multihash targetServerId, PublicKeyHash owner, Multihash hash) {
-            return poster.get(getProxyUrlPrefix(targetServerId) + apiPrefix + "pin/rm?stream-channels=true&r=true&arg=" + hash.toString()
-                    + "&owner=" + encode(owner.toString())).thenApply(this::getPins);
-        }
-
-        @Override
-        public CompletableFuture<List<Multihash>> pinUpdate(Multihash targetServerId, PublicKeyHash owner, Multihash existing, Multihash updated) {
-            return poster.get(getProxyUrlPrefix(targetServerId) + apiPrefix + "pin/update?stream-channels=true&arg=" + existing.toString()
-                    + "&arg=" + updated + "&unpin=false"
-                    + "&owner=" + encode(owner.toString())).thenApply(this::getPins);
-        }
-
-        private List<Multihash> getPins(byte[] raw) {
-            Map res = (Map)JSONParser.parse(new String(raw));
-            List<String> pins = (List<String>)res.get("Pins");
-            return pins.stream().map(Cid::decode).collect(Collectors.toList());
         }
     }
 }

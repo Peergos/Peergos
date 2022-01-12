@@ -12,6 +12,7 @@ import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.mutable.*;
 import peergos.shared.social.*;
 import peergos.shared.storage.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.storage.controller.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
@@ -34,6 +35,7 @@ public class NetworkAccess {
     public final Account account;
     public final SocialNetwork social;
     public final ContentAddressedStorage dhtClient;
+    public final BatCave batCave;
     public final MutablePointers mutable;
     public final MutableTree tree;
     public final WriteSynchronizer synchronizer;
@@ -51,6 +53,7 @@ public class NetworkAccess {
                          Account account,
                          SocialNetwork social,
                          ContentAddressedStorage dhtClient,
+                         BatCave batCave,
                          MutablePointers mutable,
                          MutableTree tree,
                          WriteSynchronizer synchronizer,
@@ -65,6 +68,7 @@ public class NetworkAccess {
         this.account = account;
         this.social = social;
         this.dhtClient = dhtClient;
+        this.batCave = batCave;
         this.mutable = mutable;
         this.tree = tree;
         this.synchronizer = synchronizer;
@@ -82,6 +86,7 @@ public class NetworkAccess {
                          Account account,
                          SocialNetwork social,
                          ContentAddressedStorage dhtClient,
+                         BatCave batCave,
                          MutablePointers mutable,
                          MutableTree tree,
                          WriteSynchronizer synchronizer,
@@ -91,7 +96,7 @@ public class NetworkAccess {
                          Hasher hasher,
                          List<String> usernames,
                          boolean isJavascript) {
-        this(coreNode, account, social, dhtClient, mutable, tree, synchronizer, instanceAdmin, spaceUsage, serverMessager,
+        this(coreNode, account, social, dhtClient, batCave, mutable, tree, synchronizer, instanceAdmin, spaceUsage, serverMessager,
                 hasher, usernames, new CryptreeCache(), isJavascript);
     }
 
@@ -100,7 +105,7 @@ public class NetworkAccess {
     }
 
     public NetworkAccess withCorenode(CoreNode newCore) {
-        return new NetworkAccess(newCore, account, social, dhtClient, mutable, tree, synchronizer, instanceAdmin,
+        return new NetworkAccess(newCore, account, social, dhtClient, batCave, mutable, tree, synchronizer, instanceAdmin,
                 spaceUsage, serverMessager, hasher, usernames, cache, isJavascript);
     }
 
@@ -108,17 +113,18 @@ public class NetworkAccess {
         ContentAddressedStorage directDht = dhtClient.directToOrigin();
         WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, directDht, hasher);
         MutableTree tree = new MutableTreeImpl(mutable, directDht, hasher, synchronizer);
-        return new NetworkAccess(coreNode, account, social, directDht, mutable, tree, synchronizer, instanceAdmin,
+        return new NetworkAccess(coreNode, account, social, directDht, batCave, mutable, tree, synchronizer, instanceAdmin,
                 spaceUsage, serverMessager, hasher, usernames, isJavascript);
     }
 
     public static NetworkAccess nonCommittingForSignup(Account account,
                                                        ContentAddressedStorage directDht,
                                                        MutablePointers mutable,
+                                                       BatCave bats,
                                                        Hasher hasher) {
         WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, directDht, hasher);
         MutableTree tree = new MutableTreeImpl(mutable, directDht, hasher, synchronizer);
-        return new NetworkAccess(null, account, null, directDht, mutable, tree, synchronizer, null,
+        return new NetworkAccess(null, account, null, directDht, bats, mutable, tree, synchronizer, null,
                 null, null, hasher, Collections.emptyList(), false);
     }
 
@@ -137,9 +143,10 @@ public class NetworkAccess {
 
     public NetworkAccess clear() {
         MutablePointers mutable = this.mutable.clearCache();
+        dhtClient.clearBlockCache();
         WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, dhtClient, hasher);
         MutableTree mutableTree = new MutableTreeImpl(mutable, dhtClient, hasher, synchronizer);
-        return new NetworkAccess(coreNode, account, social, dhtClient, mutable, mutableTree, synchronizer, instanceAdmin,
+        return new NetworkAccess(coreNode, account, social, dhtClient, batCave, mutable, mutableTree, synchronizer, instanceAdmin,
                 spaceUsage, serverMessager, hasher, usernames, isJavascript);
     }
 
@@ -147,7 +154,7 @@ public class NetworkAccess {
         CachingPointers mutable = new CachingPointers(this.mutable, ttl);
         WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, dhtClient, hasher);
         MutableTree mutableTree = new MutableTreeImpl(mutable, dhtClient, hasher, synchronizer);
-        return new NetworkAccess(coreNode, account, social, dhtClient, mutable, mutableTree, synchronizer, instanceAdmin,
+        return new NetworkAccess(coreNode, account, social, dhtClient, batCave, mutable, mutableTree, synchronizer, instanceAdmin,
                 spaceUsage, serverMessager, hasher, usernames, isJavascript);
     }
 
@@ -248,7 +255,7 @@ public class NetworkAccess {
                                                           boolean isPeergosServer,
                                                           boolean isJavascript) {
         return localDht.id()
-                .exceptionally(t -> new Multihash(Multihash.Type.sha2_256, new byte[32]))
+                .exceptionally(t -> new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, new byte[32]))
                 .thenApply(nodeId -> {
                     ContentAddressedStorageProxy proxingDht = new ContentAddressedStorageProxy.HTTP(p2pPoster);
                     ContentAddressedStorage storage = isPeergosServer ?
@@ -272,12 +279,14 @@ public class NetworkAccess {
                             httpUsage :
                             new ProxyingSpaceUsage(nodeId, core, httpUsage, httpUsage);
                     ServerMessager serverMessager = new ServerMessager.HTTP(apiPoster);
-                    return build(new CommittableStorage(p2pDht), core, account, p2pMutable, p2pSocial,
+                    BatCave batCave = new HttpBatCave(apiPoster, p2pPoster);
+                    return build(new CommittableStorage(p2pDht), batCave, core, account, p2pMutable, p2pSocial,
                             new HttpInstanceAdmin(apiPoster), p2pUsage, serverMessager, hasher, usernames, isJavascript);
                 });
     }
 
     private static NetworkAccess build(ContentAddressedStorage dht,
+                                       BatCave batCave,
                                        CoreNode coreNode,
                                        Account account,
                                        MutablePointers mutable,
@@ -290,7 +299,7 @@ public class NetworkAccess {
                                        boolean isJavascript) {
         WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, dht, hasher);
         MutableTree btree = new MutableTreeImpl(mutable, dht, hasher, synchronizer);
-        return new NetworkAccess(coreNode, account,social, dht, mutable, btree, synchronizer, instanceAdmin,
+        return new NetworkAccess(coreNode, account, social, dht, batCave, mutable, btree, synchronizer, instanceAdmin,
                 usage, serverMessager, hasher, usernames, isJavascript);
     }
 
@@ -300,7 +309,7 @@ public class NetworkAccess {
                                                                             ContentAddressedStorage storage) {
         WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, storage, hasher);
         MutableTree mutableTree = new MutableTreeImpl(mutable, storage, null, synchronizer);
-        return CompletableFuture.completedFuture(new NetworkAccess(core, null, null, storage, mutable, mutableTree,
+        return CompletableFuture.completedFuture(new NetworkAccess(core, null, null, storage, null, mutable, mutableTree,
                 synchronizer, null, null, null, hasher, Collections.emptyList(), false));
     }
 
@@ -444,37 +453,38 @@ public class NetworkAccess {
         Pair<Multihash, ByteArrayWrapper> cacheKey = new Pair<>(base.tree.get(), new ByteArrayWrapper(cap.getMapKey()));
         if (cache.containsKey(cacheKey))
             return Futures.of(cache.get(cacheKey));
-        return Futures.asyncExceptionally(
-                () -> dhtClient.getChampLookup(cap.owner, base.tree.get(), cap.getMapKey()),
-                t -> dhtClient.getChampLookup(base.tree.get(), cap.getMapKey(), hasher)
-        ).thenCompose(blocks -> ChampWrapper.create(base.tree.get(), x -> Futures.of(x.data), dhtClient, hasher, c -> (CborObject.CborMerkleLink) c)
-                .thenCompose(tree -> tree.get(cap.getMapKey()))
-                .thenApply(c -> c.map(x -> x.target).map(MaybeMultihash::of).orElse(MaybeMultihash.empty()))
-                .thenCompose(btreeValue -> {
-                    if (btreeValue.isPresent())
-                        return dhtClient.get(btreeValue.get())
-                                .thenApply(value -> value.map(cbor -> CryptreeNode.fromCbor(cbor, cap.rBaseKey, btreeValue.get())))
-                                .thenApply(res -> {
-                                    cache.put(cacheKey, res);
-                                    return res;
-                                });
-                    return CompletableFuture.completedFuture(Optional.empty());
-                }));
+        return cap.bat.map(b -> b.calculateId(hasher).thenApply(id -> Optional.of(new BatWithId(b, id.id)))).orElse(Futures.of(Optional.empty()))
+                .thenCompose(bat -> Futures.asyncExceptionally(
+                        () -> dhtClient.getChampLookup(cap.owner, base.tree.get(), cap.getMapKey(), bat),
+                        t -> dhtClient.getChampLookup(base.tree.get(), cap.getMapKey(), bat, hasher)
+                ).thenCompose(blocks -> ChampWrapper.create((Cid)base.tree.get(), x -> Futures.of(x.data), dhtClient, hasher, c -> (CborObject.CborMerkleLink) c)
+                        .thenCompose(tree -> tree.get(cap.getMapKey()))
+                        .thenApply(c -> c.map(x -> x.target))
+                        .thenCompose(btreeValue -> {
+                            if (btreeValue.isPresent())
+                                return dhtClient.get((Cid)btreeValue.get(), bat)
+                                        .thenApply(value -> value.map(cbor -> CryptreeNode.fromCbor(cbor, cap.rBaseKey, btreeValue.get())))
+                                        .thenApply(res -> {
+                                            cache.put(cacheKey, res);
+                                            return res;
+                                        });
+                            return CompletableFuture.completedFuture(Optional.empty());
+                        })));
     }
 
-    private CompletableFuture<List<Multihash>> bulkUploadFragments(List<Fragment> fragments,
-                                                                   PublicKeyHash owner,
-                                                                   PublicKeyHash writer,
-                                                                   List<byte[]> signatures,
-                                                                   TransactionId tid,
-                                                                   ProgressConsumer<Long> progressCounter) {
+    private CompletableFuture<List<Cid>> bulkUploadFragments(List<Fragment> fragments,
+                                                             PublicKeyHash owner,
+                                                             PublicKeyHash writer,
+                                                             List<byte[]> signatures,
+                                                             TransactionId tid,
+                                                             ProgressConsumer<Long> progressCounter) {
         return dhtClient.putRaw(owner, writer, signatures, fragments
                 .stream()
                 .map(f -> f.data)
                 .collect(Collectors.toList()), tid, progressCounter);
     }
 
-    public CompletableFuture<List<Multihash>> uploadFragments(List<Fragment> fragments,
+    public CompletableFuture<List<Cid>> uploadFragments(List<Fragment> fragments,
                                                               PublicKeyHash owner,
                                                               SigningPrivateKeyAndPublicHash writer,
                                                               ProgressConsumer<Long> progressCounter,
@@ -570,25 +580,32 @@ public class NetworkAccess {
                 .thenApply(committed -> current.withVersion(writer.publicKeyHash, committed.get(writer)));
     }
 
-    public static CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Multihash> hashes,
+    public static CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Cid> hashes,
+                                                                              List<BatWithId> bats,
                                                                               ContentAddressedStorage dhtClient,
+                                                                              Hasher hasher,
                                                                               ProgressConsumer<Long> monitor,
                                                                               double spaceIncreaseFactor) {
-        List<CompletableFuture<Optional<FragmentWithHash>>> futures = hashes.stream().parallel()
-                .map(h -> (h.isIdentity() ?
-                        CompletableFuture.completedFuture(Optional.of(h.getHash())) :
-                        (h instanceof Cid) && ((Cid) h).codec == Cid.Codec.Raw ?
-                                dhtClient.getRaw(h) :
-                                dhtClient.get(h)
-                                        .thenApply(cborOpt -> cborOpt.map(cbor -> ((CborObject.CborByteArray) cbor).value))) // for backwards compatibility
-                        .thenApply(dataOpt -> {
-                            Optional<byte[]> bytes = dataOpt;
-                            bytes.ifPresent(arr -> monitor.accept((long)(arr.length / spaceIncreaseFactor)));
-                            return bytes.map(data -> new FragmentWithHash(new Fragment(data), h.isIdentity() ? Optional.empty() : Optional.of(h)));
-                        }))
-                .collect(Collectors.toList());
+        return dhtClient.id().thenCompose(id -> {
+            List<CompletableFuture<Optional<FragmentWithHash>>> futures = IntStream.range(0, hashes.size()).mapToObj(i -> i)
+                    .parallel()
+                    .map(i -> {
+                        Cid h = hashes.get(i);
+                        return (h.isIdentity() ?
+                                        CompletableFuture.completedFuture(Optional.of(h.getHash())) :
+                                        h.codec == Cid.Codec.Raw ?
+                                                dhtClient.getRaw(h, i < bats.size() ? Optional.of(bats.get(i)) : Optional.empty()) :
+                                                dhtClient.get(h, i < bats.size() ? Optional.of(bats.get(i)) : Optional.empty())
+                                                        .thenApply(cborOpt -> cborOpt.map(cbor -> ((CborObject.CborByteArray) cbor).value))) // for backwards compatibility
+                                .thenApply(dataOpt -> {
+                                    Optional<byte[]> bytes = dataOpt;
+                                    bytes.ifPresent(arr -> monitor.accept((long) (arr.length / spaceIncreaseFactor)));
+                                    return bytes.map(data -> new FragmentWithHash(new Fragment(data), h.isIdentity() ? Optional.empty() : Optional.of(h)));
+                                });
+                    }).collect(Collectors.toList());
 
-        return Futures.combineAllInOrder(futures)
-                .thenApply(optList -> optList.stream().filter(Optional::isPresent).map(Optional::get).collect(Collectors.toList()));
+            return Futures.combineAllInOrder(futures)
+                    .thenApply(optList -> optList.stream().filter(Optional::isPresent).map(Optional::get).collect(Collectors.toList()));
+        });
     }
 }

@@ -2,8 +2,10 @@ package peergos.server.storage;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -24,7 +26,7 @@ public class NonWriteThroughStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Multihash> id() {
+    public CompletableFuture<Cid> id() {
         return source.id();
     }
 
@@ -39,80 +41,48 @@ public class NonWriteThroughStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey) {
-        return modifications.getChampLookup(owner, root, champKey);
+    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey, Optional<BatWithId> bat) {
+        return modifications.getChampLookup(owner, root, champKey, bat);
     }
 
     @Override
-    public CompletableFuture<Boolean> gc() {
-        return modifications.gc();
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
-                                                  PublicKeyHash writer,
-                                                  List<byte[]> signedHashes,
-                                                  List<byte[]> blocks,
-                                                  TransactionId tid) {
+    public CompletableFuture<List<Cid>> put(PublicKeyHash owner,
+                                            PublicKeyHash writer,
+                                            List<byte[]> signedHashes,
+                                            List<byte[]> blocks,
+                                            TransactionId tid) {
         return modifications.put(owner, writer, signedHashes, blocks, tid);
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner,
-                                                     PublicKeyHash writer,
-                                                     List<byte[]> signatures,
-                                                     List<byte[]> blocks,
-                                                     TransactionId tid,
-                                                     ProgressConsumer<Long> progressConsumer) {
+    public CompletableFuture<List<Cid>> putRaw(PublicKeyHash owner,
+                                               PublicKeyHash writer,
+                                               List<byte[]> signatures,
+                                               List<byte[]> blocks,
+                                               TransactionId tid,
+                                               ProgressConsumer<Long> progressConsumer) {
         return modifications.putRaw(owner, writer, signatures, blocks, tid, progressConsumer);
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Multihash object) {
+    public CompletableFuture<Optional<byte[]>> getRaw(Cid object, Optional<BatWithId> bat) {
         try {
-            Optional<byte[]> modified = modifications.getRaw(object).get();
+            Optional<byte[]> modified = modifications.getRaw(object, bat).get();
             if ( modified.isPresent())
                 return CompletableFuture.completedFuture(modified);
-            return source.getRaw(object);
+            return source.getRaw(object, bat);
         } catch (Exception e) {
             throw new RuntimeException(e.getMessage(), e);
         }
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Multihash hash) {
+    public CompletableFuture<Optional<CborObject>> get(Cid hash, Optional<BatWithId> bat) {
         try {
-            Optional<CborObject> modified = modifications.get(hash).get();
+            Optional<CborObject> modified = modifications.get(hash, bat).get();
             if ( modified.isPresent())
                 return CompletableFuture.completedFuture(modified);
-            return source.get(hash);
-        } catch (Exception e) {
-            throw new RuntimeException(e.getMessage(), e);
-        }
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> recursivePin(PublicKeyHash owner, Multihash h) {
-        return modifications.recursivePin(owner, h);
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> recursiveUnpin(PublicKeyHash owner, Multihash h) {
-        return modifications.recursiveUnpin(owner, h);
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> pinUpdate(PublicKeyHash owner, Multihash existing, Multihash updated) {
-        return modifications.pinUpdate(owner, existing, updated);
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> getLinks(Multihash root) {
-        try {
-            Optional<CborObject> modified = modifications.get(root).get();
-            if (modified.isPresent())
-                return CompletableFuture.completedFuture(modified.get().links());
-            return source.getLinks(root);
+            return source.get(hash, bat);
         } catch (Exception e) {
             throw new RuntimeException(e.getMessage(), e);
         }
@@ -121,7 +91,7 @@ public class NonWriteThroughStorage implements ContentAddressedStorage {
     @Override
     public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
         try {
-            Optional<CborObject> modified = modifications.get(block).get();
+            Optional<CborObject> modified = modifications.get((Cid)block, Optional.empty()).get();
             if (modified.isPresent())
                 return CompletableFuture.completedFuture(modified.map(cbor -> cbor.toByteArray().length));
             return source.getSize(block);

@@ -6,6 +6,7 @@ import peergos.shared.Crypto;
 import peergos.shared.MaybeMultihash;
 import peergos.shared.cbor.CborObject;
 import peergos.shared.crypto.hash.PublicKeyHash;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.Multihash;
 import peergos.server.space.*;
 
@@ -28,7 +29,7 @@ public class SpaceCheckingKeyFilterTests {
     public void serdeTest() {
 
         ConcurrentHashMap<PublicKeyHash, WriterUsage> currentView = new ConcurrentHashMap<>();
-        Multihash hash = new Multihash(Multihash.Type.sha2_256, random());
+        Cid hash = new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256, random());
         currentView.put(new PublicKeyHash(hash), new WriterUsage("test1", MaybeMultihash.empty(), 10, new HashSet<>()));
 
         ConcurrentHashMap<String, UserUsage> usage = new ConcurrentHashMap<>();

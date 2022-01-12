@@ -3,6 +3,7 @@ package peergos.server.tests.slow;
 import org.junit.*;
 import peergos.server.*;
 import peergos.server.corenode.*;
+import peergos.server.space.*;
 import peergos.server.sql.*;
 import peergos.server.storage.*;
 import peergos.shared.*;
@@ -26,8 +27,9 @@ public class GCBenchmark {
     @Test
     public void millionObjects() throws IOException {
         DeletableContentAddressedStorage storage = new FileContentAddressedStorage(Files.createTempDirectory("peergos-tmp" + System.currentTimeMillis()),
-                JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()), crypto.hasher);
+                JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()), (a, b, c, d) -> Futures.of(true), crypto.hasher);
         JdbcIpnsAndSocial pointers = new JdbcIpnsAndSocial(Main.buildEphemeralSqlite(), new SqliteCommands());
+        UsageStore usage = new JdbcUsageStore(Main.buildEphemeralSqlite(), new SqliteCommands());
 
         int nLeavesPerUser = 1_000;
         int nPointers = 200;
@@ -42,7 +44,7 @@ public class GCBenchmark {
             storage.closeTransaction(owner, tid).join();
         }
 
-        GarbageCollector.collect(storage, pointers, s -> Futures.of(true));
+        GarbageCollector.collect(storage, pointers, usage, s -> Futures.of(true));
     }
 
     private static Multihash generateTree(Random r, PublicKeyHash owner, ContentAddressedStorage storage, int nLeaves, TransactionId tid) {

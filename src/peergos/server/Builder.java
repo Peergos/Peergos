@@ -13,6 +13,7 @@ import peergos.server.space.*;
 import peergos.server.sql.*;
 import peergos.server.storage.*;
 import peergos.server.storage.admin.*;
+import peergos.server.storage.auth.*;
 import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
@@ -28,7 +29,9 @@ import peergos.shared.io.ipfs.multiaddr.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
+import peergos.shared.util.*;
 
 import java.net.*;
 import java.nio.file.*;
@@ -125,7 +128,7 @@ public class Builder {
     }
 
     public static JavaPoster buildIpfsApi(Args a) {
-        URL ipfsApiAddress = AddressUtil.getAddress(new MultiAddress(a.getArg("ipfs-api-address")));
+        URL ipfsApiAddress = AddressUtil.getAddress(new MultiAddress(a.getArg("ipfs-api-address", "/ip4/127.0.0.1/tcp/5001")));
         return new JavaPoster(ipfsApiAddress, false);
     }
 
@@ -151,6 +154,7 @@ public class Builder {
 
     public static DeletableContentAddressedStorage buildLocalStorage(Args a,
                                                                      TransactionStore transactions,
+                                                                     BlockRequestAuthoriser authoriser,
                                                                      Hasher hasher) {
         boolean useIPFS = a.getBoolean("useIPFS");
         boolean enableGC = a.getBoolean("enable-gc", false);
@@ -158,15 +162,15 @@ public class Builder {
         if (useIPFS) {
             DeletableContentAddressedStorage.HTTP ipfs = new DeletableContentAddressedStorage.HTTP(ipfsApi, false, hasher);
             if (enableGC) {
-                return new TransactionalIpfs(ipfs, transactions, hasher);
+                return new TransactionalIpfs(ipfs, transactions, authoriser, ipfs.id().join(), hasher);
             } else
-                return ipfs;
+                return new AuthedStorage(ipfs, authoriser, hasher);
         } else {
             // In S3 mode of operation we require the ipfs id to be supplied as we don't have a local ipfs running
             if (S3Config.useS3(a)) {
                 if (enableGC)
                     throw new IllegalStateException("GC should be run separately when using S3!");
-                ContentAddressedStorage.HTTP ipfs = new ContentAddressedStorage.HTTP(ipfsApi, false, hasher);
+                DeletableContentAddressedStorage.HTTP ipfs = new DeletableContentAddressedStorage.HTTP(ipfsApi, false, hasher);
                 Optional<String> publicReadUrl = S3Config.getPublicReadUrl(a);
                 boolean directWrites = a.getBoolean("direct-s3-writes", false);
                 boolean publicReads = a.getBoolean("public-s3-reads", false);
@@ -174,11 +178,52 @@ public class Builder {
                 S3Config config = S3Config.build(a);
                 Optional<String> authedUrl = Optional.of("https://" + config.getHost() + "/");
                 BlockStoreProperties props = new BlockStoreProperties(directWrites, publicReads, authedReads, publicReadUrl, authedUrl);
-                return new S3BlockStorage(config, Cid.decode(a.getArg("ipfs.id")), props, transactions, hasher, ipfs);
+                return new S3BlockStorage(config, Cid.decode(a.getArg("ipfs.id")), props, transactions, authoriser, hasher, ipfs);
             } else {
-                return new FileContentAddressedStorage(blockstorePath(a), transactions, hasher);
+                return new FileContentAddressedStorage(blockstorePath(a), transactions, authoriser, hasher);
             }
         }
+    }
+
+    public static BlockRequestAuthoriser blockAuthoriser(Args a,
+                                                         BatCave batStore,
+                                                         JdbcLegacyRawBlockStore legacyRawBlocks,
+                                                         Hasher hasher) {
+        Optional<BatWithId> instanceBat = a.getOptionalArg("instance-bat").map(BatWithId::decode);
+        return (b, d, s, auth) -> {
+            System.out.println("Allow: " + b + ", auth=" + auth + ", from: " + s);
+            if (b.codec == Cid.Codec.Raw) {
+                if (legacyRawBlocks.hasBlock(b))
+                    return Futures.of(true);
+                Bat bat = Bat.deriveFromRawBlock(d, hasher).join();
+                if (!auth.isEmpty() && BlockRequestAuthoriser.isValidAuth(BlockAuth.fromString(auth), b, s, bat, hasher))
+                    return Futures.of(true);
+                if (instanceBat.isPresent()) {
+                    if (!auth.isEmpty() && BlockRequestAuthoriser.isValidAuth(BlockAuth.fromString(auth), b, s, instanceBat.get().bat, hasher))
+                        return Futures.of(true);
+                }
+                return Futures.of(false);
+            } else if (b.codec == Cid.Codec.DagCbor) {
+                CborObject block = CborObject.fromByteArray(d);
+                if (block instanceof CborObject.CborMap) {
+                    if (((CborObject.CborMap) block).containsKey("bats")) {
+                        List<BatId> batids = ((CborObject.CborMap) block).getList("bats", BatId::fromCbor);
+                        for (BatId bid : batids) {
+                            Optional<Bat> bat = bid.getInline().or(() -> batStore.getBat(bid));
+                            if (bat.isPresent() && !auth.isEmpty() && BlockRequestAuthoriser.isValidAuth(BlockAuth.fromString(auth), b, s, bat.get(), hasher))
+                                return Futures.of(true);
+                        }
+                        if (instanceBat.isPresent()) {
+                            if (!auth.isEmpty() && BlockRequestAuthoriser.isValidAuth(BlockAuth.fromString(auth), b, s, instanceBat.get().bat, hasher))
+                                return Futures.of(true);
+                        }
+                        return Futures.of(false);
+                    } else return Futures.of(true); // This is a public block
+                } else // e.g. inner CHAMP nodes
+                    return Futures.of(true);
+            }
+            return Futures.of(false);
+        };
     }
 
     public static SqlSupplier getSqlCommands(Args a) {
@@ -218,7 +263,7 @@ public class Builder {
         return new HttpQuotaAdmin(poster);
     }
 
-    public static CoreNode buildPkiCorenode(MutablePointers mutable, Account account, ContentAddressedStorage dht, Args a) {
+    public static CoreNode buildPkiCorenode(MutablePointers mutable, Account account, BatCave batCave, ContentAddressedStorage dht, Args a) {
         try {
             Crypto crypto = initCrypto();
             PublicKeyHash peergosIdentity = PublicKeyHash.fromString(a.getArg("peergos.identity.hash"));
@@ -248,7 +293,7 @@ public class Builder {
                                 .thenApply(version -> version.get(pkiSigner).hash), dht).join();
 
             return new IpfsCoreNode(pkiSigner, a.getInt("max-daily-signups"), currentPkiRoot, dht, crypto.hasher,
-                    mutable, account, peergosIdentity);
+                    mutable, account, batCave, peergosIdentity);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -267,6 +312,7 @@ public class Builder {
                                          JdbcIpnsAndSocial localSocial,
                                          UsageStore usageStore,
                                          JdbcAccount rawAccount,
+                                         BatCave bats,
                                          Account account,
                                          Hasher hasher) {
         Multihash nodeId = localStorage.id().join();
@@ -275,8 +321,8 @@ public class Builder {
         // build a mirroring proxying corenode, unless we are the pki node
         boolean isPkiNode = nodeId.equals(pkiServerId);
         return isPkiNode ?
-                buildPkiCorenode(new PinningMutablePointers(localPointers, localStorage), account, localStorage, a) :
-                new MirrorCoreNode(new HTTPCoreNode(buildP2pHttpProxy(a), pkiServerId), rawAccount, account, proxingMutable,
+                buildPkiCorenode(localPointers, account, bats, localStorage, a) :
+                new MirrorCoreNode(new HTTPCoreNode(buildP2pHttpProxy(a), pkiServerId), rawAccount, bats, account, proxingMutable,
                         localStorage, rawPointers, transactions, localSocial, usageStore, peergosId,
                         a.fromPeergosDir("pki-mirror-state-path","pki-state.cbor"), hasher);
     }

@@ -7,6 +7,7 @@ import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
@@ -150,7 +151,7 @@ public class WriterData implements Cborable {
     }
 
     public CompletableFuture<OwnedKeyChamp> getOwnedKeyChamp(ContentAddressedStorage ipfs, Hasher hasher) {
-        return ownedKeys.map(root -> OwnedKeyChamp.build(root, ipfs, hasher))
+        return ownedKeys.map(root -> OwnedKeyChamp.build((Cid)root, ipfs, hasher))
                 .orElseThrow(() -> new IllegalStateException("Owned key champ absent!"));
     }
 
@@ -460,7 +461,7 @@ public class WriterData implements Cborable {
                                 Stream.of(proof.ownedKey) :
                                 Stream.empty()).collect(Collectors.toSet()));
 
-        return getWriterData(root.get(), ipfs)
+        return getWriterData((Cid)root.get(), ipfs)
                 .thenCompose(wd -> wd.props.applyToOwnedKeys(owned ->
                         owned.applyToAllMappings(Collections.emptySet(), composer, ipfs), ipfs, hasher)
                         .thenApply(owned -> Stream.concat(owned.stream(),
@@ -479,12 +480,12 @@ public class WriterData implements Cborable {
                 .thenCompose(opt -> {
                     if (! opt.isPresent())
                         throw new IllegalStateException("No root pointer present for controller " + controller);
-                    return getWriterData(opt.get(), dht);
+                    return getWriterData((Cid)opt.get(), dht);
                 });
     }
 
-    public static CompletableFuture<CommittedWriterData> getWriterData(Multihash hash, ContentAddressedStorage dht) {
-        return dht.get(hash)
+    public static CompletableFuture<CommittedWriterData> getWriterData(Cid hash, ContentAddressedStorage dht) {
+        return dht.get(hash, Optional.empty())
                 .thenApply(cborOpt -> {
                     if (! cborOpt.isPresent())
                         throw new IllegalStateException("Couldn't retrieve WriterData from dht! " + hash);

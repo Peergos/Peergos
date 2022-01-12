@@ -5,6 +5,7 @@ import peergos.server.*;
 import peergos.shared.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.fingerprint.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.zxing.*;
 import peergos.shared.zxing.common.*;
@@ -82,7 +83,7 @@ public class QrCodeTests {
     private static PublicKeyHash randomKeyHash(Random rnd) {
         byte[] keyHash = new byte[32];
         rnd.nextBytes(keyHash);
-        return new PublicKeyHash(new Multihash(Multihash.Type.sha2_256, keyHash));
+        return new PublicKeyHash(new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256, keyHash));
     }
 
     @Test

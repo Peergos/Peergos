@@ -4,6 +4,7 @@ import peergos.shared.MaybeMultihash;
 import peergos.shared.cbor.CborObject;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.mutable.HashCasPair;
 import peergos.shared.mutable.MutablePointers;
 import peergos.shared.storage.*;
@@ -53,7 +54,7 @@ public class WriteSynchronizer {
                         .thenApply(signer -> dataOpt.isPresent() ?
                                 HashCasPair.fromCbor(CborObject.fromByteArray(signer.get().unsignMessage(dataOpt.get()))).updated :
                                 MaybeMultihash.empty())
-                        .thenCompose(x -> WriterData.getWriterData(x.get(), dht))
+                        .thenCompose(x -> WriterData.getWriterData((Cid)x.get(), dht))
                         .thenApply(cwd -> new Snapshot(writer, cwd))
                 );
     }

@@ -6,17 +6,17 @@ import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 
 @JsType
-public class PublicKeyHash extends Multihash implements Cborable {
+public class PublicKeyHash extends Cid implements Cborable {
     public static final int MAX_KEY_HASH_SIZE = 1024;
-    public static final PublicKeyHash NULL = new PublicKeyHash(new Multihash(Type.sha2_256, new byte[32]));
+    public static final PublicKeyHash NULL = new PublicKeyHash(new Cid(1, Codec.DagCbor, Type.sha2_256, new byte[32]));
 
-    public final Multihash multihash;
+    public final Cid target;
 
-    public PublicKeyHash(Multihash multihash) {
-        super(multihash.type, multihash.getHash());
-        if (! isSafe(multihash))
+    public PublicKeyHash(Cid target) {
+        super(target.version, target.codec, target.type, target.getHash());
+        if (! isSafe(target))
             throw new IllegalStateException("Must use a safe hash for a public key!");
-        this.multihash = multihash;
+        this.target = target;
     }
 
     public static boolean isSafe(Multihash h) {
@@ -25,28 +25,28 @@ public class PublicKeyHash extends Multihash implements Cborable {
 
     @Override
     public byte[] toBytes() {
-        return multihash.toBytes();
+        return target.toBytes();
     }
 
     @Override
     public String toString() {
-        return multihash.toString();
+        return target.toString();
     }
 
     @Override
     public boolean equals(Object o) {
-        return o instanceof PublicKeyHash && multihash.equals(((PublicKeyHash) o).multihash);
+        return o instanceof PublicKeyHash && target.equals(((PublicKeyHash) o).target);
     }
 
     @Override
     public int hashCode() {
-        return multihash.hashCode();
+        return target.hashCode();
     }
 
     @Override
     @SuppressWarnings("unusable-by-js")
     public CborObject toCbor() {
-        return new CborObject.CborMerkleLink(multihash);
+        return new CborObject.CborMerkleLink(target);
     }
 
     public static PublicKeyHash decode(byte[] raw) {
@@ -57,7 +57,7 @@ public class PublicKeyHash extends Multihash implements Cborable {
     public static PublicKeyHash fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborMerkleLink))
             throw new IllegalStateException("Invalid cbor for PublicKeyHash! " + cbor);
-        return new PublicKeyHash(((CborObject.CborMerkleLink) cbor).target);
+        return new PublicKeyHash((Cid)((CborObject.CborMerkleLink) cbor).target);
     }
 
     public static PublicKeyHash fromString(String cid) {

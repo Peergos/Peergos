@@ -4,6 +4,7 @@ import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.hamt.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
@@ -268,7 +269,7 @@ public class InodeFileSystem implements Cborable {
         Function<ByteArrayWrapper, CompletableFuture<byte[]>> keyHasher = b -> hasher.sha256(b.data);
         Function<Cborable, DirectoryInode> fromCbor =
                 c -> DirectoryInode.fromCbor(c, hasher, ChampWrapper.BIT_WIDTH, keyHasher, storage);
-        return ChampWrapper.create(root, keyHasher, storage, hasher, fromCbor)
+        return ChampWrapper.create((Cid)root, keyHasher, storage, hasher, fromCbor)
                 .thenApply(cw -> new InodeFileSystem(inodeCount, cw, storage));
     }
 

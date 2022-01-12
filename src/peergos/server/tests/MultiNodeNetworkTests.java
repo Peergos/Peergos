@@ -12,8 +12,10 @@ import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.social.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
@@ -94,7 +96,7 @@ public class MultiNodeNetworkTests {
     @BeforeClass
     public static void init() throws Exception {
         // start pki node
-        UserService pki = Main.PKI_INIT.main(args);
+        UserService pki = Main.PKI_INIT.main(args.with("allow-target", "http://localhost:8001"));
         PublicKeyHash peergosId = pki.coreNode.getPublicKeyHash("peergos").join().get();
         args = args.setArg("peergos.identity.hash", peergosId.toString());
         NetworkAccess toPki = buildApi(args);
@@ -109,6 +111,7 @@ public class MultiNodeNetworkTests {
             int ipfsGatewayPort = 9000 + random.nextInt(8000);
             int ipfsSwarmPort = 9000 + random.nextInt(8000);
             int peergosPort = 9000 + random.nextInt(8000);
+            int allowPort = 9000 + random.nextInt(8000);
             Args normalNode = UserTests.buildArgs()
                     .with("useIPFS", "true")
                     .with("port", "" + peergosPort)
@@ -116,6 +119,7 @@ public class MultiNodeNetworkTests {
                     .with("peergos.identity.hash", peergosId.toString())
                     .with("ipfs-api-address", "/ip4/127.0.0.1/tcp/" + ipfsApiPort)
                     .with("ipfs-gateway-address", "/ip4/127.0.0.1/tcp/" + ipfsGatewayPort)
+                    .with("allow-target", "http://localhost:" + allowPort)
                     .with("ipfs-swarm-port", "" + ipfsSwarmPort)
                     .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, "" + Main.getLocalBootstrapAddress(bootstrapSwarmPort, pkiNodeId))
                     .with("proxy-target", Main.getLocalMultiAddress(peergosPort).toString())
@@ -177,6 +181,21 @@ public class MultiNodeNetworkTests {
             user = ensureSignedUp(username, password, node2, crypto).changePassword(password, newPassword).join();
             password = newPassword;
         }
+        // make sure we have some raw fragments
+        String filename = "somedata.bin";
+        user.getUserRoot().join().uploadOrReplaceFile(filename, AsyncReader.build(new byte[10*1024*1024]),
+                10*1024*1024, user.network, crypto, x -> {}).join();
+
+        // check retrieval of cryptree node or data both fail without bat
+        FileWrapper file = user.getByPath("/" + username + "/" + filename).join().get();
+        WritableAbsoluteCapability cap = file.writableFilePointer();
+        WritableAbsoluteCapability badCap = cap.withMapKey(cap.getMapKey(), Optional.empty());
+        Assert.assertTrue(node1.clear().getFile(badCap, username).join().isEmpty());
+
+        Multihash fragment = file.getPointer().fileAccess.toCbor().links().get(0);
+        CompletableFuture<Optional<byte[]>> raw = node1.clear().dhtClient.getRaw((Cid) fragment, Optional.empty());
+        Assert.assertTrue(raw.isCompletedExceptionally() || raw.join().isEmpty());
+
         UserContext friend = ensureSignedUp(generateUsername(random), password, node1, crypto);
         friend.sendInitialFollowRequest(username).join();
         long usageVia1 = user.getSpaceUsage().join();
@@ -185,7 +204,11 @@ public class MultiNodeNetworkTests {
         List<UserPublicKeyLink> existing = user.network.coreNode.getChain(username).join();
         List<UserPublicKeyLink> newChain = Migrate.buildMigrationChain(existing, newStorageNodeId, user.signer.secret);
         UserContext userViaNewServer = ensureSignedUp(username, password, node2, crypto);
-        userViaNewServer.network.coreNode.migrateUser(username, newChain, originalNodeId).join();
+        List<BatWithId> bats = node1.batCave.getUserBats(username, userViaNewServer.signer).join();
+        List<BatWithId> batsViaNewNode = node2.batCave.getUserBats(username, userViaNewServer.signer).join();
+        Assert.assertTrue(bats.equals(batsViaNewNode));
+        Optional<BatWithId> mirrorBat = Optional.of(bats.get(bats.size() - 1));
+        userViaNewServer.network.coreNode.migrateUser(username, newChain, originalNodeId, mirrorBat).join();
 
         List<UserPublicKeyLink> chain = userViaNewServer.network.coreNode.getChain(username).join();
         Multihash storageNode = chain.get(chain.size() - 1).claim.storageProviders.stream().findFirst().get();
@@ -202,9 +225,13 @@ public class MultiNodeNetworkTests {
         List<FollowRequestWithCipherText> followRequests = postMigration.processFollowRequests().join();
         Assert.assertTrue(followRequests.size() == 1);
 
+        // check bats were transferred
+        List<BatWithId> postBats = postMigration.network.batCave.getUserBats(username, postMigration.signer).join();
+        Assert.assertTrue("mirror bats transferred", postBats.equals(bats));
+
         // check a reverse migration can't be triggered by anyone else
         try {
-            node1.coreNode.migrateUser(username, existing, newStorageNodeId).join();
+            node1.coreNode.migrateUser(username, existing, newStorageNodeId, mirrorBat).join();
             throw new RuntimeException("Shouldn't get here!");
         } catch (CompletionException e) {
             if (! e.getCause().getMessage().startsWith("Migration+claim+has+earlier+expiry+than+current+one"))
@@ -246,8 +273,10 @@ public class MultiNodeNetworkTests {
         UserPublicKeyLink evilUpdate = evilLast.withClaim(newClaim);
         List<UserPublicKeyLink> newChain = Arrays.asList(evilUpdate);
         UserContext userViaNewServer = ensureSignedUp(username, password, getNode(iNode2), crypto);
+        List<BatWithId> bats = user.network.batCave.getUserBats(username, userViaNewServer.signer).join();
+        Optional<BatWithId> mirrorBat = Optional.of(bats.get(bats.size() - 1));
         try {
-            userViaNewServer.network.coreNode.migrateUser(username, newChain, originalNodeId).join();
+            userViaNewServer.network.coreNode.migrateUser(username, newChain, originalNodeId, mirrorBat).join();
             throw new RuntimeException("Shouldn't get here!");
         } catch (CompletionException e) {}
 
@@ -297,7 +326,7 @@ public class MultiNodeNetworkTests {
         String filename = "hey.txt";
         FileWrapper root = u1.getUserRoot().get();
         FileWrapper upload = root.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length,
-                getNode(iNode1), crypto, x -> {}, crypto.random.randomBytes(32)).get();
+                getNode(iNode1), crypto, x -> {}).get();
         Optional<FileWrapper> file = u1.getByPath("/" + username1 + "/" + filename).get();
         Assert.assertTrue(file.isPresent());
     }

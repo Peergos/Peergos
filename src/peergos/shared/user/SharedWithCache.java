@@ -2,6 +2,7 @@ package peergos.shared.user;
 
 import peergos.shared.*;
 import peergos.shared.cbor.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
@@ -121,7 +122,8 @@ public class SharedWithCache {
                                 .thenApply(f -> f.version))
                         .thenCompose(s -> userRoot.get().getUpdated(s, network)
                                 .thenCompose(home -> home.getChild(CapabilityStore.CAPABILITY_CACHE_DIR, crypto.hasher, network))
-                                .thenCompose(cacheRootOpt -> cacheRootOpt.get().mkdir(CACHE_BASE_NAME, network, true, crypto)))
+                                .thenCompose(cacheRootOpt -> cacheRootOpt.get().mkdir(CACHE_BASE_NAME, network, true,
+                                        cacheRootOpt.get().mirrorBatId(), crypto)))
                         .thenCompose(x -> buildSharedWithCache(root, username, network, crypto)) // build from outbound cap files
                         .thenCompose(x -> root.getByPath(cacheBase(username).toString(), crypto.hasher, network)
                                 .thenApply(Optional::get)
@@ -141,7 +143,8 @@ public class SharedWithCache {
         return parent.getChild(dirName, crypto.hasher, network)
                 .thenCompose(opt -> opt.isPresent() ?
                         Futures.of(opt.get()) :
-                        parent.mkdir(dirName, Optional.empty(), Optional.empty(), Optional.empty(), true, network, crypto, parent.version.mergeAndOverwriteWith(s), c)
+                        parent.mkdir(dirName, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), true,
+                                parent.mirrorBatId(), network, crypto, parent.version.mergeAndOverwriteWith(s), c)
                                 .thenCompose(s2 -> parent.getUpdated(s2, network)
                                         .thenCompose(p -> p.getChild(dirName, crypto.hasher, network)))
                                 .thenApply(Optional::get));
@@ -179,7 +182,8 @@ public class SharedWithCache {
                             byte[] raw = empty.serialize();
                             // upload or replace file
                             return parent.uploadFileSection(parent.version, committer, DIR_CACHE_FILENAME, AsyncReader.build(raw), false, 0, raw.length,
-                                    Optional.empty(), true, true, network, crypto, x -> {}, crypto.random.randomBytes(32))
+                                    Optional.empty(), true, true, network, crypto, x -> {},
+                                    crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random)), parent.mirrorBatId())
                                     .thenCompose(s -> parent.getUpdated(s, network)
                                             .thenCompose(updatedParent -> updatedParent.getChild(DIR_CACHE_FILENAME, crypto.hasher, network)))
                                     .thenApply(copt -> new Pair<>(copt.get(), empty));

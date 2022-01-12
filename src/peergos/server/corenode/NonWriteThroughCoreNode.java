@@ -5,6 +5,7 @@ import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 
 import java.io.*;
@@ -109,7 +110,8 @@ public class NonWriteThroughCoreNode implements CoreNode {
     @Override
     public CompletableFuture<UserSnapshot> migrateUser(String username,
                                                        List<UserPublicKeyLink> newChain,
-                                                       Multihash currentStorageId) {
+                                                       Multihash currentStorageId,
+                                                       Optional<BatWithId> mirrorBat) {
         throw new IllegalStateException("Unimplemented method!");
     }
 

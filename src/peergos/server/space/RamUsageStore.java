@@ -4,6 +4,7 @@ import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.multihash.*;
 
 import java.io.*;
 import java.nio.file.*;
@@ -88,6 +89,13 @@ public class RamUsageStore implements UsageStore {
             Logging.LOG().info("Failed to  store "+ this);
             t.printStackTrace();
         }
+    }
+
+    @Override
+    public List<Multihash> getAllTargets() {
+        return state.currentView.values().stream()
+                .flatMap(wu -> wu.target().toOptional().stream())
+                .collect(Collectors.toList());
     }
 
     /**

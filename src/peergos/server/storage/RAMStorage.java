@@ -1,14 +1,11 @@
 package peergos.server.storage;
 
-import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.hamt.*;
-import peergos.shared.io.ipfs.multiaddr.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.storage.*;
-import peergos.shared.user.fs.cryptree.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.util.*;
 
 import java.security.*;
@@ -19,9 +16,9 @@ import java.util.stream.*;
 public class RAMStorage implements DeletableContentAddressedStorage {
     private static final int CID_V1 = 1;
 
-    private Map<Multihash, byte[]> storage = new EfficientHashMap<>();
-    private Map<TransactionId, List<Multihash>> openTransactions = new ConcurrentHashMap<>();
-    private final Set<Multihash> pinnedRoots = new HashSet<>();
+    private Map<Cid, byte[]> storage = new EfficientHashMap<>();
+    private Map<TransactionId, List<Cid>> openTransactions = new ConcurrentHashMap<>();
+    private final Set<Cid> pinnedRoots = new HashSet<>();
     private final Hasher hasher;
 
     public RAMStorage(Hasher hasher) {
@@ -34,8 +31,8 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Multihash> id() {
-        return CompletableFuture.completedFuture(new Multihash(Multihash.Type.sha2_256, new byte[32]));
+    public CompletableFuture<Cid> id() {
+        return CompletableFuture.completedFuture(new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, new byte[32]));
     }
 
     @Override
@@ -52,17 +49,12 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey) {
-        return getChampLookup(root, champKey, hasher);
+    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey, Optional<BatWithId> bat) {
+        return getChampLookup(root, champKey, bat, hasher);
     }
 
     @Override
-    public CompletableFuture<Boolean> gc() {
-        return CompletableFuture.completedFuture(true);
-    }
-
-    @Override
-    public Stream<Multihash> getAllBlockHashes() {
+    public Stream<Cid> getAllBlockHashes() {
         return storage.keySet().stream();
     }
 
@@ -80,25 +72,25 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
-                                                  PublicKeyHash writer,
-                                                  List<byte[]> signedHashes,
-                                                  List<byte[]> blocks,
-                                                  TransactionId tid) {
+    public CompletableFuture<List<Cid>> put(PublicKeyHash owner,
+                                            PublicKeyHash writer,
+                                            List<byte[]> signedHashes,
+                                            List<byte[]> blocks,
+                                            TransactionId tid) {
         return put(writer, blocks, false, tid);
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner,
-                                                     PublicKeyHash writer,
-                                                     List<byte[]> signatures,
-                                                     List<byte[]> blocks,
-                                                     TransactionId tid,
-                                                     ProgressConsumer<Long> progressConsumer) {
+    public CompletableFuture<List<Cid>> putRaw(PublicKeyHash owner,
+                                               PublicKeyHash writer,
+                                               List<byte[]> signatures,
+                                               List<byte[]> blocks,
+                                               TransactionId tid,
+                                               ProgressConsumer<Long> progressConsumer) {
         return put(writer, blocks, true, tid);
     }
 
-    private CompletableFuture<List<Multihash>> put(PublicKeyHash writer, List<byte[]> blocks, boolean isRaw, TransactionId tid) {
+    private CompletableFuture<List<Cid>> put(PublicKeyHash writer, List<byte[]> blocks, boolean isRaw, TransactionId tid) {
         return CompletableFuture.completedFuture(blocks.stream()
                 .map(b -> {
                     Cid cid = hashToCid(b, isRaw);
@@ -113,17 +105,27 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Multihash object) {
+    public CompletableFuture<Optional<byte[]>> getRaw(Cid object, String auth) {
         return CompletableFuture.completedFuture(storage.containsKey(object) ?
                 Optional.of(storage.get(object)) :
                 Optional.empty());
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Multihash hash) {
-        if (hash instanceof Cid && ((Cid) hash).codec == Cid.Codec.Raw)
+    public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, Optional<BatWithId> bat) {
+        return getRaw(hash, bat, id().join(), hasher);
+    }
+
+    @Override
+    public CompletableFuture<Optional<CborObject>> get(Cid hash, String auth) {
+        if (hash.codec == Cid.Codec.Raw)
             throw new IllegalStateException("Need to call getRaw if cid is not cbor!");
         return CompletableFuture.completedFuture(getAndParseObject(hash));
+    }
+
+    @Override
+    public CompletableFuture<Optional<CborObject>> get(Cid hash, Optional<BatWithId> bat) {
+        return get(hash, bat, id().join(), hasher);
     }
 
     private synchronized Optional<CborObject> getAndParseObject(Multihash hash) {
@@ -141,26 +143,11 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> recursivePin(PublicKeyHash owner, Multihash h) {
-        return CompletableFuture.completedFuture(Arrays.asList(h));
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> recursiveUnpin(PublicKeyHash owner, Multihash h) {
-        return CompletableFuture.completedFuture(Arrays.asList(h));
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> pinUpdate(PublicKeyHash owner, Multihash existing, Multihash updated) {
-        return CompletableFuture.completedFuture(Arrays.asList(existing, updated));
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> getLinks(Multihash root) {
-        if (root instanceof Cid && ((Cid) root).codec == Cid.Codec.Raw)
+    public CompletableFuture<List<Cid>> getLinks(Cid root, String auth) {
+        if (root.codec == Cid.Codec.Raw)
             return CompletableFuture.completedFuture(Collections.emptyList());
-        return get(root).thenApply(opt -> opt
-                .map(cbor -> cbor.links())
+        return get(root, auth).thenApply(opt -> opt
+                .map(cbor -> cbor.links().stream().map(c -> (Cid)c).collect(Collectors.toList()))
                 .orElse(Collections.emptyList())
         );
     }
@@ -193,25 +180,16 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
-
         RAMStorage that = (RAMStorage) o;
-
-        for (Multihash ourKey : storage.keySet()) {
-            if (! Arrays.equals(storage.get(ourKey), ((RAMStorage) o).storage.get(ourKey)))
-                return false;
-        }
-        for (Multihash theirKey : ((RAMStorage) o).storage.keySet()) {
-            if (! Arrays.equals(storage.get(theirKey), ((RAMStorage) o).storage.get(theirKey)))
-                return false;
-        }
-        return pinnedRoots != null ? pinnedRoots.equals(that.pinnedRoots) : that.pinnedRoots == null;
+        return Objects.equals(storage, that.storage) &&
+                Objects.equals(openTransactions, that.openTransactions) &&
+                Objects.equals(pinnedRoots, that.pinnedRoots) &&
+                Objects.equals(hasher, that.hasher);
     }
 
     @Override
     public int hashCode() {
-        int result = storage != null ? storage.hashCode() : 0;
-        result = 31 * result + (pinnedRoots != null ? pinnedRoots.hashCode() : 0);
-        return result;
+        return Objects.hash(storage, openTransactions, pinnedRoots, hasher);
     }
 
     public int totalSize() {

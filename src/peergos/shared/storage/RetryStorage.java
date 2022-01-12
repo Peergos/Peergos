@@ -1,10 +1,12 @@
 package peergos.shared.storage;
 
 import peergos.shared.cbor.CborObject;
-import peergos.shared.crypto.hash.PublicKeyHash;
+import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.Multihash;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.fs.FragmentWithHash;
-import peergos.shared.util.ProgressConsumer;
+import peergos.shared.util.*;
 
 import java.util.List;
 import java.util.Optional;
@@ -76,7 +78,7 @@ public class RetryStorage implements ContentAddressedStorage {
         return runWithRetry(() -> target.blockStoreProperties());
     }
     @Override
-    public CompletableFuture<Multihash> id() {
+    public CompletableFuture<Cid> id() {
         return runWithRetry(() -> target.id());
     }
 
@@ -91,58 +93,33 @@ public class RetryStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> put(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks, TransactionId tid) {
+    public CompletableFuture<List<Cid>> put(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks, TransactionId tid) {
         return runWithRetry(() -> target.put(owner, writer, signatures, blocks, tid));
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Multihash hash) {
-        return runWithRetry(() -> target.get(hash));
+    public CompletableFuture<Optional<CborObject>> get(Cid hash, Optional<BatWithId> bat) {
+        return runWithRetry(() -> target.get(hash, bat));
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner,
-                                                     PublicKeyHash writer,
-                                                     List<byte[]> signatures,
-                                                     List<byte[]> blocks,
-                                                     TransactionId tid,
-                                                     ProgressConsumer<Long> progressCounter) {
+    public CompletableFuture<List<Cid>> putRaw(PublicKeyHash owner,
+                                               PublicKeyHash writer,
+                                               List<byte[]> signatures,
+                                               List<byte[]> blocks,
+                                               TransactionId tid,
+                                               ProgressConsumer<Long> progressCounter) {
         return runWithRetry(() -> target.putRaw(owner, writer, signatures, blocks, tid, progressCounter));
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash) {
-        return runWithRetry(() -> target.getRaw(hash));
+    public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, Optional<BatWithId> bat) {
+        return runWithRetry(() -> target.getRaw(hash, bat));
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> pinUpdate(PublicKeyHash owner, Multihash existing, Multihash updated) {
-        return runWithRetry(() -> target.pinUpdate(owner, existing, updated));
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> recursivePin(PublicKeyHash owner, Multihash hash) {
-        return runWithRetry(() -> target.recursivePin(owner, hash));
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> recursiveUnpin(PublicKeyHash owner, Multihash hash) {
-        return runWithRetry(() -> target.recursiveUnpin(owner, hash));
-    }
-
-    @Override
-    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey) {
-        return runWithRetry(() -> target.getChampLookup(owner, root, champKey));
-    }
-
-    @Override
-    public CompletableFuture<Boolean> gc() {
-        return runWithRetry(() -> target.gc());
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> getLinks(Multihash root) {
-        return runWithRetry(() -> target.getLinks(root));
+    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey, Optional<BatWithId> bat) {
+        return runWithRetry(() -> target.getChampLookup(owner, root, champKey, bat));
     }
 
     @Override
@@ -151,14 +128,16 @@ public class RetryStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Multihash> hashes,
+    public CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Cid> hashes,
+                                                                       List<BatWithId> bats,
+                                                                       Hasher h,
                                                                        ProgressConsumer<Long> monitor,
                                                                        double spaceIncreaseFactor) {
-        return runWithRetry(() -> target.downloadFragments(hashes, monitor, spaceIncreaseFactor));
+        return runWithRetry(() -> target.downloadFragments(hashes, bats, h, monitor, spaceIncreaseFactor));
     }
 
     @Override
-    public CompletableFuture<List<PresignedUrl>> authReads(List<Multihash> blocks) {
+    public CompletableFuture<List<PresignedUrl>> authReads(List<MirrorCap> blocks) {
         return runWithRetry(() -> target.authReads(blocks));
     }
 

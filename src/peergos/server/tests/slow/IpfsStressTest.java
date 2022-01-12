@@ -8,6 +8,7 @@ import peergos.server.util.Logging;
 import org.junit.*;
 import peergos.server.*;
 import peergos.shared.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
@@ -90,14 +91,14 @@ public class IpfsStressTest {
 
     public static void mkdir(UserContext context, Path parentPath, String name, Random rnd) throws Exception {
         context.getByPath(parentPath.toString()).get().get()
-                .mkdir(name, context.network, false, context.crypto).get();
+                .mkdir(name, context.network, false, context.mirrorBatId(), context.crypto).get();
     }
 
     public static void generateFile(UserContext context, Path parentPath, String name, Random rnd) throws Exception {
         int size = rnd.nextInt(15*1024*1024);
         FileWrapper parent = context.getByPath(parentPath.toString()).get().get();
         parent.uploadOrReplaceFile(name, new AsyncReader.ArrayBacked(randomData(rnd, size)), size,
-                        context.network, context.crypto, x -> {}, context.crypto.random.randomBytes(32)).get();
+                        context.network, context.crypto, x -> {}).get();
     }
 
     public static void checkFileContents(byte[] expected, FileWrapper f, UserContext context) throws Exception {

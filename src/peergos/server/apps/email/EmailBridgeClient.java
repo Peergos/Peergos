@@ -5,6 +5,7 @@ import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.email.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
@@ -57,7 +58,7 @@ public class EmailBridgeClient {
         FileWrapper sent = context.getByPath(sentPath).join().get();
         byte[] rawCipherText = encryptEmail(emailMessage).serialize();
         sent.uploadFileSection(file.getName(), AsyncReader.build(rawCipherText), false, 0, rawCipherText.length, Optional.empty(),
-                true, context.network, context.crypto, x -> {}, context.crypto.random.randomBytes(32)).join();
+                true, context.network, context.crypto, x -> {}).join();
 
         // TODO do this inside the update above and make atomic
         FileWrapper original = file.getUpdated(context.network).join();
@@ -80,8 +81,7 @@ public class EmailBridgeClient {
                 byte[] rawAttachmentCipherText = encryptAttachment(bytes).serialize();
                 sentAttachments.uploadFileSection(attachment.uuid, AsyncReader.build(rawAttachmentCipherText),
                         false, 0, rawAttachmentCipherText.length, Optional.empty(),
-                        true, context.network, context.crypto, x -> {
-                        }, context.crypto.random.randomBytes(32)).join();
+                        true, context.network, context.crypto, x -> {}).join();
                 attachmentFile.remove(outboxAttachmentDir, attachmentFilePath, context).join();
             }
         }
@@ -103,7 +103,7 @@ public class EmailBridgeClient {
         Path baseDir = Paths.get(clientUsername + "/" + emailDataDir + "/default/pending/inbox/attachments");
         return context.getByPath(baseDir)
                 .thenCompose(dir -> dir.get().uploadAndReturnFile(uuid, reader, length, false, l -> {},
-                        context.network, context.crypto)
+                        dir.get().mirrorBatId(), context.network, context.crypto)
                         .thenApply(hash -> uuid));
     }
 
@@ -115,7 +115,8 @@ public class EmailBridgeClient {
             return inbox.getUpdated(s, context.network).join()
                     .uploadFileSection(s, c, m.id + ".cbor", AsyncReader.build(rawCipherText), false, 0,
                             rawCipherText.length, Optional.empty(), true, true,
-                            context.network, context.crypto, x -> {}, context.crypto.random.randomBytes(32));
+                            context.network, context.crypto, x -> {}, context.crypto.random.randomBytes(32),
+                            Optional.of(Bat.random(context.crypto.random)), inbox.mirrorBatId());
         }).join();
     }
 
@@ -145,7 +146,7 @@ public class EmailBridgeClient {
             byte[] data = contents.getBytes();
             FileWrapper pendingDirectory = context.getByPath(pendingPath).join().get();
             pendingDirectory.uploadOrReplaceFile("email.json", new AsyncReader.ArrayBacked(data), data.length, context.network,
-                    context.crypto, l -> {}, context.crypto.random.randomBytes(32)).join();
+                    context.crypto, l -> {}).join();
         }
         return new EmailBridgeClient(clientUsername, context, getEncryptionTarget(context, clientUsername));
     }

@@ -7,6 +7,7 @@ import peergos.server.*;
 import peergos.server.tests.*;
 import peergos.server.util.*;
 import peergos.shared.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
@@ -72,7 +73,7 @@ public class SmallFileBenchmark {
             String filename = names.get(i);
             long t1 = System.currentTimeMillis();
             userRoot = userRoot.uploadOrReplaceFile(filename, AsyncReader.build(data), data.length, context.network,
-                    crypto, x-> {}, context.crypto.random.randomBytes(32)).join();
+                    crypto, x-> {}).join();
             long duration = System.currentTimeMillis() - t1;
             worst = Math.max(worst, duration);
             best = Math.min(best, duration);

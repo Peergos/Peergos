@@ -6,6 +6,7 @@ import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.mutable.*;
 import peergos.shared.social.*;
@@ -73,7 +74,7 @@ public class UserRepository implements SocialNetwork, MutablePointers {
                                 // check the new target is valid for this writer (or a deletion)
                                 if (cas.updated.isPresent()) {
                                     Multihash newHash = cas.updated.get();
-                                    CommittedWriterData newWriterData = WriterData.getWriterData(newHash, ipfs).join();
+                                    CommittedWriterData newWriterData = WriterData.getWriterData((Cid)newHash, ipfs).join();
                                     if (!newWriterData.props.controller.equals(writer))
                                         return Futures.of(false);
                                 }

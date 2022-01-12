@@ -6,6 +6,7 @@ import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.multibase.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 
@@ -60,12 +61,11 @@ public class LinkIdentity {
 
     private static void uploadProof(IdentityLinkProof proof, UserContext context, boolean makePublic) {
         Path subPath = Paths.get(".profile", "ids");
-        FileWrapper idsDir = context.getUserRoot().join().getOrMkdirs(subPath, context.network, true, context.crypto).join();
+        FileWrapper idsDir = context.getUserRoot().join().getOrMkdirs(subPath, context.network, true, context.mirrorBatId(), context.crypto).join();
         String filename = proof.getFilename();
 
         byte[] raw = proof.serialize();
-        idsDir.uploadOrReplaceFile(filename, AsyncReader.build(raw), raw.length,
-                context.network, context.crypto, x -> {}, context.crypto.random.randomBytes(32)).join();
+        idsDir.uploadOrReplaceFile(filename, AsyncReader.build(raw), raw.length, context.network, context.crypto, x -> {}).join();
 
         if (makePublic)
             context.makePublic(context.getByPath(Paths.get(context.username).resolve(subPath).resolve(filename)).join().get()).join();

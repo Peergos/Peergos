@@ -13,6 +13,7 @@ import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
+import peergos.shared.util.*;
 
 import java.nio.file.*;
 import java.time.LocalDate;
@@ -24,7 +25,7 @@ public class UserPublicKeyLinkTests {
 
     {
         ipfs = new FileContentAddressedStorage(Paths.get("blockstore"),
-                    JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()), Main.initCrypto().hasher);
+                    JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()), (a, b, c, d) -> Futures.of(true), Main.initCrypto().hasher);
     }
 
     private final List<Multihash> id;

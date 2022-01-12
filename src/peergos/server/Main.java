@@ -6,6 +6,7 @@ import peergos.server.messages.*;
 import peergos.server.space.*;
 import peergos.server.sql.*;
 import peergos.server.storage.admin.*;
+import peergos.server.storage.auth.*;
 import peergos.shared.*;
 import peergos.server.corenode.*;
 import peergos.server.fuse.*;
@@ -24,6 +25,7 @@ import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.mutable.*;
 import peergos.shared.social.*;
 import peergos.shared.storage.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.storage.controller.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
@@ -124,11 +126,14 @@ public class Main extends Builder {
                     new Command.Arg("pki.node.ipaddress", "IP address of the pki node", true, "172.104.157.121"),
                     new Command.Arg("ipfs-api-address", "IPFS API port", false, "/ip4/127.0.0.1/tcp/5001"),
                     new Command.Arg("ipfs-gateway-address", "IPFS Gateway port", false, "/ip4/127.0.0.1/tcp/8080"),
+                    new Command.Arg("allow-target", "Local address to listen on for IPFS allow calls", false, "http://localhost:8002"),
                     new Command.Arg("pki.node.swarm.port", "Swarm port of the pki node", true, "5001"),
                     new Command.Arg("domain", "Domain name to bind to", false, "localhost"),
                     new Command.Arg("public-domain", "The public domain name for this server (required if TLS is managed upstream)", false),
                     new Command.Arg("max-users", "The maximum number of local users", false, "1"),
                     ARG_USE_IPFS,
+                    new Command.Arg("legacy-raw-blocks-file", "The filename for the list of legacy raw blocks (or :memory: for ram based)", true, "legacyraw.sql"),
+                    new Command.Arg("bat-store", "The filename for the BAT store (or :memory: for ram based)", true, "bats.sql"),
                     new Command.Arg("mutable-pointers-file", "The filename for the mutable pointers datastore", true, "mutable.sql"),
                     new Command.Arg("social-sql-file", "The filename for the follow requests datastore", true, "social.sql"),
                     new Command.Arg("space-requests-sql-file", "The filename for the space requests datastore", true, "space-requests.sql"),
@@ -141,6 +146,7 @@ public class Main extends Builder {
                     new Command.Arg("default-quota", "default maximum storage per user", false, Long.toString(1024L * 1024 * 1024)),
                     new Command.Arg("mirror.node.id", "Mirror a server's data locally", false),
                     new Command.Arg("mirror.username", "Mirror a user's data locally", false),
+                    new Command.Arg("mirror.bat", "BatWithId to enable mirroring a user's private data", false),
                     new Command.Arg("login-keypair", "The keypair used to mirror the login data for a user (use with 'mirror.username' arg)", false),
                     new Command.Arg("public-server", "Are we a public server? (allow http GETs to API)", false, "false"),
                     new Command.Arg("run-gateway", "Run a local Peergos gateway", false, "true"),
@@ -162,12 +168,11 @@ public class Main extends Builder {
                     crypto.random, crypto.signer, crypto.boxer, SecretGenerationAlgorithm.getDefaultWithoutExtraSalt()).get();
 
             boolean useIPFS = args.getBoolean("useIPFS");
-            String ipfsApiAddress = args.getArg("ipfs-api-address", "/ip4/127.0.0.1/tcp/5001");
             ContentAddressedStorage dht = useIPFS ?
-                    new IpfsDHT(new MultiAddress(ipfsApiAddress)) :
+                    new ContentAddressedStorage.HTTP(Builder.buildIpfsApi(args), false, crypto.hasher) :
                     new FileContentAddressedStorage(blockstorePath(args),
                             JdbcTransactionStore.build(getDBConnector(args, "transactions-sql-file"), new SqliteCommands()),
-                            crypto.hasher);
+                            (a, b, c, d) -> Futures.of(true), crypto.hasher);
 
             SigningKeyPair peergosIdentityKeys = peergos.getUser();
             PublicKeyHash peergosPublicHash = ContentAddressedStorage.hashKey(peergosIdentityKeys.publicSigningKey);
@@ -242,7 +247,7 @@ public class Main extends Builder {
             Optional<FileWrapper> releaseDir = context.getByPath(Paths.get(pkiUsername, "releases")).join();
             if (! releaseDir.isPresent()) {
                 context.getUserRoot().join().mkdir("releases", network, false,
-                        crypto).join();
+                        Optional.empty(), crypto).join();
                 FileWrapper releases = context.getByPath(Paths.get(pkiUsername, "releases")).join().get();
                 context.makePublic(releases).join();
             }
@@ -259,7 +264,6 @@ public class Main extends Builder {
                     Crypto crypto = initCrypto();
                     int peergosPort = args.getInt("port");
                     args = args.setIfAbsent("proxy-target", getLocalMultiAddress(peergosPort).toString());
-                    MultiAddress ipfsApi = new MultiAddress(args.getArg("ipfs-api-address"));
 
                     IpfsWrapper ipfs = null;
                     boolean useIPFS = args.getBoolean("useIPFS");
@@ -270,11 +274,14 @@ public class Main extends Builder {
 
                     args = bootstrap(args);
 
+                    BatCave batStore = new JdbcBatCave(getDBConnector(args, "bat-store"), getSqlCommands(args));
+                    JdbcLegacyRawBlockStore legacyRawBlocks = new JdbcLegacyRawBlockStore(getDBConnector(args, "legacy-raw-blocks-file"));
+                    BlockRequestAuthoriser blockRequestAuthoriser = Builder.blockAuthoriser(args, batStore, legacyRawBlocks, crypto.hasher);
                     Multihash pkiIpfsNodeId = useIPFS ?
-                            new IpfsDHT(ipfsApi).id().get() :
+                            new ContentAddressedStorage.HTTP(Builder.buildIpfsApi(args), false, crypto.hasher).id().join() :
                             new FileContentAddressedStorage(blockstorePath(args),
                                     JdbcTransactionStore.build(getDBConnector(args, "transactions-sql-file"), new SqliteCommands()),
-                                    crypto.hasher).id().get();
+                                    blockRequestAuthoriser, crypto.hasher).id().get();
 
                     if (ipfs != null)
                         ipfs.stop();
@@ -290,6 +297,8 @@ public class Main extends Builder {
                     new Command.Arg("domain", "The hostname to listen on", true, "localhost"),
                     new Command.Arg("port", "The port for the local non tls server to listen on", true, "8000"),
                     new Command.Arg("useIPFS", "Whether to use IPFS or a local datastore", true, "false"),
+                    new Command.Arg("legacy-raw-blocks-file", "The filename for the list of legacy raw blocks (or :memory: for ram based)", true, "legacyraw.sql"),
+                    new Command.Arg("bat-store", "The filename for the BAT store (or :memory: for ram based)", true, "bats.sql"),
                     new Command.Arg("mutable-pointers-file", "The filename for the mutable pointers (or :memory: for ram based)", true, "mutable.sql"),
                     new Command.Arg("social-sql-file", "The filename for the follow requests (or :memory: for ram based)", true, "social.sql"),
                     new Command.Arg("transactions-sql-file", "The filename for the open transactions datastore", true, "transactions.sql"),
@@ -298,6 +307,7 @@ public class Main extends Builder {
                     new Command.Arg("space-usage-sql-file", "The filename for the space usage datastore", true, "space-usage.sql"),
                     new Command.Arg("ipfs-api-address", "ipfs api port", true, "/ip4/127.0.0.1/tcp/5001"),
                     new Command.Arg("ipfs-gateway-address", "ipfs gateway port", true, "/ip4/127.0.0.1/tcp/8080"),
+                    new Command.Arg("allow-target", "Local address to listen on for IPFS allow calls", false, "http://localhost:8002"),
                     new Command.Arg("pki.secret.key.path", "The path to the pki secret key file", true, "test.pki.secret.key"),
                     new Command.Arg("pki.public.key.path", "The path to the pki public key file", true, "test.pki.public.key"),
                     // Secret parameters
@@ -322,17 +332,21 @@ public class Main extends Builder {
                         ipfs = startIpfs(args);
                     }
 
-                    MultiAddress ipfsApi = new MultiAddress(args.getArg("ipfs-api-address"));
-
                     Supplier<Connection> transactionDb = getDBConnector(args, "transactions-sql-file");
-                    JdbcTransactionStore transactions = JdbcTransactionStore.build(transactionDb, new SqliteCommands());
+                    SqliteCommands sqlCommands = new SqliteCommands();
+                    JdbcTransactionStore transactions = JdbcTransactionStore.build(transactionDb, sqlCommands);
+                    BatCave batStore = new JdbcBatCave(getDBConnector(args, "bat-store", transactionDb), sqlCommands);
+                    JdbcLegacyRawBlockStore legacyRawBlocks = new JdbcLegacyRawBlockStore(getDBConnector(args, "legacy-raw-blocks-file"));
+                    BlockRequestAuthoriser authoriser = Builder.blockAuthoriser(args, batStore, legacyRawBlocks, crypto.hasher);
+
                     ContentAddressedStorage storage = useIPFS ?
-                            new IpfsDHT(ipfsApi) :
+                            new ContentAddressedStorage.HTTP(Builder.buildIpfsApi(args), false, crypto.hasher) :
                             S3Config.useS3(args) ?
                                     new S3BlockStorage(S3Config.build(args), Cid.decode(args.getArg("ipfs.id")),
-                                            BlockStoreProperties.empty(), transactions, crypto.hasher, new IpfsDHT(ipfsApi)) :
+                                            BlockStoreProperties.empty(), transactions, authoriser,
+                                            crypto.hasher, new DeletableContentAddressedStorage.HTTP(Builder.buildIpfsApi(args), false, crypto.hasher)) :
                                     new FileContentAddressedStorage(blockstorePath(args),
-                                            transactions, crypto.hasher);
+                                            transactions, authoriser, crypto.hasher);
                     Multihash pkiIpfsNodeId = storage.id().get();
 
                     if (ipfs != null)
@@ -348,6 +362,8 @@ public class Main extends Builder {
                     new Command.Arg("domain", "The hostname to listen on", true, "localhost"),
                     new Command.Arg("port", "The port for the local non tls server to listen on", true, "8000"),
                     new Command.Arg("useIPFS", "Whether to use IPFS or a local datastore", true, "false"),
+                    new Command.Arg("legacy-raw-blocks-file", "The filename for the list of legacy raw blocks (or :memory: for ram based)", true, "legacyraw.sql"),
+                    new Command.Arg("bat-store", "The filename for the BAT store (or :memory: for ram based)", true, "bats.sql"),
                     new Command.Arg("mutable-pointers-file", "The filename for the mutable pointers (or :memory: for ram based)", true, "mutable.sql"),
                     new Command.Arg("social-sql-file", "The filename for the follow requests (or :memory: for ram based)", true, "social.sql"),
                     new Command.Arg("transactions-sql-file", "The filename for the open transactions datastore", true, "transactions.sql"),
@@ -355,6 +371,7 @@ public class Main extends Builder {
                     new Command.Arg("space-usage-sql-file", "The filename for the space usage datastore", true, "space-usage.sql"),
                     ARG_IPFS_API_ADDRESS,
                     new Command.Arg("ipfs-gateway-address", "ipfs gateway port", true, "/ip4/127.0.0.1/tcp/8080"),
+                    new Command.Arg("allow-target", "Local address to listen on for IPFS allow calls", false, "http://localhost:8002"),
                     new Command.Arg("pki.secret.key.path", "The path to the pki secret key file", true, "test.pki.secret.key"),
                     new Command.Arg("pki.public.key.path", "The path to the pki public key file", true, "test.pki.public.key"),
                     // Secret parameters
@@ -495,17 +512,13 @@ public class Main extends Builder {
             Supplier<Connection> dbConnectionPool = getDBConnector(a, "transactions-sql-file");
             TransactionStore transactions = buildTransactionStore(a, dbConnectionPool);
 
-            DeletableContentAddressedStorage localStorage = buildLocalStorage(a, transactions, crypto.hasher);
+            BatCave batStore = new JdbcBatCave(getDBConnector(a, "bat-store", dbConnectionPool), sqlCommands);
+            JdbcLegacyRawBlockStore legacyRawBlocks = new JdbcLegacyRawBlockStore(getDBConnector(a, "legacy-raw-blocks-file", dbConnectionPool));
+            BlockRequestAuthoriser blockRequestAuthoriser = Builder.blockAuthoriser(a, batStore, legacyRawBlocks, hasher);
+            DeletableContentAddressedStorage localStorage = buildLocalStorage(a, transactions, blockRequestAuthoriser, crypto.hasher);
+            legacyRawBlocks.init(sqlCommands, localStorage);
             JdbcIpnsAndSocial rawPointers = buildRawPointers(a,
                     getDBConnector(a, "mutable-pointers-file", dbConnectionPool));
-            boolean enableGC = a.getBoolean("enable-gc", false);
-            GarbageCollector gc = null;
-            if (enableGC) {
-                if (S3Config.useS3(a))
-                    throw new IllegalStateException("GC should be run separately when using S3!");
-                gc = new GarbageCollector(localStorage, rawPointers);
-                gc.start(a.getInt("gc.period.millis", 60 * 60 * 1000), s -> Futures.of(true));
-            }
 
             String hostname = a.getArg("domain");
             Multihash nodeId = localStorage.id().get();
@@ -515,14 +528,27 @@ public class Main extends Builder {
 
             Supplier<Connection> usageDb = getDBConnector(a, "space-usage-sql-file", dbConnectionPool);
             UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
+            boolean enableGC = a.getBoolean("enable-gc", false);
+            GarbageCollector gc = null;
+            if (enableGC) {
+                if (S3Config.useS3(a))
+                    throw new IllegalStateException("GC should be run separately when using S3!");
+                gc = new GarbageCollector(localStorage, rawPointers, usageStore);
+                gc.start(a.getInt("gc.period.millis", 60 * 60 * 1000), s -> Futures.of(true));
+            }
+
             JdbcIpnsAndSocial rawSocial = new JdbcIpnsAndSocial(getDBConnector(a, "social-sql-file", dbConnectionPool), sqlCommands);
             HttpSpaceUsage httpSpaceUsage = new HttpSpaceUsage(p2pHttpProxy, p2pHttpProxy);
             JdbcAccount rawAccount = new JdbcAccount(getDBConnector(a, "account-sql-file", dbConnectionPool), sqlCommands);
             Account account = new AccountWithStorage(localStorage, localPointers, rawAccount);
             AccountProxy accountProxy = new HttpAccount(p2pHttpProxy, pkiServerNodeId);
 
+            InetSocketAddress allowListener = new InetSocketAddress("localhost", AddressUtil.getListenPort(a.getArg("allow-target")));
+            System.out.println("Block allow listener for " + nodeId + " on " + allowListener);
+            BlockAuthServer.startListener(blockRequestAuthoriser, allowListener, 100, 4);
+
             CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable,
-                    rawSocial, usageStore, rawAccount, account, hasher);
+                    rawSocial, usageStore, rawAccount, batStore, account, hasher);
 
             QuotaAdmin userQuotas = buildSpaceQuotas(a, localStorage, core,
                     getDBConnector(a, "space-requests-sql-file", dbConnectionPool),
@@ -539,13 +565,14 @@ public class Main extends Builder {
 
             int blockCacheSize = a.getInt("max-cached-blocks", 1000);
             int maxCachedBlockSize = a.getInt("max-cached-block-size", 10 * 1024);
-            ContentAddressedStorage filteringDht = new WriteFilter(new CachingStorage(localStorage, blockCacheSize, maxCachedBlockSize), spaceChecker::allowWrite);
+            ContentAddressedStorage filteringDht = new WriteFilter(new AuthedCachingStorage(localStorage,
+                    blockRequestAuthoriser, hasher, blockCacheSize, maxCachedBlockSize), spaceChecker::allowWrite);
             ContentAddressedStorageProxy proxingDht = new ContentAddressedStorageProxy.HTTP(p2pHttpProxy);
             ContentAddressedStorage p2pDht = new ContentAddressedStorage.Proxying(filteringDht, proxingDht, nodeId, core);
 
             Path blacklistPath = a.fromPeergosDir("blacklist_file", "blacklist.txt");
             PublicKeyBlackList blacklist = new UserBasedBlacklist(blacklistPath, core, localMutable, p2pDht, hasher);
-            MutablePointers blockingMutablePointers = new BlockingMutablePointers(new PinningMutablePointers(localMutable, p2pDht), blacklist);
+            MutablePointers blockingMutablePointers = new BlockingMutablePointers(localMutable, blacklist);
             MutablePointers p2mMutable = new ProxyingMutablePointers(nodeId, core, blockingMutablePointers, proxingMutable);
 
             SocialNetworkProxy httpSocial = new HttpSocialNetwork(p2pHttpProxy, p2pHttpProxy);
@@ -562,7 +589,10 @@ public class Main extends Builder {
 
             Account p2pAccount = new ProxyingAccount(nodeId, core, account, accountProxy);
             VerifyingAccount verifyingAccount = new VerifyingAccount(p2pAccount, core, localStorage);
-            UserService peergos = new UserService(p2pDht, crypto, corePropagator, verifyingAccount, p2pSocial, p2mMutable, storageAdmin,
+            ContentAddressedStorage cachingStorage = new AuthedCachingStorage(p2pDht, blockRequestAuthoriser, hasher, 1000, 50 * 1024);
+
+            ProxyingBatCave p2pBats = new ProxyingBatCave(nodeId, core, batStore, new HttpBatCave(p2pHttpProxy, p2pHttpProxy));
+            UserService peergos = new UserService(cachingStorage, p2pBats, crypto, corePropagator, verifyingAccount, p2pSocial, p2mMutable, storageAdmin,
                     p2pSpaceUsage, new ServerMessageStore(getDBConnector(a, "server-messages-sql-file", dbConnectionPool),
                     sqlCommands, core, p2pDht), gc);
             InetSocketAddress localAddress = new InetSocketAddress("localhost", userAPIAddress.getPort());
@@ -600,7 +630,8 @@ public class Main extends Builder {
                 new Thread(() -> {
                     while (true) {
                         try {
-                            Mirror.mirrorNode(nodeToMirrorId, core, p2mMutable, localStorage, rawPointers, transactions, hasher);
+                            BatWithId mirrorBat = BatWithId.decode(a.getArg("mirror.bat"));
+                            Mirror.mirrorNode(nodeToMirrorId, mirrorBat, core, p2mMutable, localStorage, rawPointers, transactions, hasher);
                             try {
                                 Thread.sleep(60_000);
                             } catch (InterruptedException f) {}
@@ -621,7 +652,11 @@ public class Main extends Builder {
                             if (mirrorLoginDataPair.isEmpty())
                                 System.out.println("WARNING: Mirroring users data, but not their login, see option 'login-keypair'");
                             String username = a.getArg("mirror.username");
-                            Mirror.mirrorUser(username, mirrorLoginDataPair, core, p2mMutable, p2pAccount, localStorage,
+
+                            Optional<BatWithId> mirrorBat = a.getOptionalArg("mirror.bat").map(BatWithId::decode);
+                            if (mirrorBat.isEmpty())
+                                System.out.println("WARNING: Mirroring users public blocks only, see option 'mirror.bat'");
+                            Mirror.mirrorUser(username, mirrorLoginDataPair, mirrorBat, core, p2mMutable, p2pAccount, localStorage,
                                     rawPointers, rawAccount, transactions, hasher);
                             try {
                                 Thread.sleep(60_000);
@@ -770,7 +805,9 @@ public class Main extends Builder {
             }
             System.out.println("Migrating user from node " + currentStorageNodeId + " to " + newStorageNodeId);
             List<UserPublicKeyLink> newChain = Migrate.buildMigrationChain(existing, newStorageNodeId, user.signer.secret);
-            user.network.coreNode.migrateUser(username, newChain, currentStorageNodeId).join();
+            user.ensureMirrorId().join().get();
+            Optional<BatWithId> current = user.getMirrorBat().join();
+            user.network.coreNode.migrateUser(username, newChain, currentStorageNodeId, current).join();
             List<UserPublicKeyLink> updatedChain = user.network.coreNode.getChain(username).join();
             if (!updatedChain.get(updatedChain.size() - 1).claim.storageProviders.contains(newStorageNodeId))
                 throw new IllegalStateException("Migration failed. Please try again later");

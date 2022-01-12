@@ -7,6 +7,7 @@ import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.api.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
@@ -197,7 +198,8 @@ public class HTTPCoreNode implements CoreNode {
     @Override
     public CompletableFuture<UserSnapshot> migrateUser(String username,
                                                        List<UserPublicKeyLink> newChain,
-                                                       Multihash currentStorageId) {
+                                                       Multihash currentStorageId,
+                                                       Optional<BatWithId> mirrorBat) {
         String modifiedPrefix = urlPrefix.isEmpty() ? "" : getProxyUrlPrefix(currentStorageId);
         try {
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
@@ -206,6 +208,9 @@ public class HTTPCoreNode implements CoreNode {
             Serialize.serialize(username, dout);
             Serialize.serialize(new CborObject.CborList(newChain).serialize(), dout);
             Serialize.serialize(currentStorageId.toBytes(), dout);
+            dout.writeBoolean(mirrorBat.isPresent());
+            if (mirrorBat.isPresent())
+                Serialize.serialize(mirrorBat.get().serialize(), dout);
             dout.flush();
 
             return poster.postUnzip(modifiedPrefix + Constants.CORE_URL + "migrateUser", bout.toByteArray())

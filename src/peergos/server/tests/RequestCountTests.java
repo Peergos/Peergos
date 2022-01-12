@@ -9,6 +9,7 @@ import peergos.shared.crypto.symmetric.*;
 import peergos.shared.display.*;
 import peergos.shared.social.*;
 import peergos.shared.storage.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.user.fs.cryptree.*;
@@ -35,7 +36,7 @@ public class RequestCountTests {
         this.storageCounter = requestCounter;
         CachingVerifyingStorage dhtClient = new CachingVerifyingStorage(requestCounter, 50 * 1024, 1_000, crypto.hasher);
         this.network = new NetworkAccess(service.coreNode, service.account, service.social, dhtClient,
-                service.mutable, mutableTree, synchronizer, service.controller, service.usage, service.serverMessages,
+                service.bats, service.mutable, mutableTree, synchronizer, service.controller, service.usage, service.serverMessages,
                 crypto.hasher, Arrays.asList("peergos"), false);
     }
 
@@ -145,8 +146,7 @@ public class RequestCountTests {
     private static void uploadAndShare(byte[] data, Path file, UserContext sharer, String sharee) {
         String filename = file.getFileName().toString();
         sharer.getByPath(file.getParent()).join().get()
-                .uploadOrReplaceFile(filename, AsyncReader.build(data), data.length,
-                        sharer.network, crypto, l -> {}, crypto.random.randomBytes(32)).join();
+                .uploadOrReplaceFile(filename, AsyncReader.build(data), data.length, sharer.network, crypto, l -> {}).join();
         sharer.shareReadAccessWith(file, Set.of(sharee)).join();
     }
 }

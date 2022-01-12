@@ -33,6 +33,7 @@ import static javaemul.internal.InternalPreconditions.checkNotNull;
  */
 public final class Optional<T> {
     @SuppressWarnings("unchecked")
+    @JsMethod
     public static <T> Optional<T> empty() {
         return (Optional<T>) EMPTY;
     }
@@ -63,6 +64,16 @@ public final class Optional<T> {
     public void ifPresent(Consumer<? super T> consumer) {
         if (isPresent()) {
             consumer.accept(ref);
+        }
+    }
+
+    public Optional<T> or(Supplier<? extends Optional<? extends T>> supplier) {
+        Objects.requireNonNull(supplier);
+        if (this.isPresent()) {
+            return this;
+        } else {
+            Optional<T> r = (Optional)supplier.get();
+            return (Optional)Objects.requireNonNull(r);
         }
     }
 

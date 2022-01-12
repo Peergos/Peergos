@@ -6,6 +6,7 @@ import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.display.*;
 import peergos.shared.messaging.messages.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
@@ -215,7 +216,8 @@ public class ChatController {
                 .thenCompose(f -> f.getInputStream(f.version.get(f.writer()).props, context.network, context.crypto, x -> {})
                         .thenCompose(r -> dir.uploadFileSection(v, c, f.getName(), r, false, 0, f.getSize(),
                                 Optional.empty(), false, false, context.network, context.crypto, x -> {},
-                                context.crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH))));
+                                context.crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH),
+                                Optional.of(Bat.random(context.crypto.random)), dir.mirrorBatId())));
     }
 
     private Path getChatMediaDir(ChatController current) {
@@ -238,7 +240,7 @@ public class ChatController {
                 .collect(Collectors.toList());
         return context.getByPath(context.username, in)
                 .thenApply(Optional::get)
-                .thenCompose(home -> home.getOrMkdirs(mediaFileParentPath, false, context.network, context.crypto, in, committer))
+                .thenCompose(home -> home.getOrMkdirs(mediaFileParentPath, false, home.mirrorBatId(), context.network, context.crypto, in, committer))
                 .thenCompose(dir -> copyFile(dir.right, sourcePath, currentMirrorUsername, dir.left, committer));
     }
 
@@ -295,7 +297,8 @@ public class ChatController {
         byte[] rawPrivateChatState = priv.get().serialize();
         return chatRoot.uploadFileSection(in, c, ChatController.PRIVATE_CHAT_STATE,
                 AsyncReader.build(rawPrivateChatState), false, 0, rawPrivateChatState.length,
-                Optional.empty(), true, true, network, crypto, x -> {}, crypto.random.randomBytes(32));
+                Optional.empty(), true, true, network, crypto, x -> {},
+                crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random)), chatRoot.mirrorBatId());
     }
 
     private static CompletableFuture<Pair<FileWrapper, FileWrapper>> getSharedLogAndIndex(FileWrapper chatRoot, Hasher hasher, NetworkAccess network) {

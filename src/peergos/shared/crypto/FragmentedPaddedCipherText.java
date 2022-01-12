@@ -5,7 +5,7 @@ import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.cid.*;
-import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
@@ -22,16 +22,19 @@ public class FragmentedPaddedCipherText implements Cborable {
 
     private final byte[] nonce;
     private final Optional<byte[]> header; // Present on all but legacy or inlined chunks, contains secretbox auth and cbor padding
-    private final List<Multihash> cipherTextFragments;
+    private final List<Cid> cipherTextFragments;
+    private final List<BatWithId> bats;
     private final Optional<byte[]> inlinedCipherText;
 
     public FragmentedPaddedCipherText(byte[] nonce,
                                       Optional<byte[]> header,
-                                      List<Multihash> cipherTextFragments,
+                                      List<Cid> cipherTextFragments,
+                                      List<BatWithId> bats,
                                       Optional<byte[]> inlinedCipherText) {
         this.nonce = nonce;
         this.header = header;
         this.cipherTextFragments = cipherTextFragments;
+        this.bats = bats;
         this.inlinedCipherText = inlinedCipherText;
         if (inlinedCipherText.isPresent() && ! cipherTextFragments.isEmpty())
             throw new IllegalStateException("Cannot have an inlined block and merkle linked blocks!");
@@ -57,6 +60,7 @@ public class FragmentedPaddedCipherText implements Cborable {
                     .stream()
                     .map(CborObject.CborMerkleLink::new)
                     .collect(Collectors.toList())));
+            state.put("bats", new CborObject.CborList(bats));
         }
         return CborObject.CborMap.build(state);
     }
@@ -69,17 +73,18 @@ public class FragmentedPaddedCipherText implements Cborable {
 
         byte[] nonce =  m.getByteArray("n");
         Optional<byte[]> header = m.getOptionalByteArray("h");
-        List<Multihash> fragmentHashes = m.getList("f").value
+        List<Cid> fragmentHashes = m.getList("f").value
                 .stream()
                 .filter(c -> c instanceof CborObject.CborMerkleLink)
-                .map(c -> ((CborObject.CborMerkleLink)c).target)
+                .map(c -> (Cid) ((CborObject.CborMerkleLink)c).target)
                 .collect(Collectors.toList());
         Optional<byte[]> inlinedCipherText = m.getList("f").value
                 .stream()
                 .filter(c -> c instanceof CborObject.CborByteArray)
                 .map(c -> ((CborObject.CborByteArray)c).value)
                 .findFirst();
-        return new FragmentedPaddedCipherText(nonce, header, fragmentHashes, inlinedCipherText);
+        List<BatWithId> bats = m.containsKey("bats") ? m.getList("bats", BatWithId::fromCbor) : Collections.emptyList();
+        return new FragmentedPaddedCipherText(nonce, header, fragmentHashes, bats, inlinedCipherText);
     }
 
     protected static byte[] pad(byte[] input, int excluded, int blockSize) {
@@ -108,7 +113,7 @@ public class FragmentedPaddedCipherText implements Cborable {
         if (padded.length <= 4096 + maxCborOverhead) {
             // inline small amounts of data (small files or directories)
             FragmentedPaddedCipherText chunk = new FragmentedPaddedCipherText(nonce, Optional.empty(),
-                    Collections.emptyList(), Optional.of(cipherText));
+                    Collections.emptyList(), Collections.emptyList(), Optional.of(cipherText));
             return Futures.of(new Pair<>(chunk, Collections.emptyList()));
         }
 
@@ -119,16 +124,23 @@ public class FragmentedPaddedCipherText implements Cborable {
         return Futures.combineAllInOrder(Arrays.stream(split)
                 .map(d -> hasher.hash(d, true).thenApply(h -> new FragmentWithHash(new Fragment(d), Optional.of(h))))
                 .collect(Collectors.toList()))
-                .thenApply(frags -> {
-                    List<Multihash> hashes = frags.stream()
+                .thenCompose(frags -> {
+                    List<Cid> hashes = frags.stream()
                             .map(f -> f.hash.get())
                             .collect(Collectors.toList());
-                    return new Pair<>(new FragmentedPaddedCipherText(nonce, header, hashes, Optional.empty()), frags);
+                    List<CompletableFuture<Bat>> bats = frags.stream()
+                            .map(f -> Bat.deriveFromRawBlock(f.fragment.data, hasher))
+                            .collect(Collectors.toList());
+                    return Futures.combineAllInOrder(bats.stream()
+                            .map(fut -> fut.thenCompose(b -> b.calculateId(hasher).thenApply(id -> new BatWithId(b, id.id))))
+                            .collect(Collectors.toList()))
+                            .thenApply(batsAndIds -> new Pair<>(new FragmentedPaddedCipherText(nonce, header, hashes, batsAndIds, Optional.empty()), frags));
                 });
     }
 
     public <T> CompletableFuture<T> getAndDecrypt(SymmetricKey from,
                                                   Function<CborObject, T> fromCbor,
+                                                  Hasher h,
                                                   NetworkAccess network,
                                                   ProgressConsumer<Long> monitor) {
         if (inlinedCipherText.isPresent()) {
@@ -136,7 +148,7 @@ public class FragmentedPaddedCipherText implements Cborable {
                 return Futures.of(new CipherText(nonce, ArrayOps.concat(header.get(), inlinedCipherText.get())).decrypt(from, fromCbor, monitor));
             return Futures.of(new CipherText(nonce, inlinedCipherText.get()).decrypt(from, fromCbor, monitor));
         }
-        return network.dhtClient.downloadFragments(cipherTextFragments, monitor, 1.0)
+        return network.dhtClient.downloadFragments(cipherTextFragments, bats, h, monitor, 1.0)
                 .thenApply(fargs -> new CipherText(nonce, recombine(header, fargs)).decrypt(from, fromCbor));
     }
 

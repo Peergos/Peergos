@@ -10,15 +10,14 @@ import peergos.shared.util.*;
 import java.util.*;
 
 public class Location implements Cborable {
-    public static final int MAP_KEY_LENGTH = 32;
 
     @JsProperty
     public final PublicKeyHash owner, writer;
     private final byte[] mapKey;
 
     public Location(PublicKeyHash owner, PublicKeyHash writer, byte[] mapKey) {
-        if (mapKey.length != MAP_KEY_LENGTH)
-            throw  new IllegalArgumentException("map key length "+ mapKey.length +" is not "+ MAP_KEY_LENGTH);
+        if (mapKey.length != RelativeCapability.MAP_KEY_LENGTH)
+            throw  new IllegalArgumentException("map key length "+ mapKey.length +" is not "+ RelativeCapability.MAP_KEY_LENGTH);
         this.owner = owner;
         this.writer = writer;
         this.mapKey = mapKey;
@@ -41,10 +40,6 @@ public class Location implements Cborable {
         return new ByteArrayWrapper(mapKey).toString();
     }
 
-    public static Location fromByteArray(byte[] raw) {
-        return fromCbor(CborObject.fromByteArray(raw));
-    }
-
     public static Location fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Incorrect cbor for Location: " + cbor);
@@ -53,10 +48,6 @@ public class Location implements Cborable {
                 PublicKeyHash.fromCbor(values.get(0)),
                 PublicKeyHash.fromCbor(values.get(1)),
                 ((CborObject.CborByteArray) values.get(2)).value);
-    }
-
-    public Location withWriter(PublicKeyHash newWriter) {
-        return new Location(owner, newWriter, mapKey);
     }
 
     public Location withMapKey(byte[] newMapKey) {

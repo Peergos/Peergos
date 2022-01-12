@@ -25,6 +25,7 @@ public class S3IpfsPluginTest {
                 "-logToConsole", "true",
                 Main.PEERGOS_PATH, peergosDir.toString(),
                 "-proxy-target", "/ip4/127.0.0.1/tcp/80",
+                "allow-target", "http://localhost:8001",
                 "-ipfs-plugins", "go-ds-s3",
                 "-s3.bucket", "atest",
                 "-s3.accessKey", "fake-key",

@@ -2,7 +2,9 @@ package peergos.shared.storage;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -40,11 +42,17 @@ public class CachingStorage extends DelegatingStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
-                                                  PublicKeyHash writer,
-                                                  List<byte[]> signedHashes,
-                                                  List<byte[]> blocks,
-                                                  TransactionId tid) {
+    public void clearBlockCache() {
+        cache.clear();
+        target.clearBlockCache();
+    }
+
+    @Override
+    public CompletableFuture<List<Cid>> put(PublicKeyHash owner,
+                                            PublicKeyHash writer,
+                                            List<byte[]> signedHashes,
+                                            List<byte[]> blocks,
+                                            TransactionId tid) {
         return target.put(owner, writer, signedHashes, blocks, tid)
                 .thenApply(res -> {
                     for (int i=0; i < blocks.size(); i++) {
@@ -57,7 +65,7 @@ public class CachingStorage extends DelegatingStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Multihash key) {
+    public CompletableFuture<Optional<CborObject>> get(Cid key, Optional<BatWithId> bat) {
         if (cache.containsKey(key))
             return CompletableFuture.completedFuture(Optional.of(CborObject.fromByteArray(cache.get(key))));
 
@@ -68,7 +76,7 @@ public class CachingStorage extends DelegatingStorage {
         pending.put(key, pipe);
 
         CompletableFuture<Optional<CborObject>> result = new CompletableFuture<>();
-        target.get(key).thenAccept(cborOpt -> {
+        target.get(key, bat).thenAccept(cborOpt -> {
             if (cborOpt.isPresent()) {
                 byte[] value = cborOpt.get().toByteArray();
                 if (value.length > 0 && value.length < maxValueSize)
@@ -87,12 +95,12 @@ public class CachingStorage extends DelegatingStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner,
-                                                     PublicKeyHash writer,
-                                                     List<byte[]> signatures,
-                                                     List<byte[]> blocks,
-                                                     TransactionId tid,
-                                                     ProgressConsumer<Long> progressConsumer) {
+    public CompletableFuture<List<Cid>> putRaw(PublicKeyHash owner,
+                                               PublicKeyHash writer,
+                                               List<byte[]> signatures,
+                                               List<byte[]> blocks,
+                                               TransactionId tid,
+                                               ProgressConsumer<Long> progressConsumer) {
         return target.putRaw(owner, writer, signatures, blocks, tid, progressConsumer)
                 .thenApply(res -> {
                     for (int i=0; i < blocks.size(); i++) {
@@ -105,7 +113,7 @@ public class CachingStorage extends DelegatingStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Multihash key) {
+    public CompletableFuture<Optional<byte[]>> getRaw(Cid key, Optional<BatWithId> bat) {
         if (cache.containsKey(key))
             return CompletableFuture.completedFuture(Optional.of(cache.get(key)));
 
@@ -114,7 +122,7 @@ public class CachingStorage extends DelegatingStorage {
 
         CompletableFuture<Optional<byte[]>> pipe = new CompletableFuture<>();
         pendingRaw.put(key, pipe);
-        return target.getRaw(key).thenApply(rawOpt -> {
+        return target.getRaw(key, bat).thenApply(rawOpt -> {
             if (rawOpt.isPresent()) {
                 byte[] value = rawOpt.get();
                 if (value.length > 0 && value.length < maxValueSize)
@@ -126,7 +134,7 @@ public class CachingStorage extends DelegatingStorage {
         }).exceptionally(t -> {
             pending.remove(key);
             pipe.completeExceptionally(t);
-            return null;
+            return Optional.empty();
         });
     }
 }

@@ -36,17 +36,19 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
          */
         public final Optional<List<MultiAddress>> bootstrapNode;
         public final int swarmPort;
-        public final String apiAddress, gatewayAddress;
+        public final String apiAddress, gatewayAddress, allowTarget;
         public final List<IpfsInstaller.Plugin> plugins;
 
         public Config(Optional<List<MultiAddress>> bootstrapNode,
                       String apiAddress,
                       String gatewayAddress,
+                      String allowTarget,
                       int swarmPort,
                       List<IpfsInstaller.Plugin> plugins) {
             this.bootstrapNode = bootstrapNode;
             this.apiAddress = apiAddress;
             this.gatewayAddress = gatewayAddress;
+            this.allowTarget = allowTarget;
             this.swarmPort = swarmPort;
             this.plugins = plugins;
         }
@@ -57,6 +59,7 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
                     "config --json Experimental.P2pHttpProxy true",
                     "config Addresses.API " + apiAddress,
                     "config Addresses.Gateway " + gatewayAddress,
+                    "config Addresses.AllowTarget " + allowTarget,
                     String.format("config --json Addresses.Swarm [\"/ip4/0.0.0.0/tcp/%d\",\"/ip6/::/tcp/%d\"]", swarmPort, swarmPort))
                     .map(e -> quoteEscape ? e.replaceAll("\"", "\\\\\"") : e)  //escape quotes for windows
                     .map(e -> e.split("\\s+"))
@@ -78,10 +81,11 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
 
         String apiAddress = args.getArg("ipfs-api-address");
         String gatewayAddress = args.getArg("ipfs-gateway-address");
+        String allowTarget = args.getArg("allow-target");
         int swarmPort = args.getInt("ipfs-swarm-port", 4001);
 
         List<IpfsInstaller.Plugin> plugins = IpfsInstaller.Plugin.parseAll(args);
-        return new Config(bootstrapNodes, apiAddress, gatewayAddress, swarmPort, plugins);
+        return new Config(bootstrapNodes, apiAddress, gatewayAddress, allowTarget, swarmPort, plugins);
     }
 
     private static final String IPFS_DIR = "IPFS_PATH";

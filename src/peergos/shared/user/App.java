@@ -1,6 +1,7 @@
 package peergos.shared.user;
 
 import jsinterop.annotations.JsMethod;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.app.*;
 import peergos.shared.user.fs.AsyncReader;
 import peergos.shared.user.fs.FileWrapper;
@@ -9,9 +10,7 @@ import peergos.shared.util.Serialize;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -55,7 +54,7 @@ public class App implements StoreAppData {
         App app = new App(ctx, appDataDir);
         return ctx.username == null ? Futures.of(app) :
                 ctx.getUserRoot()
-                .thenCompose(root -> root.getOrMkdirs(appDataDir, ctx.network, true, ctx.crypto))
+                .thenCompose(root -> root.getOrMkdirs(appDataDir, ctx.network, true, root.mirrorBatId(), ctx.crypto))
                 .thenApply(appDir -> app);
     }
 
@@ -88,10 +87,9 @@ public class App implements StoreAppData {
 
     private CompletableFuture<Boolean> writeFileContents(Path path, byte[] data) {
         Path pathWithoutUsername = Paths.get(Stream.of(path.toString().split("/")).skip(1).collect(Collectors.joining("/")));
-        return ctx.getByPath(ctx.username).thenCompose(userRoot -> userRoot.get().getOrMkdirs(pathWithoutUsername.getParent(), ctx.network, true, ctx.crypto)
+        return ctx.getByPath(ctx.username).thenCompose(userRoot -> userRoot.get().getOrMkdirs(pathWithoutUsername.getParent(), ctx.network, true, userRoot.get().mirrorBatId(), ctx.crypto)
                 .thenCompose(dir -> dir.uploadOrReplaceFile(path.getFileName().toString(), AsyncReader.build(data),
-                        data.length, ctx.network, ctx.crypto, x -> {
-                        }, ctx.crypto.random.randomBytes(32))
+                        data.length, ctx.network, ctx.crypto, x -> {})
                         .thenApply(fw -> true)
                 ));
     }
@@ -149,7 +147,7 @@ public class App implements StoreAppData {
     public CompletableFuture<Boolean> createDirectoryInternal(Path relativePath, String username) {
         Path base = Paths.get(username == null ? ctx.username : username).resolve(appDataDirectoryWithoutUser);
         return ctx.getByPath(base)
-                .thenCompose(baseOpt -> baseOpt.get().getOrMkdirs(normalisePath(relativePath), ctx.network, false, ctx.crypto)
+                .thenCompose(baseOpt -> baseOpt.get().getOrMkdirs(normalisePath(relativePath), ctx.network, false, baseOpt.get().mirrorBatId(), ctx.crypto)
                 .thenApply(fw -> true));
     }
 }

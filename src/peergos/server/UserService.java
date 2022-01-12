@@ -1,6 +1,5 @@
 package peergos.server;
 import java.util.*;
-import java.util.function.*;
 import java.util.logging.Logger;
 
 import peergos.server.storage.*;
@@ -19,6 +18,7 @@ import peergos.shared.social.*;
 import peergos.shared.storage.*;
 
 import peergos.server.net.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.storage.controller.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
@@ -34,7 +34,7 @@ import java.util.concurrent.*;
 public class UserService {
 	private static final Logger LOG = Logging.LOG();
 
-    public static final Version CURRENT_VERSION = Version.parse("0.4.0");
+    public static final Version CURRENT_VERSION = Version.parse("0.5.0");
     public static final String UI_URL = "/";
 
     private static void initTLS() {
@@ -80,6 +80,7 @@ public class UserService {
     }
 
     public final ContentAddressedStorage storage;
+    public final BatCave bats;
     public final Crypto crypto;
     public final CoreNode coreNode;
     public final Account account;
@@ -91,6 +92,7 @@ public class UserService {
     public final GarbageCollector gc; // not exposed
 
     public UserService(ContentAddressedStorage storage,
+                       BatCave bats,
                        Crypto crypto,
                        CoreNode coreNode,
                        Account account,
@@ -100,7 +102,8 @@ public class UserService {
                        SpaceUsage usage,
                        ServerMessageStore serverMessages,
                        GarbageCollector gc) {
-        this.storage = new CachingStorage(storage, 1000, 50 * 1024);
+        this.storage = storage;
+        this.bats = bats;
         this.crypto = crypto;
         this.coreNode = coreNode;
         this.account = account;
@@ -231,6 +234,8 @@ public class UserService {
         addHandler(localhostServer, tlsServer, Constants.DHT_URL,
                 new DHTHandler(storage, crypto.hasher, (h, i) -> true, isPublicServer),
                 basicAuth, local, host, nodeId, false);
+        addHandler(localhostServer, tlsServer, "/" + Constants.BATS_URL,
+                new BatCaveHandler(this.bats, isPublicServer), basicAuth, local, host, nodeId, false);
         addHandler(localhostServer, tlsServer, "/" + Constants.CORE_URL,
                 new CoreNodeHandler(this.coreNode, isPublicServer), basicAuth, local, host, nodeId, false);
         addHandler(localhostServer, tlsServer, "/" + Constants.SOCIAL_URL,

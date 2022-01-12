@@ -9,6 +9,7 @@ import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.io.ipfs.multiaddr.*;
 import peergos.shared.io.ipfs.multihash.Multihash;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.UserContext;
 import peergos.shared.user.fs.*;
 
@@ -24,6 +25,7 @@ import static peergos.server.tests.UserTests.randomString;
 public class P2pStreamNetworkTests {
     private static Args args = UserTests
             .buildArgs().with("useIPFS", "true")
+            .with("allow-target", "http://localhost:8001")
             .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, ""); // no bootstrapping
 
     private static Random random = new Random(0);
@@ -44,9 +46,11 @@ public class P2pStreamNetworkTests {
         int ipfsApiPort = 9000 + random.nextInt(8000);
         int ipfsGatewayPort = 9000 + random.nextInt(8000);
         int ipfsSwarmPort = 9000 + random.nextInt(8000);
+        int allowPort = 9000 + random.nextInt(8000);
         Args normalNode = UserTests.buildArgs()
                 .with("ipfs-api-address", "/ip4/127.0.0.1/tcp/" + ipfsApiPort)
                 .with("ipfs-gateway-address", "/ip4/127.0.0.1/tcp/" + ipfsGatewayPort)
+                .with("allow-target", "http://localhost:" + allowPort)
                 .with("ipfs-swarm-port", "" + ipfsSwarmPort)
                 .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, "" + Main.getLocalBootstrapAddress(bootstrapSwarmPort, pkiNodeId))
                 .with("proxy-target", new MultiAddress(args.getArg("ipfs-gateway-address")).toString())
@@ -79,7 +83,7 @@ public class P2pStreamNetworkTests {
         String filename = "hey.txt";
         FileWrapper root = u1.getUserRoot().get();
         FileWrapper upload = root.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length,
-                nodes.get(1), crypto, x -> { }, crypto.random.randomBytes(32)).get();
+                nodes.get(1), crypto, x -> {}).get();
         Thread.sleep(7000);
         Optional<FileWrapper> file = ensureSignedUp(username1, password1, nodes.get(0), crypto)
                 .getByPath("/" + username1 + "/" + filename).get();

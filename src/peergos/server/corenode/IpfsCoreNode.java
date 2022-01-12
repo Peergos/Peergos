@@ -9,9 +9,11 @@ import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.hamt.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
@@ -30,6 +32,7 @@ public class IpfsCoreNode implements CoreNode {
     private final Hasher hasher;
     private final MutablePointers mutable;
     private final Account account;
+    private final BatCave batCave;
     private final SigningPrivateKeyAndPublicHash signer;
 
     private final Map<String, List<UserPublicKeyLink>> chains = new ConcurrentHashMap<>();
@@ -46,12 +49,14 @@ public class IpfsCoreNode implements CoreNode {
                         Hasher hasher,
                         MutablePointers mutable,
                         Account account,
+                        BatCave batCave,
                         PublicKeyHash peergosIdentity) {
         this.currentRoot = MaybeMultihash.empty();
         this.ipfs = ipfs;
         this.hasher = hasher;
         this.mutable = mutable;
         this.account = account;
+        this.batCave = batCave;
         this.peergosIdentity = peergosIdentity;
         this.signer = pkiSigner;
         this.update(currentRoot);
@@ -74,7 +79,7 @@ public class IpfsCoreNode implements CoreNode {
     public static MaybeMultihash getTreeRoot(MaybeMultihash pointerTarget, ContentAddressedStorage ipfs) {
         if (! pointerTarget.isPresent())
             return MaybeMultihash.empty();
-        CommittedWriterData current = WriterData.getWriterData(pointerTarget.get(), ipfs).join();
+        CommittedWriterData current = WriterData.getWriterData((Cid)pointerTarget.get(), ipfs).join();
         return current.props.tree.map(MaybeMultihash::of).orElseGet(MaybeMultihash::empty);
 
     }
@@ -108,7 +113,7 @@ public class IpfsCoreNode implements CoreNode {
                                      Map<PublicKeyHash, String> reverseLookup,
                                      List<String> usernames) {
         try {
-            Optional<CborObject> cborOpt = ipfs.get(newValue.get().target).get();
+            Optional<CborObject> cborOpt = ipfs.get((Cid)newValue.get().target, Optional.empty()).get();
             if (!cborOpt.isPresent()) {
                 LOG.severe("Couldn't retrieve new claim chain from " + newValue);
                 return;
@@ -121,7 +126,7 @@ public class IpfsCoreNode implements CoreNode {
             String username = new String(key.data);
 
             if (oldValue.isPresent()) {
-                Optional<CborObject> existingCborOpt = ipfs.get(oldValue.get().target).get();
+                Optional<CborObject> existingCborOpt = ipfs.get((Cid)oldValue.get().target, Optional.empty()).get();
                 if (!existingCborOpt.isPresent()) {
                     LOG.severe("Couldn't retrieve existing claim chain from " + newValue);
                     return;
@@ -153,7 +158,13 @@ public class IpfsCoreNode implements CoreNode {
      * @param ipfs
      * @param mutable
      */
-    public static void applyOpLog(String username, PublicKeyHash owner, OpLog ops, ContentAddressedStorage ipfs, MutablePointers mutable, Account account) {
+    public static void applyOpLog(String username,
+                                  PublicKeyHash owner,
+                                  OpLog ops,
+                                  ContentAddressedStorage ipfs,
+                                  MutablePointers mutable,
+                                  Account account,
+                                  BatCave batCave) {
         TransactionId tid = ipfs.startTransaction(owner).join();
         for (Either<OpLog.PointerWrite, OpLog.BlockWrite> op : ops.operations) {
             if (op.isA()) {
@@ -172,6 +183,10 @@ public class IpfsCoreNode implements CoreNode {
                 throw new IllegalStateException("Invalid signup data!");
             account.setLoginData(ops.loginData.left, ops.loginData.right).join();
         }
+        if (ops.mirrorBat.isPresent()) {
+            Pair<BatWithId, byte[]> p = ops.mirrorBat.get();
+            batCave.addBat(username, p.left.id(), p.left.bat, p.right);
+        }
         ipfs.closeTransaction(owner, tid).join();
     }
 
@@ -185,7 +200,7 @@ public class IpfsCoreNode implements CoreNode {
         if (pkiResult.isPresent())
             return Futures.of(pkiResult);
 
-        applyOpLog(username, chain.owner, setupOperations, ipfs, mutable, account);
+        applyOpLog(username, chain.owner, setupOperations, ipfs, mutable, account, batCave);
 
         return Futures.of(Optional.empty());
     }
@@ -205,17 +220,17 @@ public class IpfsCoreNode implements CoreNode {
             throw new IllegalStateException("Invalid username");
 
         try {
-            CommittedWriterData current = WriterData.getWriterData(currentRoot.get(), ipfs).get();
+            CommittedWriterData current = WriterData.getWriterData((Cid)currentRoot.get(), ipfs).get();
             MaybeMultihash currentTree = current.props.tree.map(MaybeMultihash::of).orElseGet(MaybeMultihash::empty);
 
             ChampWrapper<CborObject.CborMerkleLink> champ = currentTree.isPresent() ?
-                    ChampWrapper.create(currentTree.get(), IpfsCoreNode::keyHash, ipfs, hasher, c -> (CborObject.CborMerkleLink)c).get() :
+                    ChampWrapper.create((Cid)currentTree.get(), IpfsCoreNode::keyHash, ipfs, hasher, c -> (CborObject.CborMerkleLink)c).get() :
                     IpfsTransaction.call(peergosIdentity,
                             tid -> ChampWrapper.create(signer.publicKeyHash, signer, IpfsCoreNode::keyHash, tid, ipfs, hasher, c -> (CborObject.CborMerkleLink)c),
                             ipfs).get();
             Optional<CborObject.CborMerkleLink> existing = champ.get(username.getBytes()).get();
             Optional<CborObject> cborOpt = existing.isPresent() ?
-                    ipfs.get(existing.get().target).get() :
+                    ipfs.get((Cid) existing.get().target, Optional.empty()).get() :
                     Optional.empty();
             if (! cborOpt.isPresent() && existing.isPresent()) {
                 LOG.severe("Couldn't retrieve existing claim chain from " + existing + " for " + username);
@@ -287,7 +302,8 @@ public class IpfsCoreNode implements CoreNode {
     @Override
     public CompletableFuture<UserSnapshot> migrateUser(String username,
                                                        List<UserPublicKeyLink> newChain,
-                                                       Multihash currentStorageId) {
+                                                       Multihash currentStorageId,
+                                                       Optional<BatWithId> mirrorBat) {
         throw new IllegalStateException("Migration from pki node unimplemented!");
     }
 

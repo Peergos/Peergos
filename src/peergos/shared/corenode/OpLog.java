@@ -7,6 +7,7 @@ import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
@@ -14,16 +15,20 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.*;
 
-public class OpLog implements Cborable, Account, MutablePointers, ContentAddressedStorage {
+public class OpLog implements Cborable, Account, MutablePointers, ContentAddressedStorage, BatCave {
     private static final int ED25519_SIGNATURE_SIZE = 64;
 
     public final List<Either<PointerWrite, BlockWrite>> operations;
     private final Map<Multihash, byte[]> storage = new HashMap<>();
     public Pair<LoginData, byte[]> loginData;
+    public Optional<Pair<BatWithId, byte[]>> mirrorBat;
 
-    public OpLog(List<Either<PointerWrite, BlockWrite>> operations, Pair<LoginData, byte[]> loginData) {
+    public OpLog(List<Either<PointerWrite, BlockWrite>> operations,
+                 Pair<LoginData, byte[]> loginData,
+                 Optional<Pair<BatWithId, byte[]>> mirrorBat) {
         this.operations = operations;
         this.loginData = loginData;
+        this.mirrorBat = mirrorBat;
     }
 
     @Override
@@ -62,12 +67,30 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
     }
 
     @Override
+    public Optional<Bat> getBat(BatId id) {
+        throw new IllegalStateException("Unsupported operation!");
+    }
+
+    @Override
+    public CompletableFuture<List<BatWithId>> getUserBats(String username, byte[] auth) {
+        throw new IllegalStateException("Unsupported operation!");
+    }
+
+    @Override
+    public CompletableFuture<Boolean> addBat(String username, BatId id, Bat bat, byte[] auth) {
+        if (mirrorBat.isPresent())
+            throw new IllegalStateException("Only 1 mirror BAT allowed in OpLog!");
+        mirrorBat = Optional.of(new Pair<>(new BatWithId(bat, id.id), auth));
+        return Futures.of(true);
+    }
+
+    @Override
     public ContentAddressedStorage directToOrigin() {
         throw new IllegalStateException("Unsupported operation!");
     }
 
     @Override
-    public CompletableFuture<Multihash> id() {
+    public CompletableFuture<Cid> id() {
         throw new IllegalStateException("Unsupported operation!");
     }
 
@@ -82,7 +105,7 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
+    public CompletableFuture<List<Cid>> put(PublicKeyHash owner,
                                                   PublicKeyHash writer,
                                                   List<byte[]> signedHashes,
                                                   List<byte[]> blocks,
@@ -93,12 +116,12 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Multihash hash) {
+    public CompletableFuture<Optional<CborObject>> get(Cid hash, Optional<BatWithId> bat) {
         return Futures.of(Optional.ofNullable(storage.get(hash)).map(CborObject::fromByteArray));
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner,
+    public CompletableFuture<List<Cid>> putRaw(PublicKeyHash owner,
                                                      PublicKeyHash writer,
                                                      List<byte[]> signedHashes,
                                                      List<byte[]> blocks,
@@ -109,43 +132,23 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
                 .collect(Collectors.toList()));
     }
 
-    private CompletableFuture<Multihash> put(PublicKeyHash writer, byte[] signedHash, byte[] block, boolean isRaw) {
+    private CompletableFuture<Cid> put(PublicKeyHash writer, byte[] signedHash, byte[] block, boolean isRaw) {
         // Assume we are using ed25519 for now
         byte[] hash = Arrays.copyOfRange(signedHash, ED25519_SIGNATURE_SIZE, signedHash.length);
-        Multihash h = new Cid(1, isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor, Multihash.Type.sha2_256, hash);
+        Cid h = new Cid(1, isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor, Multihash.Type.sha2_256, hash);
         storage.put(h, block);
         operations.add(Either.b(new BlockWrite(writer, signedHash, block, isRaw)));
         return Futures.of(h);
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash) {
+    public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, Optional<BatWithId> bat) {
         return Futures.of(Optional.ofNullable(storage.get(hash)));
     }
 
     @Override
-    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey) {
+    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey, Optional<BatWithId> bat) {
         return Futures.of(new ArrayList<>(storage.values()));
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> pinUpdate(PublicKeyHash owner, Multihash existing, Multihash updated) {
-        throw new IllegalStateException("Unsupported operation!");
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> recursivePin(PublicKeyHash owner, Multihash hash) {
-        throw new IllegalStateException("Unsupported operation!");
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> recursiveUnpin(PublicKeyHash owner, Multihash hash) {
-        throw new IllegalStateException("Unsupported operation!");
-    }
-
-    @Override
-    public CompletableFuture<Boolean> gc() {
-        throw new IllegalStateException("Unsupported operation!");
     }
 
     @Override
@@ -234,6 +237,10 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
             state.put("login", loginData.left);
             state.put("loginAuth", new CborObject.CborByteArray(loginData.right));
         }
+        mirrorBat.ifPresent(t -> {
+            state.put("b", t.left);
+            state.put("a", new CborObject.CborByteArray(t.right));
+        });
         return CborObject.CborMap.build(state);
     }
 
@@ -242,11 +249,17 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
             throw new IllegalStateException("Invalid cbor for OpLog!");
         CborObject.CborMap m = (CborObject.CborMap) cbor;
         List<Either<PointerWrite, BlockWrite>> ops = m.getList("ops", OpLog::parseOperation);
+        Optional<Pair<BatWithId, byte[]>> mirrorBat;
+        if (m.containsKey("b")) {
+            mirrorBat = Optional.of(new Pair<>(m.get("b", BatWithId::fromCbor), m.getByteArray("a")));
+        } else
+            mirrorBat = Optional.empty();
+
         if (m.containsKey("login")) {
             LoginData login = m.get("login", LoginData::fromCbor);
             byte[] loginAuth = m.getByteArray("loginAuth");
-            return new OpLog(ops, new Pair<>(login, loginAuth));
+            return new OpLog(ops, new Pair<>(login, loginAuth), mirrorBat);
         }
-        return new OpLog(ops, null);
+        return new OpLog(ops, null, mirrorBat);
     }
 }

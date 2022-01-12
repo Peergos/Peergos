@@ -3,6 +3,7 @@ package peergos.shared.user.fs;
 import jsinterop.annotations.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.util.*;
 
 import java.nio.file.*;
@@ -88,17 +89,29 @@ public class FileProperties implements Cborable {
             throw new IllegalArgumentException("Path too long! Paths must be smaller than " + MAX_PATH_SIZE);
     }
 
-    public static CompletableFuture<byte[]> calculateMapKey(byte[] streamSecret, byte[] firstMapKey, long offset, Hasher h) {
+    public static CompletableFuture<Pair<byte[], Optional<Bat>>> calculateMapKey(byte[] streamSecret,
+                                                                                 byte[] firstMapKey,
+                                                                                 Optional<Bat> firstBat,
+                                                                                 long offset,
+                                                                                 Hasher h) {
         long iterations = offset / Chunk.MAX_SIZE;
         List<Long> counter = new ArrayList<>();
         for (long i=0; i < iterations; i++)
             counter.add(i);
-        return Futures.reduceAll(counter, firstMapKey,
-                (current, i) -> calculateNextMapKey(streamSecret, current, h), (a, b) -> b);
+        return Futures.reduceAll(counter, new Pair<>(firstMapKey, firstBat),
+                (current, i) -> calculateNextMapKey(streamSecret, current.left, current.right, h), (a, b) -> b);
     }
 
-    public static CompletableFuture<byte[]> calculateNextMapKey(byte[] streamSecret, byte[] currentMapKey, Hasher h) {
-        return h.sha256(ArrayOps.concat(streamSecret, currentMapKey));
+    public static CompletableFuture<Pair<byte[], Optional<Bat>>> calculateNextMapKey(byte[] streamSecret,
+                                                                                     byte[] currentMapKey,
+                                                                                     Optional<Bat> currentBat,
+                                                                                     Hasher h) {
+        return h.sha256(ArrayOps.concat(streamSecret, currentMapKey))
+                .thenCompose(nextMapKey -> (currentBat.isPresent() ?
+                        h.sha256(ArrayOps.concat(streamSecret, currentBat.get().secret))
+                                .thenApply(Bat::new).thenApply(Optional::of) :
+                        Futures.of(Optional.<Bat>empty()))
+                        .thenApply(nextBat -> new Pair<>(nextMapKey, nextBat)));
     }
 
     public int sizeLow() {

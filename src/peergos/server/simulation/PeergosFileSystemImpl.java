@@ -1,6 +1,7 @@
 package peergos.server.simulation;
 
 import peergos.shared.social.FollowRequestWithCipherText;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.ProgressConsumer;
@@ -55,7 +56,7 @@ public class PeergosFileSystemImpl implements FileSystem {
         String fileName = path.getFileName().toString();
         ProgressConsumer<Long> pc  = l -> progressConsumer.accept(l);
         FileWrapper fileWrapper = directory.uploadOrReplaceFile(fileName, resetableFileInputStream, data.length,
-                userContext.network, userContext.crypto, pc, userContext.crypto.random.randomBytes(32)).join();
+                userContext.network, userContext.crypto, pc).join();
 
     }
 
@@ -142,6 +143,7 @@ public class PeergosFileSystemImpl implements FileSystem {
         getDirectory(path).mkdir(path.getFileName().toString(),
                 userContext.network,
                 false,
+                userContext.mirrorBatId(),
                 userContext.crypto).join();
     }
 

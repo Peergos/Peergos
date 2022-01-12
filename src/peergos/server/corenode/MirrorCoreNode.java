@@ -11,10 +11,12 @@ import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.hamt.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.mutable.*;
 import peergos.shared.social.*;
 import peergos.shared.storage.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
@@ -32,6 +34,7 @@ public class MirrorCoreNode implements CoreNode {
 
     private final CoreNode writeTarget;
     private final JdbcAccount rawAccount;
+    private final BatCave batCave;
     private final Account account;
     private final MutablePointers p2pMutable;
     private final DeletableContentAddressedStorage ipfs;
@@ -49,6 +52,7 @@ public class MirrorCoreNode implements CoreNode {
 
     public MirrorCoreNode(CoreNode writeTarget,
                           JdbcAccount rawAccount,
+                          BatCave batCave,
                           Account account,
                           MutablePointers p2pMutable,
                           DeletableContentAddressedStorage ipfs,
@@ -61,6 +65,7 @@ public class MirrorCoreNode implements CoreNode {
                           Hasher hasher) {
         this.writeTarget = writeTarget;
         this.rawAccount = rawAccount;
+        this.batCave = batCave;
         this.account = account;
         this.p2pMutable = p2pMutable;
         this.ipfs = ipfs;
@@ -226,7 +231,7 @@ public class MirrorCoreNode implements CoreNode {
 
             MaybeMultihash newPeergosRoot = p2pMutable.getPointerTarget(peergosKey, peergosKey, ipfs).get();
 
-            CommittedWriterData currentPeergosWd = WriterData.getWriterData(newPeergosRoot.get(), ipfs).get();
+            CommittedWriterData currentPeergosWd = WriterData.getWriterData((Cid)newPeergosRoot.get(), ipfs).get();
             PublicKeyHash pkiKey = currentPeergosWd.props.namedOwnedKeys.get("pki").ownedKey;
             if (pkiKey == null)
                 throw new IllegalStateException("No pki key on owner: " + pkiOwnerIdentity);
@@ -253,7 +258,7 @@ public class MirrorCoreNode implements CoreNode {
                         Optional<CborObject.CborMerkleLink> newVal = t.right;
                         if (newVal.isPresent()) {
                             transactions.addBlock(newVal.get().target, tid, peergosKey);
-                            ipfs.get(newVal.get().target).join();
+                            ipfs.get((Cid) newVal.get().target, Optional.empty()).join();
                         }
                     };
             Champ.applyToDiff(currentTree, updatedTree, 0, IpfsCoreNode::keyHash,
@@ -292,7 +297,7 @@ public class MirrorCoreNode implements CoreNode {
         update();
         usageStore.addUserIfAbsent(username);
         usageStore.addWriter(username, chain.owner);
-        IpfsCoreNode.applyOpLog(username, chain.owner, setupOperations, ipfs, p2pMutable, account);
+        IpfsCoreNode.applyOpLog(username, chain.owner, setupOperations, ipfs, p2pMutable, account, batCave);
         return Futures.of(Optional.empty());
     }
 
@@ -326,13 +331,15 @@ public class MirrorCoreNode implements CoreNode {
                         .stream())
                 .collect(Collectors.toMap(p -> p.left, p -> p.right)),
                 in.pendingFollowReqs,
+                in.mirrorBats,
                 in.login);
     }
 
     @Override
     public CompletableFuture<UserSnapshot> migrateUser(String username,
                                                        List<UserPublicKeyLink> newChain,
-                                                       Multihash currentStorageId) {
+                                                       Multihash currentStorageId,
+                                                       Optional<BatWithId> mirrorBat) {
         // check chain validity before proceeding further
         List<UserPublicKeyLink> existingChain = getChain(username).join();
         UserPublicKeyLink currentLast = existingChain.get(existingChain.size() - 1);
@@ -348,7 +355,9 @@ public class MirrorCoreNode implements CoreNode {
             ProofOfWork work = ProofOfWork.empty();
 
             UserSnapshot snapshot = WriterData.getUserSnapshot(username, this, p2pMutable, ipfs, hasher)
-                    .thenApply(pointers -> new UserSnapshot(pointers, localSocial.getAndParseFollowRequests(owner),
+                    .thenApply(pointers -> new UserSnapshot(pointers,
+                            localSocial.getAndParseFollowRequests(owner),
+                            batCave.getUserBats(username, new byte[0]).join(),
                             rawAccount.getLoginData(username))).join();
             updateChain(username, newChain, work, "").join();
             // from this point on new writes are proxied to the new storage server
@@ -357,23 +366,36 @@ public class MirrorCoreNode implements CoreNode {
 
         if (migrationTargetNode.equals(ourNodeId)) {
             // We are copying data to this node
+            // Make sure we have the mirror bat stored in out batStore first
+            if (mirrorBat.isPresent()) {
+                BatWithId bat = mirrorBat.get();
+                // double check it
+                if (! BatId.sha256(bat.bat, hasher).join().equals(bat.id()))
+                    throw new IllegalStateException("Invalid BAT id for BAT");
+                List<BatWithId> localMirrorBats = batCave.getUserBats(username, new byte[0]).join();
+                if (! localMirrorBats.contains(bat))
+                    batCave.addBat(username, bat.id(), bat.bat, new byte[0]);
+            }
             // Mirror all the data locally
-            Mirror.mirrorUser(username, Optional.empty(), this, p2pMutable, null, ipfs, localPointers, rawAccount, transactions, hasher);
-            Map<PublicKeyHash, byte[]> mirrored = Mirror.mirrorUser(username, Optional.empty(), this, p2pMutable,
+            Mirror.mirrorUser(username, Optional.empty(), mirrorBat, this, p2pMutable, null, ipfs, localPointers, rawAccount, transactions, hasher);
+            Map<PublicKeyHash, byte[]> mirrored = Mirror.mirrorUser(username, Optional.empty(), mirrorBat, this, p2pMutable,
                     null, ipfs, localPointers, rawAccount, transactions, hasher);
 
             // Proxy call to their current storage server
-            UserSnapshot res = writeTarget.migrateUser(username, newChain, currentStorageId).join();
+            UserSnapshot res = writeTarget.migrateUser(username, newChain, currentStorageId, mirrorBat).join();
             // pick up the new pki data locally
             update();
 
-            res.login.ifPresent(login -> rawAccount.setLoginData(login));
+            res.mirrorBats.forEach(b -> {
+                batCave.addBat(username, b.id(), b.bat, new byte[0]);
+            });
+            res.login.ifPresent(rawAccount::setLoginData);
 
             // commit diff since our mirror above
             for (Map.Entry<PublicKeyHash, byte[]> e : res.pointerState.entrySet()) {
                 byte[] existingVal = mirrored.get(e.getKey());
                 if (! Arrays.equals(existingVal, e.getValue())) {
-                    Mirror.mirrorMerkleTree(owner, e.getKey(), e.getValue(), ipfs, localPointers, transactions);
+                    Mirror.mirrorMerkleTree(owner, e.getKey(), e.getValue(), mirrorBat, ipfs, localPointers, transactions, hasher);
                 }
             }
 
@@ -387,7 +409,7 @@ public class MirrorCoreNode implements CoreNode {
             SpaceCheckingKeyFilter.processCorenodeEvent(username, owner, usageStore, ipfs, p2pMutable, hasher);
             return Futures.of(res);
         } else // Proxy call to their target storage server
-            return writeTarget.migrateUser(username, newChain, migrationTargetNode);
+            return writeTarget.migrateUser(username, newChain, migrationTargetNode, mirrorBat);
     }
 
     @Override

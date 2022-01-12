@@ -9,6 +9,7 @@ import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.hamt.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.util.*;
 
@@ -58,7 +59,7 @@ public class EfficiencyComparison {
                 }
 
                 int champSize = champStorage.totalSize();
-                long champUsage = champStorage.getRecursiveBlockSize(current.right).get();
+                long champUsage = champStorage.getRecursiveBlockSize((Cid)current.right).get();
 
                 int idealUsage = state.size() * (32 + 34);
                 LOG.info(bitWidth + "-bit champ, " + maxCollisions + " max-collisions");

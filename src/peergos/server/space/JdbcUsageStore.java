@@ -5,6 +5,7 @@ import peergos.server.util.Logging;
 import peergos.shared.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
+import peergos.shared.io.ipfs.multihash.*;
 
 import java.sql.*;
 import java.util.*;
@@ -228,6 +229,26 @@ public class JdbcUsageStore implements UsageStore {
             ResultSet resultSet = insert.executeQuery();
             while (resultSet.next())
                 res.add(PublicKeyHash.decode(resultSet.getBytes(1)));
+            return res;
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
+
+    @Override
+    public List<Multihash> getAllTargets() {
+        try (Connection conn = getConnection();
+             PreparedStatement get = conn.prepareStatement("SELECT target FROM writerusage;")) {
+            List<Multihash> res = new ArrayList<>();
+            ResultSet resultSet = get.executeQuery();
+            while (resultSet.next()) {
+                MaybeMultihash target = Optional.ofNullable(resultSet.getBytes(1))
+                    .map(x -> MaybeMultihash.of(Cid.cast(x)))
+                    .orElse(MaybeMultihash.empty());
+                if (target.isPresent())
+                    res.add(target.get());
+            }
             return res;
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);

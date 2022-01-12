@@ -33,12 +33,7 @@ public class UserStats {
                 Set<PublicKeyHash> ownedKeysRecursive =
                         WriterData.getOwnedKeysRecursive(username, network.coreNode, network.mutable,
                                 network.dhtClient, network.hasher).join();
-                long total = 0;
-                for (PublicKeyHash writer : ownedKeysRecursive) {
-                    MaybeMultihash target = network.mutable.getPointerTarget(owner, writer, network.dhtClient).get();
-                    if (target.isPresent())
-                        total += network.dhtClient.getRecursiveBlockSize(target.get()).get();
-                }
+                long total = network.spaceUsage.getUsage(owner).join();
                 String summary = "User: " + username + ", expiry: " + expiry + " usage: " + total
                         + ", owned keys: " + ownedKeysRecursive.size() + "\n";
                 System.out.println(summary);

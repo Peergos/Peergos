@@ -7,11 +7,13 @@ import peergos.server.space.*;
 import peergos.server.sql.*;
 import peergos.server.storage.*;
 import peergos.server.storage.admin.*;
+import peergos.server.storage.auth.*;
 import peergos.server.util.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.mutable.*;
 import peergos.shared.user.*;
+import peergos.shared.util.*;
 
 import java.io.*;
 import java.nio.file.*;
@@ -100,7 +102,8 @@ public class ServerMessages extends Builder {
         Supplier<Connection> dbConnectionPool = getDBConnector(a, "transactions-sql-file");
         TransactionStore transactions = buildTransactionStore(a, dbConnectionPool);
         Hasher hasher = Main.initCrypto().hasher;
-        DeletableContentAddressedStorage localStorage = buildLocalStorage(a, transactions, hasher);
+        BlockRequestAuthoriser blockRequestAuthoriser = (b, d, s, auth) -> Futures.of(true); // not relevant for local only use here
+        DeletableContentAddressedStorage localStorage = buildLocalStorage(a, transactions, blockRequestAuthoriser, hasher);
         JdbcIpnsAndSocial rawPointers = buildRawPointers(a, getDBConnector(a, "mutable-pointers-file", dbConnectionPool));
         MutablePointers localPointers = UserRepository.build(localStorage, rawPointers);
         MutablePointersProxy proxingMutable = new HttpMutablePointers(buildP2pHttpProxy(a), getPkiServerId(a));
@@ -108,7 +111,7 @@ public class ServerMessages extends Builder {
         UsageStore usageStore = new JdbcUsageStore(getDBConnector(a, "space-usage-sql-file", dbConnectionPool), getSqlCommands(a));
         JdbcAccount account = new JdbcAccount(getDBConnector(a, "account-sql-file", dbConnectionPool), getSqlCommands(a));
         CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable,
-                rawSocial, usageStore, account, new AccountWithStorage(localStorage, localPointers, account), hasher);
+                rawSocial, usageStore, account, null, new AccountWithStorage(localStorage, localPointers, account), hasher);
         return buildSpaceQuotas(a, localStorage, core,
                 getDBConnector(a, "space-requests-sql-file", dbConnectionPool),
                 getDBConnector(a, "quotas-sql-file", dbConnectionPool));

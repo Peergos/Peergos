@@ -7,6 +7,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multibase.binary.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
@@ -62,14 +63,14 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
         return padStart > 0 ? padded.substring(0, padStart) : padded;
     }
 
-    public static Multihash keyToHash(String keyFileName) {
+    public static Cid keyToHash(String keyFileName) {
         // To be compatible with IPFS we use the same scheme here, the cid bytes encoded as uppercase base32
         byte[] decoded = new Base32().decode(keyFileName);
         return Cid.cast(decoded);
     }
 
     @Override
-    public CompletableFuture<Multihash> id() {
+    public CompletableFuture<Cid> id() {
         return fallback.id();
     }
 
@@ -84,20 +85,20 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
-                                                  PublicKeyHash writer,
-                                                  List<byte[]> signedHashes,
-                                                  List<byte[]> blocks,
-                                                  TransactionId tid) {
+    public CompletableFuture<List<Cid>> put(PublicKeyHash owner,
+                                            PublicKeyHash writer,
+                                            List<byte[]> signedHashes,
+                                            List<byte[]> blocks,
+                                            TransactionId tid) {
         return onOwnersNode(owner).thenCompose(ownersNode -> {
             if (ownersNode && directWrites) {
-                CompletableFuture<List<Multihash>> res = new CompletableFuture<>();
+                CompletableFuture<List<Cid>> res = new CompletableFuture<>();
                 fallback.authWrites(owner, writer, signedHashes, blocks.stream().map(x -> x.length).collect(Collectors.toList()), false, tid)
                         .thenCompose(preAuthed -> {
-                            List<CompletableFuture<Multihash>> futures = new ArrayList<>();
+                            List<CompletableFuture<Cid>> futures = new ArrayList<>();
                             for (int i = 0; i < blocks.size(); i++) {
                                 PresignedUrl url = preAuthed.get(i);
-                                Multihash targetName = keyToHash(url.base.substring(url.base.lastIndexOf("/") + 1));
+                                Cid targetName = keyToHash(url.base.substring(url.base.lastIndexOf("/") + 1));
                                 futures.add(direct.put(url.base, blocks.get(i), url.fields)
                                         .thenApply(x -> targetName));
                             }
@@ -128,12 +129,12 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner,
-                                                     PublicKeyHash writer,
-                                                     List<byte[]> signatures,
-                                                     List<byte[]> blocks,
-                                                     TransactionId tid,
-                                                     ProgressConsumer<Long> progressCounter) {
+    public CompletableFuture<List<Cid>> putRaw(PublicKeyHash owner,
+                                               PublicKeyHash writer,
+                                               List<byte[]> signatures,
+                                               List<byte[]> blocks,
+                                               TransactionId tid,
+                                               ProgressConsumer<Long> progressCounter) {
         return onOwnersNode(owner).thenCompose(ownersNode -> {
             if (ownersNode && directWrites) {
                 // we have a trade-off here. The first block upload cannot start until the auth call returns.
@@ -141,7 +142,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                 int FRAGMENTS_PER_AUTH_QUERY = 6;
                 List<List<byte[]>> grouped = ArrayOps.group(blocks, FRAGMENTS_PER_AUTH_QUERY);
                 List<List<byte[]>> groupedSignatures = ArrayOps.group(signatures, FRAGMENTS_PER_AUTH_QUERY);
-                List<CompletableFuture<List<Multihash>>> futures = IntStream.range(0, grouped.size())
+                List<CompletableFuture<List<Cid>>> futures = IntStream.range(0, grouped.size())
                         .parallel()
                         .mapToObj(i -> bulkPutRaw(
                                 owner,
@@ -159,19 +160,19 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
         });
     }
 
-    private CompletableFuture<List<Multihash>> bulkPutRaw(PublicKeyHash owner,
-                                                          PublicKeyHash writer,
-                                                          List<byte[]> signatures,
-                                                          List<byte[]> blocks,
-                                                          TransactionId tid,
-                                                          ProgressConsumer<Long> progressCounter) {
-        CompletableFuture<List<Multihash>> res = new CompletableFuture<>();
+    private CompletableFuture<List<Cid>> bulkPutRaw(PublicKeyHash owner,
+                                                    PublicKeyHash writer,
+                                                    List<byte[]> signatures,
+                                                    List<byte[]> blocks,
+                                                    TransactionId tid,
+                                                    ProgressConsumer<Long> progressCounter) {
+        CompletableFuture<List<Cid>> res = new CompletableFuture<>();
         fallback.authWrites(owner, writer, signatures, blocks.stream().map(x -> x.length).collect(Collectors.toList()), true, tid)
                 .thenCompose(preAuthed -> {
-                    List<CompletableFuture<Multihash>> futures = new ArrayList<>();
+                    List<CompletableFuture<Cid>> futures = new ArrayList<>();
                     for (int i = 0; i < blocks.size(); i++) {
                         PresignedUrl url = preAuthed.get(i);
-                        Multihash targetName = keyToHash(url.base.substring(url.base.lastIndexOf("/") + 1));
+                        Cid targetName = keyToHash(url.base.substring(url.base.lastIndexOf("/") + 1));
                         Long size = (long) blocks.get(i).length;
                         futures.add(direct.put(url.base, blocks.get(i), url.fields)
                                 .thenApply(x -> {
@@ -186,22 +187,24 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Multihash> hashes,
+    public CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Cid> hashes,
+                                                                       List<BatWithId> bats,
+                                                                       Hasher h,
                                                                        ProgressConsumer<Long> monitor,
                                                                        double spaceIncreaseFactor) {
         if (publicReads || ! authedReads)
-            return NetworkAccess.downloadFragments(hashes, this, monitor, spaceIncreaseFactor);
+            return NetworkAccess.downloadFragments(hashes, bats, this, h, monitor, spaceIncreaseFactor);
 
         // Do a bulk auth in a single call
-        List<Pair<Integer, Multihash>> indexAndHash = IntStream.range(0, hashes.size())
+        List<Pair<Integer, Cid>> indexAndHash = IntStream.range(0, hashes.size())
                 .mapToObj(i -> new Pair<>(i, hashes.get(i)))
                 .collect(Collectors.toList());
-        List<Pair<Integer, Multihash>> nonIdentity = indexAndHash.stream()
+        List<Pair<Integer, Cid>> nonIdentity = indexAndHash.stream()
                 .filter(p -> ! p.right.isIdentity())
                 .collect(Collectors.toList());
         CompletableFuture<List<PresignedUrl>> auths = nonIdentity.isEmpty() ?
                 Futures.of(Collections.emptyList()) :
-                fallback.authReads(nonIdentity.stream().map(p -> p.right).collect(Collectors.toList()));
+                fallback.authReads(nonIdentity.stream().map(p -> new MirrorCap(p.right, Optional.of(bats.get(p.left)))).collect(Collectors.toList()));
         CompletableFuture<List<FragmentWithHash>> allResults = new CompletableFuture();
         auths
                 .thenCompose(preAuthedGets ->
@@ -210,7 +213,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                                 .mapToObj(i -> direct.get(preAuthedGets.get(i).base, preAuthedGets.get(i).fields)
                                         .thenApply(b -> {
                                             monitor.accept((long)b.length);
-                                            Pair<Integer, Multihash> hashAndIndex = nonIdentity.get(i);
+                                            Pair<Integer, Cid> hashAndIndex = nonIdentity.get(i);
                                             return new Pair<>(hashAndIndex.left,
                                                     new FragmentWithHash(new Fragment(b), Optional.of(hashAndIndex.right)));
                                         }))
@@ -231,7 +234,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                     return Arrays.asList(res);
                 }).thenAccept(allResults::complete)
                 .exceptionally(t -> {
-                    NetworkAccess.downloadFragments(hashes, this, monitor, spaceIncreaseFactor)
+                    NetworkAccess.downloadFragments(hashes, bats, this, h, monitor, spaceIncreaseFactor)
                             .thenAccept(allResults::complete)
                             .exceptionally(e -> {
                                 allResults.completeExceptionally(e);
@@ -243,12 +246,12 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Multihash hash) {
-        return getRaw(hash).thenApply(opt -> opt.map(CborObject::fromByteArray));
+    public CompletableFuture<Optional<CborObject>> get(Cid hash, Optional<BatWithId> bat) {
+        return getRaw(hash, bat).thenApply(opt -> opt.map(CborObject::fromByteArray));
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash) {
+    public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, Optional<BatWithId> bat) {
         if (hash.isIdentity())
                 return CompletableFuture.completedFuture(Optional.of(hash.getHash()));
         if (publicReads) {
@@ -257,12 +260,12 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                     .thenApply(Optional::of)
                     .thenAccept(res::complete)
                     .exceptionally(t -> {
-                        fallback.authReads(Arrays.asList(hash))
+                        fallback.authReads(Arrays.asList(new MirrorCap(hash, bat)))
                                 .thenCompose(preAuthedGet -> direct.get(preAuthedGet.get(0).base))
                                 .thenApply(Optional::of)
                                 .thenAccept(res::complete)
                                 .exceptionally(e -> {
-                                    fallback.getRaw(hash)
+                                    fallback.getRaw(hash, bat)
                                             .thenAccept(res::complete)
                                             .exceptionally(f -> {
                                                 res.completeExceptionally(f);
@@ -276,12 +279,12 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
         }
         if (authedReads) {
             CompletableFuture<Optional<byte[]>> res = new CompletableFuture<>();
-            fallback.authReads(Arrays.asList(hash))
+            fallback.authReads(Arrays.asList(new MirrorCap(hash, bat)))
                     .thenCompose(preAuthedGet -> direct.get(preAuthedGet.get(0).base, preAuthedGet.get(0).fields))
                     .thenApply(Optional::of)
                     .thenAccept(res::complete)
                     .exceptionally(t -> {
-                        fallback.getRaw(hash)
+                        fallback.getRaw(hash, bat)
                                 .thenAccept(res::complete)
                                 .exceptionally(e -> {
                                     res.completeExceptionally(e);
@@ -291,7 +294,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                     });
             return res;
         }
-        return fallback.getRaw(hash);
+        return fallback.getRaw(hash, bat);
     }
 
     @Override
@@ -300,33 +303,13 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> pinUpdate(PublicKeyHash owner, Multihash existing, Multihash updated) {
-        return Futures.of(Collections.singletonList(updated));
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> recursivePin(PublicKeyHash owner, Multihash hash) {
-        return Futures.of(Collections.singletonList(hash));
-    }
-
-    @Override
-    public CompletableFuture<List<Multihash>> recursiveUnpin(PublicKeyHash owner, Multihash hash) {
-        return Futures.of(Collections.singletonList(hash));
-    }
-
-    @Override
-    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey) {
+    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey, Optional<BatWithId> bat) {
         return Futures.asyncExceptionally(
-                () -> fallback.getChampLookup(owner, root, champKey),
+                () -> fallback.getChampLookup(owner, root, champKey, bat),
                 t -> {
                     if (!(t instanceof RateLimitException))
                         return Futures.errored(t);
-                    return getChampLookup(root, champKey, hasher);
+                    return getChampLookup(root, champKey, bat, hasher);
                 });
-    }
-
-    @Override
-    public CompletableFuture<Boolean> gc() {
-        return Futures.errored(new IllegalStateException("S3 doesn't implement GC!"));
     }
 }

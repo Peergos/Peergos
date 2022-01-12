@@ -4,6 +4,7 @@ import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
@@ -85,8 +86,9 @@ public class CorenodeEventPropagator implements CoreNode {
     @Override
     public CompletableFuture<UserSnapshot> migrateUser(String username,
                                                        List<UserPublicKeyLink> newChain,
-                                                       Multihash currentStorageId) {
-        return target.migrateUser(username, newChain, currentStorageId).thenApply(res -> {
+                                                       Multihash currentStorageId,
+                                                       Optional<BatWithId> mirrorBat) {
+        return target.migrateUser(username, newChain, currentStorageId, mirrorBat).thenApply(res -> {
             processEvent(newChain);
             return res;
         });

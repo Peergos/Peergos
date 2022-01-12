@@ -3,6 +3,7 @@ package peergos.server.space;
 import java.util.concurrent.atomic.*;
 import java.util.logging.*;
 
+import peergos.server.storage.*;
 import peergos.server.storage.admin.*;
 import peergos.server.util.*;
 
@@ -12,6 +13,7 @@ import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
@@ -30,7 +32,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
     private static final long USAGE_TOLERANCE = 1024 * 1024;
     private final CoreNode core;
     private final MutablePointers mutable;
-    private final ContentAddressedStorage dht;
+    private final DeletableContentAddressedStorage dht;
     private final Hasher hasher;
     private final QuotaAdmin quotaAdmin;
     private final UsageStore usageStore;
@@ -39,7 +41,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
 
     public SpaceCheckingKeyFilter(CoreNode core,
                                   MutablePointers mutable,
-                                  ContentAddressedStorage dht,
+                                  DeletableContentAddressedStorage dht,
                                   Hasher hasher,
                                   QuotaAdmin quotaAdmin,
                                   UsageStore usageStore) {
@@ -55,6 +57,9 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                     MutableEvent event = mutableQueue.take();
                     processMutablePointerEvent(event);
                 } catch (InterruptedException e) {}
+                catch (Exception e) {
+                    e.printStackTrace();
+                }
             }
         }, "SpaceCheckingKeyFilter").start();
         //add shutdown-hook to call close
@@ -105,7 +110,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                               QuotaAdmin quotas,
                               CoreNode core,
                               MutablePointers mutable,
-                              ContentAddressedStorage dht,
+                              DeletableContentAddressedStorage dht,
                               Hasher hasher) {
         Logging.LOG().info("Checking for updated usage for users...");
         List<String> localUsernames = quotas.getLocalUsernames();
@@ -129,7 +134,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 boolean isChanged = ! writerUsage.target().equals(rootHash);
                 if (isChanged) {
                     Logging.LOG().info("Root hash changed from " + writerUsage.target() + " to " + rootHash);
-                    long updatedSize = dht.getRecursiveBlockSize(rootHash.get()).get();
+                    long updatedSize = dht.getRecursiveBlockSize((Cid)rootHash.get()).get();
                     long deltaUsage = updatedSize - writerUsage.directRetainedStorage();
                     store.confirmUsage(writerUsage.owner, writerKey, deltaUsage, false);
                     Set<PublicKeyHash> directOwnedKeys = WriterData.getDirectOwnedKeys(owner, writerKey, mutable, dht, hasher).join();
@@ -188,7 +193,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
     public static void processCorenodeEvent(String username,
                                             PublicKeyHash owner,
                                             UsageStore usageStore,
-                                            ContentAddressedStorage dht,
+                                            DeletableContentAddressedStorage dht,
                                             MutablePointers mutable,
                                             Hasher hasher) {
         usageStore.addUserIfAbsent(username);
@@ -235,7 +240,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                                                    MaybeMultihash existingRoot,
                                                    MaybeMultihash newRoot,
                                                    MutablePointers mutable,
-                                                   ContentAddressedStorage dht,
+                                                   DeletableContentAddressedStorage dht,
                                                    Hasher hasher) {
         if (existingRoot.equals(newRoot))
             return;
@@ -259,7 +264,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
 
         try {
             synchronized (current) {
-                long changeInStorage = dht.getChangeInContainedSize(current.target(), newRoot.get()).get();
+                long changeInStorage = dht.getChangeInContainedSize(current.target().toOptional().map(c -> (Cid) c), (Cid) newRoot.get()).get();
                 Set<PublicKeyHash> updatedOwned =
                         WriterData.getDirectOwnedKeys(writer, newRoot, dht, hasher).join();
                 for (PublicKeyHash owned : updatedOwned) {
@@ -283,7 +288,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                                                 PublicKeyHash owner,
                                                 Set<PublicKeyHash> removed,
                                                 MutablePointers mutable,
-                                                ContentAddressedStorage dht,
+                                                DeletableContentAddressedStorage dht,
                                                 Hasher hasher) {
         for (PublicKeyHash ownedKey : removed) {
             try {

@@ -48,7 +48,7 @@ public class PostgresUserTests extends UserTests {
         WriteSynchronizer synchronizer = new WriteSynchronizer(service.mutable, service.storage, crypto.hasher);
         MutableTree mutableTree = new MutableTreeImpl(service.mutable, service.storage, crypto.hasher, synchronizer);
         NetworkAccess network = new NetworkAccess(service.coreNode, service.account, service.social, service.storage,
-                service.mutable, mutableTree, synchronizer, service.controller, service.usage, service.serverMessages,
+                service.bats, service.mutable, mutableTree, synchronizer, service.controller, service.usage, service.serverMessages,
                 service.crypto.hasher, Arrays.asList("peergos"), false);
         return Arrays.asList(new Object[][] {
                 {network, service}
@@ -60,5 +60,10 @@ public class PostgresUserTests extends UserTests {
         Path peergosDir = args.fromPeergosDir("", "");
         System.out.println("Deleting " + peergosDir);
         deleteFiles(peergosDir.toFile());
+    }
+
+    @Override
+    public Args getArgs() {
+        return args;
     }
 }

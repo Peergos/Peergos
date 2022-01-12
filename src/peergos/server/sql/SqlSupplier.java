@@ -6,6 +6,8 @@ public interface SqlSupplier {
 
     String listTablesCommand();
 
+    String tableExistsCommand();
+
     String createFollowRequestsTableCommand();
 
     String insertTransactionCommand();
@@ -24,6 +26,16 @@ public interface SqlSupplier {
     default String createAccountTableCommand() {
         return "CREATE TABLE IF NOT EXISTS login (username text primary key not null, entry text not null, reader text not null); " +
                 "CREATE UNIQUE INDEX IF NOT EXISTS login_index ON login (username);";
+    }
+
+    default String createBatStoreTableCommand() {
+        return "CREATE TABLE IF NOT EXISTS bats (username text not null, id text primary key not null, bat text not null); " +
+                "CREATE UNIQUE INDEX IF NOT EXISTS bat_index ON bats (id);";
+    }
+
+    default String createLegacyRawBlocksTableCommand() {
+        return "CREATE TABLE IF NOT EXISTS legacyraw (cid text primary key not null); " +
+                "CREATE UNIQUE INDEX IF NOT EXISTS bat_index ON legacyraw (cid);";
     }
 
     default String createSpaceRequestsTableCommand() {

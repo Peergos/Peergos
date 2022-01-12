@@ -758,7 +758,7 @@ public class Simulator {
                 WriteSynchronizer synchronizer = new WriteSynchronizer(service.mutable, service.storage, crypto.hasher);
                 MutableTree mutableTree = new MutableTreeImpl(service.mutable, service.storage, crypto.hasher, synchronizer);
                 NetworkAccess networkAccess = new NetworkAccess(service.coreNode, service.account, service.social, service.storage,
-                        service.mutable, mutableTree, synchronizer, service.controller, service.usage,
+                        service.bats, service.mutable, mutableTree, synchronizer, service.controller, service.usage,
                         service.serverMessages, service.crypto.hasher, Arrays.asList("peergos"), false);
                 UserContext userContext = PeergosNetworkUtils.ensureSignedUp(username, usernameToPassword(username), networkAccess, crypto);
                 PeergosFileSystemImpl peergosFileSystem = new PeergosFileSystemImpl(userContext);

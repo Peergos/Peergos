@@ -73,7 +73,7 @@ public class MkdirBenchmark {
         for (int i=0; i < names.size(); i++) {
             String filename = names.get(i);
             long t1 = System.currentTimeMillis();
-            userRoot = userRoot.mkdir(filename, context.network, false, crypto).join();
+            userRoot = userRoot.mkdir(filename, context.network, false, userRoot.mirrorBatId(), crypto).join();
             long duration = System.currentTimeMillis() - t1;
             worst = Math.max(worst, duration);
             best = Math.min(best, duration);
