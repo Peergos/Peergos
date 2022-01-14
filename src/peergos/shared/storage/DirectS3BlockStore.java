@@ -204,7 +204,12 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                 .collect(Collectors.toList());
         CompletableFuture<List<PresignedUrl>> auths = nonIdentity.isEmpty() ?
                 Futures.of(Collections.emptyList()) :
-                fallback.authReads(nonIdentity.stream().map(p -> new MirrorCap(p.right, Optional.of(bats.get(p.left)))).collect(Collectors.toList()));
+                fallback.authReads(nonIdentity.stream()
+                        .map(p -> new MirrorCap(p.right,
+                                bats.size() > p.left ?
+                                        Optional.of(bats.get(p.left)) :
+                                        Optional.empty()))
+                        .collect(Collectors.toList()));
         CompletableFuture<List<FragmentWithHash>> allResults = new CompletableFuture();
         auths
                 .thenCompose(preAuthedGets ->
