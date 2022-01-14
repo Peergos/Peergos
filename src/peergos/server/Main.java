@@ -126,7 +126,7 @@ public class Main extends Builder {
                     new Command.Arg("pki.node.ipaddress", "IP address of the pki node", true, "172.104.157.121"),
                     new Command.Arg("ipfs-api-address", "IPFS API port", false, "/ip4/127.0.0.1/tcp/5001"),
                     new Command.Arg("ipfs-gateway-address", "IPFS Gateway port", false, "/ip4/127.0.0.1/tcp/8080"),
-                    new Command.Arg("allow-target", "Local address to listen on for IPFS allow calls", false, "http://localhost:8002"),
+                    new Command.Arg("allow-target", "Local address to listen on for IPFS allow calls", false, "/ip4/127.0.0.1/tcp/8002"),
                     new Command.Arg("pki.node.swarm.port", "Swarm port of the pki node", true, "5001"),
                     new Command.Arg("domain", "Domain name to bind to", false, "localhost"),
                     new Command.Arg("public-domain", "The public domain name for this server (required if TLS is managed upstream)", false),
@@ -307,7 +307,7 @@ public class Main extends Builder {
                     new Command.Arg("space-usage-sql-file", "The filename for the space usage datastore", true, "space-usage.sql"),
                     new Command.Arg("ipfs-api-address", "ipfs api port", true, "/ip4/127.0.0.1/tcp/5001"),
                     new Command.Arg("ipfs-gateway-address", "ipfs gateway port", true, "/ip4/127.0.0.1/tcp/8080"),
-                    new Command.Arg("allow-target", "Local address to listen on for IPFS allow calls", false, "http://localhost:8002"),
+                    new Command.Arg("allow-target", "Local address to listen on for IPFS allow calls", false, "/ip4/127.0.0.1/tcp/8002"),
                     new Command.Arg("pki.secret.key.path", "The path to the pki secret key file", true, "test.pki.secret.key"),
                     new Command.Arg("pki.public.key.path", "The path to the pki public key file", true, "test.pki.public.key"),
                     // Secret parameters
@@ -371,7 +371,7 @@ public class Main extends Builder {
                     new Command.Arg("space-usage-sql-file", "The filename for the space usage datastore", true, "space-usage.sql"),
                     ARG_IPFS_API_ADDRESS,
                     new Command.Arg("ipfs-gateway-address", "ipfs gateway port", true, "/ip4/127.0.0.1/tcp/8080"),
-                    new Command.Arg("allow-target", "Local address to listen on for IPFS allow calls", false, "http://localhost:8002"),
+                    new Command.Arg("allow-target", "Local address to listen on for IPFS allow calls", false, "/ip4/127.0.0.1/tcp/8002"),
                     new Command.Arg("pki.secret.key.path", "The path to the pki secret key file", true, "test.pki.secret.key"),
                     new Command.Arg("pki.public.key.path", "The path to the pki public key file", true, "test.pki.public.key"),
                     // Secret parameters
@@ -543,7 +543,8 @@ public class Main extends Builder {
             Account account = new AccountWithStorage(localStorage, localPointers, rawAccount);
             AccountProxy accountProxy = new HttpAccount(p2pHttpProxy, pkiServerNodeId);
 
-            InetSocketAddress allowListener = new InetSocketAddress("localhost", AddressUtil.getListenPort(a.getArg("allow-target")));
+            MultiAddress allowListenAddress = new MultiAddress(a.getArg("allow-target"));
+            InetSocketAddress allowListener = new InetSocketAddress(allowListenAddress.getHost(), allowListenAddress.getTCPPort());
             System.out.println("Block allow listener for " + nodeId + " on " + allowListener);
             BlockAuthServer.startListener(blockRequestAuthoriser, allowListener, 100, 4);
 
