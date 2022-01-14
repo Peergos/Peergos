@@ -81,11 +81,11 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
 
         String apiAddress = args.getArg("ipfs-api-address");
         String gatewayAddress = args.getArg("ipfs-gateway-address");
-        String allowTarget = args.getArg("allow-target");
+        MultiAddress allowTarget = new MultiAddress(args.getArg("allow-target"));
         int swarmPort = args.getInt("ipfs-swarm-port", 4001);
 
         List<IpfsInstaller.Plugin> plugins = IpfsInstaller.Plugin.parseAll(args);
-        return new Config(bootstrapNodes, apiAddress, gatewayAddress, allowTarget, swarmPort, plugins);
+        return new Config(bootstrapNodes, apiAddress, gatewayAddress, "http://" + allowTarget.getHost() + ":" + allowTarget.getTCPPort(), swarmPort, plugins);
     }
 
     private static final String IPFS_DIR = "IPFS_PATH";
