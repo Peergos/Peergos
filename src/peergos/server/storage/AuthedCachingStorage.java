@@ -15,6 +15,7 @@ import java.util.concurrent.*;
 public class AuthedCachingStorage extends DelegatingStorage {
     private final ContentAddressedStorage target;
     private final LRUCache<Multihash, byte[]> cache;
+    private final LRUCache<Multihash, Boolean> legacyBlocks;
     private final LRUCache<Multihash, CompletableFuture<Optional<CborObject>>> pending;
     private final LRUCache<Multihash, CompletableFuture<Optional<byte[]>>> pendingRaw;
     private final BlockRequestAuthoriser authoriser;
@@ -33,6 +34,7 @@ public class AuthedCachingStorage extends DelegatingStorage {
         this.authoriser = authoriser;
         this.h = h;
         this.cache = new LRUCache<>(cacheSize);
+        this.legacyBlocks = new LRUCache<>(cacheSize);
         this.maxValueSize = maxValueSize;
         this.cacheSize = cacheSize;
         this.pending = new LRUCache<>(100);
@@ -77,6 +79,8 @@ public class AuthedCachingStorage extends DelegatingStorage {
     }
 
     private CompletableFuture<byte[]> authoriseGet(Cid key, byte[] block, Optional<BatWithId> bat) {
+        if (key.isRaw() && bat.isEmpty() && legacyBlocks.containsKey(key))
+            return Futures.of(block);
         return bat.map(b -> b.bat.generateAuth(key, ourNodeId, 300, S3Request.currentDatetime(), bat.get().id, h)
                 .thenApply(BlockAuth::encode)).orElse(Futures.of(""))
                 .thenCompose(auth -> authoriser.allowRead(key, block, ourNodeId, auth))
@@ -154,8 +158,11 @@ public class AuthedCachingStorage extends DelegatingStorage {
         return target.getRaw(key, bat).thenApply(rawOpt -> {
             if (rawOpt.isPresent()) {
                 byte[] value = rawOpt.get();
-                if (value.length > 0 && value.length < maxValueSize)
+                if (value.length > 0 && value.length < maxValueSize) {
                     cache.put(key, value);
+                    if (bat.isEmpty() && key.isRaw())
+                        legacyBlocks.put(key, true);
+                }
             }
             pendingRaw.remove(key);
             pipe.complete(rawOpt);
