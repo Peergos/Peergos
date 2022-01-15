@@ -22,17 +22,17 @@ public class IpfsInstaller {
 
     public enum DownloadTarget {
         DARWIN_AMD64("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.2.0/darwin-amd64/ipfs?raw=true",
-                Cid.decode("QmTG9XQ1GaPf6kFbEQ2dMfkUmTp5jFuvW6CZvwjPbJmGRN")),
+                Cid.decode("Qmdh9kMRWtHZaVR1RrcUAPJuKxX1tPCkEVueAL7Xnpa2iP")),
         DARWIN_ARM64("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.2.0/darwin-arm64/ipfs?raw=true",
-                Cid.decode("QmVQjZtQwv4kj2PzNq1ZGfPoN36ba6T3XdoH5oyFjKTvqY")),
+                Cid.decode("QmZ8Z6hFm9bo5TfGTto97iM29BACdjYppL5hdBTZ5zsDxe")),
         LINUX_AMD64("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.2.0/linux-amd64/ipfs?raw=true",
-                Cid.decode("QmepVZe4ApP1w4mb2Nc13eudDnY7YzcLyqiVScMkHNmHhR")),
+                Cid.decode("QmRCDCk8hrxdD1BHMKvkK79SszUgSKccXfvSy2GaihfpgT")),
         LINUX_ARM("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.2.0/linux-arm/ipfs?raw=true",
-                Cid.decode("QmaqPFnkC3HCSqpUME3NBFNeEQcy4ENiHVtpTNs4vtfT5o")),
+                Cid.decode("QmU5EMwTww5Wk5huofoVQtVUst8yNLijboxmhmEZzvRCnD")),
         LINUX_ARM64("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.2.0/linux-arm64/ipfs?raw=true",
-                Cid.decode("QmXeubxvweh82uWUTh2PQcAEUgcTGaLPjniohwNyPKjZJp")),
+                Cid.decode("Qmb6hBPeXrsmtbL3CnASvsEW8n7HPFhXK3LZJCEc2YmM9w")),
         WINDOWS_AMD64("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.2.0/windows-amd64/ipfs.exe?raw=true",
-                Cid.decode("QmSN3goV4pAMiswqcdu96xNFUZc7Hc3ahFcNYF9JPWV729")),;
+                Cid.decode("QmRAEqD8hotmnnnt4de2KVnHbJA1QpG1Vp3F3gnQwcaX5j")),;
 
         public final String url;
         public final Multihash multihash;
