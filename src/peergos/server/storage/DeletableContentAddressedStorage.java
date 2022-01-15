@@ -25,6 +25,8 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
 
     List<Multihash> getOpenTransactionBlocks();
 
+    boolean hasBlock(Cid hash);
+
     void delete(Multihash hash);
 
     default void bulkDelete(List<Multihash> blocks) {
@@ -224,6 +226,12 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         @Override
         public void delete(Multihash hash) {
             poster.get(apiPrefix + BLOCK_RM + "?stream-channels=true&arg=" + hash.toString()).join();
+        }
+
+        @Override
+        public boolean hasBlock(Cid hash) {
+            return poster.get(apiPrefix + BLOCK_PRESENT + "?stream-channels=true&arg=" + hash.toString())
+                    .thenApply(raw -> new String(raw).equals("true")).join();
         }
 
         @Override

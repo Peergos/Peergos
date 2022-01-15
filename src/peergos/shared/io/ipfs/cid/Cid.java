@@ -22,13 +22,7 @@ public class Cid extends Multihash {
         Raw(0x55),
         DagProtobuf(0x70),
         DagCbor(0x71),
-        LibP2pKey(0x72),
-        EthereumBlock(0x90),
-        EthereumTx(0x91),
-        BitcoinBlock(0xb0),
-        BitcoinTx(0xb1),
-        ZcashBlock(0xc0),
-        ZcashTx(0xc1);
+        LibP2pKey(0x72);
 
         public long type;
 
@@ -85,6 +79,10 @@ public class Cid extends Multihash {
         else if (version == V1)
             return toBytesV1();
         throw new IllegalStateException("Unknown cid version: " + version);
+    }
+
+    public boolean isRaw() {
+        return codec == Codec.Raw;
     }
 
     @Override

@@ -55,6 +55,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     private final BlockStoreProperties props;
     private final TransactionStore transactions;
     private final BlockRequestAuthoriser authoriser;
+    private final JdbcLegacyRawBlockStore legacyRawBlocks;
     private final Hasher hasher;
     private final DeletableContentAddressedStorage p2pFallback;
 
@@ -63,6 +64,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                           BlockStoreProperties props,
                           TransactionStore transactions,
                           BlockRequestAuthoriser authoriser,
+                          JdbcLegacyRawBlockStore legacyRawBlocks,
                           Hasher hasher,
                           DeletableContentAddressedStorage p2pFallback) {
         this.id = id;
@@ -77,6 +79,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         this.props = props;
         this.transactions = transactions;
         this.authoriser = authoriser;
+        this.legacyRawBlocks = legacyRawBlocks;
         this.hasher = hasher;
         this.p2pFallback = p2pFallback;
     }
@@ -207,6 +210,28 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
+    public boolean hasBlock(Cid hash) {
+        try {
+            PresignedUrl headUrl = S3Request.preSignHead(folder + hashToKey(hash), Optional.of(60),
+                    S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKeyId, secretKey, hasher).join();
+            Map<String, List<String>> headRes = HttpUtil.head(headUrl);
+            return true;
+        } catch (IOException e) {
+            String msg = e.getMessage();
+            boolean rateLimited = msg.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>SlowDown</Code>");
+            if (rateLimited) {
+                throw new RateLimitException();
+            }
+            boolean notFound = msg.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>NoSuchKey</Code>");
+            if (! notFound) {
+                LOG.warning("S3 error reading " + hash);
+                LOG.log(Level.WARNING, msg, e);
+            }
+            return false;
+        }
+    }
+
+    @Override
     public CompletableFuture<List<Cid>> mirror(PublicKeyHash owner,
                                                Optional<Cid> existing,
                                                Optional<Cid> updated,
@@ -267,7 +292,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     private void collectGarbage(JdbcIpnsAndSocial pointers, UsageStore usage) {
-        GarbageCollector.collect(this, pointers, usage, this::savePointerSnapshot);
+        GarbageCollector.collect(this, pointers, usage, legacyRawBlocks, this::savePointerSnapshot);
     }
 
     private CompletableFuture<Boolean> savePointerSnapshot(Stream<Map.Entry<PublicKeyHash, byte[]>> pointers) {
@@ -502,7 +527,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     public static void main(String[] args) throws Exception {
-        System.out.println("Performing GC on block store...");
+        System.out.println("Performing GC on S3 block store...");
         Args a = Args.parse(args);
         Crypto crypto = Main.initCrypto();
         Hasher hasher = crypto.hasher;
@@ -515,45 +540,13 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         Supplier<Connection> transactionsDb = Main.getDBConnector(a, "transactions-sql-file");
         TransactionStore transactions = JdbcTransactionStore.build(transactionsDb, sqlCommands);
         BlockRequestAuthoriser authoriser = (c, b, s, auth) -> Futures.of(true);
+        JdbcLegacyRawBlockStore legacyBlocks = new JdbcLegacyRawBlockStore(Main.getDBConnector(a, "legacy-raw-blocks-file"));
         S3BlockStorage s3 = new S3BlockStorage(config, Cid.decode(a.getArg("ipfs.id")),
-                BlockStoreProperties.empty(), transactions, authoriser, hasher, new RAMStorage(hasher));
+                BlockStoreProperties.empty(), transactions, authoriser, legacyBlocks, hasher, new RAMStorage(hasher));
         JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(database, sqlCommands);
         Supplier<Connection> usageDb = Main.getDBConnector(a, "space-usage-sql-file");
         UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
         s3.collectGarbage(rawPointers, usageStore);
-    }
-
-    public static void test(String[] args) throws Exception {
-        // Use this method to test access to a bucket
-        Crypto crypto = Main.initCrypto();
-        Hasher hasher = crypto.hasher;
-        S3Config config = S3Config.build(Args.parse(args));
-        System.out.println("Testing S3 bucket: " + config.bucket + " in region " + config.region + " with base dir: " + config.path);
-        Cid id = new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, RAMStorage.hash("S3Storage".getBytes()));
-        TransactionStore transactions = JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands());
-        BlockRequestAuthoriser authoriser = (c, b, s, a) -> Futures.of(true);
-        S3BlockStorage s3 = new S3BlockStorage(config, id, BlockStoreProperties.empty(), transactions, authoriser, hasher, new RAMStorage(hasher));
-
-        System.out.println("***** Testing ls and read");
-        System.out.println("Testing ls...");
-        List<Cid> files = s3.getFiles(1000);
-        System.out.println("Success! found " + files.size());
-
-        System.out.println("Testing read...");
-        byte[] data = s3.getRaw(files.get(0), "").join().get();
-        System.out.println("Success: read blob of size " + data.length);
-
-        System.out.println("Testing write...");
-        byte[] uploadData = new byte[10 * 1024];
-        new Random().nextBytes(uploadData);
-        PublicKeyHash owner = PublicKeyHash.NULL;
-        TransactionId tid = s3.startTransaction(owner).join();
-        Multihash put = s3.put(uploadData, true, tid, owner);
-        System.out.println("Success!");
-
-        System.out.println("Testing delete...");
-        s3.delete(put);
-        System.out.println("Success!");
     }
 
     @Override

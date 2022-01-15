@@ -66,6 +66,11 @@ public class AuthedStorage extends DelegatingStorage implements DeletableContent
     }
 
     @Override
+    public boolean hasBlock(Cid hash) {
+        return target.hasBlock(hash);
+    }
+
+    @Override
     public CompletableFuture<List<Cid>> getLinks(Cid root, String auth) {
         if (root.codec == Cid.Codec.Raw)
             return CompletableFuture.completedFuture(Collections.emptyList());

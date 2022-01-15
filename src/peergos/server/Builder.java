@@ -155,6 +155,7 @@ public class Builder {
     public static DeletableContentAddressedStorage buildLocalStorage(Args a,
                                                                      TransactionStore transactions,
                                                                      BlockRequestAuthoriser authoriser,
+                                                                     JdbcLegacyRawBlockStore legacyRawBlocks,
                                                                      Hasher hasher) {
         boolean useIPFS = a.getBoolean("useIPFS");
         boolean enableGC = a.getBoolean("enable-gc", false);
@@ -162,7 +163,7 @@ public class Builder {
         if (useIPFS) {
             DeletableContentAddressedStorage.HTTP ipfs = new DeletableContentAddressedStorage.HTTP(ipfsApi, false, hasher);
             if (enableGC) {
-                return new TransactionalIpfs(ipfs, transactions, authoriser, ipfs.id().join(), hasher);
+                return new TransactionalIpfs(ipfs, transactions, authoriser, legacyRawBlocks, ipfs.id().join(), hasher);
             } else
                 return new AuthedStorage(ipfs, authoriser, hasher);
         } else {
@@ -171,6 +172,8 @@ public class Builder {
                 if (enableGC)
                     throw new IllegalStateException("GC should be run separately when using S3!");
                 DeletableContentAddressedStorage.HTTP ipfs = new DeletableContentAddressedStorage.HTTP(ipfsApi, false, hasher);
+                Cid ourId = Cid.decode(a.getArg("ipfs.id"));
+                TransactionalIpfs legacyBlocksUpdater = new TransactionalIpfs(ipfs, transactions, authoriser, legacyRawBlocks, ourId, hasher);
                 Optional<String> publicReadUrl = S3Config.getPublicReadUrl(a);
                 boolean directWrites = a.getBoolean("direct-s3-writes", false);
                 boolean publicReads = a.getBoolean("public-s3-reads", false);
@@ -178,7 +181,8 @@ public class Builder {
                 S3Config config = S3Config.build(a);
                 Optional<String> authedUrl = Optional.of("https://" + config.getHost() + "/");
                 BlockStoreProperties props = new BlockStoreProperties(directWrites, publicReads, authedReads, publicReadUrl, authedUrl);
-                return new S3BlockStorage(config, Cid.decode(a.getArg("ipfs.id")), props, transactions, authoriser, hasher, ipfs);
+
+                return new S3BlockStorage(config, ourId, props, transactions, authoriser, legacyRawBlocks, hasher, legacyBlocksUpdater);
             } else {
                 return new FileContentAddressedStorage(blockstorePath(a), transactions, authoriser, hasher);
             }

@@ -103,7 +103,7 @@ public class ServerMessages extends Builder {
         TransactionStore transactions = buildTransactionStore(a, dbConnectionPool);
         Hasher hasher = Main.initCrypto().hasher;
         BlockRequestAuthoriser blockRequestAuthoriser = (b, d, s, auth) -> Futures.of(true); // not relevant for local only use here
-        DeletableContentAddressedStorage localStorage = buildLocalStorage(a, transactions, blockRequestAuthoriser, hasher);
+        DeletableContentAddressedStorage localStorage = buildLocalStorage(a, transactions, blockRequestAuthoriser, null, hasher);
         JdbcIpnsAndSocial rawPointers = buildRawPointers(a, getDBConnector(a, "mutable-pointers-file", dbConnectionPool));
         MutablePointers localPointers = UserRepository.build(localStorage, rawPointers);
         MutablePointersProxy proxingMutable = new HttpMutablePointers(buildP2pHttpProxy(a), getPkiServerId(a));

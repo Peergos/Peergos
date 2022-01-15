@@ -170,6 +170,13 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     }
 
     @Override
+    public boolean hasBlock(Cid hash) {
+        Path path = getFilePath(hash);
+        File file = root.resolve(path).toFile();
+        return file.exists();
+    }
+
+    @Override
     public CompletableFuture<List<Cid>> getLinks(Cid root, String auth) {
         if (root.codec == Cid.Codec.Raw)
             return CompletableFuture.completedFuture(Collections.emptyList());

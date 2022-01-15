@@ -343,7 +343,7 @@ public class Main extends Builder {
                             new ContentAddressedStorage.HTTP(Builder.buildIpfsApi(args), false, crypto.hasher) :
                             S3Config.useS3(args) ?
                                     new S3BlockStorage(S3Config.build(args), Cid.decode(args.getArg("ipfs.id")),
-                                            BlockStoreProperties.empty(), transactions, authoriser,
+                                            BlockStoreProperties.empty(), transactions, authoriser, legacyRawBlocks,
                                             crypto.hasher, new DeletableContentAddressedStorage.HTTP(Builder.buildIpfsApi(args), false, crypto.hasher)) :
                                     new FileContentAddressedStorage(blockstorePath(args),
                                             transactions, authoriser, crypto.hasher);
@@ -515,7 +515,8 @@ public class Main extends Builder {
             BatCave batStore = new JdbcBatCave(getDBConnector(a, "bat-store", dbConnectionPool), sqlCommands);
             JdbcLegacyRawBlockStore legacyRawBlocks = new JdbcLegacyRawBlockStore(getDBConnector(a, "legacy-raw-blocks-file", dbConnectionPool));
             BlockRequestAuthoriser blockRequestAuthoriser = Builder.blockAuthoriser(a, batStore, legacyRawBlocks, hasher);
-            DeletableContentAddressedStorage localStorage = buildLocalStorage(a, transactions, blockRequestAuthoriser, crypto.hasher);
+            DeletableContentAddressedStorage localStorage = buildLocalStorage(a, transactions, blockRequestAuthoriser,
+                    legacyRawBlocks, crypto.hasher);
             legacyRawBlocks.init(sqlCommands, localStorage);
             JdbcIpnsAndSocial rawPointers = buildRawPointers(a,
                     getDBConnector(a, "mutable-pointers-file", dbConnectionPool));
@@ -533,7 +534,7 @@ public class Main extends Builder {
             if (enableGC) {
                 if (S3Config.useS3(a))
                     throw new IllegalStateException("GC should be run separately when using S3!");
-                gc = new GarbageCollector(localStorage, rawPointers, usageStore);
+                gc = new GarbageCollector(localStorage, rawPointers, usageStore, legacyRawBlocks);
                 gc.start(a.getInt("gc.period.millis", 60 * 60 * 1000), s -> Futures.of(true));
             }
 
