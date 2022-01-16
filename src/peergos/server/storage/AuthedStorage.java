@@ -16,16 +16,19 @@ import java.util.stream.*;
 public class AuthedStorage extends DelegatingStorage implements DeletableContentAddressedStorage {
     private final DeletableContentAddressedStorage target;
     private final BlockRequestAuthoriser authoriser;
+    private final JdbcLegacyRawBlockStore legacyRawBlocks;
     private final Hasher h;
     private final Cid ourNodeId;
 
     public AuthedStorage(DeletableContentAddressedStorage target,
                          BlockRequestAuthoriser authoriser,
+                         JdbcLegacyRawBlockStore legacyRawBlocks,
                          Hasher h) {
         super(target);
         this.target = target;
         this.ourNodeId = target.id().join();
         this.authoriser = authoriser;
+        this.legacyRawBlocks = legacyRawBlocks;
         this.h = h;
     }
 
@@ -55,10 +58,14 @@ public class AuthedStorage extends DelegatingStorage implements DeletableContent
     }
 
     private CompletableFuture<Optional<byte[]>> getRaw(Cid hash, String auth, boolean doAuth) {
+        boolean newLegacyRaw = hash.isRaw() && auth.isEmpty() && ! hasBlock(hash);
         return target.getRaw(hash, auth).thenApply(bopt -> {
             if (bopt.isEmpty())
                 return Optional.empty();
             byte[] block = bopt.get();
+            if (newLegacyRaw) {
+                legacyRawBlocks.addBlock(hash);
+            }
             if (doAuth && ! authoriser.allowRead(hash, block, id().join(), auth).join())
                 throw new IllegalStateException("Unauthorised!");
             return bopt;

@@ -96,7 +96,7 @@ public class TransactionalIpfs extends DelegatingStorage implements DeletableCon
 
     @Override
     public CompletableFuture<List<Cid>> getLinks(Cid root, String auth) {
-        if (root.codec == Cid.Codec.Raw)
+        if (root.isRaw())
             return CompletableFuture.completedFuture(Collections.emptyList());
         return getRaw(root, auth, false)
                 .thenApply(opt -> opt.map(CborObject::fromByteArray))
