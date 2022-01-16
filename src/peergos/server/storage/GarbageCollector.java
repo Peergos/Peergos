@@ -2,6 +2,7 @@ package peergos.server.storage;
 
 import peergos.server.corenode.*;
 import peergos.server.space.*;
+import peergos.server.storage.auth.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
@@ -25,17 +26,20 @@ public class GarbageCollector {
     private final DeletableContentAddressedStorage storage;
     private final JdbcIpnsAndSocial pointers;
     private final UsageStore usage;
+    private final JdbcLegacyRawBlockStore legacyRaw;
 
     public GarbageCollector(DeletableContentAddressedStorage storage,
                             JdbcIpnsAndSocial pointers,
-                            UsageStore usage) {
+                            UsageStore usage,
+                            JdbcLegacyRawBlockStore legacyRaw) {
         this.storage = storage;
         this.pointers = pointers;
         this.usage = usage;
+        this.legacyRaw = legacyRaw;
     }
 
     public synchronized void collect(Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver) {
-        collect(storage, pointers, usage, snapshotSaver);
+        collect(storage, pointers, usage, legacyRaw, snapshotSaver);
     }
 
     public void start(long periodMillis, Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver) {
@@ -62,6 +66,7 @@ public class GarbageCollector {
     public static void collect(DeletableContentAddressedStorage storage,
                                JdbcIpnsAndSocial pointers,
                                UsageStore usage,
+                               JdbcLegacyRawBlockStore legacyRaw,
                                Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver) {
         System.out.println("Starting blockstore garbage collection on node " + storage.id().join() + "...");
         // TODO: do this more efficiently with a bloom filter, and actual streaming and multithreading
@@ -126,6 +131,8 @@ public class GarbageCollector {
         long t5 = System.nanoTime();
         System.out.println("Deleting blocks took " + (t5-t4)/1_000_000_000 + "s");
         System.out.println("GC complete. Freed " + deletedBlocks + " blocks totalling " + deletedSize + " bytes in " + (t5-t0)/1_000_000_000 + "s");
+        System.out.println("Cleaning legacy raw block store..");
+        legacyRaw.retainOnly(storage::hasBlock);
     }
 
     private static boolean markReachable(PublicKeyHash writerHash,

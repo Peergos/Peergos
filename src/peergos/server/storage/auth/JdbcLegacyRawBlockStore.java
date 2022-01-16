@@ -74,4 +74,22 @@ public class JdbcLegacyRawBlockStore {
             throw new RuntimeException(sqe);
         }
     }
+
+    public void retainOnly(Predicate<Cid> keep) {
+        try (Connection conn = getConnection();
+             PreparedStatement iterator = conn.prepareStatement("SELECT * FROM legacyraw;");
+             PreparedStatement delete = conn.prepareStatement("DELETE FROM legacyraw WHERE cid = ?;")) {
+            ResultSet rs = iterator.executeQuery();
+            while (rs.next()) {
+                Cid c = Cid.decode(rs.getString(1));
+                if (! keep.test(c)) {
+                    delete.setString(1, c.toString());
+                    delete.executeUpdate();
+                }
+            }
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
 }

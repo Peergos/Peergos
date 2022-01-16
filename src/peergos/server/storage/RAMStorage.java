@@ -153,6 +153,11 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
+    public boolean hasBlock(Cid hash) {
+        return storage.containsKey(hash);
+    }
+
+    @Override
     public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
         if (!storage.containsKey(block))
             return CompletableFuture.completedFuture(Optional.empty());
