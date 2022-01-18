@@ -303,7 +303,7 @@ public class WriterData implements Cborable {
                     return mutable.setPointer(owner, signer, cas)
                             .thenApply(res -> {
                                 if (!res)
-                                    throw new IllegalStateException("Corenode Crypto CAS failed!");
+                                    throw new IllegalStateException("Mutable pointer update failed! Concurrent Modification.");
                                 CommittedWriterData committed = committed(newHash);
                                 return new Snapshot(signer.publicKeyHash, committed);
                             });
