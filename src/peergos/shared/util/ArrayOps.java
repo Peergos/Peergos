@@ -91,4 +91,15 @@ public class ArrayOps
                 return a[i] & 0xff - b[i] & 0xff;
             return 0;
     }
+
+    public static boolean equalArrays(byte[] a, int aStart, int aEnd, byte[] b, int bStart, int bEnd) {
+        int len = aEnd - aStart;
+        if (len != bEnd - bStart)
+            return false;
+        for (int i=0; i < len; i++) {
+            if (a[aStart + i] != b[bStart + i])
+                return false;
+        }
+        return true;
+    }
 }

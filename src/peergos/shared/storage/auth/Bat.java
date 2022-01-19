@@ -97,7 +97,7 @@ public class Bat implements Cborable {
 
     public static List<BatId> getRawBlockBats(byte[] block) {
         int magicLength = RAW_BLOCK_MAGIC_PREFIX.length;
-        if (! Arrays.equals(block, 0, magicLength, RAW_BLOCK_MAGIC_PREFIX, 0, magicLength))
+        if (! ArrayOps.equalArrays(block, 0, magicLength, RAW_BLOCK_MAGIC_PREFIX, 0, magicLength))
             return Collections.emptyList();
         ByteArrayInputStream bin = new ByteArrayInputStream(block);
         bin.skip(magicLength);
@@ -106,7 +106,7 @@ public class Bat implements Cborable {
 
     public static byte[] removeRawBlockBatPrefix(byte[] block) {
         int magicLength = RAW_BLOCK_MAGIC_PREFIX.length;
-        if (! Arrays.equals(block, 0, magicLength, RAW_BLOCK_MAGIC_PREFIX, 0, magicLength))
+        if (! ArrayOps.equalArrays(block, 0, magicLength, RAW_BLOCK_MAGIC_PREFIX, 0, magicLength))
             return block;
         ByteArrayInputStream bin = new ByteArrayInputStream(block);
         bin.skip(magicLength);
