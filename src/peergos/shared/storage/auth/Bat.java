@@ -7,16 +7,17 @@ import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multibase.*;
 import peergos.shared.util.*;
 
-import java.nio.charset.*;
-import java.security.*;
-import java.time.*;
+import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.stream.*;
 
 /** Block Access token
  *  This is used as a secret key in AWS S3 V4 signatures to authorise retrieving a block
  */
 public class Bat implements Cborable {
+    public static final byte[] RAW_BLOCK_MAGIC_PREFIX = new byte[]{113, 29, 16, -49, 61, 50, 47, 43}; // generated randomly by a fair die roll (and not valid cbor at start)
+    public static final int MAX_RAW_BLOCK_PREFIX_SIZE = 100;
     public static final int BAT_LENGTH = 32;
 
     public final byte[] secret;
@@ -81,8 +82,36 @@ public class Bat implements Cborable {
                 .thenApply(signature -> new BlockAuth(ArrayOps.hexToBytes(signature), expirySeconds, datetime, batId));
     }
 
-    public static CompletableFuture<Bat> deriveFromRawBlock(byte[] block, Hasher h) {
-        return h.hkdfKey(block);
+    public static byte[] createRawBlockPrefix(Bat inlineBat, Optional<BatId> mirrorBat) {
+        ByteArrayOutputStream bout = new ByteArrayOutputStream();
+        try {
+            bout.write(RAW_BLOCK_MAGIC_PREFIX);
+            List<BatId> bats = Stream.concat(Stream.of(inlineBat).map(BatId::inline), mirrorBat.stream()).collect(Collectors.toList());
+            CborObject.CborList cbor = new CborObject.CborList(bats);
+            bout.write(cbor.serialize());
+            return bout.toByteArray();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static List<BatId> getRawBlockBats(byte[] block) {
+        int magicLength = RAW_BLOCK_MAGIC_PREFIX.length;
+        if (! Arrays.equals(block, 0, magicLength, RAW_BLOCK_MAGIC_PREFIX, 0, magicLength))
+            return Collections.emptyList();
+        ByteArrayInputStream bin = new ByteArrayInputStream(block);
+        bin.skip(magicLength);
+        return ((CborObject.CborList) CborObject.read(bin, block.length)).map(BatId::fromCbor);
+    }
+
+    public static byte[] removeRawBlockBatPrefix(byte[] block) {
+        int magicLength = RAW_BLOCK_MAGIC_PREFIX.length;
+        if (! Arrays.equals(block, 0, magicLength, RAW_BLOCK_MAGIC_PREFIX, 0, magicLength))
+            return block;
+        ByteArrayInputStream bin = new ByteArrayInputStream(block);
+        bin.skip(magicLength);
+        int start = magicLength + CborObject.read(bin, block.length).serialize().length;
+        return Arrays.copyOfRange(block, start, block.length);
     }
 
     public static Bat random(SafeRandom r) {

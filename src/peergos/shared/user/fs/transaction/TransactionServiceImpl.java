@@ -55,7 +55,7 @@ public class TransactionServiceImpl implements TransactionService {
                     if (!hasChild)
                         return CompletableFuture.completedFuture(version);
                     FileWrapper fileWrapper = fileOpt.get();
-                    return dir.removeChild(version, committer, fileWrapper, networkAccess, crypto.hasher);
+                    return dir.removeChild(version, committer, fileWrapper, networkAccess, crypto.random, crypto.hasher);
                 }));
     }
 

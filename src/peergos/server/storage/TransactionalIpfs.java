@@ -18,21 +18,18 @@ public class TransactionalIpfs extends DelegatingStorage implements DeletableCon
     private final DeletableContentAddressedStorage target;
     private final TransactionStore transactions;
     private final BlockRequestAuthoriser authoriser;
-    private final JdbcLegacyRawBlockStore legacyRawBlocks;
     private final Cid id;
     private final Hasher hasher;
 
     public TransactionalIpfs(DeletableContentAddressedStorage target,
                              TransactionStore transactions,
                              BlockRequestAuthoriser authoriser,
-                             JdbcLegacyRawBlockStore legacyRawBlocks,
                              Cid id,
                              Hasher hasher) {
         super(target);
         this.target = target;
         this.transactions = transactions;
         this.authoriser = authoriser;
-        this.legacyRawBlocks = legacyRawBlocks;
         this.id = id;
         this.hasher = hasher;
     }
@@ -70,12 +67,7 @@ public class TransactionalIpfs extends DelegatingStorage implements DeletableCon
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, String auth) {
-        boolean newLegacyRaw = hash.isRaw() && auth.isEmpty() && ! hasBlock(hash);
-        return getRaw(hash, auth, true).thenApply(opt -> {
-            if (opt.isPresent() && newLegacyRaw)
-                legacyRawBlocks.addBlock(hash);
-            return opt;
-        });
+        return getRaw(hash, auth, true);
     }
 
     private CompletableFuture<Optional<byte[]>> getRaw(Cid hash, String auth, boolean doAuth) {

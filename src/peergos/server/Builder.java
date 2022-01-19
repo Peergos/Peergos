@@ -155,7 +155,6 @@ public class Builder {
     public static DeletableContentAddressedStorage buildLocalStorage(Args a,
                                                                      TransactionStore transactions,
                                                                      BlockRequestAuthoriser authoriser,
-                                                                     JdbcLegacyRawBlockStore legacyRawBlocks,
                                                                      Hasher hasher) {
         boolean useIPFS = a.getBoolean("useIPFS");
         boolean enableGC = a.getBoolean("enable-gc", false);
@@ -163,9 +162,9 @@ public class Builder {
         if (useIPFS) {
             DeletableContentAddressedStorage.HTTP ipfs = new DeletableContentAddressedStorage.HTTP(ipfsApi, false, hasher);
             if (enableGC) {
-                return new TransactionalIpfs(ipfs, transactions, authoriser, legacyRawBlocks, ipfs.id().join(), hasher);
+                return new TransactionalIpfs(ipfs, transactions, authoriser, ipfs.id().join(), hasher);
             } else
-                return new AuthedStorage(ipfs, authoriser, legacyRawBlocks, hasher);
+                return new AuthedStorage(ipfs, authoriser, hasher);
         } else {
             // In S3 mode of operation we require the ipfs id to be supplied as we don't have a local ipfs running
             if (S3Config.useS3(a)) {
@@ -173,7 +172,7 @@ public class Builder {
                     throw new IllegalStateException("GC should be run separately when using S3!");
                 DeletableContentAddressedStorage.HTTP ipfs = new DeletableContentAddressedStorage.HTTP(ipfsApi, false, hasher);
                 Cid ourId = Cid.decode(a.getArg("ipfs.id"));
-                TransactionalIpfs legacyBlocksUpdater = new TransactionalIpfs(ipfs, transactions, authoriser, legacyRawBlocks, ourId, hasher);
+                TransactionalIpfs legacyBlocksUpdater = new TransactionalIpfs(ipfs, transactions, authoriser, ourId, hasher);
                 Optional<String> publicReadUrl = S3Config.getPublicReadUrl(a);
                 boolean directWrites = a.getBoolean("direct-s3-writes", false);
                 boolean publicReads = a.getBoolean("public-s3-reads", false);
@@ -182,51 +181,68 @@ public class Builder {
                 Optional<String> authedUrl = Optional.of("https://" + config.getHost() + "/");
                 BlockStoreProperties props = new BlockStoreProperties(directWrites, publicReads, authedReads, publicReadUrl, authedUrl);
 
-                return new S3BlockStorage(config, ourId, props, transactions, authoriser, legacyRawBlocks, hasher, legacyBlocksUpdater);
+                return new S3BlockStorage(config, ourId, props, transactions, authoriser, hasher, legacyBlocksUpdater);
             } else {
                 return new FileContentAddressedStorage(blockstorePath(a), transactions, authoriser, hasher);
             }
         }
     }
 
+
+    private static CompletableFuture<Boolean> ALLOW = Futures.of(true);
+    private static CompletableFuture<Boolean> BLOCK = Futures.of(false);
     public static BlockRequestAuthoriser blockAuthoriser(Args a,
                                                          BatCave batStore,
-                                                         JdbcLegacyRawBlockStore legacyRawBlocks,
                                                          Hasher hasher) {
         Optional<BatWithId> instanceBat = a.getOptionalArg("instance-bat").map(BatWithId::decode);
         return (b, d, s, auth) -> {
             System.out.println("Allow: " + b + ", auth=" + auth + ", from: " + s);
-            if (b.codec == Cid.Codec.Raw) {
-                if (legacyRawBlocks.hasBlock(b))
-                    return Futures.of(true);
-                Bat bat = Bat.deriveFromRawBlock(d, hasher).join();
-                if (!auth.isEmpty() && BlockRequestAuthoriser.isValidAuth(BlockAuth.fromString(auth), b, s, bat, hasher))
-                    return Futures.of(true);
-                if (instanceBat.isPresent()) {
-                    if (!auth.isEmpty() && BlockRequestAuthoriser.isValidAuth(BlockAuth.fromString(auth), b, s, instanceBat.get().bat, hasher))
-                        return Futures.of(true);
+            if (b.isRaw()) {
+                List<BatId> batids = Bat.getRawBlockBats(d);
+                if (batids.isEmpty()) // legacy raw block
+                    return ALLOW;
+                if (auth.isEmpty())
+                    return BLOCK;
+                BlockAuth blockAuth = BlockAuth.fromString(auth);
+                for (BatId bid : batids) {
+                    Optional<Bat> bat = bid.getInline()
+                            .or(() -> bid.id.equals(blockAuth.batId) ?
+                                    batStore.getBat(bid) :
+                                    Optional.empty());
+                    if (bat.isPresent() && BlockRequestAuthoriser.isValidAuth(blockAuth, b, s, bat.get(), hasher))
+                        return ALLOW;
                 }
-                return Futures.of(false);
+                if (instanceBat.isPresent()) {
+                    if (BlockRequestAuthoriser.isValidAuth(blockAuth, b, s, instanceBat.get().bat, hasher))
+                        return ALLOW;
+                }
+                return BLOCK;
             } else if (b.codec == Cid.Codec.DagCbor) {
                 CborObject block = CborObject.fromByteArray(d);
                 if (block instanceof CborObject.CborMap) {
                     if (((CborObject.CborMap) block).containsKey("bats")) {
                         List<BatId> batids = ((CborObject.CborMap) block).getList("bats", BatId::fromCbor);
+                        if (auth.isEmpty())
+                            return BLOCK;
+                        BlockAuth blockAuth = BlockAuth.fromString(auth);
                         for (BatId bid : batids) {
-                            Optional<Bat> bat = bid.getInline().or(() -> batStore.getBat(bid));
-                            if (bat.isPresent() && !auth.isEmpty() && BlockRequestAuthoriser.isValidAuth(BlockAuth.fromString(auth), b, s, bat.get(), hasher))
-                                return Futures.of(true);
+                            Optional<Bat> bat = bid.getInline()
+                                    .or(() -> bid.id.equals(blockAuth.batId) ?
+                                            batStore.getBat(bid) :
+                                            Optional.empty());
+                            if (bat.isPresent() && BlockRequestAuthoriser.isValidAuth(blockAuth, b, s, bat.get(), hasher))
+                                return ALLOW;
                         }
                         if (instanceBat.isPresent()) {
-                            if (!auth.isEmpty() && BlockRequestAuthoriser.isValidAuth(BlockAuth.fromString(auth), b, s, instanceBat.get().bat, hasher))
-                                return Futures.of(true);
+                            if (BlockRequestAuthoriser.isValidAuth(blockAuth, b, s, instanceBat.get().bat, hasher))
+                                return ALLOW;
                         }
-                        return Futures.of(false);
-                    } else return Futures.of(true); // This is a public block
+                        return BLOCK;
+                    } else return ALLOW; // This is a public block
                 } else // e.g. inner CHAMP nodes
-                    return Futures.of(true);
+                    return ALLOW;
             }
-            return Futures.of(false);
+            return BLOCK;
         };
     }
 

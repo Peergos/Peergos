@@ -55,7 +55,6 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     private final BlockStoreProperties props;
     private final TransactionStore transactions;
     private final BlockRequestAuthoriser authoriser;
-    private final JdbcLegacyRawBlockStore legacyRawBlocks;
     private final Hasher hasher;
     private final DeletableContentAddressedStorage p2pFallback;
 
@@ -64,7 +63,6 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                           BlockStoreProperties props,
                           TransactionStore transactions,
                           BlockRequestAuthoriser authoriser,
-                          JdbcLegacyRawBlockStore legacyRawBlocks,
                           Hasher hasher,
                           DeletableContentAddressedStorage p2pFallback) {
         this.id = id;
@@ -79,7 +77,6 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         this.props = props;
         this.transactions = transactions;
         this.authoriser = authoriser;
-        this.legacyRawBlocks = legacyRawBlocks;
         this.hasher = hasher;
         this.p2pFallback = p2pFallback;
     }
@@ -235,7 +232,6 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     public CompletableFuture<List<Cid>> mirror(PublicKeyHash owner,
                                                Optional<Cid> existing,
                                                Optional<Cid> updated,
-                                               Optional<BatWithId> fragmentBat,
                                                Optional<BatWithId> mirrorBat,
                                                Cid ourNodeId,
                                                TransactionId tid,
@@ -245,38 +241,27 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         Cid newRoot = updated.get();
         if (existing.equals(updated))
             return Futures.of(Collections.singletonList(newRoot));
-        boolean isRaw = newRoot.codec == Cid.Codec.Raw;
-
-        if (isRaw) {
-            if (contains(newRoot))
-                return Futures.of(Collections.singletonList(newRoot));
-            Optional<byte[]> newBlock = p2pFallback.getRaw(newRoot, fragmentBat, ourNodeId, hasher).join();
-            if (newBlock.isEmpty())
-                throw new IllegalStateException("Couldn't retrieve block: " + newRoot);
-            put(newBlock.get(), true, tid, owner);
-            return Futures.of(Collections.singletonList(newRoot));
-        }
 
         if (contains(newRoot))
             return Futures.of(Collections.singletonList(newRoot));
-        Optional<CborObject> newBlock = p2pFallback.get(newRoot, mirrorBat, id, hasher).join();
+        Optional<byte[]> newBlock = p2pFallback.getRaw(newRoot, mirrorBat, id, hasher).join();
         if (newBlock.isEmpty())
             throw new IllegalStateException("Couldn't retrieve block: " + newRoot);
-        put(newBlock.get().serialize(), false, tid, owner);
+        put(newBlock.get(), false, tid, owner);
+        if (newRoot.isRaw())
+            return Futures.of(Collections.singletonList(newRoot));
 
-        List<Multihash> newLinks = newBlock.get().links();
+        List<Multihash> newLinks = CborObject.fromByteArray(newBlock.get()).links();
         List<Multihash> existingLinks = existing.map(h -> get(h, mirrorBat, id, hasher).join())
                 .flatMap(copt -> copt.map(CborObject::links))
                 .orElse(Collections.emptyList());
 
-        List<BatWithId> rawBats = DeletableContentAddressedStorage.extractFragmentBats(newBlock.get());
         for (int i=0; i < newLinks.size(); i++) {
             Optional<Cid> existingLink = i < existingLinks.size() ?
                     Optional.of((Cid)existingLinks.get(i)) :
                     Optional.empty();
             Optional<Cid> updatedLink = Optional.of((Cid)newLinks.get(i));
-            Optional<BatWithId> linkedFragmentBat = rawBats.size() > i ? Optional.of(rawBats.get(i)) : Optional.empty();
-            mirror(owner, existingLink, updatedLink, linkedFragmentBat, mirrorBat, ourNodeId, tid, hasher).join();
+            mirror(owner, existingLink, updatedLink, mirrorBat, ourNodeId, tid, hasher).join();
         }
         return Futures.of(Collections.singletonList(newRoot));
     }
@@ -292,7 +277,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     private void collectGarbage(JdbcIpnsAndSocial pointers, UsageStore usage) {
-        GarbageCollector.collect(this, pointers, usage, legacyRawBlocks, this::savePointerSnapshot);
+        GarbageCollector.collect(this, pointers, usage, this::savePointerSnapshot);
     }
 
     private CompletableFuture<Boolean> savePointerSnapshot(Stream<Map.Entry<PublicKeyHash, byte[]>> pointers) {
@@ -540,9 +525,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         Supplier<Connection> transactionsDb = Main.getDBConnector(a, "transactions-sql-file");
         TransactionStore transactions = JdbcTransactionStore.build(transactionsDb, sqlCommands);
         BlockRequestAuthoriser authoriser = (c, b, s, auth) -> Futures.of(true);
-        JdbcLegacyRawBlockStore legacyBlocks = new JdbcLegacyRawBlockStore(Main.getDBConnector(a, "legacy-raw-blocks-file"));
         S3BlockStorage s3 = new S3BlockStorage(config, Cid.decode(a.getArg("ipfs.id")),
-                BlockStoreProperties.empty(), transactions, authoriser, legacyBlocks, hasher, new RAMStorage(hasher));
+                BlockStoreProperties.empty(), transactions, authoriser, hasher, new RAMStorage(hasher));
         JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(database, sqlCommands);
         Supplier<Connection> usageDb = Main.getDBConnector(a, "space-usage-sql-file");
         UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);

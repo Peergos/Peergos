@@ -132,7 +132,6 @@ public class Main extends Builder {
                     new Command.Arg("public-domain", "The public domain name for this server (required if TLS is managed upstream)", false),
                     new Command.Arg("max-users", "The maximum number of local users", false, "1"),
                     ARG_USE_IPFS,
-                    new Command.Arg("legacy-raw-blocks-file", "The filename for the list of legacy raw blocks (or :memory: for ram based)", true, "legacyraw.sql"),
                     new Command.Arg("bat-store", "The filename for the BAT store (or :memory: for ram based)", true, "bats.sql"),
                     new Command.Arg("mutable-pointers-file", "The filename for the mutable pointers datastore", true, "mutable.sql"),
                     new Command.Arg("social-sql-file", "The filename for the follow requests datastore", true, "social.sql"),
@@ -275,8 +274,7 @@ public class Main extends Builder {
                     args = bootstrap(args);
 
                     BatCave batStore = new JdbcBatCave(getDBConnector(args, "bat-store"), getSqlCommands(args));
-                    JdbcLegacyRawBlockStore legacyRawBlocks = new JdbcLegacyRawBlockStore(getDBConnector(args, "legacy-raw-blocks-file"));
-                    BlockRequestAuthoriser blockRequestAuthoriser = Builder.blockAuthoriser(args, batStore, legacyRawBlocks, crypto.hasher);
+                    BlockRequestAuthoriser blockRequestAuthoriser = Builder.blockAuthoriser(args, batStore, crypto.hasher);
                     Multihash pkiIpfsNodeId = useIPFS ?
                             new ContentAddressedStorage.HTTP(Builder.buildIpfsApi(args), false, crypto.hasher).id().join() :
                             new FileContentAddressedStorage(blockstorePath(args),
@@ -336,14 +334,13 @@ public class Main extends Builder {
                     SqliteCommands sqlCommands = new SqliteCommands();
                     JdbcTransactionStore transactions = JdbcTransactionStore.build(transactionDb, sqlCommands);
                     BatCave batStore = new JdbcBatCave(getDBConnector(args, "bat-store", transactionDb), sqlCommands);
-                    JdbcLegacyRawBlockStore legacyRawBlocks = new JdbcLegacyRawBlockStore(getDBConnector(args, "legacy-raw-blocks-file"));
-                    BlockRequestAuthoriser authoriser = Builder.blockAuthoriser(args, batStore, legacyRawBlocks, crypto.hasher);
+                    BlockRequestAuthoriser authoriser = Builder.blockAuthoriser(args, batStore, crypto.hasher);
 
                     ContentAddressedStorage storage = useIPFS ?
                             new ContentAddressedStorage.HTTP(Builder.buildIpfsApi(args), false, crypto.hasher) :
                             S3Config.useS3(args) ?
                                     new S3BlockStorage(S3Config.build(args), Cid.decode(args.getArg("ipfs.id")),
-                                            BlockStoreProperties.empty(), transactions, authoriser, legacyRawBlocks,
+                                            BlockStoreProperties.empty(), transactions, authoriser,
                                             crypto.hasher, new DeletableContentAddressedStorage.HTTP(Builder.buildIpfsApi(args), false, crypto.hasher)) :
                                     new FileContentAddressedStorage(blockstorePath(args),
                                             transactions, authoriser, crypto.hasher);
@@ -513,11 +510,9 @@ public class Main extends Builder {
             TransactionStore transactions = buildTransactionStore(a, dbConnectionPool);
 
             BatCave batStore = new JdbcBatCave(getDBConnector(a, "bat-store", dbConnectionPool), sqlCommands);
-            JdbcLegacyRawBlockStore legacyRawBlocks = new JdbcLegacyRawBlockStore(getDBConnector(a, "legacy-raw-blocks-file", dbConnectionPool));
-            BlockRequestAuthoriser blockRequestAuthoriser = Builder.blockAuthoriser(a, batStore, legacyRawBlocks, hasher);
+            BlockRequestAuthoriser blockRequestAuthoriser = Builder.blockAuthoriser(a, batStore, hasher);
             DeletableContentAddressedStorage localStorage = buildLocalStorage(a, transactions, blockRequestAuthoriser,
-                    legacyRawBlocks, crypto.hasher);
-            legacyRawBlocks.init(sqlCommands, localStorage);
+                    crypto.hasher);
             JdbcIpnsAndSocial rawPointers = buildRawPointers(a,
                     getDBConnector(a, "mutable-pointers-file", dbConnectionPool));
 
@@ -534,7 +529,7 @@ public class Main extends Builder {
             if (enableGC) {
                 if (S3Config.useS3(a))
                     throw new IllegalStateException("GC should be run separately when using S3!");
-                gc = new GarbageCollector(localStorage, rawPointers, usageStore, legacyRawBlocks);
+                gc = new GarbageCollector(localStorage, rawPointers, usageStore);
                 gc.start(a.getInt("gc.period.millis", 60 * 60 * 1000), s -> Futures.of(true));
             }
 

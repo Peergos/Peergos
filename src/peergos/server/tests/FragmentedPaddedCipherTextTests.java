@@ -6,6 +6,7 @@ import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.symmetric.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.*;
@@ -31,10 +32,12 @@ public class FragmentedPaddedCipherTextTests {
                 Chunk.MAX_SIZE - 4, Chunk.MAX_SIZE)) {
             byte[] data = new byte[len];
             int paddingBlockSize = 4096;
+            Optional<BatId> mirrorBat = Optional.of(Bat.random(crypto.random).calculateId(crypto.hasher).join());
             Pair<FragmentedPaddedCipherText, List<FragmentWithHash>> p = FragmentedPaddedCipherText.build(from,
-                    new CborObject.CborByteArray(data), paddingBlockSize, Fragment.MAX_LENGTH, crypto.hasher, false).join();
+                    new CborObject.CborByteArray(data), paddingBlockSize, Fragment.MAX_LENGTH, mirrorBat, crypto.random, crypto.hasher, false).join();
 
-            Assert.assertTrue("block sizes, len: " + len, p.right.stream().allMatch(f -> f.fragment.data.length % paddingBlockSize == 0));
+            Assert.assertTrue("block sizes, len: " + len, p.right.stream()
+                    .allMatch(f -> Bat.removeRawBlockBatPrefix(f.fragment.data).length % paddingBlockSize == 0));
             Assert.assertTrue("# blocks, len: " + len, p.right.size() <= Chunk.MAX_SIZE / Fragment.MAX_LENGTH);
             int maxInlineSize = 4096 + 6;
             if (data.length > maxInlineSize)
@@ -49,11 +52,12 @@ public class FragmentedPaddedCipherTextTests {
         SymmetricKey from = SymmetricKey.random();
         byte[] data = new byte[0];
         int paddingBlockSize = 4096;
+        Optional<BatId> mirrorBat = Optional.of(Bat.random(crypto.random).calculateId(crypto.hasher).join());
         Pair<FragmentedPaddedCipherText, List<FragmentWithHash>> file = FragmentedPaddedCipherText.build(from,
-                new CborObject.CborByteArray(data), paddingBlockSize, Fragment.MAX_LENGTH, crypto.hasher, false).join();
+                new CborObject.CborByteArray(data), paddingBlockSize, Fragment.MAX_LENGTH, mirrorBat, crypto.random, crypto.hasher, false).join();
 
         Pair<FragmentedPaddedCipherText, List<FragmentWithHash>> dir = FragmentedPaddedCipherText.build(from,
-                CryptreeNode.ChildrenLinks.empty(), paddingBlockSize, Fragment.MAX_LENGTH, crypto.hasher, false).join();
+                CryptreeNode.ChildrenLinks.empty(), paddingBlockSize, Fragment.MAX_LENGTH, mirrorBat, crypto.random, crypto.hasher, false).join();
 
         Assert.assertTrue("cbor length", file.left.serialize().length == dir.left.serialize().length);
         CborObject fileCbor = file.left.toCbor();

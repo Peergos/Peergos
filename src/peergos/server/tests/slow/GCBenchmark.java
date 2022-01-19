@@ -31,7 +31,6 @@ public class GCBenchmark {
                 JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()), (a, b, c, d) -> Futures.of(true), crypto.hasher);
         JdbcIpnsAndSocial pointers = new JdbcIpnsAndSocial(Main.buildEphemeralSqlite(), new SqliteCommands());
         UsageStore usage = new JdbcUsageStore(Main.buildEphemeralSqlite(), new SqliteCommands());
-        JdbcLegacyRawBlockStore legacyBlocks = new JdbcLegacyRawBlockStore(Main.buildEphemeralSqlite());
 
         int nLeavesPerUser = 1_000;
         int nPointers = 200;
@@ -46,7 +45,7 @@ public class GCBenchmark {
             storage.closeTransaction(owner, tid).join();
         }
 
-        GarbageCollector.collect(storage, pointers, usage, legacyBlocks, s -> Futures.of(true));
+        GarbageCollector.collect(storage, pointers, usage, s -> Futures.of(true));
     }
 
     private static Multihash generateTree(Random r, PublicKeyHash owner, ContentAddressedStorage storage, int nLeaves, TransactionId tid) {

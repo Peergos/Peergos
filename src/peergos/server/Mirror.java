@@ -137,7 +137,7 @@ public class Mirror {
         try {
             storage.mirror(owner, existingTarget.toOptional().map(c -> (Cid)c),
                     updatedTarget.toOptional().map(c -> (Cid)c),
-                    Optional.empty(), mirrorBat, storage.id().join(), tid, hasher);
+                    mirrorBat, storage.id().join(), tid, hasher);
             targetPointers.setPointer(writer, existing, newPointer).join();
         } finally {
             transactions.closeTransaction(owner, tid);
