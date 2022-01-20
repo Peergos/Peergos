@@ -236,7 +236,7 @@ public class FileWrapper {
             Hasher hasher) {
         return pointer.fileAccess
                 .updateChildLinks(version, committer, (WritableAbsoluteCapability) pointer.capability, signingPair(),
-                        childCases, network, hasher);
+                        childCases, network, random, hasher);
     }
 
     public CompletableFuture<Boolean> hasChildWithName(Snapshot version, String name, Hasher hasher, NetworkAccess network) {
@@ -251,11 +251,11 @@ public class FileWrapper {
      * @param network
      * @return Updated version of this directory without the child
      */
-    public CompletableFuture<FileWrapper> removeChild(FileWrapper child, NetworkAccess network, Hasher hasher) {
+    public CompletableFuture<FileWrapper> removeChild(FileWrapper child, NetworkAccess network, SafeRandom random, Hasher hasher) {
         setModified();
         return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
                 (cwd, committer) -> pointer.fileAccess
-                .removeChildren(cwd, committer, Arrays.asList(child.getPointer().capability), writableFilePointer(), entryWriter, network, hasher))
+                .removeChildren(cwd, committer, Arrays.asList(child.getPointer().capability), writableFilePointer(), entryWriter, network, random, hasher))
                 .thenCompose(newRoot -> getUpdated(newRoot, network));
     }
 
@@ -263,9 +263,10 @@ public class FileWrapper {
                                                    Committer committer,
                                                    FileWrapper child,
                                                    NetworkAccess network,
+                                                   SafeRandom random,
                                                    Hasher hasher) {
         return pointer.fileAccess.removeChildren(version, committer,
-                Arrays.asList(child.getPointer().capability), writableFilePointer(), entryWriter, network, hasher);
+                Arrays.asList(child.getPointer().capability), writableFilePointer(), entryWriter, network, random, hasher);
     }
 
     @JsMethod
@@ -1518,6 +1519,7 @@ public class FileWrapper {
     public CompletableFuture<Pair<FileWrapper, FileWrapper>> changeSigningKey(SigningPrivateKeyAndPublicHash signer,
                                                                               FileWrapper parent,
                                                                               NetworkAccess network,
+                                                                              SafeRandom random,
                                                                               Hasher hasher) {
         ensureUnmodified();
         WritableAbsoluteCapability cap = (WritableAbsoluteCapability)getPointer().capability;
@@ -1544,7 +1546,7 @@ public class FileWrapper {
                                 .updateChildLink(withParent, committer, parent.writableFilePointer(),
                                         parent.signingPair(),
                                         getPointer(),
-                                        newRetrievedCapability, network, hasher))
+                                        newRetrievedCapability, network, random, hasher))
                         .thenCompose(updatedParentVersion -> deleteAllChunks(cap, signingPair(), tid, hasher, network,
                                 updatedParentVersion, committer)),
                 network.dhtClient)
@@ -1658,7 +1660,7 @@ public class FileWrapper {
             return Futures.errored(new IllegalStateException("Cannot delete file without write access to it"));
 
         boolean writableParent = parent.isWritable();
-        return (writableParent ? parent.removeChild(this, network, hasher) : CompletableFuture.completedFuture(parent))
+        return (writableParent ? parent.removeChild(this, network, userContext.crypto.random, hasher) : CompletableFuture.completedFuture(parent))
                 .thenCompose(updatedParent -> network.synchronizer.applyComplexUpdate(owner(), signingPair(),
                         (version, committer) -> IpfsTransaction.call(owner(),
                                 tid -> FileWrapper.deleteAllChunks(

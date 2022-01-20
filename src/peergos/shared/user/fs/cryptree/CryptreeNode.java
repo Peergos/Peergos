@@ -464,16 +464,23 @@ public class CryptreeNode implements Cborable {
         return new CryptreeNode(lastCommittedHash, isDirectory, bats, encryptedBaseBlock, childrenOrData, fromParentKey);
     }
 
-    public CompletableFuture<DirAndChildren> withChildren(SymmetricKey baseKey, ChildrenLinks children, Hasher hasher) {
-        return buildChildren(children, baseKey, hasher)
+    public CompletableFuture<DirAndChildren> withChildren(SymmetricKey baseKey,
+                                                          ChildrenLinks children,
+                                                          SafeRandom random,
+                                                          Hasher hasher) {
+        return buildChildren(children, baseKey, mirrorBatId(), random, hasher)
                 .thenApply(encryptedChildren -> {
                     CryptreeNode cryptreeNode = new CryptreeNode(lastCommittedHash, isDirectory, bats, fromBaseKey, encryptedChildren.left, fromParentKey);
                     return new DirAndChildren(cryptreeNode, encryptedChildren.right);
                 });
     }
 
-    private static CompletableFuture<Pair<FragmentedPaddedCipherText, List<FragmentWithHash>>> buildChildren(ChildrenLinks children, SymmetricKey rBaseKey, Hasher hasher) {
-        return FragmentedPaddedCipherText.build(rBaseKey, children, MIN_FRAGMENT_SIZE, Fragment.MAX_LENGTH, hasher, false);
+    private static CompletableFuture<Pair<FragmentedPaddedCipherText, List<FragmentWithHash>>> buildChildren(ChildrenLinks children,
+                                                                                                             SymmetricKey rBaseKey,
+                                                                                                             Optional<BatId> mirrorBat,
+                                                                                                             SafeRandom random,
+                                                                                                             Hasher hasher) {
+        return FragmentedPaddedCipherText.build(rBaseKey, children, MIN_FRAGMENT_SIZE, Fragment.MAX_LENGTH, mirrorBat, random, hasher, false);
     }
 
     public <T> CompletableFuture<T> getLinkedData(SymmetricKey baseOrDataKey,
@@ -892,7 +899,7 @@ public class CryptreeNode implements Cborable {
                 newFiles.addAll(targetCAPs);
 
                 return IpfsTransaction.call(us.owner,
-                        tid -> withChildren(us.rBaseKey, new ChildrenLinks(newFiles), crypto.hasher)
+                        tid -> withChildren(us.rBaseKey, new ChildrenLinks(newFiles), crypto.random, crypto.hasher)
                                 .thenCompose(d ->
                                         d.commit(current, committer, us, signer, network, tid)),
                         network.dhtClient);
@@ -947,10 +954,11 @@ public class CryptreeNode implements Cborable {
                                                        RetrievedCapability original,
                                                        RetrievedCapability modified,
                                                        NetworkAccess network,
+                                                       SafeRandom random,
                                                        Hasher hasher) {
         NamedAbsoluteCapability newChild = new NamedAbsoluteCapability(modified.getProperties().name, modified.capability);
         return updateChildLinks(base, committer, ourPointer, signer,
-                Arrays.asList(new Pair<>(original.capability, newChild)), network, hasher);
+                Arrays.asList(new Pair<>(original.capability, newChild)), network, random, hasher);
     }
 
     public CompletableFuture<Snapshot> updateChildLink(Snapshot base,
@@ -960,9 +968,10 @@ public class CryptreeNode implements Cborable {
                                                        AbsoluteCapability originalCap,
                                                        NamedAbsoluteCapability modifiedCap,
                                                        NetworkAccess network,
+                                                       SafeRandom random,
                                                        Hasher hasher) {
         return updateChildLinks(base, committer, ourPointer, signer,
-                Arrays.asList(new Pair<>(originalCap, modifiedCap)), network, hasher);
+                Arrays.asList(new Pair<>(originalCap, modifiedCap)), network, random, hasher);
     }
 
     public CompletableFuture<Snapshot> updateChildLinks(Snapshot base,
@@ -971,6 +980,7 @@ public class CryptreeNode implements Cborable {
                                                         SigningPrivateKeyAndPublicHash signer,
                                                         Collection<Pair<AbsoluteCapability, NamedAbsoluteCapability>> childCasPairs,
                                                         NetworkAccess network,
+                                                        SafeRandom random,
                                                         Hasher hasher) {
         return getDirectChildren(network, ourPointer, base).thenCompose(children -> {
 
@@ -1002,7 +1012,7 @@ public class CryptreeNode implements Cborable {
             return (! updatedLinks.isEmpty() ?
                     IpfsTransaction.call(ourPointer.owner,
                             tid -> withChildren(ourPointer.rBaseKey, new ChildrenLinks(Stream.concat(unchanged.stream(), updatedLinks.stream())
-                                    .collect(Collectors.toList())), hasher)
+                                    .collect(Collectors.toList())), random, hasher)
                                     .thenCompose(d -> d.commit(base, committer, ourPointer, signer, network, tid)),
                             network.dhtClient) :
                     CompletableFuture.completedFuture(base)).thenCompose(
@@ -1016,7 +1026,7 @@ public class CryptreeNode implements Cborable {
                                                     if (! nextOpt.isPresent())
                                                         throw new IllegalStateException("Child link not present!");
                                                     return nextOpt.get().fileAccess.updateChildLinks(updated, committer,
-                                                            writableNextPointer, signer, remaining, network, hasher);
+                                                            writableNextPointer, signer, remaining, network, random, hasher);
                                                 });
                                     }));
         });
@@ -1028,6 +1038,7 @@ public class CryptreeNode implements Cborable {
                                                       WritableAbsoluteCapability ourPointer,
                                                       Optional<SigningPrivateKeyAndPublicHash> entryWriter,
                                                       NetworkAccess network,
+                                                      SafeRandom random,
                                                       Hasher hasher) {
         Set<Location> locsToRemove = childrenToRemove.stream()
                 .map(r -> r.getLocation())
@@ -1039,7 +1050,7 @@ public class CryptreeNode implements Cborable {
                     .collect(Collectors.toList());
 
             return IpfsTransaction.call(ourPointer.owner,
-                    tid -> withChildren(ourPointer.rBaseKey, new ChildrenLinks(withRemoval), hasher)
+                    tid -> withChildren(ourPointer.rBaseKey, new ChildrenLinks(withRemoval), random, hasher)
                             .thenCompose(d -> d.commit(current, committer, ourPointer, entryWriter, network, tid)),
                     network.dhtClient);
         });
@@ -1108,7 +1119,7 @@ public class CryptreeNode implements Cborable {
             Hasher hasher,
             boolean allowArrayCache) {
         return FragmentedPaddedCipherText.build(dataKey, new CborObject.CborByteArray(chunkData),
-                        MIN_FRAGMENT_SIZE, Fragment.MAX_LENGTH, hasher, allowArrayCache)
+                        MIN_FRAGMENT_SIZE, Fragment.MAX_LENGTH, mirrorBat, random, hasher, allowArrayCache)
                 .thenApply(linksAndData -> {
                     RelativeCapability toParent = new RelativeCapability(
                             parentLocation.writer.equals(ourWriter) ? Optional.empty() : Optional.of(parentLocation.writer),
@@ -1252,7 +1263,7 @@ public class CryptreeNode implements Cborable {
         PaddedCipherText encryptedBaseBlock = PaddedCipherText.build(rBaseKey, fromBase, BASE_BLOCK_PADDING_BLOCKSIZE);
         PaddedCipherText encryptedParentBlock = PaddedCipherText.build(parentKey, fromParent, META_DATA_PADDING_BLOCKSIZE);
         List<BatId> bats = Stream.concat(inlineBat.stream().map(BatId::inline), mirrorBat.stream()).collect(Collectors.toList());
-        return FragmentedPaddedCipherText.build(rBaseKey, children, MIN_FRAGMENT_SIZE, Fragment.MAX_LENGTH, hasher, false)
+        return FragmentedPaddedCipherText.build(rBaseKey, children, MIN_FRAGMENT_SIZE, Fragment.MAX_LENGTH, mirrorBat, random, hasher, false)
                 .thenApply(linksAndData -> {
                     CryptreeNode metadata = new CryptreeNode(lastCommittedHash, true, bats, encryptedBaseBlock, linksAndData.left, encryptedParentBlock);
                     return new DirAndChildren(metadata, linksAndData.right);

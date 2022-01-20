@@ -1488,7 +1488,7 @@ public class UserContext {
                                         rotated.left, c, (WritableAbsoluteCapability) parentCap,
                                         parentSigner, file.isLink() ? file.getLinkPointer().capability : originalCap,
                                         new NamedAbsoluteCapability(file.getName(), rotated.right),
-                                        network, crypto.hasher)
+                                        network, crypto.random, crypto.hasher)
                                         .thenCompose(s -> IpfsTransaction.call(owner,
                                                 tid -> FileWrapper.deleteAllChunks(
                                                         file.writableFilePointer(),

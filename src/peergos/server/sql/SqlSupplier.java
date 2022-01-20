@@ -33,11 +33,6 @@ public interface SqlSupplier {
                 "CREATE UNIQUE INDEX IF NOT EXISTS bat_index ON bats (id);";
     }
 
-    default String createLegacyRawBlocksTableCommand() {
-        return "CREATE TABLE IF NOT EXISTS legacyraw (cid text primary key not null); " +
-                "CREATE UNIQUE INDEX IF NOT EXISTS bat_index ON legacyraw (cid);";
-    }
-
     default String createSpaceRequestsTableCommand() {
         return "CREATE TABLE IF NOT EXISTS spacerequests (name text primary key not null, spacerequest text not null);";
     }

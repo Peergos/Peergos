@@ -7,7 +7,6 @@ import peergos.server.crypto.asymmetric.curve25519.*;
 import peergos.server.crypto.hash.*;
 import peergos.server.crypto.random.*;
 import peergos.server.crypto.symmetric.*;
-import peergos.server.storage.auth.*;
 import peergos.server.util.*;
 
 import org.junit.*;
@@ -940,48 +939,69 @@ public abstract class UserTests {
         // Remove BATs from cryptree node and fragments in file
         FileWrapper file = context.getByPath(Paths.get(username, filename)).join().get();
         CborObject.CborMap cbor = (CborObject.CborMap) file.getPointer().fileAccess.toCbor();
+        // add blocks without bat prefix
+        List<Multihash> rawBlockLinks = cbor.links();
+        List<BatWithId> bats = (List<BatWithId>)((CborObject.CborList)((CborObject.CborMap)cbor.get("d")).get("bats")).value;
+        List<Multihash> newFragmentCids = IntStream.range(0, rawBlockLinks.size()).mapToObj(i -> {
+            Cid original = (Cid) rawBlockLinks.get(i);
+            BatWithId bat = bats.get(i);
+            byte[] originalBlock = context.network.dhtClient.getRaw(original, Optional.of(bat)).join().get();
+            byte[] newBlock = Bat.removeRawBlockBatPrefix(originalBlock);
+            return context.network.uploadFragments(Arrays.asList(new Fragment(newBlock)), userRoot.owner(),
+                    userRoot.signingPair(), x -> {}, TransactionId.build("tid")).join().get(0);
+        }).collect(Collectors.toList());
+
         Map<String, Cborable> modified = new LinkedHashMap<>();
         cbor.applyToAll(modified::put);
         CborObject.CborMap d = (CborObject.CborMap) modified.get("d");
         d.put("bats", new CborObject.CborList(Collections.emptyList()));
+        d.put("f", new CborObject.CborList(newFragmentCids
+                .stream()
+                .map(CborObject.CborMerkleLink::new)
+                .collect(Collectors.toList())));
         modified.put("d", d);
         modified.remove("bats");
         CborObject.CborMap noBats = CborObject.CborMap.build(modified);
         PublicKeyHash owner = file.owner();
-        WriterData wd = WriterData.getWriterData(owner, file.writer(), network.mutable, network.dhtClient).join().props;
-        Cid cryptreeCid = network.dhtClient.put(owner, file.signingPair(), noBats.serialize(), crypto.hasher,
+        CommittedWriterData cwd = WriterData.getWriterData(owner, file.writer(), network.mutable, network.dhtClient).join();
+        WriterData wd = cwd.props;
+        SigningPrivateKeyAndPublicHash signingPair = file.signingPair();
+        Cid cryptreeCid = network.dhtClient.put(owner, signingPair, noBats.serialize(), crypto.hasher,
                 TransactionId.build("hey")).join();
-        network.tree.put(wd, owner, file.signingPair(), file.readOnlyPointer().getMapKey(),
-                file.getPointer().fileAccess.committedHash(), cryptreeCid, TransactionId.build("hey")).join();
+        byte[] mapKey = file.readOnlyPointer().getMapKey();
+
         // also update child pointer in parent
         FileWrapper root = context.getUserRoot().join();
         FileWrapper cFile = file;
+        network.synchronizer.applyComplexUpdate(owner, signingPair,
+                (s, c) -> {
+                    WriterData newWd = network.tree.put(wd, owner, signingPair, mapKey,
+                            cFile.getPointer().fileAccess.committedHash(), cryptreeCid, TransactionId.build("hey")).join();
+                    return c.commit(owner, signingPair, newWd, cwd, TransactionId.build("123"));
+                }).join();
         WritableAbsoluteCapability cap = cFile.writableFilePointer();
         WritableAbsoluteCapability batlessCap = cap.withMapKey(cFile.readOnlyPointer().getMapKey(), Optional.empty());
-        network.synchronizer.applyComplexUpdate(owner, file.signingPair(),
+        network.synchronizer.applyComplexUpdate(owner, signingPair,
                 (s, c) -> root.getPointer().fileAccess.updateChildLink(s, c, root.writableFilePointer(), root.signingPair(),
-                        cap, new NamedAbsoluteCapability(filename, batlessCap), network, crypto.hasher)).join();
+                        cap, new NamedAbsoluteCapability(filename, batlessCap), network, crypto.random, crypto.hasher)).join();
 
         // check there are no BATs for this file
-        file = context.getByPath(Paths.get(username, filename)).join().get();
+        UserContext newContext = PeergosNetworkUtils.ensureSignedUp(username, password, network.clear(), crypto);
+        file = newContext.getByPath(Paths.get(username, filename)).join().get();
         Assert.assertTrue(file.writableFilePointer().bat.isEmpty());
-        // simulate these blocks being present before server upgrade by adding them to legacy block store
-        JdbcLegacyRawBlockStore legacyBlockStore = new JdbcLegacyRawBlockStore(Main.getDBConnector(
-                getArgs().with("legacy-raw-blocks-file", "legacyraw.sql"), "legacy-raw-blocks-file"));
-        cbor.links().forEach(h -> legacyBlockStore.addBlock((Cid)h));
 
         // Check fragments are retrievable without a BAT
-        Multihash originalFragment = file.getPointer().fileAccess.toCbor().links().get(0);
-        CompletableFuture<Optional<byte[]>> originalRaw = network.clear().dhtClient.getRaw((Cid) originalFragment, Optional.empty());
+        Multihash originalFragmentWithoutBatPrefix = file.getPointer().fileAccess.toCbor().links().get(0);
+        CompletableFuture<Optional<byte[]>> originalRaw = network.clear().dhtClient.getRaw((Cid) originalFragmentWithoutBatPrefix, Optional.empty());
         Assert.assertTrue(originalRaw.join().isPresent());
 
         //overwrite with 2 chunk file
         byte[] threeChunkData = new byte[11*1024*1024];
         random.nextBytes(threeChunkData);
         FileWrapper userRoot3 = uploadFileSection(userRoot2, filename, new AsyncReader.ArrayBacked(threeChunkData), 0,
-                threeChunkData.length, context.network, context.crypto, l -> {}).join();
-        FileWrapper updatedFile = context.getByPath(Paths.get(username, filename)).join().get();
-        checkFileContents(threeChunkData, updatedFile, context);
+                threeChunkData.length, newContext.network, newContext.crypto, l -> {}).join();
+        FileWrapper updatedFile = newContext.getByPath(Paths.get(username, filename)).join().get();
+        checkFileContents(threeChunkData, updatedFile, newContext);
         assertTrue("10MiB file size", threeChunkData.length == updatedFile.getFileProperties().size);
 
         WritableAbsoluteCapability newcap = updatedFile.writableFilePointer();
@@ -1006,8 +1026,8 @@ public abstract class UserTests {
 
         // check retrieval of fragments fail without bat
         Multihash fragment = updatedFile.getPointer().fileAccess.toCbor().links().get(0);
-        CompletableFuture<Optional<byte[]>> raw = network.clear().dhtClient.getRaw((Cid) fragment, Optional.empty());
-        Assert.assertTrue(raw.isCompletedExceptionally() || raw.join().isEmpty());
+        Optional<byte[]> raw = network.clear().dhtClient.getRaw((Cid) fragment, Optional.empty()).exceptionally(e -> Optional.empty()).join();
+        Assert.assertTrue(raw.isEmpty());
     }
 
     @Test

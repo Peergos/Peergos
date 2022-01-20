@@ -3,6 +3,7 @@ package peergos.shared.crypto;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.storage.auth.*;
@@ -97,6 +98,8 @@ public class FragmentedPaddedCipherText implements Cborable {
                                                                                       T secret,
                                                                                       int paddingBlockSize,
                                                                                       int maxFragmentSize,
+                                                                                      Optional<BatId> mirrorBat,
+                                                                                      SafeRandom random,
                                                                                       Hasher hasher,
                                                                                       boolean allowArrayCache) {
         if (paddingBlockSize < 1)
@@ -120,19 +123,21 @@ public class FragmentedPaddedCipherText implements Cborable {
         int headerSize = cipherText.length % paddingBlockSize;
         Optional<byte[]> header = Optional.of(Arrays.copyOfRange(cipherText, 0, headerSize));
         byte[][] split = split(cipherText, headerSize, maxFragmentSize, allowArrayCache);
+        int nBlocks = split.length;
+        List<Bat> blockBats = IntStream.range(0, nBlocks)
+                .mapToObj(i -> Bat.random(random))
+                .collect(Collectors.toList());
 
-        return Futures.combineAllInOrder(Arrays.stream(split)
+        return Futures.combineAllInOrder(IntStream.range(0, nBlocks)
+                .mapToObj(i -> ArrayOps.concat(Bat.createRawBlockPrefix(blockBats.get(i), mirrorBat), split[i]))
                 .map(d -> hasher.hash(d, true).thenApply(h -> new FragmentWithHash(new Fragment(d), Optional.of(h))))
                 .collect(Collectors.toList()))
                 .thenCompose(frags -> {
                     List<Cid> hashes = frags.stream()
                             .map(f -> f.hash.get())
                             .collect(Collectors.toList());
-                    List<CompletableFuture<Bat>> bats = frags.stream()
-                            .map(f -> Bat.deriveFromRawBlock(f.fragment.data, hasher))
-                            .collect(Collectors.toList());
-                    return Futures.combineAllInOrder(bats.stream()
-                            .map(fut -> fut.thenCompose(b -> b.calculateId(hasher).thenApply(id -> new BatWithId(b, id.id))))
+                    return Futures.combineAllInOrder(blockBats.stream()
+                            .map(b -> b.calculateId(hasher).thenApply(id -> new BatWithId(b, id.id)))
                             .collect(Collectors.toList()))
                             .thenApply(batsAndIds -> new Pair<>(new FragmentedPaddedCipherText(nonce, header, hashes, batsAndIds, Optional.empty()), frags));
                 });
@@ -149,6 +154,9 @@ public class FragmentedPaddedCipherText implements Cborable {
             return Futures.of(new CipherText(nonce, inlinedCipherText.get()).decrypt(from, fromCbor, monitor));
         }
         return network.dhtClient.downloadFragments(cipherTextFragments, bats, h, monitor, 1.0)
+                .thenApply(frags -> frags.stream()
+                        .map(f -> new FragmentWithHash(new Fragment(Bat.removeRawBlockBatPrefix(f.fragment.data)), f.hash))
+                        .collect(Collectors.toList()))
                 .thenApply(fargs -> new CipherText(nonce, recombine(header, fargs)).decrypt(from, fromCbor));
     }
 
