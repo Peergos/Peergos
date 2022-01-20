@@ -26,7 +26,7 @@ import java.util.stream.*;
 public interface ContentAddressedStorage {
 
     boolean DEBUG_GC = false;
-    int MAX_BLOCK_SIZE  = 1024*1024;
+    int MAX_BLOCK_SIZE  = Fragment.MAX_LENGTH_WITH_BAT_PREFIX;
 
     default CompletableFuture<BlockStoreProperties> blockStoreProperties() {
         return Futures.of(BlockStoreProperties.empty());
