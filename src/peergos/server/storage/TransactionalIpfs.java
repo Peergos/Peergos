@@ -100,9 +100,11 @@ public class TransactionalIpfs extends DelegatingStorage implements DeletableCon
 
     @Override
     public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner,
-                                                          Multihash root,
+                                                          Cid root,
                                                           byte[] champKey,
                                                           Optional<BatWithId> bat) {
+        if (! hasBlock(root))
+            return Futures.errored(new IllegalStateException("Champ root not present locally: " + root));
         return getChampLookup(root, champKey, bat, hasher);
     }
 

@@ -455,8 +455,8 @@ public class NetworkAccess {
             return Futures.of(cache.get(cacheKey));
         return cap.bat.map(b -> b.calculateId(hasher).thenApply(id -> Optional.of(new BatWithId(b, id.id)))).orElse(Futures.of(Optional.empty()))
                 .thenCompose(bat -> Futures.asyncExceptionally(
-                        () -> dhtClient.getChampLookup(cap.owner, base.tree.get(), cap.getMapKey(), bat),
-                        t -> dhtClient.getChampLookup(base.tree.get(), cap.getMapKey(), bat, hasher)
+                        () -> dhtClient.getChampLookup(cap.owner, (Cid) base.tree.get(), cap.getMapKey(), bat),
+                        t -> dhtClient.getChampLookup((Cid) base.tree.get(), cap.getMapKey(), bat, hasher)
                 ).thenCompose(blocks -> ChampWrapper.create((Cid)base.tree.get(), x -> Futures.of(x.data), dhtClient, hasher, c -> (CborObject.CborMerkleLink) c)
                         .thenCompose(tree -> tree.get(cap.getMapKey()))
                         .thenApply(c -> c.map(x -> x.target))

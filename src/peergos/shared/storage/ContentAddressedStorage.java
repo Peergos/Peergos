@@ -158,9 +158,9 @@ public interface ContentAddressedStorage {
      */
     CompletableFuture<Optional<byte[]>> getRaw(Cid hash, Optional<BatWithId> bat);
 
-    CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey, Optional<BatWithId> bat);
+    CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, byte[] champKey, Optional<BatWithId> bat);
 
-    default CompletableFuture<List<byte[]>> getChampLookup(Multihash root, byte[] champKey, Optional<BatWithId> bat, Hasher hasher) {
+    default CompletableFuture<List<byte[]>> getChampLookup(Cid root, byte[] champKey, Optional<BatWithId> bat, Hasher hasher) {
         CachingStorage cache = new CachingStorage(this, 100, 100 * 1024);
         return ChampWrapper.create((Cid)root, x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c)
                 .thenCompose(tree -> tree.get(champKey))
@@ -361,7 +361,7 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey, Optional<BatWithId> bat) {
+        public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, byte[] champKey, Optional<BatWithId> bat) {
             if (! isPeergosServer) {
                 return getChampLookup(root, champKey, bat, hasher);
             }
@@ -560,7 +560,7 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Multihash root, byte[] champKey, Optional<BatWithId> bat) {
+        public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, byte[] champKey, Optional<BatWithId> bat) {
             return Proxy.redirectCall(core,
                     ourNodeId,
                     owner,
