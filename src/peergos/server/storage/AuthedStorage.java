@@ -83,6 +83,13 @@ public class AuthedStorage extends DelegatingStorage implements DeletableContent
     }
 
     @Override
+    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, byte[] champKey, Optional<BatWithId> bat) {
+        if (! hasBlock(root))
+            return Futures.errored(new IllegalStateException("Champ root not present locally: " + root));
+        return getChampLookup(root, champKey, bat, h);
+    }
+
+    @Override
     public Stream<Cid> getAllBlockHashes() {
         return target.getAllBlockHashes();
     }
