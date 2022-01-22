@@ -165,7 +165,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     @Override
     public CompletableFuture<Optional<CborObject>> get(Cid hash, String auth) {
-        if (hash.codec == Cid.Codec.Raw)
+        if (hash.isRaw())
             throw new IllegalStateException("Need to call getRaw if cid is not cbor!");
         return getRaw(hash, auth).thenApply(opt -> opt.map(CborObject::fromByteArray));
     }
@@ -177,14 +177,18 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, String auth) {
+        return getRaw(hash, auth, true);
+    }
+
+    private CompletableFuture<Optional<byte[]>> getRaw(Cid hash, String auth, boolean enforceAuth) {
         String path = folder + hashToKey(hash);
         PresignedUrl getUrl = S3Request.preSignGet(path, Optional.of(600),
                 S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKeyId, secretKey, hasher).join();
         Histogram.Timer readTimer = readTimerLog.labels("read").startTimer();
         try {
             byte[] block = HttpUtil.get(getUrl);
-            // validate auth
-            if (! authoriser.allowRead(hash, block, id, auth).join())
+            // validate auth, unless this is an internal query
+            if (enforceAuth && ! authoriser.allowRead(hash, block, id, auth).join())
                 throw new IllegalStateException("Unauthorised!");
             return Futures.of(Optional.of(block));
         } catch (IOException e) {
@@ -424,6 +428,17 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         } finally {
             writeTimer.observeDuration();
         }
+    }
+
+    @Override
+    public CompletableFuture<List<Cid>> getLinks(Cid root, String auth) {
+        if (root.isRaw())
+            return CompletableFuture.completedFuture(Collections.emptyList());
+        return getRaw(root, "", false).thenApply(opt -> opt
+                .map(CborObject::fromByteArray)
+                .map(cbor -> cbor.links().stream().map(c -> (Cid) c).collect(Collectors.toList()))
+                .orElse(Collections.emptyList())
+        );
     }
 
     public Stream<Cid> getAllBlockHashes() {
