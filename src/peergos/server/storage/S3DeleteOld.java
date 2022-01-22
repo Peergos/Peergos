@@ -91,6 +91,7 @@ public class S3DeleteOld {
         Consumer<S3AdminRequests.ObjectMetadata> processor = m -> {
             try {
                 if (m.lastModified.isBefore(cutoff)) {
+                    System.out.println("Deleting " + m.key);
                     PresignedUrl delUrl = S3Request.preSignDelete(m.key, S3AdminRequests.asAwsDate(ZonedDateTime.now()), host,
                             config.region, config.accessKey, config.secretKey, crypto.hasher).join();
                     HttpUtil.delete(delUrl);
