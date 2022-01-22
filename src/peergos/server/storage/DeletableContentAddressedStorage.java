@@ -114,7 +114,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
      * @return A list of the multihashes referenced with ipld links in this object
      */
     default CompletableFuture<List<Cid>> getLinks(Cid root, String auth) {
-        if (root.codec == Cid.Codec.Raw)
+        if (root.isRaw())
             return CompletableFuture.completedFuture(Collections.emptyList());
         return get(root, auth).thenApply(opt -> opt
                 .map(cbor -> cbor.links().stream().map(c -> (Cid) c).collect(Collectors.toList()))
