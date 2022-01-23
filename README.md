@@ -44,9 +44,6 @@ Introduction:
 
 [![Introduction](https://img.youtube.com/vi/dCLboQDlzds/0.jpg)](https://www.youtube.com/watch?v=dCLboQDlzds)
 
-Tour:
-
-[![Tour](https://i.vimeocdn.com/video/759008279.jpg?mw=480&mh=540)](https://vimeo.com/503650925)
 
 Support
 -------
@@ -70,14 +67,11 @@ Peergos aims
 ------------
  - To allow individuals to securely and privately store files in a peer to peer network which has no central node and is generally difficult to disrupt or surveil
  - To allow secure sharing of files with other users of the network without visible meta-data (who shares with who)
+ - Allow web apps to be loaded and run durectly from Peergos in a sandbox that prevents data exfiltration and with user granted permissions
  - To have a beautiful user interface that any computer or mobile user can understand
- - To enable a new secure form of email
  - To be independent of the central TLS Certificate Authority trust architecture
  - Self hostable - A user should be able to easily run Peergos on a machine in their home and get their own Peergos storage space, and social communication platform from it. 
  - A secure web interface
- - To enable secure real time chat
- - Plausibly deniable dual login to an account, ala Truecrypt
- - Optional use of U2F for securing login
 
 Project anti-aims
 -----------------
@@ -88,19 +82,19 @@ Architecture
 1.0 Layers of architecture
  - 1: Peer-to-peer and data layer - [IPFS](https://ipfs.io) provides the data storage, routing and retrieval. A User must have at least one peergos instance storing their data for it to be available. 
  - 2: Authorization Layer - a key pair controls who is able to modify parts of the file system (every write is signed)
- - 3: Data storage - controlled by a given public key there is a [merkle-champ](https://en.wikipedia.org/wiki/Hash_array_mapped_trie) of encrypted chunks under random labels, without any cross links visible to the network (the network can't deduce the size of files)
+ - 3: Data storage - controlled by a given public key there is a [merkle-champ](https://en.wikipedia.org/wiki/Hash_array_mapped_trie) of encrypted chunks under random labels, without any cross links visible to the server (the server can't deduce the size of files)
  - 4: Encryption - Strong encryption is done on the user's machine using [TweetNaCl](http://tweetnacl.cr.yp.to/), with each 5MiB chunk of a file being encrypted independently. 
  - 5: Social layer implementing the concept of following or being friends with another user, without exposing the friend network to anyone.
- - 5: Sharing - Secure cryptographic sharing of files with friends.
+ - 6: Sharing - Secure cryptographic sharing of files with friends.
 
 2.0 Language
- - The IPFS layer is currently coded in Go
+ - The IPFS layer is currently coded in Go - we have a minimal ipfs replacement - [ipfs-nucleau](https://github.com/peergos/ipfs-nucleus)
  - The server is coded to run on JVM to get portability and speed, predominantly Java
- - The web interface is mostly coded in Java and cross compiled to Javascript, with the exception of the tweetnacl and scrypt libraries, and a small amount of GUI code in JS for Vue.js. 
+ - The web interface is mostly coded in Java and cross compiled to Javascript, with the exception of the Tweetnacl and scrypt libraries, and a small amount of GUI code in JS for Vue.js. 
  - Apps are written in HTML5
 
 3.0 Nodes
- - There is a pki node which ensures unique usernames using a structure similar to certificate transparency. This data is mirrored on every peergos server. Eventually we might put this small amount of data in a blockchain for full decentralization.
+ - There is a pki node which ensures unique usernames using a structure similar to certificate transparency. This data is mirrored on every peergos server. 
  - A new node contacts any public Peergos server to join the network
 
 4.0 Trust
@@ -109,14 +103,14 @@ Architecture
  - A less trusting user can run a Peergos server on their own machine and use the web interface over localhost
  - A more paranoid user can run a Peergos server on their own machine and use the CLI or the fuse binding
  - Servers are trustless - your data and metadata cannot be exposed even if your server is compromised (assuming your client is not compromised)
- - IPFS itself is not trusted and all data stored or retrieved from it is verified externally. 
+ - IPFS itself is not trusted and all data stored or retrieved from it is self-certifying. 
  - The data store (which may not be ipfs directly, but S3 compatible service for example) is also not trusted
 
 4.0 Logging in
- - A user's username is used along with a random salt and the hash of their password and run through scrypt (with parameters 17, 8, 1, 96, though users can choose harder parameters if desired) to generate a symmetric key, an encrypting keypair and a signing keypair. This means that a user can log in from any machine without transfering any keys, and also that their keys are protected from a brute force attack (see slides above for cost estimate).
+ - A user's username is used along with a random salt and the hash of their password and run through scrypt (with parameters 17, 8, 1, 96, though users can choose harder parameters if desired) to generate a symmetric key and a signing keypair. The signing keypiar is then used to auth and retrieve encrypted login data. This login data is then decrypted using the symmetric key to obtain the identity key pair, social keypair and root directory capability. This means that a user can log in from any machine without transfering any keys, and also that their keys are protected from a brute force attack (see slides mentioned above for a cost estimate).
 
 5.0 Encryption
- - private keys never leave client node, a random symmetric key is generated for every file (explicitly not convergent encryption, which leaks information)
+ - private keys never leave client node, two random symmetric keys are generated for every file or directory (explicitly not convergent encryption, which leaks information)
 
 5.1 Post-quantum encryption
  - Files that haven't been shared with another user are already resistant to quantum computer based attacks. This is because the operations to decrypt them from logging in, to seeing plain-text, include only hashing and symmetric encryption, both of which are currently believed to not be significantly weakened with a quantum computer. 
@@ -130,24 +124,22 @@ Architecture
 7.0 Sharing of a file (with another user, through a secret link, or publicly)
  - Once user A is being followed by user B, then A can share files with user B (B can revoke their following at any time)
  - File access control is based on [cryptree](https://raw.githubusercontent.com/ianopolous/Peergos/master/papers/wuala-cryptree.pdf) system used by Wuala
- - a link can be generated to a file or a folder which can be shared with anyone through any medium. A link is of the form https://demo.peergos.net/#KEY_MATERIAL which has the property that even the link doesn't leak the file contents to the network, as the key material after the # is not sent to the server, but interpreted locally in the browser.
+ - a link can be generated to a file or a folder which can be shared with anyone through any medium. A link is of the form https://demo.peergos.net/#KEY_MATERIAL which has the property that even the link doesn't leak the file contents to the network, as the key material after the # is not sent to the server, but interpreted locally in the browser. We have extended cryptree to protect much more metadata, including file size, names, thumbnails, directory structure and more. 
  - a user can publish a capability to a file or folder they control which makes it publicly visible
 
 Usage
 -----
-Instructions for self hosting will be updated once it is supported. 
-
-In the meantime you can experiment (BEWARE: we occasionally need to delete the data on this test network, so don't use it as your only copy of anything) with running your own Peergos server in our demo network by downloading a release from https://beta.peergos.net/public/peergos/releases
+Download a release from https://beta.peergos.net/public/peergos/releases
 
 You will need Java >= 11 installed. 
 
 Run Peergos with:
 ```
-java -jar Peergos.jar daemon -pki-node-id QmdM1TrjBJnYzzESATtrrMNPAtjJdqfcV2vF1kM39DY7cc -peergos.identity.hash z59vuwzfFDoqvC6R5QBV4tXx6ZK3SytpvvcjKnWD2VXZXhxDbFq7Fuu -log-to-console true
+java -jar Peergos.jar daemon -log-to-console true -admin-usernames $YOUR_DESIRED_USERNAME
 ```
 You can then access the web interface over http:/localhost:8000/
 
-Note that whichever Peergos server you sign up through will be storing your data, so if you don't intend on leaving your Peergos server running permanently, then we recommend signing up on https://demo.peergos.net and then you can log in through a local Peergos instance and all your data will magically end up on the demo.peergos.net server. 
+Note that whichever Peergos server you sign up through will be storing your data, so if you don't intend on leaving your Peergos server running permanently, then we recommend signing up on https://beta.peergos.net and then you can log in through a local Peergos instance and all your data will magically end up on the demo.peergos.net server. 
 
 ### CLI
 There are a range of commands available from a command line. You can run -help to find the available commands or details on any command. Most users should only need the *daemon* and *shell* commands, and maybe *fuse*. You can use the *migrate* command to move all your data to a new server (where the command is run). 
