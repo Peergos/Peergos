@@ -441,6 +441,20 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         );
     }
 
+    @Override
+    public CompletableFuture<Pair<Integer, List<Cid>>> getLinksAndSize(Cid block, String auth) {
+        if (block.isRaw()) {
+            return getSize(block)
+                    .thenApply(s -> new Pair<>(s.orElse(0), Collections.emptyList()));
+        }
+        Optional<byte[]> data = getRaw(block, "", false).join();
+        List<Cid> links = data.map(CborObject::fromByteArray)
+                .map(cbor -> cbor.links().stream().map(c -> (Cid) c).collect(Collectors.toList()))
+                .orElse(Collections.emptyList());
+        int size = data.map(a -> a.length).orElse(0);
+        return Futures.of(new Pair<>(size, links));
+    }
+
     public Stream<Cid> getAllBlockHashes() {
         // todo make this actually streaming
         return getFiles(Long.MAX_VALUE).stream();
