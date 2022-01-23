@@ -97,7 +97,7 @@ public class S3DeleteOld {
                     HttpUtil.delete(delUrl);
                 }
             } catch (Exception e) {
-                throw new RuntimeException(e);
+                e.printStackTrace();
             }
         };
 
