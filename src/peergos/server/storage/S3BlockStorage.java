@@ -49,7 +49,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             .help("Number of block gets which fell back to p2p retrieval")
             .register();
 
-    private final Cid id;
+    private final Cid id, p2pGetId;
     private final String region, bucket, folder, regionEndpoint, host;
     private final String accessKeyId, secretKey;
     private final BlockStoreProperties props;
@@ -66,6 +66,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                           Hasher hasher,
                           DeletableContentAddressedStorage p2pFallback) {
         this.id = id;
+        this.p2pGetId = p2pFallback.id().join();
         this.region = config.region;
         this.bucket = config.bucket;
         this.folder = config.path.isEmpty() || config.path.endsWith("/") ? config.path : config.path + "/";
@@ -160,7 +161,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     @Override
     public CompletableFuture<Optional<CborObject>> get(Cid object, Optional<BatWithId> bat) {
-        return get(object, bat, id, hasher);
+        return getRaw(object, bat, id, hasher)
+                .thenApply(opt -> opt.map(CborObject::fromByteArray));
     }
 
     @Override
@@ -176,11 +178,20 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, String auth) {
-        return getRaw(hash, auth, true);
+    public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h) {
+        if (bat.isEmpty())
+            return getRaw(hash, "");
+        return bat.get().bat.generateAuth(hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, h)
+                .thenApply(BlockAuth::encode)
+                .thenCompose(auth -> getRaw(hash, auth, true, bat));
     }
 
-    private CompletableFuture<Optional<byte[]>> getRaw(Cid hash, String auth, boolean enforceAuth) {
+    @Override
+    public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, String auth) {
+        return getRaw(hash, auth, true, Optional.empty());
+    }
+
+    private CompletableFuture<Optional<byte[]>> getRaw(Cid hash, String auth, boolean enforceAuth, Optional<BatWithId> bat) {
         String path = folder + hashToKey(hash);
         PresignedUrl getUrl = S3Request.preSignGet(path, Optional.of(600),
                 S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKeyId, secretKey, hasher).join();
@@ -204,7 +215,9 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             }
 
             nonLocalGets.inc();
-            return p2pFallback.getRaw(hash, auth);
+            if (p2pGetId.equals(id))
+                return p2pFallback.getRaw(hash, auth);
+            return p2pFallback.getRaw(hash, bat); // recalculate auth when the fallback node has a different node id
         } finally {
             readTimer.observeDuration();
         }
@@ -434,7 +447,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     public CompletableFuture<List<Cid>> getLinks(Cid root, String auth) {
         if (root.isRaw())
             return CompletableFuture.completedFuture(Collections.emptyList());
-        return getRaw(root, "", false).thenApply(opt -> opt
+        return getRaw(root, "", false, Optional.empty()).thenApply(opt -> opt
                 .map(CborObject::fromByteArray)
                 .map(cbor -> cbor.links().stream().map(c -> (Cid) c).collect(Collectors.toList()))
                 .orElse(Collections.emptyList())
@@ -447,7 +460,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             return getSize(block)
                     .thenApply(s -> new Pair<>(s.orElse(0), Collections.emptyList()));
         }
-        Optional<byte[]> data = getRaw(block, "", false).join();
+        Optional<byte[]> data = getRaw(block, "", false, Optional.empty()).join();
         List<Cid> links = data.map(CborObject::fromByteArray)
                 .map(cbor -> cbor.links().stream().map(c -> (Cid) c).collect(Collectors.toList()))
                 .orElse(Collections.emptyList());
