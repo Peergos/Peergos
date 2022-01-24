@@ -106,6 +106,9 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             throw new IllegalStateException("Too many reads to auth!");
         List<PresignedUrl> res = new ArrayList<>();
 
+        if (! blocks.stream().allMatch(c -> hasBlock(c.hash)))
+            return Futures.errored(new IllegalStateException("Blocks not present locally"));
+
         // retrieve all blocks and verify BATs in parallel
         List<CompletableFuture<Optional<byte[]>>> data = blocks.stream()
                 .parallel()

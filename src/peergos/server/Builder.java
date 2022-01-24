@@ -172,7 +172,7 @@ public class Builder {
                     throw new IllegalStateException("GC should be run separately when using S3!");
                 DeletableContentAddressedStorage.HTTP ipfs = new DeletableContentAddressedStorage.HTTP(ipfsApi, false, hasher);
                 Cid ourId = Cid.decode(a.getArg("ipfs.id"));
-                TransactionalIpfs legacyBlocksUpdater = new TransactionalIpfs(ipfs, transactions, authoriser, ourId, hasher);
+                TransactionalIpfs p2pBlockRetriever = new TransactionalIpfs(ipfs, transactions, authoriser, ipfs.id().join(), hasher);
                 Optional<String> publicReadUrl = S3Config.getPublicReadUrl(a);
                 boolean directWrites = a.getBoolean("direct-s3-writes", false);
                 boolean publicReads = a.getBoolean("public-s3-reads", false);
@@ -181,7 +181,7 @@ public class Builder {
                 Optional<String> authedUrl = Optional.of("https://" + config.getHost() + "/");
                 BlockStoreProperties props = new BlockStoreProperties(directWrites, publicReads, authedReads, publicReadUrl, authedUrl);
 
-                return new S3BlockStorage(config, ourId, props, transactions, authoriser, hasher, legacyBlocksUpdater);
+                return new S3BlockStorage(config, ourId, props, transactions, authoriser, hasher, p2pBlockRetriever);
             } else {
                 return new FileContentAddressedStorage(blockstorePath(a), transactions, authoriser, hasher);
             }
