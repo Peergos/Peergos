@@ -139,7 +139,7 @@ java -jar Peergos.jar daemon -log-to-console true -admin-usernames $YOUR_DESIRED
 ```
 You can then access the web interface over http:/localhost:8000/
 
-Note that whichever Peergos server you sign up through will be storing your data, so if you don't intend on leaving your Peergos server running permanently, then we recommend signing up on https://beta.peergos.net and then you can log in through a local Peergos instance and all your data will magically end up on the demo.peergos.net server. 
+Note that whichever Peergos server you sign up through will be storing your data, so if you don't intend on leaving your Peergos server running permanently, then we recommend signing up on https://beta.peergos.net and then you can log in through a local Peergos instance and all your data will magically end up on the beta.peergos.net server. 
 
 ### CLI
 There are a range of commands available from a command line. You can run -help to find the available commands or details on any command. Most users should only need the *daemon* and *shell* commands, and maybe *fuse*. You can use the *migrate* command to move all your data to a new server (where the command is run). 
