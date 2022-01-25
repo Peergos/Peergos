@@ -140,7 +140,7 @@ Use this method to login to a peergos account on another instance without any re
 ```
 java -jar Peergos.jar daemon
 ```
-On the first run it will take a while to sync the pki mirror, but subsequent restarts will be fast. All the peergos data will be stored in ~/.peergos by default, which can be overridden with the environment var or arg - PEERGOS_PATH. 
+All the peergos data will be stored in ~/.peergos by default, which can be overridden with the environment var or arg - PEERGOS_PATH. 
 
 You can then access the web interface and login via http://localhost:8000.
 
@@ -158,7 +158,7 @@ Use this method to run a new home-server (which is best with a publicly routable
 ```
 java -jar Peergos.jar daemon -generate-token true
 ```
-On the first run it will take a while to sync the pki mirror, but subsequent restarts will be fast. All the peergos data will be stored in ~/.peergos by default, which can be overridden with the environment var or arg - PEERGOS_PATH
+All the peergos data will be stored in ~/.peergos by default, which can be overridden with the environment var or arg - PEERGOS_PATH
 
 You can then access the web interface and signup via the localhost address printed, which includes a single use signup token.
 
