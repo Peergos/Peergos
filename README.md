@@ -138,7 +138,7 @@ Use this method to login to a peergos account on another instance without any re
 3. Run Peergos with:
 
 ```
-java -jar Peergos.jar daemon -admin-usernames $YOUR_USERNAME
+java -jar Peergos.jar daemon
 ```
 On the first run it will take a while to sync the pki mirror, but subsequent restarts will be fast. All the peergos data will be stored in ~/.peergos by default, which can be overridden with the environment var or arg - PEERGOS_PATH. 
 
@@ -156,13 +156,13 @@ Use this method to run a new home-server (which is best with a publicly routable
 
 3. Run Peergos with:
 ```
-java -jar Peergos.jar daemon -generate-token true -admin-usernames $YOUR_DESIRED_USERNAME
+java -jar Peergos.jar daemon -generate-token true
 ```
 On the first run it will take a while to sync the pki mirror, but subsequent restarts will be fast. All the peergos data will be stored in ~/.peergos by default, which can be overridden with the environment var or arg - PEERGOS_PATH
 
 You can then access the web interface and signup via the localhost address printed, which includes a single use signup token.
 
-The config is stored in $PEERGOS_PATH/condig, so for subsequent runs you can just use the following unless you want to override any config
+The config is stored in $PEERGOS_PATH/config, so for subsequent runs you can just use the following unless you want to override any config
 ```
 java -jar Peergos.jar daemon
 ```
