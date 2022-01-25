@@ -2,6 +2,7 @@ package peergos.server.corenode;
 
 import peergos.server.*;
 import peergos.server.login.*;
+import peergos.server.net.*;
 import peergos.server.space.*;
 import peergos.server.storage.*;
 import peergos.server.util.*;
@@ -78,8 +79,9 @@ public class MirrorCoreNode implements CoreNode {
         this.ourNodeId = ipfs.id().join();
         this.hasher = hasher;
         try {
-            this.state = load(statePath);
+            this.state = load(statePath, pkiOwnerIdentity);
         } catch (IOException e) {
+            e.printStackTrace();
             // load empty
             this.state = CorenodeState.buildEmpty(pkiOwnerIdentity, pkiOwnerIdentity, MaybeMultihash.empty(), MaybeMultihash.empty());
         }
@@ -214,8 +216,14 @@ public class MirrorCoreNode implements CoreNode {
         }
     }
 
-    private static CorenodeState load(Path statePath) throws IOException {
-        Logging.LOG().info("Reading state from " + statePath + " which exists ? " + Files.exists(statePath) + " from cwd " + System.getProperty("cwd"));
+    private static CorenodeState load(Path statePath, PublicKeyHash pkiNodeIdentity) throws IOException {
+        boolean exists = Files.exists(statePath);
+        if (!exists && pkiNodeIdentity.equals(PublicKeyHash.fromString("z59vuwzfFDp3ZA8ZpnnmHEuMtyA1q34m3Th49DYXQVJntWpxdGrRqXi"))) {
+            // copy initial pki state snapshot from jar
+            byte[] pkiSnapshot = JarHandler.getAsset("pki-state.cbor", Paths.get("/pki"), false).data;
+            Files.write(statePath, pkiSnapshot);
+        }
+        Logging.LOG().info("Reading state from " + statePath + " which exists ? " + exists);
         byte[] data = Files.readAllBytes(statePath);
         CborObject object = CborObject.fromByteArray(data);
         return CorenodeState.fromCbor(object);

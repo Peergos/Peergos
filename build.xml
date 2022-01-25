@@ -81,10 +81,11 @@
     <copy todir="${build}/native-lib">
       <fileset dir="native-lib"/>
     </copy>
+    <copy todir="${build}/pki" file="assets/pki-state.cbor"></copy>
     <manifestclasspath property="manifest_cp" jarfile="myjar.jar">
       <classpath refid="dep.runtime" />
     </manifestclasspath>
-    <jar jarfile="${dist}/Peergos.jar" basedir="${build}" includes="peergos/server/**,peergos/shared/**,peergos/client/**,native-lib/**">
+    <jar jarfile="${dist}/Peergos.jar" basedir="${build}" includes="peergos/server/**,peergos/shared/**,peergos/client/**,native-lib/**,pki/**">
       <manifest>
         <attribute name="Main-Class" value="peergos.server.Main"/>
         <attribute name="Class-Path" value="${manifest_cp}"/>
