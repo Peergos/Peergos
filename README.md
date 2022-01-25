@@ -127,19 +127,40 @@ Architecture
  - a link can be generated to a file or a folder which can be shared with anyone through any medium. A link is of the form https://demo.peergos.net/#KEY_MATERIAL which has the property that even the link doesn't leak the file contents to the network, as the key material after the # is not sent to the server, but interpreted locally in the browser. We have extended cryptree to protect much more metadata, including file size, names, thumbnails, directory structure and more. 
  - a user can publish a capability to a file or folder they control which makes it publicly visible
 
-Usage/self-hosting
+Usage - running locally to log in to another instance
 -----
-Download a release from https://beta.peergos.net/public/peergos/releases
+Use this method to login to a peergos account on another instance without any reliance on DNS or the TLS certificate authorities. 
 
-You will need Java >= 11 installed (Java 17 is best). 
+1. Download a release from https://beta.peergos.net/public/peergos/releases
 
-Run Peergos with:
+2. Install Java - You will need Java >= 11 installed (Java 17 is best). 
+
+3. Run Peergos with:
+
+```
+java -jar Peergos.jar daemon -admin-usernames $YOUR_USERNAME
+```
+On the first run it will take a while to sync the pki mirror, but subsequent restarts will be fast. All the peergos data will be stored in ~/.peergos by default, which can be overridden with the environment var or arg - PEERGOS_PATH. 
+
+You can then access the web interface and login via http://localhost:8000.
+
+In this mode of operation all your writes are proxied directly to your home server. The local instance caches any blocks you access for faster subsequent access. 
+
+Usage - self hosting
+-----
+Use this method to run a new home-server (which is best with a publicly routable IP, and always on machine) to create accounts on or migrate accounts to.
+
+1. Download a release from https://beta.peergos.net/public/peergos/releases
+
+2. Install Java - You will need Java >= 11 installed (Java 17 is best). 
+
+3. Run Peergos with:
 ```
 java -jar Peergos.jar daemon -generate-token true -admin-usernames $YOUR_DESIRED_USERNAME
 ```
 On the first run it will take a while to sync the pki mirror, but subsequent restarts will be fast. All the peergos data will be stored in ~/.peergos by default, which can be overridden with the environment var or arg - PEERGOS_PATH
 
-You can then access the web interface and signup via the localhost address printed.
+You can then access the web interface and signup via the localhost address printed, which includes a single use signup token.
 
 The config is stored in $PEERGOS_PATH/condig, so for subsequent runs you can just use the following unless you want to override any config
 ```
@@ -148,7 +169,7 @@ java -jar Peergos.jar daemon
 
 Note that whichever Peergos server you sign up through (your home server) will be storing your data, so if you don't intend on leaving your Peergos server running permanently, then we recommend signing up on https://beta.peergos.net and then you can log in through a local Peergos instance and all your data will magically end up on the beta.peergos.net server. Peergos can work behind NATs and firewalls, but we recommend using a server with a public IP. If you want to expose your web interface publicly you will need to arrange a domain name and TLS certificates (we recommend using nginx and letsencrypt). 
 
-If you don't set up a domain name and TLS you can still log in to your account from another Peergos instance, e.g. one you run locally on your laptop, connections are routed securely over P2P TLS1.3 streams to your home server. In this case, any writes are proxied to your home server so your data is always persisted there. 
+If you don't set up a domain name and TLS you can still log in to your account from another Peergos instance, e.g. one you run locally on your laptop - connections are routed securely over P2P TLS1.3 streams to your home server. In this case, any writes are proxied to your home server so your data is always persisted there. 
 
 ### CLI
 There are a range of commands available from a command line. You can run -help to find the available commands or details on any command. Most users should only need the *daemon* and *shell* commands, and maybe *fuse*. You can use the *migrate* command to move all your data to a new server (where the command is run). 
