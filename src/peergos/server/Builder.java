@@ -196,7 +196,7 @@ public class Builder {
                                                          Hasher hasher) {
         Optional<BatWithId> instanceBat = a.getOptionalArg("instance-bat").map(BatWithId::decode);
         return (b, d, s, auth) -> {
-            System.out.println("Allow: " + b + ", auth=" + auth + ", from: " + s);
+            Logging.LOG().fine("Allow: " + b + ", auth=" + auth + ", from: " + s);
             if (b.isRaw()) {
                 List<BatId> batids = Bat.getRawBlockBats(d);
                 if (batids.isEmpty()) // legacy raw block

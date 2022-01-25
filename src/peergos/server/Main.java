@@ -143,6 +143,7 @@ public class Main extends Builder {
                     ARG_TRANSACTIONS_SQL_FILE,
                     new Command.Arg("webroot", "the path to the directory to serve as the web root", false),
                     new Command.Arg("default-quota", "default maximum storage per user", false, Long.toString(1024L * 1024 * 1024)),
+                    new Command.Arg("admin-usernames", "A comma separated list of usernames who can approve local space requests", false),
                     new Command.Arg("mirror.node.id", "Mirror a server's data locally", false),
                     new Command.Arg("mirror.username", "Mirror a user's data locally", false),
                     new Command.Arg("mirror.bat", "BatWithId to enable mirroring a user's private data", false),
@@ -577,8 +578,9 @@ public class Main extends Builder {
             SocialNetwork local = UserRepository.build(p2pDht, rawSocial);
             SocialNetwork p2pSocial = new ProxyingSocialNetwork(nodeId, core, local, httpSocial);
 
-            Set<String> adminUsernames = Arrays.asList(a.getArg("admin-usernames").split(","))
+            Set<String> adminUsernames = Arrays.asList(a.getArg("admin-usernames", "").split(","))
                     .stream()
+                    .filter(n -> ! n.isEmpty())
                     .collect(Collectors.toSet());
             boolean enableWaitlist = a.getBoolean("enable-wait-list", false);
             Admin storageAdmin = new Admin(adminUsernames, userQuotas, core, localStorage, enableWaitlist);
