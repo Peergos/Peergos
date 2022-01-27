@@ -19,7 +19,7 @@ public class S3DeleteOld {
 
     private static final Logger LOG = Logger.getGlobal();
 
-    private static void applyToAllInRange(Consumer<S3AdminRequests.ObjectMetadata> processor,
+    private static void applyToAllInRange(Consumer<List<S3AdminRequests.ObjectMetadata>> processor,
                                           String startPrefix,
                                           Optional<String> endPrefix,
                                           S3Config config,
@@ -38,6 +38,7 @@ public class S3DeleteOld {
                             }
                         }, S3AdminRequests.builder::get, h);
 
+                List<S3AdminRequests.ObjectMetadata> toProcess = new ArrayList<>();
                 for (S3AdminRequests.ObjectMetadata objectSummary : result.objects) {
                     if (objectSummary.key.endsWith("/")) {
                         LOG.fine(" - " + objectSummary.key + "  " + "(directory)");
@@ -45,8 +46,9 @@ public class S3DeleteOld {
                     }
                     if (endPrefix.isPresent() && objectSummary.key.compareTo(endPrefix.get()) >= 0)
                         return;
-                    processor.accept(objectSummary);
+                    toProcess.add(objectSummary);
                 }
+                processor.accept(toProcess);
                 long done = counter.addAndGet(result.objects.size());
                 if ((done / 1000) % 10 == 0)
                     System.out.println("Objects processed: " + done);
@@ -61,7 +63,7 @@ public class S3DeleteOld {
 
     private static void applyToRange(String startPrefix,
                                      Optional<String> endPrefix,
-                                     Consumer<S3AdminRequests.ObjectMetadata> processor,
+                                     Consumer<List<S3AdminRequests.ObjectMetadata>> processor,
                                      S3Config conmfig,
                                      AtomicLong counter,
                                      AtomicLong doneCounter,
@@ -72,7 +74,7 @@ public class S3DeleteOld {
         applyToAllInRange(obj -> {
                 while (pool.getQueuedSubmissionCount() > 100)
                     try {Thread.sleep(100);} catch (InterruptedException e) {}
-                doneCounter.incrementAndGet();
+                doneCounter.addAndGet(obj.size());
                 pool.submit(() -> processor.accept(obj));
         }, startPrefix, endPrefix, conmfig, counter, h);
         System.out.println("Objects processed: " + doneCounter.get());
@@ -104,15 +106,23 @@ public class S3DeleteOld {
         Optional<String> endPrefix = Optional.empty();
         LocalDateTime cutoff = LocalDate.parse(a.getArg("delete-before-date")).atStartOfDay();
 
-        Consumer<S3AdminRequests.ObjectMetadata> processor = m -> {
-            try {
-                if (m.lastModified.isBefore(cutoff)) {
-                    System.out.println("Deleting " + m.key);
-                    bulkDelete(Arrays.asList(m.key), config, crypto.hasher);
+        Consumer<List<S3AdminRequests.ObjectMetadata>> processor = objs -> {
+            List<String> toDelete = new ArrayList<>();
+            for (S3AdminRequests.ObjectMetadata m : objs) {
+                try {
+                    if (m.lastModified.isBefore(cutoff)) {
+                        System.out.println("Deleting " + m.key);
+                        toDelete.add(m.key);
+                        if (toDelete.size() > 1_000) {
+                            bulkDelete(toDelete, config, crypto.hasher);
+                            toDelete.clear();
+                        }
+                    }
+                } catch (Exception e) {
+                    System.err.println(e.getMessage());
                 }
-            } catch (Exception e) {
-                System.err.println(e.getMessage());
             }
+            bulkDelete(toDelete, config, crypto.hasher);
         };
 
         System.out.println("Deleting objects in S3 bucket " + config.bucket + " older than " + cutoff);
