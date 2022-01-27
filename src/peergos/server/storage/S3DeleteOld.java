@@ -122,7 +122,8 @@ public class S3DeleteOld {
                     System.err.println(e.getMessage());
                 }
             }
-            bulkDelete(toDelete, config, crypto.hasher);
+            if (! toDelete.isEmpty())
+                bulkDelete(toDelete, config, crypto.hasher);
         };
 
         System.out.println("Deleting objects in S3 bucket " + config.bucket + " older than " + cutoff);
