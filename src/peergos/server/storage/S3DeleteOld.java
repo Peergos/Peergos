@@ -5,7 +5,7 @@ import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.storage.*;
-import peergos.shared.storage.auth.*;
+import peergos.shared.util.*;
 
 import java.io.*;
 import java.time.*;
@@ -78,6 +78,23 @@ public class S3DeleteOld {
         System.out.println("Objects processed: " + doneCounter.get());
     }
 
+    public static void bulkDelete(List<String> keys, S3Config config, Hasher hasher) {
+        S3AdminRequests.bulkDelete(keys, ZonedDateTime.now(), config.getHost(), config.region, config.accessKey, config.secretKey,
+                b -> ArrayOps.bytesToHex(Hash.sha256(b)),
+                (url, body) -> {
+                    try {
+                        return HttpUtil.post(url, body);
+                    } catch (IOException e) {
+                        String msg = e.getMessage();
+                        boolean rateLimited = msg.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>SlowDown</Code>");
+                        if (rateLimited) {
+                            throw new RateLimitException();
+                        }
+                        throw new RuntimeException(e);
+                    }
+                }, S3AdminRequests.builder::get, hasher);
+    }
+
     public static void main(String[] args) {
         Crypto crypto = Main.initJavaCrypto();
         Args a = Args.parse(args);
@@ -86,18 +103,15 @@ public class S3DeleteOld {
         String startPrefix = "";
         Optional<String> endPrefix = Optional.empty();
         LocalDateTime cutoff = LocalDate.parse(a.getArg("delete-before-date")).atStartOfDay();
-        String host = config.getHost();
 
         Consumer<S3AdminRequests.ObjectMetadata> processor = m -> {
             try {
                 if (m.lastModified.isBefore(cutoff)) {
                     System.out.println("Deleting " + m.key);
-                    PresignedUrl delUrl = S3Request.preSignDelete(m.key, S3AdminRequests.asAwsDate(ZonedDateTime.now()), host,
-                            config.region, config.accessKey, config.secretKey, crypto.hasher).join();
-                    HttpUtil.delete(delUrl);
+                    bulkDelete(Arrays.asList(m.key), config, crypto.hasher);
                 }
             } catch (Exception e) {
-                e.printStackTrace();
+                System.err.println(e.getMessage());
             }
         };
 
