@@ -76,7 +76,7 @@ public class S3BucketCopy {
             if (! res.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><CopyObjectResult") || !res.contains("</LastModified><ETag>"))
                 throw new IllegalStateException(res);
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            System.err.println(e.getMessage());
         }
     }
 
@@ -100,6 +100,8 @@ public class S3BucketCopy {
                 pool.submit(() -> copyObject(obj.key, sourceConfig.bucket, destConfig, h));
             }
         }, startPrefix, endPrefix, sourceConfig, counter, h);
+        while (! pool.isQuiescent())
+            try {Thread.sleep(100);} catch (InterruptedException e) {}
         System.out.println("Objects copied: " + copyCounter.get());
     }
 

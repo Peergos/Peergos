@@ -77,6 +77,8 @@ public class S3DeleteOld {
                 doneCounter.addAndGet(obj.size());
                 pool.submit(() -> processor.accept(obj));
         }, startPrefix, endPrefix, conmfig, counter, h);
+        while (! pool.isQuiescent())
+            try {Thread.sleep(100);} catch (InterruptedException e) {}
         System.out.println("Objects processed: " + doneCounter.get());
     }
 
