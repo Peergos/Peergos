@@ -1,5 +1,76 @@
 <?xml version="1.0" encoding="utf-8"?>
-<feed xmlns="http://www.w3.org/2005/Atom"><title>Peergos</title><link href="https://peergos.gitlab.io/website/" rel="alternate"></link><link href="https://peergos.gitlab.io/website/feeds/all.atom.xml" rel="self"></link><id>https://peergos.gitlab.io/website/</id><updated>2021-11-20T00:00:00+00:00</updated><entry><title>Encrypted email storage and client</title><link href="https://peergos.gitlab.io/website/posts/email-bridge" rel="alternate"></link><published>2021-11-20T00:00:00+00:00</published><updated>2021-11-20T00:00:00+00:00</updated><author><name>Peergos team</name></author><id>tag:peergos.gitlab.io,2021-11-20:/website/posts/email-bridge</id><summary type="html">&lt;p&gt;We're pleased to announce the latest feature built as part of our NGI grant - an email bridge. The email bridge is a separate server that can run anywhere. It will encrypt incoming emails and store them in your Peergos space, as well as sending outgoing emails, which you create from …&lt;/p&gt;</summary><content type="html">&lt;p&gt;We're pleased to announce the latest feature built as part of our NGI grant - an email bridge. The email bridge is a separate server that can run anywhere. It will encrypt incoming emails and store them in your Peergos space, as well as sending outgoing emails, which you create from the web interface. All it needs is the SMTP and IMAP credentials to your email, and write-access to a particular folder in your Peergos space. This is what the web client looks like:&lt;/p&gt;
+<feed xmlns="http://www.w3.org/2005/Atom"><title>Peergos</title><link href="https://peergos.gitlab.io/website/" rel="alternate"></link><link href="https://peergos.gitlab.io/website/feeds/all.atom.xml" rel="self"></link><id>https://peergos.gitlab.io/website/</id><updated>2022-01-25T00:00:00+00:00</updated><entry><title>Release the BATs (block level access control in IPFS)</title><link href="https://peergos.gitlab.io/website/posts/bats" rel="alternate"></link><published>2022-01-25T00:00:00+00:00</published><updated>2022-01-25T00:00:00+00:00</updated><author><name>Peergos team</name></author><id>tag:peergos.gitlab.io,2022-01-25:/website/posts/bats</id><summary type="html">&lt;p&gt;The main valid criticism of private applications built on IPFS is that blocks in IPFS are public. Yes, you can encrypt them, but the ciphertext is still fundamentally public. Or it was – until now. We've implemented block level access control in bitswap (the block exchange protocol used by IPFS). This …&lt;/p&gt;</summary><content type="html">&lt;p&gt;The main valid criticism of private applications built on IPFS is that blocks in IPFS are public. Yes, you can encrypt them, but the ciphertext is still fundamentally public. Or it was – until now. We've implemented block level access control in bitswap (the block exchange protocol used by IPFS). This means that only the people granted access to a file will be able to retrieve the encrypted blocks that constitute it. It's a ground-breaking advance: nothing else built on IPFS is this private. &lt;/p&gt;
+&lt;p&gt;In the rest of this post, we're going to talk about:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;how the design works from the bitswap protocol level up to the Peergos client, and&lt;/li&gt;
+&lt;li&gt;how we turn this into an autoscaling post-quantum capability-based access-control mechanism.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;To begin with, let's see how things currently work. &lt;/p&gt;
+&lt;p&gt;&lt;center&gt;
+&lt;img alt="unauthed" class="class" id="id" src="/theme/img/blog/bitswap-unauthed.png" width="500px" /&gt;
+&lt;br/&gt;
+Unauthed bitswap retrieving a block.
+&lt;/center&gt;&lt;/p&gt;
+&lt;p&gt;When an app on IPFS wants a block of data, it asks IPFS for the data corresponding to its content identifier, or &lt;a href="https://docs.ipfs.io/concepts/content-addressing/#identifier-formats"&gt;CID&lt;/a&gt; (basically, a hash of the data). IPFS will then search the global IPFS network for nodes that have this CID. At the same time, it will ask any nodes it's already in contact with: "Do you have this CID?". Any contacted node that has the block can respond with the data. A nice property of this is that any node that has the content can serve it up, which means that it autoscales to demand. &lt;/p&gt;
+&lt;p&gt;&lt;center&gt;
+&lt;img alt="authed" class="class" id="id" src="/theme/img/blog/bitswap-authed.png" width="500px" /&gt;
+&lt;br/&gt;
+Authed bitswap retrieving a block.
+&lt;/center&gt;&lt;/p&gt;
+&lt;p&gt;We have extended this protocol to have an optional auth string paired with every CID. In Peergos, this auth string is an &lt;a href="https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-header-based-auth.html"&gt;S3 V4 signature&lt;/a&gt;, which is time-limited, includes the CID, and is tied to the requesting node's public key (to prevent replay attacks). A replay attack would be if it were possible for someone without the block, who we had sent a valid auth token, to retrieve the block themselves directly using the token. As an anology, consider a ticketed event. If someone buys a ticket, and then a friend of theirs copies the ticket and uses that to gain entry, that is a replay attack. If, however, the tickets included the buyer's name on the ticket (they were non-transferable) and the event verified the holder's name on entry then the friend couldn't get in, even with the original ticket. &lt;/p&gt;
+&lt;p&gt;We do a similar thing to avoid this by using the source node's public key as the domain in the S3 request. This way we can broadcast a cid and auth string to the network and no one but us can use that auth string. The S3 V4 signature scheme is essentially repeated &lt;a href="https://en.wikipedia.org/wiki/HMAC"&gt;hmac-sha256&lt;/a&gt; and needs a secret key to function. Such a secret key would grant the holder access to the block, so we call it a Block Access Token or BAT for short, and each is 32 bytes long. Since it only depends on hmac-sha256, which itself only depends on sha256, it is post-quantum - a large quantum computer does not break it. &lt;/p&gt;
+&lt;p&gt;The primary BAT used for this authentication is derived from the block itself. This means any instance that retrieves such a block (after being authorised) can continue to serve it up and enforce the same access control, thus maintaining the autoscaling properties in a privacy-preserving way.&lt;/p&gt;
+&lt;p&gt;There are two formats of blocks in Peergos, cbor and raw. Raw blocks are the most sensitive (they hold users' encrypted data) and are just fragments of ciphertext with no additional structure. Cbor blocks are valid &lt;a href="https://ipld.io/docs/codecs/known/dag-cbor/"&gt;dag-cbor&lt;/a&gt; structured IPLD objects which can reference other blocks. How could we put a BAT in these blocks? In a cbor block, it is easy to choose a canonical place to put a list of BATs. If the cbor is a map object, we put a list of BATs at the top level under the key "bats".&lt;/p&gt;
+&lt;p&gt;&lt;center&gt;
+&lt;img alt="cbor-block-auth" class="class" id="id" src="/theme/img/blog/cbor-bats.png" width="500px" /&gt;
+&lt;br/&gt;
+Structure for storing BATs in cbor blocks
+&lt;/center&gt;&lt;/p&gt;
+&lt;p&gt;For raw objects, it is a little more difficult, as we also need to support raw blocks that do not have a BAT (either legacy blocks or ones specifically made public). Our design uses a detectable prefix of 8 FIXED bytes followed by a cbor list of BATs before the actual ciphertext of the block.&lt;/p&gt;
+&lt;p&gt;&lt;center&gt;
+&lt;img alt="raw-bock-auth" class="class" id="id" src="/theme/img/blog/raw-bats.png" width="500px" /&gt;
+&lt;br/&gt;
+Structure for storing BATs in the prefix of a raw block
+&lt;/center&gt;&lt;/p&gt;
+&lt;p&gt;We normally have two bats per block. One is inline - and specific to that block only. The other is a user wide "mirror" BAT - and referenced in the block by its hash. The mirror BAT is for when a user wants to mirror all their data on another instance, or migrate to another instance. &lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;&lt;/th&gt;
+&lt;th&gt;Chunk 1&lt;/th&gt;
+&lt;th&gt;Chunk 2&lt;/th&gt;
+&lt;th&gt;Chunk 3&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;BAT stream secret&lt;/td&gt;
+&lt;td&gt;Sb (encrypted in base data)&lt;/td&gt;
+&lt;td&gt;&lt;/td&gt;
+&lt;td&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;BAT[] (unencrypted in root cbor object under "bats")&lt;/td&gt;
+&lt;td&gt;B1=randomBytes(32)&lt;/td&gt;
+&lt;td&gt;B2=hash(Sb + B1)&lt;/td&gt;
+&lt;td&gt;B3=hash(Sb + B2)&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;&lt;center&gt;
+BAT derivation for subsequent chunks of a file
+&lt;/center&gt;&lt;/p&gt;
+&lt;p&gt;Each 5 MiB chunk of a file or directory has its own unique BAT, so the server still cannot link the different blocks of a file to deduce the padded size of the file. Subsequent chunk BATs within a file are &lt;a href="/posts/fast-seeking"&gt;derived&lt;/a&gt; in the same way as we do the CHAMP labels, by hashing the current chunk BAT with a stream-secret, stored encrypted in the first chunk. This maintains our ability to seek within arbitrarily large files without any IO operations (just local hashing and then a final lookup of the requested chunk). When someone's access to a file or directory is revoked, the BATs are also changed, making it impossible to retrieve the new ciphertext even with previous access.&lt;/p&gt;
+&lt;p&gt;Want to join the party? Create a free account on https://beta.peergos.net or run your own &lt;a href="https://github.com/Peergos/Peergos/blob/master/README.md#usage---self-hosting"&gt;private personal datastore&lt;/a&gt;. &lt;/p&gt;
+&lt;p&gt;&lt;br/&gt;&lt;br/&gt;&lt;/p&gt;
+&lt;hr /&gt;
+&lt;p&gt;&lt;center&gt;
+&lt;img alt="NGI Pointer" class="class" height="65px" id="id" src="/theme/img/ngi-logo.png" /&gt;
+&lt;img alt="NGI Pointer" class="class" height="65" id="id" src="/theme/img/eu.png" /&gt;
+&lt;/center&gt;
+&lt;br/&gt;
+This project has received funding from the European Union’s Horizon 2020 research and innovation programme within the framework of the NGI-POINTER Project funded under grant agreement No 871528&lt;/p&gt;
+&lt;p&gt;&lt;br/&gt;&lt;br/&gt;&lt;br/&gt;&lt;/p&gt;</content><category term="posts"></category></entry><entry><title>Encrypted email storage and client</title><link href="https://peergos.gitlab.io/website/posts/email-bridge" rel="alternate"></link><published>2021-11-20T00:00:00+00:00</published><updated>2021-11-20T00:00:00+00:00</updated><author><name>Peergos team</name></author><id>tag:peergos.gitlab.io,2021-11-20:/website/posts/email-bridge</id><summary type="html">&lt;p&gt;We're pleased to announce the latest feature built as part of our NGI grant - an email bridge. The email bridge is a separate server that can run anywhere. It will encrypt incoming emails and store them in your Peergos space, as well as sending outgoing emails, which you create from …&lt;/p&gt;</summary><content type="html">&lt;p&gt;We're pleased to announce the latest feature built as part of our NGI grant - an email bridge. The email bridge is a separate server that can run anywhere. It will encrypt incoming emails and store them in your Peergos space, as well as sending outgoing emails, which you create from the web interface. All it needs is the SMTP and IMAP credentials to your email, and write-access to a particular folder in your Peergos space. This is what the web client looks like:&lt;/p&gt;
 &lt;p&gt;&lt;center&gt;
 &lt;img alt="email" class="class" id="id" src="/theme/img/blog/email-inbox.png" width="500px" /&gt;
 &lt;br/&gt;
@@ -524,7 +595,7 @@ How we now calculate the locations of later parts of a file
 &lt;/center&gt;&lt;/p&gt;
 &lt;p&gt;This means that to seek ahead we don't need to do &lt;em&gt;any&lt;/em&gt; IO at all. We just do a bunch of hashing locally. This is ridiculously fast and doesn't leak to the world the connections between your chunks. We can now seek many gigabytes into a file in about 5s, which is mostly the time to retrive the eventual chunk of the file.&lt;/p&gt;
 &lt;p&gt;&lt;center&gt;
-&lt;video src="theme/video/mind-blown.mp4" width="400px" controls="true"&gt;&lt;/video&gt;
+&lt;video src="/theme/video/mind-blown.mp4" width="400px" controls="true"&gt;&lt;/video&gt;
 &lt;/center&gt;&lt;/p&gt;
 &lt;p&gt;&lt;center&gt;
 http://localhost:8000/#{%22nonce%22:%22hl6U6X/ytjRGT+pi5wmJFq...,%22ciphertext%22:%22oK9JAGotzDOELvIon...}

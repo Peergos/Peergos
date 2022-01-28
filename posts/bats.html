@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <head>
-    <title>The perfect social network</title>
+    <title>Release the BATs (block level access control in IPFS)</title>
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta charset="utf-8">
     <meta http-equiv="Content-Security-Policy" content="default-src https: 'self'; style-src 'unsafe-inline' 'self'; script-src 'unsafe-inline' 'self';">
@@ -123,43 +123,80 @@
     <div class="col m3 col s4">
     </div>
     <div class="col m9 col s8" role="main" style="overflow-x:auto; padding-bottom: 10px;">
-    <h1 class="page-header main-title">The perfect social network</h1>
+    <h1 class="page-header main-title">Release the BATs (block level access control in IPFS)</h1>
     <div class="bs-docs-section">
-    <p>What do most people want in a social network? We all have different ideas, but is it possible to have a set of features that makes everyone happy? We think so!</p>
-<p>This is the Peergos list of <strong>user-focused</strong> requirements for the Perfect Social Network:</p>
+    <p>The main valid criticism of private applications built on IPFS is that blocks in IPFS are public. Yes, you can encrypt them, but the ciphertext is still fundamentally public. Or it was – until now. We've implemented block level access control in bitswap (the block exchange protocol used by IPFS). This means that only the people granted access to a file will be able to retrieve the encrypted blocks that constitute it. It's a ground-breaking advance: nothing else built on IPFS is this private. </p>
+<p>In the rest of this post, we're going to talk about:</p>
 <ol>
-<li><strong>Sharing media</strong> of any size with any number of people, including "the public".</li>
-<li><strong>Universal login</strong> - logging in on any device (even when all devices have been lost).</li>
-<li><strong>Unique usernames</strong> (human-memorable).</li>
-<li><strong>Location-independent identity</strong> - users should be able to change hosting provider without losing data or friends.</li>
-<li><strong>Offline</strong> functionality - the ability for many functions to continue to work offline.</li>
-<li><strong>Private data</strong> - the users decide who sees their posts, and the platform, as well as any server operators, can’t access them.</li>
-<li><strong>Private metadata</strong> (including the social graph - who connects with whom and when).</li>
-<li><strong>Post-quantum</strong> (safe if a large quantum computer is built).</li>
-<li>Free from <strong>targetted ads</strong>, or an engagement/outrage-optimised <strong>algorithmic feed</strong>.</li>
-<li>Fine grained <strong>access control</strong> - the user can restrict visibility of individual posts.</li>
-<li>The ability to delete or <strong>modify data</strong>.</li>
-<li><strong>Self-hostable</strong> - for those who want more control, whilst still interacting with everyone else.</li>
+<li>how the design works from the bitswap protocol level up to the Peergos client, and</li>
+<li>how we turn this into an autoscaling post-quantum capability-based access-control mechanism.</li>
 </ol>
-<p>So why do we think these points are important?</p>
-<p>They fall into three broad categories: convenience, privacy and control.</p>
-<h2 id="convenience">Convenience</h2>
-<p>This one’s critical - if something isn't convenient, then most people won't use it. But what do we mean by convenience?</p>
-<p>For instance, we are used to having unique usernames on services like email, Twitter, Instagram etc. This enables everyone to unambiguously find friends via a human-memorable name; it also gives an entry point to log in from anywhere. At the moment, many architectures rely on generating keys on each device, and require an existing device to authorise a new one (e.g. Signal). However, this means you cannot log in if you lose all your devices.</p>
-<p>How many times have you switched email addresses and had to tell all your contacts about it? A location-independent identity means that we are free to choose where our data is stored, and move providers without any loss of data and whilst maintaining our full social graph.</p>
-<p>Can we still do anything if the internet is down? Is it possible to search old messages or write new posts without internet access? Most folks would love a social network with offline functionality.</p>
-<p>Finally, sharing large files. Unfortunately, this requirement rules out a lot of currently available architectures: in some popular social networks, sharing a 4 GB file with friends entails storing 4 GB on all their devices – and in append-only structures (i.e. ones you can only add to, never remove from) these files can't even be deleted!</p>
-<h2 id="privacy">Privacy</h2>
-<p>Privacy is a fundamental human right, and the best way to protect it online is with <a href="https://en.wikipedia.org/wiki/End-to-end_encryption">end-to-end encryption</a> of all data. Beyond that, to maintain freedom of association, we need to also safeguard metadata, in particular the social graph – i.e. not only protect what you send, but also what size, to whom and when. The need for full protection rules out protocols that expose lots of data and metadata to both the server administrators and the rest of the network (e.g. ActivityPub).</p>
-<p>Privacy isn't very good if it is temporary. Given the possibility of a large quantum computer being built, it is important for any privacy-focused protocol to plan for it.</p>
-<h2 id="control">Control</h2>
-<p>Many users would like more control over their data online, especially in social networks – and control comes in different flavours.</p>
-<p>Control over your own social feed means that you cannot be manipulated by the platform or its advertisers (as seen in recent elections!). Ideally this is not just a promise by the network operator, but a property enforced by design.</p>
-<p>Fine-grained access control allows users to do what they do naturally in life – control the flow of their information, whether it's private communication with a friend, or keeping work, family and friends separate.</p>
-<p>Control over modifying or deleting data allows us to be, well, human. People frequently make mistakes and might want to modify something, or simply clear up some space.</p>
-<p>And for those who want Even More Control, the system must be self-hostable. This also keeps the platform honest - a non-self-hostable (centralized) platform can do whatever it wants, and users have no choice but to accept any changes or leave the network entirely. To allow for self-hosting, the platform should be fully open source, including any server code.</p>
-<p>At Peergos, we <em>already</em> tick the above boxes, except offline functionality and post-quantum – both of which are partial ticks and in progress. Currently we look more like a global social file system, but we will be adding a more traditional social feed in the future. Watch this space for more progress reports!</p>
-<p>Do you agree with our list? What is YOUR perfect social network like? Tweet us at <a href="https://twitter.com/peergos">@peergos</a> with your ideas!</p>
+<p>To begin with, let's see how things currently work. </p>
+<p><center>
+<img alt="unauthed" class="class" id="id" src="/theme/img/blog/bitswap-unauthed.png" width="500px" />
+<br/>
+Unauthed bitswap retrieving a block.
+</center></p>
+<p>When an app on IPFS wants a block of data, it asks IPFS for the data corresponding to its content identifier, or <a href="https://docs.ipfs.io/concepts/content-addressing/#identifier-formats">CID</a> (basically, a hash of the data). IPFS will then search the global IPFS network for nodes that have this CID. At the same time, it will ask any nodes it's already in contact with: "Do you have this CID?". Any contacted node that has the block can respond with the data. A nice property of this is that any node that has the content can serve it up, which means that it autoscales to demand. </p>
+<p><center>
+<img alt="authed" class="class" id="id" src="/theme/img/blog/bitswap-authed.png" width="500px" />
+<br/>
+Authed bitswap retrieving a block.
+</center></p>
+<p>We have extended this protocol to have an optional auth string paired with every CID. In Peergos, this auth string is an <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-header-based-auth.html">S3 V4 signature</a>, which is time-limited, includes the CID, and is tied to the requesting node's public key (to prevent replay attacks). A replay attack would be if it were possible for someone without the block, who we had sent a valid auth token, to retrieve the block themselves directly using the token. As an anology, consider a ticketed event. If someone buys a ticket, and then a friend of theirs copies the ticket and uses that to gain entry, that is a replay attack. If, however, the tickets included the buyer's name on the ticket (they were non-transferable) and the event verified the holder's name on entry then the friend couldn't get in, even with the original ticket. </p>
+<p>We do a similar thing to avoid this by using the source node's public key as the domain in the S3 request. This way we can broadcast a cid and auth string to the network and no one but us can use that auth string. The S3 V4 signature scheme is essentially repeated <a href="https://en.wikipedia.org/wiki/HMAC">hmac-sha256</a> and needs a secret key to function. Such a secret key would grant the holder access to the block, so we call it a Block Access Token or BAT for short, and each is 32 bytes long. Since it only depends on hmac-sha256, which itself only depends on sha256, it is post-quantum - a large quantum computer does not break it. </p>
+<p>The primary BAT used for this authentication is derived from the block itself. This means any instance that retrieves such a block (after being authorised) can continue to serve it up and enforce the same access control, thus maintaining the autoscaling properties in a privacy-preserving way.</p>
+<p>There are two formats of blocks in Peergos, cbor and raw. Raw blocks are the most sensitive (they hold users' encrypted data) and are just fragments of ciphertext with no additional structure. Cbor blocks are valid <a href="https://ipld.io/docs/codecs/known/dag-cbor/">dag-cbor</a> structured IPLD objects which can reference other blocks. How could we put a BAT in these blocks? In a cbor block, it is easy to choose a canonical place to put a list of BATs. If the cbor is a map object, we put a list of BATs at the top level under the key "bats".</p>
+<p><center>
+<img alt="cbor-block-auth" class="class" id="id" src="/theme/img/blog/cbor-bats.png" width="500px" />
+<br/>
+Structure for storing BATs in cbor blocks
+</center></p>
+<p>For raw objects, it is a little more difficult, as we also need to support raw blocks that do not have a BAT (either legacy blocks or ones specifically made public). Our design uses a detectable prefix of 8 FIXED bytes followed by a cbor list of BATs before the actual ciphertext of the block.</p>
+<p><center>
+<img alt="raw-bock-auth" class="class" id="id" src="/theme/img/blog/raw-bats.png" width="500px" />
+<br/>
+Structure for storing BATs in the prefix of a raw block
+</center></p>
+<p>We normally have two bats per block. One is inline - and specific to that block only. The other is a user wide "mirror" BAT - and referenced in the block by its hash. The mirror BAT is for when a user wants to mirror all their data on another instance, or migrate to another instance. </p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Chunk 1</th>
+<th>Chunk 2</th>
+<th>Chunk 3</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>BAT stream secret</td>
+<td>Sb (encrypted in base data)</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>BAT[] (unencrypted in root cbor object under "bats")</td>
+<td>B1=randomBytes(32)</td>
+<td>B2=hash(Sb + B1)</td>
+<td>B3=hash(Sb + B2)</td>
+</tr>
+</tbody>
+</table>
+<p><center>
+BAT derivation for subsequent chunks of a file
+</center></p>
+<p>Each 5 MiB chunk of a file or directory has its own unique BAT, so the server still cannot link the different blocks of a file to deduce the padded size of the file. Subsequent chunk BATs within a file are <a href="/posts/fast-seeking">derived</a> in the same way as we do the CHAMP labels, by hashing the current chunk BAT with a stream-secret, stored encrypted in the first chunk. This maintains our ability to seek within arbitrarily large files without any IO operations (just local hashing and then a final lookup of the requested chunk). When someone's access to a file or directory is revoked, the BATs are also changed, making it impossible to retrieve the new ciphertext even with previous access.</p>
+<p>Want to join the party? Create a free account on https://beta.peergos.net or run your own <a href="https://github.com/Peergos/Peergos/blob/master/README.md#usage---self-hosting">private personal datastore</a>. </p>
+<p><br/><br/></p>
+<hr />
+<p><center>
+<img alt="NGI Pointer" class="class" height="65px" id="id" src="/theme/img/ngi-logo.png" />
+<img alt="NGI Pointer" class="class" height="65" id="id" src="/theme/img/eu.png" />
+</center>
+<br/>
+This project has received funding from the European Union’s Horizon 2020 research and innovation programme within the framework of the NGI-POINTER Project funded under grant agreement No 871528</p>
+<p><br/><br/><br/></p>
 <h4>RECENT POSTS</h4>
 <ul id="recent-posts">
     <li>

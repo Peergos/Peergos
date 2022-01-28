@@ -133,7 +133,7 @@ How we now calculate the locations of later parts of a file
 </center></p>
 <p>This means that to seek ahead we don't need to do <em>any</em> IO at all. We just do a bunch of hashing locally. This is ridiculously fast and doesn't leak to the world the connections between your chunks. We can now seek many gigabytes into a file in about 5s, which is mostly the time to retrive the eventual chunk of the file.</p>
 <p><center>
-<video src="theme/video/mind-blown.mp4" width="400px" controls="true"></video>
+<video src="/theme/video/mind-blown.mp4" width="400px" controls="true"></video>
 </center></p>
 <p><center>
 http://localhost:8000/#{%22nonce%22:%22hl6U6X/ytjRGT+pi5wmJFq...,%22ciphertext%22:%22oK9JAGotzDOELvIon...}
@@ -158,6 +158,9 @@ Request more space
 <p>-The Peergos team</p>
 <h4>RECENT POSTS</h4>
 <ul id="recent-posts">
+    <li>
+      <a href="../posts/bats">Release the BATs (block level access control in IPFS)</a>
+    </li>
     <li>
       <a href="../posts/email-bridge">Encrypted email storage and client</a>
     </li>
