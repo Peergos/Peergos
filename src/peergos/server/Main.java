@@ -56,6 +56,8 @@ public class Main extends Builder {
         new Command.Arg("useIPFS", "Use IPFS for storage or a local disk store if not", false, "true");
     public static final Command.Arg ARG_IPFS_API_ADDRESS =
         new Command.Arg("ipfs-api-address", "IPFS API address", true, "/ip4/127.0.0.1/tcp/5001");
+    public static final Command.Arg ARG_IPFS_PROXY_TARGET =
+        new Command.Arg("proxy-target", "Proxy target for p2p http requests", false, "/ip4/127.0.0.1/tcp/8003");
 
     public static Command<Boolean> ENSURE_IPFS_INSTALLED = new Command<>("install-ipfs",
             "Download/update IPFS binary. Does nothing if current IPFS binary is up-to-date.",
@@ -98,7 +100,7 @@ public class Main extends Builder {
                     new Command.Arg("ipfs-api-address", "IPFS API port", false, "/ip4/127.0.0.1/tcp/5001"),
                     new Command.Arg("ipfs-gateway-address", "IPFS Gateway port", false, "/ip4/127.0.0.1/tcp/8080"),
                     new Command.Arg("ipfs-swarm-port", "IPFS Swarm port", false, "4001"),
-                    new Command.Arg("proxy-target", "Proxy target for p2p http requests", false, "/ip4/127.0.0.1/tcp/8000"),
+                    ARG_IPFS_PROXY_TARGET,
                     new Command.Arg("ipfs-config-bootstrap-node-list", "Comma separated list of IPFS bootstrap nodes. Uses existing bootstrap nodes by default.", false),
                     new Command.Arg("ipfs-manage-runtime", "Will manage the IPFS daemon runtime when set (restart on exit)", false, "true")
             )
@@ -127,6 +129,7 @@ public class Main extends Builder {
                     new Command.Arg("ipfs-api-address", "IPFS API port", false, "/ip4/127.0.0.1/tcp/5001"),
                     new Command.Arg("ipfs-gateway-address", "IPFS Gateway port", false, "/ip4/127.0.0.1/tcp/8080"),
                     new Command.Arg("allow-target", "Local address to listen on for IPFS allow calls", false, "/ip4/127.0.0.1/tcp/8002"),
+                    ARG_IPFS_PROXY_TARGET,
                     new Command.Arg("pki.node.swarm.port", "Swarm port of the pki node", true, "5001"),
                     new Command.Arg("domain", "Domain name to bind to", false, "localhost"),
                     new Command.Arg("public-domain", "The public domain name for this server (required if TLS is managed upstream)", false),
@@ -262,8 +265,6 @@ public class Main extends Builder {
             args -> {
                 try {
                     Crypto crypto = initCrypto();
-                    int peergosPort = args.getInt("port");
-                    args = args.setIfAbsent("proxy-target", getLocalMultiAddress(peergosPort).toString());
 
                     IpfsWrapper ipfs = null;
                     boolean useIPFS = args.getBoolean("useIPFS");
@@ -307,6 +308,7 @@ public class Main extends Builder {
                     new Command.Arg("ipfs-api-address", "ipfs api port", true, "/ip4/127.0.0.1/tcp/5001"),
                     new Command.Arg("ipfs-gateway-address", "ipfs gateway port", true, "/ip4/127.0.0.1/tcp/8080"),
                     new Command.Arg("allow-target", "Local address to listen on for IPFS allow calls", false, "/ip4/127.0.0.1/tcp/8002"),
+                    ARG_IPFS_PROXY_TARGET,
                     new Command.Arg("pki.secret.key.path", "The path to the pki secret key file", true, "test.pki.secret.key"),
                     new Command.Arg("pki.public.key.path", "The path to the pki public key file", true, "test.pki.public.key"),
                     // Secret parameters
@@ -321,8 +323,6 @@ public class Main extends Builder {
             args -> {
                 try {
                     Crypto crypto = initCrypto();
-                    int peergosPort = args.getInt("port");
-                    args = args.setIfAbsent("proxy-target", getLocalMultiAddress(peergosPort).toString());
 
                     IpfsWrapper ipfs = null;
                     boolean useIPFS = args.getBoolean("useIPFS");
@@ -370,6 +370,7 @@ public class Main extends Builder {
                     ARG_IPFS_API_ADDRESS,
                     new Command.Arg("ipfs-gateway-address", "ipfs gateway port", true, "/ip4/127.0.0.1/tcp/8080"),
                     new Command.Arg("allow-target", "Local address to listen on for IPFS allow calls", false, "/ip4/127.0.0.1/tcp/8002"),
+                    ARG_IPFS_PROXY_TARGET,
                     new Command.Arg("pki.secret.key.path", "The path to the pki secret key file", true, "test.pki.secret.key"),
                     new Command.Arg("pki.public.key.path", "The path to the pki public key file", true, "test.pki.public.key"),
                     // Secret parameters
@@ -482,9 +483,7 @@ public class Main extends Builder {
             Crypto crypto = initCrypto();
             Hasher hasher = crypto.hasher;
             PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, crypto.signer);
-            int webPort = a.getInt("port");
-            MultiAddress localPeergosApi = getLocalMultiAddress(webPort);
-            a.setIfAbsent("proxy-target", localPeergosApi.toString());
+            MultiAddress localP2PApi = new MultiAddress(a.getArg("proxy-target"));
 
             boolean useIPFS = a.getBoolean("useIPFS");
             IpfsWrapper ipfsWrapper = null;
@@ -501,6 +500,7 @@ public class Main extends Builder {
 
             Multihash pkiServerNodeId = getPkiServerId(a);
             String domain = a.getArg("domain");
+            int webPort = a.getInt("port");
             InetSocketAddress userAPIAddress = new InetSocketAddress(domain, webPort);
 
             JavaPoster p2pHttpProxy = buildP2pHttpProxy(a);
@@ -589,12 +589,17 @@ public class Main extends Builder {
             Account p2pAccount = new ProxyingAccount(nodeId, core, account, accountProxy);
             VerifyingAccount verifyingAccount = new VerifyingAccount(p2pAccount, core, localStorage);
             ContentAddressedStorage cachingStorage = new AuthedCachingStorage(p2pDht, blockRequestAuthoriser, hasher, 1000, 50 * 1024);
+            ContentAddressedStorage incomingP2PStorage = new GetBlockingStorage(cachingStorage);
 
             ProxyingBatCave p2pBats = new ProxyingBatCave(nodeId, core, batStore, new HttpBatCave(p2pHttpProxy, p2pHttpProxy));
-            UserService peergos = new UserService(cachingStorage, p2pBats, crypto, corePropagator, verifyingAccount, p2pSocial, p2mMutable, storageAdmin,
-                    p2pSpaceUsage, new ServerMessageStore(getDBConnector(a, "server-messages-sql-file", dbConnectionPool),
-                    sqlCommands, core, p2pDht), gc);
-            InetSocketAddress localAddress = new InetSocketAddress("localhost", userAPIAddress.getPort());
+            ServerMessageStore serverMessages = new ServerMessageStore(getDBConnector(a, "server-messages-sql-file", dbConnectionPool),
+                    sqlCommands, core, p2pDht);
+            UserService localAPI = new UserService(cachingStorage, p2pBats, crypto, corePropagator, verifyingAccount,
+                    p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, gc);
+            UserService p2pAPI = new UserService(incomingP2PStorage, p2pBats, crypto, corePropagator, verifyingAccount,
+                    p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, gc);
+            InetSocketAddress localAPIAddress = new InetSocketAddress("localhost", userAPIAddress.getPort());
+            InetSocketAddress p2pAPIAddress = new InetSocketAddress("localhost", localP2PApi.getTCPPort());
 
             Optional<Path> webroot = a.hasArg("webroot") ?
                     Optional.of(Paths.get(a.getArg("webroot"))) :
@@ -612,8 +617,11 @@ public class Main extends Builder {
             Optional<String> paymentDomain = a.getOptionalArg("payment-domain");
             List<String> appSubdomains = Arrays.asList(a.getArg("apps", "email,calendar,todo-board,code-editor,pdf").split(","));
             List<String> frameDomains = paymentDomain.map(Arrays::asList).orElse(Collections.emptyList());
-            peergos.initAndStart(localAddress, nodeId, tlsProps, publicHostname, blockstoreDomains, frameDomains, appSubdomains,
+            localAPI.initAndStart(localAPIAddress, nodeId, tlsProps, publicHostname, blockstoreDomains, frameDomains, appSubdomains,
                     a.getBoolean("include-csp", true), basicAuth, webroot, useWebAssetCache, isPublicServer, maxConnectionQueue, handlerThreads);
+            p2pAPI.initAndStart(p2pAPIAddress, nodeId, Optional.empty(), publicHostname, blockstoreDomains, frameDomains, appSubdomains,
+                    a.getBoolean("include-csp", true), basicAuth, webroot, useWebAssetCache, isPublicServer, maxConnectionQueue, handlerThreads);
+
             boolean isPkiNode = nodeId.equals(pkiServerNodeId);
             if (! isPkiNode && useIPFS) {
                 // ipfs-nucleus doesn't implement swarm. We may reinstate these in the bootstrap list in the future
@@ -692,7 +700,7 @@ public class Main extends Builder {
                 System.out.println("Peergos daemon started. Browse to http://localhost:" + webPort + "/ to sign up or login. ");
             InstanceAdmin.VersionInfo version = storageAdmin.getVersionInfo().join();
             System.out.println("Running version " + version);
-            return peergos;
+            return localAPI;
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
