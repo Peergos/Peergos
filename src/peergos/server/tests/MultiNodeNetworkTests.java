@@ -111,6 +111,7 @@ public class MultiNodeNetworkTests {
             int ipfsGatewayPort = 9000 + random.nextInt(8000);
             int ipfsSwarmPort = 9000 + random.nextInt(8000);
             int peergosPort = 9000 + random.nextInt(8000);
+            int proxyTargetPort = 9000 + random.nextInt(8000);
             int allowPort = 9000 + random.nextInt(8000);
             Args normalNode = UserTests.buildArgs()
                     .with("useIPFS", "true")
@@ -122,7 +123,7 @@ public class MultiNodeNetworkTests {
                     .with("allow-target", "/ip4/127.0.0.1/tcp/" + allowPort)
                     .with("ipfs-swarm-port", "" + ipfsSwarmPort)
                     .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, "" + Main.getLocalBootstrapAddress(bootstrapSwarmPort, pkiNodeId))
-                    .with("proxy-target", Main.getLocalMultiAddress(peergosPort).toString())
+                    .with("proxy-target", Main.getLocalMultiAddress(proxyTargetPort).toString())
                     .with("ipfs-api-address", Main.getLocalMultiAddress(ipfsApiPort).toString());
             argsToCleanUp.add(normalNode);
             UserService service = Main.PEERGOS.main(normalNode);
