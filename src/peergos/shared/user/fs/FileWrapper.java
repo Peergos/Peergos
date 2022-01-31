@@ -908,26 +908,6 @@ public class FileWrapper {
                 });
     }
 
-    private CompletableFuture<Snapshot> uploadFileSection(Snapshot intialVersion,
-                                                          Committer committer,
-                                                          String filename,
-                                                          AsyncReader fileData,
-                                                          boolean isHidden,
-                                                          long startIndex,
-                                                          long endIndex,
-                                                          Optional<SymmetricKey> baseKey,
-                                                          boolean overwriteExisting,
-                                                          NetworkAccess network,
-                                                          Crypto crypto,
-                                                          ProgressConsumer<Long> monitor,
-                                                          byte[] firstChunkMapKey,
-                                                          Optional<Bat> firstBat,
-                                                          Optional<BatId> mirrorBat) {
-        boolean truncateExisting = false;
-        return uploadFileSection(intialVersion, committer, filename, fileData, isHidden, startIndex, endIndex, baseKey,
-                overwriteExisting, truncateExisting, network, crypto, monitor, firstChunkMapKey, firstBat, mirrorBat);
-    }
-
     private CompletableFuture<Snapshot> updateSize(Committer committer,
                                                    long newSize,
                                                    NetworkAccess network) {
@@ -947,7 +927,7 @@ public class FileWrapper {
         ).thenCompose(finished -> getUpdated(finished, network));
     }
 
-    public CompletableFuture<Snapshot> uploadFileSection(Snapshot intialVersion,
+    public CompletableFuture<Snapshot> uploadFileSection(Snapshot initialVersion,
                                                          Committer committer,
                                                          String filename,
                                                          AsyncReader fileData,
@@ -963,6 +943,27 @@ public class FileWrapper {
                                                          byte[] firstChunkMapKey,
                                                          Optional<Bat> firstBat,
                                                          Optional<BatId> requestedMirrorBat) {
+        return uploadFileSection(initialVersion, committer, filename, fileData, Optional.empty(), isHidden, startIndex, endIndex,
+                baseKey, overwriteExisting, truncateExisting, network, crypto, monitor, firstChunkMapKey, firstBat, requestedMirrorBat);
+    }
+
+    private CompletableFuture<Snapshot> uploadFileSection(Snapshot initialVersion,
+                                                          Committer committer,
+                                                          String filename,
+                                                          AsyncReader fileData,
+                                                          Optional<Thumbnail> existingThumbnail,
+                                                          boolean isHidden,
+                                                          long startIndex,
+                                                          long endIndex,
+                                                          Optional<SymmetricKey> baseKey,
+                                                          boolean overwriteExisting,
+                                                          boolean truncateExisting,
+                                                          NetworkAccess network,
+                                                          Crypto crypto,
+                                                          ProgressConsumer<Long> monitor,
+                                                          byte[] firstChunkMapKey,
+                                                          Optional<Bat> firstBat,
+                                                          Optional<BatId> requestedMirrorBat) {
         if (!isLegalName(filename)) {
             CompletableFuture<Snapshot> res = new CompletableFuture<>();
             res.completeExceptionally(new IllegalStateException("Illegal filename: " + filename));
@@ -974,7 +975,7 @@ public class FileWrapper {
             return res;
         }
         Optional<BatId> mirrorBat = mirrorBatId().or(() -> requestedMirrorBat);
-        return intialVersion.withWriter(owner(), writer(), network)
+        return initialVersion.withWriter(owner(), writer(), network)
                 .thenCompose(current -> getUpdated(current, network)
                         .thenCompose(latest -> latest.getChild(current, filename, network)
                                         .thenCompose(childOpt -> {
@@ -1029,7 +1030,7 @@ public class FileWrapper {
                                                         Optional<byte[]> streamSecret = Optional.of(crypto.random.randomBytes(32));
                                                         FileProperties fileProps = new FileProperties(filename,
                                                                 false, false, mimeType, endIndex,
-                                                                LocalDateTime.now(), isHidden, Optional.empty(), streamSecret);
+                                                                LocalDateTime.now(), isHidden, existingThumbnail, streamSecret);
 
                                                         FileUploader chunks = new FileUploader(filename, mimeType, resetReader,
                                                                 startIndex, endIndex, fileKey, dataKey, parentLocation, parentBat,
@@ -1091,16 +1092,21 @@ public class FileWrapper {
                                                                    long fileSize,
                                                                    LocalDateTime updatedDateTime,
                                                                    Optional<byte[]> streamSecret) {
-        return generateThumbnail(network, fileData, (int) Math.min(fileSize, Integer.MAX_VALUE), fileName, mimeType)
-                .thenCompose(thumbData -> {
-                    if (thumbData.isEmpty())
-                        return Futures.of(base);
-                    FileProperties fileProps = new FileProperties(fileName, false, props.isLink, mimeType, fileSize,
-                            updatedDateTime, isHidden, thumbData, streamSecret);
+        return network.getFile(base, cap, getChildsEntryWriter(), ownername).thenCompose(fileOpt -> {
+            if (fileOpt.get().props.thumbnail.isEmpty()) {
+                return generateThumbnail(network, fileData, (int) Math.min(fileSize, Integer.MAX_VALUE), fileName, mimeType)
+                        .thenCompose(thumbData -> {
+                            if (thumbData.isEmpty())
+                                return Futures.of(base);
+                            FileProperties fileProps = new FileProperties(fileName, false, props.isLink, mimeType, fileSize,
+                                    updatedDateTime, isHidden, thumbData, streamSecret);
 
-                    return network.getFile(base, cap, getChildsEntryWriter(), ownername)
-                            .thenCompose(child -> child.get().updateProperties(base, committer, fileProps, network));
-                });
+                            return fileOpt.get().updateProperties(base, committer, fileProps, network);
+                        });
+            } else {
+                return Futures.of(base);
+            }
+        });
     }
 
     private CompletableFuture<Snapshot> updateProperties(Snapshot base,
@@ -1450,11 +1456,12 @@ public class FileWrapper {
 
         return context.network.synchronizer.applyComplexUpdate(target.owner(), target.signingPair(),
                 (version, committer) -> version.withWriter(owner(), writer(), network)
-                        .thenCompose(both -> copyTo(target, network, crypto, both, committer)))
+                        .thenCompose(both -> copyTo(target, this.props.thumbnail, network, crypto, both, committer)))
                 .thenApply(newAccess -> true);
     }
 
-    public CompletableFuture<Snapshot> copyTo(FileWrapper target,
+    private CompletableFuture<Snapshot> copyTo(FileWrapper target,
+                                              Optional<Thumbnail> existingThumbnail,
                                               NetworkAccess network,
                                               Crypto crypto,
                                               Snapshot version,
@@ -1487,15 +1494,15 @@ public class FileWrapper {
                                                     return Futures.reduceAll(children, versionWithDir,
                                                             (s, child) -> newTarget.getUpdated(s, network)
                                                                     .thenCompose(updated ->
-                                                                            child.copyTo(updated, network, crypto, s, committer)),
+                                                                            child.copyTo(updated, existingThumbnail, network, crypto, s, committer)),
                                                             (a, b) -> a.merge(b));
                                                 })));
             } else {
                 return version.withWriter(owner(), writer(), network).thenCompose(snapshot ->
                         getInputStream(snapshot.get(writer()).props, network, crypto, x -> {})
                                 .thenCompose(stream -> target.uploadFileSection(snapshot, committer,
-                                        getName(), stream, false, 0, getSize(),
-                                        Optional.empty(), false, network, crypto, x -> {},
+                                        getName(), stream, existingThumbnail, false, 0, getSize(),
+                                        Optional.empty(), false, false, network, crypto, x -> {},
                                         crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random)), target.mirrorBatId())));
             }
         });
