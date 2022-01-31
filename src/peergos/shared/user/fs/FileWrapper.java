@@ -1457,16 +1457,16 @@ public class FileWrapper {
 
         return context.network.synchronizer.applyComplexUpdate(target.owner(), target.signingPair(),
                 (version, committer) -> version.withWriter(owner(), writer(), network)
-                        .thenCompose(both -> copyTo(target, network, crypto, both, committer, this.props.thumbnail)))
+                        .thenCompose(both -> copyTo(target, this.props.thumbnail, network, crypto, both, committer)))
                 .thenApply(newAccess -> true);
     }
 
-    public CompletableFuture<Snapshot> copyTo(FileWrapper target,
+    private CompletableFuture<Snapshot> copyTo(FileWrapper target,
+                                              Optional<Thumbnail> existingThumbnail,
                                               NetworkAccess network,
                                               Crypto crypto,
                                               Snapshot version,
-                                              Committer committer,
-                                              Optional<Thumbnail> existingThumbnail) {
+                                              Committer committer) {
         if (! target.isDirectory()) {
             return Futures.errored(new IllegalStateException("CopyTo target " + target + " must be a directory"));
         }
@@ -1495,7 +1495,7 @@ public class FileWrapper {
                                                     return Futures.reduceAll(children, versionWithDir,
                                                             (s, child) -> newTarget.getUpdated(s, network)
                                                                     .thenCompose(updated ->
-                                                                            child.copyTo(updated, network, crypto, s, committer, existingThumbnail)),
+                                                                            child.copyTo(updated, existingThumbnail, network, crypto, s, committer)),
                                                             (a, b) -> a.merge(b));
                                                 })));
             } else {
