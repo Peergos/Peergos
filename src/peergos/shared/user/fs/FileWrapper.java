@@ -1101,8 +1101,7 @@ public class FileWrapper {
                             FileProperties fileProps = new FileProperties(fileName, false, props.isLink, mimeType, fileSize,
                                     updatedDateTime, isHidden, thumbData, streamSecret);
 
-                            return network.getFile(base, cap, getChildsEntryWriter(), ownername)
-                                    .thenCompose(child -> child.get().updateProperties(base, committer, fileProps, network));
+                            return fileOpt.get().updateProperties(base, committer, fileProps, network);
                         });
             } else {
                 return Futures.of(base);
