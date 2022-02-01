@@ -145,7 +145,7 @@ public class FileProperties implements Cborable {
         state.put("m", new CborObject.CborString(mimeType));
         state.put("s", new CborObject.CborLong(size));
         state.put("t", new CborObject.CborLong(modified.toEpochSecond(ZoneOffset.UTC)));
-        state.put("c", new CborObject.CborLong(created.toEpochSecond(ZoneOffset.UTC)));
+        state.put("c", new CborObject.CborString("" + created.toEpochSecond(ZoneOffset.UTC)));
         state.put("h", new CborObject.CborBoolean(isHidden));
         thumbnail.ifPresent(thumb -> state.put("i", new CborObject.CborByteArray(thumb.data)));
         thumbnail.ifPresent(thumb -> state.put("im", new CborObject.CborString(thumb.mimeType)));
@@ -164,8 +164,8 @@ public class FileProperties implements Cborable {
         String mimeType = m.getString("m");
         long size = m.getLong("s");
         long modifiedEpochMillis = m.getLong("t");
-        Optional<Long> optionalCreatedEpochMillis = m.getOptionalLong("c");
-        long createdEpochMillis = optionalCreatedEpochMillis.map(c -> c.longValue()).orElse(modifiedEpochMillis);
+        Optional<String> optionalCreatedEpochMillis = m.getOptionalString("c");
+        long createdEpochMillis = optionalCreatedEpochMillis.map(c -> Long.parseLong(c)).orElse(modifiedEpochMillis);
         boolean isHidden = m.getBoolean("h");
         Optional<byte[]> thumbnailData = m.getOptionalByteArray("i");
         Optional<Thumbnail> thumbnail = thumbnailData.map(d -> new Thumbnail(m.getString("im", "image/png"), d));
