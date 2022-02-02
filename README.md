@@ -20,9 +20,9 @@ Demo
 ----
 Want to try it out now? Here's our demo [https://demo.peergos.net](https://demo.peergos.net). 
 
-Beta
+Sign-up
 ----
-Our beta is live at https://beta.peergos.net/. There are a limited number of free accounts available. 
+We run a server at at https://peergos.net/. There are a limited number of free accounts available. You can upgrade to a paid account to get more storage. 
 
 Tech book
 ---------
@@ -131,7 +131,7 @@ Usage - running locally to log in to another instance
 -----
 Use this method to login to a peergos account on another instance without any reliance on DNS or the TLS certificate authorities. 
 
-1. Download a release from https://beta.peergos.net/public/peergos/releases
+1. Download a release from https://peergos.net/public/peergos/releases
 
 2. Install Java - You will need Java >= 11 installed (Java 17 is best). 
 
@@ -150,7 +150,7 @@ Usage - self hosting
 -----
 Use this method to run a new home-server (which is best with a publicly routable IP, and always on machine) to create accounts on or migrate accounts to.
 
-1. Download a release from https://beta.peergos.net/public/peergos/releases
+1. Download a release from https://peergos.net/public/peergos/releases
 
 2. Install Java - You will need Java >= 11 installed (Java 17 is best). 
 
@@ -167,7 +167,7 @@ The config is stored in $PEERGOS_PATH/config, so for subsequent runs you can jus
 java -jar Peergos.jar daemon
 ```
 
-Note that whichever Peergos server you sign up through (your home server) will be storing your data, so if you don't intend on leaving your Peergos server running permanently, then we recommend signing up on https://beta.peergos.net and then you can log in through a local Peergos instance and all your data will magically end up on the beta.peergos.net server. Peergos can work behind NATs and firewalls, but we recommend using a server with a public IP. If you want to expose your web interface publicly you will need to arrange a domain name and TLS certificates (we recommend using nginx and letsencrypt). 
+Note that whichever Peergos server you sign up through (your home server) will be storing your data, so if you don't intend on leaving your Peergos server running permanently, then we recommend signing up on https://peergos.net and then you can log in through a local Peergos instance and all your data will magically end up on the peergos.net server. Peergos can work behind NATs and firewalls, but we recommend using a server with a public IP. If you want to expose your web interface publicly you will need to arrange a domain name and TLS certificates (we recommend using nginx and letsencrypt). 
 
 If you don't set up a domain name and TLS you can still log in to your account from another Peergos instance, e.g. one you run locally on your laptop - connections are routed securely over P2P TLS1.3 streams to your home server. In this case, any writes are proxied to your home server so your data is always persisted there. 
 
