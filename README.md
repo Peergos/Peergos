@@ -13,8 +13,9 @@ The name Peergos comes from the Greek word Πύργος (Pyrgos), which means st
 
 Screenshots
 ----
+![Drive](/assets/images.jpg)
 
-See screenshots in the web-ui repository [https://github.com/Peergos/web-ui](https://github.com/Peergos/web-ui).
+See more screenshots in the web-ui repository [https://github.com/Peergos/web-ui](https://github.com/Peergos/web-ui).
 
 Demo
 ----
