@@ -26,8 +26,8 @@ public class S3UserTests extends UserTests {
         return in.with("s3.bucket", "local-s3")
                 .with("s3.region", "local")
                 .with("s3.region.endpoint", "localhost:9000")
-//                .with("direct-s3-writes", "true")
-//                .with("authed-s3-reads", "true")
+                .with("direct-s3-writes", "true")
+                .with("authed-s3-reads", "true")
                 .with("s3.accessKey", "test")
                 .with("s3.secretKey", "testdslocal");
     }

@@ -117,7 +117,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
         for (MirrorCap block : blocks) {
             String s3Key = hashToKey(block.hash);
-            res.add(S3Request.preSignGet(s3Key, Optional.of(600), S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKeyId, secretKey, hasher).join());
+            res.add(S3Request.preSignGet(folder + s3Key, Optional.of(600), S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKeyId, secretKey, hasher).join());
         }
         for (CompletableFuture<Optional<byte[]>> fut : data) {
             fut.join(); // Any invalids BATs will cause this to throw
@@ -153,7 +153,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 String contentSha256 = ArrayOps.bytesToHex(props.left.getHash());
                 Map<String, String> extraHeaders = new LinkedHashMap<>();
                 extraHeaders.put("Content-Type", "application/octet-stream");
-                res.add(S3Request.preSignPut(s3Key, props.right, contentSha256, false,
+                res.add(S3Request.preSignPut(folder + s3Key, props.right, contentSha256, false,
                         S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, extraHeaders, region, accessKeyId, secretKey, hasher).join());
             }
             return Futures.of(res);
