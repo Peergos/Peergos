@@ -35,7 +35,7 @@ public class S3BucketCopy {
                             } catch (IOException e) {
                                 throw new RuntimeException(e);
                             }
-                        }, S3AdminRequests.builder::get, h);
+                        }, S3AdminRequests.builder::get, true, h);
 
                 for (S3AdminRequests.ObjectMetadata objectSummary : result.objects) {
                     if (objectSummary.key.endsWith("/")) {
@@ -69,7 +69,7 @@ public class S3BucketCopy {
                                    S3Config config,
                                    Hasher h) {
         PresignedUrl copyUrl = S3Request.preSignCopy(sourceBucket, key, key, S3AdminRequests.asAwsDate(ZonedDateTime.now()), config.getHost(),
-                Collections.emptyMap(), config.region, config.accessKey, config.secretKey, h).join();
+                Collections.emptyMap(), config.region, config.accessKey, config.secretKey, true, h).join();
         try {
             System.out.println("Copying s3://"+sourceBucket + "/" + key + " to s3://" + config.bucket);
             String res = new String(HttpUtil.put(copyUrl, new byte[0]));
