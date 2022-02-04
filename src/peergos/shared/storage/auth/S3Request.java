@@ -157,7 +157,8 @@ public class S3Request {
                                                                  Hasher h) {
         return computeSignature(req, s3SecretKey, h).thenApply(signature -> {
             String query = req.getQueryString(signature);
-            return new PresignedUrl("https://" + host + "/" + key + query, req.getHeaders(signature));
+            String protocol =  host.contains("localhost") ? "http" : "https";
+            return new PresignedUrl(protocol + "://" + host + "/" + key + query, req.getHeaders(signature));
         });
     }
 

@@ -69,9 +69,9 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         this.p2pGetId = p2pFallback.id().join();
         this.region = config.region;
         this.bucket = config.bucket;
-        this.folder = config.path.isEmpty() || config.path.endsWith("/") ? config.path : config.path + "/";
         this.regionEndpoint = config.regionEndpoint;
         this.host = config.getHost();
+        this.folder = (host.contains("localhost") ? bucket + "/" : "") + (config.path.isEmpty() || config.path.endsWith("/") ? config.path : config.path + "/");
         this.accessKeyId = config.accessKey;
         this.secretKey = config.secretKey;
         LOG.info("Using S3 Block Storage at " + config.regionEndpoint + ", bucket " + config.bucket + ", path: " + config.path);

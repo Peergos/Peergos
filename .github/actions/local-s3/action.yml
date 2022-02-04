@@ -36,3 +36,7 @@ runs:
       shell: bash
       run: |
         mc alias set minio 'http://localhost:9000' '${{ env.MINIO_ROOT_USER }}' '${{ env.MINIO_ROOT_PASSWORD }}'
+    - name: Create bucket
+      shell: bash
+      run: |
+        mc mb '${{ runner.temp }}/minio.data/local-s3'
