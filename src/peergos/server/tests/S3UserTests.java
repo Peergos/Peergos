@@ -15,11 +15,24 @@ import java.net.*;
 import java.nio.file.*;
 import java.util.*;
 
+/** To run these tests download minio + mc to /usr/local/bin as in the github action. Then run with
+ *  export MINIO_ROOT_USER=test
+ *  export MINIO_ROOT_PASSWORD=testdslocal
+ *  minio server ~/minio
+ *  mc alias set minio 'http://local-s3.localhost:9000' 'test' 'testdslocal'
+ *  mc mb ~/minio/local-s3
+ */
 public class S3UserTests extends UserTests {
 
+    private static Random random = new Random(1);
+
     private static Args pkiArgs = buildArgs()
+            .with("ipfs-api-address", "/ip4/127.0.0.1/tcp/" + (9000 + random.nextInt(10000)))
+            .with("ipfs-gateway-address", "/ip4/127.0.0.1/tcp/" + (9000 + random.nextInt(10000)))
+            .with("ipfs-swarm-port", "" + (9000 + random.nextInt(10000)))
+            .with("proxy-target", Main.getLocalMultiAddress(9000 + random.nextInt(10000)).toString())
+            .with("allow-target", "/ip4/127.0.0.1/tcp/" + (9000 + random.nextInt(10000)))
             .with("useIPFS", "true")
-            .with("allow-target", "/ip4/127.0.0.1/tcp/8002")
             .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, ""); // no bootstrapping
 
     private static Args withS3(Args in) {
@@ -32,7 +45,6 @@ public class S3UserTests extends UserTests {
                 .with("s3.secretKey", "testdslocal");
     }
 
-    private static Random random = new Random(1);
     private static final List<Args> argsToCleanUp = new ArrayList<>();
     private static List<UserService> services = new ArrayList<>();
 
