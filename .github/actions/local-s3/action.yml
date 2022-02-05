@@ -1,0 +1,42 @@
+name: local-s3
+description: prepare setup for tests using local S3
+
+runs:
+  using: composite
+  steps:
+    - name: Set env for minio
+      id: minio
+      shell: bash
+      run: |
+        echo 'LOCAL_S3=true' >> $GITHUB_ENV
+        echo 'MINIO_REGION_NAME=local' >> $GITHUB_ENV
+        echo 'MINIO_ROOT_USER=test' >> $GITHUB_ENV
+        echo 'MINIO_ROOT_PASSWORD=testdslocal' >> $GITHUB_ENV
+        if [[ '${{ runner.os }}' == 'Linux' ]]; then
+          echo '::set-output name=release::linux-amd64'
+          echo '::set-output name=home::/usr/local/bin'
+        elif [[ '${{ runner.os }}' == 'Windows' ]]; then
+          echo '::set-output name=release::windows-amd64'
+          echo "::set-output name=home::/usr/bin"
+        elif [[ '${{ runner.os }}' == 'macOS' ]]; then
+          echo '::set-output name=release::darwin-amd64'
+          echo '::set-output name=home::/usr/local/bin'
+        fi
+    - name: Download minio
+      shell: bash
+      run: |
+        curl --retry 5 --no-progress-meter --output '${{ steps.minio.outputs.home }}/minio' 'https://dl.min.io/server/minio/release/${{ steps.minio.outputs.release }}/archive/minio.RELEASE.2021-07-15T22-27-34Z'
+        curl --retry 5 --no-progress-meter --output '${{ steps.minio.outputs.home }}/mc' 'https://dl.min.io/client/mc/release/${{ steps.minio.outputs.release }}/archive/mc.RELEASE.2021-07-27T06-46-19Z'
+        chmod +x '${{ steps.minio.outputs.home }}/minio'
+        chmod +x '${{ steps.minio.outputs.home }}/mc'
+    - name: Start minio
+      shell: bash
+      run: ( minio server '${{ runner.temp }}/minio.data' & )
+    - name: Check if minio is running
+      shell: bash
+      run: |
+        mc alias set minio 'http://localhost:9000' '${{ env.MINIO_ROOT_USER }}' '${{ env.MINIO_ROOT_PASSWORD }}'
+    - name: Create bucket
+      shell: bash
+      run: |
+        mc mb '${{ runner.temp }}/minio.data/local-s3'

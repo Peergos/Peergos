@@ -36,7 +36,7 @@ public class S3DeleteOld {
                             } catch (IOException e) {
                                 throw new RuntimeException(e);
                             }
-                        }, S3AdminRequests.builder::get, h);
+                        }, S3AdminRequests.builder::get, true, h);
 
                 List<S3AdminRequests.ObjectMetadata> toProcess = new ArrayList<>();
                 for (S3AdminRequests.ObjectMetadata objectSummary : result.objects) {
@@ -96,7 +96,7 @@ public class S3DeleteOld {
                         }
                         throw new RuntimeException(e);
                     }
-                }, S3AdminRequests.builder::get, hasher);
+                }, S3AdminRequests.builder::get, true, hasher);
     }
 
     public static void main(String[] args) {

@@ -99,6 +99,7 @@ public class S3AdminRequests {
                                                               String region,
                                                               String accessKeyId,
                                                               String s3SecretKey,
+                                                              boolean useHttps,
                                                               Hasher h) {
         Map<String, String> extraQueryParameters = new LinkedHashMap<>();
         extraQueryParameters.put("list-type", "2");
@@ -110,7 +111,7 @@ public class S3AdminRequests {
         Instant normalised = normaliseDate(now);
         S3Request policy = new S3Request("GET", host, "", S3Request.UNSIGNED, Optional.empty(), false, true,
                 extraQueryParameters, Collections.emptyMap(), accessKeyId, region, asAwsDate(normalised));
-        return S3Request.preSignRequest(policy, "", host, s3SecretKey, h);
+        return S3Request.preSignRequest(policy, "", host, s3SecretKey, useHttps, h);
     }
 
     public static ListObjectsReply listObjects(String prefix,
@@ -123,8 +124,9 @@ public class S3AdminRequests {
                                                String s3SecretKey,
                                                Function<PresignedUrl, byte[]> getter,
                                                Supplier<DocumentBuilder> builder,
+                                               boolean useHttps,
                                                Hasher h) {
-        PresignedUrl listReq = preSignList(prefix, maxKeys, continuationToken, now, host, region, accessKeyId, s3SecretKey, h).join();
+        PresignedUrl listReq = preSignList(prefix, maxKeys, continuationToken, now, host, region, accessKeyId, s3SecretKey, useHttps, h).join();
         try {
             Document xml = builder.get().parse(new ByteArrayInputStream(getter.apply(listReq)));
             List<ObjectMetadata> res = new ArrayList<>();
@@ -184,6 +186,7 @@ public class S3AdminRequests {
                                              Function<byte[], String> sha256,
                                              BiFunction<PresignedUrl, byte[], byte[]> poster,
                                              Supplier<DocumentBuilder> builder,
+                                             boolean useHttps,
                                              Hasher h) {
         StringBuilder xmlBuilder = new StringBuilder();
         xmlBuilder.append("<Delete>");
@@ -203,7 +206,7 @@ public class S3AdminRequests {
         Instant normalised = normaliseDate(now);
         S3Request policy = new S3Request("POST", host, "", contentSha256, Optional.empty(), false, true,
                 extraQueryParameters, extraHeaders, accessKeyId, region, asAwsDate(normalised));
-        PresignedUrl reqUrl = S3Request.preSignRequest(policy, "", host, s3SecretKey, h).join();
+        PresignedUrl reqUrl = S3Request.preSignRequest(policy, "", host, s3SecretKey, useHttps, h).join();
         byte[] respBytes = poster.apply(reqUrl, body);
         try {
             Document xml = builder.get().parse(new ByteArrayInputStream(respBytes));

@@ -71,14 +71,14 @@ public class RamUserTests extends UserTests {
         // start a gateway
         Args a = Args.parse(new String[]{
                 "-peergos-url", "http://localhost:" + args.getInt("port"),
-                "-port", "9000",
+                "-port", "9002",
                 "-domain", "localhost",
-                "-domain-suffix", ".peergos.localhost:9000"
+                "-domain-suffix", ".peergos.localhost:9002"
         });
         PublicGateway publicGateway = Main.startGateway(a);
 
         // retrieve website
-        byte[] retrieved = get(new URI("http://" + username + ".peergos.localhost:9000").toURL());
+        byte[] retrieved = get(new URI("http://" + username + ".peergos.localhost:9002").toURL());
         Assert.assertTrue(Arrays.equals(retrieved, data));
 
         publicGateway.shutdown();

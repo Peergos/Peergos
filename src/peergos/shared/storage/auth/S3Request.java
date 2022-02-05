@@ -77,11 +77,12 @@ public class S3Request {
                                                              String region,
                                                              String accessKeyId,
                                                              String s3SecretKey,
+                                                             boolean useHttps,
                                                              Hasher h) {
         extraHeaders.put("Content-Length", "" + size);
         S3Request policy = new S3Request("PUT", host, key, contentSha256, Optional.empty(), allowPublicReads, true,
                 Collections.emptyMap(), extraHeaders, accessKeyId, region, datetime);
-        return preSignRequest(policy, key, host, s3SecretKey, h);
+        return preSignRequest(policy, key, host, s3SecretKey, useHttps, h);
     }
 
     public static CompletableFuture<PresignedUrl> preSignCopy(String sourceBucket,
@@ -93,13 +94,14 @@ public class S3Request {
                                                               String region,
                                                               String accessKeyId,
                                                               String s3SecretKey,
+                                                              boolean useHttps,
                                                               Hasher h) {
         Map<String, String> extras = new TreeMap<>();
         extras.putAll(extraHeaders);
         extras.put("x-amz-copy-source", "/" + sourceBucket + "/" + sourceKey);
         S3Request policy = new S3Request("PUT", host, targetKey, UNSIGNED, Optional.empty(), false, true,
                 Collections.emptyMap(), extras, accessKeyId, region, datetime);
-        return preSignRequest(policy, targetKey, host, s3SecretKey, h);
+        return preSignRequest(policy, targetKey, host, s3SecretKey, useHttps, h);
     }
 
     public static CompletableFuture<PresignedUrl> preSignGet(String key,
@@ -109,8 +111,9 @@ public class S3Request {
                                                              String region,
                                                              String accessKeyId,
                                                              String s3SecretKey,
+                                                             boolean useHttps,
                                                              Hasher h) {
-        return preSignNulliPotent("GET", key, expirySeconds, datetime, host, region, accessKeyId, s3SecretKey, h);
+        return preSignNulliPotent("GET", key, expirySeconds, datetime, host, region, accessKeyId, s3SecretKey, useHttps, h);
     }
 
     public static CompletableFuture<PresignedUrl> preSignDelete(String key,
@@ -119,10 +122,11 @@ public class S3Request {
                                                                 String region,
                                                                 String accessKeyId,
                                                                 String s3SecretKey,
+                                                                boolean useHttps,
                                                                 Hasher h) {
         S3Request policy = new S3Request("DELETE", host, key, UNSIGNED, Optional.empty(), false, true,
                 Collections.emptyMap(), Collections.emptyMap(), accessKeyId, region, datetime);
-        return preSignRequest(policy, key, host, s3SecretKey, h);
+        return preSignRequest(policy, key, host, s3SecretKey, useHttps, h);
     }
 
     public static CompletableFuture<PresignedUrl> preSignHead(String key,
@@ -132,8 +136,9 @@ public class S3Request {
                                                               String region,
                                                               String accessKeyId,
                                                               String s3SecretKey,
+                                                              boolean useHttps,
                                                               Hasher h) {
-        return preSignNulliPotent("HEAD", key, expirySeconds, datetime, host, region, accessKeyId, s3SecretKey, h);
+        return preSignNulliPotent("HEAD", key, expirySeconds, datetime, host, region, accessKeyId, s3SecretKey, useHttps, h);
     }
 
     private static CompletableFuture<PresignedUrl> preSignNulliPotent(String verb,
@@ -144,20 +149,23 @@ public class S3Request {
                                                                       String region,
                                                                       String accessKeyId,
                                                                       String s3SecretKey,
+                                                                      boolean useHttps,
                                                                       Hasher h) {
         S3Request policy = new S3Request(verb, host, key, UNSIGNED, expiresSeconds, false, true,
                 Collections.emptyMap(), Collections.emptyMap(), accessKeyId, region, datetime);
-        return preSignRequest(policy, key, host, s3SecretKey, h);
+        return preSignRequest(policy, key, host, s3SecretKey, useHttps, h);
     }
 
     public static CompletableFuture<PresignedUrl> preSignRequest(S3Request req,
                                                                  String key,
                                                                  String host,
                                                                  String s3SecretKey,
+                                                                 boolean useHttps,
                                                                  Hasher h) {
         return computeSignature(req, s3SecretKey, h).thenApply(signature -> {
             String query = req.getQueryString(signature);
-            return new PresignedUrl("https://" + host + "/" + key + query, req.getHeaders(signature));
+            String protocol =  useHttps ? "https" : "http";
+            return new PresignedUrl(protocol + "://" + host + "/" + key + query, req.getHeaders(signature));
         });
     }
 
