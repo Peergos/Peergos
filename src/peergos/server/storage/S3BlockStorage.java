@@ -1,6 +1,7 @@
 package peergos.server.storage;
 
-import io.prometheus.client.*;
+import io.prometheus.client.Histogram;
+import io.prometheus.client.Counter;
 import peergos.server.*;
 import peergos.server.corenode.*;
 import peergos.server.space.*;

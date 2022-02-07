@@ -65,7 +65,7 @@ public class AggregatedMetrics {
         Logging.LOG().info("Starting metrics server at " + address + ":" + port);
         HTTPServer server = new HTTPServer(address, port);
         //shutdown hook on signal
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> server.stop()));
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> server.close()));
     }
 }
 
