@@ -198,6 +198,10 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     private CompletableFuture<Optional<byte[]>> getRaw(Cid hash, String auth, boolean enforceAuth, Optional<BatWithId> bat) {
+        return getWithBackoff(() -> getRawWithoutBackoff(hash, auth, enforceAuth, bat));
+    }
+
+    private CompletableFuture<Optional<byte[]>> getRawWithoutBackoff(Cid hash, String auth, boolean enforceAuth, Optional<BatWithId> bat) {
         String path = folder + hashToKey(hash);
         PresignedUrl getUrl = S3Request.preSignGet(path, Optional.of(600),
                 S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKeyId, secretKey, useHttps, hasher).join();
@@ -231,6 +235,10 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     @Override
     public boolean hasBlock(Cid hash) {
+        return getWithBackoff(() -> hasBlockWithoutBackoff(hash));
+    }
+
+    public boolean hasBlockWithoutBackoff(Cid hash) {
         try {
             PresignedUrl headUrl = S3Request.preSignHead(folder + hashToKey(hash), Optional.of(60),
                     S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKeyId, secretKey, useHttps, hasher).join();
