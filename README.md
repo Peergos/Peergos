@@ -173,6 +173,9 @@ Note that whichever Peergos server you sign up through (your home server) will b
 If you don't set up a domain name and TLS you can still log in to your account from another Peergos instance, e.g. one you run locally on your laptop - connections are routed securely over P2P TLS1.3 streams to your home server. In this case, any writes are proxied to your home server so your data is always persisted there. If you do expose your instance via a DNS name and TLS certificate, you will need to add this parameter:
 > -public-server true
 
+If you are also using a reverse proxy like nginx to terminate TLS you will need to tell peergos which domain you are using with the following arg:
+> -public-domain $YOUR_DOMAIN
+
 And the TLS certificate will also need to cover the following subdomains for the applications to work: pdf, todo-board, code-editor, calendar
 
 
