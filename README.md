@@ -170,7 +170,11 @@ java -jar Peergos.jar daemon
 
 Note that whichever Peergos server you sign up through (your home server) will be storing your data, so if you don't intend on leaving your Peergos server running permanently, then we recommend signing up on https://peergos.net and then you can log in through a local Peergos instance and all your data will magically end up on the peergos.net server. Peergos can work behind NATs and firewalls, but we recommend using a server with a public IP. If you want to expose your web interface publicly you will need to arrange a domain name and TLS certificates (we recommend using nginx and letsencrypt). 
 
-If you don't set up a domain name and TLS you can still log in to your account from another Peergos instance, e.g. one you run locally on your laptop - connections are routed securely over P2P TLS1.3 streams to your home server. In this case, any writes are proxied to your home server so your data is always persisted there. 
+If you don't set up a domain name and TLS you can still log in to your account from another Peergos instance, e.g. one you run locally on your laptop - connections are routed securely over P2P TLS1.3 streams to your home server. In this case, any writes are proxied to your home server so your data is always persisted there. If you do expose your instance via a DNS name and TLS certificate, you will need to add this parameter:
+> -public-server true
+
+And the TLS certificate will also need to cover the following subdomains for the applications to work: pdf, todo-board, code-editor, calendar
+
 
 ### CLI
 There are a range of commands available from a command line. You can run -help to find the available commands or details on any command. Most users should only need the *daemon* and *shell* commands, and maybe *fuse*. You can use the *migrate* command to move all your data to a new server (where the command is run). 
