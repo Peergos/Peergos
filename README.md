@@ -178,6 +178,55 @@ If you are also using a reverse proxy like nginx to terminate TLS you will need 
 
 And the TLS certificate will also need to cover the following subdomains for the applications to work: pdf, todo-board, code-editor, calendar
 
+If you are using a reverse proxy like nginx to terminate TLS here is a good example of the nginx config file (replace $YOUR_DOMAIN_NAME):
+```
+# Peergos server config
+
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+
+    location ^~ /.well-known {
+         allow all;
+         proxy_pass http://127.0.0.1:8888;
+    }
+
+    # redirect all HTTP requests to HTTPS with a 301 Moved Permanently response.
+    return 301 https://$host$request_uri;
+}
+
+server {
+        # SSL configuration
+        listen 443 ssl http2;
+        ssl_protocols TLSv1.2 TLSv1.3;
+        ssl_prefer_server_ciphers on;
+        ssl_session_cache shared:SSL:10m;
+        ssl_session_timeout 10m;
+
+        ssl_ciphers TLS_CHACHA20_POLY1305_SHA256:TLS_AES_256_GCM_SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:!TLS_AES_128_GCM_SHA256;
+        ssl_certificate /etc/letsencrypt/live/$YOUR_DOMAIN_NAME/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/$YOUR_DOMAIN_NAME/privkey.pem;
+
+        add_header Strict-Transport-Security "max-age=31536000" always;
+        server_name $YOUR_DOMAIN_NAME;
+
+        client_max_body_size 2M;
+
+        location / {
+                proxy_pass http://localhost:8000;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header Host $http_host;
+                allow all;
+        }
+
+	# pass through for letsencrypt
+        location ^~ /.well-known {
+                 allow all;
+                 proxy_pass http://127.0.0.1:8888;
+        }
+}
+
+```
 
 ### CLI
 There are a range of commands available from a command line. You can run -help to find the available commands or details on any command. Most users should only need the *daemon* and *shell* commands, and maybe *fuse*. You can use the *migrate* command to move all your data to a new server (where the command is run). 
