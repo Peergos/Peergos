@@ -63,8 +63,25 @@ public class Futures {
                                                         T identity,
                                                         BiFunction<T, V, CompletableFuture<T>> composer,
                                                         BiFunction<T, T, T> combiner) {
+        return reduceAll(input.stream(), identity, composer, combiner);
+    }
+
+    /*** Reduce a set of input values against an Identity where the composition step is asynchronous
+     *
+     * @param input the values to reduce
+     * @param identity the identity of the target type
+     * @param composer composes an input value with a target type value asynchronously
+     * @param combiner
+     * @param <T> target type
+     * @param <V> input type
+     * @return
+     */
+    public static <T, V> CompletableFuture<T> reduceAll(Stream<V> input,
+                                                        T identity,
+                                                        BiFunction<T, V, CompletableFuture<T>> composer,
+                                                        BiFunction<T, T, T> combiner) {
         CompletableFuture<T> identityFut = CompletableFuture.completedFuture(identity);
-        return input.stream().reduce(
+        return input.reduce(
                 identityFut,
                 (a, b) -> a.thenCompose(res -> composer.apply(res, b)),
                 (a, b) -> a.thenCompose(x -> b.thenApply(y -> combiner.apply(x, y)))

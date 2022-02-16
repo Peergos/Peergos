@@ -485,10 +485,10 @@ public class NetworkAccess {
     }
 
     public CompletableFuture<List<Cid>> uploadFragments(List<Fragment> fragments,
-                                                              PublicKeyHash owner,
-                                                              SigningPrivateKeyAndPublicHash writer,
-                                                              ProgressConsumer<Long> progressCounter,
-                                                              TransactionId tid) {
+                                                        PublicKeyHash owner,
+                                                        SigningPrivateKeyAndPublicHash writer,
+                                                        ProgressConsumer<Long> progressCounter,
+                                                        TransactionId tid) {
         if (fragments.isEmpty())
             return CompletableFuture.completedFuture(Collections.emptyList());
 

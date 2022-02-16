@@ -34,11 +34,13 @@ public class DelayingStorage implements ContentAddressedStorage {
 
     @Override
     public CompletableFuture<TransactionId> startTransaction(PublicKeyHash owner) {
+        sleep(writeDelay);
         return source.startTransaction(owner);
     }
 
     @Override
     public CompletableFuture<Boolean> closeTransaction(PublicKeyHash owner, TransactionId tid) {
+        sleep(writeDelay);
         return source.closeTransaction(owner, tid);
     }
 
@@ -91,7 +93,7 @@ public class DelayingStorage implements ContentAddressedStorage {
 
     @Override
     public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, byte[] champKey, Optional<BatWithId> bat) {
-        sleep(readDelay);
+        sleep(4*readDelay);
         return source.getChampLookup(owner, root, champKey, bat);
     }
 
