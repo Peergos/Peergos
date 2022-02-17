@@ -105,6 +105,35 @@ public class BufferedStorage extends DelegatingStorage {
                 .thenApply(opt -> opt.map(CborObject::fromByteArray));
     }
 
+    public synchronized void gc(List<Cid> roots) {
+        List<Cid> all = new ArrayList<>(storage.keySet());
+        List<Boolean> reachable = new ArrayList<>();
+        for (int i=0; i < all.size(); i++)
+            reachable.add(false);
+        for (Cid root : roots) {
+            markReachable(root, reachable, all, storage);
+        }
+        for (int i=0; i < all.size(); i++) {
+            if (! reachable.get(i))
+                storage.remove(all.get(i));
+        }
+    }
+
+    private static void markReachable(Cid current, List<Boolean> reachable, List<Cid> all, Map<Cid, OpLog.BlockWrite> storage) {
+        OpLog.BlockWrite block = storage.get(current);
+        if (block == null)
+            return;
+        int index = all.indexOf(current);
+        reachable.set(index, true);
+
+        if (current.isRaw())
+            return;
+        List<Multihash> links = CborObject.fromByteArray(block.block).links();
+        for (Multihash link : links) {
+            markReachable((Cid)link, reachable, all, storage);
+        }
+    }
+
     public synchronized CompletableFuture<Boolean> commit(PublicKeyHash owner, TransactionId tid) {
         // write blocks in batches of up to 50 all in 1 transaction
         int maxBlocksPerBatch = 50;

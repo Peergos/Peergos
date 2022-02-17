@@ -1,6 +1,11 @@
 package peergos.shared.mutable;
 
+import peergos.server.crypto.*;
+import peergos.shared.*;
+import peergos.shared.cbor.*;
+import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -52,6 +57,48 @@ public class BufferedPointers implements MutablePointers {
             order.add(update);
         }
         return watcher.get();
+    }
+
+    /**
+     *  Merge updates to a single pointer into a single update
+     */
+    public void condense(Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> writers) {
+        int start = 0;
+        List<PointerUpdate> newOrder = new ArrayList<>();
+        for (int j=1; j < order.size(); j++) {
+            PointerUpdate first = order.get(start);
+            // preserve order of inter writer commits
+            if (! order.get(j).writer.equals(first.writer)) {
+                if (j - start > 1) {
+                    MaybeMultihash original = parse(first.signedUpdate).original;
+                    MaybeMultihash updated = parse(order.get(j - 1).signedUpdate).updated;
+                    newOrder.add(new PointerUpdate(first.owner, first.writer, writers.get(first.writer).secret.signMessage(new HashCasPair(original, updated).serialize())));
+                } else
+                    newOrder.add(first); // nothing to condense
+                start = j;
+            }
+        }
+        if (start == 0) {// condense them ALL
+            PointerUpdate first = order.get(0);
+            MaybeMultihash original = parse(first.signedUpdate).original;
+            MaybeMultihash updated = parse(order.get(order.size() - 1).signedUpdate).updated;
+            newOrder.add(new PointerUpdate(first.owner, first.writer, writers.get(first.writer).secret.signMessage(new HashCasPair(original, updated).serialize())));
+        }
+        order.clear();
+        order.addAll(newOrder);
+    }
+
+    private static HashCasPair parse(byte[] signedCas) {
+        return HashCasPair.fromCbor(CborObject.fromByteArray(Arrays.copyOfRange(signedCas, TweetNaCl.SIGNATURE_SIZE_BYTES, signedCas.length)));
+    }
+
+    public List<Cid> getRoots() {
+        return order.stream()
+                .map(u -> parse(u.signedUpdate))
+                .map(p -> p.updated)
+                .flatMap(m -> m.toOptional().stream())
+                .map(c -> (Cid)c)
+                .collect(Collectors.toList());
     }
 
     public CompletableFuture<List<Boolean>> commit() {

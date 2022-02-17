@@ -1,6 +1,7 @@
 package peergos.shared;
 
 import peergos.shared.corenode.*;
+import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.mutable.*;
 import peergos.shared.social.*;
@@ -21,6 +22,7 @@ public class BufferedNetworkAccess extends NetworkAccess {
     private final BufferedStorage blockBuffer;
     private final BufferedPointers pointerBuffer;
     private final int bufferSize;
+    private Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> writers = new HashMap<>();
     private final PublicKeyHash owner;
     private final ContentAddressedStorage blocks;
 
@@ -52,6 +54,10 @@ public class BufferedNetworkAccess extends NetworkAccess {
         pointerBuffer.watchUpdates(() -> maybeCommit());
     }
 
+    public void addWriter(SigningPrivateKeyAndPublicHash writer) {
+        writers.put(writer.publicKeyHash, writer);
+    }
+
     public int bufferedSize() {
         return blockBuffer.totalSize();
     }
@@ -63,6 +69,9 @@ public class BufferedNetworkAccess extends NetworkAccess {
     }
 
     public CompletableFuture<Boolean> commit() {
+        // Condense pointers and do a mini GC to remove superfluous work
+        pointerBuffer.condense(writers);
+        blockBuffer.gc(pointerBuffer.getRoots());
         return blocks.startTransaction(owner)
                 .thenCompose(tid -> blockBuffer.commit(owner, tid)
                         .thenCompose(b -> pointerBuffer.commit())
@@ -70,6 +79,7 @@ public class BufferedNetworkAccess extends NetworkAccess {
                         .thenApply(x -> {
                             blockBuffer.clear();
                             pointerBuffer.clear();
+                            writers.clear();
                             return true;
                         }));
     }

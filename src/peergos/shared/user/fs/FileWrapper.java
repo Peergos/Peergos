@@ -753,26 +753,25 @@ public class FileWrapper {
                                                         NetworkAccess network,
                                                         Crypto crypto,
                                                         TransactionService transactions) {
-//        if (transactions == null) // we are in a public writable link
-//            return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
-//                    (s, committer) -> uploadFileSection(s, committer, filename, fileData,
-//                            false, 0, fileSize, Optional.empty(), overwriteExisting, truncateExisting,
-//                            network, crypto, monitor, crypto.random.randomBytes(32),
-//                            Optional.of(Bat.random(crypto.random)), mirrorBatId())
-//            ).thenCompose(finished -> getUpdated(finished, network));
 
         Optional<BatId> mirror = mirrorBatId().or(() -> mirrorBat);
         BufferedNetworkAccess buffered = BufferedNetworkAccess.build(network, 5 * 1024 * 1024, owner(), network.hasher);
         return getPath(network).thenCompose(path ->
                 buffered.synchronizer.applyComplexUpdate(owner(), signingPair(),
-                        (s, c) -> Futures.reduceAll(directories, this,
-                                (dir, children) -> dir.getOrMkdirs(children.relativePath, false, mirror, buffered, crypto, s, c)
-                                        .thenCompose(p -> uploadFolder(Paths.get(path).resolve(children.path()), p.right,
-                                                children, mirrorBat, transactions, buffered, crypto, c)
-                                        .thenCompose(v -> dir.getUpdated(v, buffered))),
-                                (a, b) -> b)
-                                .thenCompose(d -> buffered.commit()
-                                        .thenApply(b -> d.version))
+                        (s, c) -> {
+                    Committer condenser = (o, w, wd, e, tid) -> {
+                        buffered.addWriter(w);
+                        return c.commit(o, w, wd, e, tid);
+                    };
+                    return Futures.reduceAll(directories, this,
+                                    (dir, children) -> dir.getOrMkdirs(children.relativePath, false, mirror, buffered, crypto, s, condenser)
+                                            .thenCompose(p -> uploadFolder(Paths.get(path).resolve(children.path()), p.right,
+                                                    children, mirrorBat, transactions, buffered, crypto, condenser)
+                                                    .thenCompose(v -> dir.getUpdated(v, buffered))),
+                                    (a, b) -> b)
+                                    .thenCompose(d -> buffered.commit()
+                                            .thenApply(b -> d.version));
+                        }
                 )).thenCompose(finished -> getUpdated(finished, buffered));
 
     }
@@ -787,7 +786,7 @@ public class FileWrapper {
                                                            Committer c) {
         return Futures.reduceAll(children.files, parent,
                 (p, f) -> {
-                    if (f.length < Chunk.MAX_SIZE)
+                    if (f.length < Chunk.MAX_SIZE || transactions == null) // small files or writable public links
                         return p.uploadFileSection(p.version, c, f.filename, f.fileData, false, 0, f.length,
                                 Optional.empty(), f.overwriteExisting, true, network, crypto, f.monitor,
                                 crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random)), mirrorBat)
