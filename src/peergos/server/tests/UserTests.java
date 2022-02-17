@@ -530,6 +530,47 @@ public abstract class UserTests {
     }
 
     @Test
+    public void bulkUpload() throws Exception {
+        String username = generateUsername();
+        String password = "test";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        FileWrapper userRoot = context.getUserRoot().get();
+
+        List<Integer> fileSizes = List.of(1024, 4096, 8192, 1024*1024, 6*1024*1024, 15*1024*1024);
+        List<Integer> countForSize = List.of(10, 5, 4, 2, 1, 1);
+
+        Map<List<String>, byte[]> subtree = new HashMap<>();
+
+        for (int i=0; i < countForSize.size(); i++) {
+            for (int j=0; j < countForSize.get(i); j++) {
+                byte[] data = new byte[fileSizes.get(i)];
+                random.nextBytes(data);
+                subtree.put(Arrays.asList(randomString()), data);
+            }
+        }
+
+        Stream<FileWrapper.FolderUploadProperties> byFolder = subtree.entrySet()
+                .stream()
+                .collect(Collectors.groupingBy(e -> e.getKey().subList(0, e.getKey().size() - 1)))
+                .entrySet()
+                .stream()
+                .map(e -> new FileWrapper.FolderUploadProperties(e.getKey(),
+                        e.getValue()
+                                .stream()
+                                .map(f -> new FileWrapper.FileUploadProperties(f.getKey().get(f.getKey().size() - 1),
+                                        AsyncReader.build(f.getValue()), 0, f.getValue().length, false, x -> {}))
+                                .collect(Collectors.toList())));
+
+        userRoot.uploadSubtree(byFolder, Optional.empty(), network, crypto, context.getTransactionService());
+
+        userRoot = context.getUserRoot().join();
+        for (Map.Entry<List<String>, byte[]> e : subtree.entrySet()) {
+            FileWrapper file = userRoot.getDescendentByPath(e.getKey().stream().collect(Collectors.joining("/")), crypto.hasher, context.network).join().get();
+            checkFileContentsChunked(e.getValue(), file, context, 5);
+        }
+    }
+
+    @Test
     public void concurrentUploadSucceeds() {
         String username = generateUsername();
         String password = "test";
@@ -1509,16 +1550,13 @@ public abstract class UserTests {
         long size = f.getSize();
         long readLength = size/nReads;
 
-
         ByteArrayOutputStream bout = new ByteArrayOutputStream();
 
         for (int i = 0; i < nReads; i++) {
             long pos = i * readLength;
-            long len = Math.min(readLength , expected.length - pos);
+            long len = i < nReads - 1 ? readLength : expected.length - pos;
             LOG.info("Reading from "+ pos +" to "+ (pos + len) +" with total "+ expected.length);
-            byte[] retrievedData = Serialize.readFully(
-                    in,
-                    len).get();
+            byte[] retrievedData = Serialize.readFully(in, len).get();
             bout.write(retrievedData);
         }
         byte[] readBytes = bout.toByteArray();

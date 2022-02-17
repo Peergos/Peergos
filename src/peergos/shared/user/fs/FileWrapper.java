@@ -756,6 +756,7 @@ public class FileWrapper {
 
         Optional<BatId> mirror = mirrorBatId().or(() -> mirrorBat);
         BufferedNetworkAccess buffered = BufferedNetworkAccess.build(network, 5 * 1024 * 1024, owner(), network.hasher);
+        TransactionServiceImpl txns = transactions.withNetwork(buffered);
         return getPath(network).thenCompose(path ->
                 buffered.synchronizer.applyComplexUpdate(owner(), signingPair(),
                         (s, c) -> {
@@ -766,7 +767,7 @@ public class FileWrapper {
                     return Futures.reduceAll(directories, this,
                                     (dir, children) -> dir.getOrMkdirs(children.relativePath, false, mirror, buffered, crypto, s, condenser)
                                             .thenCompose(p -> uploadFolder(Paths.get(path).resolve(children.path()), p.right,
-                                                    children, mirrorBat, transactions, buffered, crypto, condenser)
+                                                    children, mirrorBat, txns, buffered, crypto, condenser)
                                                     .thenCompose(v -> dir.getUpdated(v, buffered))),
                                     (a, b) -> b)
                                     .thenCompose(d -> buffered.commit()
