@@ -136,7 +136,7 @@ public class BufferedStorage extends DelegatingStorage {
 
     public synchronized CompletableFuture<Boolean> commit(PublicKeyHash owner, TransactionId tid) {
         // write blocks in batches of up to 50 all in 1 transaction
-        int maxBlocksPerBatch = 50;
+        int maxBlocksPerBatch = ContentAddressedStorage.MAX_BLOCK_AUTHS;
         List<List<OpLog.BlockWrite>> cborBatches = new ArrayList<>();
         List<List<OpLog.BlockWrite>> rawBatches = new ArrayList<>();
         int cborCount = 0, rawcount=0;
