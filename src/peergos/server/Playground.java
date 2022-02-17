@@ -18,7 +18,7 @@ public class Playground {
 
     public static void main(String[] args) throws Exception {
         Crypto crypto = Main.initCrypto();
-        NetworkAccess source = Builder.buildJavaNetworkAccess(new URL("https://beta.peergos.net"), true).get();
+        NetworkAccess source = Builder.buildJavaNetworkAccess(new URL("https://peergos.net"), true).get();
         NetworkAccess nonWriteThrough = NonWriteThroughNetwork.build(source);
 
         String username = args[0];
