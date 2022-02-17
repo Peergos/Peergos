@@ -65,7 +65,8 @@ public class BufferedPointers implements MutablePointers {
     public void condense(Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> writers) {
         int start = 0;
         List<PointerUpdate> newOrder = new ArrayList<>();
-        for (int j=1; j < order.size(); j++) {
+        int j=1;
+        for (; j < order.size(); j++) {
             PointerUpdate first = order.get(start);
             // preserve order of inter writer commits
             if (! order.get(j).writer.equals(first.writer)) {
@@ -78,10 +79,10 @@ public class BufferedPointers implements MutablePointers {
                 start = j;
             }
         }
-        if (start == 0) {// condense them ALL
-            PointerUpdate first = order.get(0);
+        if (j - start > 0) {// condense the last run
+            PointerUpdate first = order.get(start);
             MaybeMultihash original = parse(first.signedUpdate).original;
-            MaybeMultihash updated = parse(order.get(order.size() - 1).signedUpdate).updated;
+            MaybeMultihash updated = parse(order.get(j - 1).signedUpdate).updated;
             newOrder.add(new PointerUpdate(first.owner, first.writer, writers.get(first.writer).secret.signMessage(new HashCasPair(original, updated).serialize())));
         }
         order.clear();
