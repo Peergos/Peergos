@@ -64,6 +64,7 @@ public class BufferedStorage extends DelegatingStorage {
                                                List<byte[]> blocks,
                                                TransactionId tid,
                                                ProgressConsumer<Long> progressConsumer) {
+        blocks.forEach(b -> progressConsumer.accept((long)b.length));
         return put(writer, blocks, signatures, true);
     }
 
