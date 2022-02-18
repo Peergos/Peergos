@@ -63,17 +63,22 @@ public class SmallFileBenchmark {
         FileWrapper userRoot = context.getUserRoot().get();
         List<String> names = new ArrayList<>();
         IntStream.range(0, 100).forEach(i -> names.add(randomString()));
-        byte[] data = new byte[1024];
+        byte[] data = new byte[1024 * 5];
         random.nextBytes(data);
 
         long start = System.currentTimeMillis();
+        List<Boolean> progressReceived = new ArrayList<>();
+        ProgressConsumer<Long> progressCounter = (num) -> {
+            progressReceived.add(true);
+        };
         List<FileWrapper.FileUploadProperties> files = names.stream()
-                .map(n -> new FileWrapper.FileUploadProperties(n, AsyncReader.build(data), 0, data.length, false, x -> {}))
+                .map(n -> new FileWrapper.FileUploadProperties(n, AsyncReader.build(data), 0, data.length, false, progressCounter))
                 .collect(Collectors.toList());
         userRoot.uploadSubtree(Stream.of(new FileWrapper.FolderUploadProperties(Collections.emptyList(), files)),
                 userRoot.mirrorBatId(), context.network, crypto, context.getTransactionService()).join();
         long duration = System.currentTimeMillis() - start;
         System.err.printf("UPLOAD("+names.size()+") duration: %d mS, av: %d mS\n", duration, (duration) / names.size());
+        Assert.assertTrue("No progress", !progressReceived.isEmpty());
     }
 
     // UPLOAD(0) duration: 1085 mS, best: 1085 mS, worst: 1085 mS, av: 1085 mS
