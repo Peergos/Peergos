@@ -764,12 +764,12 @@ public class FileWrapper {
                         buffered.addWriter(w);
                         return c.commit(o, w, wd, e, tid);
                     };
-                    return Futures.reduceAll(directories, this,
-                                    (dir, children) -> dir.getOrMkdirs(children.relativePath, false, mirror, buffered, crypto, s, condenser)
+                            return getUpdated(s, buffered).thenCompose(us -> Futures.reduceAll(directories, us,
+                                    (dir, children) -> dir.getOrMkdirs(children.relativePath, false, mirror, buffered, crypto, dir.version, condenser)
                                             .thenCompose(p -> uploadFolder(Paths.get(path).resolve(children.path()), p.right,
                                                     children, mirrorBat, txns, buffered, crypto, condenser)
                                                     .thenCompose(v -> dir.getUpdated(v, buffered))),
-                                    (a, b) -> b)
+                                    (a, b) -> b))
                                     .thenCompose(d -> buffered.commit()
                                             .thenApply(b -> d.version));
                         }
