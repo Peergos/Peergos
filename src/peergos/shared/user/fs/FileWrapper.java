@@ -809,7 +809,6 @@ public class FileWrapper {
                 .thenApply(p -> p.version);
     }
 
-    @JsMethod
     public Optional<BatId> mirrorBatId() {
         return pointer.fileAccess.mirrorBatId();
     }
