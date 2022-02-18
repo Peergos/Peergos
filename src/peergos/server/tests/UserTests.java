@@ -541,11 +541,15 @@ public abstract class UserTests {
 
         Map<List<String>, byte[]> subtree = new HashMap<>();
 
+        String subdir = randomString();
+        String subsubdir = randomString();
         for (int i=0; i < countForSize.size(); i++) {
             for (int j=0; j < countForSize.get(i); j++) {
                 byte[] data = new byte[fileSizes.get(i)];
                 random.nextBytes(data);
                 subtree.put(Arrays.asList(randomString()), data);
+                subtree.put(Arrays.asList(subdir, randomString()), data);
+                subtree.put(Arrays.asList(subdir, subsubdir, randomString()), data);
             }
         }
 
