@@ -19,9 +19,10 @@ public class CachingVerifyingStorage extends DelegatingStorage {
     private final LRUCache<Multihash, CompletableFuture<Optional<CborObject>>> pending;
     private final LRUCache<Multihash, CompletableFuture<Optional<byte[]>>> pendingRaw;
     private final int maxValueSize, cacheSize;
+    private final Cid nodeId;
     private final Hasher hasher;
 
-    public CachingVerifyingStorage(ContentAddressedStorage target, int maxValueSize, int cacheSize, Hasher hasher) {
+    public CachingVerifyingStorage(ContentAddressedStorage target, int maxValueSize, int cacheSize, Cid nodeId, Hasher hasher) {
         super(target);
         this.target = target;
         this.cache =  new LRUCache<>(cacheSize);
@@ -29,7 +30,13 @@ public class CachingVerifyingStorage extends DelegatingStorage {
         this.pendingRaw = new LRUCache<>(100);
         this.maxValueSize = maxValueSize;
         this.cacheSize = cacheSize;
+        this.nodeId = nodeId;
         this.hasher = hasher;
+    }
+
+    @Override
+    public CompletableFuture<Cid> id() {
+        return Futures.of(nodeId);
     }
 
     private <T> CompletableFuture<T> verify(byte[] data, Multihash claimed, Supplier<T> result) {
@@ -61,7 +68,7 @@ public class CachingVerifyingStorage extends DelegatingStorage {
 
     @Override
     public ContentAddressedStorage directToOrigin() {
-        return new CachingVerifyingStorage(target.directToOrigin(), cacheSize, maxValueSize, hasher);
+        return new CachingVerifyingStorage(target.directToOrigin(), cacheSize, maxValueSize, nodeId, hasher);
     }
 
     @Override
