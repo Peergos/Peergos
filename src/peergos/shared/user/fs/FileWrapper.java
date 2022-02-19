@@ -714,7 +714,6 @@ public class FileWrapper {
         public final String filename;
         public final AsyncReader fileData;
         public final long length;
-        public final boolean overwriteExisting;
         public final ProgressConsumer<Long> monitor;
 
         @JsConstructor
@@ -722,12 +721,10 @@ public class FileWrapper {
                                     AsyncReader fileData,
                                     int lengthHi,
                                     int lengthLow,
-                                    boolean overwriteExisting,
                                     ProgressConsumer<Long> monitor) {
             this.filename = filename;
             this.fileData = fileData;
             this.length = (((long)lengthHi) << 32) | (lengthLow & 0xFFFFFFFFL);
-            this.overwriteExisting = overwriteExisting;
             this.monitor = monitor;
         }
     }
@@ -753,7 +750,8 @@ public class FileWrapper {
                                                         NetworkAccess network,
                                                         Crypto crypto,
                                                         TransactionService transactions,
-                                                        Supplier<Boolean> commitWatcher) {
+                                                        Supplier<Boolean> commitWatcher,
+                                                        Function<String, CompletableFuture<Boolean>> overwriteFile) {
 
         Optional<BatId> mirror = mirrorBatId().or(() -> mirrorBat);
         BufferedNetworkAccess buffered = BufferedNetworkAccess.build(network, 5 * 1024 * 1024, owner(), commitWatcher, network.hasher);
@@ -768,7 +766,7 @@ public class FileWrapper {
                             return getUpdated(s, buffered).thenCompose(us -> Futures.reduceAll(directories, us,
                                     (dir, children) -> dir.getOrMkdirs(children.relativePath, false, mirror, buffered, crypto, dir.version, condenser)
                                             .thenCompose(p -> uploadFolder(Paths.get(path).resolve(children.path()), p.right,
-                                                    children, mirrorBat, txns, buffered, crypto, condenser)
+                                                    children, overwriteFile, mirrorBat, txns, buffered, crypto, condenser)
                                                     .thenCompose(v -> dir.getUpdated(v, buffered))),
                                     (a, b) -> b))
                                     .thenCompose(d -> buffered.commit()
@@ -781,6 +779,7 @@ public class FileWrapper {
     public static CompletableFuture<Snapshot> uploadFolder(Path toParent,
                                                            FileWrapper parent,
                                                            FolderUploadProperties children,
+                                                           Function<String, CompletableFuture<Boolean>> overwriteFile,
                                                            Optional<BatId> mirrorBat,
                                                            TransactionService transactions,
                                                            NetworkAccess network,
@@ -789,8 +788,8 @@ public class FileWrapper {
         return Futures.reduceAll(children.files, parent,
                 (p, f) -> {
                     if (f.length < Chunk.MAX_SIZE || transactions == null) // small files or writable public links
-                        return p.uploadFileSection(p.version, c, f.filename, f.fileData, false, 0, f.length,
-                                Optional.empty(), f.overwriteExisting, true, network, crypto, f.monitor,
+                        return p.uploadFileSection(p.version, c, f.filename, f.fileData, Optional.empty(), false, 0, f.length,
+                                Optional.empty(), () -> overwriteFile.apply(toParent.resolve(f.filename).toString()), true, network, crypto, f.monitor,
                                 crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random)), mirrorBat)
                                 .thenCompose(s -> p.getUpdated(s, network));
 
@@ -799,8 +798,8 @@ public class FileWrapper {
                             .thenCompose(txn -> transactions.open(p.version, c, txn)
                                     .thenCompose(s -> p.getUpdated(s, network))
                                     .thenCompose(p2 ->
-                                            p2.uploadFileSection(p2.version, c, f.filename, f.fileData, false, 0, f.length,
-                                                    Optional.empty(), f.overwriteExisting, true, network, crypto, f.monitor,
+                                            p2.uploadFileSection(p2.version, c, f.filename, f.fileData, Optional.empty(), false, 0, f.length,
+                                                    Optional.empty(), () -> overwriteFile.apply(toParent.resolve(f.filename).toString()), true, network, crypto, f.monitor,
                                                     crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random)), mirrorBat)
                                                     .thenCompose(s -> transactions.close(s, c, txn))
                                                     .thenCompose(s -> p.getUpdated(s, network)))
@@ -1044,7 +1043,7 @@ public class FileWrapper {
                                                          Optional<Bat> firstBat,
                                                          Optional<BatId> requestedMirrorBat) {
         return uploadFileSection(initialVersion, committer, filename, fileData, Optional.empty(), isHidden, startIndex, endIndex,
-                baseKey, overwriteExisting, truncateExisting, network, crypto, monitor, firstChunkMapKey, firstBat, requestedMirrorBat);
+                baseKey, () -> Futures.of(overwriteExisting), truncateExisting, network, crypto, monitor, firstChunkMapKey, firstBat, requestedMirrorBat);
     }
 
     private CompletableFuture<Snapshot> uploadFileSection(Snapshot initialVersion,
@@ -1056,7 +1055,7 @@ public class FileWrapper {
                                                           long startIndex,
                                                           long endIndex,
                                                           Optional<SymmetricKey> baseKey,
-                                                          boolean overwriteExisting,
+                                                          Supplier<CompletableFuture<Boolean>> overwriteExisting,
                                                           boolean truncateExisting,
                                                           NetworkAccess network,
                                                           Crypto crypto,
@@ -1080,37 +1079,40 @@ public class FileWrapper {
                         .thenCompose(latest -> latest.getChild(current, filename, network)
                                         .thenCompose(childOpt -> {
                                             if (childOpt.isPresent()) {
-                                                if (! overwriteExisting)
-                                                    throw new IllegalStateException("File already exists with name " + filename);
-                                                FileWrapper child = childOpt.get();
-                                                FileProperties childProps = child.getFileProperties();
+                                                return overwriteExisting.get().thenCompose(overwrite -> {
+                                                    if (! overwrite)
+                                                        throw new IllegalStateException("File already exists with name " + filename);
+                                                    FileWrapper child = childOpt.get();
+                                                    FileProperties childProps = child.getFileProperties();
 
-                                                TriFunction<FileWrapper, Snapshot, Long, CompletableFuture<Snapshot>> updatePropsIfNecessary =
-                                                        (updatedChild, latestSnapshot, writeEnd) -> {
-                                                    if (childProps.thumbnail.isEmpty()) {
-                                                        if (writeEnd <= childProps.size)
-                                                            return Futures.of(latestSnapshot);
-                                                        // update size only
-                                                        return updatedChild.updateSize(committer, writeEnd, network);
+                                                    TriFunction<FileWrapper, Snapshot, Long, CompletableFuture<Snapshot>> updatePropsIfNecessary =
+                                                            (updatedChild, latestSnapshot, writeEnd) -> {
+                                                                if (childProps.thumbnail.isEmpty()) {
+                                                                    if (writeEnd <= childProps.size)
+                                                                        return Futures.of(latestSnapshot);
+                                                                    // update size only
+                                                                    return updatedChild.updateSize(committer, writeEnd, network);
+                                                                }
+                                                                return updatedChild.getInputStream(latestSnapshot.get(updatedChild.writer()).props, network, crypto, l -> {
+                                                                })
+                                                                        .thenCompose(is -> updatedChild.recalculateThumbnail(
+                                                                                latestSnapshot, committer, filename, is, isHidden,
+                                                                                updatedChild.getSize(), network, (WritableAbsoluteCapability) updatedChild.pointer.capability,
+                                                                                updatedChild.getFileProperties().streamSecret));
+                                                            };
+
+                                                    if (truncateExisting && endIndex < childProps.size) {
+                                                        return child.truncate(current, committer, endIndex, network, crypto).thenCompose(updatedSnapshot ->
+                                                                getUpdated(updatedSnapshot, network).thenCompose(updatedParent ->
+                                                                        child.getUpdated(updatedSnapshot, network).thenCompose(updatedChild ->
+                                                                                updatedParent.updateExistingChild(updatedSnapshot, committer, updatedChild, fileData,
+                                                                                        startIndex, endIndex, network, crypto, monitor)
+                                                                                        .thenCompose(latestSnapshot -> updatePropsIfNecessary.apply(updatedChild, latestSnapshot, endIndex)))));
+                                                    } else {
+                                                        return updateExistingChild(current, committer, child, fileData,
+                                                                startIndex, endIndex, network, crypto, monitor);
                                                     }
-                                                    return updatedChild.getInputStream(latestSnapshot.get(updatedChild.writer()).props, network, crypto, l -> {})
-                                                            .thenCompose(is -> updatedChild.recalculateThumbnail(
-                                                                latestSnapshot, committer, filename, is, isHidden,
-                                                                updatedChild.getSize(), network, (WritableAbsoluteCapability)updatedChild.pointer.capability,
-                                                                updatedChild.getFileProperties().streamSecret));
-                                                };
-
-                                                if (truncateExisting && endIndex < childProps.size) {
-                                                    return child.truncate(current, committer, endIndex, network, crypto).thenCompose( updatedSnapshot ->
-                                                        getUpdated(updatedSnapshot, network).thenCompose( updatedParent ->
-                                                                child.getUpdated(updatedSnapshot, network).thenCompose( updatedChild ->
-                                                                    updatedParent.updateExistingChild(updatedSnapshot, committer, updatedChild, fileData,
-                                                                        startIndex, endIndex, network, crypto, monitor)
-                                                                            .thenCompose(latestSnapshot ->  updatePropsIfNecessary.apply(updatedChild, latestSnapshot, endIndex)))));
-                                                } else {
-                                                    return updateExistingChild(current, committer, child, fileData,
-                                                            startIndex, endIndex, network, crypto, monitor);
-                                                }
+                                                });
                                             }
                                             if (startIndex > 0) {
                                                 // TODO if startIndex > 0 prepend with a zero section
@@ -1602,7 +1604,7 @@ public class FileWrapper {
                         getInputStream(snapshot.get(writer()).props, network, crypto, x -> {})
                                 .thenCompose(stream -> target.uploadFileSection(snapshot, committer,
                                         getName(), stream, existingThumbnail, false, 0, getSize(),
-                                        Optional.empty(), false, false, network, crypto, x -> {},
+                                        Optional.empty(), () -> Futures.of(false), false, network, crypto, x -> {},
                                         crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random)), target.mirrorBatId())));
             }
         });

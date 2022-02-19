@@ -562,10 +562,10 @@ public abstract class UserTests {
                         e.getValue()
                                 .stream()
                                 .map(f -> new FileWrapper.FileUploadProperties(f.getKey().get(f.getKey().size() - 1),
-                                        AsyncReader.build(f.getValue()), 0, f.getValue().length, false, x -> {}))
+                                        AsyncReader.build(f.getValue()), 0, f.getValue().length, x -> {}))
                                 .collect(Collectors.toList())));
 
-        userRoot.uploadSubtree(byFolder, Optional.empty(), network, crypto, context.getTransactionService(), () -> true);
+        userRoot.uploadSubtree(byFolder, Optional.empty(), network, crypto, context.getTransactionService(), () -> true, p -> Futures.of(false));
 
         userRoot = context.getUserRoot().join();
         for (Map.Entry<List<String>, byte[]> e : subtree.entrySet()) {
