@@ -752,7 +752,8 @@ public class FileWrapper {
                                                         Optional<BatId> mirrorBat,
                                                         NetworkAccess network,
                                                         Crypto crypto,
-                                                        TransactionService transactions) {
+                                                        TransactionService transactions,
+                                                        Function<Boolean, Boolean> commitWatcher) {
 
         Optional<BatId> mirror = mirrorBatId().or(() -> mirrorBat);
         BufferedNetworkAccess buffered = BufferedNetworkAccess.build(network, 5 * 1024 * 1024, owner(), network.hasher);
@@ -771,6 +772,7 @@ public class FileWrapper {
                                                     .thenCompose(v -> dir.getUpdated(v, buffered))),
                                     (a, b) -> b))
                                     .thenCompose(d -> buffered.commit()
+                                            .thenApply(commitWatcher)
                                             .thenApply(b -> d.version));
                         }
                 )).thenCompose(finished -> getUpdated(finished, buffered));
