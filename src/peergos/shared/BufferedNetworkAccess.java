@@ -13,6 +13,7 @@ import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.*;
 
 /** This will buffer block writes, and mutable pointer updates and commit in bulk
  *
@@ -24,12 +25,14 @@ public class BufferedNetworkAccess extends NetworkAccess {
     private final int bufferSize;
     private Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> writers = new HashMap<>();
     private final PublicKeyHash owner;
+    private final Supplier<Boolean> commitWatcher;
     private final ContentAddressedStorage blocks;
 
     private BufferedNetworkAccess(BufferedStorage blockBuffer,
                                   BufferedPointers mutableBuffer,
                                   int bufferSize,
                                   PublicKeyHash owner,
+                                  Supplier<Boolean> commitWatcher,
                                   CoreNode coreNode,
                                   Account account,
                                   SocialNetwork social,
@@ -50,6 +53,7 @@ public class BufferedNetworkAccess extends NetworkAccess {
         this.pointerBuffer = mutableBuffer;
         this.bufferSize = bufferSize;
         this.owner = owner;
+        this.commitWatcher = commitWatcher;
         this.blocks = dhtClient;
         pointerBuffer.watchUpdates(() -> maybeCommit());
     }
@@ -80,16 +84,20 @@ public class BufferedNetworkAccess extends NetworkAccess {
                             blockBuffer.clear();
                             pointerBuffer.clear();
                             writers.clear();
-                            return true;
+                            return commitWatcher.get();
                         }));
     }
 
-    public static BufferedNetworkAccess build(NetworkAccess base, int bufferSize, PublicKeyHash owner, Hasher h) {
+    public static BufferedNetworkAccess build(NetworkAccess base,
+                                              int bufferSize,
+                                              PublicKeyHash owner,
+                                              Supplier<Boolean> commitWatcher,
+                                              Hasher h) {
         BufferedStorage blockBuffer = new BufferedStorage(base.dhtClient, h);
         BufferedPointers mutableBuffer = new BufferedPointers(base.mutable);
         WriteSynchronizer synchronizer = new WriteSynchronizer(mutableBuffer, blockBuffer, h);
         MutableTree tree = new MutableTreeImpl(mutableBuffer, blockBuffer, h, synchronizer);
-        return new BufferedNetworkAccess(blockBuffer, mutableBuffer, bufferSize, owner, base.coreNode, base.account, base.social,
+        return new BufferedNetworkAccess(blockBuffer, mutableBuffer, bufferSize, owner, commitWatcher, base.coreNode, base.account, base.social,
                 base.dhtClient, base.batCave, mutableBuffer, tree, synchronizer, base.instanceAdmin,
                 base.spaceUsage, base.serverMessager, base.hasher, base.usernames, base.isJavascript());
     }

@@ -753,10 +753,10 @@ public class FileWrapper {
                                                         NetworkAccess network,
                                                         Crypto crypto,
                                                         TransactionService transactions,
-                                                        Function<Boolean, Boolean> commitWatcher) {
+                                                        Supplier<Boolean> commitWatcher) {
 
         Optional<BatId> mirror = mirrorBatId().or(() -> mirrorBat);
-        BufferedNetworkAccess buffered = BufferedNetworkAccess.build(network, 5 * 1024 * 1024, owner(), network.hasher);
+        BufferedNetworkAccess buffered = BufferedNetworkAccess.build(network, 5 * 1024 * 1024, owner(), commitWatcher, network.hasher);
         TransactionServiceImpl txns = transactions.withNetwork(buffered);
         return getPath(network).thenCompose(path ->
                 buffered.synchronizer.applyComplexUpdate(owner(), signingPair(),
@@ -772,7 +772,6 @@ public class FileWrapper {
                                                     .thenCompose(v -> dir.getUpdated(v, buffered))),
                                     (a, b) -> b))
                                     .thenCompose(d -> buffered.commit()
-                                            .thenApply(commitWatcher)
                                             .thenApply(b -> d.version));
                         }
                 )).thenCompose(finished -> getUpdated(finished, buffered));

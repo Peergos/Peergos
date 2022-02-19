@@ -565,7 +565,7 @@ public abstract class UserTests {
                                         AsyncReader.build(f.getValue()), 0, f.getValue().length, false, x -> {}))
                                 .collect(Collectors.toList())));
 
-        userRoot.uploadSubtree(byFolder, Optional.empty(), network, crypto, context.getTransactionService(), x -> true);
+        userRoot.uploadSubtree(byFolder, Optional.empty(), network, crypto, context.getTransactionService(), () -> true);
 
         userRoot = context.getUserRoot().join();
         for (Map.Entry<List<String>, byte[]> e : subtree.entrySet()) {
