@@ -409,7 +409,9 @@ public interface ContentAddressedStorage {
             // Do up to 10 fragments per query (50 pre-auth max/ 5 browser upload connections), unless we are talking
             // to IPFS directly or there are fewer than 10 blocks. Then upload one per query because IPFS doesn't
             // support more than one, and to maximise use of browsers 5 connections.
-            int FRAGMENTs_PER_QUERY = isPeergosServer ? (blocks.size() > 10 ? 10 : 1) : 1;
+            //int FRAGMENTs_PER_QUERY = isPeergosServer ? (blocks.size() > 10 ? 10 : 1) : 1;
+            // multi fragment seems to break things, for now just use 1
+            int FRAGMENTs_PER_QUERY = 1;
             List<List<byte[]>> grouped = ArrayOps.group(blocks, FRAGMENTs_PER_QUERY);
             List<List<byte[]>> groupedSignatures = ArrayOps.group(signatures, FRAGMENTs_PER_QUERY);
             List<Integer> sizes = grouped.stream()
