@@ -50,7 +50,7 @@ public class LinkIdentity {
         System.out.println("Post the following text to the alternative service:\n");
         FileWrapper proofFile = context.getByPath(Paths.get(username, ".profile", "ids", proof.getFilename())).join().get();
         boolean isLocalhost = a.getArg("peergos-url").startsWith("http://localhost");
-        String publicPeergosUrl = isLocalhost ? "https://beta.peergos.net" : a.getArg("peergos-url");
+        String publicPeergosUrl = isLocalhost ? "https://peergos.net" : a.getArg("peergos-url");
         System.out.println(proof.postText(proof.getUrlToPost(publicPeergosUrl, proofFile, publish)));
 
         String postUrl = console.readLine("\nEnter the URL for the post on the alternative service:");

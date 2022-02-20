@@ -262,7 +262,7 @@ public class NetworkAccess {
                             localDht :
                             new ContentAddressedStorage.Proxying(localDht, proxingDht, nodeId, core);
                     ContentAddressedStorage p2pDht = new CachingVerifyingStorage(new RetryStorage(storage, 3),
-                            50 * 1024, 1_000, hasher);
+                            50 * 1024, 1_000, nodeId, hasher);
                     MutablePointersProxy httpMutable = new HttpMutablePointers(apiPoster, p2pPoster);
                     Account account = new HttpAccount(apiPoster, p2pPoster);
                     MutablePointers p2pMutable =
@@ -485,10 +485,10 @@ public class NetworkAccess {
     }
 
     public CompletableFuture<List<Cid>> uploadFragments(List<Fragment> fragments,
-                                                              PublicKeyHash owner,
-                                                              SigningPrivateKeyAndPublicHash writer,
-                                                              ProgressConsumer<Long> progressCounter,
-                                                              TransactionId tid) {
+                                                        PublicKeyHash owner,
+                                                        SigningPrivateKeyAndPublicHash writer,
+                                                        ProgressConsumer<Long> progressCounter,
+                                                        TransactionId tid) {
         if (fragments.isEmpty())
             return CompletableFuture.completedFuture(Collections.emptyList());
 

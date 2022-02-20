@@ -105,7 +105,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     @Override
     public CompletableFuture<List<PresignedUrl>> authReads(List<MirrorCap> blocks) {
-        if (blocks.size() > 50)
+        if (blocks.size() > MAX_BLOCK_AUTHS)
             throw new IllegalStateException("Too many reads to auth!");
         List<PresignedUrl> res = new ArrayList<>();
 
@@ -136,7 +136,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                                                             boolean isRaw,
                                                             TransactionId tid) {
         try {
-            if (signedHashes.size() > 50)
+            if (signedHashes.size() > MAX_BLOCK_AUTHS)
                 throw new IllegalStateException("Too many writes to auth!");
             if (blockSizes.size() != signedHashes.size())
                 throw new IllegalStateException("Number of sizes doesn't match number of signed hashes!");

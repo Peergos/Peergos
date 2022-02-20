@@ -18,7 +18,7 @@ public class Paths {
             throw new IllegalArgumentException(ERROR_MSG_NULL_PATH);
         }
         if (firstPath.equals("")) {
-            throw new IllegalArgumentException(ERROR_MSG_UNINITIALISED);
+            return new Path("");
         }
         return new Path(Stream.concat(Stream.of(firstPath), Arrays.stream(pathString)).collect(Collectors.joining("/")));
     }

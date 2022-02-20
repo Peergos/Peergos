@@ -27,6 +27,7 @@ public interface ContentAddressedStorage {
 
     boolean DEBUG_GC = false;
     int MAX_BLOCK_SIZE  = Fragment.MAX_LENGTH_WITH_BAT_PREFIX;
+    int MAX_BLOCK_AUTHS = 50;
 
     default CompletableFuture<BlockStoreProperties> blockStoreProperties() {
         return Futures.of(BlockStoreProperties.empty());
@@ -405,9 +406,12 @@ public interface ContentAddressedStorage {
                                                      String format,
                                                      TransactionId tid,
                                                      ProgressConsumer<Long> progressConsumer) {
-            // Do 8 fragments per query to spread the 40 fragments in a chunk over the 5 connections in a browser
-            // Unless we are talking to IPFS directly, then upload one per query because IPFS doesn't support more than one
-            int FRAGMENTs_PER_QUERY = isPeergosServer ? 1 : 1;
+            // Do up to 10 fragments per query (50 pre-auth max/ 5 browser upload connections), unless we are talking
+            // to IPFS directly or there are fewer than 10 blocks. Then upload one per query because IPFS doesn't
+            // support more than one, and to maximise use of browsers 5 connections.
+            //int FRAGMENTs_PER_QUERY = isPeergosServer ? (blocks.size() > 10 ? 10 : 1) : 1;
+            // multi fragment seems to break things, for now just use 1
+            int FRAGMENTs_PER_QUERY = 1;
             List<List<byte[]>> grouped = ArrayOps.group(blocks, FRAGMENTs_PER_QUERY);
             List<List<byte[]>> groupedSignatures = ArrayOps.group(signatures, FRAGMENTs_PER_QUERY);
             List<Integer> sizes = grouped.stream()

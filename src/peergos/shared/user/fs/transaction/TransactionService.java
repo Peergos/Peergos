@@ -1,6 +1,7 @@
 package peergos.shared.user.fs.transaction;
 
 import jsinterop.annotations.JsMethod;
+import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.user.*;
 import peergos.shared.util.Futures;
@@ -28,6 +29,8 @@ public interface TransactionService {
     CompletableFuture<Snapshot> clear(Snapshot version, Committer committer, Transaction transaction);
 
     CompletableFuture<Set<Transaction>> getOpenTransactions(Snapshot version);
+
+    TransactionServiceImpl withNetwork(NetworkAccess net);
 
     default CompletableFuture<Snapshot> clearAndClose(Snapshot version, Committer committer, Transaction transaction) {
         return clear(version, committer, transaction)

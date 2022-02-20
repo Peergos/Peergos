@@ -2,8 +2,6 @@ package peergos.shared.user.fs.transaction;
 
 import peergos.shared.*;
 import peergos.shared.crypto.*;
-import peergos.shared.crypto.hash.*;
-import peergos.shared.crypto.random.SafeRandom;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
@@ -18,7 +16,7 @@ import java.util.stream.Collectors;
 public class TransactionServiceImpl implements TransactionService {
     private static ProgressConsumer<Long> VOID_PROGRESS = l -> {};
 
-    private final FileWrapperUpdater transactionDirUpdater;
+    private final FileWrapper transactionsDir;
     private final SigningPrivateKeyAndPublicHash signer;
     private final NetworkAccess networkAccess;
     private final Crypto crypto;
@@ -26,10 +24,14 @@ public class TransactionServiceImpl implements TransactionService {
     public TransactionServiceImpl(NetworkAccess networkAccess,
                                   Crypto crypto,
                                   FileWrapper transactionsDir) {
-        this.transactionDirUpdater = v -> transactionsDir.getUpdated(v, networkAccess);
+        this.transactionsDir = transactionsDir;
         this.signer = transactionsDir.signingPair();
         this.networkAccess = networkAccess;
         this.crypto = crypto;
+    }
+
+    public TransactionServiceImpl withNetwork(NetworkAccess net) {
+        return new TransactionServiceImpl(net, crypto, transactionsDir);
     }
 
     @Override
@@ -37,11 +39,15 @@ public class TransactionServiceImpl implements TransactionService {
         return signer;
     }
 
+    private CompletableFuture<FileWrapper> updatedTransactionDir(Snapshot v) {
+        return transactionsDir.getUpdated(v, networkAccess);
+    }
+
     @Override
     public CompletableFuture<Snapshot> open(Snapshot version, Committer committer, Transaction transaction) {
         byte[] data = transaction.serialize();
         AsyncReader asyncReader = AsyncReader.build(data);
-        return transactionDirUpdater.updated(version).thenCompose(dir ->
+        return updatedTransactionDir(version).thenCompose(dir ->
                 dir.uploadFileSection(version, committer, transaction.name(), asyncReader, false,
                         0, data.length, Optional.empty(), false, false, networkAccess,
                         crypto, VOID_PROGRESS, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random)), dir.mirrorBatId()));
@@ -49,7 +55,7 @@ public class TransactionServiceImpl implements TransactionService {
 
     @Override
     public CompletableFuture<Snapshot> close(Snapshot version, Committer committer, Transaction transaction) {
-        return transactionDirUpdater.updated(version).thenCompose(dir ->
+        return updatedTransactionDir(version).thenCompose(dir ->
                 dir.getChild(transaction.name(), crypto.hasher, networkAccess).thenCompose(fileOpt -> {
                     boolean hasChild = fileOpt.isPresent();
                     if (!hasChild)
@@ -77,7 +83,7 @@ public class TransactionServiceImpl implements TransactionService {
 
     @Override
     public CompletableFuture<Set<Transaction>> getOpenTransactions(Snapshot version) {
-        return transactionDirUpdater.updated(version)
+        return updatedTransactionDir(version)
                 .thenCompose(dir -> dir.getChildren(crypto.hasher, networkAccess)
                         .thenCompose(children -> {
                             List<CompletableFuture<Transaction>> collect = children.stream()
