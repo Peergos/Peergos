@@ -786,28 +786,29 @@ public class FileWrapper {
                                                            NetworkAccess network,
                                                            Crypto crypto,
                                                            Committer c) {
-        return Futures.reduceAll(children.files, parent,
+        Pair<Snapshot, List<NamedRelativeCapability>> identity = new Pair<>(parent.version, Collections.emptyList());
+        return Futures.reduceAll(children.files, identity,
                 (p, f) -> {
                     if (f.length < Chunk.MAX_SIZE || transactions == null) // small files or writable public links
-                        return p.uploadFileSection(p.version, c, f.filename, f.fileData, false, 0, f.length,
+                        return parent.uploadFileSection(p.left, c, f.filename, f.fileData, Optional.empty(), false, 0, f.length,
                                 Optional.empty(), f.overwriteExisting, true, network, crypto, f.monitor,
                                 crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random)), mirrorBat)
-                                .thenCompose(s -> p.getUpdated(s, network));
+                                .thenApply(pair -> new Pair<>(pair.left, Stream.concat(p.right.stream(), pair.right.stream()).collect(Collectors.toList())));
 
-                    return Transaction.buildFileUploadTransaction(toParent.resolve(f.filename).toString(), f.length, f.fileData, p.signingPair(),
-                            p.generateChildLocationsFromSize(f.length, crypto.random))
-                            .thenCompose(txn -> transactions.open(p.version, c, txn)
-                                    .thenCompose(s -> p.getUpdated(s, network))
-                                    .thenCompose(p2 ->
-                                            p2.uploadFileSection(p2.version, c, f.filename, f.fileData, false, 0, f.length,
+                    return Transaction.buildFileUploadTransaction(toParent.resolve(f.filename).toString(), f.length, f.fileData, parent.signingPair(),
+                            parent.generateChildLocationsFromSize(f.length, crypto.random))
+                            .thenCompose(txn -> transactions.open(p.left, c, txn)
+                                    .thenCompose(v ->
+                                            parent.uploadFileSection(v, c, f.filename, f.fileData, Optional.empty(), false, 0, f.length,
                                                     Optional.empty(), f.overwriteExisting, true, network, crypto, f.monitor,
                                                     crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random)), mirrorBat)
-                                                    .thenCompose(s -> transactions.close(s, c, txn))
-                                                    .thenCompose(s -> p.getUpdated(s, network)))
+                                                    .thenCompose(pair -> transactions.close(pair.left, c, txn)
+                                                            .thenApply(s -> new Pair<>(s, Stream.concat(p.right.stream(), pair.right.stream()).collect(Collectors.toList())))))
                             );
                 },
-                (a, b) -> b)
-                .thenApply(p -> p.version);
+                (a, b) -> new Pair<>(b.left, Stream.concat(a.right.stream(), b.right.stream()).collect(Collectors.toList())))
+                .thenCompose(p -> parent.getUpdated(p.left, network)
+                        .thenCompose(latest -> latest.addChildPointers(p.left, c, p.right, network, crypto)));
     }
 
     public Optional<BatId> mirrorBatId() {
@@ -1044,35 +1045,36 @@ public class FileWrapper {
                                                          Optional<Bat> firstBat,
                                                          Optional<BatId> requestedMirrorBat) {
         return uploadFileSection(initialVersion, committer, filename, fileData, Optional.empty(), isHidden, startIndex, endIndex,
-                baseKey, overwriteExisting, truncateExisting, network, crypto, monitor, firstChunkMapKey, firstBat, requestedMirrorBat);
+                baseKey, overwriteExisting, truncateExisting, network, crypto, monitor, firstChunkMapKey, firstBat, requestedMirrorBat)
+                .thenCompose(p -> getUpdated(p.left, network)
+                        .thenCompose(latest -> p.right.isEmpty() ?
+                                Futures.of(p.left) :
+                                latest.addChildPointer(p.left, committer, p.right.get(), network, crypto)));
     }
 
-    private CompletableFuture<Snapshot> uploadFileSection(Snapshot initialVersion,
-                                                          Committer committer,
-                                                          String filename,
-                                                          AsyncReader fileData,
-                                                          Optional<Thumbnail> existingThumbnail,
-                                                          boolean isHidden,
-                                                          long startIndex,
-                                                          long endIndex,
-                                                          Optional<SymmetricKey> baseKey,
-                                                          boolean overwriteExisting,
-                                                          boolean truncateExisting,
-                                                          NetworkAccess network,
-                                                          Crypto crypto,
-                                                          ProgressConsumer<Long> monitor,
-                                                          byte[] firstChunkMapKey,
-                                                          Optional<Bat> firstBat,
-                                                          Optional<BatId> requestedMirrorBat) {
+    private CompletableFuture<Pair<Snapshot, Optional<NamedRelativeCapability>>> uploadFileSection(
+            Snapshot initialVersion,
+            Committer committer,
+            String filename,
+            AsyncReader fileData,
+            Optional<Thumbnail> existingThumbnail,
+            boolean isHidden,
+            long startIndex,
+            long endIndex,
+            Optional<SymmetricKey> baseKey,
+            boolean overwriteExisting,
+            boolean truncateExisting,
+            NetworkAccess network,
+            Crypto crypto,
+            ProgressConsumer<Long> monitor,
+            byte[] firstChunkMapKey,
+            Optional<Bat> firstBat,
+            Optional<BatId> requestedMirrorBat) {
         if (!isLegalName(filename)) {
-            CompletableFuture<Snapshot> res = new CompletableFuture<>();
-            res.completeExceptionally(new IllegalStateException("Illegal filename: " + filename));
-            return res;
+            return Futures.errored(new IllegalStateException("Illegal filename: " + filename));
         }
         if (! isDirectory()) {
-            CompletableFuture<Snapshot> res = new CompletableFuture<>();
-            res.completeExceptionally(new IllegalStateException("Cannot upload a sub file to a file!"));
-            return res;
+            return Futures.errored(new IllegalStateException("Cannot upload a sub file to a file!"));
         }
         Optional<BatId> mirrorBat = mirrorBatId().or(() -> requestedMirrorBat);
         return initialVersion.withWriter(owner(), writer(), network)
@@ -1106,10 +1108,12 @@ public class FileWrapper {
                                                                 child.getUpdated(updatedSnapshot, network).thenCompose( updatedChild ->
                                                                     updatedParent.updateExistingChild(updatedSnapshot, committer, updatedChild, fileData,
                                                                         startIndex, endIndex, network, crypto, monitor)
-                                                                            .thenCompose(latestSnapshot ->  updatePropsIfNecessary.apply(updatedChild, latestSnapshot, endIndex)))));
+                                                                            .thenCompose(latestSnapshot ->  updatePropsIfNecessary.apply(updatedChild, latestSnapshot, endIndex)))))
+                                                            .thenApply(s -> new Pair<>(s, Optional.<NamedRelativeCapability>empty()));
                                                 } else {
                                                     return updateExistingChild(current, committer, child, fileData,
-                                                            startIndex, endIndex, network, crypto, monitor);
+                                                            startIndex, endIndex, network, crypto, monitor)
+                                                            .thenApply(s -> new Pair<>(s, Optional.<NamedRelativeCapability>empty()));
                                                 }
                                             }
                                             if (startIndex > 0) {
@@ -1145,12 +1149,11 @@ public class FileWrapper {
 
                                                         return chunks.upload(current, committer, network, parentLocation.owner,
                                                                 signer, mirrorBat, crypto.random, crypto.hasher)
-                                                                .thenCompose(updatedWD -> latest.addChildPointer(updatedWD,
-                                                                        committer, fileWriteCap, new PathElement(filename), network, crypto))
                                                                 .thenCompose(cwd -> fileData.reset().thenCompose(resetAgain ->
                                                                         generateThumbnailAndUpdate(cwd, committer, fileWriteCap, filename, resetAgain,
                                                                                 network, isHidden, mimeType,
-                                                                                endIndex, LocalDateTime.now(), streamSecret)));
+                                                                                endIndex, LocalDateTime.now(), streamSecret)))
+                                                                .thenApply(s -> new Pair<>(s, Optional.of(new NamedRelativeCapability(filename, writableFilePointer().relativise(fileWriteCap)))));
                                                     }));
                                         })
                         )
@@ -1219,12 +1222,17 @@ public class FileWrapper {
 
     private CompletableFuture<Snapshot> addChildPointer(Snapshot current,
                                                         Committer committer,
-                                                        WritableAbsoluteCapability childPointer,
-                                                        PathElement filename,
+                                                        NamedRelativeCapability childCap,
                                                         NetworkAccess network,
                                                         Crypto crypto) {
-        NamedRelativeCapability namedCap = new NamedRelativeCapability(filename, writableFilePointer().relativise(childPointer));
-        List<NamedRelativeCapability> childCaps = Collections.singletonList(namedCap);
+        return addChildPointers(current, committer, Collections.singletonList(childCap), network, crypto);
+    }
+
+    private CompletableFuture<Snapshot> addChildPointers(Snapshot current,
+                                                        Committer committer,
+                                                        List<NamedRelativeCapability> childCaps,
+                                                        NetworkAccess network,
+                                                        Crypto crypto) {
         return pointer.fileAccess.addChildrenAndCommit(current, committer,
                 childCaps, writableFilePointer(), signingPair(), mirrorBatId(), network, crypto)
                 .thenApply(newBase -> {
@@ -1603,7 +1611,10 @@ public class FileWrapper {
                                 .thenCompose(stream -> target.uploadFileSection(snapshot, committer,
                                         getName(), stream, existingThumbnail, false, 0, getSize(),
                                         Optional.empty(), false, false, network, crypto, x -> {},
-                                        crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random)), target.mirrorBatId())));
+                                        crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random)), target.mirrorBatId())
+                                        .thenCompose(p -> p.right.isEmpty() ?
+                                                Futures.of(p.left) :
+                                                target.addChildPointer(p.left, committer, p.right.get(), network, crypto))));
             }
         });
     }

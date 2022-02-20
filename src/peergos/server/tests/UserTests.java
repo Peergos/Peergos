@@ -569,7 +569,9 @@ public abstract class UserTests {
 
         userRoot = context.getUserRoot().join();
         for (Map.Entry<List<String>, byte[]> e : subtree.entrySet()) {
-            FileWrapper file = userRoot.getDescendentByPath(e.getKey().stream().collect(Collectors.joining("/")), crypto.hasher, context.network).join().get();
+            String path = e.getKey().stream().collect(Collectors.joining("/"));
+            Optional<FileWrapper> fileOpt = userRoot.getDescendentByPath(path, crypto.hasher, context.network).join();
+            FileWrapper file = fileOpt.get();
             checkFileContentsChunked(e.getValue(), file, context, 5);
         }
     }

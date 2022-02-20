@@ -54,7 +54,7 @@ public class SmallFileBenchmark {
         return PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
     }
 
-    // UPLOAD(100) duration: 7549 mS, av: 75 mS
+    // UPLOAD(100) duration: 6137 mS, av: 61 mS
     @Test
     public void smallFilesBulk() throws Exception {
         String username = generateUsername();
