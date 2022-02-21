@@ -273,7 +273,7 @@ public class SharedWithCache {
                 .thenApply(opt -> opt.map(s -> s.get(getFilename(p))).orElse(FileSharedWithState.EMPTY));
     }
 
-    public CompletableFuture<Snapshot> applyAndCommit(Path toFile, Function<SharedWithState, SharedWithState> transform, Snapshot in, Committer committer) {
+    public CompletableFuture<Snapshot> applyAndCommit(Path toFile, Function<SharedWithState, SharedWithState> transform, Snapshot in, Committer committer, NetworkAccess network) {
         return base.getUpdated(in, network)
                 .thenCompose(updated -> retrieveWithFileOrCreate(updated, toFile.getParent(), network, crypto, in, committer))
                 .thenCompose(p -> {
@@ -285,7 +285,7 @@ public class SharedWithCache {
                 });
     }
 
-    public CompletableFuture<Snapshot> rename(Path initial, Path after, Snapshot in, Committer committer) {
+    public CompletableFuture<Snapshot> rename(Path initial, Path after, Snapshot in, Committer committer, NetworkAccess network) {
         if (! initial.getParent().equals(after.getParent()))
             throw new IllegalStateException("Not a valid rename!");
         String initialFilename = getFilename(initial);
@@ -294,18 +294,18 @@ public class SharedWithCache {
                 .thenCompose(sharees -> applyAndCommit(after, current ->
                         current.add(Access.READ, newFilename, sharees.readAccess)
                                 .add(Access.WRITE, newFilename, sharees.writeAccess)
-                                .clear(initialFilename), in, committer));
+                                .clear(initialFilename), in, committer, network));
     }
 
-    public CompletableFuture<Snapshot> addSharedWith(Access access, Path p, Set<String> names, Snapshot in, Committer committer) {
-        return applyAndCommit(p, current -> current.add(access, getFilename(p), names), in, committer);
+    public CompletableFuture<Snapshot> addSharedWith(Access access, Path p, Set<String> names, Snapshot in, Committer committer, NetworkAccess network) {
+        return applyAndCommit(p, current -> current.add(access, getFilename(p), names), in, committer, network);
     }
 
-    public CompletableFuture<Snapshot> clearSharedWith(Path p, Snapshot in, Committer committer) {
-        return applyAndCommit(p, current -> current.clear(getFilename(p)), in, committer);
+    public CompletableFuture<Snapshot> clearSharedWith(Path p, Snapshot in, Committer committer, NetworkAccess network) {
+        return applyAndCommit(p, current -> current.clear(getFilename(p)), in, committer, network);
     }
 
-    public CompletableFuture<Snapshot> removeSharedWith(Access access, Path p, Set<String> names, Snapshot in, Committer committer) {
-        return applyAndCommit(p, current -> current.remove(access, getFilename(p), names), in, committer);
+    public CompletableFuture<Snapshot> removeSharedWith(Access access, Path p, Set<String> names, Snapshot in, Committer committer, NetworkAccess network) {
+        return applyAndCommit(p, current -> current.remove(access, getFilename(p), names), in, committer, network);
     }
 }

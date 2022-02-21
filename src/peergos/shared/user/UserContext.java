@@ -1007,9 +1007,9 @@ public class UserContext {
                                                 parent.signingPair(),
                                                 (s, c) -> rotateAllKeys(toUnshare, parent, false, s, c)
                                                         .thenCompose(markedDirty ->
-                                                                sharedWithCache.removeSharedWith(SharedWithCache.Access.READ, path, sharedWithState.readAccess, markedDirty, c)
+                                                                sharedWithCache.removeSharedWith(SharedWithCache.Access.READ, path, sharedWithState.readAccess, markedDirty, c, network)
                                                                         .thenCompose(s2 ->
-                                                                                sharedWithCache.removeSharedWith(SharedWithCache.Access.WRITE, path, sharedWithState.writeAccess, s2, c))
+                                                                                sharedWithCache.removeSharedWith(SharedWithCache.Access.WRITE, path, sharedWithState.writeAccess, s2, c, network))
                                                         )
                                         ));
                             });
@@ -1539,7 +1539,7 @@ public class UserContext {
             return getByPath(path.getParent().toString(), s)
                     .thenCompose(parent -> rotateAllKeys(toUnshare, parent.get(), false, toUnshare.version, c)
                             .thenCompose(markedDirty -> {
-                                return sharedWithCache.removeSharedWith(SharedWithCache.Access.READ, path, readersToRemove, markedDirty, c)
+                                return sharedWithCache.removeSharedWith(SharedWithCache.Access.READ, path, readersToRemove, markedDirty, c, network)
                                         .thenCompose(s2 -> reSendAllWriteAccessRecursive(path, s2, c)
                                                 .thenCompose(s3 -> reSendAllReadAccessRecursive(path, s3, c)));
                             }));
@@ -1585,7 +1585,7 @@ public class UserContext {
                                             parent.signingPair(), (s, c) -> rotateAllKeys(toUnshare, parent, true, s, c)
                                             .thenCompose(s2 ->
                                                     sharedWithCache.removeSharedWith(SharedWithCache.Access.WRITE,
-                                                            path, writersToRemove, s2, c))
+                                                            path, writersToRemove, s2, c, network))
                                                     .thenCompose(s3 -> reSendAllWriteAccessRecursive(path, s3, c)
                                                             .thenCompose(s4 -> reSendAllReadAccessRecursive(path, s4, c))));
                                 });
@@ -1740,7 +1740,7 @@ public class UserContext {
 
         if (! changeSigner) {
             return network.synchronizer.applyComplexUpdate(signer.publicKeyHash,
-                    parent.signingPair(), (s, c) -> sharedWithCache.addSharedWith(SharedWithCache.Access.WRITE, pathToFile, writersToAdd, s, c)
+                    parent.signingPair(), (s, c) -> sharedWithCache.addSharedWith(SharedWithCache.Access.WRITE, pathToFile, writersToAdd, s, c, network)
                     .thenCompose(s2 -> sendWriteCapToAll(pathToFile, writersToAdd, s2, c)));
         }
 
@@ -1748,7 +1748,7 @@ public class UserContext {
                 file.signingPair(), (s, c) -> rotateAllKeys(file, parent, true, s, c)
                         .thenCompose(s2 -> getByPath(pathToFile.toString(), s2)
                                 .thenCompose(newFileOpt -> sharedWithCache
-                                        .addSharedWith(SharedWithCache.Access.WRITE, pathToFile, writersToAdd, s2, c))
+                                        .addSharedWith(SharedWithCache.Access.WRITE, pathToFile, writersToAdd, s2, c, network))
                                 .thenCompose(s3 -> reSendAllWriteAccessRecursive(pathToFile, s3, c)
                                         .thenCompose(s4 -> reSendAllReadAccessRecursive(pathToFile, s4, c)))
                         ));
@@ -1791,7 +1791,7 @@ public class UserContext {
                                                                SharedWithCache.Access access,
                                                                Snapshot s,
                                                                Committer c) {
-        return sharedWithCache.addSharedWith(access, pathToFile, usersToAdd, s, c);
+        return sharedWithCache.addSharedWith(access, pathToFile, usersToAdd, s, c, network);
     }
 
     public CompletableFuture<Snapshot> shareAccessWith(FileWrapper file,
