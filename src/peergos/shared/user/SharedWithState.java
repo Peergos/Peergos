@@ -162,4 +162,17 @@ public class SharedWithState implements Cborable {
 
         return new SharedWithState(readShares, writehares);
     }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        SharedWithState that = (SharedWithState) o;
+        return Objects.equals(readShares, that.readShares) && Objects.equals(writeShares, that.writeShares);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(readShares, writeShares);
+    }
 }

@@ -1490,7 +1490,7 @@ public class FileWrapper {
                                             Arrays.asList(new Pair<>(us, new NamedAbsoluteCapability(newFilename, us))),
                                             userContext.network, userContext.crypto.random, userContext.crypto.hasher))
                             .thenCompose(v -> userContext.sharedWithCache
-                                    .rename(ourPath, ourPath.getParent().resolve(newFilename), v, committer))
+                                    .rename(ourPath, ourPath.getParent().resolve(newFilename), v, committer, userContext.network))
                     ).thenCompose(newVersion -> parent.getUpdated(newVersion, userContext.network));
                 });
     }
@@ -1777,20 +1777,33 @@ public class FileWrapper {
         if (! pointer.capability.isWritable())
             return Futures.errored(new IllegalStateException("Cannot delete file without write access to it"));
 
+        BufferedNetworkAccess buffered = BufferedNetworkAccess.build(network, 5 * 1024 * 1024, owner(), () -> true, network.hasher);
+
         boolean writableParent = parent.isWritable();
-        return (writableParent ? parent.removeChild(this, network, userContext.crypto.random, hasher) : CompletableFuture.completedFuture(parent))
-                .thenCompose(updatedParent -> network.synchronizer.applyComplexUpdate(owner(), signingPair(),
-                        (version, committer) -> IpfsTransaction.call(owner(),
-                                tid -> FileWrapper.deleteAllChunks(
-                                        isLink() ?
-                                                (WritableAbsoluteCapability) getLinkPointer().capability :
-                                                writableFilePointer(),
-                                        writableParent ?
-                                                parent.signingPair() :
-                                                signingPair(), tid, hasher, network, version, committer), network.dhtClient)
-                                .thenCompose(s -> userContext.sharedWithCache.clearSharedWith(ourPath, s, committer)))
-                                .thenApply(b -> updatedParent)
-                );
+        parent.setModified();
+        return buffered.synchronizer.applyComplexUpdate(owner(), signingPair(),
+                (version, c) -> {
+                    Committer condenser = (o, w, wd, e, tid) -> {
+                        buffered.addWriter(w);
+                        return c.commit(o, w, wd, e, tid);
+                    };
+                    return (writableParent ? version.withWriter(owner(), parent.writer(), network)
+                            .thenCompose(v2 -> parent.pointer.fileAccess
+                                    .removeChildren(v2, condenser, Arrays.asList(getPointer().capability), parent.writableFilePointer(),
+                                            parent.entryWriter, buffered, userContext.crypto.random, hasher)) :
+                            Futures.of(version))
+                            .thenCompose(v -> IpfsTransaction.call(owner(),
+                                    tid -> FileWrapper.deleteAllChunks(
+                                            isLink() ?
+                                                    (WritableAbsoluteCapability) getLinkPointer().capability :
+                                                    writableFilePointer(),
+                                            writableParent ?
+                                                    parent.signingPair() :
+                                                    signingPair(), tid, hasher, buffered, v, condenser), buffered.dhtClient)
+                                    .thenCompose(s -> userContext.sharedWithCache.clearSharedWith(ourPath, s, condenser, buffered)))
+                            .thenCompose(res -> buffered.commit().thenApply(b -> res));
+                })
+                .thenCompose(s -> parent.getUpdated(s, buffered));
     }
 
     public static CompletableFuture<Snapshot> removeSigningKey(PublicKeyHash signerToRemove,

@@ -166,6 +166,23 @@ public class SharedWithCache {
                 .thenCompose(fopt -> fopt.map(f -> parseCacheFile(f, network, crypto)).orElse(Futures.of(SharedWithState.empty())));
     }
 
+    private static CompletableFuture<Optional<Pair<FileWrapper, SharedWithState>>> retrieveWithFile(FileWrapper base,
+                                                                                                    Path dir,
+                                                                                                    NetworkAccess network,
+                                                                                                    Crypto crypto,
+                                                                                                    Snapshot in) {
+        return base.getDescendentByPath(dir.toString(), in, crypto.hasher, network)
+                .thenCompose(parent -> parent.isEmpty() ?
+                        Futures.of(Optional.empty()) :
+                        parent.get().getChild(DIR_CACHE_FILENAME, crypto.hasher, network)
+                                .thenCompose(fopt -> {
+                                    if (fopt.isPresent())
+                                        return parseCacheFile(fopt.get(), network, crypto)
+                                                .thenApply(c -> Optional.of(new Pair<>(fopt.get(), c)));
+                                    return Futures.of(Optional.empty());
+                                }));
+    }
+
     private static CompletableFuture<Pair<FileWrapper, SharedWithState>> retrieveWithFileOrCreate(FileWrapper base,
                                                                                                   Path dir,
                                                                                                   NetworkAccess network,
@@ -273,19 +290,39 @@ public class SharedWithCache {
                 .thenApply(opt -> opt.map(s -> s.get(getFilename(p))).orElse(FileSharedWithState.EMPTY));
     }
 
-    public CompletableFuture<Snapshot> applyAndCommit(Path toFile, Function<SharedWithState, SharedWithState> transform, Snapshot in, Committer committer) {
+    public CompletableFuture<Snapshot> applyAndCommit(Path toFile, Function<SharedWithState, SharedWithState> transform, Snapshot in, Committer committer, NetworkAccess network) {
         return base.getUpdated(in, network)
                 .thenCompose(updated -> retrieveWithFileOrCreate(updated, toFile.getParent(), network, crypto, in, committer))
                 .thenCompose(p -> {
                     FileWrapper source = p.left;
                     SharedWithState current = p.right;
                     SharedWithState updated = transform.apply(current);
+                    if (current.equals(updated))
+                        return Futures.of(p.left.version);
                     byte[] raw = updated.serialize();
                     return source.overwriteFile(AsyncReader.build(raw), raw.length, network, crypto, x -> {}, source.version, committer);
                 });
     }
 
-    public CompletableFuture<Snapshot> rename(Path initial, Path after, Snapshot in, Committer committer) {
+    public CompletableFuture<Snapshot> applyIfPresentAndCommit(Path toFile, Function<SharedWithState, SharedWithState> transform, Snapshot in, Committer committer, NetworkAccess network) {
+        return in.withWriter(base.owner(), base.writer(), network)
+                .thenCompose(v -> base.getUpdated(v, network))
+                .thenCompose(updated -> retrieveWithFile(updated, toFile.getParent(), network, crypto, updated.version)
+                .thenCompose(popt -> {
+                    if (popt.isEmpty())
+                        return Futures.of(updated.version);
+                    Pair<FileWrapper, SharedWithState> p = popt.get();
+                    FileWrapper source = p.left;
+                    SharedWithState current = p.right;
+                    SharedWithState modified = transform.apply(current);
+                    if (current.equals(modified))
+                        return Futures.of(p.left.version);
+                    byte[] raw = modified.serialize();
+                    return source.overwriteFile(AsyncReader.build(raw), raw.length, network, crypto, x -> {}, source.version, committer);
+                }));
+    }
+
+    public CompletableFuture<Snapshot> rename(Path initial, Path after, Snapshot in, Committer committer, NetworkAccess network) {
         if (! initial.getParent().equals(after.getParent()))
             throw new IllegalStateException("Not a valid rename!");
         String initialFilename = getFilename(initial);
@@ -294,18 +331,18 @@ public class SharedWithCache {
                 .thenCompose(sharees -> applyAndCommit(after, current ->
                         current.add(Access.READ, newFilename, sharees.readAccess)
                                 .add(Access.WRITE, newFilename, sharees.writeAccess)
-                                .clear(initialFilename), in, committer));
+                                .clear(initialFilename), in, committer, network));
     }
 
-    public CompletableFuture<Snapshot> addSharedWith(Access access, Path p, Set<String> names, Snapshot in, Committer committer) {
-        return applyAndCommit(p, current -> current.add(access, getFilename(p), names), in, committer);
+    public CompletableFuture<Snapshot> addSharedWith(Access access, Path p, Set<String> names, Snapshot in, Committer committer, NetworkAccess network) {
+        return applyAndCommit(p, current -> current.add(access, getFilename(p), names), in, committer, network);
     }
 
-    public CompletableFuture<Snapshot> clearSharedWith(Path p, Snapshot in, Committer committer) {
-        return applyAndCommit(p, current -> current.clear(getFilename(p)), in, committer);
+    public CompletableFuture<Snapshot> clearSharedWith(Path p, Snapshot in, Committer committer, NetworkAccess network) {
+        return applyIfPresentAndCommit(p, current -> current.clear(getFilename(p)), in, committer, network);
     }
 
-    public CompletableFuture<Snapshot> removeSharedWith(Access access, Path p, Set<String> names, Snapshot in, Committer committer) {
-        return applyAndCommit(p, current -> current.remove(access, getFilename(p), names), in, committer);
+    public CompletableFuture<Snapshot> removeSharedWith(Access access, Path p, Set<String> names, Snapshot in, Committer committer, NetworkAccess network) {
+        return applyAndCommit(p, current -> current.remove(access, getFilename(p), names), in, committer, network);
     }
 }

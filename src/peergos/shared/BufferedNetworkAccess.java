@@ -72,7 +72,7 @@ public class BufferedNetworkAccess extends NetworkAccess {
         return Futures.of(true);
     }
 
-    public CompletableFuture<Boolean> commit() {
+    public synchronized CompletableFuture<Boolean> commit() {
         // Condense pointers and do a mini GC to remove superfluous work
         pointerBuffer.condense(writers);
         blockBuffer.gc(pointerBuffer.getRoots());

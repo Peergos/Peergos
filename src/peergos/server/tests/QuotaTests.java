@@ -74,16 +74,15 @@ public class QuotaTests {
         String password = "badpassword";
 
         UserContext context = ensureSignedUp(username, password, network, crypto);
-        FileWrapper home = context.getByPath(Paths.get(username).toString()).get().get();
         byte[] data = new byte[1024 * 1024];
         random.nextBytes(data);
         for (int i=0; i < 5; i++) {
             String filename = "file-1";
-            home = home.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length,
+            context.getUserRoot().join().uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length,
                     network, crypto, x -> {}).get();
             Path filePath = Paths.get(username, filename);
             FileWrapper file = context.getByPath(filePath).get().get();
-            home = file.remove(home, filePath, context).get();
+            file.remove(context.getUserRoot().join(), filePath, context).get();
         }
     }
 
@@ -100,10 +99,10 @@ public class QuotaTests {
         random.nextBytes(data);
         String filename = "file-1";
         home = home.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length,
-                network, crypto, x -> {}).get();
+                network, crypto, x -> {}).join();
         Path filePath = Paths.get(username, filename);
-        FileWrapper file = context.getByPath(filePath).get().get();
-        file.remove(home, filePath, context).get();
+        FileWrapper file = context.getByPath(filePath).join().get();
+        file.remove(home, filePath, context).join();
     }
 
     @Test
