@@ -54,7 +54,7 @@ public class DeleteBenchmark {
         return PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
     }
 
-    // DELETE(100) duration: 16590 mS
+    // DELETE(100) duration: 16028 mS
     @Test
     public void deleteFolderOfSmallFiles() throws Exception {
         String username = generateUsername();
