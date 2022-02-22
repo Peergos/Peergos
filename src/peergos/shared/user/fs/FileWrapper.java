@@ -761,10 +761,7 @@ public class FileWrapper {
         return getPath(network).thenCompose(path ->
                 buffered.synchronizer.applyComplexUpdate(owner(), signingPair(),
                         (s, c) -> {
-                    Committer condenser = (o, w, wd, e, tid) -> {
-                        buffered.addWriter(w);
-                        return c.commit(o, w, wd, e, tid);
-                    };
+                            Committer condenser = buffered.buildCommitter(c);
                             return getUpdated(s, buffered).thenCompose(us -> Futures.reduceAll(directories, us,
                                     (dir, children) -> dir.getOrMkdirs(children.relativePath, false, mirror, buffered, crypto, dir.version, condenser)
                                             .thenCompose(p -> uploadFolder(Paths.get(path).resolve(children.path()), p.right,
@@ -1783,10 +1780,7 @@ public class FileWrapper {
         parent.setModified();
         return buffered.synchronizer.applyComplexUpdate(owner(), signingPair(),
                 (version, c) -> {
-                    Committer condenser = (o, w, wd, e, tid) -> {
-                        buffered.addWriter(w);
-                        return c.commit(o, w, wd, e, tid);
-                    };
+                    Committer condenser = buffered.buildCommitter(c);
                     return (writableParent ? version.withWriter(owner(), parent.writer(), network)
                             .thenCompose(v2 -> parent.pointer.fileAccess
                                     .removeChildren(v2, condenser, Arrays.asList(getPointer().capability), parent.writableFilePointer(),
