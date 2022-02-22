@@ -305,20 +305,21 @@ public class SharedWithCache {
     }
 
     public CompletableFuture<Snapshot> applyIfPresentAndCommit(Path toFile, Function<SharedWithState, SharedWithState> transform, Snapshot in, Committer committer, NetworkAccess network) {
-        return base.getUpdated(in, network)
-                .thenCompose(updated -> retrieveWithFile(updated, toFile.getParent(), network, crypto, in))
+        return in.withWriter(base.owner(), base.writer(), network)
+                .thenCompose(v -> base.getUpdated(v, network))
+                .thenCompose(updated -> retrieveWithFile(updated, toFile.getParent(), network, crypto, updated.version)
                 .thenCompose(popt -> {
                     if (popt.isEmpty())
-                        return Futures.of(in);
+                        return Futures.of(updated.version);
                     Pair<FileWrapper, SharedWithState> p = popt.get();
                     FileWrapper source = p.left;
                     SharedWithState current = p.right;
-                    SharedWithState updated = transform.apply(current);
-                    if (current.equals(updated))
+                    SharedWithState modified = transform.apply(current);
+                    if (current.equals(modified))
                         return Futures.of(p.left.version);
-                    byte[] raw = updated.serialize();
+                    byte[] raw = modified.serialize();
                     return source.overwriteFile(AsyncReader.build(raw), raw.length, network, crypto, x -> {}, source.version, committer);
-                });
+                }));
     }
 
     public CompletableFuture<Snapshot> rename(Path initial, Path after, Snapshot in, Committer committer, NetworkAccess network) {
