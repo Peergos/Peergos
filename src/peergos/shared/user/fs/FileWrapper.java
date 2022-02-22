@@ -1787,8 +1787,10 @@ public class FileWrapper {
                         buffered.addWriter(w);
                         return c.commit(o, w, wd, e, tid);
                     };
-                    return (writableParent ? parent.pointer.fileAccess
-                            .removeChildren(version, condenser, Arrays.asList(getPointer().capability), parent.writableFilePointer(), parent.entryWriter, buffered, userContext.crypto.random, hasher) :
+                    return (writableParent ? version.withWriter(owner(), parent.writer(), network)
+                            .thenCompose(v2 -> parent.pointer.fileAccess
+                                    .removeChildren(v2, condenser, Arrays.asList(getPointer().capability), parent.writableFilePointer(),
+                                            parent.entryWriter, buffered, userContext.crypto.random, hasher)) :
                             Futures.of(version))
                             .thenCompose(v -> IpfsTransaction.call(owner(),
                                     tid -> FileWrapper.deleteAllChunks(
