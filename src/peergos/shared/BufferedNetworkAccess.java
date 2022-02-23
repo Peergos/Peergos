@@ -3,6 +3,7 @@ package peergos.shared;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.mutable.*;
 import peergos.shared.social.*;
 import peergos.shared.storage.*;
@@ -14,6 +15,7 @@ import peergos.shared.util.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
+import java.util.stream.*;
 
 /** This will buffer block writes, and mutable pointer updates and commit in bulk
  *
@@ -24,6 +26,8 @@ public class BufferedNetworkAccess extends NetworkAccess {
     private final BufferedPointers pointerBuffer;
     private final int bufferSize;
     private Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> writers = new HashMap<>();
+    private final List<WriterUpdate> writerUpdates = new ArrayList<>();
+    private Committer targetCommitter;
     private final PublicKeyHash owner;
     private final Supplier<Boolean> commitWatcher;
     private final ContentAddressedStorage blocks;
@@ -55,11 +59,39 @@ public class BufferedNetworkAccess extends NetworkAccess {
         this.owner = owner;
         this.commitWatcher = commitWatcher;
         this.blocks = dhtClient;
-        pointerBuffer.watchUpdates(() -> maybeCommit());
     }
 
-    public void addWriter(SigningPrivateKeyAndPublicHash writer) {
-        writers.put(writer.publicKeyHash, writer);
+    private static class WriterUpdate {
+        public final PublicKeyHash writer;
+        public final CommittedWriterData prev;
+        public final CommittedWriterData current;
+
+        public WriterUpdate(PublicKeyHash writer, CommittedWriterData prev, CommittedWriterData current) {
+            this.writer = writer;
+            this.prev = prev;
+            this.current = current;
+        }
+    }
+
+    public Committer buildCommitter(Committer c) {
+        targetCommitter = c;
+        return (o, w, wd, e, tid) -> blockBuffer.put(owner, w.publicKeyHash, new byte[0], wd.serialize(), tid)
+                .thenCompose(newHash -> {
+                    CommittedWriterData updated = new CommittedWriterData(MaybeMultihash.of(newHash), wd);
+                    PublicKeyHash writer = w.publicKeyHash;
+                    writers.put(writer, w);
+                    if (writerUpdates.isEmpty())
+                        writerUpdates.add(new WriterUpdate(writer, e, updated));
+                    else {
+                        WriterUpdate last = writerUpdates.get(writerUpdates.size() - 1);
+                        if (last.writer.equals(writer))
+                            writerUpdates.set(writerUpdates.size() - 1, new WriterUpdate(writer, last.prev, updated));
+                        else {
+                            writerUpdates.add(new WriterUpdate(writer, e, updated));
+                        }
+                    }
+                    return maybeCommit().thenApply(x -> new Snapshot(writer, updated));
+                });
     }
 
     public int bufferedSize() {
@@ -72,18 +104,33 @@ public class BufferedNetworkAccess extends NetworkAccess {
         return Futures.of(true);
     }
 
+    private List<Cid> getRoots() {
+        return writerUpdates.stream()
+                .flatMap(u -> u.current.hash.toOptional().stream())
+                .map(c -> (Cid)c)
+                .collect(Collectors.toList());
+    }
+
+    private CompletableFuture<List<Snapshot>> commitPointers(TransactionId tid) {
+        return Futures.combineAllInOrder(writerUpdates.stream()
+                .map(u -> targetCommitter.commit(owner, writers.get(u.writer), u.current.props, u.prev, tid))
+                .collect(Collectors.toList()));
+    }
+
     public synchronized CompletableFuture<Boolean> commit() {
         // Condense pointers and do a mini GC to remove superfluous work
-        pointerBuffer.condense(writers);
-        blockBuffer.gc(pointerBuffer.getRoots());
-        return blocks.startTransaction(owner)
+        blockBuffer.gc(getRoots());
+        return blockBuffer.signBlocks(writers)
+                .thenCompose(b -> blocks.startTransaction(owner))
                 .thenCompose(tid -> blockBuffer.commit(owner, tid)
+                        .thenCompose(b -> commitPointers(tid))
                         .thenCompose(b -> pointerBuffer.commit())
                         .thenCompose(x -> blocks.closeTransaction(owner, tid))
                         .thenApply(x -> {
                             blockBuffer.clear();
                             pointerBuffer.clear();
                             writers.clear();
+                            writerUpdates.clear();
                             return commitWatcher.get();
                         }));
     }

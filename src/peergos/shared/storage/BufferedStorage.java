@@ -3,6 +3,7 @@ package peergos.shared.storage;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
+import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
@@ -104,6 +105,27 @@ public class BufferedStorage extends DelegatingStorage {
     public synchronized CompletableFuture<Optional<CborObject>> get(Cid hash, Optional<BatWithId> bat) {
         return getRaw(hash, bat)
                 .thenApply(opt -> opt.map(CborObject::fromByteArray));
+    }
+
+    @Override
+    public CompletableFuture<Cid> put(PublicKeyHash owner,
+                                      SigningPrivateKeyAndPublicHash writer,
+                                      byte[] block,
+                                      Hasher hasher,
+                                      TransactionId tid) {
+        // Do NOT do signature as this block will likely be GC'd before being committed, so we can delay calculating signatures until commit
+        return put(writer.publicKeyHash, Collections.singletonList(block), Collections.singletonList(new byte[0]), false)
+                .thenApply(hashes -> hashes.get(0));
+    }
+
+    public CompletableFuture<Boolean> signBlocks(Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> writers) {
+        storage.putAll(storage.entrySet().stream()
+                .map(e -> new Pair<>(e.getKey(), new OpLog.BlockWrite(e.getValue().writer,
+                        e.getValue().signature.length > 0 ? e.getValue().signature :
+                                writers.get(e.getValue().writer).secret.signMessage(e.getKey().getHash()),
+                        e.getValue().block, e.getValue().isRaw)))
+                .collect(Collectors.toMap(p -> p.left, p -> p.right)));
+        return Futures.of(true);
     }
 
     public synchronized void gc(List<Cid> roots) {

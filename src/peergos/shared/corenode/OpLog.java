@@ -189,6 +189,13 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
             boolean isRaw = m.getBoolean("r");
             return new BlockWrite(writer, signature, block, isRaw);
         }
+
+        @Override
+        public String toString() {
+            return "BlockWrite{block[" + block.length +
+                    "], " + (isRaw ? "raw" : "cbor") +
+                    '}';
+        }
     }
 
     public static final class PointerWrite implements Cborable {
