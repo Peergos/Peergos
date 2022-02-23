@@ -59,7 +59,6 @@ public class BufferedNetworkAccess extends NetworkAccess {
         this.owner = owner;
         this.commitWatcher = commitWatcher;
         this.blocks = dhtClient;
-        pointerBuffer.watchUpdates(() -> maybeCommit());
     }
 
     private static class WriterUpdate {
@@ -77,7 +76,7 @@ public class BufferedNetworkAccess extends NetworkAccess {
     public Committer buildCommitter(Committer c) {
         targetCommitter = c;
         return (o, w, wd, e, tid) -> blockBuffer.put(owner, w.publicKeyHash, new byte[0], wd.serialize(), tid)
-                .thenApply(newHash -> {
+                .thenCompose(newHash -> {
                     CommittedWriterData updated = new CommittedWriterData(MaybeMultihash.of(newHash), wd);
                     PublicKeyHash writer = w.publicKeyHash;
                     writers.put(writer, w);
@@ -91,7 +90,7 @@ public class BufferedNetworkAccess extends NetworkAccess {
                             writerUpdates.add(new WriterUpdate(writer, e, updated));
                         }
                     }
-                    return new Snapshot(writer, updated);
+                    return maybeCommit().thenApply(x -> new Snapshot(writer, updated));
                 });
     }
 

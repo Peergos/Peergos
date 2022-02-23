@@ -29,14 +29,9 @@ public class BufferedPointers implements MutablePointers {
     private final MutablePointers target;
     private final Map<PublicKeyHash, PointerUpdate> buffer = new HashMap<>();
     private final List<PointerUpdate> order = new ArrayList<>();
-    private Supplier<CompletableFuture<Boolean>> watcher;
 
     public BufferedPointers(MutablePointers target) {
         this.target = target;
-    }
-
-    public void watchUpdates(Supplier<CompletableFuture<Boolean>> watcher) {
-        this.watcher = watcher;
     }
 
     @Override
@@ -56,7 +51,7 @@ public class BufferedPointers implements MutablePointers {
             buffer.put(writer, update);
             order.add(update);
         }
-        return watcher.get();
+        return Futures.of(true);
     }
 
     /**
