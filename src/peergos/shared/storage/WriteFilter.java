@@ -2,7 +2,7 @@ package peergos.shared.storage;
 
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
-import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -29,6 +29,8 @@ public class WriteFilter extends DelegatingStorage {
                                                             TransactionId tid) {
         if (! keyFilter.apply(writer, blockSizes.stream().mapToInt(x -> x).sum()))
             throw new IllegalStateException("Key not allowed to write to this server: " + writer);
+        if (blockSizes.stream().anyMatch(s -> s > Fragment.MAX_LENGTH_WITH_BAT_PREFIX))
+            throw new IllegalStateException("Block too big!");
         return dht.authWrites(owner, writer, signedHashes, blockSizes, isRaw, tid);
     }
 
@@ -45,6 +47,8 @@ public class WriteFilter extends DelegatingStorage {
                                             TransactionId tid) {
         if (! keyFilter.apply(writer, blocks.stream().mapToInt(x -> x.length).sum()))
             throw new IllegalStateException("Key not allowed to write to this server: " + writer);
+        if (blocks.stream().anyMatch(b -> b.length > Fragment.MAX_LENGTH_WITH_BAT_PREFIX))
+            throw new IllegalStateException("Block too big!");
         return dht.put(owner, writer, signedHashes, blocks, tid);
     }
 
@@ -57,6 +61,8 @@ public class WriteFilter extends DelegatingStorage {
                                                ProgressConsumer<Long> progressConsumer) {
         if (! keyFilter.apply(writer, blocks.stream().mapToInt(x -> x.length).sum()))
             throw new IllegalStateException("Key not allowed to write to this server: " + writer);
+        if (blocks.stream().anyMatch(b -> b.length > Fragment.MAX_LENGTH_WITH_BAT_PREFIX))
+            throw new IllegalStateException("Block too big!");
         return dht.putRaw(owner, writer, signatures, blocks, tid, progressConsumer);
     }
 }
