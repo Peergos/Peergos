@@ -92,16 +92,48 @@ public class FileUploader implements AutoCloseable {
         long t1 = System.currentTimeMillis();
 
         List<Integer> input = IntStream.range(0, (int) nchunks).mapToObj(i -> Integer.valueOf(i)).collect(Collectors.toList());
-        return Futures.reduceAll(input, current,
-                (cwd, i) -> encryptChunk(i, owner, writer, mirrorBat, MaybeMultihash.empty(), random, hasher, network)
-                        .thenCompose(p -> uploadChunk(cwd, committer, p, writer, network, monitor)), (a, b) -> b)
+        return encryptChunk(0, owner, writer, mirrorBat, MaybeMultihash.empty(), random, hasher, network.isJavascript())
+                .thenCompose(chunk0 -> Futures.reduceAll(input, new Pair<>(current, chunk0),
+                        (p, i) -> multiplexEncryptionAndUpload(i, nchunks, p.right, owner, writer, mirrorBat, network, random, hasher, p.left, committer),
+                        (a, b) -> b))
                 .thenApply(x -> {
                     LOG.info("File encryption, upload took: " +(System.currentTimeMillis()-t1) + " mS");
-                    return x;
+                    return x.left;
                 });
     }
 
-    public CompletableFuture<Triple<LocatedChunk, CryptreeNode, List<FragmentWithHash>>> encryptChunk(
+    public CompletableFuture<Pair<Snapshot, ChunkUpload>> multiplexEncryptionAndUpload(long chunkIndex,
+                                                                                       long nChunks,
+                                                                                       ChunkUpload chunk,
+                                                                                       PublicKeyHash owner,
+                                                                                       SigningPrivateKeyAndPublicHash writer,
+                                                                                       Optional<BatId> mirrorBat,
+                                                                                       NetworkAccess network,
+                                                                                       SafeRandom random,
+                                                                                       Hasher hasher,
+                                                                                       Snapshot s,
+                                                                                       Committer c) {
+        // Run upload and encryption of next chunk concurrently
+        CompletableFuture<Snapshot> upload = uploadChunk(s, c, chunk, writer, network, monitor);
+        CompletableFuture<ChunkUpload> encryption = chunkIndex + 1 < nChunks ?
+                encryptChunk(chunkIndex + 1, owner, writer, mirrorBat, MaybeMultihash.empty(), random, hasher, network.isJavascript()) :
+                Futures.of(null);
+        return upload.thenCompose(s2 -> encryption.thenApply(nextChunk -> new Pair<>(s2, nextChunk)));
+    }
+
+    private static class ChunkUpload {
+        public final LocatedChunk chunk;
+        public final CryptreeNode metadata;
+        public final List<FragmentWithHash> fragments;
+
+        public ChunkUpload(LocatedChunk chunk, CryptreeNode metadata, List<FragmentWithHash> fragments) {
+            this.chunk = chunk;
+            this.metadata = metadata;
+            this.fragments = fragments;
+        }
+    }
+
+    public CompletableFuture<ChunkUpload> encryptChunk(
             long chunkIndex,
             PublicKeyHash owner,
             SigningPrivateKeyAndPublicHash writer,
@@ -109,8 +141,8 @@ public class FileUploader implements AutoCloseable {
             MaybeMultihash ourExistingHash,
             SafeRandom random,
             Hasher hasher,
-            NetworkAccess network) {
-        LOG.info("encrypting chunk: "+chunkIndex + " of "+name);
+            boolean isJS) {
+        System.out.println("encrypting chunk: "+chunkIndex + " of "+name);
         long position = chunkIndex * Chunk.MAX_SIZE;
 
         long fileLength = length;
@@ -133,8 +165,8 @@ public class FileUploader implements AutoCloseable {
                                     RelativeCapability nextChunk = RelativeCapability.buildSubsequentChunk(nextChunkLocation.getMapKey(), nextChunkBat, baseKey);
                                     return CryptreeNode.createFile(chunk.existingHash, chunk.location.writer, baseKey,
                                             chunk.chunk.key(), props, chunk.chunk.data(), parentLocation, parentBat, parentparentKey, nextChunk,
-                                            chunk.bat, mirrorBat, random, hasher, network.isJavascript())
-                                            .thenApply(p -> new Triple<>(chunk, p.left, p.right));
+                                            chunk.bat, mirrorBat, random, hasher, isJS)
+                                            .thenApply(p -> new ChunkUpload(chunk, p.left, p.right));
                                 });
                     });
         });
@@ -142,21 +174,21 @@ public class FileUploader implements AutoCloseable {
 
     public static CompletableFuture<Snapshot> uploadChunk(Snapshot current,
                                                           Committer committer,
-                                                          Triple<LocatedChunk, CryptreeNode, List<FragmentWithHash>> file,
+                                                          ChunkUpload file,
                                                           SigningPrivateKeyAndPublicHash writer,
                                                           NetworkAccess network,
                                                           ProgressConsumer<Long> monitor) {
-        CryptreeNode metadata = file.middle;
-        LocatedChunk chunk = file.left;
+        CryptreeNode metadata = file.metadata;
+        LocatedChunk chunk = file.chunk;
 
-        List<Fragment> fragments = file.right.stream()
+        List<Fragment> fragments = file.fragments.stream()
                 .filter(f -> !f.isInlined())
                 .map(f -> f.fragment)
                 .collect(Collectors.toList());
         CappedProgressConsumer progress = new CappedProgressConsumer(monitor, chunk.chunk.length());
-        if (fragments.size() < file.right.size() || fragments.isEmpty())
+        if (fragments.size() < file.fragments.size() || fragments.isEmpty())
             progress.accept((long) chunk.chunk.length());
-        LOG.info("Uploading chunk with " + fragments.size() + " fragments\n");
+        System.out.println("Uploading chunk with " + fragments.size() + " fragments\n");
         return IpfsTransaction.call(chunk.location.owner,
                 tid -> network.uploadFragments(fragments, chunk.location.owner, writer, progress, tid)
                         .thenCompose(hashes -> network.uploadChunk(current, committer, metadata, chunk.location.owner,
@@ -188,7 +220,7 @@ public class FileUploader implements AutoCloseable {
         return CryptreeNode.createFile(chunk.existingHash, chunk.location.writer, baseKey,
                 chunk.chunk.key(), props, chunk.chunk.data(), parentLocation, parentBat, parentparentKey, nextChunk,
                 chunk.bat, mirrorBat, random, hasher, network.isJavascript())
-                .thenCompose(file -> uploadChunk(current, committer, new Triple<>(chunk, file.left.withWriterLink(baseKey, writerLink), file.right),
+                .thenCompose(file -> uploadChunk(current, committer, new ChunkUpload(chunk, file.left.withWriterLink(baseKey, writerLink), file.right),
                         writer, network, progress));
     }
 
