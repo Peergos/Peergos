@@ -126,58 +126,56 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
     public boolean complete(T value) {
         this.value = value;
         this.isDone = true;
-        ForkJoinPool.commonPool().execute(() -> {
-            for (int i = 0; i < applies.size(); i++) {
-                Function<? super T, ? extends Object> function = applies.get(i);
-                CompletableFuture future = applyFutures.get(i);
-                try {
-                    future.complete(function.apply(value));
-                } catch (Throwable t) {
-                    future.completeExceptionally(t);
-                }
+        for (int i = 0; i < applies.size(); i++) {
+            Function<? super T, ? extends Object> function = applies.get(i);
+            CompletableFuture future = applyFutures.get(i);
+            try {
+                future.complete(function.apply(value));
+            } catch (Throwable t) {
+                future.completeExceptionally(t);
             }
-            for (int i = 0; i < consumers.size(); i++) {
-                Consumer<? super T> function = consumers.get(i);
-                CompletableFuture<Void> future = consumeFutures.get(i);
-                try {
-                    function.accept(value);
-                    future.complete(null);
-                } catch (Throwable t) {
-                    future.completeExceptionally(t);
-                }
+        }
+        for (int i = 0; i < consumers.size(); i++) {
+            Consumer<? super T> function = consumers.get(i);
+            CompletableFuture<Void> future = consumeFutures.get(i);
+            try {
+                function.accept(value);
+                future.complete(null);
+            } catch (Throwable t) {
+                future.completeExceptionally(t);
             }
-            for (int i = 0; i < composers.size(); i++) {
-                Function<? super T, ? extends CompletionStage> function = composers.get(i);
-                CompletableFuture future = composeFutures.get(i);
-                try {
-                    function.apply(value)
-                            .thenAccept(val -> future.complete(val))
-                            .exceptionally(t -> {
-                                future.completeExceptionally((Throwable) t);
-                                return null;
-                            });
-                } catch (Throwable t) {
-                    future.completeExceptionally(t);
-                }
+        }
+        for (int i = 0; i < composers.size(); i++) {
+            Function<? super T, ? extends CompletionStage> function = composers.get(i);
+            CompletableFuture future = composeFutures.get(i);
+            try {
+                function.apply(value)
+                        .thenAccept(val -> future.complete(val))
+                        .exceptionally(t -> {
+                            future.completeExceptionally((Throwable) t);
+                            return null;
+                        });
+            } catch (Throwable t) {
+                future.completeExceptionally(t);
             }
-            for (int i = 0; i < errors.size(); i++) {
-                CompletableFuture<T> future = errorFutures.get(i);
-                Function<? super Throwable, ? extends T> function = errors.get(i);
-                try {
-                    future.complete(value);
-                } catch (Throwable t) {
-                    future.completeExceptionally(t);
-                }
+        }
+        for (int i = 0; i < errors.size(); i++) {
+            CompletableFuture<T> future = errorFutures.get(i);
+            Function<? super Throwable, ? extends T> function = errors.get(i);
+            try {
+                future.complete(value);
+            } catch (Throwable t) {
+                future.completeExceptionally(t);
             }
-            errors.clear();
-            errorFutures.clear();
-            composers.clear();
-            composeFutures.clear();
-            consumers.clear();
-            consumeFutures.clear();
-            applies.clear();
-            applyFutures.clear();
-        });
+        }
+        errors.clear();
+        errorFutures.clear();
+        composers.clear();
+        composeFutures.clear();
+        consumers.clear();
+        consumeFutures.clear();
+        applies.clear();
+        applyFutures.clear();
         return true;
     }
 

@@ -1,4 +1,5 @@
 package peergos.shared.user.fs;
+import java.util.function.*;
 import java.util.logging.*;
 
 import jsinterop.annotations.*;
@@ -81,8 +82,51 @@ public class FileUploader implements AutoCloseable {
                 baseKey, dataKey, parentLocation, parentBat, parentparentKey, monitor, fileProperties, firstLocation, firstBat);
     }
 
+    private static class AsyncUploadQueue {
+        private final LinkedList<CompletableFuture<ChunkUpload>> toUpload = new LinkedList<>();
+        private final LinkedList<CompletableFuture<Boolean>> waitingWorkers = new LinkedList<>();
+        private final LinkedList<CompletableFuture<ChunkUpload>> waitingUploaders = new LinkedList<>();
+        private static final int MAX_QUEUE_SIZE = 10;
+
+        public synchronized CompletableFuture<Boolean> add(ChunkUpload chunk) {
+            if (! waitingUploaders.isEmpty()) {
+                waitingUploaders.poll().complete(chunk);
+                return Futures.of(true);
+            }
+            toUpload.add(Futures.of(chunk));
+            if (toUpload.size() < MAX_QUEUE_SIZE) {
+                return Futures.of(true);
+            }
+            CompletableFuture<Boolean> wait = new CompletableFuture<>();
+            waitingWorkers.add(wait);
+            return wait;
+        }
+
+        public synchronized CompletableFuture<ChunkUpload> poll() {
+            if (! toUpload.isEmpty()) {
+                CompletableFuture<ChunkUpload> res = toUpload.poll();
+                if (! waitingWorkers.isEmpty()) {
+                    CompletableFuture<Boolean> worker = waitingWorkers.poll();
+                    runAsync(() -> Futures.of(worker.complete(true)));
+                }
+                return res;
+            }
+            CompletableFuture<ChunkUpload> wait = new CompletableFuture<>();
+            waitingUploaders.add(wait);
+            return wait;
+        }
+    }
+
+    private static <V> CompletableFuture<V> runAsync(Supplier<CompletableFuture<V>> work) {
+        CompletableFuture<V> res = new CompletableFuture<>();
+        ForkJoinPool.commonPool().execute(() -> work.get()
+                .thenApply(res::complete)
+                .exceptionally(res::completeExceptionally));
+        return res;
+    }
+
     public CompletableFuture<Snapshot> upload(Snapshot current,
-                                              Committer committer,
+                                              Committer c,
                                               NetworkAccess network,
                                               PublicKeyHash owner,
                                               SigningPrivateKeyAndPublicHash writer,
@@ -91,34 +135,19 @@ public class FileUploader implements AutoCloseable {
                                               Hasher hasher) {
         long t1 = System.currentTimeMillis();
 
+        AsyncUploadQueue queue = new AsyncUploadQueue();
         List<Integer> input = IntStream.range(0, (int) nchunks).mapToObj(i -> Integer.valueOf(i)).collect(Collectors.toList());
-        return encryptChunk(0, owner, writer, mirrorBat, MaybeMultihash.empty(), random, hasher, network.isJavascript())
-                .thenCompose(chunk0 -> Futures.reduceAll(input, new Pair<>(current, chunk0),
-                        (p, i) -> multiplexEncryptionAndUpload(i, nchunks, p.right, owner, writer, mirrorBat, network, random, hasher, p.left, committer),
-                        (a, b) -> b))
+        Futures.reduceAll(input, true,
+                (p, i) -> runAsync(() -> encryptChunk(i, owner, writer, mirrorBat, MaybeMultihash.empty(), random, hasher, network.isJavascript())
+                                .thenCompose(queue::add)),
+                (a, b) -> b);
+        return Futures.reduceAll(input, current,
+                (s, i) -> queue.poll().thenCompose(chunk -> uploadChunk(s, c, chunk, writer, network, monitor)),
+                (a, b) -> b)
                 .thenApply(x -> {
                     LOG.info("File encryption, upload took: " +(System.currentTimeMillis()-t1) + " mS");
-                    return x.left;
+                    return x;
                 });
-    }
-
-    public CompletableFuture<Pair<Snapshot, ChunkUpload>> multiplexEncryptionAndUpload(long chunkIndex,
-                                                                                       long nChunks,
-                                                                                       ChunkUpload chunk,
-                                                                                       PublicKeyHash owner,
-                                                                                       SigningPrivateKeyAndPublicHash writer,
-                                                                                       Optional<BatId> mirrorBat,
-                                                                                       NetworkAccess network,
-                                                                                       SafeRandom random,
-                                                                                       Hasher hasher,
-                                                                                       Snapshot s,
-                                                                                       Committer c) {
-        // Run upload and encryption of next chunk concurrently
-        CompletableFuture<Snapshot> upload = uploadChunk(s, c, chunk, writer, network, monitor);
-        CompletableFuture<ChunkUpload> encryption = chunkIndex + 1 < nChunks ?
-                encryptChunk(chunkIndex + 1, owner, writer, mirrorBat, MaybeMultihash.empty(), random, hasher, network.isJavascript()) :
-                Futures.of(null);
-        return upload.thenCompose(s2 -> encryption.thenApply(nextChunk -> new Pair<>(s2, nextChunk)));
     }
 
     private static class ChunkUpload {
