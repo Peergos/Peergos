@@ -119,9 +119,15 @@ public class FileUploader implements AutoCloseable {
 
     private static <V> CompletableFuture<V> runAsync(Supplier<CompletableFuture<V>> work) {
         CompletableFuture<V> res = new CompletableFuture<>();
-        ForkJoinPool.commonPool().execute(() -> work.get()
-                .thenApply(res::complete)
-                .exceptionally(res::completeExceptionally));
+        ForkJoinPool.commonPool().execute(() -> {
+            try {
+                work.get()
+                        .thenApply(res::complete)
+                        .exceptionally(res::completeExceptionally);
+            } catch (Throwable t) {
+                res.completeExceptionally(t);
+            }
+        });
         return res;
     }
 
@@ -137,17 +143,22 @@ public class FileUploader implements AutoCloseable {
 
         AsyncUploadQueue queue = new AsyncUploadQueue();
         List<Integer> input = IntStream.range(0, (int) nchunks).mapToObj(i -> Integer.valueOf(i)).collect(Collectors.toList());
+        CompletableFuture<Snapshot> res = new CompletableFuture<>();
         Futures.reduceAll(input, true,
                 (p, i) -> runAsync(() -> encryptChunk(i, owner, writer, mirrorBat, MaybeMultihash.empty(), random, hasher, network.isJavascript())
                                 .thenCompose(queue::add)),
-                (a, b) -> b);
-        return Futures.reduceAll(input, current,
+                (a, b) -> b)
+                .exceptionally(res::completeExceptionally);
+        Futures.reduceAll(input, current,
                 (s, i) -> queue.poll().thenCompose(chunk -> uploadChunk(s, c, chunk, writer, network, monitor)),
                 (a, b) -> b)
                 .thenApply(x -> {
                     LOG.info("File encryption, upload took: " +(System.currentTimeMillis()-t1) + " mS");
                     return x;
-                });
+                }).thenApply(res::complete)
+                .exceptionally(res::completeExceptionally);
+
+        return res;
     }
 
     private static class ChunkUpload {
