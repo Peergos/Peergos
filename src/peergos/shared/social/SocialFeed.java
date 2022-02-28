@@ -234,8 +234,7 @@ public class SocialFeed {
     @JsMethod
     public synchronized CompletableFuture<SocialFeed> update() {
         return context.getFollowingNodes()
-                .thenCompose(friends -> Futures.combineAll(friends.stream()
-                        .parallel()
+                .thenCompose(friends -> Futures.combineAllInOrder(friends.stream()
                         .map(this::getFriendUpdate)
                         .collect(Collectors.toList())))
                 .thenCompose(updates -> mergeUpdates(updates.stream()

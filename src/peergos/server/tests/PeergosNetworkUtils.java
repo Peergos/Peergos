@@ -1443,7 +1443,8 @@ public class PeergosNetworkUtils {
                 Arrays.asList(new Text("G'day, skip!")), LocalDateTime.now(),
                 SocialPost.Resharing.Friends, Optional.empty(),
                 Collections.emptyList(), Collections.emptyList());
-        Pair<Path, FileWrapper> p = a.getSocialFeed().join().createNewPost(post).join();
+        SocialFeed feed = a.getSocialFeed().join();
+        Pair<Path, FileWrapper> p = feed.createNewPost(post).join();
         String aFriendsUid = a.getGroupUid(SocialState.FRIENDS_GROUP_NAME).join().get();
         a.shareReadAccessWith(p.left, Set.of(aFriendsUid)).join();
 
