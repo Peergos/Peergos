@@ -565,12 +565,17 @@ public abstract class UserTests {
                                         AsyncReader.build(f.getValue()), 0, f.getValue().length, false, x -> {}))
                                 .collect(Collectors.toList())));
 
-        userRoot.uploadSubtree(byFolder, Optional.empty(), network, crypto, context.getTransactionService(), () -> true);
+        int priorChildren = userRoot.getChildren(crypto.hasher, network).join().size();
+
+        userRoot.uploadSubtree(byFolder, Optional.empty(), network, crypto, context.getTransactionService(), () -> true).join();
 
         userRoot = context.getUserRoot().join();
+        int postChildren = userRoot.getChildren(crypto.hasher, network).join().size();
+        Assert.assertTrue("uploaded dir present", postChildren > priorChildren);
         for (Map.Entry<List<String>, byte[]> e : subtree.entrySet()) {
             String path = e.getKey().stream().collect(Collectors.joining("/"));
             Optional<FileWrapper> fileOpt = userRoot.getDescendentByPath(path, crypto.hasher, context.network).join();
+            Assert.assertTrue(path + "is present", fileOpt.isPresent());
             FileWrapper file = fileOpt.get();
             checkFileContentsChunked(e.getValue(), file, context, 5);
         }
