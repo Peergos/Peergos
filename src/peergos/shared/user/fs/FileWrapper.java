@@ -756,7 +756,7 @@ public class FileWrapper {
                                                         Supplier<Boolean> commitWatcher) {
 
         Optional<BatId> mirror = mirrorBatId().or(() -> mirrorBat);
-        BufferedNetworkAccess buffered = BufferedNetworkAccess.build(network, 5 * 1024 * 1024, owner(), commitWatcher, network.hasher);
+        BufferedNetworkAccess buffered = BufferedNetworkAccess.build(network, 10 * 1024 * 1024, owner(), commitWatcher, network.hasher);
         TransactionServiceImpl txns = transactions.withNetwork(buffered);
         return getPath(network).thenCompose(path ->
                 buffered.synchronizer.applyComplexUpdate(owner(), signingPair(),

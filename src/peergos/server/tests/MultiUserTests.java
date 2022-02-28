@@ -1355,53 +1355,53 @@ public class MultiUserTests {
     }
 
     @Test
-    public void unfollow() throws Exception {
+    public void unfollow() {
         UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), random(), network, crypto);
         UserContext u2 = PeergosNetworkUtils.ensureSignedUp(random(), random(), network, crypto);
-        u2.sendFollowRequest(u1.username, SymmetricKey.random());
-        List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
-        u1.sendReplyFollowRequest(u1Requests.get(0), true, true);
-        List<FollowRequestWithCipherText> u2FollowRequests = u2.processFollowRequests().get();
+        u2.sendFollowRequest(u1.username, SymmetricKey.random()).join();
+        List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().join();
+        u1.sendReplyFollowRequest(u1Requests.get(0), true, true).join();
+        List<FollowRequestWithCipherText> u2FollowRequests = u2.processFollowRequests().join();
 
-        Set<String> u1Following = u1.getFollowing().get();
+        Set<String> u1Following = u1.getFollowing().join();
         Assert.assertTrue("u1 following u2", u1Following.contains(u2.username));
 
-        u1.unfollow(u2.username).get();
+        u1.unfollow(u2.username).join();
 
-        Set<String> newU1Following = u1.getFollowing().get();
+        Set<String> newU1Following = u1.getFollowing().join();
         Assert.assertTrue("u1 no longer following u2", !newU1Following.contains(u2.username));
 
-        Optional<FileWrapper> u2Tou1 = u1.getByPath("/" + u2.username).get();
-        assertTrue("u1 can no longer see u2's root", !u2Tou1.isPresent());
+        Optional<FileWrapper> u2Tou1 = u1.getByPath("/" + u2.username).join();
+        assertTrue("u1 can no longer see u2's root", u2Tou1.isEmpty());
 
-        Optional<FileWrapper> u1Tou2 = u2.getByPath("/" + u1.username).get();
+        Optional<FileWrapper> u1Tou2 = u2.getByPath("/" + u1.username).join();
         assertTrue("u2 can still see u1's root", u1Tou2.isPresent());
     }
 
     @Test
-    public void removeFollower() throws Exception {
+    public void removeFollower() {
         UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), random(), network, crypto);
         UserContext u2 = PeergosNetworkUtils.ensureSignedUp(random(), random(), network, crypto);
-        u2.sendFollowRequest(u1.username, SymmetricKey.random());
-        List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
-        u1.sendReplyFollowRequest(u1Requests.get(0), true, true);
-        List<FollowRequestWithCipherText> u2FollowRequests = u2.processFollowRequests().get();
+        u2.sendFollowRequest(u1.username, SymmetricKey.random()).join();
+        List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().join();
+        u1.sendReplyFollowRequest(u1Requests.get(0), true, true).join();
+        List<FollowRequestWithCipherText> u2FollowRequests = u2.processFollowRequests().join();
 
-        Set<String> u1Followers = u1.getFollowerNames().get();
+        Set<String> u1Followers = u1.getFollowerNames().join();
         Assert.assertTrue("u1 following u2", u1Followers.contains(u2.username));
 
-        u1.removeFollower(u2.username).get();
+        u1.removeFollower(u2.username).join();
 
-        Set<String> newU1Followers = u1.getFollowerNames().get();
+        Set<String> newU1Followers = u1.getFollowerNames().join();
         Assert.assertTrue("u1 no longer has u2 as follower", !newU1Followers.contains(u2.username));
 
-        Set<String> u2Following = u2.getFollowing().get();
+        Set<String> u2Following = u2.getFollowing().join();
         Assert.assertTrue("u2 is no longer following u1", !u2Following.contains(u1.username));
 
-        Optional<FileWrapper> u2Tou1 = u1.getByPath("/" + u2.username).get();
+        Optional<FileWrapper> u2Tou1 = u1.getByPath("/" + u2.username).join();
         assertTrue("u1 can still see u2's root", u2Tou1.isPresent());
 
-        Optional<FileWrapper> u1Tou2 = u2.getByPath("/" + u1.username).get();
-        assertTrue("u2 can no longer see u1's root", !u1Tou2.isPresent());
+        Optional<FileWrapper> u1Tou2 = u2.getByPath("/" + u1.username).join();
+        assertTrue("u2 can no longer see u1's root", u1Tou2.isEmpty());
     }
 }

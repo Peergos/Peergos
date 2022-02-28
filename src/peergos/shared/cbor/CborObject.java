@@ -323,6 +323,11 @@ public interface CborObject extends Cborable {
         public int hashCode() {
             return target != null ? target.hashCode() : 0;
         }
+
+        @Override
+        public String toString() {
+            return target.toString();
+        }
     }
 
     final class CborList implements CborObject, Cborable {

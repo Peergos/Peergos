@@ -523,7 +523,8 @@ public class IncomingCapCache {
         Path parentPath = fullPath.getParent();
         String owner = fullPath.getName(0).toString();
         String filename = fullPath.getFileName().toString();
-        return root.getOrMkdirs(parentPath, network, false, root.mirrorBatId(), crypto)
+        return root.getUpdated(network)
+                .thenCompose(freshRoot -> freshRoot.getOrMkdirs(parentPath, network, false, root.mirrorBatId(), crypto))
                 .thenCompose(parent -> parent.getChild(DIR_STATE, crypto.hasher, network)
                         .thenCompose(capsOpt -> {
                             if (capsOpt.isEmpty()) {

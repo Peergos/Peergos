@@ -1,4 +1,5 @@
 package peergos.shared.user.fs;
+import java.util.function.*;
 import java.util.logging.*;
 
 import jsinterop.annotations.*;
@@ -81,18 +82,107 @@ public class FileUploader implements AutoCloseable {
                 baseKey, dataKey, parentLocation, parentBat, parentparentKey, monitor, fileProperties, firstLocation, firstBat);
     }
 
-    public CompletableFuture<Snapshot> uploadChunk(Snapshot current,
-                                                   Committer committer,
-                                                   NetworkAccess network,
-                                                   PublicKeyHash owner,
-                                                   SigningPrivateKeyAndPublicHash writer,
-                                                   long chunkIndex,
-                                                   MaybeMultihash ourExistingHash,
-                                                   ProgressConsumer<Long> monitor,
-                                                   Optional<BatId> mirrorBat,
-                                                   SafeRandom random,
-                                                   Hasher hasher) {
-        LOG.info("uploading chunk: "+chunkIndex + " of "+name);
+    private static class AsyncUploadQueue {
+        private final LinkedList<CompletableFuture<ChunkUpload>> toUpload = new LinkedList<>();
+        private final LinkedList<CompletableFuture<Boolean>> waitingWorkers = new LinkedList<>();
+        private final LinkedList<CompletableFuture<ChunkUpload>> waitingUploaders = new LinkedList<>();
+        private static final int MAX_QUEUE_SIZE = 10;
+
+        public synchronized CompletableFuture<Boolean> add(ChunkUpload chunk) {
+            if (! waitingUploaders.isEmpty()) {
+                waitingUploaders.poll().complete(chunk);
+                return Futures.of(true);
+            }
+            toUpload.add(Futures.of(chunk));
+            if (toUpload.size() < MAX_QUEUE_SIZE) {
+                return Futures.of(true);
+            }
+            CompletableFuture<Boolean> wait = new CompletableFuture<>();
+            waitingWorkers.add(wait);
+            return wait;
+        }
+
+        public synchronized CompletableFuture<ChunkUpload> poll() {
+            if (! toUpload.isEmpty()) {
+                CompletableFuture<ChunkUpload> res = toUpload.poll();
+                if (! waitingWorkers.isEmpty()) {
+                    CompletableFuture<Boolean> worker = waitingWorkers.poll();
+                    runAsync(() -> Futures.of(worker.complete(true)));
+                }
+                return res;
+            }
+            CompletableFuture<ChunkUpload> wait = new CompletableFuture<>();
+            waitingUploaders.add(wait);
+            return wait;
+        }
+    }
+
+    private static <V> CompletableFuture<V> runAsync(Supplier<CompletableFuture<V>> work) {
+        CompletableFuture<V> res = new CompletableFuture<>();
+        ForkJoinPool.commonPool().execute(() -> {
+            try {
+                work.get()
+                        .thenApply(res::complete)
+                        .exceptionally(res::completeExceptionally);
+            } catch (Throwable t) {
+                res.completeExceptionally(t);
+            }
+        });
+        return res;
+    }
+
+    public CompletableFuture<Snapshot> upload(Snapshot current,
+                                              Committer c,
+                                              NetworkAccess network,
+                                              PublicKeyHash owner,
+                                              SigningPrivateKeyAndPublicHash writer,
+                                              Optional<BatId> mirrorBat,
+                                              SafeRandom random,
+                                              Hasher hasher) {
+        long t1 = System.currentTimeMillis();
+
+        AsyncUploadQueue queue = new AsyncUploadQueue();
+        List<Integer> input = IntStream.range(0, (int) nchunks).mapToObj(i -> Integer.valueOf(i)).collect(Collectors.toList());
+        CompletableFuture<Snapshot> res = new CompletableFuture<>();
+        Futures.reduceAll(input, true,
+                (p, i) -> runAsync(() -> encryptChunk(i, owner, writer, mirrorBat, MaybeMultihash.empty(), random, hasher, network.isJavascript())
+                                .thenCompose(queue::add)),
+                (a, b) -> b)
+                .exceptionally(res::completeExceptionally);
+        Futures.reduceAll(input, current,
+                (s, i) -> queue.poll().thenCompose(chunk -> uploadChunk(s, c, chunk, writer, network, monitor)),
+                (a, b) -> b)
+                .thenApply(x -> {
+                    LOG.info("File encryption, upload took: " +(System.currentTimeMillis()-t1) + " mS");
+                    return x;
+                }).thenApply(res::complete)
+                .exceptionally(res::completeExceptionally);
+
+        return res;
+    }
+
+    private static class ChunkUpload {
+        public final LocatedChunk chunk;
+        public final CryptreeNode metadata;
+        public final List<FragmentWithHash> fragments;
+
+        public ChunkUpload(LocatedChunk chunk, CryptreeNode metadata, List<FragmentWithHash> fragments) {
+            this.chunk = chunk;
+            this.metadata = metadata;
+            this.fragments = fragments;
+        }
+    }
+
+    public CompletableFuture<ChunkUpload> encryptChunk(
+            long chunkIndex,
+            PublicKeyHash owner,
+            SigningPrivateKeyAndPublicHash writer,
+            Optional<BatId> mirrorBat,
+            MaybeMultihash ourExistingHash,
+            SafeRandom random,
+            Hasher hasher,
+            boolean isJS) {
+        System.out.println("encrypting chunk: "+chunkIndex + " of "+name);
         long position = chunkIndex * Chunk.MAX_SIZE;
 
         long fileLength = length;
@@ -104,35 +194,46 @@ public class FileUploader implements AutoCloseable {
             return FileProperties.calculateMapKey(props.streamSecret.get(), firstLocation, firstBat,
                     chunkIndex * Chunk.MAX_SIZE, hasher)
                     .thenCompose(mapKeyAndBat -> {
-                        Chunk chunk = new Chunk(data, dataKey, mapKeyAndBat.left, nonce);
-                        LocatedChunk locatedChunk = new LocatedChunk(new Location(owner, writer.publicKeyHash, chunk.mapKey()), mapKeyAndBat.right, ourExistingHash, chunk);
+                        Chunk rawChunk = new Chunk(data, dataKey, mapKeyAndBat.left, nonce);
+                        LocatedChunk chunk = new LocatedChunk(new Location(owner, writer.publicKeyHash, rawChunk.mapKey()), mapKeyAndBat.right, ourExistingHash, rawChunk);
                         return FileProperties.calculateNextMapKey(props.streamSecret.get(), mapKeyAndBat.left, mapKeyAndBat.right, hasher)
                                 .thenCompose(nextMapKeyAndBat -> {
-                                    Location nextLocation = new Location(owner, writer.publicKeyHash, nextMapKeyAndBat.left);
-                                    return uploadChunk(current, committer, writer, props, parentLocation, parentBat, parentparentKey, baseKey, locatedChunk,
-                                            nextLocation, nextMapKeyAndBat.right, Optional.empty(), mirrorBat, random, hasher, network, monitor);
+                                    Optional<Bat> nextChunkBat = nextMapKeyAndBat.right;
+                                    Location nextChunkLocation = new Location(owner, writer.publicKeyHash, nextMapKeyAndBat.left);
+                                    if (! writer.publicKeyHash.equals(chunk.location.writer))
+                                        throw new IllegalStateException("Trying to write a chunk to the wrong signing key space!");
+                                    RelativeCapability nextChunk = RelativeCapability.buildSubsequentChunk(nextChunkLocation.getMapKey(), nextChunkBat, baseKey);
+                                    return CryptreeNode.createFile(chunk.existingHash, chunk.location.writer, baseKey,
+                                            chunk.chunk.key(), props, chunk.chunk.data(), parentLocation, parentBat, parentparentKey, nextChunk,
+                                            chunk.bat, mirrorBat, random, hasher, isJS)
+                                            .thenApply(p -> new ChunkUpload(chunk, p.left, p.right));
                                 });
                     });
         });
     }
 
-    public CompletableFuture<Snapshot> upload(Snapshot current,
-                                              Committer committer,
-                                              NetworkAccess network,
-                                              PublicKeyHash owner,
-                                              SigningPrivateKeyAndPublicHash writer,
-                                              Optional<BatId> mirrorBat,
-                                              SafeRandom random,
-                                              Hasher hasher) {
-        long t1 = System.currentTimeMillis();
+    public static CompletableFuture<Snapshot> uploadChunk(Snapshot current,
+                                                          Committer committer,
+                                                          ChunkUpload file,
+                                                          SigningPrivateKeyAndPublicHash writer,
+                                                          NetworkAccess network,
+                                                          ProgressConsumer<Long> monitor) {
+        CryptreeNode metadata = file.metadata;
+        LocatedChunk chunk = file.chunk;
 
-        List<Integer> input = IntStream.range(0, (int) nchunks).mapToObj(i -> Integer.valueOf(i)).collect(Collectors.toList());
-        return Futures.reduceAll(input, current, (cwd, i) -> uploadChunk(cwd, committer, network, owner, writer, i,
-                MaybeMultihash.empty(), monitor, mirrorBat, random, hasher), (a, b) -> b)
-                .thenApply(x -> {
-                    LOG.info("File encryption, upload took: " +(System.currentTimeMillis()-t1) + " mS");
-                    return x;
-                });
+        List<Fragment> fragments = file.fragments.stream()
+                .filter(f -> !f.isInlined())
+                .map(f -> f.fragment)
+                .collect(Collectors.toList());
+        CappedProgressConsumer progress = new CappedProgressConsumer(monitor, chunk.chunk.length());
+        if (fragments.size() < file.fragments.size() || fragments.isEmpty())
+            progress.accept((long) chunk.chunk.length());
+        System.out.println("Uploading chunk with " + fragments.size() + " fragments\n");
+        return IpfsTransaction.call(chunk.location.owner,
+                tid -> network.uploadFragments(fragments, chunk.location.owner, writer, progress, tid)
+                        .thenCompose(hashes -> network.uploadChunk(current, committer, metadata, chunk.location.owner,
+                                chunk.chunk.mapKey(), writer, tid)),
+                network.dhtClient);
     }
 
     public static CompletableFuture<Snapshot> uploadChunk(Snapshot current,
@@ -159,23 +260,8 @@ public class FileUploader implements AutoCloseable {
         return CryptreeNode.createFile(chunk.existingHash, chunk.location.writer, baseKey,
                 chunk.chunk.key(), props, chunk.chunk.data(), parentLocation, parentBat, parentparentKey, nextChunk,
                 chunk.bat, mirrorBat, random, hasher, network.isJavascript())
-                .thenCompose(file -> {
-                    CryptreeNode metadata = file.left.withWriterLink(baseKey, writerLink);
-
-                    List<Fragment> fragments = file.right.stream()
-                            .filter(f -> !f.isInlined())
-                            .map(f -> f.fragment)
-                            .collect(Collectors.toList());
-
-                    if (fragments.size() < file.right.size() || fragments.isEmpty())
-                        progress.accept((long) chunk.chunk.length());
-                    LOG.info("Uploading chunk with " + fragments.size() + " fragments\n");
-                    return IpfsTransaction.call(chunk.location.owner,
-                            tid -> network.uploadFragments(fragments, chunk.location.owner, writer, progress, tid)
-                                    .thenCompose(hashes -> network.uploadChunk(current, committer, metadata, chunk.location.owner,
-                                            chunk.chunk.mapKey(), writer, tid)),
-                            network.dhtClient);
-                });
+                .thenCompose(file -> uploadChunk(current, committer, new ChunkUpload(chunk, file.left.withWriterLink(baseKey, writerLink), file.right),
+                        writer, network, progress));
     }
 
     public void close() {
