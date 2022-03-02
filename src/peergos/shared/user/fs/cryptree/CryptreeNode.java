@@ -309,7 +309,7 @@ public class CryptreeNode implements Cborable {
                                                                               NetworkAccess network) {
         if (! isDirectory)
             return CompletableFuture.completedFuture(Collections.emptyList());
-        return getLinkedData(us.rBaseKey, ChildrenLinks::fromCbor, network.hasher, network, x -> {})
+        return getLinkedData(us.owner, us.rBaseKey, ChildrenLinks::fromCbor, network.hasher, network, x -> {})
                 .thenCompose(c -> {
                     if (c.children.isB())
                         return Futures.of(c.children.b());
@@ -483,12 +483,13 @@ public class CryptreeNode implements Cborable {
         return FragmentedPaddedCipherText.build(rBaseKey, children, MIN_FRAGMENT_SIZE, Fragment.MAX_LENGTH, mirrorBat, random, hasher, false);
     }
 
-    public <T> CompletableFuture<T> getLinkedData(SymmetricKey baseOrDataKey,
+    public <T> CompletableFuture<T> getLinkedData(PublicKeyHash owner,
+                                                  SymmetricKey baseOrDataKey,
                                                   Function<CborObject, T> fromCbor,
                                                   Hasher h,
                                                   NetworkAccess network,
                                                   ProgressConsumer<Long> progress) {
-        return childrenOrData.getAndDecrypt(baseOrDataKey, fromCbor, h, network, progress);
+        return childrenOrData.getAndDecrypt(owner, baseOrDataKey, fromCbor, h, network, progress);
     }
 
     public CryptreeNode withParentLink(SymmetricKey parentKey, RelativeCapability newParentLink) {

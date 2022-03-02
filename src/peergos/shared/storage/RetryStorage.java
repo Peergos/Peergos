@@ -128,12 +128,13 @@ public class RetryStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Cid> hashes,
+    public CompletableFuture<List<FragmentWithHash>> downloadFragments(PublicKeyHash owner,
+                                                                       List<Cid> hashes,
                                                                        List<BatWithId> bats,
                                                                        Hasher h,
                                                                        ProgressConsumer<Long> monitor,
                                                                        double spaceIncreaseFactor) {
-        return runWithRetry(() -> target.downloadFragments(hashes, bats, h, monitor, spaceIncreaseFactor));
+        return runWithRetry(() -> target.downloadFragments(owner, hashes, bats, h, monitor, spaceIncreaseFactor));
     }
 
     @Override

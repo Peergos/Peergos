@@ -698,7 +698,7 @@ public abstract class UserTests {
         SymmetricKey baseKey = pointer.capability.rBaseKey;
         SymmetricKey dataKey = pointer.fileAccess.getDataKey(baseKey);
         Assert.assertTrue("data key different from base key", ! dataKey.equals(baseKey));
-        pointer.fileAccess.getLinkedData(dataKey, c -> ((CborObject.CborByteArray)c).value, crypto.hasher, network, x -> {}).join();
+        pointer.fileAccess.getLinkedData(file.owner(), dataKey, c -> ((CborObject.CborByteArray)c).value, crypto.hasher, network, x -> {}).join();
     }
 
     @Test

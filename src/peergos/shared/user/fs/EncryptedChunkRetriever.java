@@ -103,7 +103,7 @@ public class EncryptedChunkRetriever implements FileRetriever {
                         return CompletableFuture.completedFuture(Optional.of(withLocation));
                     });
         }
-        return linksToData.getAndDecrypt(dataKey, c -> ((CborObject.CborByteArray)c).value, crypto.hasher, network, monitor)
+        return linksToData.getAndDecrypt(ourCap.owner, dataKey, c -> ((CborObject.CborByteArray)c).value, crypto.hasher, network, monitor)
                 .thenApply(data ->  Optional.of(new LocatedChunk(ourCap.getLocation(), ourCap.bat, ourExistingHash,
                         new Chunk(truncate(data, (int) Math.min(Chunk.MAX_SIZE, truncateTo)),
                                 dataKey, ourCap.getMapKey(), ourCap.rBaseKey.createNonce()))));
