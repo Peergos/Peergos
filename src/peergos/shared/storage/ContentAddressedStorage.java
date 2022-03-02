@@ -189,7 +189,8 @@ public interface ContentAddressedStorage {
         return new Cid(Cid.V1, isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor, Multihash.Type.sha2_256, sha256);
     }
 
-    default CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Cid> hashes,
+    default CompletableFuture<List<FragmentWithHash>> downloadFragments(PublicKeyHash owner,
+                                                                        List<Cid> hashes,
                                                                         List<BatWithId> bats,
                                                                         Hasher h,
                                                                         ProgressConsumer<Long> monitor,

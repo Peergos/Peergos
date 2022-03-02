@@ -85,7 +85,8 @@ public class BufferedStorage extends DelegatingStorage {
     }
 
     @Override
-    public CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Cid> hashes,
+    public CompletableFuture<List<FragmentWithHash>> downloadFragments(PublicKeyHash owner,
+                                                                       List<Cid> hashes,
                                                                        List<BatWithId> bats,
                                                                        Hasher h,
                                                                        ProgressConsumer<Long> monitor,

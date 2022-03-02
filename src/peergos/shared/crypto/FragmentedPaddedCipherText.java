@@ -143,7 +143,8 @@ public class FragmentedPaddedCipherText implements Cborable {
                 });
     }
 
-    public <T> CompletableFuture<T> getAndDecrypt(SymmetricKey from,
+    public <T> CompletableFuture<T> getAndDecrypt(PublicKeyHash owner,
+                                                  SymmetricKey from,
                                                   Function<CborObject, T> fromCbor,
                                                   Hasher h,
                                                   NetworkAccess network,
@@ -153,7 +154,7 @@ public class FragmentedPaddedCipherText implements Cborable {
                 return Futures.of(new CipherText(nonce, ArrayOps.concat(header.get(), inlinedCipherText.get())).decrypt(from, fromCbor, monitor));
             return Futures.of(new CipherText(nonce, inlinedCipherText.get()).decrypt(from, fromCbor, monitor));
         }
-        return network.dhtClient.downloadFragments(cipherTextFragments, bats, h, monitor, 1.0)
+        return network.dhtClient.downloadFragments(owner, cipherTextFragments, bats, h, monitor, 1.0)
                 .thenApply(frags -> frags.stream()
                         .map(f -> new FragmentWithHash(new Fragment(Bat.removeRawBlockBatPrefix(f.fragment.data)), f.hash))
                         .collect(Collectors.toList()))
