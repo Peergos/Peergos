@@ -23,7 +23,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
     private final Optional<String> baseAuthedUrl;
     private final HttpPoster direct;
     private final ContentAddressedStorage fallback;
-    private final Multihash nodeId;
+    private final Cid nodeId;
     private final LRUCache<PublicKeyHash, Multihash> storageNodeByOwner = new LRUCache<>(100);
     private final CoreNode core;
     private final Hasher hasher;
@@ -31,7 +31,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
     public DirectS3BlockStore(BlockStoreProperties blockStoreProperties,
                               HttpPoster direct,
                               ContentAddressedStorage fallback,
-                              Multihash nodeId,
+                              Cid nodeId,
                               CoreNode core,
                               Hasher hasher) {
         this.directWrites = blockStoreProperties.directWrites;
@@ -71,7 +71,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
 
     @Override
     public CompletableFuture<Cid> id() {
-        return fallback.id();
+        return Futures.of(nodeId);
     }
 
     @Override
