@@ -194,11 +194,11 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                                                                        ProgressConsumer<Long> monitor,
                                                                        double spaceIncreaseFactor) {
         if (publicReads || ! authedReads)
-            return NetworkAccess.downloadFragments(hashes, bats, this, h, monitor, spaceIncreaseFactor);
+            return NetworkAccess.downloadFragments(hashes, bats, fallback, h, monitor, spaceIncreaseFactor);
 
         return onOwnersNode(owner).thenCompose(onOwners -> {
             if (! onOwners)
-                return NetworkAccess.downloadFragments(hashes, bats, this, h, monitor, spaceIncreaseFactor);
+                return NetworkAccess.downloadFragments(hashes, bats, fallback, h, monitor, spaceIncreaseFactor);
 
             // Do a bulk auth in a single call
             List<Pair<Integer, Cid>> indexAndHash = IntStream.range(0, hashes.size())

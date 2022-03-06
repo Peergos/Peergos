@@ -586,26 +586,24 @@ public class NetworkAccess {
                                                                               Hasher hasher,
                                                                               ProgressConsumer<Long> monitor,
                                                                               double spaceIncreaseFactor) {
-        return dhtClient.id().thenCompose(id -> {
-            List<CompletableFuture<Optional<FragmentWithHash>>> futures = IntStream.range(0, hashes.size()).mapToObj(i -> i)
-                    .parallel()
-                    .map(i -> {
-                        Cid h = hashes.get(i);
-                        return (h.isIdentity() ?
-                                        CompletableFuture.completedFuture(Optional.of(h.getHash())) :
-                                        h.codec == Cid.Codec.Raw ?
-                                                dhtClient.getRaw(h, i < bats.size() ? Optional.of(bats.get(i)) : Optional.empty()) :
-                                                dhtClient.get(h, i < bats.size() ? Optional.of(bats.get(i)) : Optional.empty())
-                                                        .thenApply(cborOpt -> cborOpt.map(cbor -> ((CborObject.CborByteArray) cbor).value))) // for backwards compatibility
-                                .thenApply(dataOpt -> {
-                                    Optional<byte[]> bytes = dataOpt;
-                                    bytes.ifPresent(arr -> monitor.accept((long) (arr.length / spaceIncreaseFactor)));
-                                    return bytes.map(data -> new FragmentWithHash(new Fragment(data), h.isIdentity() ? Optional.empty() : Optional.of(h)));
-                                });
-                    }).collect(Collectors.toList());
+        List<CompletableFuture<Optional<FragmentWithHash>>> futures = IntStream.range(0, hashes.size()).mapToObj(i -> i)
+                .parallel()
+                .map(i -> {
+                    Cid h = hashes.get(i);
+                    return (h.isIdentity() ?
+                            CompletableFuture.completedFuture(Optional.of(h.getHash())) :
+                            h.codec == Cid.Codec.Raw ?
+                                    dhtClient.getRaw(h, i < bats.size() ? Optional.of(bats.get(i)) : Optional.empty()) :
+                                    dhtClient.get(h, i < bats.size() ? Optional.of(bats.get(i)) : Optional.empty())
+                                            .thenApply(cborOpt -> cborOpt.map(cbor -> ((CborObject.CborByteArray) cbor).value))) // for backwards compatibility
+                            .thenApply(dataOpt -> {
+                                Optional<byte[]> bytes = dataOpt;
+                                bytes.ifPresent(arr -> monitor.accept((long) (arr.length / spaceIncreaseFactor)));
+                                return bytes.map(data -> new FragmentWithHash(new Fragment(data), h.isIdentity() ? Optional.empty() : Optional.of(h)));
+                            });
+                }).collect(Collectors.toList());
 
-            return Futures.combineAllInOrder(futures)
-                    .thenApply(optList -> optList.stream().filter(Optional::isPresent).map(Optional::get).collect(Collectors.toList()));
-        });
+        return Futures.combineAllInOrder(futures)
+                .thenApply(optList -> optList.stream().filter(Optional::isPresent).map(Optional::get).collect(Collectors.toList()));
     }
 }
