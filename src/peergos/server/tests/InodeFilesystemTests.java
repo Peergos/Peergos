@@ -67,6 +67,39 @@ public class InodeFilesystemTests {
     }
 
     @Test
+    public void nameClash() throws Exception {
+        ContentAddressedStorage storage = new FileContentAddressedStorage(Files.createTempDirectory("peergos-tmp"),
+                JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()), (a, b, c, d) -> Futures.of(true), crypto.hasher);
+        SigningPrivateKeyAndPublicHash user = createUser(storage, crypto);
+        Random r = new Random(28);
+
+        Map<String, AbsoluteCapability> state = new HashMap<>();
+
+        PublicKeyHash owner = user.publicKeyHash;
+        TransactionId tid = storage.startTransaction(owner).join();
+        InodeFileSystem current = InodeFileSystem.createEmpty(owner, user, storage, crypto.hasher, tid).join();
+
+        String path = randomPath(r, 3);
+        AbsoluteCapability cap = randomCap(owner, r);
+        current = current.addCap(owner, user, path, cap, tid).join();
+        state.put(path, cap);
+        checkAllMappings(state, current);
+
+        // Update the mapping to a new cap
+        AbsoluteCapability newCap = randomCap(owner, r);
+        current = current.addCap(owner, user, path, newCap, tid).join();
+        state.put(path, newCap);
+        checkAllMappings(state, current);
+
+        // remove the mapping
+        InodeFileSystem removed = current.removeCap(owner, user, path, tid).join();
+        state.remove(path);
+        checkAllMappings(state, removed);
+        if (removed.inodeCount != current.inodeCount)
+            throw new IllegalStateException("Incorrect inode count!");
+    }
+
+    @Test
     public void insertAndRetrieve() throws Exception {
         ContentAddressedStorage storage = new FileContentAddressedStorage(Files.createTempDirectory("peergos-tmp"),
                 JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()), (a, b, c, d) -> Futures.of(true), crypto.hasher);

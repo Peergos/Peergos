@@ -77,7 +77,7 @@ public class DirectoryInode implements Cborable {
                                                       SigningPrivateKeyAndPublicHash writer,
                                                       TransactionId tid) {
         if (children.isA() && children.a().size() < MAX_CHILDREN_INLINED)
-            return Futures.of(new DirectoryInode(Stream.concat(children.a().stream(), Stream.of(child))
+            return Futures.of(new DirectoryInode(Stream.concat(children.a().stream().filter(c -> ! c.inode.equals(child.inode)), Stream.of(child))
                     .collect(Collectors.toList()), writeHasher, bitWidth, keyHasher, storage));
 
         ByteArrayWrapper key = toChampKey(child);
