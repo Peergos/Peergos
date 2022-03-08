@@ -104,7 +104,7 @@
   </target>
 
   <target name="test" depends="parallel_test">
-    <exec executable="./print_test_errors.sh" failonerror="true">
+    <exec executable="java PrintTestErrors.java" failonerror="true">
     </exec>
   </target> 
 
