@@ -223,16 +223,14 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
                 boolean setWritableSuccess = tmpFile.setWritable(false, false);
                 boolean setReadableSuccess = tmpFile.setReadable(true, false);
                 Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE);
-                Files.delete(lockPath);
-                boolean lockExists = lockPath.toFile().exists();
+                lock.release();
                 if (!setWritableSuccess)
                     throw new IllegalStateException("Error setting " + tmpFile.getName() + " to writable");
                 if (!setReadableSuccess)
                     throw new IllegalStateException("Error setting " + tmpFile.getName() + " to readable");
-                if (lockExists)
-                    throw new IllegalStateException("Error deleting " + lockPath.toFile().getName());
             } finally {
                 Files.deleteIfExists(tmp);
+                Files.deleteIfExists(lockPath);
             }
             return cid;
         } catch (IOException e) {
