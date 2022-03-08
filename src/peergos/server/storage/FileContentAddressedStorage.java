@@ -229,7 +229,6 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
                 if (!setReadableSuccess)
                     throw new IllegalStateException("Error setting " + tmpFile.getName() + " to readable");
             } finally {
-                Files.deleteIfExists(tmp);
                 Files.deleteIfExists(lockPath);
             }
             return cid;
