@@ -232,8 +232,7 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
                 if (lockExists)
                     throw new IllegalStateException("Error deleting " + lockPath.toFile().getName());
             } finally {
-                if (tmpFile.exists())
-                    tmpFile.delete();
+                Files.deleteIfExists(tmp);
             }
             return cid;
         } catch (IOException e) {
