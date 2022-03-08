@@ -210,20 +210,7 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
                 }
             }
             transactions.addBlock(cid, tid, owner);
-            Path lockPath = parent.resolve("lock." + filePath.toFile().getName());
-            try (RandomAccessFile rw = new RandomAccessFile(lockPath.toFile(), "rw");
-                 FileLock lock = rw.getChannel().lock()) {
-                Files.write(target, data, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
-                boolean setWritableSuccess = target.toFile().setWritable(false, false);
-                boolean setReadableSuccess = target.toFile().setReadable(true, false);
-                lock.release();
-                if (!setWritableSuccess)
-                    throw new IllegalStateException("Error setting " + target + " to writable");
-                if (!setReadableSuccess)
-                    throw new IllegalStateException("Error setting " + target + " to readable");
-            } finally {
-                Files.deleteIfExists(lockPath);
-            }
+            Files.write(target, data, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
             return cid;
         } catch (IOException e) {
             throw new RuntimeException(e.getMessage(), e);
