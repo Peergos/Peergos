@@ -213,7 +213,7 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
             Path lockPath = parent.resolve("lock." + filePath.toFile().getName());
             try (RandomAccessFile rw = new RandomAccessFile(lockPath.toFile(), "rw");
                  FileLock lock = rw.getChannel().lock()) {
-                Files.write(target, data, StandardOpenOption.TRUNCATE_EXISTING);
+                Files.write(target, data, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
                 boolean setWritableSuccess = target.toFile().setWritable(false, false);
                 boolean setReadableSuccess = target.toFile().setReadable(true, false);
                 lock.release();
