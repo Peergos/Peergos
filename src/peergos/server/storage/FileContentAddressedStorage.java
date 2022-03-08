@@ -210,7 +210,6 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
                 }
             }
             transactions.addBlock(cid, tid, owner);
-            File targetFile = target.toFile();
             Path tmp = Files.createTempFile(root, "tmp", "");
             File tmpFile = tmp.toFile();
             Path lockPath = parent.resolve("lock." + filePath.toFile().getName());
@@ -223,15 +222,13 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
                 dout.close();
                 boolean setWritableSuccess = tmpFile.setWritable(false, false);
                 boolean setReadableSuccess = tmpFile.setReadable(true, false);
-                boolean renameSuccess = tmpFile.renameTo(targetFile);
+                Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE);
                 boolean deleteSuccess = lockPath.toFile().delete();
                 boolean lockExists = lockPath.toFile().exists();
                 if (!setWritableSuccess)
                     throw new IllegalStateException("Error setting " + tmpFile.getName() + " to writable");
                 if (!setReadableSuccess)
                     throw new IllegalStateException("Error setting " + tmpFile.getName() + " to readable");
-                if (!renameSuccess)
-                    throw new IllegalStateException("Error renaming " + tmpFile.getName() + " to " + targetFile.getName());
                 if (!deleteSuccess && lockExists)
                     throw new IllegalStateException("Error deleting " + lockPath.toFile().getName());
             } finally {
