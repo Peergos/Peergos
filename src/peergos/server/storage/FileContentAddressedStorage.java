@@ -219,6 +219,8 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
                  DataOutputStream dout = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(tmpFile)))) {
 
                 dout.write(data, 0, data.length);
+                dout.flush();
+                dout.close();
                 boolean setWritableSuccess = tmpFile.setWritable(false, false);
                 boolean setReadableSuccess = tmpFile.setReadable(true, false);
                 boolean renameSuccess = tmpFile.renameTo(targetFile);
