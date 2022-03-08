@@ -220,9 +220,9 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
                 dout.write(data, 0, data.length);
                 dout.flush();
                 dout.close();
-                boolean setWritableSuccess = tmpFile.setWritable(false, false);
-                boolean setReadableSuccess = tmpFile.setReadable(true, false);
                 Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE);
+                boolean setWritableSuccess = target.toFile().setWritable(false, false);
+                boolean setReadableSuccess = target.toFile().setReadable(true, false);
                 lock.release();
                 if (!setWritableSuccess)
                     throw new IllegalStateException("Error setting " + tmpFile.getName() + " to writable");
