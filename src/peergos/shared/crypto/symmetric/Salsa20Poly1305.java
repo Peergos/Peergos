@@ -11,6 +11,10 @@ public interface Salsa20Poly1305 {
 
     byte[] secretbox_open(byte[] cipher, byte[] nonce, byte[] key);
 
+    CompletableFuture<byte[]> secretboxAsync(byte[] data, byte[] nonce, byte[] key);
+
+    CompletableFuture<byte[]> secretbox_openAsync(byte[] cipher, byte[] nonce, byte[] key);
+
     class Javascript implements Salsa20Poly1305 {
         JSNaCl scriptJS = new JSNaCl();
 
@@ -22,6 +26,16 @@ public interface Salsa20Poly1305 {
         @Override
         public byte[] secretbox_open(byte[] cipher, byte[] nonce, byte[] key) {
             return scriptJS.secretbox_open(cipher, nonce, key);
+        }
+
+        @Override
+        public CompletableFuture<byte[]> secretboxAsync(byte[] data, byte[] nonce, byte[] key) {
+            return scriptJS.secretboxAsync(data, nonce, key);
+        }
+
+        @Override
+        public CompletableFuture<byte[]> secretbox_openAsync(byte[] cipher, byte[] nonce, byte[] key) {
+            return scriptJS.secretbox_openAsync(cipher, nonce, key);
         }
     }
 

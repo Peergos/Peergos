@@ -7,6 +7,7 @@ import peergos.shared.util.*;
 import java.io.*;
 import java.nio.file.*;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 
 public class JniTweetNacl {
 
@@ -115,6 +116,22 @@ public class JniTweetNacl {
             if (res != 0)
                 throw new InvalidCipherTextException();
             return Arrays.copyOfRange(message, 32, message.length);
+        }
+
+        @Override
+        public CompletableFuture<byte[]> secretboxAsync(byte[] data, byte[] nonce, byte[] key) {
+            byte[] encrypted = secretbox(data, nonce, key);
+            CompletableFuture<byte[]> res = new CompletableFuture<>();
+            res.complete(encrypted);
+            return res;
+        }
+
+        @Override
+        public CompletableFuture<byte[]> secretbox_openAsync(byte[] cipher, byte[] nonce, byte[] key) {
+            byte[] decrypted = secretbox_open(cipher, nonce, key);
+            CompletableFuture<byte[]> res = new CompletableFuture<>();
+            res.complete(decrypted);
+            return res;
         }
 
     }

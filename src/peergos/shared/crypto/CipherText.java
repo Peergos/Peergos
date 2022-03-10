@@ -2,9 +2,11 @@ package peergos.shared.crypto;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.symmetric.*;
+import peergos.shared.util.Futures;
 import peergos.shared.util.ProgressConsumer;
 
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.*;
 
 public class CipherText implements Cborable {
@@ -49,5 +51,18 @@ public class CipherText implements Cborable {
         byte[] secret = from.decrypt(cipherText, nonce);
         monitor.accept((long)secret.length); //note: this is not accurate at all
         return fromCbor.apply(CborObject.fromByteArray(secret));
+    }
+
+    public <T> CompletableFuture<T> decryptAsync(SymmetricKey from, Function<CborObject, T> fromCbor) {
+        return from.decryptAsync(cipherText, nonce).thenCompose(secret ->
+                Futures.of(fromCbor.apply(CborObject.fromByteArray(secret)))
+        );
+    }
+
+    public <T> CompletableFuture<T> decryptAsync(SymmetricKey from, Function<CborObject, T> fromCbor, ProgressConsumer<Long> monitor) {
+        return from.decryptAsync(cipherText, nonce).thenCompose(secret -> {
+            monitor.accept((long) secret.length); //note: this is not accurate at all
+            return Futures.of(fromCbor.apply(CborObject.fromByteArray(secret)));
+        });
     }
 }
