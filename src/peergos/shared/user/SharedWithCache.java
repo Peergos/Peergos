@@ -87,7 +87,7 @@ public class SharedWithCache {
 
     private static CompletableFuture<Boolean> buildSharedWithCache(TrieNode root, String ourname, NetworkAccess network, Crypto crypto) {
         return root.getByPath(Paths.get(ourname, CapabilityStore.CAPABILITY_CACHE_DIR).toString(), crypto.hasher, network)
-                .thenCompose(cacheDirOpt -> root.getByPath(Paths.get("/" + ourname + "/" + UserContext.SHARED_DIR_NAME).toString(), crypto.hasher, network)
+                .thenCompose(cacheDirOpt -> root.getByPath(Paths.get(ourname, UserContext.SHARED_DIR_NAME).toString(), crypto.hasher, network)
                         .thenCompose(shared -> shared.get().getChildren(crypto.hasher, network))
                         .thenCompose(children ->
                                 Futures.reduceAll(children,
