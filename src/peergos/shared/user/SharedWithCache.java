@@ -48,7 +48,7 @@ public class SharedWithCache {
     }
 
     private static Path cacheBase(String username) {
-        return Paths.get("/" + username).resolve(CACHE_BASE);
+        return Paths.get(username).resolve(CACHE_BASE);
     }
 
     private CompletableFuture<Optional<SharedWithState>> retrieve(Path dir, Snapshot s) {
