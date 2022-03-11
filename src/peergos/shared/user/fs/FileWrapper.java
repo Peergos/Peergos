@@ -206,8 +206,12 @@ public class FileWrapper {
 
         Path canon = PathUtil.get(path);
         return getChild(version, canon.getName(0).toString(), network).thenCompose(child -> {
-            if (child.isPresent())
-                return child.get().getDescendentByPath(canon.subpath(1, canon.getNameCount()).toString(), child.get().version, hasher, network);
+            if (child.isPresent()) {
+                int names = canon.getNameCount();
+                if (names == 1)
+                    return Futures.of(child);
+                return child.get().getDescendentByPath(canon.subpath(1, names).toString(), child.get().version, hasher, network);
+            }
             return CompletableFuture.completedFuture(Optional.empty());
         });
     }
