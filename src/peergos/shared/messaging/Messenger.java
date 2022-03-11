@@ -49,7 +49,7 @@ public class Messenger {
 
     @JsMethod
     public CompletableFuture<ChatController> createChat() {
-        String chatId = "chat:" + context.username + ":" + UUID.randomUUID().toString();
+        String chatId = "chat$" + context.username + "$" + UUID.randomUUID().toString();
         Chat chat = Chat.createNew(chatId, context.username, context.signer.publicKeyHash);
 
         byte[] rawChat = chat.serialize();
