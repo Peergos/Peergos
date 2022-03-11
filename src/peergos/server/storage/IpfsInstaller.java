@@ -136,9 +136,6 @@ public class IpfsInstaller {
 
             @Override
             public void ensureInstalled(Path ipfsDir) {
-                if (! getOsArch().equals("linux_amd64"))
-                    throw new IllegalStateException("S3 plugin is only available on linux-amd64");
-//                IpfsInstaller.ensurePluginInstalled(ipfsDir.resolve("plugins").resolve(getFileName()), version);
             }
         }
 
