@@ -5,8 +5,7 @@ import peergos.shared.storage.auth.*;
 import peergos.shared.user.app.*;
 import peergos.shared.user.fs.AsyncReader;
 import peergos.shared.user.fs.FileWrapper;
-import peergos.shared.util.Futures;
-import peergos.shared.util.Serialize;
+import peergos.shared.util.*;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -75,8 +74,7 @@ public class App implements StoreAppData {
 
     private Path normalisePath(Path path) {
         validatePath(path);
-        String pathAsString = path.toString().trim();
-        return pathAsString.startsWith("/") ? Paths.get(pathAsString.substring(1)) : Paths.get(pathAsString);
+        return PathUtil.get(path.toString());
     }
 
     private Path fullPath(Path path, String username) {
