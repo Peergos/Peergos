@@ -15,8 +15,13 @@ public class TestJniTweetNacl {
     private static JniTweetNacl.Symmetric symmetric;
 
     private static Random random = new Random(1337);
+    private static boolean isWindows() {
+        return System.getProperty("os.name").toLowerCase().startsWith("windows");
+    }
 
     @BeforeClass public static void init() {
+        if (isWindows())
+            return;
         JniTweetNacl instance = JniTweetNacl.build();
 
         signer = new JniTweetNacl.Signer(instance);
@@ -50,6 +55,8 @@ public class TestJniTweetNacl {
 
     @Test
     public void testSigningIdentity() {
+        if (isWindows())
+            return;
         byte[] secretSignBytes = new byte[64];
         byte[] publicSignBytes = new byte[32];
         signer.crypto_sign_keypair(publicSignBytes, secretSignBytes);
@@ -65,6 +72,8 @@ public class TestJniTweetNacl {
 
     @Test
     public void testSecretboxIdentity() {
+        if (isWindows())
+            return;
         byte[] key = new byte[32];
         byte[] nonce = new byte[32];
         random.nextBytes(key);
