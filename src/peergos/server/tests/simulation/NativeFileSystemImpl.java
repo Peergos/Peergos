@@ -4,6 +4,7 @@ import peergos.server.simulation.AccessControl;
 import peergos.server.simulation.FileSystem;
 import peergos.server.simulation.Stat;
 import peergos.shared.user.fs.*;
+import peergos.shared.util.*;
 
 import java.io.File;
 import java.io.IOException;
@@ -32,7 +33,7 @@ public class NativeFileSystemImpl implements FileSystem {
     }
 
     private void init() {
-        Path userRoot = Paths.get("/" + user);
+        Path userRoot = PathUtil.get("/" + user);
 
         for (Path path : Arrays.asList(
                 userRoot
@@ -179,13 +180,13 @@ public class NativeFileSystemImpl implements FileSystem {
     }
 
     private Path virtualToNative(Path path) {
-        Path relativePath = Paths.get("/").relativize(path);
-        return Paths.get(root.toString(), relativePath.toString());
+        Path relativePath = PathUtil.get("/").relativize(path);
+        return PathUtil.get(root.toString(), relativePath.toString());
     }
 
     @Override
     public void mkdir(Path path) {
-        if (! path.equals(Paths.get("/"+ user()))) {
+        if (! path.equals(PathUtil.get("/"+ user()))) {
             Path parentDir = path.getParent();
             ensureCan(parentDir, Permission.WRITE);
         }
@@ -217,15 +218,15 @@ public class NativeFileSystemImpl implements FileSystem {
     public static void main(String[] args) {
         System.out.println("HELO");
 
-        Path p1 = Paths.get("/something/else");
-        Path p2 = Paths.get("/another/thing");
+        Path p1 = PathUtil.get("/something/else");
+        Path p2 = PathUtil.get("/another/thing");
 
-        Path p3 = Paths.get("/").relativize(p2);
-        Path p4 = Paths.get(p1.toString(), p3.toString());
+        Path p3 = PathUtil.get("/").relativize(p2);
+        Path p4 = PathUtil.get(p1.toString(), p3.toString());
 
         System.out.println(p4);
 
-        Path p5 = Paths.get("/some/thing/else");
+        Path p5 = PathUtil.get("/some/thing/else");
         System.out.println(p5.getName(1));
 
     }

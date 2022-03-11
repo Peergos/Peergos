@@ -70,7 +70,7 @@ public class SocialFeed {
                 .thenCompose(home -> home.getOrMkdirs(dir, network, true, home.mirrorBatId(), crypto))
                 .thenCompose(postDir -> postDir.uploadAndReturnFile(postFilename, reader, raw.length, false,
                         postDir.mirrorBatId(), network, crypto)
-                        .thenApply(f -> new Pair<>(Paths.get(post.author).resolve(dir).resolve(postFilename), f)))
+                        .thenApply(f -> new Pair<>(PathUtil.get(post.author).resolve(dir).resolve(postFilename), f)))
                 .thenCompose(p -> addToFeed(Arrays.asList(new SharedItem(p.right.readOnlyPointer(),
                         context.username, context.username, p.left.toString())))
                         .thenApply(f -> p));
@@ -85,7 +85,7 @@ public class SocialFeed {
         String completePath = context.username + "/" + dir.resolve(uuid).toString();
         return context.getByPath(completePath).thenCompose(fopt ->
             fopt.get().overwriteFile(AsyncReader.build(raw), raw.length, network, crypto, x -> {})
-                    .thenApply(f -> new Pair<>(Paths.get(post.author).resolve(dir).resolve(uuid), f))
+                    .thenApply(f -> new Pair<>(PathUtil.get(post.author).resolve(dir).resolve(uuid), f))
         );
     }
 
@@ -104,16 +104,16 @@ public class SocialFeed {
     }
 
     private CompletableFuture<Pair<Path, FileWrapper>> getOrMkdirToStoreMedia(String mediaType, LocalDateTime postTime) {
-        Path dirFromHome = Paths.get(UserContext.POSTS_DIR_NAME,
+        Path dirFromHome = PathUtil.get(UserContext.POSTS_DIR_NAME,
                 Integer.toString(postTime.getYear()),
                 mediaType);
         return context.getUserRoot()
                 .thenCompose(home -> home.getOrMkdirs(dirFromHome, network, true, home.mirrorBatId(), crypto)
-                .thenApply(dir -> new Pair<>(Paths.get("/" + context.username).resolve(dirFromHome), dir)));
+                .thenApply(dir -> new Pair<>(PathUtil.get("/" + context.username).resolve(dirFromHome), dir)));
     }
 
     public static Path getDirFromHome(SocialPost post) {
-        return Paths.get(UserContext.POSTS_DIR_NAME,
+        return PathUtil.get(UserContext.POSTS_DIR_NAME,
                 Integer.toString(post.postTime.getYear()),
                 Integer.toString(post.postTime.getMonthValue()));
     }
@@ -384,7 +384,7 @@ public class SocialFeed {
 
     public static CompletableFuture<SocialFeed> create(UserContext c) {
         return c.getUserRoot()
-                .thenCompose(home -> home.getOrMkdirs(Paths.get(UserContext.FEED_DIR_NAME), c.network, true, home.mirrorBatId(), c.crypto))
+                .thenCompose(home -> home.getOrMkdirs(PathUtil.get(UserContext.FEED_DIR_NAME), c.network, true, home.mirrorBatId(), c.crypto))
                 .thenCompose(feedDir -> {
                     FeedState empty = new FeedState(0, 0, 0L, Collections.emptyMap());
                     byte[] rawEmpty = empty.serialize();

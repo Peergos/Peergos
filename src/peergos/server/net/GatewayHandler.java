@@ -97,7 +97,7 @@ public class GatewayHandler implements HttpHandler {
                     invalidateAssets(owner);
                 }
             } else {
-                Path toProfileEntry = Paths.get(owner).resolve(".profile").resolve("webroot");
+                Path toProfileEntry = PathUtil.get(owner).resolve(".profile").resolve("webroot");
                 AbsoluteCapability capToWebRootField = UserContext.getPublicCapability(toProfileEntry, network).join();
                 FileWrapper webRootField = network.getFile(capToWebRootField, owner).join().get();
                 webRootEntry = new WebRootEntry(webRootField, null, Optional.empty());

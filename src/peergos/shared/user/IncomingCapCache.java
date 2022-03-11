@@ -45,7 +45,7 @@ public class IncomingCapCache {
     }
 
     public static CompletableFuture<IncomingCapCache> build(FileWrapper cacheRoot, Crypto crypto, NetworkAccess network) {
-        return cacheRoot.getOrMkdirs(Paths.get(WORLD_ROOT_NAME), network, true, cacheRoot.getPointer().fileAccess.mirrorBatId(), crypto)
+        return cacheRoot.getOrMkdirs(PathUtil.get(WORLD_ROOT_NAME), network, true, cacheRoot.getPointer().fileAccess.mirrorBatId(), crypto)
                 .thenApply(worldRoot -> new IncomingCapCache(cacheRoot, worldRoot, crypto));
     }
 
@@ -519,7 +519,7 @@ public class IncomingCapCache {
                                                                  CapabilityWithPath cap,
                                                                  Crypto crypto,
                                                                  NetworkAccess network) {
-        Path fullPath = Paths.get(cap.path);
+        Path fullPath = PathUtil.get(cap.path);
         Path parentPath = fullPath.getParent();
         String owner = fullPath.getName(0).toString();
         String filename = fullPath.getFileName().toString();

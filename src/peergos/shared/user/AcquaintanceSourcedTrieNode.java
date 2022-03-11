@@ -39,7 +39,7 @@ public class AcquaintanceSourcedTrieNode implements TrieNode {
                                                                            Hasher hasher,
                                                                            NetworkAccess network) {
         FileProperties.ensureValidPath(path);
-        Path file = Paths.get(ownerName + path);
+        Path file = PathUtil.get(ownerName + path);
         return cache.getByPath(file, cache.getVersion(), hasher, network)
                 .thenApply(opt -> opt.map(f -> convert(f, path)));
     }
@@ -50,7 +50,7 @@ public class AcquaintanceSourcedTrieNode implements TrieNode {
                                                                            Hasher hasher,
                                                                            NetworkAccess network) {
         FileProperties.ensureValidPath(path);
-        Path file = Paths.get(ownerName + path);
+        Path file = PathUtil.get(ownerName + path);
         return cache.getByPath(file, version, hasher, network)
                 .thenApply(opt -> opt.map(f -> convert(f, path)));
     }
@@ -60,7 +60,7 @@ public class AcquaintanceSourcedTrieNode implements TrieNode {
                                                                         Hasher hasher,
                                                                         NetworkAccess network) {
         FileProperties.ensureValidPath(path);
-        Path dir = Paths.get(ownerName + path);
+        Path dir = PathUtil.get(ownerName + path);
         return cache.getChildren(dir, cache.getVersion(), hasher, network)
                 .thenApply(children -> children.stream()
                         .map(f -> convert(f, path + "/" + f.getName()))
@@ -73,7 +73,7 @@ public class AcquaintanceSourcedTrieNode implements TrieNode {
                                                                         Snapshot version,
                                                                         NetworkAccess network) {
         FileProperties.ensureValidPath(path);
-        Path dir = Paths.get(ownerName + path);
+        Path dir = PathUtil.get(ownerName + path);
         return cache.getChildren(dir, version, hasher, network)
                 .thenApply(children -> children.stream()
                         .map(f -> convert(f, path + "/" + f.getName()))

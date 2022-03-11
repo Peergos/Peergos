@@ -298,7 +298,7 @@ public class MultiUserTests {
     public void safeCopyOfFriendsReadAccess() throws Exception {
         TriFunction<UserContext, UserContext, String, CompletableFuture<Snapshot>> readAccessSharingFunction =
                 (u1, u2, filename) ->
-        u1.shareReadAccessWith(Paths.get(u1.username, filename), Collections.singleton(u2.username));
+        u1.shareReadAccessWith(PathUtil.get(u1.username, filename), Collections.singleton(u2.username));
         safeCopyOfFriends(readAccessSharingFunction);
     }
 
@@ -306,7 +306,7 @@ public class MultiUserTests {
     public void safeCopyOfFriendsWriteAccess() throws Exception {
         TriFunction<UserContext, UserContext, String, CompletableFuture<Snapshot>> writeAccessSharingFunction =
                 (u1, u2, filename) ->
-                        u1.shareWriteAccessWith(Paths.get(u1.username, filename), Collections.singleton(u2.username));
+                        u1.shareWriteAccessWith(PathUtil.get(u1.username, filename), Collections.singleton(u2.username));
         safeCopyOfFriends(writeAccessSharingFunction);
     }
 
@@ -333,12 +333,12 @@ public class MultiUserTests {
         FileWrapper sharedFile = u2.getByPath(u1.username + "/" + filename).get().get();
         String dirname = "adir";
         u2.getUserRoot().get().mkdir(dirname, network, false, u2.mirrorBatId(), crypto).get();
-        FileWrapper targetDir = u2.getByPath(Paths.get(u2.username, dirname).toString()).get().get();
+        FileWrapper targetDir = u2.getByPath(PathUtil.get(u2.username, dirname).toString()).get().get();
 
         // copy the friend's file to our own space, this should reupload the file encrypted with a new key
         // this prevents us exposing to the network our social graph by the fact that we pin the same file fragments
         sharedFile.copyTo(targetDir, u2).get();
-        FileWrapper copy = u2.getByPath(Paths.get(u2.username, dirname, filename).toString()).get().get();
+        FileWrapper copy = u2.getByPath(PathUtil.get(u2.username, dirname, filename).toString()).get().get();
 
         // check that the copied file has the correct contents
         UserTests.checkFileContents(data, copy, u2);
@@ -363,9 +363,9 @@ public class MultiUserTests {
         u1.getUserRoot().join().mkdir("subdir", u1.network, false, u1.mirrorBatId(), crypto).join();
         byte[] fileData = "file data".getBytes();
         AsyncReader reader = AsyncReader.build(fileData);
-        u1.getByPath(Paths.get(u1.username, "subdir")).join().get().uploadOrReplaceFile("file.txt",
+        u1.getByPath(PathUtil.get(u1.username, "subdir")).join().get().uploadOrReplaceFile("file.txt",
                 reader, fileData.length, u1.network, crypto, x -> {}).join();
-        Path filePath = Paths.get(u1.username, "subdir", "file.txt");
+        Path filePath = PathUtil.get(u1.username, "subdir", "file.txt");
         FileWrapper file = u1.getByPath(filePath).join().get();
         u1.shareWriteAccessWith(filePath, Collections.singleton(u2.username)).join();
         u1.shareWriteAccessWith(filePath, Collections.singleton(u3.username)).join();
@@ -423,11 +423,11 @@ public class MultiUserTests {
                 u1.network, u1.crypto, l -> {}).get();
 
         // share the file from "a" to each of the others
-        //        sharingFunction.apply(u1, u2, filenameu1.shareReadAccessWith(Paths.get(u1.username, filename), userContexts.stream().map(u -> u.username).collect(Collectors.toSet())).get();
+        //        sharingFunction.apply(u1, u2, filenameu1.shareReadAccessWith(PathUtil.get(u1.username, filename), userContexts.stream().map(u -> u.username).collect(Collectors.toSet())).get();
 
-        sharingFunction.apply(u1, userContexts, Paths.get(u1.username, filename)).get();
+        sharingFunction.apply(u1, userContexts, PathUtil.get(u1.username, filename)).get();
 
-        sharingFunction.apply(u1, userContexts, Paths.get(u1.username, "subdir", filename)).get();
+        sharingFunction.apply(u1, userContexts, PathUtil.get(u1.username, "subdir", filename)).get();
 
         // check other users can read the file
         for (UserContext userContext : userContexts) {
@@ -443,7 +443,7 @@ public class MultiUserTests {
 
         // check other users can read the file
         for (UserContext userContext : userContexts) {
-            String expectedPath = Paths.get(u1.username, "subdir", filename).toString();
+            String expectedPath = PathUtil.get(u1.username, "subdir", filename).toString();
             Optional<FileWrapper> sharedFile = userContext.getByPath(expectedPath).get();
             Assert.assertTrue("shared file present", sharedFile.isPresent());
 
@@ -475,12 +475,12 @@ public class MultiUserTests {
         AsyncReader file1Reader = new AsyncReader.ArrayBacked(data1);
         String subdirName = "subdir";
         u1Root.mkdir(subdirName, u1.network, false, u1.mirrorBatId(), crypto).get();
-        Path subdirPath = Paths.get(u1.username, subdirName);
+        Path subdirPath = PathUtil.get(u1.username, subdirName);
         FileWrapper subdir = u1.getByPath(subdirPath).get().get();
         FileWrapper uploaded = subdir.uploadOrReplaceFile(filename, file1Reader, data1.length,
                 u1.network, u1.crypto, l -> {}).get();
 
-        Path filePath = Paths.get(u1.username, subdirName, filename);
+        Path filePath = PathUtil.get(u1.username, subdirName, filename);
         u1.shareWriteAccessWith(filePath, userContexts.stream().map(u -> u.username).collect(Collectors.toSet()));
 
         // check other users can read the file
@@ -563,12 +563,12 @@ public class MultiUserTests {
         AsyncReader file1Reader = new AsyncReader.ArrayBacked(data1);
         String subdirName = "subdir";
         u1Root.mkdir(subdirName, u1.network, false, u1.mirrorBatId(), crypto).get();
-        Path subdirPath = Paths.get(u1.username, subdirName);
+        Path subdirPath = PathUtil.get(u1.username, subdirName);
         FileWrapper subdir = u1.getByPath(subdirPath).get().get();
         FileWrapper uploaded = subdir.uploadOrReplaceFile(filename, file1Reader, data1.length,
                 u1.network, u1.crypto, l -> {}).get();
 
-        Path filePath = Paths.get(u1.username, subdirName, filename);
+        Path filePath = PathUtil.get(u1.username, subdirName, filename);
 
         shareFunction.apply(u1, userContexts, filePath).join();
 
@@ -582,7 +582,7 @@ public class MultiUserTests {
         String newFilename = "newfilename.txt";
         theFile.rename(newFilename, parentFolder, filePath, u1).get();
 
-        filePath = Paths.get(u1.username, subdirName, newFilename);
+        filePath = PathUtil.get(u1.username, subdirName, newFilename);
 
         Set<String> sharedAccessWithAfter = u1.sharedWith(filePath).join().get(sharedWithAccess);
         Assert.assertTrue("file shared", ! sharedAccessWithAfter.isEmpty());
@@ -623,7 +623,7 @@ public class MultiUserTests {
         String subdirName = "subdir";
         u1Root.mkdir(subdirName, u1.network, false, u1.mirrorBatId(), crypto).get();
 
-        Path filePath = Paths.get(u1.username, subdirName);
+        Path filePath = PathUtil.get(u1.username, subdirName);
 
         shareFunction.apply(u1, userContexts, filePath).join();
 
@@ -637,7 +637,7 @@ public class MultiUserTests {
         String newDirectoryName = "newDir";
         theDir.rename(newDirectoryName, parentFolder, filePath, u1).get();
 
-        filePath = Paths.get(u1.username, newDirectoryName);
+        filePath = PathUtil.get(u1.username, newDirectoryName);
 
         Set<String> sharedAccessWithAfter = u1.sharedWith(filePath).join().get(sharedWithAccess);
         Assert.assertTrue("directory shared", ! sharedAccessWithAfter.isEmpty());
@@ -681,12 +681,12 @@ public class MultiUserTests {
         String destinationSubdirName = "destdir";
         u1.getUserRoot().get().mkdir(subdirName, u1.network, false, u1.mirrorBatId(), crypto).get();
         u1.getUserRoot().get().mkdir(destinationSubdirName, u1.network, false, u1.mirrorBatId(), crypto).get();
-        Path subdirPath = Paths.get(u1.username, subdirName);
+        Path subdirPath = PathUtil.get(u1.username, subdirName);
         FileWrapper subdir = u1.getByPath(subdirPath).get().get();
         FileWrapper uploaded = subdir.uploadOrReplaceFile(filename, file1Reader, data1.length,
                 u1.network, u1.crypto, l -> {}).get();
 
-        Path filePath = Paths.get(u1.username, subdirName, filename);
+        Path filePath = PathUtil.get(u1.username, subdirName, filename);
 
         shareFunction.apply(u1, userContexts, filePath);
 
@@ -695,7 +695,7 @@ public class MultiUserTests {
         Assert.assertTrue("file shared", ! sharedWriteAccessWithBefore.isEmpty());
 
         //copy file
-        Path destSubdirPath = Paths.get(u1.username, destinationSubdirName);
+        Path destSubdirPath = PathUtil.get(u1.username, destinationSubdirName);
         FileWrapper destSubdir = u1.getByPath(destSubdirPath).get().get();
         theFile.copyTo(destSubdir, u1);
 
@@ -703,7 +703,7 @@ public class MultiUserTests {
         Set<String> sharedWriteAccessWithOriginal = u1.sharedWith(filePath).join().get(sharedWithAccess);
         Assert.assertTrue("file shared", ! sharedWriteAccessWithOriginal.isEmpty());
 
-        filePath = Paths.get(u1.username, destinationSubdirName, filename);
+        filePath = PathUtil.get(u1.username, destinationSubdirName, filename);
 
         Set<String> sharedWriteAccessWithNewCopy = u1.sharedWith(filePath).join().get(sharedWithAccess);
         Assert.assertTrue("file shared", sharedWriteAccessWithNewCopy.isEmpty());
@@ -744,7 +744,7 @@ public class MultiUserTests {
         u1.getUserRoot().get().mkdir(subdirName, u1.network, false, u1.mirrorBatId(), crypto).get();
         u1.getUserRoot().get().mkdir(destinationDirName, u1.network, false, u1.mirrorBatId(), crypto).get();
 
-        Path dirPath = Paths.get(u1.username, subdirName);
+        Path dirPath = PathUtil.get(u1.username, subdirName);
 
         shareFunction.apply(u1, userContexts, dirPath);
 
@@ -753,7 +753,7 @@ public class MultiUserTests {
         Assert.assertTrue("directory shared", ! sharedWriteAccessWithBefore.isEmpty());
 
         //copy file
-        Path destDirPath = Paths.get(u1.username, destinationDirName);
+        Path destDirPath = PathUtil.get(u1.username, destinationDirName);
         FileWrapper destDir = u1.getByPath(destDirPath).get().get();
         theDir.copyTo(destDir, u1).join();
 
@@ -761,7 +761,7 @@ public class MultiUserTests {
         Set<String> sharedWriteAccessWithOriginal = u1.sharedWith(dirPath).join().get(sharedWithAccess);
         Assert.assertTrue("directory shared", ! sharedWriteAccessWithOriginal.isEmpty());
 
-        dirPath = Paths.get(u1.username, destinationDirName, subdirName);
+        dirPath = PathUtil.get(u1.username, destinationDirName, subdirName);
 
         Set<String> sharedWriteAccessWithNewCopy = u1.sharedWith(dirPath).join().get(sharedWithAccess);
         Assert.assertTrue("directory shared", sharedWriteAccessWithNewCopy.isEmpty());
@@ -803,23 +803,23 @@ public class MultiUserTests {
         String destinationSubdirName = "destdir";
         u1.getUserRoot().get().mkdir(subdirName, u1.network, false, u1.mirrorBatId(), crypto).get();
         u1.getUserRoot().get().mkdir(destinationSubdirName, u1.network, false, u1.mirrorBatId(), crypto).get();
-        Path subdirPath = Paths.get(u1.username, subdirName);
+        Path subdirPath = PathUtil.get(u1.username, subdirName);
         FileWrapper subdir = u1.getByPath(subdirPath).get().get();
         FileWrapper uploaded = subdir.uploadOrReplaceFile(filename, file1Reader, data1.length,
                 u1.network, u1.crypto, l -> {}).get();
 
-        Path filePath = Paths.get(u1.username, subdirName, filename);
+        Path filePath = PathUtil.get(u1.username, subdirName, filename);
         shareFunction.apply(u1, userContexts, filePath);
 
         FileWrapper theFile = u1.getByPath(filePath).get().get();
-        Path parentPath = Paths.get(u1.username, subdirName);
+        Path parentPath = PathUtil.get(u1.username, subdirName);
         FileWrapper theParent = u1.getByPath(parentPath).get().get();
         AbsoluteCapability cap = theFile.getPointer().capability;
         Set<String> sharedWriteAccessWithBefore = u1.sharedWith(filePath).join().get(sharedWithAccess);
         Assert.assertTrue("file shared", ! sharedWriteAccessWithBefore.isEmpty());
 
         //move file
-        Path destSubdirPath = Paths.get(u1.username, destinationSubdirName);
+        Path destSubdirPath = PathUtil.get(u1.username, destinationSubdirName);
         FileWrapper destSubdir = u1.getByPath(destSubdirPath).get().get();
 
         theFile.moveTo(destSubdir, theParent, filePath, u1).join();
@@ -828,7 +828,7 @@ public class MultiUserTests {
         Set<String> sharedWriteAccessWithOriginal = u1.sharedWith(filePath).join().get(sharedWithAccess);
         Assert.assertTrue("file shared", sharedWriteAccessWithOriginal.isEmpty());
 
-        filePath = Paths.get(u1.username, destinationSubdirName, filename);
+        filePath = PathUtil.get(u1.username, destinationSubdirName, filename);
         theFile = u1.getByPath(filePath).get().get();
         cap = theFile.getPointer().capability;
 
@@ -871,18 +871,18 @@ public class MultiUserTests {
         u1.getUserRoot().get().mkdir(subdirName, u1.network, false, u1.mirrorBatId(), crypto).get();
         u1.getUserRoot().get().mkdir(destinationSubdirName, u1.network, false, u1.mirrorBatId(), crypto).get();
 
-        Path dirPath = Paths.get(u1.username, subdirName);
+        Path dirPath = PathUtil.get(u1.username, subdirName);
         shareFunction.apply(u1, userContexts, dirPath);
 
         FileWrapper theDir = u1.getByPath(dirPath).get().get();
-        Path parentPath = Paths.get(u1.username);
+        Path parentPath = PathUtil.get(u1.username);
         FileWrapper theParent = u1.getByPath(parentPath).get().get();
         AbsoluteCapability cap = theDir.getPointer().capability;
         Set<String> sharedWriteAccessWithBefore = u1.sharedWith(dirPath).join().get(sharedWithAccess);
         Assert.assertTrue("directory shared", ! sharedWriteAccessWithBefore.isEmpty());
 
         //move directory
-        Path destSubdirPath = Paths.get(u1.username, destinationSubdirName);
+        Path destSubdirPath = PathUtil.get(u1.username, destinationSubdirName);
         FileWrapper destSubdir = u1.getByPath(destSubdirPath).get().get();
 
         theDir.moveTo(destSubdir, theParent, dirPath, u1);
@@ -891,7 +891,7 @@ public class MultiUserTests {
         Set<String> sharedWriteAccessWithOriginal = u1.sharedWith(dirPath).join().get(sharedWithAccess);
         Assert.assertTrue("directory shared", sharedWriteAccessWithOriginal.isEmpty());
 
-        dirPath = Paths.get(u1.username, destinationSubdirName, subdirName);
+        dirPath = PathUtil.get(u1.username, destinationSubdirName, subdirName);
         theDir = u1.getByPath(dirPath).get().get();
         cap = theDir.getPointer().capability;
 
@@ -927,7 +927,7 @@ public class MultiUserTests {
         // share the file from "a" to each of the others
         String originalPath = u1.username + "/" + filename;
         FileWrapper u1File = u1.getByPath(originalPath).get().get();
-        u1.shareReadAccessWith(Paths.get(u1.username, filename), friends.stream().map(u -> u.username).collect(Collectors.toSet()));
+        u1.shareReadAccessWith(PathUtil.get(u1.username, filename), friends.stream().map(u -> u.username).collect(Collectors.toSet()));
 
         // check other users can read the file
         for (UserContext friend : friends) {
@@ -950,12 +950,12 @@ public class MultiUserTests {
         SymmetricKey priorMetaKey = priorFileAccess.getParentKey(priorPointer.rBaseKey);
 
         // unshare with a single user
-        u1.unShareReadAccess(Paths.get(u1.username, filename), userToUnshareWith.username).join();
+        u1.unShareReadAccess(PathUtil.get(u1.username, filename), userToUnshareWith.username).join();
 
         String newname = "newname.txt";
         FileWrapper updatedParent = u1.getByPath(originalPath).get().get()
-                .rename(newname, u1.getUserRoot().get(), Paths.get(originalPath), u1).get();
-        Path newPath = Paths.get(u1.username, newname);
+                .rename(newname, u1.getUserRoot().get(), PathUtil.get(originalPath), u1).get();
+        Path newPath = PathUtil.get(u1.username, newname);
         AbsoluteCapability newCap = u1.getByPath(newPath).join().get().getPointer().capability;
 
         // check still logged in user can't read the new name

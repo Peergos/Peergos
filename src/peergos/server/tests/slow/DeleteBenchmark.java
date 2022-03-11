@@ -72,7 +72,7 @@ public class DeleteBenchmark {
         String dirName = "folder";
         userRoot.uploadSubtree(Stream.of(new FileWrapper.FolderUploadProperties(Arrays.asList(dirName), files)),
                 userRoot.mirrorBatId(), context.network, crypto, context.getTransactionService(), () -> true).join();
-        Path dirPath = Paths.get(username, dirName);
+        Path dirPath = PathUtil.get(username, dirName);
         FileWrapper folder = context.getByPath(dirPath).join().get();
 
         long start = System.currentTimeMillis();

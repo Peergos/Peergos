@@ -63,7 +63,7 @@ public class ServerMessages extends Builder {
                 String message;
                 if (a.hasArg("msg-file")) {
                     try {
-                        message = Files.readString(Paths.get(a.getArg("msg-file")));
+                        message = Files.readString(PathUtil.get(a.getArg("msg-file")));
                     } catch (IOException e) {
                         throw new RuntimeException(e);
                     }
@@ -73,7 +73,7 @@ public class ServerMessages extends Builder {
                         message, a.getOptionalArg("reply-to").map(Long::parseLong), false);
                 if (a.hasArg("usernames")) {
                     try {
-                        List<String> usernames = Files.readAllLines(Paths.get(a.getArg("usernames")));
+                        List<String> usernames = Files.readAllLines(PathUtil.get(a.getArg("usernames")));
                         for (String username : usernames) {
                             store.addMessage(username, msg);
                             System.out.println("Message sent to " + username);

@@ -9,6 +9,7 @@ import jnr.ffi.types.size_t;
 import peergos.shared.user.UserContext;
 import peergos.shared.user.fs.Chunk;
 import peergos.shared.user.fs.FileProperties;
+import peergos.shared.util.*;
 import ru.serce.jnrfuse.ErrorCodes;
 import ru.serce.jnrfuse.struct.*;
 
@@ -255,7 +256,7 @@ public class CachingPeergosFS extends PeergosFS {
         }
 
         public void sync() {
-            Path p = Paths.get(path);
+            Path p = PathUtil.get(path);
 
             String parentPath = p.getParent().toString();
             String name = p.getFileName().toString();

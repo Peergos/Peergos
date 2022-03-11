@@ -22,7 +22,7 @@ public class SharedWithCache {
 
     private static final String DIR_CACHE_FILENAME = "sharedWith.cbor";
     private static final String CACHE_BASE_NAME = "outbound";
-    private static final Path CACHE_BASE = Paths.get(CapabilityStore.CAPABILITY_CACHE_DIR, CACHE_BASE_NAME);
+    private static final Path CACHE_BASE = PathUtil.get(CapabilityStore.CAPABILITY_CACHE_DIR, CACHE_BASE_NAME);
 
     private final FileWrapper base;
     private final String ourname;
@@ -40,15 +40,15 @@ public class SharedWithCache {
     }
 
     private static Path canonicalise(Path p) {
-        return p.isAbsolute() ? p : Paths.get("/").resolve(p);
+        return p.isAbsolute() ? p : PathUtil.get("/").resolve(p);
     }
 
     private static Path toRelative(Path p) {
-        return p.isAbsolute() ? Paths.get(p.toString().substring(1)) : p;
+        return p.isAbsolute() ? PathUtil.get(p.toString().substring(1)) : p;
     }
 
     private static Path cacheBase(String username) {
-        return Paths.get(username).resolve(CACHE_BASE);
+        return PathUtil.get(username).resolve(CACHE_BASE);
     }
 
     private CompletableFuture<Optional<SharedWithState>> retrieve(Path dir, Snapshot s) {
@@ -86,8 +86,8 @@ public class SharedWithCache {
     }
 
     private static CompletableFuture<Boolean> buildSharedWithCache(TrieNode root, String ourname, NetworkAccess network, Crypto crypto) {
-        return root.getByPath(Paths.get(ourname, CapabilityStore.CAPABILITY_CACHE_DIR).toString(), crypto.hasher, network)
-                .thenCompose(cacheDirOpt -> root.getByPath(Paths.get(ourname, UserContext.SHARED_DIR_NAME).toString(), crypto.hasher, network)
+        return root.getByPath(PathUtil.get(ourname, CapabilityStore.CAPABILITY_CACHE_DIR).toString(), crypto.hasher, network)
+                .thenCompose(cacheDirOpt -> root.getByPath(PathUtil.get(ourname, UserContext.SHARED_DIR_NAME).toString(), crypto.hasher, network)
                         .thenCompose(shared -> shared.get().getChildren(crypto.hasher, network))
                         .thenCompose(children ->
                                 Futures.reduceAll(children,
@@ -101,14 +101,14 @@ public class SharedWithCache {
                                                                         friendDirectory.signingPair(),
                                                                         (s, c) -> Futures.reduceAll(readCaps.getRetrievedCapabilities(),
                                                                                 s,
-                                                                                (v, rc) -> addSharedWith(cacheDirOpt.get(), Access.READ, Paths.get(rc.path), Collections.singleton(friendDirectory.getName()), network, crypto, v, c),
+                                                                                (v, rc) -> addSharedWith(cacheDirOpt.get(), Access.READ, PathUtil.get(rc.path), Collections.singleton(friendDirectory.getName()), network, crypto, v, c),
                                                                                 (a, b) -> b)
                                                                                 .thenCompose(s2 -> friendDirectory.getUpdated(network)
                                                                                         .thenCompose(updatedFriendDir -> CapabilityStore.loadWriteableLinks(cacheDirOpt.get(), updatedFriendDir,
                                                                                                 ourname, network, crypto, false))
                                                                                         .thenCompose(writeCaps ->
                                                                                                 Futures.reduceAll(writeCaps.getRetrievedCapabilities(), s2,
-                                                                                                        (v, rc) -> addSharedWith(cacheDirOpt.get(), Access.WRITE, Paths.get(rc.path), Collections.singleton(friendDirectory.getName()), network, crypto, v, c),
+                                                                                                        (v, rc) -> addSharedWith(cacheDirOpt.get(), Access.WRITE, PathUtil.get(rc.path), Collections.singleton(friendDirectory.getName()), network, crypto, v, c),
                                                                                                         (a, b) -> b)
                                                                                         ))))
                                                         .thenApply(y -> true),
@@ -116,7 +116,7 @@ public class SharedWithCache {
     }
 
     private static CompletableFuture<SharedWithCache> initializeCache(TrieNode root, String username, NetworkAccess network, Crypto crypto) {
-        return root.getByPath(Paths.get(username).toString(), crypto.hasher, network)
+        return root.getByPath(PathUtil.get(username).toString(), crypto.hasher, network)
                 .thenCompose(userRoot -> network.synchronizer.applyComplexUpdate(userRoot.get().owner(), userRoot.get().signingPair(),
                         (s, c) -> getOrMkdir(userRoot.get(), CapabilityStore.CAPABILITY_CACHE_DIR, network, crypto, s, c)
                                 .thenApply(f -> f.version))

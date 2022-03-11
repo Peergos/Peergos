@@ -44,7 +44,7 @@ import java.util.stream.Stream;
 public class Main extends Builder {
     public static final String PEERGOS_PATH = "PEERGOS_PATH";
     public static final Path DEFAULT_PEERGOS_DIR_PATH =
-            Paths.get(System.getProperty("user.home"), ".peergos");
+            PathUtil.get(System.getProperty("user.home"), ".peergos");
 
     static {
         PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, initCrypto().signer);
@@ -267,11 +267,11 @@ public class Main extends Builder {
                 context.addNamedOwnedKeyAndCommit("pki", pkiKeyPair).join();
             }
             // Create /peergos/releases and make it public
-            Optional<FileWrapper> releaseDir = context.getByPath(Paths.get(pkiUsername, "releases")).join();
+            Optional<FileWrapper> releaseDir = context.getByPath(PathUtil.get(pkiUsername, "releases")).join();
             if (! releaseDir.isPresent()) {
                 context.getUserRoot().join().mkdir("releases", network, false,
                         Optional.empty(), crypto).join();
-                FileWrapper releases = context.getByPath(Paths.get(pkiUsername, "releases")).join().get();
+                FileWrapper releases = context.getByPath(PathUtil.get(pkiUsername, "releases")).join().get();
                 context.makePublic(releases).join();
             }
         } catch (Exception e) {
@@ -622,7 +622,7 @@ public class Main extends Builder {
             InetSocketAddress p2pAPIAddress = new InetSocketAddress("localhost", localP2PApi.getTCPPort());
 
             Optional<Path> webroot = a.hasArg("webroot") ?
-                    Optional.of(Paths.get(a.getArg("webroot"))) :
+                    Optional.of(PathUtil.get(a.getArg("webroot"))) :
                     Optional.empty();
             boolean useWebAssetCache = a.getBoolean("webcache", true);
             Optional<String> tlsHostname = hostname.equals("localhost") ? Optional.empty() : Optional.of(hostname);
@@ -761,7 +761,7 @@ public class Main extends Builder {
             throw new IllegalStateException(ioe);
         }
         String mountPath = a.getArg("mountPoint");
-        Path path = Paths.get(mountPath);
+        Path path = PathUtil.get(mountPath);
 
         path.toFile().mkdirs();
 

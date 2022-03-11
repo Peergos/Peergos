@@ -1,7 +1,7 @@
 package peergos.server.util;
 
 import peergos.server.*;
-import peergos.shared.util.Pair;
+import peergos.shared.util.*;
 
 import java.io.IOException;
 import java.nio.file.*;
@@ -173,7 +173,7 @@ public class Args {
     }
 
     public Path getPeergosDir() {
-        return hasArg(Main.PEERGOS_PATH) ? Paths.get(getArg(Main.PEERGOS_PATH)) : Main.DEFAULT_PEERGOS_DIR_PATH;
+        return hasArg(Main.PEERGOS_PATH) ? PathUtil.get(getArg(Main.PEERGOS_PATH)) : Main.DEFAULT_PEERGOS_DIR_PATH;
     }
 
     private static Map<String, String> parseEnv() {
@@ -184,7 +184,7 @@ public class Args {
 
     private static Map<String, String> parseFile(Map<String, String> args, Map<String, String> env) {
         Path toFile = (args.containsKey(Main.PEERGOS_PATH) ?
-                Paths.get(args.get(Main.PEERGOS_PATH)) :
+                PathUtil.get(args.get(Main.PEERGOS_PATH)) :
                 Main.DEFAULT_PEERGOS_DIR_PATH).resolve(CONFIG_FILENAME);
         return parseFile(toFile);
     }

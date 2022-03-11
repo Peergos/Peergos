@@ -114,7 +114,7 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
         String name = h.toString();
 
         int depth = DIRECTORY_DEPTH;
-        Path path = Paths.get("");
+        Path path = PathUtil.get("");
         for (int i=0; i < depth; i++)
             path = path.resolve(Character.toString(name.charAt(i)));
         // include full name in filename

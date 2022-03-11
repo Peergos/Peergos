@@ -7,6 +7,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.fingerprint.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.util.*;
 import peergos.shared.zxing.*;
 import peergos.shared.zxing.common.*;
 import peergos.shared.zxing.qrcode.*;
@@ -102,7 +103,7 @@ public class QrCodeTests {
         FingerPrint fingerPrint2 = FingerPrint.generate(name2, bobKeys, name1, aliceKeys, crypto.hasher);
 
         File file = new File("qr-code-bin.png");
-        Files.write(Paths.get("qr-code-bin.png"), fingerPrint1.getQrCodeData());
+        Files.write(PathUtil.get("qr-code-bin.png"), fingerPrint1.getQrCodeData());
 
         // now read back in
         BufferedImage read = ImageIO.read(file);

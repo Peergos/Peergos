@@ -8,7 +8,7 @@ import jnr.ffi.types.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.UserContext;
 import peergos.shared.user.fs.*;
-import peergos.shared.util.Serialize;
+import peergos.shared.util.*;
 
 import ru.serce.jnrfuse.ErrorCodes;
 import ru.serce.jnrfuse.FuseFillDir;
@@ -120,7 +120,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
         Optional<PeergosStat> current = getByPath(s);
         if (current.isPresent())
             return -ErrorCodes.ENOENT();
-        Path path = Paths.get(s);
+        Path path = PathUtil.get(s);
         String parentPath = path.getParent().toString();
 
         Optional<PeergosStat> parentOpt = getByPath(parentPath);
@@ -138,7 +138,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
     public int unlink(String s) {
         ensureNotClosed();
         try {
-            Path requested = Paths.get(s);
+            Path requested = PathUtil.get(s);
             Optional<FileWrapper> file = context.getByPath(s).get();
             if (!file.isPresent())
                 return -ErrorCodes.ENOENT();
@@ -158,7 +158,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
     @Override
     public int rmdir(String s) {
         ensureNotClosed();
-        Path dir = Paths.get(s);
+        Path dir = PathUtil.get(s);
         return applyIfPresent(s, (stat) -> applyIfPresent(dir.getParent().toString(), parentStat -> rmdir(stat, dir, parentStat)));
     }
 
@@ -170,17 +170,17 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
     private int rename(PeergosStat source, PeergosStat sourceParent, String sourcePath, String targetPath) {
         ensureNotClosed();
         try {
-            Path requested = Paths.get(targetPath);
+            Path requested = PathUtil.get(targetPath);
             String targetFilename = requested.getFileName().toString();
             Optional<FileWrapper> newParent = context.getByPath(requested.getParent().toString()).get();
             if (!newParent.isPresent())
                 return -ErrorCodes.ENOENT();
 
             FileWrapper parent = sourceParent.treeNode;
-            FileWrapper updatedParent = source.treeNode.rename(targetFilename, parent, Paths.get(sourcePath), context).get();
+            FileWrapper updatedParent = source.treeNode.rename(targetFilename, parent, PathUtil.get(sourcePath), context).get();
             // TODO clean up on error conditions
             if (! parent.equals(newParent.get())) {
-                Path renamedInPlacePath = Paths.get(sourcePath).getParent().resolve(requested.getFileName().toString());
+                Path renamedInPlacePath = PathUtil.get(sourcePath).getParent().resolve(requested.getFileName().toString());
                 Optional<FileWrapper> renamedOriginal = context.getByPath(renamedInPlacePath).get();
                 if (! renamedOriginal.isPresent())
                     return -ErrorCodes.ENOENT();
@@ -197,7 +197,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
     @Override
     public int rename(String s, String s1) {
         ensureNotClosed();
-        Path source = Paths.get(s);
+        Path source = PathUtil.get(s);
         return applyIfPresent(s, (stat) -> applyIfPresent(source.getParent().toString(), parentStat -> rename(stat, parentStat, s, s1)));
     }
 
@@ -241,7 +241,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
     public int write(String s, Pointer pointer, @size_t long size, @off_t long offset, FuseFileInfo fuseFileInfo) {
         ensureNotClosed();
         debug("WRITE_OWN_FILE %s, size %d  offset %d ", s, size, offset);
-        Path path = Paths.get(s);
+        Path path = PathUtil.get(s);
         String parentPath = path.getParent().toString();
         String name = path.getFileName().toString();
         return applyIfPresent(parentPath, (parent) -> write(parent, name, pointer, size, offset), -ErrorCodes.ENOENT());
@@ -336,7 +336,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
     @Override
     public int create(String s, @mode_t long l, FuseFileInfo fuseFileInfo) {
         ensureNotClosed();
-        Path path = Paths.get(s);
+        Path path = PathUtil.get(s);
         String parentPath = path.getParent().toString();
         String name = path.getFileName().toString();
         byte[] emptyData = new byte[0];
@@ -348,7 +348,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
     @Override
     public int ftruncate(String s, @off_t long l, FuseFileInfo fuseFileInfo) {
         ensureNotClosed();
-        Path path = Paths.get(s);
+        Path path = PathUtil.get(s);
         String parentPath = path.getParent().toString();
         return applyIfBothPresent(parentPath, s, (parent, file) -> truncate(parent, file, l));
     }
@@ -461,7 +461,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
     }
 
     private Optional<PeergosStat> getParentByPath(String  path) {
-        String parentPath = Paths.get(path).getParent().toString();
+        String parentPath = PathUtil.get(path).getParent().toString();
         return getByPath(parentPath);
     }
 

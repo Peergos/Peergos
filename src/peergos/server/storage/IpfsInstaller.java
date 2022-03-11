@@ -320,18 +320,18 @@ public class IpfsInstaller {
     }
 
     private static Path getLocalCacheDir() {
-        return Paths.get(System.getProperty("user.home"), ".cache");
+        return PathUtil.get(System.getProperty("user.home"), ".cache");
     }
 
     public static void main(String[] args) throws Exception {
         String version = "v0.2.0";
 //        String s3Filename = "s3plugin.so";
-//        byte[] bytes = Files.readAllBytes(Paths.get("/home", "ian", "ipfs-releases", version,
+//        byte[] bytes = Files.readAllBytes(PathUtil.get("/home", "ian", "ipfs-releases", version,
 //                "linux-amd64", "plugins", s3Filename));
 //        Multihash hash = new Multihash(Multihash.Type.sha2_256, Hash.sha256(bytes));
 //        System.out.println("S3_LINUX_AMD64(\"https://github.com/peergos/ipfs-releases/blob/master/" + version +
 //                "/linux-amd64/plugins/" + s3Filename + "?raw=true\", Cid.decode(\"" + hash + "\")),");
-        codegen(Paths.get("/home/ian/ipfs-nucleus-releases/" + version));
+        codegen(PathUtil.get("/home/ian/ipfs-nucleus-releases/" + version));
     }
 
     private static void codegen(Path root) throws Exception {

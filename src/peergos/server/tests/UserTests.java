@@ -410,7 +410,7 @@ public abstract class UserTests {
         FileWrapper userRoot = context.getUserRoot().get();
 
         String filename = "somedata.txt";
-        Path filePath = Paths.get(username, filename);
+        Path filePath = PathUtil.get(username, filename);
         byte[] data = new byte[3];
         userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
                 context.crypto, l -> {}).get();
@@ -431,7 +431,7 @@ public abstract class UserTests {
         FileWrapper userRoot = context.getUserRoot().get();
 
         String filename = "somedata.txt";
-        Path filePath = Paths.get(username, filename);
+        Path filePath = PathUtil.get(username, filename);
         // write empty file
         byte[] data = new byte[120*1024];
         userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
@@ -519,7 +519,7 @@ public abstract class UserTests {
         //rename
         String newname = "newname.txt";
         FileWrapper updatedRoot5 = updatedRoot4.getDescendentByPath(otherName, crypto.hasher, context.network).join().get()
-                .rename(newname, updatedRoot4, Paths.get(username, otherName), context).join();
+                .rename(newname, updatedRoot4, PathUtil.get(username, otherName), context).join();
         checkFileContents(data3, updatedRoot5.getDescendentByPath(newname, crypto.hasher, context.network).join().get(), context);
         // check from the root as well
         checkFileContents(data3, context.getByPath(username + "/" + newname).get().get(), context);
@@ -621,7 +621,7 @@ public abstract class UserTests {
         FileWrapper parent = context.getUserRoot().get();
         FileWrapper file = context.getByPath(username + "/" + filename).get().get();
 
-        file.rename(newname, parent, Paths.get(username, filename), context).get();
+        file.rename(newname, parent, PathUtil.get(username, filename), context).get();
 
         FileWrapper updatedRoot = context.getUserRoot().get();
         FileWrapper updatedFile = context.getByPath(updatedRoot.getName() + "/" + newname).get().get();
@@ -817,7 +817,7 @@ public abstract class UserTests {
         AtomicLong writeCount = new AtomicLong(0);
         userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
                 context.crypto, writeCount::addAndGet).get();
-        FileWrapper file = context.getByPath(Paths.get(username, filename).toString()).get().get();
+        FileWrapper file = context.getByPath(PathUtil.get(username, filename).toString()).get().get();
         String mimeType = file.getFileProperties().mimeType;
         Assert.assertTrue("Incorrect mimetype: " + mimeType, mimeType.equals("text/plain"));
         Assert.assertTrue("No thumbnail", ! file.getFileProperties().thumbnail.isPresent());
@@ -830,7 +830,7 @@ public abstract class UserTests {
         Assert.assertTrue("parent link shouldn't include public write key",
                 ! toParent.writer.isPresent());
 
-        FileWrapper home = context.getByPath(Paths.get(username).toString()).get().get();
+        FileWrapper home = context.getByPath(PathUtil.get(username).toString()).get().get();
         RetrievedCapability homePointer = home.getPointer();
         List<NamedRelativeCapability> children = homePointer.fileAccess.getDirectChildren(homePointer.capability, home.version, network).get();
         for (NamedRelativeCapability child : children) {
@@ -888,7 +888,7 @@ public abstract class UserTests {
         String filename = "small.txt";
         byte[] data = new byte[2*5*1024*1024];
         ThrowingStream throwingReader = new ThrowingStream(data, 5 * 1024 * 1024);
-        Path filePath = Paths.get(username, filename);
+        Path filePath = PathUtil.get(username, filename);
         FileUploadTransaction transaction = Transaction.buildFileUploadTransaction(filePath.toString(), data.length,
                 AsyncReader.build(data), userRoot.signingPair(), userRoot.generateChildLocationsFromSize(data.length,
                         context.crypto.random)).join();
@@ -947,10 +947,10 @@ public abstract class UserTests {
         FileWrapper userRoot = context.getUserRoot().get();
 
         String filename = "small.png";
-        byte[] data = Files.readAllBytes(Paths.get("assets", "logo.png"));
+        byte[] data = Files.readAllBytes(PathUtil.get("assets", "logo.png"));
         userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
                 context.crypto, l -> {}).get();
-        FileWrapper file = context.getByPath(Paths.get(username, filename).toString()).get().get();
+        FileWrapper file = context.getByPath(PathUtil.get(username, filename).toString()).get().get();
         String thumbnail = file.getBase64Thumbnail();
         Assert.assertTrue("Has thumbnail", thumbnail.length() > 0);
         boolean res = file.calculateAndUpdateThumbnail(context.network, context.crypto).join();
@@ -963,10 +963,10 @@ public abstract class UserTests {
         String password = "test01";
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network.clear(), crypto);
         FileWrapper userRoot = context.getUserRoot().join();
-        Path home = Paths.get(username);
+        Path home = PathUtil.get(username);
 
         String filename = "logo.png";
-        byte[] data = Files.readAllBytes(Paths.get("assets", filename));
+        byte[] data = Files.readAllBytes(PathUtil.get("assets", filename));
 
         FileWrapper updatedUserRoot = userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data),
                 data.length, context.network, crypto, x -> {}).join();
@@ -992,10 +992,10 @@ public abstract class UserTests {
         FileWrapper userRoot = context.getUserRoot().get();
 
         String filename = "trailer.mp4";
-        byte[] data = Files.readAllBytes(Paths.get("assets", filename));
+        byte[] data = Files.readAllBytes(PathUtil.get("assets", filename));
         userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
                 context.crypto, l -> {}).get();
-        FileWrapper file = context.getByPath(Paths.get(username, filename).toString()).get().get();
+        FileWrapper file = context.getByPath(PathUtil.get(username, filename).toString()).get().get();
         String thumbnail = file.getBase64Thumbnail();
         Assert.assertTrue("Has thumbnail", thumbnail.length() > 0);
     }
@@ -1015,7 +1015,7 @@ public abstract class UserTests {
                 context.network, context.crypto, l -> {}, crypto.random.randomBytes(32), Optional.empty(), Optional.empty()).get();
 
         // Remove BATs from cryptree node and fragments in file
-        FileWrapper file = context.getByPath(Paths.get(username, filename)).join().get();
+        FileWrapper file = context.getByPath(PathUtil.get(username, filename)).join().get();
         CborObject.CborMap cbor = (CborObject.CborMap) file.getPointer().fileAccess.toCbor();
         // add blocks without bat prefix
         List<Multihash> rawBlockLinks = cbor.links();
@@ -1065,7 +1065,7 @@ public abstract class UserTests {
 
         // check there are no BATs for this file
         UserContext newContext = PeergosNetworkUtils.ensureSignedUp(username, password, network.clear(), crypto);
-        file = newContext.getByPath(Paths.get(username, filename)).join().get();
+        file = newContext.getByPath(PathUtil.get(username, filename)).join().get();
         Assert.assertTrue(file.writableFilePointer().bat.isEmpty());
 
         // Check fragments are retrievable without a BAT
@@ -1078,7 +1078,7 @@ public abstract class UserTests {
         random.nextBytes(threeChunkData);
         FileWrapper userRoot3 = uploadFileSection(userRoot2, filename, new AsyncReader.ArrayBacked(threeChunkData), 0,
                 threeChunkData.length, newContext.network, newContext.crypto, l -> {}).join();
-        FileWrapper updatedFile = newContext.getByPath(Paths.get(username, filename)).join().get();
+        FileWrapper updatedFile = newContext.getByPath(PathUtil.get(username, filename)).join().get();
         checkFileContents(threeChunkData, updatedFile, newContext);
         assertTrue("10MiB file size", threeChunkData.length == updatedFile.getFileProperties().size);
 
@@ -1174,7 +1174,7 @@ public abstract class UserTests {
         FileWrapper userRoot2 = userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length,
                 context.network, context.crypto, l -> {}).join();
 
-        FileWrapper original = context.getByPath(Paths.get(username, filename)).join().get();
+        FileWrapper original = context.getByPath(PathUtil.get(username, filename)).join().get();
         Pair<byte[], Optional<Bat>> thirdChunkLabel = original.getMapKey(12 * 1024 * 1024, network, crypto).join();
 
         int truncateLength = 7 * 1024 * 1024;
@@ -1217,7 +1217,7 @@ public abstract class UserTests {
         byte[] buf = new byte[2 * MB];
 
         for (int offset: Arrays.asList(10, 4*MB, 6*MB, 11*MB)) {
-            AsyncReader reader = context.getByPath(Paths.get(username, filename)).join()
+            AsyncReader reader = context.getByPath(PathUtil.get(username, filename)).join()
                     .get().getInputStream(network, crypto, x -> { }).join();
             AsyncReader seeked = reader.seek(offset).join();
             seeked.readIntoArray(buf, 0, buf.length).join();
@@ -1226,7 +1226,7 @@ public abstract class UserTests {
         }
 
         for (int mb = 0; mb < 13; mb++) {
-            AsyncReader reader = context.getByPath(Paths.get(username, filename)).join()
+            AsyncReader reader = context.getByPath(PathUtil.get(username, filename)).join()
                     .get().getInputStream(network, crypto, x -> { }).join();
             for (int count = 0; count < mb; count++) {
                 reader = reader.seek(count * MB).join();
@@ -1276,7 +1276,7 @@ public abstract class UserTests {
         FileWrapper file = context.getByPath(path).get().get();
         context.makePublic(file).get();
 
-        FileWrapper publicFile = context.getPublicFile(Paths.get(username, filename)).join().get();
+        FileWrapper publicFile = context.getPublicFile(PathUtil.get(username, filename)).join().get();
         byte[] returnedData = Serialize.readFully(publicFile.getInputStream(context.network, crypto, x -> {}).join(), data.length).join();
         Assert.assertTrue("Correct data returned for publicly shared file", Arrays.equals(data, returnedData));
     }
@@ -1299,7 +1299,7 @@ public abstract class UserTests {
                 data.length, context.network, context.crypto, l -> {}).get();
         context.makePublic(updatedSubdir).get();
 
-        FileWrapper publicFile = context.getPublicFile(Paths.get(username, dirName, filename)).join().get();
+        FileWrapper publicFile = context.getPublicFile(PathUtil.get(username, dirName, filename)).join().get();
         byte[] returnedData = Serialize.readFully(publicFile.getInputStream(context.network, crypto, x -> {}).join(), data.length).join();
         Assert.assertTrue("Correct data returned for publicly shared file", Arrays.equals(data, returnedData));
     }
@@ -1338,7 +1338,7 @@ public abstract class UserTests {
         Optional<FileWrapper> fileThroughLink = linkContext.getByPath(path + "/" + filename).get();
         Assert.assertTrue("File present through link", fileThroughLink.isPresent());
 
-        SharedWithState sharing = context.getDirectorySharingState(Paths.get(path)).join();
+        SharedWithState sharing = context.getDirectorySharingState(PathUtil.get(path)).join();
         Assert.assertTrue("Can retrieve (empty) sharing state in secret link", sharing.isEmpty());
     }
 
@@ -1388,7 +1388,7 @@ public abstract class UserTests {
         String password = "test01";
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network.clear(), crypto);
         FileWrapper userRoot = context.getUserRoot().join();
-        Path home = Paths.get(username);
+        Path home = PathUtil.get(username);
 
         String foldername = "afolder";
         userRoot.mkdir(foldername, context.network, false, userRoot.mirrorBatId(), crypto).join();
@@ -1396,7 +1396,7 @@ public abstract class UserTests {
 
         String subfoldername = "subfolder";
         folder = folder.mkdir(subfoldername, context.network, false, userRoot.mirrorBatId(), crypto).join();
-        Path subfolderPath = Paths.get(username, foldername, subfoldername);
+        Path subfolderPath = PathUtil.get(username, foldername, subfoldername);
         FileWrapper subfolder = context.getByPath(subfolderPath).join().get();
 
         folder.remove(context.getUserRoot().join(), subfolderPath, context).join();
@@ -1459,7 +1459,7 @@ public abstract class UserTests {
         String email = "joe@doesnt.exist";
         String status = "busy";
         String dir = "webroot";
-        Path webroot = Paths.get(username, dir);
+        Path webroot = PathUtil.get(username, dir);
         String webrootString = "/" + username + "/" + dir;
         context.getUserRoot().join().mkdir(dir, context.network, false, context.mirrorBatId(), crypto).join();
 
@@ -1524,7 +1524,7 @@ public abstract class UserTests {
         String path = "/" + username + "/" + dirName;
         FileWrapper theDir = context.getByPath(path).get().get();
         FileWrapper userRoot2 = context.getByPath("/" + username).get().get();
-        FileWrapper renamed = theDir.rename("subdir2", userRoot2, Paths.get(username, dirName), context).get();
+        FileWrapper renamed = theDir.rename("subdir2", userRoot2, PathUtil.get(username, dirName), context).get();
     }
 
     // This one takes a while, so disable most of the time
@@ -1658,7 +1658,7 @@ public abstract class UserTests {
         assertTrue("retrieved same data", dataEquals);
 
         //delete the file
-        fileWrapper.remove(updatedRoot2, Paths.get(username, name), context).get();
+        fileWrapper.remove(updatedRoot2, PathUtil.get(username, name), context).get();
 
         //re-create user-context
         UserContext context2 = PeergosNetworkUtils.ensureSignedUp(username, password, network.clear(), crypto);
@@ -1693,7 +1693,7 @@ public abstract class UserTests {
         String password = "test01";
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network.clear(), crypto);
         FileWrapper userRoot = context.getUserRoot().join();
-        Path home = Paths.get(username);
+        Path home = PathUtil.get(username);
 
         String filename = "initialfile.bin";
         byte[] data = randomData(10*1024*1024); // 2 chunks to test block chaining
@@ -1720,7 +1720,7 @@ public abstract class UserTests {
         String password = "test01";
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network.clear(), crypto);
         FileWrapper userRoot = context.getUserRoot().join();
-        Path home = Paths.get(username);
+        Path home = PathUtil.get(username);
 
         String filename = "initialfile.bin";
         byte[] data = randomData(10*1024*1024); // 2 chunks to test block chaining
@@ -1737,7 +1737,7 @@ public abstract class UserTests {
                 data.length, context.network, crypto, x -> {}).join();
 
         subfolder.copyTo(folder2, context).join();
-        Optional<FileWrapper> file = context.getByPath(Paths.get(username, foldername2, foldername, filename)).join();
+        Optional<FileWrapper> file = context.getByPath(PathUtil.get(username, foldername2, foldername, filename)).join();
         Assert.assertTrue("File copied in dir", file.isPresent());
     }
 
@@ -1856,7 +1856,7 @@ public abstract class UserTests {
                 ! toParent.writer.isPresent());
 
         //remove the directory
-        directory.remove(updatedUserRoot, Paths.get(username, folderName), context).get();
+        directory.remove(updatedUserRoot, PathUtil.get(username, folderName), context).get();
 
         //ensure folder directory not  present
         boolean isPresent = context.getUserRoot().get().getChildren(crypto.hasher, context.network)
@@ -1886,7 +1886,7 @@ public abstract class UserTests {
         FileWrapper userRoot = context.getUserRoot().get();
 
         String filename = "somedata.txt";
-        Path filePath = Paths.get(username, filename);
+        Path filePath = PathUtil.get(username, filename);
         byte[] data = randomData(6);
         userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
                 context.crypto, l -> {}).get();
@@ -1911,7 +1911,7 @@ public abstract class UserTests {
         FileWrapper userRoot = context.getUserRoot().get();
 
         String filename = "somedata.txt";
-        Path filePath = Paths.get(username, filename);
+        Path filePath = PathUtil.get(username, filename);
         byte[] data = randomData(6000);
         for(int i=0; i < data.length; i++) {
             if(data[i] == 0) {
@@ -1951,7 +1951,7 @@ public abstract class UserTests {
         return data;
     }
 
-    private static Path TMP_DIR = Paths.get("test","resources","tmp");
+    private static Path TMP_DIR = PathUtil.get("test","resources","tmp");
 
     private static void ensureTmpDir() {
         File dir = TMP_DIR.toFile();

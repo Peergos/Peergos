@@ -20,7 +20,7 @@ public class JniTweetNacl {
         String absoluteLibPath = "";
         try {
             new File("native-lib").mkdirs();
-            Path libPath = Paths.get("native-lib", "libtweetnacl.so");
+            Path libPath = PathUtil.get("native-lib", "libtweetnacl.so");
             if (! libPath.toFile().exists()) {
                 byte[] data = Serialize.readFully(JniTweetNacl.class.getResourceAsStream("/" + libPath.toString()));
                 Files.write(libPath, data, StandardOpenOption.CREATE);

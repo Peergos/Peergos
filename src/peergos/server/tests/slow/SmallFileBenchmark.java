@@ -119,7 +119,7 @@ public class SmallFileBenchmark {
         long worstRead = 0, bestRead = Long.MAX_VALUE, startRead = System.currentTimeMillis();
         for (int i=0; i < 100; i++) {
             long t1 = System.currentTimeMillis();
-            FileWrapper file = context.getByPath(Paths.get(username, names.get(random.nextInt(names.size()))))
+            FileWrapper file = context.getByPath(PathUtil.get(username, names.get(random.nextInt(names.size()))))
                     .join().get();
             AsyncReader reader = file.getInputStream(network, crypto, x -> {}).join();
             byte[] readData = Serialize.readFully(reader, data.length).join();

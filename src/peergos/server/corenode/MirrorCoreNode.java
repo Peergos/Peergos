@@ -220,7 +220,7 @@ public class MirrorCoreNode implements CoreNode {
         boolean exists = Files.exists(statePath);
         if (!exists && pkiNodeIdentity.equals(PublicKeyHash.fromString("z59vuwzfFDp3ZA8ZpnnmHEuMtyA1q34m3Th49DYXQVJntWpxdGrRqXi"))) {
             // copy initial pki state snapshot from jar
-            byte[] pkiSnapshot = JarHandler.getAsset("pki-state.cbor", Paths.get("/pki"), false).data;
+            byte[] pkiSnapshot = JarHandler.getAsset("pki-state.cbor", PathUtil.get("/pki"), false).data;
             Files.write(statePath, pkiSnapshot);
         }
         Logging.LOG().info("Reading state from " + statePath + " which exists ? " + exists);

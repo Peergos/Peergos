@@ -56,7 +56,7 @@ public class FuseTests {
         Path mount = Files.createTempDirectory("peergos");
         String mountPath = args.getArg("mountPoint", mount.toString());
 
-        mountPoint = Paths.get(mountPath);
+        mountPoint = PathUtil.get(mountPath);
         mountPoint = mountPoint.resolve(UUID.randomUUID().toString());
         mountPoint.toFile().mkdirs();
         home = mountPoint.resolve(username);
@@ -95,7 +95,7 @@ public class FuseTests {
                 .limit(2)
                 .toArray(String[]::new);
 
-        Path targetDir = Paths.get(initial.getParent().toString(), stem);
+        Path targetDir = PathUtil.get(initial.getParent().toString(), stem);
         targetDir.toFile().mkdirs();
         assertTrue("target dir exists", targetDir.toFile().isDirectory());
 
@@ -289,7 +289,7 @@ public class FuseTests {
                 .limit(10)
                 .toArray(String[]::new);
 
-        Path path = Paths.get(home.toString(), stem);
+        Path path = PathUtil.get(home.toString(), stem);
         assertFalse("path exists initially", path.toFile().exists());
 
         path.toFile().mkdirs();

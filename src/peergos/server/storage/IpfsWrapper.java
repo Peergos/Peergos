@@ -413,7 +413,7 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
     public static Path getIpfsDir(Args args) {
         //$IPFS_DIR, defaults to $PEERGOS_PATH/.ipfs
         return args.hasArg(IPFS_DIR) ?
-                Paths.get(args.getArg(IPFS_DIR)) :
+                PathUtil.get(args.getArg(IPFS_DIR)) :
                 args.fromPeergosDir(IPFS_DIR, DEFAULT_DIR_NAME);
     }
 
@@ -469,14 +469,14 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
 
     public static Path getIpfsExePath(Args args) {
         return IpfsInstaller.getExecutableForOS(args.hasArg(IPFS_EXE) ?
-                Paths.get(args.getArg(IPFS_EXE)) :
+                PathUtil.get(args.getArg(IPFS_EXE)) :
                 args.fromPeergosDir("ipfs-exe", DEFAULT_IPFS_EXE));
     }
 
 
     public static Path getIpfsTestExePath(Args args) {
         return args.hasArg(IPFS_EXE) ?
-                Paths.get(args.getArg(IPFS_EXE)) :
+                PathUtil.get(args.getArg(IPFS_EXE)) :
                 args.fromPeergosDir("ipfs-exe", DEFAULT_IPFS_TEST_EXE);
     }
 

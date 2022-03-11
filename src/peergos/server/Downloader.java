@@ -3,6 +3,7 @@ package peergos.server;
 import peergos.shared.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
+import peergos.shared.util.*;
 
 import java.io.*;
 import java.net.*;
@@ -24,7 +25,7 @@ public class Downloader {
         UserContext context = UserContext.signIn(username, password, network, crypto).get();
         ForkJoinPool pool = new ForkJoinPool(50);
         long t1 = System.currentTimeMillis();
-        downloadTo(context, fromPath, Paths.get(toPath), props -> true, pool);
+        downloadTo(context, fromPath, PathUtil.get(toPath), props -> true, pool);
         long t2 = System.currentTimeMillis();
         System.out.println("Download took " + (t2-t1) + " mS");
     }

@@ -56,7 +56,7 @@ public class Messenger {
         PrivateChatState privateChatState = Chat.generateChatIdentity(crypto);
         byte[] rawPrivateChatState = privateChatState.serialize();
         return createChatRoot(chatId)
-                .thenCompose(chatRoot -> chatRoot.getOrMkdirs(Paths.get("shared"), context.network, false, chatRoot.mirrorBatId(), crypto)
+                .thenCompose(chatRoot -> chatRoot.getOrMkdirs(PathUtil.get("shared"), context.network, false, chatRoot.mirrorBatId(), crypto)
                         .thenCompose(chatSharedDir -> chatRoot.getUpdated(network)
                                 .thenCompose(updatedChatRoot -> chatSharedDir.setProperties(chatSharedDir.getFileProperties(), hasher,
                                         network, Optional.of(updatedChatRoot)).thenCompose(b -> chatSharedDir.getUpdated(network))))
@@ -82,17 +82,17 @@ public class Messenger {
 
     private CompletableFuture<FileWrapper> createChatRoot(String chatId) {
         return context.getUserRoot()
-                .thenCompose(home -> home.getOrMkdirs(Paths.get(MESSAGING_BASE_DIR), context.network, true, home.mirrorBatId(), context.crypto))
+                .thenCompose(home -> home.getOrMkdirs(PathUtil.get(MESSAGING_BASE_DIR), context.network, true, home.mirrorBatId(), context.crypto))
                 .thenCompose(chatsRoot -> chatsRoot.mkdir(chatId, context.network, false, chatsRoot.mirrorBatId(), crypto))
                 .thenCompose(updated -> updated.getChild(chatId, hasher, network))
                 .thenApply(Optional::get);
     }
     public static Path getChatPath(String hostUsername, String chatId) {
-        return Paths.get(hostUsername, MESSAGING_BASE_DIR, chatId);
+        return PathUtil.get(hostUsername, MESSAGING_BASE_DIR, chatId);
     }
 
     private Path getChatSharedDir(String chatUid) {
-        return Paths.get(context.username, MESSAGING_BASE_DIR, chatUid, "shared");
+        return PathUtil.get(context.username, MESSAGING_BASE_DIR, chatUid, "shared");
     }
 
     @JsMethod
@@ -116,7 +116,7 @@ public class Messenger {
                 .thenApply(Optional::get)
                 .thenApply(parent -> parent.getName())
                 .thenCompose(chatId -> createChatRoot(chatId) // This will error if a chat with this chatId already exists
-                        .thenCompose(chatRoot -> chatRoot.getOrMkdirs(Paths.get("shared"), network, false, chatRoot.mirrorBatId(), crypto)
+                        .thenCompose(chatRoot -> chatRoot.getOrMkdirs(PathUtil.get("shared"), network, false, chatRoot.mirrorBatId(), crypto)
                                 .thenCompose(shared -> ChatController.getChatState(sourceChatSharedDir, network, crypto)
                                         .thenCompose(mirrorState -> {
                                             Chat ourVersion = mirrorState.copy(new Member(context.username,
@@ -239,7 +239,7 @@ public class Messenger {
     }
 
     private Path getChatMediaDir(ChatController current) {
-        return Paths.get(MESSAGING_BASE_DIR,
+        return PathUtil.get(MESSAGING_BASE_DIR,
                 current.chatUuid,
                 "shared",
                 "media");
@@ -247,12 +247,12 @@ public class Messenger {
 
     private CompletableFuture<Pair<Path, FileWrapper>> getOrMkdirToStoreMedia(ChatController current,
                                                                               LocalDateTime postTime) {
-        Path dirFromHome = getChatMediaDir(current).resolve(Paths.get(
+        Path dirFromHome = getChatMediaDir(current).resolve(PathUtil.get(
                 Integer.toString(postTime.getYear()),
                 Integer.toString(postTime.getMonthValue())));
         return context.getUserRoot()
                 .thenCompose(home -> home.getOrMkdirs(dirFromHome, network, true, home.mirrorBatId(), crypto)
-                .thenApply(dir -> new Pair<>(Paths.get("/" + context.username).resolve(dirFromHome), dir)));
+                .thenApply(dir -> new Pair<>(PathUtil.get("/" + context.username).resolve(dirFromHome), dir)));
     }
 
     @JsMethod
@@ -279,7 +279,7 @@ public class Messenger {
     @JsMethod
     public CompletableFuture<Set<ChatController>> listChats() {
         return context.getUserRoot()
-                .thenCompose(home -> home.getOrMkdirs(Paths.get(MESSAGING_BASE_DIR), network, true, home.mirrorBatId(), crypto))
+                .thenCompose(home -> home.getOrMkdirs(PathUtil.get(MESSAGING_BASE_DIR), network, true, home.mirrorBatId(), crypto))
                 .thenCompose(chatsRoot -> chatsRoot.getChildren(hasher, network))
                 .thenCompose(chatDirs -> Futures.combineAll(chatDirs.stream()
                         .map(d -> ChatController.getChatController(d, context, cache))

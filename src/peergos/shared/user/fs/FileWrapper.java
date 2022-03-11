@@ -586,7 +586,7 @@ public class FileWrapper {
                     )).thenCompose(finished -> getUpdated(finished, network));
         }
         return getPath(network).thenCompose(path ->
-                Transaction.buildFileUploadTransaction(Paths.get(path).resolve(filename).toString(), fileSize, fileData, signingPair(),
+                Transaction.buildFileUploadTransaction(PathUtil.get(path).resolve(filename).toString(), fileSize, fileData, signingPair(),
                         generateChildLocationsFromSize(fileSize, crypto.random)))
                 .thenCompose(txn -> network.synchronizer.applyComplexUpdate(owner(), transactions.getSigner(),
                         (s, committer) -> transactions.open(s, committer, txn).thenCompose(v -> fileData.reset()
@@ -743,7 +743,7 @@ public class FileWrapper {
         }
 
         public Path path() {
-            return Paths.get(relativePath.stream().collect(Collectors.joining("/")));
+            return PathUtil.get(relativePath.stream().collect(Collectors.joining("/")));
         }
     }
 
@@ -764,7 +764,7 @@ public class FileWrapper {
                             Committer condenser = buffered.buildCommitter(c);
                             return getUpdated(s, buffered).thenCompose(us -> Futures.reduceAll(directories, us,
                                     (dir, children) -> dir.getOrMkdirs(children.relativePath, false, mirror, buffered, crypto, dir.version, condenser)
-                                            .thenCompose(p -> uploadFolder(Paths.get(path).resolve(children.path()), p.right,
+                                            .thenCompose(p -> uploadFolder(PathUtil.get(path).resolve(children.path()), p.right,
                                                     children, mirrorBat, txns, buffered, crypto, condenser)
                                                     .thenCompose(v -> dir.getUpdated(v, buffered))),
                                     (a, b) -> b))

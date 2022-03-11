@@ -5,18 +5,16 @@ import org.junit.Test;
 import peergos.server.Builder;
 import peergos.server.Main;
 import peergos.server.util.Args;
-import peergos.server.util.Logging;
 import peergos.shared.Crypto;
 import peergos.shared.NetworkAccess;
 import peergos.shared.user.App;
 import peergos.shared.user.UserContext;
 import peergos.shared.user.fs.FileWrapper;
+import peergos.shared.util.*;
 
 import java.net.URL;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.*;
-import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 public class WriterTest {
@@ -54,9 +52,9 @@ public class WriterTest {
 
         App emailApp = App.init(userContext, "email").join();
         List<String> dirs = Arrays.asList("pending");// if i add this then it works , "pending/output");
-        Path attachmentsDir = Paths.get(".apps", "email", "data");
+        Path attachmentsDir = PathUtil.get(".apps", "email", "data");
         for(String dir : dirs) {
-            Path dirFromHome = attachmentsDir.resolve(Paths.get(dir));
+            Path dirFromHome = attachmentsDir.resolve(PathUtil.get(dir));
             Optional<FileWrapper> homeOpt = userContext.getByPath(userContext.username).join();
             homeOpt.get().getOrMkdirs(dirFromHome, userContext.network, true, userContext.mirrorBatId(), userContext.crypto).join();
         }
@@ -68,7 +66,7 @@ public class WriterTest {
         userContext.shareWriteAccessWith(directoryPath, sharees.stream().collect(Collectors.toSet())).join();
 
         byte[] bytes = randomData(10);
-        Path filePath = Paths.get("pending", "output", "data.dat");
+        Path filePath = PathUtil.get("pending", "output", "data.dat");
         emailApp.writeInternal(filePath, bytes, null).join();
     }
 
@@ -82,9 +80,9 @@ public class WriterTest {
 
         App emailApp = App.init(userContext, "email").join();
         List<String> dirs = Arrays.asList("pending", "pending/inbox");
-        Path attachmentsDir = Paths.get(".apps", "email", "data");
+        Path attachmentsDir = PathUtil.get(".apps", "email", "data");
         for(String dir : dirs) {
-            Path dirFromHome = attachmentsDir.resolve(Paths.get(dir));
+            Path dirFromHome = attachmentsDir.resolve(PathUtil.get(dir));
             Optional<FileWrapper> homeOpt = userContext.getByPath(userContext.username).join();
             homeOpt.get().getOrMkdirs(dirFromHome, userContext.network, true, userContext.mirrorBatId(), userContext.crypto).join();
         }
@@ -94,7 +92,7 @@ public class WriterTest {
         userContext.shareWriteAccessWith(directoryPath, sharees.stream().collect(Collectors.toSet())).join();
 
         byte[] bytes = randomData(100);
-        Path filePath = Paths.get("pending/outbox/data.id");
+        Path filePath = PathUtil.get("pending/outbox/data.id");
         emailApp.writeInternal(filePath, bytes, null).join();
 
         String path = userContext.username + "/.apps/email/data/pending/outbox";
@@ -102,7 +100,7 @@ public class WriterTest {
 
         Set<FileWrapper> files = directory.get().getChildren(emailBridgeContext.crypto.hasher, emailBridgeContext.network).get();
         for (FileWrapper file : files) {
-            Path pathToFile = Paths.get(path).resolve(file.getName());
+            Path pathToFile = PathUtil.get(path).resolve(file.getName());
             file.remove(directory.get(), pathToFile, emailBridgeContext).get();
         }
     }

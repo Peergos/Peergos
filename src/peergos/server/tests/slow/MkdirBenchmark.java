@@ -9,9 +9,9 @@ import peergos.server.util.Args;
 import peergos.shared.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
+import peergos.shared.util.*;
 
 import java.net.*;
-import java.nio.file.*;
 import java.util.*;
 import java.util.stream.*;
 
@@ -84,7 +84,7 @@ public class MkdirBenchmark {
         long worstRead = 0, bestRead = Long.MAX_VALUE, startRead = System.currentTimeMillis();
         for (int i=0; i < 100; i++) {
             long t1 = System.currentTimeMillis();
-            context.getByPath(Paths.get(username, names.get(random.nextInt(names.size())))).join();
+            context.getByPath(PathUtil.get(username, names.get(random.nextInt(names.size())))).join();
             long duration = System.currentTimeMillis() - t1;
             worstRead = Math.max(worstRead, duration);
             bestRead = Math.min(bestRead, duration);

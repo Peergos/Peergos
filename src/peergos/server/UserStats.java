@@ -5,6 +5,7 @@ import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.user.*;
+import peergos.shared.util.*;
 
 import java.io.*;
 import java.net.*;
@@ -72,7 +73,7 @@ public class UserStats {
         stats.stream()
                 .map(s -> (s.toString() + "\n").getBytes())
                 .forEach(bytes -> bout.write(bytes, 0, bytes.length));
-        Files.write(Paths.get(filename), bout.toByteArray());
+        Files.write(PathUtil.get(filename), bout.toByteArray());
     }
 
     private static class Summary {

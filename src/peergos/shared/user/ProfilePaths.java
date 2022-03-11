@@ -16,7 +16,7 @@ import java.util.function.*;
  */
 public class ProfilePaths {
 
-    public static final Path ROOT = Paths.get(".profile");
+    public static final Path ROOT = PathUtil.get(".profile");
     private static final Path PHOTO = ROOT.resolve("photo");
     public static final Path PHOTO_HIGH_RES = ROOT.resolve("highres");
     public static final Path BIO = ROOT.resolve("bio");
@@ -78,7 +78,7 @@ public class ProfilePaths {
 
     @JsMethod
     public static CompletableFuture<Optional<byte[]>> getHighResProfilePhoto(String user, UserContext viewer) {
-        return getAndParse(Paths.get(user).resolve(PHOTO_HIGH_RES), x -> x, viewer);
+        return getAndParse(PathUtil.get(user).resolve(PHOTO_HIGH_RES), x -> x, viewer);
     }
 
     @JsMethod
@@ -88,7 +88,7 @@ public class ProfilePaths {
 
     @JsMethod
     public static CompletableFuture<Optional<byte[]>> getProfilePhoto(String user, UserContext viewer) {
-        return getAndParse(Paths.get(user).resolve(PHOTO), x -> x, viewer);
+        return getAndParse(PathUtil.get(user).resolve(PHOTO), x -> x, viewer);
     }
 
     @JsMethod
@@ -98,7 +98,7 @@ public class ProfilePaths {
 
     @JsMethod
     public static CompletableFuture<Optional<String>> getBio(String user, UserContext viewer) {
-        return getAndParse(Paths.get(user).resolve(BIO), String::new, viewer);
+        return getAndParse(PathUtil.get(user).resolve(BIO), String::new, viewer);
     }
 
     @JsMethod
@@ -108,7 +108,7 @@ public class ProfilePaths {
 
     @JsMethod
     public static CompletableFuture<Optional<String>> getStatus(String user, UserContext viewer) {
-        return getAndParse(Paths.get(user).resolve(STATUS), String::new, viewer);
+        return getAndParse(PathUtil.get(user).resolve(STATUS), String::new, viewer);
     }
 
     @JsMethod
@@ -118,7 +118,7 @@ public class ProfilePaths {
 
     @JsMethod
     public static CompletableFuture<Optional<String>> getFirstName(String user, UserContext viewer) {
-        return getAndParse(Paths.get(user).resolve(FIRSTNAME), String::new, viewer);
+        return getAndParse(PathUtil.get(user).resolve(FIRSTNAME), String::new, viewer);
     }
 
     @JsMethod
@@ -128,7 +128,7 @@ public class ProfilePaths {
 
     @JsMethod
     public static CompletableFuture<Optional<String>> getLastName(String user, UserContext viewer) {
-        return getAndParse(Paths.get(user).resolve(LASTNAME), String::new, viewer);
+        return getAndParse(PathUtil.get(user).resolve(LASTNAME), String::new, viewer);
     }
 
     @JsMethod
@@ -138,7 +138,7 @@ public class ProfilePaths {
 
     @JsMethod
     public static CompletableFuture<Optional<String>> getPhone(String user, UserContext viewer) {
-        return getAndParse(Paths.get(user).resolve(PHONE), String::new, viewer);
+        return getAndParse(PathUtil.get(user).resolve(PHONE), String::new, viewer);
     }
 
     @JsMethod
@@ -148,7 +148,7 @@ public class ProfilePaths {
 
     @JsMethod
     public static CompletableFuture<Optional<String>> getEmail(String user, UserContext viewer) {
-        return getAndParse(Paths.get(user).resolve(EMAIL), String::new, viewer);
+        return getAndParse(PathUtil.get(user).resolve(EMAIL), String::new, viewer);
     }
 
     @JsMethod
@@ -158,7 +158,7 @@ public class ProfilePaths {
 
     @JsMethod
     public static CompletableFuture<Optional<String>> getWebRoot(String user, UserContext viewer) {
-        return getAndParse(Paths.get(user).resolve(WEBROOT), String::new, viewer);
+        return getAndParse(PathUtil.get(user).resolve(WEBROOT), String::new, viewer);
     }
 
     @JsMethod

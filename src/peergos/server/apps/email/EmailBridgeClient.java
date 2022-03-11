@@ -20,7 +20,7 @@ public class EmailBridgeClient {
     private final String clientUsername;
     private final UserContext context;
     private final PublicBoxingKey encryptionTarget;
-    private static final Path emailDataDir = Paths.get(".apps", "email", "data");
+    private static final Path emailDataDir = PathUtil.get(".apps", "email", "data");
 
     public EmailBridgeClient(String clientUsername, UserContext context, PublicBoxingKey encryptionTarget) {
         this.clientUsername = clientUsername;
@@ -29,7 +29,7 @@ public class EmailBridgeClient {
     }
 
     private Path pendingPath() {
-        return App.getDataDir("email", clientUsername).resolve(Paths.get("default", "pending"));
+        return App.getDataDir("email", clientUsername).resolve(PathUtil.get("default", "pending"));
     }
 
     public List<String> listOutbox() {
@@ -69,14 +69,14 @@ public class EmailBridgeClient {
         if (emailMessage.forwardingToEmail.isPresent()) {
             allAttachments.addAll(emailMessage.forwardingToEmail.get().attachments);
         }
-        Path sentAttachmentsPath = pendingPath().resolve(Paths.get("sent", "attachments"));
+        Path sentAttachmentsPath = pendingPath().resolve(PathUtil.get("sent", "attachments"));
         FileWrapper sentAttachments = context.getByPath(sentAttachmentsPath).join().get();
         for(Attachment attachment : allAttachments) {
             byte[] bytes = attachmentsMap.get(attachment.uuid);
             if (bytes != null) {
-                Path outboxAttachmentPath = pendingPath().resolve(Paths.get("outbox", "attachments"));
+                Path outboxAttachmentPath = pendingPath().resolve(PathUtil.get("outbox", "attachments"));
                 FileWrapper outboxAttachmentDir = context.getByPath(outboxAttachmentPath).join().get();
-                Path attachmentFilePath = pendingPath().resolve(Paths.get("outbox", "attachments", attachment.uuid));
+                Path attachmentFilePath = pendingPath().resolve(PathUtil.get("outbox", "attachments", attachment.uuid));
                 FileWrapper attachmentFile = context.getByPath(attachmentFilePath).join().get();
                 byte[] rawAttachmentCipherText = encryptAttachment(bytes).serialize();
                 sentAttachments.uploadFileSection(attachment.uuid, AsyncReader.build(rawAttachmentCipherText),
@@ -100,7 +100,7 @@ public class EmailBridgeClient {
     private CompletableFuture<String> uploadAttachment(UserContext context, AsyncReader reader, String fileExtension,
                                                        int length) {
         String uuid = UUID.randomUUID().toString() + "." + fileExtension;
-        Path baseDir = Paths.get(clientUsername + "/" + emailDataDir + "/default/pending/inbox/attachments");
+        Path baseDir = PathUtil.get(clientUsername + "/" + emailDataDir + "/default/pending/inbox/attachments");
         return context.getByPath(baseDir)
                 .thenCompose(dir -> dir.get().uploadAndReturnFile(uuid, reader, length, false, l -> {},
                         dir.get().mirrorBatId(), context.network, context.crypto)
@@ -132,14 +132,14 @@ public class EmailBridgeClient {
 
     private static PublicBoxingKey getEncryptionTarget(UserContext context, String clientUsername) {
         Path base = App.getDataDir("email", clientUsername);
-        FileWrapper keyFile = context.getByPath(base.resolve(Paths.get("default", "pending", "encryption.publickey.cbor"))).join().get();
+        FileWrapper keyFile = context.getByPath(base.resolve(PathUtil.get("default", "pending", "encryption.publickey.cbor"))).join().get();
         return Serialize.parse(keyFile, PublicBoxingKey::fromCbor, context.network, context.crypto).join();
     }
 
     public static EmailBridgeClient build(UserContext context, String clientUsername, String clientEmailAddress) {
         Path base = App.getDataDir("email", clientUsername);
-        Path pendingPath = base.resolve(Paths.get("default", "pending"));
-        Path emailFilePath = Paths.get("default", "pending", "email.json");
+        Path pendingPath = base.resolve(PathUtil.get("default", "pending"));
+        Path emailFilePath = PathUtil.get("default", "pending", "email.json");
         Optional<FileWrapper> emailFile = context.getByPath(base.resolve(emailFilePath)).join();
         if (emailFile.isEmpty()) {
             String contents = "{ \"email\": \"" + clientEmailAddress + "\"}";

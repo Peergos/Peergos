@@ -116,7 +116,7 @@ public class FriendSourcedTrieNode implements TrieNode {
         if (path.isEmpty() || path.equals("/"))
             return getFriendRoot(network)
                     .thenApply(opt -> opt.map(f -> f.withTrieNode(this)));
-        Path file = Paths.get(ownerName + path);
+        Path file = PathUtil.get(ownerName + path);
         return updateIncludingGroups(network)
                 .thenCompose(y -> cache.getByPath(file, cache.getVersion(), hasher, network))
                 .thenApply(opt -> opt.map(f -> convert(f, path)));
@@ -131,7 +131,7 @@ public class FriendSourcedTrieNode implements TrieNode {
         if (path.isEmpty() || path.equals("/"))
             return getFriendRoot(network)
                     .thenApply(opt -> opt.map(f -> f.withTrieNode(this)));
-        Path file = Paths.get(ownerName + path);
+        Path file = PathUtil.get(ownerName + path);
         return cache.getByPath(file, version, hasher, network)
                 .thenApply(opt -> opt.map(f -> convert(f, path)));
     }
@@ -147,7 +147,7 @@ public class FriendSourcedTrieNode implements TrieNode {
                                                                         Hasher hasher,
                                                                         NetworkAccess network) {
         FileProperties.ensureValidPath(path);
-        Path dir = Paths.get(ownerName + path);
+        Path dir = PathUtil.get(ownerName + path);
         return updateIncludingGroups(network)
                 .thenCompose(x -> cache.getChildren(dir, cache.getVersion(), hasher, network))
                 .thenApply(children -> children.stream()
@@ -161,7 +161,7 @@ public class FriendSourcedTrieNode implements TrieNode {
                                                                         Snapshot version,
                                                                         NetworkAccess network) {
         FileProperties.ensureValidPath(path);
-        Path dir = Paths.get(ownerName + path);
+        Path dir = PathUtil.get(ownerName + path);
         return cache.getChildren(dir, version, hasher, network)
                 .thenApply(children -> children.stream()
                         .map(f -> convert(f, canonicalise(path) + "/" + f.getName()))
