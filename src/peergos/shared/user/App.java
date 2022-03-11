@@ -84,7 +84,7 @@ public class App implements StoreAppData {
     }
 
     private CompletableFuture<Boolean> writeFileContents(Path path, byte[] data) {
-        Path pathWithoutUsername = Paths.get(Stream.of(path.toString().split("/")).skip(1).collect(Collectors.joining("/")));
+        Path pathWithoutUsername = path.subpath(1, path.getNameCount());
         return ctx.getByPath(ctx.username).thenCompose(userRoot -> userRoot.get().getOrMkdirs(pathWithoutUsername.getParent(), ctx.network, true, userRoot.get().mirrorBatId(), ctx.crypto)
                 .thenCompose(dir -> dir.uploadOrReplaceFile(path.getFileName().toString(), AsyncReader.build(data),
                         data.length, ctx.network, ctx.crypto, x -> {})
