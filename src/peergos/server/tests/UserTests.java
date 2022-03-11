@@ -1363,7 +1363,7 @@ public abstract class UserTests {
 
         String path = "/" + username + "/" + dirName + "/" + anotherDirName;
         // move folder to new signing subspace
-        context.shareWriteAccessWith(Paths.get(path), Collections.emptySet()).join();
+        context.shareWriteAccessWith(PathUtil.get(path), Collections.emptySet()).join();
 
         FileWrapper theDir = context.getByPath(path).get().get();
         String link = theDir.toWritableLink();
