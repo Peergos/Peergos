@@ -176,7 +176,7 @@ public class ProfilePaths {
                     if (path.length() == 0) {
                         return Futures.of(false);
                     }
-                    return user.unPublishFile(Paths.get(path)).thenApply(x -> true);
+                    return user.unPublishFile(PathUtil.get(path)).thenApply(x -> true);
                 });
     }
 
@@ -194,7 +194,7 @@ public class ProfilePaths {
                 }).thenCompose(res -> {
                     if (res.isEmpty())
                         return Futures.of(Optional.empty());
-                    return user.getByPath(Paths.get(user.username).resolve(WEBROOT))
+                    return user.getByPath(PathUtil.get(user.username).resolve(WEBROOT))
                             .thenCompose(opt -> opt.map(user::makePublic)
                                     .map(f -> f.thenApply(Optional::of))
                                     .orElse(Futures.of(Optional.empty())));
