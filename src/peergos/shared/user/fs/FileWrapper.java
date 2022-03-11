@@ -204,14 +204,10 @@ public class FileWrapper {
             else
                 return CompletableFuture.completedFuture(Optional.empty());
 
-        if (path.startsWith("/"))
-            path = path.substring(1);
-        int slash = path.indexOf("/");
-        String prefix = slash > 0 ? path.substring(0, slash) : path;
-        String suffix = slash > 0 ? path.substring(slash + 1) : "";
-        return getChild(version, prefix, network).thenCompose(child -> {
+        Path canon = PathUtil.get(path);
+        return getChild(version, canon.getName(0).toString(), network).thenCompose(child -> {
             if (child.isPresent())
-                return child.get().getDescendentByPath(suffix, child.get().version, hasher, network);
+                return child.get().getDescendentByPath(canon.subpath(1, canon.getNameCount()).toString(), child.get().version, hasher, network);
             return CompletableFuture.completedFuture(Optional.empty());
         });
     }
