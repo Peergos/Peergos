@@ -104,9 +104,12 @@ public class GatewayHandler implements HttpHandler {
             }
 
             if (webRootEntry.webRoot == null) {
-                Path toWebRoot = Paths.get(new String(Serialize.readFully(webRootEntry.field, crypto, network).join()));
+                Path toWebRoot = PathUtil.get(new String(Serialize.readFully(webRootEntry.field, crypto, network).join()));
                 AbsoluteCapability capToWebRoot = UserContext.getPublicCapability(toWebRoot, network).join();
-                FileWrapper webRoot = network.getFile(capToWebRoot, owner).join().get();
+                Optional<FileWrapper> webRootOpt = network.getFile(capToWebRoot, owner).join();
+                if (webRootOpt.isEmpty())
+                    throw new IllegalStateException("web root not present");
+                FileWrapper webRoot = webRootOpt.get();
                 Optional<FileWrapper> headers = webRoot.getChild("headers.json", crypto.hasher, network).join();
                 Optional<String> csp = headers.flatMap(f -> getCsp(f));
                 webRootEntry = new WebRootEntry(webRootEntry.field, webRoot, csp);
