@@ -44,7 +44,7 @@ import java.util.stream.Stream;
 public class Main extends Builder {
     public static final String PEERGOS_PATH = "PEERGOS_PATH";
     public static final Path DEFAULT_PEERGOS_DIR_PATH =
-            PathUtil.get(System.getProperty("user.home"), ".peergos");
+            Paths.get(System.getProperty("user.home"), ".peergos");
 
     static {
         PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, initCrypto().signer);

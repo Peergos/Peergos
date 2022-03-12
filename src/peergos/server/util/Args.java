@@ -173,7 +173,7 @@ public class Args {
     }
 
     public Path getPeergosDir() {
-        return hasArg(Main.PEERGOS_PATH) ? PathUtil.get(getArg(Main.PEERGOS_PATH)) : Main.DEFAULT_PEERGOS_DIR_PATH;
+        return hasArg(Main.PEERGOS_PATH) ? Paths.get(getArg(Main.PEERGOS_PATH)) : Main.DEFAULT_PEERGOS_DIR_PATH;
     }
 
     private static Map<String, String> parseEnv() {
