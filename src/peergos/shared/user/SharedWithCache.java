@@ -208,7 +208,7 @@ public class SharedWithCache {
     }
 
     private static List<String> toList(Path p) {
-        return Arrays.asList(toRelative(p).toString().split("/"));
+        return PathUtil.components(p);
     }
 
     private static CompletableFuture<SharedWithState> parseCacheFile(FileWrapper cache, NetworkAccess network, Crypto crypto) {

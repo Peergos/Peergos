@@ -22,4 +22,11 @@ public class PathUtil {
             return result;
         return result.resolve(get(rest[0], Arrays.copyOfRange(rest, 1, rest.length)));
     }
+
+    public static List<String> components(Path p) {
+        List<String> res = new ArrayList<>();
+        for (int i=0; i < p.getNameCount(); i++)
+            res.add(p.getName(i).toString());
+        return res;
+    }
 }
