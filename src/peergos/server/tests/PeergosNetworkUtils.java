@@ -1358,7 +1358,7 @@ public class PeergosNetworkUtils {
         Assert.assertTrue(item.sharer.equals(sharer.username));
         AbsoluteCapability readCap = sharer.getByPath(file1).join().get().getPointer().capability.readOnly();
         Assert.assertTrue(item.cap.equals(readCap));
-        Assert.assertTrue(item.path.equals("/" + file1.toString()));
+        Assert.assertTrue(PathUtil.get(item.path).equals(file1));
 
         // Test the feed after a fresh login
         UserContext freshA = PeergosNetworkUtils.ensureSignedUp(a.username, password, network, crypto);
