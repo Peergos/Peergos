@@ -320,7 +320,7 @@ public class IpfsInstaller {
     }
 
     private static Path getLocalCacheDir() {
-        return PathUtil.get(System.getProperty("user.home"), ".cache");
+        return Paths.get(System.getProperty("user.home"), ".cache");
     }
 
     public static void main(String[] args) throws Exception {
