@@ -55,8 +55,14 @@ public class RamUserTests extends UserTests {
         deleteFiles(peergosDir.toFile());
     }
 
+    private static boolean isWindows() {
+        return System.getProperty("os.name").toLowerCase().startsWith("windows");
+    }
+
     @Test
     public void publicWebHosting() throws Exception {
+        if (isWindows()) // Windows doesn't allow localhost domains natively
+            return;
         String username = generateUsername();
         String password = "password";
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
