@@ -285,9 +285,7 @@ public class SocialFeed {
     }
 
     private static String extractOwner(String path) {
-        int start = path.startsWith("/") ? 1 : 0;
-        int end = path.indexOf("/", start + 1);
-        return path.substring(start, end);
+        return PathUtil.get(path).getName(0).toString();
     }
 
     private synchronized CompletableFuture<SocialFeed> addToFriend(String friendName,
