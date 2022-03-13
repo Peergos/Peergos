@@ -1982,7 +1982,11 @@ public class UserContext {
     }
 
     public CompletableFuture<Optional<FileWrapper>> getByPath(Path path) {
-        return getByPath(path.toString());
+        String pathString = IntStream.range(0, path.getNameCount())
+                .mapToObj(path::getName)
+                .map(Path::toString)
+                .collect(Collectors.joining("/"));
+        return getByPath(pathString);
     }
 
     @JsMethod
