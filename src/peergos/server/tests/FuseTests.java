@@ -39,10 +39,13 @@ public class FuseTests {
     private static boolean isWindows() {
         return System.getProperty("os.name").toLowerCase().startsWith("windows");
     }
+    private static boolean isMacos() {
+        return System.getProperty("os.name").toLowerCase().startsWith("mac");
+    }
 
     @BeforeClass
     public static void init() throws Exception {
-        if (isWindows())
+        if (isWindows() || isMacos())
             return;
         Args args = UserTests.buildArgs().with("useIPFS", "false");
         setWebPort(args.getInt("port"));
