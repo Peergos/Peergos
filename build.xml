@@ -117,7 +117,7 @@
     </pathconvert>
     <!-- run one particular test -->
     <junit fork="true" printsummary="true" haltonfailure="no">
-      <jvmarg value="-Xmx2g"/>
+      <jvmarg value="-Xmx4g"/>
       <jvmarg value="-Djava.library.path=native-lib"/>
       <classpath>
 	<fileset dir="lib-build">
