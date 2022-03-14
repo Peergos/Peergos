@@ -299,24 +299,24 @@ public class MultiNodeNetworkTests {
 
         u2.sendFollowRequest(username1, SymmetricKey.random()).get();
         List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
-        Assert.assertTrue("Receive a follow request", u1Requests.size() > 0);
+        assertTrue("Receive a follow request", u1Requests.size() > 0);
         u1.sendReplyFollowRequest(u1Requests.get(0), true, true).get();
         List<FollowRequestWithCipherText> u2FollowRequests = u2.processFollowRequests().get();
         Optional<FileWrapper> u1ToU2 = u2.getByPath("/" + u1.username).get();
-        Assert.assertTrue("Friend root present after accepted follow request", u1ToU2.isPresent());
+        assertTrue("Friend root present after accepted follow request", u1ToU2.isPresent());
 
         Optional<FileWrapper> u2ToU1 = u1.getByPath("/" + u2.username).get();
-        Assert.assertTrue("Friend root present after accepted follow request", u2ToU1.isPresent());
+        assertTrue("Friend root present after accepted follow request", u2ToU1.isPresent());
 
         Set<String> u1Following = ensureSignedUp(username1, password1, getNode(iNode2).clear(), crypto).getSocialState().get()
                 .followingRoots.stream().map(f -> f.getName())
                 .collect(Collectors.toSet());
-        Assert.assertTrue("Following correct", u1Following.contains(u2.username));
+        assertTrue("Following correct", u1Following.contains(u2.username));
 
         Set<String> u2Following = ensureSignedUp(username2, password2, getNode(iNode1).clear(), crypto).getSocialState().get()
                 .followingRoots.stream().map(f -> f.getName())
                 .collect(Collectors.toSet());
-        Assert.assertTrue("Following correct", u2Following.contains(u1.username));
+        assertTrue("Following correct", u2Following.contains(u1.username));
     }
 
     @Test
