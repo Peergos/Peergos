@@ -151,12 +151,7 @@ public class FileProperties implements Cborable {
         thumbnail.ifPresent(thumb -> state.put("i", new CborObject.CborByteArray(thumb.data)));
         thumbnail.ifPresent(thumb -> state.put("im", new CborObject.CborString(thumb.mimeType)));
         streamSecret.ifPresent(secret -> state.put("p", new CborObject.CborByteArray(secret)));
-        CborObject obj = CborObject.CborMap.build(state);
-        byte[] bytes = obj.toByteArray();
-        if (name.equals("somedata.bin")) {
-            System.out.println("KEV name=" + name + " len=" + bytes.length);
-        }
-        return obj;
+        return CborObject.CborMap.build(state);
     }
 
     @SuppressWarnings("unusable-by-js")

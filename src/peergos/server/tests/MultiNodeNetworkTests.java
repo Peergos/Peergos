@@ -11,7 +11,6 @@ import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.social.*;
@@ -22,17 +21,13 @@ import peergos.shared.util.*;
 
 import java.net.*;
 import java.nio.file.*;
-import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.stream.*;
 
-import static org.junit.Assert.*;
 import static peergos.server.tests.UserTests.deleteFiles;
 import static peergos.server.tests.UserTests.randomString;
 import static peergos.server.tests.PeergosNetworkUtils.ensureSignedUp;
 import static peergos.server.tests.PeergosNetworkUtils.generateUsername;
-import static peergos.server.tests.PeergosNetworkUtils.*;
 
 @RunWith(Parameterized.class)
 public class MultiNodeNetworkTests {
@@ -147,7 +142,6 @@ public class MultiNodeNetworkTests {
         }
     }
 
-    /*
     @Test
     public void signUp() {
         UserContext context = ensureSignedUp(generateUsername(random), randomString(), getNode(iNode1), crypto);
@@ -158,7 +152,7 @@ public class MultiNodeNetworkTests {
             long quota = node.spaceUsage.getQuota(context.signer.publicKeyHash, signedTime).join();
             Assert.assertTrue(usage >0 && quota > 0);
         }
-    }*/
+    }
 
     @Test
     public void migrate() {
@@ -184,7 +178,7 @@ public class MultiNodeNetworkTests {
             password = newPassword;
         }
         // make sure we have some raw fragments
-        String filename = "somedata.bin";
+        String filename = "somedata1234567890123456789012345678901234567890123456789012345678901234567890.bin";
         user.getUserRoot().join().uploadOrReplaceFile(filename, AsyncReader.build(new byte[10*1024*1024]),
                 10*1024*1024, user.network, crypto, x -> {}).join();
 
@@ -200,13 +194,12 @@ public class MultiNodeNetworkTests {
 
         UserContext friend = ensureSignedUp(generateUsername(random), password, node1, crypto);
         friend.sendInitialFollowRequest(username).join();
-        long usageVia1 = user.getSpaceUsage().join();
 
         // migrate to node2
         List<UserPublicKeyLink> existing = user.network.coreNode.getChain(username).join();
         List<UserPublicKeyLink> newChain = Migrate.buildMigrationChain(existing, newStorageNodeId, user.signer.secret);
         UserContext userViaNewServer = ensureSignedUp(username, password, node2, crypto);
-        /*
+
         List<BatWithId> bats = node1.batCave.getUserBats(username, userViaNewServer.signer).join();
         List<BatWithId> batsViaNewNode = node2.batCave.getUserBats(username, userViaNewServer.signer).join();
         Assert.assertTrue(bats.equals(batsViaNewNode));
@@ -217,14 +210,15 @@ public class MultiNodeNetworkTests {
         List<UserPublicKeyLink> chain = userViaNewServer.network.coreNode.getChain(username).join();
         Multihash storageNode = chain.get(chain.size() - 1).claim.storageProviders.stream().findFirst().get();
         Assert.assertTrue(storageNode.equals(newStorageNodeId));
-        */
+
         // test a fresh login on the new storage node
         UserContext postMigration = ensureSignedUp(username, password, node2.clear(), crypto);
         long usageVia2 = postMigration.getSpaceUsage().join();
         // Note we currently don't remove the old pointer after changing password,
         // so there is a 5kib reduction after migration per password change
-        Assert.assertTrue(usageVia2 == usageVia1 || (nPasswordChanges > 0 && usageVia2 < usageVia1));
-/*
+        // Takes into account FileProperties padding. CryptreeNode.META_DATA_PADDING_BLOCKSIZE = 16;
+        Assert.assertTrue((usageVia2 == usageVia1 + 16 + 1) || (nPasswordChanges > 0 && usageVia2 < usageVia1));
+
         // check pending followRequest was transferred
         List<FollowRequestWithCipherText> followRequests = postMigration.processFollowRequests().join();
         Assert.assertTrue(followRequests.size() == 1);
@@ -251,7 +245,7 @@ public class MultiNodeNetworkTests {
             if (! e.getCause().getMessage().startsWith("New%2Bclaim%2Bchain%2Bexpiry%2Bbefore%2Bexisting"))
                 throw new RuntimeException(e.getCause());
         }
-    */
+
     }
 
     /*
