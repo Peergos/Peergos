@@ -11,7 +11,7 @@ import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.crypto.symmetric.SymmetricKey;
+import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.social.*;
@@ -22,15 +22,17 @@ import peergos.shared.util.*;
 
 import java.net.*;
 import java.nio.file.*;
-import java.time.LocalDate;
+import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.stream.Collectors;
+import java.util.stream.*;
 
-import static org.junit.Assert.assertTrue;
-import static peergos.server.tests.PeergosNetworkUtils.*;
+import static org.junit.Assert.*;
 import static peergos.server.tests.UserTests.deleteFiles;
 import static peergos.server.tests.UserTests.randomString;
+import static peergos.server.tests.PeergosNetworkUtils.ensureSignedUp;
+import static peergos.server.tests.PeergosNetworkUtils.generateUsername;
+import static peergos.server.tests.PeergosNetworkUtils.*;
 
 @RunWith(Parameterized.class)
 public class MultiNodeNetworkTests {
@@ -153,7 +155,7 @@ public class MultiNodeNetworkTests {
             long usage = node.spaceUsage.getUsage(context.signer.publicKeyHash).join();
             byte[] signedTime = TimeLimitedClient.signNow(context.signer.secret);
             long quota = node.spaceUsage.getQuota(context.signer.publicKeyHash, signedTime).join();
-            assertTrue(usage >0 && quota > 0);
+            Assert.assertTrue(usage >0 && quota > 0);
         }
     }
 
@@ -189,11 +191,11 @@ public class MultiNodeNetworkTests {
         FileWrapper file = user.getByPath("/" + username + "/" + filename).join().get();
         WritableAbsoluteCapability cap = file.writableFilePointer();
         WritableAbsoluteCapability badCap = cap.withMapKey(cap.getMapKey(), Optional.empty());
-        assertTrue(node1.clear().getFile(badCap, username).join().isEmpty());
+        Assert.assertTrue(node1.clear().getFile(badCap, username).join().isEmpty());
 
         Multihash fragment = file.getPointer().fileAccess.toCbor().links().get(0);
         CompletableFuture<Optional<byte[]>> raw = node1.clear().dhtClient.getRaw((Cid) fragment, Optional.empty());
-        assertTrue(raw.isCompletedExceptionally() || raw.join().isEmpty());
+        Assert.assertTrue(raw.isCompletedExceptionally() || raw.join().isEmpty());
 
         UserContext friend = ensureSignedUp(generateUsername(random), password, node1, crypto);
         friend.sendInitialFollowRequest(username).join();
@@ -205,14 +207,14 @@ public class MultiNodeNetworkTests {
 
         List<BatWithId> bats = node1.batCave.getUserBats(username, userViaNewServer.signer).join();
         List<BatWithId> batsViaNewNode = node2.batCave.getUserBats(username, userViaNewServer.signer).join();
-        assertTrue(bats.equals(batsViaNewNode));
+        Assert.assertTrue(bats.equals(batsViaNewNode));
         Optional<BatWithId> mirrorBat = Optional.of(bats.get(bats.size() - 1));
         long usageVia1 = user.getSpaceUsage().join();
         userViaNewServer.network.coreNode.migrateUser(username, newChain, originalNodeId, mirrorBat).join();
 
         List<UserPublicKeyLink> chain = userViaNewServer.network.coreNode.getChain(username).join();
         Multihash storageNode = chain.get(chain.size() - 1).claim.storageProviders.stream().findFirst().get();
-        assertTrue(storageNode.equals(newStorageNodeId));
+        Assert.assertTrue(storageNode.equals(newStorageNodeId));
 
         // test a fresh login on the new storage node
         UserContext postMigration = ensureSignedUp(username, password, node2.clear(), crypto);
@@ -220,15 +222,15 @@ public class MultiNodeNetworkTests {
         // Note we currently don't remove the old pointer after changing password,
         // so there is a 5kib reduction after migration per password change
         // Takes into account FileProperties padding. CryptreeNode.META_DATA_PADDING_BLOCKSIZE = 16;
-        assertTrue((usageVia2 == usageVia1 + 16 + 1) || (nPasswordChanges > 0 && usageVia2 < usageVia1));
+        Assert.assertTrue((usageVia2 == usageVia1 + 16 + 1) || (nPasswordChanges > 0 && usageVia2 < usageVia1));
 
         // check pending followRequest was transferred
         List<FollowRequestWithCipherText> followRequests = postMigration.processFollowRequests().join();
-        assertTrue(followRequests.size() == 1);
+        Assert.assertTrue(followRequests.size() == 1);
 
         // check bats were transferred
         List<BatWithId> postBats = postMigration.network.batCave.getUserBats(username, postMigration.signer).join();
-        assertTrue("mirror bats transferred", postBats.equals(bats));
+        Assert.assertTrue("mirror bats transferred", postBats.equals(bats));
 
         // check a reverse migration can't be triggered by anyone else
         try {
@@ -283,7 +285,7 @@ public class MultiNodeNetworkTests {
 
         List<UserPublicKeyLink> chain = userViaNewServer.network.coreNode.getChain(username).join();
         Multihash storageNode = chain.get(chain.size() - 1).claim.storageProviders.stream().findFirst().get();
-        assertTrue(storageNode.equals(originalNodeId));
+        Assert.assertTrue(storageNode.equals(originalNodeId));
     }
 
     @Test
@@ -297,24 +299,24 @@ public class MultiNodeNetworkTests {
 
         u2.sendFollowRequest(username1, SymmetricKey.random()).get();
         List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
-        assertTrue("Receive a follow request", u1Requests.size() > 0);
+        Assert.assertTrue("Receive a follow request", u1Requests.size() > 0);
         u1.sendReplyFollowRequest(u1Requests.get(0), true, true).get();
         List<FollowRequestWithCipherText> u2FollowRequests = u2.processFollowRequests().get();
         Optional<FileWrapper> u1ToU2 = u2.getByPath("/" + u1.username).get();
-        assertTrue("Friend root present after accepted follow request", u1ToU2.isPresent());
+        Assert.assertTrue("Friend root present after accepted follow request", u1ToU2.isPresent());
 
         Optional<FileWrapper> u2ToU1 = u1.getByPath("/" + u2.username).get();
-        assertTrue("Friend root present after accepted follow request", u2ToU1.isPresent());
+        Assert.assertTrue("Friend root present after accepted follow request", u2ToU1.isPresent());
 
         Set<String> u1Following = ensureSignedUp(username1, password1, getNode(iNode2).clear(), crypto).getSocialState().get()
                 .followingRoots.stream().map(f -> f.getName())
                 .collect(Collectors.toSet());
-        assertTrue("Following correct", u1Following.contains(u2.username));
+        Assert.assertTrue("Following correct", u1Following.contains(u2.username));
 
         Set<String> u2Following = ensureSignedUp(username2, password2, getNode(iNode1).clear(), crypto).getSocialState().get()
                 .followingRoots.stream().map(f -> f.getName())
                 .collect(Collectors.toSet());
-        assertTrue("Following correct", u2Following.contains(u1.username));
+        Assert.assertTrue("Following correct", u2Following.contains(u1.username));
     }
 
     @Test
@@ -329,7 +331,7 @@ public class MultiNodeNetworkTests {
         FileWrapper upload = root.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length,
                 getNode(iNode1), crypto, x -> {}).get();
         Optional<FileWrapper> file = u1.getByPath("/" + username1 + "/" + filename).get();
-        assertTrue(file.isPresent());
+        Assert.assertTrue(file.isPresent());
     }
 
     @Test
