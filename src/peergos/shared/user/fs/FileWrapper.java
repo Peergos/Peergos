@@ -72,7 +72,7 @@ public class FileWrapper {
                 pointer.capability instanceof WritableAbsoluteCapability ||
                 entryWriter.map(s -> s.publicKeyHash.equals(pointer.capability.writer)).orElse(false);
         if (pointer == null)
-            props = new FileProperties("/", true, false, "", 0, LocalDateTime.MIN, false, Optional.empty(), Optional.empty());
+            props = new FileProperties("/", true, false, "", 0, LocalDateTime.MIN, LocalDateTime.MIN, false, Optional.empty(), Optional.empty());
         else {
             SymmetricKey parentKey = this.getParentKey();
             FileProperties directProps = pointer.fileAccess.getProperties(parentKey);
@@ -904,7 +904,7 @@ public class FileWrapper {
                                                 FileProperties newProps = new FileProperties(props.name, false,
                                                         props.isLink, props.mimeType,
                                                         endIndex > currentSize ? endIndex : currentSize,
-                                                        LocalDateTime.now(), props.isHidden,
+                                                        LocalDateTime.now(), props.created, props.isHidden,
                                                         props.thumbnail, props.streamSecret);
 
                                                 CompletableFuture<Snapshot> chunkUploaded = FileUploader.uploadChunk(version, committer, us.signingPair(),
@@ -1095,7 +1095,7 @@ public class FileWrapper {
                                                     return updatedChild.getInputStream(latestSnapshot.get(updatedChild.writer()).props, network, crypto, l -> {})
                                                             .thenCompose(is -> updatedChild.recalculateThumbnail(
                                                                 latestSnapshot, committer, filename, is, isHidden,
-                                                                updatedChild.getSize(), network, (WritableAbsoluteCapability)updatedChild.pointer.capability,
+                                                                updatedChild.getSize(), updatedChild.props.created, network, (WritableAbsoluteCapability)updatedChild.pointer.capability,
                                                                 updatedChild.getFileProperties().streamSecret));
                                                 };
 
@@ -1125,13 +1125,13 @@ public class FileWrapper {
                                             SymmetricKey dirParentKey = dirAccess.getParentKey(rootRKey);
                                             Location parentLocation = getLocation();
                                             Optional<Bat> parentBat = writableFilePointer().bat;
-
+                                            LocalDateTime timestamp = LocalDateTime.now();
                                             return calculateMimeType(fileData, endIndex, filename).thenCompose(mimeType -> fileData.reset()
                                                     .thenCompose(resetReader -> {
                                                         Optional<byte[]> streamSecret = Optional.of(crypto.random.randomBytes(32));
                                                         FileProperties fileProps = new FileProperties(filename,
                                                                 false, false, mimeType, endIndex,
-                                                                LocalDateTime.now(), isHidden, existingThumbnail, streamSecret);
+                                                                timestamp, timestamp, isHidden, existingThumbnail, streamSecret);
 
                                                         FileUploader chunks = new FileUploader(filename, mimeType, resetReader,
                                                                 startIndex, endIndex, fileKey, dataKey, parentLocation, parentBat,
@@ -1149,7 +1149,7 @@ public class FileWrapper {
                                                                 .thenCompose(cwd -> fileData.reset().thenCompose(resetAgain ->
                                                                         generateThumbnailAndUpdate(cwd, committer, fileWriteCap, filename, resetAgain,
                                                                                 network, isHidden, mimeType,
-                                                                                endIndex, LocalDateTime.now(), streamSecret)))
+                                                                                endIndex, timestamp, timestamp, streamSecret)))
                                                                 .thenApply(s -> new Pair<>(s, Optional.of(new NamedRelativeCapability(filename, writableFilePointer().relativise(fileWriteCap)))));
                                                     }));
                                         })
@@ -1163,7 +1163,7 @@ public class FileWrapper {
                 (latestSnapshot, committer) -> getInputStream(latestSnapshot.get(writer()).props, network, crypto, l -> {})
                         .thenCompose(is -> recalculateThumbnail(
                                 latestSnapshot, committer, getName(), is, props.isHidden,
-                                getSize(), network, (WritableAbsoluteCapability)pointer.capability,
+                                getSize(), props.created, network, (WritableAbsoluteCapability)pointer.capability,
                                 getFileProperties().streamSecret))
                         .thenApply(res -> new Pair<>(res, true))
                         .exceptionally(ex -> new Pair<>(latestSnapshot, false))
@@ -1171,14 +1171,14 @@ public class FileWrapper {
     }
     
     private CompletableFuture<Snapshot> recalculateThumbnail(Snapshot snapshot, Committer committer, String filename, AsyncReader fileData
-             , boolean isHidden, long fileSize, NetworkAccess network, WritableAbsoluteCapability fileWriteCap, Optional<byte[]> streamSecret
+             , boolean isHidden, long fileSize, LocalDateTime createdDateTime, NetworkAccess network, WritableAbsoluteCapability fileWriteCap, Optional<byte[]> streamSecret
     ) {
         return fileData.reset()
                 .thenCompose(fileData2 -> calculateMimeType(fileData2, fileSize, filename)
                         .thenCompose(mimeType -> fileData.reset()
                                 .thenCompose(resetAgain ->
                                     generateThumbnailAndUpdate(snapshot, committer, fileWriteCap, filename, resetAgain,
-                                            network, isHidden, mimeType, fileSize, LocalDateTime.now(), streamSecret))));
+                                            network, isHidden, mimeType, fileSize, LocalDateTime.now(), createdDateTime, streamSecret))));
     }
 
     private CompletableFuture<Snapshot> generateThumbnailAndUpdate(Snapshot base,
@@ -1191,6 +1191,7 @@ public class FileWrapper {
                                                                    String mimeType,
                                                                    long fileSize,
                                                                    LocalDateTime updatedDateTime,
+                                                                   LocalDateTime createdDateTime,
                                                                    Optional<byte[]> streamSecret) {
         return network.getFile(base, cap, getChildsEntryWriter(), ownername).thenCompose(fileOpt -> {
             if (fileOpt.get().props.thumbnail.isEmpty()) {
@@ -1199,7 +1200,7 @@ public class FileWrapper {
                             if (thumbData.isEmpty())
                                 return Futures.of(base);
                             FileProperties fileProps = new FileProperties(fileName, false, props.isLink, mimeType, fileSize,
-                                    updatedDateTime, isHidden, thumbData, streamSecret);
+                                    updatedDateTime, createdDateTime, isHidden, thumbData, streamSecret);
 
                             return fileOpt.get().updateProperties(base, committer, fileProps, network);
                         });
@@ -1477,7 +1478,7 @@ public class FileWrapper {
                     boolean isLink = ourPointer.getProperties().isLink;
                     FileProperties newProps = new FileProperties(newFilename, isDir, isLink,
                             currentProps.mimeType, currentProps.size,
-                            currentProps.modified, currentProps.isHidden,
+                            currentProps.modified, currentProps.created, currentProps.isHidden,
                             currentProps.thumbnail, currentProps.streamSecret);
                     SigningPrivateKeyAndPublicHash signer = isLink ? parent.signingPair() : signingPair();
                     return userContext.network.synchronizer.applyComplexUpdate(owner(), signer,
