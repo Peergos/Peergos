@@ -79,7 +79,7 @@ public class FuseTests {
     }
 
     @Test public void createFileTest() throws IOException  {
-        if (isWindows())
+        if (isWindows() || isMacos())
             return;
         Path resolve = home.resolve(UUID.randomUUID().toString());
         assertFalse("file already exists", resolve.toFile().exists());
@@ -88,7 +88,7 @@ public class FuseTests {
     }
 
     @Test public void moveTest() throws IOException {
-        if (isWindows())
+        if (isWindows() || isMacos())
             return;
         Path initial = createRandomFile(0x1000);
 
@@ -115,7 +115,7 @@ public class FuseTests {
     }
 
     @Test public void copyFileTest() throws IOException  {
-        if (isWindows())
+        if (isWindows() || isMacos())
             return;
         Path initial = createRandomFile(1024*1024*10);
         Path target = initial.getParent().resolve(randomUUID().toString());
@@ -139,7 +139,7 @@ public class FuseTests {
     }
 
     @Test public void copyFileFromHostTest() throws IOException  {
-        if (isWindows())
+        if (isWindows() || isMacos())
             return;
         Path initial = Files.createTempFile(UUID.randomUUID().toString(), "rw");
         byte[] data = new byte[6*1024*1024];
@@ -162,7 +162,7 @@ public class FuseTests {
     }
 
     @Test public void randomReadTest() throws IOException  {
-        if (isWindows())
+        if (isWindows() || isMacos())
             return;
         Path initial = Files.createTempFile(UUID.randomUUID().toString(), "rw");
         byte[] data = new byte[6*1024*1024];
@@ -200,7 +200,7 @@ public class FuseTests {
     }
 
     @Test public void removeTest() throws IOException {
-        if (isWindows())
+        if (isWindows() || isMacos())
             return;
         Path path = createRandomFile();
         assertTrue("path exists before delete", path.toFile().exists());
@@ -209,7 +209,7 @@ public class FuseTests {
     }
 
     @Test public void writePastEnd() throws IOException {
-        if (isWindows())
+        if (isWindows() || isMacos())
             return;
         int length = 10 * 1024;
         Path path = createRandomFile(length);
@@ -229,7 +229,7 @@ public class FuseTests {
 
     @Test 
     public void truncateTest() throws IOException {
-        if (isWindows())
+        if (isWindows() || isMacos())
             return;
         int initialLength = 0x1000;
         Path path = createRandomFile(initialLength);
@@ -247,7 +247,7 @@ public class FuseTests {
 
     @Test
     public void anotherTruncateTest() throws IOException {
-        if (isWindows())
+        if (isWindows() || isMacos())
             return;
         long kiloByte = 1024; // 1KB
         int initialLength = (int) (4 * kiloByte);
@@ -268,7 +268,7 @@ public class FuseTests {
 
     @Test
     public void lastModifiedTimeTest() throws IOException {
-        if (isWindows())
+        if (isWindows() || isMacos())
             return;
         Path path = createRandomFile();
 
@@ -285,7 +285,7 @@ public class FuseTests {
     }
 
     @Test public void mkdirsTest() throws IOException {
-        if (isWindows())
+        if (isWindows() || isMacos())
             return;
 
         String[] stem = Stream.generate(() -> randomUUID().toString())
@@ -303,7 +303,7 @@ public class FuseTests {
 
     @Test
     public  void rmdirTest() throws IOException {
-        if (isWindows())
+        if (isWindows() || isMacos())
             return;
         Path path = home
                 .resolve(randomUUID().toString())
@@ -380,7 +380,7 @@ public class FuseTests {
 
     @Test
     public void readWriteTest() throws IOException {
-        if (isWindows())
+        if (isWindows() || isMacos())
             return;
         Random random = new Random(3); // repeatable with same seed 3 leads to failure with bulk upload at size of 137
         for (int power = 5; power < 20; power++) {
