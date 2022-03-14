@@ -58,10 +58,13 @@ public class RamUserTests extends UserTests {
     private static boolean isWindows() {
         return System.getProperty("os.name").toLowerCase().startsWith("windows");
     }
+    private static boolean isMacos() {
+        return System.getProperty("os.name").toLowerCase().startsWith("mac");
+    }
 
     @Test
     public void publicWebHosting() throws Exception {
-        if (isWindows()) // Windows doesn't allow localhost domains natively
+        if (isWindows() || isMacos()) // Windows/MacOS doesn't allow localhost domains natively
             return;
         String username = generateUsername();
         String password = "password";
