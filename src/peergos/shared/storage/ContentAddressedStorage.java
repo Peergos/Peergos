@@ -499,7 +499,12 @@ public interface ContentAddressedStorage {
         @Override
         public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
             return poster.get(apiPrefix + BLOCK_STAT + "?stream-channels=true&arg=" + block.toString() + "&auth=letmein")
-                    .thenApply(raw -> Optional.of((Integer)((Map)JSONParser.parse(new String(raw))).get("Size")));
+                    .thenApply(raw -> {
+                        Map map = (Map)JSONParser.parse(new String(raw));
+                        Integer size = (Integer)(map).get("Size");
+                        System.out.println("KEV size=" + size);
+                        return Optional.of(size);
+                    });
         }
     }
 
