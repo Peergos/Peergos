@@ -156,8 +156,16 @@
     </for>
   </target>
 
+  <condition property="isMac">
+    <os family="mac" />
+  </condition>
   <condition property="isLinux">
-    <os family="unix" />
+    <and>
+      <os family="unix"/>
+      <not>
+        <os family="mac"/>
+      </not>
+    </and>
   </condition>
   
   <target name="linux_tests" depends="compile,dist" if="isLinux">
