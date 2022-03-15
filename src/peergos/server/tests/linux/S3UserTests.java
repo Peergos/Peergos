@@ -1,10 +1,11 @@
-package peergos.server.tests;
+package peergos.server.tests.linux;
 
 import org.junit.*;
 import org.junit.runner.*;
 import org.junit.runners.*;
 import peergos.server.*;
 import peergos.server.storage.*;
+import peergos.server.tests.*;
 import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.crypto.hash.*;

@@ -137,7 +137,7 @@
     </junit>
   </target>
 
-  <target name="parallel_test" depends="compile,dist">
+  <target name="parallel_test" depends="compile,dist,linux_tests">
     <for
 	keepgoing="false"
 	threadCount="1"
@@ -146,6 +146,29 @@
       <path>
 	<fileset dir="${test.sources}">
 	  <include name="peergos/server/tests/*.java"/>
+	</fileset>
+      </path>
+      <sequential>
+	<antcall target="execute.test">
+	  <param name="test.source.absolute" value="@{test.source.absolute}"/>
+	</antcall>
+      </sequential>
+    </for>
+  </target>
+
+  <condition property="isLinux">
+    <os family="unix" />
+  </condition>
+  
+  <target name="linux_tests" depends="compile,dist" if="isLinux">
+    <for
+	keepgoing="false"
+	threadCount="1"
+	parallel="true"
+	param="test.source.absolute">
+      <path>
+	<fileset dir="${test.sources}">
+	  <include name="peergos/server/tests/linux/*.java"/>
 	</fileset>
       </path>
       <sequential>
