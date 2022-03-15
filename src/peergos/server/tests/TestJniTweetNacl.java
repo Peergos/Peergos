@@ -18,9 +18,12 @@ public class TestJniTweetNacl {
     private static boolean isWindows() {
         return System.getProperty("os.name").toLowerCase().startsWith("windows");
     }
+    private static boolean isMacos() {
+        return System.getProperty("os.name").toLowerCase().startsWith("mac");
+    }
 
     @BeforeClass public static void init() {
-        if (isWindows())
+        if (isWindows() || isMacos())
             return;
         JniTweetNacl instance = JniTweetNacl.build();
 
@@ -55,7 +58,7 @@ public class TestJniTweetNacl {
 
     @Test
     public void testSigningIdentity() {
-        if (isWindows())
+        if (isWindows() || isMacos())
             return;
         byte[] secretSignBytes = new byte[64];
         byte[] publicSignBytes = new byte[32];
@@ -72,7 +75,7 @@ public class TestJniTweetNacl {
 
     @Test
     public void testSecretboxIdentity() {
-        if (isWindows())
+        if (isWindows() || isMacos())
             return;
         byte[] key = new byte[32];
         byte[] nonce = new byte[32];
