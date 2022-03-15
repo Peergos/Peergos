@@ -1327,7 +1327,7 @@ public class MultiUserTests {
         String username2 = random();
         String password2 = random();
         UserContext u2 = PeergosNetworkUtils.ensureSignedUp(username2, password2, network, crypto);
-        u2.sendFollowRequest(u1.username, SymmetricKey.random());
+        u2.sendFollowRequest(u1.username, SymmetricKey.random()).join();
         List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
         assertTrue("Receive a follow request", u1Requests.size() > 0);
         u1.sendReplyFollowRequest(u1Requests.get(0), false, true);
