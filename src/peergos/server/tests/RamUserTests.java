@@ -55,8 +55,17 @@ public class RamUserTests extends UserTests {
         deleteFiles(peergosDir.toFile());
     }
 
+    private static boolean isWindows() {
+        return System.getProperty("os.name").toLowerCase().startsWith("windows");
+    }
+    private static boolean isMacos() {
+        return System.getProperty("os.name").toLowerCase().startsWith("mac");
+    }
+
     @Test
     public void publicWebHosting() throws Exception {
+        if (isWindows() || isMacos()) // Windows/MacOS doesn't allow localhost domains natively
+            return;
         String username = generateUsername();
         String password = "password";
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
@@ -115,7 +124,7 @@ public class RamUserTests extends UserTests {
         FileWrapper userRoot2 = userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(fileData), fileData.length,
                 context.network, context.crypto, l -> {}).join();
 
-        FileWrapper file = context.getByPath(Paths.get(username, filename)).join().get();
+        FileWrapper file = context.getByPath(PathUtil.get(username, filename)).join().get();
         FileProperties props = file.getFileProperties();
         int sizeHigh = props.sizeHigh();
         int sizeLow = props.sizeLow();
@@ -162,7 +171,7 @@ public class RamUserTests extends UserTests {
         FileWrapper userRoot2 = userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(fileData), fileData.length,
                 context.network, context.crypto, l -> {}).join();
 
-        FileWrapper file = context.getByPath(Paths.get(username, filename)).join().get();
+        FileWrapper file = context.getByPath(PathUtil.get(username, filename)).join().get();
         FileProperties props = file.getFileProperties();
         int sizeHigh = props.sizeHigh();
         int sizeLow = props.sizeLow();
@@ -203,7 +212,7 @@ public class RamUserTests extends UserTests {
         FileWrapper userRoot2 = userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(fileData), fileData.length,
                 context.network, context.crypto, l -> {}).join();
 
-        FileWrapper file = context.getByPath(Paths.get(username, filename)).join().get();
+        FileWrapper file = context.getByPath(PathUtil.get(username, filename)).join().get();
         FileProperties props = file.getFileProperties();
         int sizeHigh = props.sizeHigh();
         int sizeLow = props.sizeLow();
@@ -297,13 +306,13 @@ public class RamUserTests extends UserTests {
         user1Root.mkdir(folder1, user1.network, false, user1.mirrorBatId(), crypto).join();
 
         String folder11 = "folder1.1";
-        user1.getByPath(Paths.get(username1, folder1)).join().get()
+        user1.getByPath(PathUtil.get(username1, folder1)).join().get()
                 .mkdir(folder11, user1.network, false, user1.mirrorBatId(), crypto).join();
 
         String filename = "somedata.txt";
         // write empty file
         byte[] data = new byte[0];
-        user1.getByPath(Paths.get(username1, folder1, folder11)).join().get()
+        user1.getByPath(PathUtil.get(username1, folder1, folder11)).join().get()
                 .uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length, user1.network,
                 crypto, l -> {}).join();
 
@@ -315,9 +324,9 @@ public class RamUserTests extends UserTests {
         user1.sendReplyFollowRequest(incoming.get(0), true, true).join();
         user2.getSocialState().join();
 
-        user1.shareWriteAccessWith(Paths.get(username1, folder1), Collections.singleton(username2)).join();
+        user1.shareWriteAccessWith(PathUtil.get(username1, folder1), Collections.singleton(username2)).join();
 
-        user1.unShareWriteAccess(Paths.get(username1, folder1), username2).join();
+        user1.unShareWriteAccess(PathUtil.get(username1, folder1), username2).join();
         // check user1 can still log in
         UserContext freshUser1 = PeergosNetworkUtils.ensureSignedUp(username1, password, network, crypto);
     }

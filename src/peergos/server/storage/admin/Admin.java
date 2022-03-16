@@ -21,7 +21,7 @@ import java.util.regex.*;
 
 public class Admin implements InstanceAdmin {
 
-    private static final Path waitingList = Paths.get("waiting-list.txt");
+    private static final Path waitingList = PathUtil.get("waiting-list.txt");
     private static final int MAX_WAITING = 1_000_000;
 
     private final Set<String> adminUsernames;
@@ -51,7 +51,7 @@ public class Admin implements InstanceAdmin {
 
         String version = "";
         try {
-            StaticHandler.Asset manifest = JarHandler.getAsset("META-INF/MANIFEST.MF", Paths.get("/"), false);
+            StaticHandler.Asset manifest = JarHandler.getAsset("META-INF/MANIFEST.MF", PathUtil.get("/"), false);
             version = Arrays.stream(new String(manifest.data).split("\n"))
                     .filter(line -> line.startsWith("Version"))
                     .findFirst()

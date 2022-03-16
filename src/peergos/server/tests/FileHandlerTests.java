@@ -2,14 +2,14 @@ package peergos.server.tests;
 import org.junit.Assert;
 import org.junit.Test;
 import peergos.server.net.*;
+import peergos.shared.util.*;
 
 import java.io.IOException;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.*;
 
 public class FileHandlerTests {
-    static final Path TEST_ROOT = Paths.get("test", "resources", "static_handler");
+    static final Path TEST_ROOT = PathUtil.get("test", "resources", "static_handler");
     @Test
     public  void  test_read() throws IOException {
         FileHandler fileHandler = new FileHandler(new CspHost("http://", "localhost"),

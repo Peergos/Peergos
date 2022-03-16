@@ -9,6 +9,7 @@ import peergos.shared.io.ipfs.multibase.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
+import peergos.shared.util.*;
 
 import java.io.*;
 import java.nio.file.*;
@@ -48,7 +49,7 @@ public class LinkIdentity {
 
         System.out.println("Successfully generated, signed and uploaded identity link.");
         System.out.println("Post the following text to the alternative service:\n");
-        FileWrapper proofFile = context.getByPath(Paths.get(username, ".profile", "ids", proof.getFilename())).join().get();
+        FileWrapper proofFile = context.getByPath(PathUtil.get(username, ".profile", "ids", proof.getFilename())).join().get();
         boolean isLocalhost = a.getArg("peergos-url").startsWith("http://localhost");
         String publicPeergosUrl = isLocalhost ? "https://peergos.net" : a.getArg("peergos-url");
         System.out.println(proof.postText(proof.getUrlToPost(publicPeergosUrl, proofFile, publish)));
@@ -60,7 +61,7 @@ public class LinkIdentity {
     }
 
     private static void uploadProof(IdentityLinkProof proof, UserContext context, boolean makePublic) {
-        Path subPath = Paths.get(".profile", "ids");
+        Path subPath = PathUtil.get(".profile", "ids");
         FileWrapper idsDir = context.getUserRoot().join().getOrMkdirs(subPath, context.network, true, context.mirrorBatId(), context.crypto).join();
         String filename = proof.getFilename();
 
@@ -68,7 +69,7 @@ public class LinkIdentity {
         idsDir.uploadOrReplaceFile(filename, AsyncReader.build(raw), raw.length, context.network, context.crypto, x -> {}).join();
 
         if (makePublic)
-            context.makePublic(context.getByPath(Paths.get(context.username).resolve(subPath).resolve(filename)).join().get()).join();
+            context.makePublic(context.getByPath(PathUtil.get(context.username).resolve(subPath).resolve(filename)).join().get()).join();
     }
 
     public static void verify(Args a, NetworkAccess network) {

@@ -13,8 +13,7 @@ import peergos.shared.Crypto;
 import peergos.shared.NetworkAccess;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.cryptree.CryptreeNode;
-import peergos.shared.util.Pair;
-import peergos.shared.util.TriFunction;
+import peergos.shared.util.*;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -60,7 +59,7 @@ public class Simulator {
             Collections.sort(dirs);
             //skip the root folder - it is special
             if (skipRoot)
-                dirs.remove(Paths.get("/"+user));
+                dirs.remove(PathUtil.get("/"+user));
             int pos = random.nextInt(dirs.size());
             return dirs.get(pos);
         }
@@ -360,7 +359,7 @@ public class Simulator {
 
         for (String leftUser : users) {
             index.addUser(leftUser);
-            index.getDirToFiles(leftUser).put(Paths.get("/" + leftUser), new HashSet<>());
+            index.getDirToFiles(leftUser).put(PathUtil.get("/" + leftUser), new HashSet<>());
             // seed the file-system
             run(Simulation.MKDIR, leftUser);
             run(Simulation.WRITE_OWN_FILE, leftUser);

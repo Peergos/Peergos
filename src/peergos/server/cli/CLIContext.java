@@ -1,9 +1,9 @@
 package peergos.server.cli;
 
 import peergos.shared.user.UserContext;
+import peergos.shared.util.*;
 
 import java.nio.file.Path;
-import java.nio.file.Paths;
 
 public class CLIContext {
     public final UserContext userContext;
@@ -14,6 +14,6 @@ public class CLIContext {
         this.userContext = userContext;
         this.serverURL = serverURL;
         this.username = username;
-        this.pwd = Paths.get("/" + username);
+        this.pwd = PathUtil.get("/" + username);
     }
 }

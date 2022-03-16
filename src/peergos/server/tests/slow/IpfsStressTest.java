@@ -61,7 +61,7 @@ public class IpfsStressTest {
         // first generate a random file tree
         LOG.info("Building file tree...");
         int depth = 4;
-        int filesAndFolders = generateFileTree(context, Paths.get(username), random, depth);
+        int filesAndFolders = generateFileTree(context, PathUtil.get(username), random, depth);
         LOG.info("Built file tree with " + filesAndFolders + " files/dirs to depth " + depth);
     }
 

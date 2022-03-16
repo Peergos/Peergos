@@ -5,8 +5,7 @@ import peergos.shared.storage.auth.*;
 import peergos.shared.user.app.*;
 import peergos.shared.user.fs.AsyncReader;
 import peergos.shared.user.fs.FileWrapper;
-import peergos.shared.util.Futures;
-import peergos.shared.util.Serialize;
+import peergos.shared.util.*;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -45,12 +44,12 @@ public class App implements StoreAppData {
     }
 
     public static Path getDataDir(String appName, String username) {
-        return Paths.get(username, APPS_DIR_NAME, appName, DATA_DIR_NAME);
+        return PathUtil.get(username, APPS_DIR_NAME, appName, DATA_DIR_NAME);
     }
 
     @JsMethod
     public static CompletableFuture<App> init(UserContext ctx, String appName) {
-        Path appDataDir = Paths.get(APPS_DIR_NAME, appName, DATA_DIR_NAME);
+        Path appDataDir = PathUtil.get(APPS_DIR_NAME, appName, DATA_DIR_NAME);
         App app = new App(ctx, appDataDir);
         return ctx.username == null ? Futures.of(app) :
                 ctx.getUserRoot()
@@ -75,18 +74,17 @@ public class App implements StoreAppData {
 
     private Path normalisePath(Path path) {
         validatePath(path);
-        String pathAsString = path.toString().trim();
-        return pathAsString.startsWith("/") ? Paths.get(pathAsString.substring(1)) : Paths.get(pathAsString);
+        return PathUtil.get(path.toString());
     }
 
     private Path fullPath(Path path, String username) {
         Path relativePath = normalisePath(path);
-        Path result = Paths.get(username == null ? ctx.username : username).resolve(appDataDirectoryWithoutUser).resolve(relativePath);
+        Path result = PathUtil.get(username == null ? ctx.username : username).resolve(appDataDirectoryWithoutUser).resolve(relativePath);
         return result;
     }
 
     private CompletableFuture<Boolean> writeFileContents(Path path, byte[] data) {
-        Path pathWithoutUsername = Paths.get(Stream.of(path.toString().split("/")).skip(1).collect(Collectors.joining("/")));
+        Path pathWithoutUsername = path.subpath(1, path.getNameCount());
         return ctx.getByPath(ctx.username).thenCompose(userRoot -> userRoot.get().getOrMkdirs(pathWithoutUsername.getParent(), ctx.network, true, userRoot.get().mirrorBatId(), ctx.crypto)
                 .thenCompose(dir -> dir.uploadOrReplaceFile(path.getFileName().toString(), AsyncReader.build(data),
                         data.length, ctx.network, ctx.crypto, x -> {})
@@ -133,7 +131,7 @@ public class App implements StoreAppData {
     @JsMethod
     public CompletableFuture<List<String>> dirInternal(Path relativePath, String username) {
         Path path = relativePath == null ?
-                Paths.get(username == null ? ctx.username : username).resolve(appDataDirectoryWithoutUser)
+                PathUtil.get(username == null ? ctx.username : username).resolve(appDataDirectoryWithoutUser)
                 : fullPath(relativePath, username);
         return ctx.getByPath(path).thenCompose(dirOpt -> {
             if(dirOpt.isEmpty()) {
@@ -145,7 +143,7 @@ public class App implements StoreAppData {
     }
     @JsMethod
     public CompletableFuture<Boolean> createDirectoryInternal(Path relativePath, String username) {
-        Path base = Paths.get(username == null ? ctx.username : username).resolve(appDataDirectoryWithoutUser);
+        Path base = PathUtil.get(username == null ? ctx.username : username).resolve(appDataDirectoryWithoutUser);
         return ctx.getByPath(base)
                 .thenCompose(baseOpt -> baseOpt.get().getOrMkdirs(normalisePath(relativePath), ctx.network, false, baseOpt.get().mirrorBatId(), ctx.crypto)
                 .thenApply(fw -> true));

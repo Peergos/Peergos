@@ -114,7 +114,7 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
         String name = h.toString();
 
         int depth = DIRECTORY_DEPTH;
-        Path path = Paths.get("");
+        Path path = PathUtil.get("");
         for (int i=0; i < depth; i++)
             path = path.resolve(Character.toString(name.charAt(i)));
         // include full name in filename
@@ -210,32 +210,7 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
                 }
             }
             transactions.addBlock(cid, tid, owner);
-            File targetFile = target.toFile();
-            Path tmp = Files.createTempFile(root, "tmp", "");
-            File tmpFile = tmp.toFile();
-            Path lockPath = parent.resolve("lock." + filePath.toFile().getName());
-            try (RandomAccessFile rw = new RandomAccessFile(lockPath.toFile(), "rw");
-                 FileLock lock = rw.getChannel().lock();
-                 DataOutputStream dout = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(tmpFile)))) {
-
-                dout.write(data, 0, data.length);
-                boolean setWritableSuccess = tmpFile.setWritable(false, false);
-                boolean setReadableSuccess = tmpFile.setReadable(true, false);
-                boolean renameSuccess = tmpFile.renameTo(targetFile);
-                boolean deleteSuccess = lockPath.toFile().delete();
-                boolean lockExists = lockPath.toFile().exists();
-                if (!setWritableSuccess)
-                    throw new IllegalStateException("Error setting " + tmpFile.getName() + " to writable");
-                if (!setReadableSuccess)
-                    throw new IllegalStateException("Error setting " + tmpFile.getName() + " to readable");
-                if (!renameSuccess)
-                    throw new IllegalStateException("Error renaming " + tmpFile.getName() + " to " + targetFile.getName());
-                if (!deleteSuccess && lockExists)
-                    throw new IllegalStateException("Error deleting " + lockPath.toFile().getName());
-            } finally {
-                if (tmpFile.exists())
-                    tmpFile.delete();
-            }
+            Files.write(target, data, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
             return cid;
         } catch (IOException e) {
             throw new RuntimeException(e.getMessage(), e);

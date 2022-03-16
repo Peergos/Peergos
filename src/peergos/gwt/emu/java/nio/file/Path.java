@@ -2,6 +2,7 @@ package java.nio.file;
 
 import java.io.File;
 import java.util.*;
+import java.util.stream.*;
 
 public class Path {
 
@@ -110,6 +111,15 @@ public class Path {
         return new Path(sb.toString());
     }
 
+    public static Path of(String name) {
+        return new Path(name);
+    }
+
+    public static Path of(String name, String... rest) {
+        if (rest.length == 0)
+            return new Path(name);
+        return new Path(name + "/" + Arrays.stream(rest).collect(Collectors.joining("/")));
+    }
 
     @Override
     public boolean equals(Object o) {

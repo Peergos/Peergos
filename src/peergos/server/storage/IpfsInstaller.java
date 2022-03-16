@@ -21,18 +21,18 @@ import java.util.stream.*;
 public class IpfsInstaller {
 
     public enum DownloadTarget {
-        DARWIN_AMD64("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.2.0/darwin-amd64/ipfs?raw=true",
-                Cid.decode("QmS7QjycnYJBnPXHYQ5VGXuQGXgTxDc7X1uZ3JUdvepagu")),
-        DARWIN_ARM64("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.2.0/darwin-arm64/ipfs?raw=true",
-                Cid.decode("QmbXrVuVzANhrJhNqot2u7KPXeNhg1A3izv1qrnp7GW5TA")),
-        LINUX_AMD64("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.2.0/linux-amd64/ipfs?raw=true",
-                Cid.decode("QmSq8rktDPXPCi5eVHfFgD9VvJECBkiyTEdxUEpbwVEg37")),
-        LINUX_ARM("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.2.0/linux-arm/ipfs?raw=true",
-                Cid.decode("QmXXaS91mzD398GHiuk5hNWRGadGKFSoyisxWNKcANan5b")),
-        LINUX_ARM64("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.2.0/linux-arm64/ipfs?raw=true",
-                Cid.decode("Qmdgp9zN9r9LDvPpyngtq5sG8vLSvwjSsUnXj2ampQPeMY")),
-        WINDOWS_AMD64("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.2.0/windows-amd64/ipfs.exe?raw=true",
-                Cid.decode("QmeFY32siR3Y6J5BdGXyR8M5isBq5E7TPetzyEabxT7Rrt")),;
+        DARWIN_AMD64("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.2.1/darwin-amd64/ipfs?raw=true",
+                Cid.decode("QmWWHKvrEjNajoGScxGy4yG8NPcFqffHj6BmfnWZAwhncW")),
+        DARWIN_ARM64("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.2.1/darwin-arm64/ipfs?raw=true",
+                Cid.decode("QmRsTgTexiyUHgmZkSkG49UuB5k45d1eNEE2cTZRrTmFUY")),
+        LINUX_AMD64("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.2.1/linux-amd64/ipfs?raw=true",
+                Cid.decode("QmbSbS6hoyhAsjgmQT5BCYDxQ3AwG29aFTdqoSTS3EoN14")),
+        LINUX_ARM("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.2.1/linux-arm/ipfs?raw=true",
+                Cid.decode("QmVnEN4M4a8rSGdLinL19WTLcYh8UKHoYQcxyYHXLGZLW3")),
+        LINUX_ARM64("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.2.1/linux-arm64/ipfs?raw=true",
+                Cid.decode("QmbnQbzek1XQKWTLb4oqZnyXxzSFQX32jaW6z6bsZHmXrU")),
+        WINDOWS_AMD64("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.2.1/windows-amd64/ipfs.exe?raw=true",
+                Cid.decode("QmaGQBQ3FJ9SoaNiagDMFwRkFegxJs8CZwkDzA4uHGu9Ls")),;
 
         public final String url;
         public final Multihash multihash;
@@ -136,9 +136,6 @@ public class IpfsInstaller {
 
             @Override
             public void ensureInstalled(Path ipfsDir) {
-                if (! getOsArch().equals("linux_amd64"))
-                    throw new IllegalStateException("S3 plugin is only available on linux-amd64");
-//                IpfsInstaller.ensurePluginInstalled(ipfsDir.resolve("plugins").resolve(getFileName()), version);
             }
         }
 
@@ -327,13 +324,7 @@ public class IpfsInstaller {
     }
 
     public static void main(String[] args) throws Exception {
-        String version = "v0.2.0";
-//        String s3Filename = "s3plugin.so";
-//        byte[] bytes = Files.readAllBytes(Paths.get("/home", "ian", "ipfs-releases", version,
-//                "linux-amd64", "plugins", s3Filename));
-//        Multihash hash = new Multihash(Multihash.Type.sha2_256, Hash.sha256(bytes));
-//        System.out.println("S3_LINUX_AMD64(\"https://github.com/peergos/ipfs-releases/blob/master/" + version +
-//                "/linux-amd64/plugins/" + s3Filename + "?raw=true\", Cid.decode(\"" + hash + "\")),");
+        String version = "v0.2.1";
         codegen(Paths.get("/home/ian/ipfs-nucleus-releases/" + version));
     }
 
@@ -348,60 +339,6 @@ public class IpfsInstaller {
                 System.out.println(arch.getName().toUpperCase().replaceAll("-", "_")
                         + "(\"" + urlBase + arch.getName() + "/" + binary.getName()
                         + "?raw=true\", \nCid.decode(\"" + hash + "\")),");
-            }
-        }
-    }
-
-    private static class ReleasePreparation {
-        public static void main(String[] a) throws Exception {
-            String version = "v0.9.0";
-            Path baseDir = Files.createTempDirectory("ipfs");
-            for (String os: Arrays.asList("linux", "windows", "darwin", "freebsd")) {
-                for (String arch: Arrays.asList("386", "amd64", "arm", "arm64")) {
-                    String archive = os.equals("windows") ? "zip" : "tar.gz";
-                    String filename = "go-ipfs_"+version+"_" + os + "-" + arch + "." + archive;
-                    URI target = new URI("https://dist.ipfs.io/go-ipfs/"+version+"/" + filename);
-
-                    Path archDir = baseDir.resolve(os + "-" + arch);
-                    try {
-                        archDir.toFile().mkdirs();
-                        URLConnection conn = target.toURL().openConnection();
-                        Path tarPath = archDir.resolve(filename);
-                        System.out.printf("Downloading " + filename + " ...");
-                        Files.write(tarPath, Serialize.readFully(conn.getInputStream()));
-                        System.out.println("done");
-                        ProcessBuilder pb = os.equals("windows") ?
-                                new ProcessBuilder("unzip", filename) :
-                                new ProcessBuilder("tar", "-xvzf", filename);
-                        pb.directory(archDir.toFile());
-                        Process proc = pb.start();
-                        while (proc.isAlive())
-                            Thread.sleep(100);
-
-                        tarPath.toFile().delete();
-                        Path extracted = archDir.resolve("go-ipfs");
-                        String executable = os.equals("windows") ? "ipfs.exe" : "ipfs";
-                        for (File file : extracted.toFile().listFiles()) {
-                            if (!file.getName().equals(executable))
-                                file.delete();
-                            else {
-                                ProcessBuilder movepb = new ProcessBuilder("mv", "go-ipfs/" + executable, ".");
-                                movepb.directory(archDir.toFile());
-                                Process moveproc = movepb.start();
-                                while (moveproc.isAlive())
-                                    Thread.sleep(100);
-                            }
-                        }
-                        extracted.toFile().delete();
-
-                        byte[] bytes = Files.readAllBytes(archDir.resolve(executable));
-                        Multihash computed = new Multihash(Multihash.Type.sha2_256, Hash.sha256(bytes));
-                        System.out.println(os + "-" + arch + "-" + computed);
-                    } catch (FileNotFoundException e) {
-                        archDir.toFile().delete();
-                        // OS + arch combination doesn't exist
-                    }
-                }
             }
         }
     }

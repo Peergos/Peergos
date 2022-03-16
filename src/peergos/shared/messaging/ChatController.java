@@ -211,7 +211,7 @@ public class ChatController {
         // Try copying file from source first, and then fallback to mirror we are currently merging
         return Futures.asyncExceptionally(() -> context.getByPath(sourcePath.toString(), v)
                         .thenApply(Optional::get),
-                t -> context.getByPath(Paths.get(mirrorUsername).resolve(sourcePath.subpath(1, sourcePath.getNameCount())).toString(), v)
+                t -> context.getByPath(PathUtil.get(mirrorUsername).resolve(sourcePath.subpath(1, sourcePath.getNameCount())).toString(), v)
                         .thenApply(Optional::get))
                 .thenCompose(f -> f.getInputStream(f.version.get(f.writer()).props, context.network, context.crypto, x -> {})
                         .thenCompose(r -> dir.uploadFileSection(v, c, f.getName(), r, false, 0, f.getSize(),
@@ -221,7 +221,7 @@ public class ChatController {
     }
 
     private Path getChatMediaDir(ChatController current) {
-        return Paths.get(Messenger.MESSAGING_BASE_DIR,
+        return PathUtil.get(Messenger.MESSAGING_BASE_DIR,
                 current.chatUuid,
                 "shared",
                 "media");
@@ -231,7 +231,7 @@ public class ChatController {
         if (currentMirrorUsername.equals(context.username))
             return Futures.of(in);
         Path mediaDir = getChatMediaDir(chat);
-        Path sourcePath = Paths.get(ref.path);
+        Path sourcePath = PathUtil.get(ref.path);
         Path chatRelativePath = sourcePath.subpath(1 + mediaDir.getNameCount(), sourcePath.getNameCount());
         Path ourCopy = mediaDir.resolve(chatRelativePath);
         Path parent = ourCopy.getParent();

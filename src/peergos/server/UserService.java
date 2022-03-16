@@ -224,7 +224,7 @@ public class UserService {
                         new CspHost("https://", publicHostname.get())  :
                         new CspHost("http://",  local.getHostName(), local.getPort()));
         StaticHandler handler = webroot.map(p -> (StaticHandler) new FileHandler(host, blockstoreDomains, frameDomains, appSubdomains, p, includeCsp, true))
-                .orElseGet(() -> new JarHandler(host, blockstoreDomains, frameDomains, appSubdomains, includeCsp, true, Paths.get("/webroot")));
+                .orElseGet(() -> new JarHandler(host, blockstoreDomains, frameDomains, appSubdomains, includeCsp, true, PathUtil.get("/webroot")));
 
         if (useWebCache) {
             LOG.info("Caching web-resources");

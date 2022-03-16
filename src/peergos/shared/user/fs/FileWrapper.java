@@ -204,14 +204,14 @@ public class FileWrapper {
             else
                 return CompletableFuture.completedFuture(Optional.empty());
 
-        if (path.startsWith("/"))
-            path = path.substring(1);
-        int slash = path.indexOf("/");
-        String prefix = slash > 0 ? path.substring(0, slash) : path;
-        String suffix = slash > 0 ? path.substring(slash + 1) : "";
-        return getChild(version, prefix, network).thenCompose(child -> {
-            if (child.isPresent())
-                return child.get().getDescendentByPath(suffix, child.get().version, hasher, network);
+        Path canon = PathUtil.get(path);
+        return getChild(version, canon.getName(0).toString(), network).thenCompose(child -> {
+            if (child.isPresent()) {
+                int names = canon.getNameCount();
+                if (names == 1)
+                    return Futures.of(child);
+                return child.get().getDescendentByPath(canon.subpath(1, names).toString(), child.get().version, hasher, network);
+            }
             return CompletableFuture.completedFuture(Optional.empty());
         });
     }
@@ -586,7 +586,7 @@ public class FileWrapper {
                     )).thenCompose(finished -> getUpdated(finished, network));
         }
         return getPath(network).thenCompose(path ->
-                Transaction.buildFileUploadTransaction(Paths.get(path).resolve(filename).toString(), fileSize, fileData, signingPair(),
+                Transaction.buildFileUploadTransaction(PathUtil.get(path).resolve(filename).toString(), fileSize, fileData, signingPair(),
                         generateChildLocationsFromSize(fileSize, crypto.random)))
                 .thenCompose(txn -> network.synchronizer.applyComplexUpdate(owner(), transactions.getSigner(),
                         (s, committer) -> transactions.open(s, committer, txn).thenCompose(v -> fileData.reset()
@@ -743,7 +743,7 @@ public class FileWrapper {
         }
 
         public Path path() {
-            return Paths.get(relativePath.stream().collect(Collectors.joining("/")));
+            return PathUtil.get(relativePath.stream().collect(Collectors.joining("/")));
         }
     }
 
@@ -764,7 +764,7 @@ public class FileWrapper {
                             Committer condenser = buffered.buildCommitter(c);
                             return getUpdated(s, buffered).thenCompose(us -> Futures.reduceAll(directories, us,
                                     (dir, children) -> dir.getOrMkdirs(children.relativePath, false, mirror, buffered, crypto, dir.version, condenser)
-                                            .thenCompose(p -> uploadFolder(Paths.get(path).resolve(children.path()), p.right,
+                                            .thenCompose(p -> uploadFolder(PathUtil.get(path).resolve(children.path()), p.right,
                                                     children, mirrorBat, txns, buffered, crypto, condenser)
                                                     .thenCompose(v -> dir.getUpdated(v, buffered))),
                                     (a, b) -> b))

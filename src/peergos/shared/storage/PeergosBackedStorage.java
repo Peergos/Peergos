@@ -57,7 +57,7 @@ public class PeergosBackedStorage implements ContentAddressedStorage {
         // use final bytes which are random rather than start
         String dir = ArrayOps.byteToHex(hash[hash.length - 1]);
         String subdir = ArrayOps.byteToHex(hash[hash.length - 2]);
-        return Paths.get(dir, subdir, h.toBase58());
+        return PathUtil.get(dir, subdir, h.toBase58());
     }
 
     @Override

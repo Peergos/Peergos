@@ -2,9 +2,9 @@ package peergos.server.simulation;
 
 
 import peergos.shared.user.fs.FileProperties;
+import peergos.shared.util.*;
 
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.List;
 import java.util.Random;
 import java.util.function.BiConsumer;
@@ -77,7 +77,7 @@ public interface FileSystem {
     }
 
     default void walk(Consumer<Path> func)  {
-        walk(Paths.get("/"+  user()), func);
+        walk(PathUtil.get("/"+  user()), func);
     }
 
     /**

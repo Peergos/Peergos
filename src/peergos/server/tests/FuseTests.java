@@ -36,8 +36,17 @@ public class FuseTests {
         WEB_PORT = webPort;
     }
 
+    private static boolean isWindows() {
+        return System.getProperty("os.name").toLowerCase().startsWith("windows");
+    }
+    private static boolean isMacos() {
+        return System.getProperty("os.name").toLowerCase().startsWith("mac");
+    }
+
     @BeforeClass
     public static void init() throws Exception {
+        if (isWindows() || isMacos())
+            return;
         Args args = UserTests.buildArgs().with("useIPFS", "false");
         setWebPort(args.getInt("port"));
         LOG.info("Using web-port " + WEB_PORT);
@@ -50,7 +59,7 @@ public class FuseTests {
         Path mount = Files.createTempDirectory("peergos");
         String mountPath = args.getArg("mountPoint", mount.toString());
 
-        mountPoint = Paths.get(mountPath);
+        mountPoint = PathUtil.get(mountPath);
         mountPoint = mountPoint.resolve(UUID.randomUUID().toString());
         mountPoint.toFile().mkdirs();
         home = mountPoint.resolve(username);
@@ -70,6 +79,8 @@ public class FuseTests {
     }
 
     @Test public void createFileTest() throws IOException  {
+        if (isWindows() || isMacos())
+            return;
         Path resolve = home.resolve(UUID.randomUUID().toString());
         assertFalse("file already exists", resolve.toFile().exists());
         resolve.toFile().createNewFile();
@@ -77,6 +88,8 @@ public class FuseTests {
     }
 
     @Test public void moveTest() throws IOException {
+        if (isWindows() || isMacos())
+            return;
         Path initial = createRandomFile(0x1000);
 
         byte[] initialData = Files.readAllBytes(initial);
@@ -85,7 +98,7 @@ public class FuseTests {
                 .limit(2)
                 .toArray(String[]::new);
 
-        Path targetDir = Paths.get(initial.getParent().toString(), stem);
+        Path targetDir = PathUtil.get(initial.getParent().toString(), stem);
         targetDir.toFile().mkdirs();
         assertTrue("target dir exists", targetDir.toFile().isDirectory());
 
@@ -102,6 +115,8 @@ public class FuseTests {
     }
 
     @Test public void copyFileTest() throws IOException  {
+        if (isWindows() || isMacos())
+            return;
         Path initial = createRandomFile(1024*1024*10);
         Path target = initial.getParent().resolve(randomUUID().toString());
 
@@ -124,6 +139,8 @@ public class FuseTests {
     }
 
     @Test public void copyFileFromHostTest() throws IOException  {
+        if (isWindows() || isMacos())
+            return;
         Path initial = Files.createTempFile(UUID.randomUUID().toString(), "rw");
         byte[] data = new byte[6*1024*1024];
         new Random(0).nextBytes(data);
@@ -145,6 +162,8 @@ public class FuseTests {
     }
 
     @Test public void randomReadTest() throws IOException  {
+        if (isWindows() || isMacos())
+            return;
         Path initial = Files.createTempFile(UUID.randomUUID().toString(), "rw");
         byte[] data = new byte[6*1024*1024];
         new Random(0).nextBytes(data);
@@ -181,6 +200,8 @@ public class FuseTests {
     }
 
     @Test public void removeTest() throws IOException {
+        if (isWindows() || isMacos())
+            return;
         Path path = createRandomFile();
         assertTrue("path exists before delete", path.toFile().exists());
         Files.delete(path);
@@ -188,6 +209,8 @@ public class FuseTests {
     }
 
     @Test public void writePastEnd() throws IOException {
+        if (isWindows() || isMacos())
+            return;
         int length = 10 * 1024;
         Path path = createRandomFile(length);
         byte[] initial = Files.readAllBytes(path);
@@ -206,6 +229,8 @@ public class FuseTests {
 
     @Test 
     public void truncateTest() throws IOException {
+        if (isWindows() || isMacos())
+            return;
         int initialLength = 0x1000;
         Path path = createRandomFile(initialLength);
 
@@ -222,6 +247,8 @@ public class FuseTests {
 
     @Test
     public void anotherTruncateTest() throws IOException {
+        if (isWindows() || isMacos())
+            return;
         long kiloByte = 1024; // 1KB
         int initialLength = (int) (4 * kiloByte);
         long testLengthThree = 8 * kiloByte;
@@ -241,6 +268,8 @@ public class FuseTests {
 
     @Test
     public void lastModifiedTimeTest() throws IOException {
+        if (isWindows() || isMacos())
+            return;
         Path path = createRandomFile();
 
         ZonedDateTime now = ZonedDateTime.now();
@@ -256,12 +285,14 @@ public class FuseTests {
     }
 
     @Test public void mkdirsTest() throws IOException {
+        if (isWindows() || isMacos())
+            return;
 
         String[] stem = Stream.generate(() -> randomUUID().toString())
                 .limit(10)
                 .toArray(String[]::new);
 
-        Path path = Paths.get(home.toString(), stem);
+        Path path = PathUtil.get(home.toString(), stem);
         assertFalse("path exists initially", path.toFile().exists());
 
         path.toFile().mkdirs();
@@ -272,6 +303,8 @@ public class FuseTests {
 
     @Test
     public  void rmdirTest() throws IOException {
+        if (isWindows() || isMacos())
+            return;
         Path path = home
                 .resolve(randomUUID().toString())
                 .resolve(randomUUID().toString());
@@ -347,6 +380,8 @@ public class FuseTests {
 
     @Test
     public void readWriteTest() throws IOException {
+        if (isWindows() || isMacos())
+            return;
         Random random = new Random(3); // repeatable with same seed 3 leads to failure with bulk upload at size of 137
         for (int power = 5; power < 20; power++) {
             int length =  (int) Math.pow(2, power);

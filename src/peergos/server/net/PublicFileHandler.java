@@ -10,9 +10,9 @@ import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
+import peergos.shared.util.*;
 
 import java.net.*;
-import java.nio.file.*;
 import java.util.logging.*;
 
 public class PublicFileHandler implements HttpHandler {
@@ -44,7 +44,7 @@ public class PublicFileHandler implements HttpHandler {
             path = path.substring(PATH_PREFIX.length());
             String originalPath = path;
 
-            AbsoluteCapability cap = UserContext.getPublicCapability(Paths.get(originalPath), network).join();
+            AbsoluteCapability cap = UserContext.getPublicCapability(PathUtil.get(originalPath), network).join();
 
             boolean open = contains(httpExchange.getRequestURI().getQuery(), "open=true");
             String link = "/#{\"secretLink\":true%2c\"path\":\""

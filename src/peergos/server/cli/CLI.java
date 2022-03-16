@@ -15,6 +15,7 @@ import peergos.shared.*;
 import peergos.shared.social.FollowRequestWithCipherText;
 import peergos.shared.user.SocialState;
 import peergos.shared.user.UserContext;
+import peergos.shared.util.*;
 
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -62,14 +63,14 @@ public class CLI implements Runnable {
     }
 
     public Path resolveToPath(String arg, Path pathToResolveTo) {
-        Path p = Paths.get(arg);
+        Path p = PathUtil.get(arg);
         if (p.isAbsolute())
             return p;
         return pathToResolveTo.resolve(p).normalize();
     }
 
     public Path resolveToPath(String arg) {
-        return resolveToPath(arg, Paths.get(""));
+        return resolveToPath(arg, PathUtil.get(""));
     }
 
     public static ParsedCommand fromLine(String line) {

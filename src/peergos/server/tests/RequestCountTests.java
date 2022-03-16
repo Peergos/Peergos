@@ -91,7 +91,7 @@ public class RequestCountTests {
         // friends are now connected
         // share a file from u1 to u2
         byte[] fileData = sharer.crypto.random.randomBytes(1*1024*1024);
-        Path file1 = Paths.get(sharer.username, "first-file.txt");
+        Path file1 = PathUtil.get(sharer.username, "first-file.txt");
         uploadAndShare(fileData, file1, sharer, a.username);
 
         // check 'a' can see the shared file in their social feed
@@ -130,7 +130,7 @@ public class RequestCountTests {
         // share more items
         for (int i=0; i < 5; i++) {
             byte[] data = sharer.crypto.random.randomBytes(1*1024*1024);
-            Path file = Paths.get(sharer.username, random.nextInt() + "first-file.txt");
+            Path file = PathUtil.get(sharer.username, random.nextInt() + "first-file.txt");
             uploadAndShare(data, file, sharer, a.username);
         }
 

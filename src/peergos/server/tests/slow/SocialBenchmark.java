@@ -136,7 +136,7 @@ public class SocialBenchmark {
             us.getUserRoot().join().uploadOrReplaceFile(filename, AsyncReader.build(fileData),
                     fileData.length, network, crypto, x -> {}).join();
             String sharee = otherUsers.get(random.nextInt(otherUsers.size())).left;
-            us.shareReadAccessWith(Paths.get(username, filename), Collections.singleton(sharee)).join();
+            us.shareReadAccessWith(PathUtil.get(username, filename), Collections.singleton(sharee)).join();
         }
 
         long initialWithReadSharingOut = time(() -> ensureSignedUp(username, password, network.clear(), crypto)).right;
@@ -149,7 +149,7 @@ public class SocialBenchmark {
             UserContext friend = friends.get(random.nextInt(friends.size()));
             friend.getUserRoot().join().uploadOrReplaceFile(filename, AsyncReader.build(fileData),
                     fileData.length, network, crypto, x -> {}).join();
-            friend.shareReadAccessWith(Paths.get(friend.username, filename), Collections.singleton(username)).join();
+            friend.shareReadAccessWith(PathUtil.get(friend.username, filename), Collections.singleton(username)).join();
         }
 
         long initialWithReadSharingIn = time(() -> ensureSignedUp(username, password, network.clear(), crypto)).right;
@@ -162,7 +162,7 @@ public class SocialBenchmark {
             us.getUserRoot().join().uploadOrReplaceFile(filename, AsyncReader.build(fileData),
                     fileData.length, network, crypto, x -> {}).join();
             String sharee = otherUsers.get(random.nextInt(otherUsers.size())).left;
-            us.shareWriteAccessWith(Paths.get(username, filename), Collections.singleton(sharee)).join();
+            us.shareWriteAccessWith(PathUtil.get(username, filename), Collections.singleton(sharee)).join();
         }
 
         long initialWithWriteSharingOut = time(() -> ensureSignedUp(username, password, network.clear(), crypto)).right;
@@ -175,7 +175,7 @@ public class SocialBenchmark {
             UserContext friend = friends.get(random.nextInt(friends.size()));
             friend.getUserRoot().join().uploadOrReplaceFile(filename, AsyncReader.build(fileData),
                     fileData.length, network, crypto, x -> {}).join();
-            friend.shareWriteAccessWith(Paths.get(friend.username, filename), Collections.singleton(username)).join();
+            friend.shareWriteAccessWith(PathUtil.get(friend.username, filename), Collections.singleton(username)).join();
         }
 
         long initialWithWriteSharingIn = time(() -> ensureSignedUp(username, password, network.clear(), crypto)).right;
@@ -224,7 +224,7 @@ public class SocialBenchmark {
             us.getUserRoot().join().uploadOrReplaceFile(filename, AsyncReader.build(fileData),
                     fileData.length, network, crypto, x -> {}).join();
             String sharee = otherUsers.get(random.nextInt(otherUsers.size())).left;
-            us.shareReadAccessWith(Paths.get(username, filename), Collections.singleton(sharee)).join();
+            us.shareReadAccessWith(PathUtil.get(username, filename), Collections.singleton(sharee)).join();
         }
 
         int reps = 100;
@@ -232,7 +232,7 @@ public class SocialBenchmark {
         for (int j=0; j < reps; j++) {
             for (int i = 0; i < nFiles; i++) {
                 String name = "File" + i;
-                System.out.println("getByPath took " + time(() -> friends.get(0).getByPath(Paths.get(username, name)).join()).right);
+                System.out.println("getByPath took " + time(() -> friends.get(0).getByPath(PathUtil.get(username, name)).join()).right);
             }
         }
         long end = System.currentTimeMillis();
@@ -263,7 +263,7 @@ public class SocialBenchmark {
                 fileData.length, network, crypto, x -> {}).join();
         long t0 = System.currentTimeMillis();
         for (Pair<String, String> sharee : otherUsers) {
-            us.shareReadAccessWith(Paths.get(username, filename), Collections.singleton(sharee.left)).join();
+            us.shareReadAccessWith(PathUtil.get(username, filename), Collections.singleton(sharee.left)).join();
         }
         long t1 = System.currentTimeMillis();
 
@@ -272,7 +272,7 @@ public class SocialBenchmark {
         String friendsGroup = us.getSocialState().join().getFriendsGroupUid();
         us.getUserRoot().join().uploadOrReplaceFile(file2name, AsyncReader.build(fileData),
                 fileData.length, network, crypto, x -> {}).join();
-        long groupShareDuration = time(() -> us.shareReadAccessWith(Paths.get(username, file2name), Collections.singleton(friendsGroup)).join()).right;
+        long groupShareDuration = time(() -> us.shareReadAccessWith(PathUtil.get(username, file2name), Collections.singleton(friendsGroup)).join()).right;
         double ratio = (double) (t1 - t0) / groupShareDuration;
         Assert.assertTrue(ratio > nFriends - 1);
     }

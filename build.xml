@@ -104,7 +104,8 @@
   </target>
 
   <target name="test" depends="parallel_test">
-    <exec executable="./print_test_errors.sh" failonerror="true">
+    <exec executable="java" failonerror="true">
+      <arg value="PrintTestErrors.java"/>
     </exec>
   </target> 
 
@@ -116,7 +117,7 @@
     </pathconvert>
     <!-- run one particular test -->
     <junit fork="true" printsummary="true" haltonfailure="no">
-      <jvmarg value="-Xmx2g"/>
+      <jvmarg value="-Xmx4g"/>
       <jvmarg value="-Djava.library.path=native-lib"/>
       <classpath>
 	<fileset dir="lib-build">
@@ -136,7 +137,7 @@
     </junit>
   </target>
 
-  <target name="parallel_test" depends="compile,dist">
+  <target name="parallel_test" depends="compile,dist,linux_tests">
     <for
 	keepgoing="false"
 	threadCount="1"
@@ -145,6 +146,37 @@
       <path>
 	<fileset dir="${test.sources}">
 	  <include name="peergos/server/tests/*.java"/>
+	</fileset>
+      </path>
+      <sequential>
+	<antcall target="execute.test">
+	  <param name="test.source.absolute" value="@{test.source.absolute}"/>
+	</antcall>
+      </sequential>
+    </for>
+  </target>
+
+  <condition property="isMac">
+    <os family="mac" />
+  </condition>
+  <condition property="isLinux">
+    <and>
+      <os family="unix"/>
+      <not>
+        <os family="mac"/>
+      </not>
+    </and>
+  </condition>
+  
+  <target name="linux_tests" depends="compile,dist" if="isLinux">
+    <for
+	keepgoing="false"
+	threadCount="1"
+	parallel="true"
+	param="test.source.absolute">
+      <path>
+	<fileset dir="${test.sources}">
+	  <include name="peergos/server/tests/linux/*.java"/>
 	</fileset>
       </path>
       <sequential>
@@ -201,7 +233,7 @@
   </target>
 
   <target name="gwtc" depends="javac" description="GWT compile to JavaScript (production mode)">
-    <java failonerror="true" fork="true" classname="com.google.gwt.dev.Compiler" maxmemory="2g">
+    <java failonerror="true" fork="true" classname="com.google.gwt.dev.Compiler" maxmemory="3g">
       <classpath>
         <pathelement location="src"/>
         <path refid="project.class.path"/>

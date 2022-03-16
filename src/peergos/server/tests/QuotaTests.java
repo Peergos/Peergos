@@ -9,6 +9,7 @@ import peergos.shared.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
+import peergos.shared.util.*;
 
 import java.net.*;
 import java.nio.file.*;
@@ -55,7 +56,7 @@ public class QuotaTests {
         String password = "badpassword";
 
         UserContext context = ensureSignedUp(username, password, network, crypto);
-        FileWrapper home = context.getByPath(Paths.get(username).toString()).get().get();
+        FileWrapper home = context.getByPath(PathUtil.get(username).toString()).get().get();
         byte[] data = new byte[1024*1024];
         random.nextBytes(data);
         FileWrapper newHome = home.uploadOrReplaceFile("file-1", new AsyncReader.ArrayBacked(data), data.length,
@@ -80,7 +81,7 @@ public class QuotaTests {
             String filename = "file-1";
             context.getUserRoot().join().uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length,
                     network, crypto, x -> {}).get();
-            Path filePath = Paths.get(username, filename);
+            Path filePath = PathUtil.get(username, filename);
             FileWrapper file = context.getByPath(filePath).get().get();
             file.remove(context.getUserRoot().join(), filePath, context).get();
         }
@@ -92,7 +93,7 @@ public class QuotaTests {
         String password = "badpassword";
 
         UserContext context = ensureSignedUp(username, password, network, crypto);
-        FileWrapper home = context.getByPath(Paths.get(username).toString()).get().get();
+        FileWrapper home = context.getByPath(PathUtil.get(username).toString()).get().get();
         int used = context.getTotalSpaceUsed().get().intValue();
         // use within a few KiB of our quota, before deletion
         byte[] data = new byte[2 * 1024 * 1024 - used - 16 * 1024];
@@ -100,7 +101,7 @@ public class QuotaTests {
         String filename = "file-1";
         home = home.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length,
                 network, crypto, x -> {}).join();
-        Path filePath = Paths.get(username, filename);
+        Path filePath = PathUtil.get(username, filename);
         FileWrapper file = context.getByPath(filePath).join().get();
         file.remove(home, filePath, context).join();
     }
@@ -111,7 +112,7 @@ public class QuotaTests {
         String password = "badpassword";
 
         UserContext context = ensureSignedUp(username, password, network, crypto);
-        FileWrapper home = context.getByPath(Paths.get(username).toString()).get().get();
+        FileWrapper home = context.getByPath(PathUtil.get(username).toString()).get().get();
         // signing up uses just under 32k and the quota is 2 MiB, so use close to our quota
         int used = context.getTotalSpaceUsed().get().intValue();
         byte[] data = new byte[2 * 1024 * 1024 - used - 16 * 1024];
@@ -119,7 +120,7 @@ public class QuotaTests {
         String filename = "file-1";
         home = home.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length,
                 network, crypto, x -> {}).get();
-        Path filePath = Paths.get(username, filename);
+        Path filePath = PathUtil.get(username, filename);
         FileWrapper file = context.getByPath(filePath).get().get();
         try {
             home = home.uploadOrReplaceFile("file-2", new AsyncReader.ArrayBacked(data), data.length,

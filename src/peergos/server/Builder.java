@@ -269,7 +269,7 @@ public class Builder {
         JdbcQuotas quotas = JdbcQuotas.build(quotasDb, sqlCommands);
         if (a.hasArg("quotas-init-file")) {
             String quotaFile = a.getArg("quotas-init-file");
-            Map<String, Long> quotaInit = UserQuotas.readUsernamesFromFile(Paths.get(quotaFile));
+            Map<String, Long> quotaInit = UserQuotas.readUsernamesFromFile(PathUtil.get(quotaFile));
             quotaInit.forEach(quotas::setQuota);
         }
         long defaultQuota = a.getLong("default-quota");

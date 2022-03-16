@@ -24,7 +24,7 @@ public class UserPublicKeyLinkTests {
     private final ContentAddressedStorage ipfs;
 
     {
-        ipfs = new FileContentAddressedStorage(Paths.get("blockstore"),
+        ipfs = new FileContentAddressedStorage(PathUtil.get("blockstore"),
                     JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()), (a, b, c, d) -> Futures.of(true), Main.initCrypto().hasher);
     }
 

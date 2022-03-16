@@ -38,9 +38,9 @@ public class RestartTests {
 
     @BeforeClass
     public static void init() throws Exception {
-        Files.copy(Paths.get("Peergos.jar"), args.getPeergosDirChild("Peergos.jar"));
-        Files.copy(Paths.get("lib"), args.getPeergosDirChild("lib"));
-        for (Path file : Files.list(Paths.get("lib")).collect(Collectors.toList()))
+        Files.copy(PathUtil.get("Peergos.jar"), args.getPeergosDirChild("Peergos.jar"));
+        Files.copy(PathUtil.get("lib"), args.getPeergosDirChild("lib"));
+        for (Path file : Files.list(PathUtil.get("lib")).collect(Collectors.toList()))
             Files.copy(file, args.getPeergosDirChild("lib").resolve(file.getFileName()));
 
         server = start("pki-init");
