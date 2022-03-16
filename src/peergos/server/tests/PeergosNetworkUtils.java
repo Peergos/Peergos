@@ -2011,7 +2011,11 @@ public class PeergosNetworkUtils {
         });
 
         controllerB = msgB.mergeMessages(controllerB, a.username).join();
-        List<MessageEnvelope> messages = controllerB.getMessages(0, 20).join();
+
+        UserContext b3 = PeergosNetworkUtils.ensureSignedUp(b.username, password, network.clear(), crypto);
+        Messenger msgB3 = new Messenger(b3);
+        ChatController controllerB3 = msgB3.getChat(controllerB.chatUuid).join();
+        List<MessageEnvelope> messages = controllerB3.getMessages(0, 20).join();
         int msgCount = messages.stream().filter(m -> m.payload.equals(msg1)).collect(Collectors.toList()).size();
         Assert.assertEquals(1, msgCount);
     }
