@@ -152,7 +152,7 @@ public class FragmentedPaddedCipherText implements Cborable {
         if (inlinedCipherText.isPresent()) {
             if (header.isPresent())
                 return Futures.of(new CipherText(nonce, ArrayOps.concat(header.get(), inlinedCipherText.get())).decrypt(from, fromCbor, monitor));
-            return new CipherText(nonce, inlinedCipherText.get()).decryptAsync(from, fromCbor, monitor);
+            return Futures.of(new CipherText(nonce, inlinedCipherText.get()).decrypt(from, fromCbor, monitor));
         }
         return network.dhtClient.downloadFragments(owner, cipherTextFragments, bats, h, monitor, 1.0)
                 .thenApply(frags -> frags.stream()
