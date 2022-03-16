@@ -111,36 +111,36 @@ public class FragmentedPaddedCipherText implements Cborable {
         int maxCborOverhead = 6;
         int serializationOverhead = plainText.length <= paddingBlockSize ? 0 : maxCborOverhead;
         byte[] padded = pad(plainText, serializationOverhead, paddingBlockSize);
-        byte[] cipherText = from.encrypt(padded, nonce);
-
         if (padded.length <= 4096 + maxCborOverhead) {
             // inline small amounts of data (small files or directories)
+            byte[] cipherText = from.encrypt(padded, nonce);
             FragmentedPaddedCipherText chunk = new FragmentedPaddedCipherText(nonce, Optional.empty(),
                     Collections.emptyList(), Collections.emptyList(), Optional.of(cipherText));
             return Futures.of(new Pair<>(chunk, Collections.emptyList()));
         }
+        return from.encryptAsync(padded, nonce).thenCompose(cipherText -> {
+            int headerSize = cipherText.length % paddingBlockSize;
+            Optional<byte[]> header = Optional.of(Arrays.copyOfRange(cipherText, 0, headerSize));
+            byte[][] split = split(cipherText, headerSize, maxFragmentSize, allowArrayCache);
+            int nBlocks = split.length;
+            List<Bat> blockBats = IntStream.range(0, nBlocks)
+                    .mapToObj(i -> Bat.random(random))
+                    .collect(Collectors.toList());
 
-        int headerSize = cipherText.length % paddingBlockSize;
-        Optional<byte[]> header = Optional.of(Arrays.copyOfRange(cipherText, 0, headerSize));
-        byte[][] split = split(cipherText, headerSize, maxFragmentSize, allowArrayCache);
-        int nBlocks = split.length;
-        List<Bat> blockBats = IntStream.range(0, nBlocks)
-                .mapToObj(i -> Bat.random(random))
-                .collect(Collectors.toList());
-
-        return Futures.combineAllInOrder(IntStream.range(0, nBlocks)
-                .mapToObj(i -> ArrayOps.concat(Bat.createRawBlockPrefix(blockBats.get(i), mirrorBat), split[i]))
-                .map(d -> hasher.hash(d, true).thenApply(h -> new FragmentWithHash(new Fragment(d), Optional.of(h))))
-                .collect(Collectors.toList()))
-                .thenCompose(frags -> {
-                    List<Cid> hashes = frags.stream()
-                            .map(f -> f.hash.get())
-                            .collect(Collectors.toList());
-                    return Futures.combineAllInOrder(blockBats.stream()
-                            .map(b -> b.calculateId(hasher).thenApply(id -> new BatWithId(b, id.id)))
+            return Futures.combineAllInOrder(IntStream.range(0, nBlocks)
+                            .mapToObj(i -> ArrayOps.concat(Bat.createRawBlockPrefix(blockBats.get(i), mirrorBat), split[i]))
+                            .map(d -> hasher.hash(d, true).thenApply(h -> new FragmentWithHash(new Fragment(d), Optional.of(h))))
                             .collect(Collectors.toList()))
-                            .thenApply(batsAndIds -> new Pair<>(new FragmentedPaddedCipherText(nonce, header, hashes, batsAndIds, Optional.empty()), frags));
-                });
+                    .thenCompose(frags -> {
+                        List<Cid> hashes = frags.stream()
+                                .map(f -> f.hash.get())
+                                .collect(Collectors.toList());
+                        return Futures.combineAllInOrder(blockBats.stream()
+                                        .map(b -> b.calculateId(hasher).thenApply(id -> new BatWithId(b, id.id)))
+                                        .collect(Collectors.toList()))
+                                .thenApply(batsAndIds -> new Pair<>(new FragmentedPaddedCipherText(nonce, header, hashes, batsAndIds, Optional.empty()), frags));
+                    });
+        });
     }
 
     public <T> CompletableFuture<T> getAndDecrypt(PublicKeyHash owner,
@@ -152,13 +152,13 @@ public class FragmentedPaddedCipherText implements Cborable {
         if (inlinedCipherText.isPresent()) {
             if (header.isPresent())
                 return Futures.of(new CipherText(nonce, ArrayOps.concat(header.get(), inlinedCipherText.get())).decrypt(from, fromCbor, monitor));
-            return Futures.of(new CipherText(nonce, inlinedCipherText.get()).decrypt(from, fromCbor, monitor));
+            return new CipherText(nonce, inlinedCipherText.get()).decryptAsync(from, fromCbor, monitor);
         }
         return network.dhtClient.downloadFragments(owner, cipherTextFragments, bats, h, monitor, 1.0)
                 .thenApply(frags -> frags.stream()
                         .map(f -> new FragmentWithHash(new Fragment(Bat.removeRawBlockBatPrefix(f.fragment.data)), f.hash))
                         .collect(Collectors.toList()))
-                .thenApply(fargs -> new CipherText(nonce, recombine(header, fargs)).decrypt(from, fromCbor));
+                .thenCompose(fargs -> new CipherText(nonce, recombine(header, fargs)).decryptAsync(from, fromCbor));
     }
 
     private static byte[][] generateCache() {
