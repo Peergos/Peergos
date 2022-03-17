@@ -24,7 +24,7 @@ public class JarHandler extends StaticHandler {
     }
 
     public static Asset getAsset(String resourcePath, Path root, boolean gzip) throws IOException {
-        String pathWithinJar = root.resolve(resourcePath).toString()
+        String pathWithinJar = "/" + root.resolve(resourcePath).toString()
                 .replaceAll("\\\\", "/"); // needed for Windows!
         byte[] data = StaticHandler.readResource(JarHandler.class.getResourceAsStream(pathWithinJar), gzip);
         return new Asset(data);
