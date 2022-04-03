@@ -62,7 +62,7 @@ Cure53 conducted an audit of Peergos in June 2019. The final report is [here](ht
 
 Chat room
 ---------
-There is a public chat room for Peergos on [Matrix](https://app.element.io/#/room/#peergos-chat:matrix.org).
+There is a public chat room for Peergos on [Matrix](https://matrix.to/#/#peergos-chat:matrix.org).
 
 Peergos aims
 ------------
