@@ -2291,6 +2291,7 @@ public class UserContext {
                 (a, b) -> a && b);
     }
 
+    @JsMethod
     public CompletableFuture<Snapshot> cleanPartialUploads() {
         TransactionService txns = getTransactionService();
         return getUserRoot().thenCompose(home -> network.synchronizer

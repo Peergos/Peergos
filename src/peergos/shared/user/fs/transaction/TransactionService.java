@@ -44,9 +44,10 @@ public interface TransactionService {
                     List<Transaction> toClose = openTransactions.stream()
                             .filter(e -> e.startTimeEpochMillis() < System.currentTimeMillis() - 24*3600_000L)
                             .collect(Collectors.toList());
-
+                    System.out.println("Open file upload transactions: " + openTransactions.size());
+                    System.out.println("Stale file upload transactions: " + toClose.size());
                     return Futures.reduceAll(toClose, version,
-                            (s, t) -> clearAndClose(version, committer, t),
+                            (s, t) -> clearAndClose(s, committer, t),
                             (a, b) -> b);
                 });
     }
