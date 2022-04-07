@@ -22,13 +22,13 @@ public class JavaScriptPoster implements HttpPoster {
     }
 
     @Override
-    public CompletableFuture<byte[]> post(String url, byte[] payload, boolean unzip) {
-        return http.post(canonicalise(url), payload);
+    public CompletableFuture<byte[]> post(String url, byte[] payload, boolean unzip, int timeoutMillis) {
+        return http.post(canonicalise(url), payload, timeoutMillis);
     }
 
     @Override
-    public CompletableFuture<byte[]> postUnzip(String url, byte[] payload) {
-        return post(canonicalise(url), payload, true);
+    public CompletableFuture<byte[]> postUnzip(String url, byte[] payload, int timeoutMillis) {
+        return post(canonicalise(url), payload, true, timeoutMillis);
     }
 
     @Override

@@ -213,7 +213,7 @@ public class HTTPCoreNode implements CoreNode {
                 Serialize.serialize(mirrorBat.get().serialize(), dout);
             dout.flush();
 
-            return poster.postUnzip(modifiedPrefix + Constants.CORE_URL + "migrateUser", bout.toByteArray())
+            return poster.postUnzip(modifiedPrefix + Constants.CORE_URL + "migrateUser", bout.toByteArray(), -1)
                     .thenApply(res -> UserSnapshot.fromCbor(CborObject.fromByteArray(res)));
         } catch (IOException ioe) {
             LOG.log(Level.WARNING, ioe.getMessage(), ioe);

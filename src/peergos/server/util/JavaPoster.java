@@ -35,22 +35,23 @@ public class JavaPoster implements HttpPoster {
     }
 
     @Override
-    public CompletableFuture<byte[]> postUnzip(String url, byte[] payload) {
+    public CompletableFuture<byte[]> postUnzip(String url, byte[] payload, int timeoutMillis) {
         return post(url, payload, true);
     }
 
     @Override
-    public CompletableFuture<byte[]> post(String url, byte[] payload, boolean unzip) {
-        return post(url, payload, unzip, Collections.emptyMap());
+    public CompletableFuture<byte[]> post(String url, byte[] payload, boolean unzip, int timeoutMillis) {
+        return post(url, payload, unzip, Collections.emptyMap(), timeoutMillis);
     }
 
-    private CompletableFuture<byte[]> post(String url, byte[] payload, boolean unzip, Map<String, String> headers) {
+    private CompletableFuture<byte[]> post(String url, byte[] payload, boolean unzip, Map<String, String> headers, int timeoutMillis) {
         HttpURLConnection conn = null;
         CompletableFuture<byte[]> res = new CompletableFuture<>();
         try
         {
             conn = (HttpURLConnection) buildURL(url).openConnection();
-            conn.setReadTimeout(15000);
+            if (timeoutMillis >= 0)
+                conn.setReadTimeout(timeoutMillis);
             conn.setDoInput(true);
             conn.setDoOutput(true);
             for (Map.Entry<String, String> e : headers.entrySet()) {

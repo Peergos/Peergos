@@ -5,9 +5,17 @@ import java.util.concurrent.*;
 
 public interface HttpPoster {
 
-    CompletableFuture<byte[]> post(String url, byte[] payload, boolean unzip);
+    CompletableFuture<byte[]> post(String url, byte[] payload, boolean unzip, int timeoutMillis);
 
-    CompletableFuture<byte[]> postUnzip(String url, byte[] payload);
+    default CompletableFuture<byte[]> post(String url, byte[] payload, boolean unzip) {
+        return post(url, payload, unzip, 15_000);
+    }
+
+    CompletableFuture<byte[]> postUnzip(String url, byte[] payload, int timeoutMillis);
+
+    default CompletableFuture<byte[]> postUnzip(String url, byte[] payload) {
+        return postUnzip(url, payload, 15_000);
+    }
 
     CompletableFuture<byte[]> postMultipart(String url, List<byte[]> files);
 
