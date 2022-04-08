@@ -80,5 +80,14 @@ public interface CoreNode {
         });
     }
 
+    default CompletableFuture<Optional<Multihash>> getHomeServer(String username) {
+        return getChain(username).thenApply(chain -> {
+            if (chain.size() == 0)
+                return Optional.empty();
+            else
+                return Optional.of(chain.get(chain.size() - 1).claim.storageProviders.get(0));
+        });
+    }
+
     void close() throws IOException;
 }

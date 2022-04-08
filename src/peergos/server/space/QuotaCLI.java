@@ -1,21 +1,20 @@
 package peergos.server.space;
 
 import peergos.server.*;
-import peergos.server.corenode.*;
 import peergos.server.sql.*;
 import peergos.server.storage.*;
 import peergos.server.storage.admin.*;
-import peergos.server.util.*;
 import peergos.shared.*;
-import peergos.shared.corenode.*;
-import peergos.shared.mutable.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
+import java.net.*;
 import java.sql.*;
 import java.time.*;
 import java.util.*;
 import java.util.function.*;
+import java.util.stream.*;
 
 public class QuotaCLI extends Builder {
 
@@ -134,6 +133,49 @@ public class QuotaCLI extends Builder {
             )
     );
 
+    public static final Command<Boolean> HOME = new Command<>("home",
+            "Show all users whose home server is the current server",
+            a -> {
+                boolean paidStorage = a.hasArg("quota-admin-address");
+
+                List<String> candidates;
+                if (paidStorage) {
+                    QuotaAdmin quotaAdmin = Builder.buildPaidQuotas(a);
+                    candidates = quotaAdmin.getLocalUsernames().stream()
+                            .sorted()
+                            .collect(Collectors.toList());
+                } else {
+                    SqlSupplier sqlCommands = getSqlCommands(a);
+                    Supplier<Connection> quotasDb = getDBConnector(a, "quotas-sql-file");
+                    JdbcQuotas quotas = JdbcQuotas.build(quotasDb, sqlCommands);
+
+                    candidates = quotas.getQuotas()
+                            .keySet()
+                            .stream()
+                            .sorted()
+                            .collect(Collectors.toList());
+                }
+                Crypto crypto = Main.initCrypto();
+                String peergosUrl = a.getArg("peergos-url");
+                try {
+                    URL api = new URL(peergosUrl);
+                    NetworkAccess network = Main.buildJavaNetworkAccess(api, !peergosUrl.startsWith("http://localhost")).join();
+                    Cid us = network.dhtClient.id().join();
+                    candidates.stream()
+                            .filter(username -> network.coreNode.getHomeServer(username).join().map(h -> h.equals(us)).orElse(false))
+                            .forEach(System.out::println);
+                    return true;
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                    return false;
+                }
+            },
+            Arrays.asList(
+                    new Command.Arg("peergos-url", "Address of the Peergos server to connect to", false, "http://localhost:8000"),
+                    new Command.Arg("quotas-sql-file", "The filename for the quotas datastore", true, "quotas.sql")
+            )
+    );
+
     public static final Command<Boolean> TOKEN_CREATE = new Command<>("create",
             "Create tokens for signups",
             a -> {
@@ -206,6 +248,6 @@ public class QuotaCLI extends Builder {
                     new Command.Arg("log-to-file", "Whether to log to a file", false, "false"),
                     new Command.Arg("log-to-console", "Whether to log to the console", false, "false")
             ),
-            Arrays.asList(LOCAL, SHOW, SET, REQUESTS, TOKEN)
+            Arrays.asList(LOCAL, HOME, SHOW, SET, REQUESTS, TOKEN)
     );
 }
