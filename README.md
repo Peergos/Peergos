@@ -248,6 +248,25 @@ Sub commands:
 	pki-init: Bootstrap and start the Peergos PKI Server
 ```
 
+Mirror
+--------
+To mirror all of your data on another server first run the following command (on any instance):
+> java -jar Peergos.jar mirror init -username $username
+
+It will ask for your password and then print two parameters you need to supply to the mirror daemon.
+
+Then run daemon, on the instance you want to mirror your data, with the following additional args provided by the init command.
+> -mirror.username $username -mirror-bat $mirror-bat -login-keypair $login-keypair
+
+This will then continuously mirror that user's data on this instance. 
+
+Migrate
+--------
+To migrate to another server first ensure you have sufficient quota on it, then run the migrate command on it. 
+> java -jar Peergos.jar migrate
+
+It will ask for your username and password, mirror all your data locally, and then update the PKI to make this your home server.
+
 Development
 --------
 ### Dependencies
