@@ -860,6 +860,7 @@ public class Main extends Builder {
                     QuotaCLI.QUOTA,
                     ServerMessages.SERVER_MESSAGES,
                     GATEWAY,
+                    Mirror.MIRROR,
                     MIGRATE,
                     IDENTITY,
                     INSTALL_AND_RUN_IPFS,

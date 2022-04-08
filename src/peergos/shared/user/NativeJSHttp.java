@@ -12,7 +12,7 @@ public class NativeJSHttp {
 //        return new CompletableFuture<>();
 //    }
 
-    public native CompletableFuture<byte[]> post(String url, byte[] payload) ;/*-{
+    public native CompletableFuture<byte[]> post(String url, byte[] payload, int timeoutMillis) ;/*-{
         console.log("postProm");
         var future = this.incomplete();
         new Promise(function(resolve, reject) {

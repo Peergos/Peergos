@@ -16,10 +16,64 @@ import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
+import java.io.*;
+import java.net.*;
 import java.util.*;
 import java.util.logging.*;
 
 public class Mirror {
+
+    public static final Command<Boolean> INIT = new Command<>("init",
+            "Derive the parameters needed to mirror a user's data",
+            a -> {
+                Crypto crypto = Main.initCrypto();
+                String peergosUrl = a.getArg("peergos-url");
+                try {
+                    URL api = new URL(peergosUrl);
+                    NetworkAccess network = Main.buildJavaNetworkAccess(api, !peergosUrl.startsWith("http://localhost")).join();
+                    Console console = System.console();
+                    String username = a.getArg("username");
+                    String password = new String(console.readPassword("Enter password for " + username + ": "));
+
+                    UserContext user = UserContext.signIn(username, password, network, crypto).join();
+                    Optional<BatWithId> mirrorBat = user.getMirrorBat().join();
+
+                    WriterData userData = WriterData.fromCbor(UserContext.getWriterDataCbor(network, username).join().right);
+                    boolean legacyAccount = userData.staticData.isPresent();
+                    Optional<SecretGenerationAlgorithm> alg = userData.generationAlgorithm;
+                    Optional<SigningKeyPair> loginKeyPair = legacyAccount ?
+                            Optional.empty() :
+                            Optional.of(UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider,
+                    crypto.random, crypto.signer, crypto.boxer, alg.get()).join().getUser());
+
+                    System.out.println("To mirror all your data on another server run daemon with these additional arguments:");
+                    mirrorBat.ifPresent(b -> System.out.println("Set daemon arg -mirror.bat " + b.encode()));
+                    loginKeyPair.ifPresent(login -> System.out.println("Set daemon arg -login-keypair " + login));
+                    return true;
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                    return false;
+                }
+            },
+            Arrays.asList(
+                    new Command.Arg("username", "The username whose data you want to mirror", true),
+                    new Command.Arg("peergos-url", "Address of the Peergos server to connect to", false, "http://localhost:8000")
+            )
+    );
+
+    public static final Command<Boolean> MIRROR = new Command<>("mirror",
+            "Commands related to mirroring your data on another server",
+            args -> {
+                System.out.println("Run with -help to show options");
+                return null;
+            },
+            Arrays.asList(
+                    new Command.Arg("print-log-location", "Whether to print the log file location at startup", false, "false"),
+                    new Command.Arg("log-to-file", "Whether to log to a file", false, "false"),
+                    new Command.Arg("log-to-console", "Whether to log to the console", false, "false")
+            ),
+            Arrays.asList(INIT)
+    );
 
     public static void mirrorNode(Multihash nodeId,
                                   BatWithId mirrorBat,
