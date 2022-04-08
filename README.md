@@ -256,7 +256,7 @@ To mirror all of your data on another server first run the following command (on
 It will ask for your password and then print two parameters you need to supply to the mirror daemon.
 
 Then run daemon, on the instance you want to mirror your data, with the following additional args provided by the init command.
-> -mirror.username $username -mirror-bat $mirror-bat -login-keypair $login-keypair
+> -mirror.username $username -mirror.bat $mirrorBat -login-keypair $loginKeypair
 
 This will then continuously mirror that user's data on this instance. 
 
