@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <head>
-    <title>Direct S3 access</title>
+    <title>Markdown browser</title>
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta charset="utf-8">
     <meta http-equiv="Content-Security-Policy" content="default-src https: 'self'; style-src 'unsafe-inline' 'self'; script-src 'unsafe-inline' 'self';">
@@ -123,31 +123,28 @@
     <div class="col m3 col s4">
     </div>
     <div class="col m9 col s8" role="main" style="overflow-x:auto; padding-bottom: 10px;">
-    <h1 class="page-header main-title">Direct S3 access</h1>
+    <h1 class="page-header main-title">Markdown browser</h1>
     <div class="bs-docs-section">
-    <p>Peergos uses IPFS to store its data and IPFS supports several kinds of blockstores, from various kinds of local disk based storage to an S3 based store. The S3 store is useful because it automatically provides redundancy and availability, and can also hold much more data than any disk. There are also many providers of S3 compatible storage now. For a while now, we've supported using the S3 based blockstore in Peergos. However this wasn't visible to end users, it was only a server side thing. This means that when uploading or downloading data it all had to go through the Peergos server.</p>
+    <p>We've just released a super cool new feature - a browser for markdown documents within Peergos. This means you can nicely render markdown documents in Peergos, including inline images also in Peergos. You can link to other markdown files and browse back and forth between them. You can link to other files like PDFs, todo boards, or calendar events and have them open in the respective apps when clicked. All of this also works in secret links! It's like a secure browser within a browser.</p>
+<p>Here's an example folder you can check out:
+<a href="https://peergos.net/#%7B%22app%22:%22markdown%22%2c%22path%22:%22demo/media/wiki%22%2c%22args%22:%7B%22filename%22:%22index.md%22%7D%2c%22writable%22:false%2c%22secretLink%22:true%2c%22link%22:%22#6MDZhRRPT4ugkJuUfcWtaZodN5QYzkZKJtHpDHomFJrVhNSZysiFYimpgtcA2F/6MDZhRRPT4ugkJuUfcRzRbPpFimcBNJx2N9TJDnL4W3ETYhwdsWdvgCkXkwipF/31u9ZTR2WcdCcPx6CCUFGRkWxA2d5cvj7CQWQCqVXAVt2TRi2uaZzKW8xJ1bSczhURvuTJyxWdXrTjKYoBC5FJycZcpdau8/5Pf7Sv1HuhpVKRKNt289WogNtTjBavmKAkxzXjE6qMFAuigk5YP%22%2c%22open%22:true%7D">markdown browser demo</a></p>
 <p><center>
-<img alt="Old data flow with S3" class="class" id="id" src="/theme/img/blog/proxied-s3-dataflow.png" width="50%" />
+<img alt="mdbrowser" class="class" id="id" src="/theme/img/blog/markdown-browser.jpg" width="400px" />
 <br/>
-The flow of data in previous S3 usage, which proxied through the Peergos server
+Markdown browser
 </center></p>
-<p>We have now implemented direct S3 access for reads and writes from the browser/client. Clients can read and write directly to an S3 bucket after authorization from the Peergos server. This new feature makes the Peergos server much more scalable and reliable. The typical bandwidth required of the Peergos server is reduced by ~100x.</p>
-<p>There are two modes of read operation; public and authorised. In public mode, all encrypted blocks can be read directly from S3 without any permission. This is the fastest, but may not suit your pricing model for S3. In authorised mode every read request has to first get permission from the peergos server, which signs a url that is temporarily authorised to read that object from S3. The client then directly downloads the block from S3. This is illustrated below. </p>
+<p>You could use this like a wiki, and grant certain people write access to individual files or sub folders. You could mirror a git repo here and use this to view the readme or documentation. The possibilities are endless. </p>
+<p>Want to try it out already? Create an account at <a href="https://peergos.net/?signup=true">https://peergos.net/?signup=true</a>. A free account will get you 200 MiB of space; if you want more, <a href="/pricing">upgrade to get more</a>. </p>
+<p>Don't forget to let us know what you think. We're always looking for feedback, so either <a href="mailto://peergos@peergos.org">drop us a line</a> or come say hi in our public <a href="https://app.element.io/#/room/#peergos-chat:matrix.org">Matrix chatroom</a>.</p>
+<p><br/><br/></p>
+<hr />
 <p><center>
-<img alt="Direct S3 reads" class="class" id="id" src="/theme/img/blog/direct-s3-reads.png" width="50%" />
+<img alt="NGI Pointer" class="class" height="65px" id="id" src="/theme/img/ngi-logo.png" />
+<img alt="NGI Pointer" class="class" height="65" id="id" src="/theme/img/eu.png" />
+</center>
 <br/>
-Direct S3 reads
-</center></p>
-<p>This is all very well, but what about writes? What if there are many users on the same server? This is where it starts to get beautiful... All users on the same Peergos server share the same S3 bucket, and yet there is no possibility for conflict! This is because the blocks in S3 are content addressed! When a client wants to upload a block they first pre-authorise the block hash with the peergos server which returns a signed url the client can use to upload directly to S3. Upon upload, S3 automatically checks the sha256 hash and size of the block with what was signed. The data flow is shown below.</p>
-<p><center>
-<img alt="Direct S3 writes" class="class" id="id" src="/theme/img/blog/direct-s3-writes.png" width="50%" />
-<br/>
-Direct S3 writes
-</center></p>
-<p>It should be clear how this takes most of the load off of the Peergos server, thus allowing a single server to handle many more users. </p>
-<p>The kind of functionality required for this isn't actually exposed by the official S3 SDK. So to get this working we had to implement our own version of the S3 client. It's remarkably simple and only took us a single class, without any dependencies except an hmac-sha256 implementation. The added benefit of this is that we've been able to remove the amazon S3 sdk entirely from our codebase, which was 60mb of dependencies! Compare this with the rest of Peergos including all dependencies, which add up to only 16mb. </p>
-<p>Want to try it out? Head on over to <a href="https://alpha.peergos.net">our alpha</a> and check it out!</p>
-<p>Or you can try streaming a movie right now using direct S3 reads <a href="https://alpha.peergos.net/#%7B%22secretLink%22:true%2c%22link%22:%22#6MDZhRRPT4ugkJuUfceM6bPnpQKEj5dB2NqLxD1RxFn3oA3CusXayN8RReauEh/6MDZhRRPT4ugkJuUfcRzRbPpFimcBNJx2N9TJDnL4W3ETYhwdsWdvgCkXkwipF/FTkiZ5Bj1c1dWVYqwSBDv6ErBvK3ds46gKqnpVcsKYh5/5Pf7Suxg5r8nqvytY9bbAnVbAe3S3qTVzhEGuJajynhq8ntYwVV%22%7D">here</a>.</p>
+This project has received funding from the European Union’s Horizon 2020 research and innovation programme within the framework of the NGI-POINTER Project funded under grant agreement No 871528</p>
+<p><br/><br/><br/></p>
 <h4>RECENT POSTS</h4>
 <ul id="recent-posts">
     <li>
