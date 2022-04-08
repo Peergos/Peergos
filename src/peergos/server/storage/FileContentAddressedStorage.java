@@ -199,8 +199,9 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
             Path parent = target.getParent();
             File parentDir = parent.toFile();
 
-            if (! parentDir.exists() && ! parentDir.mkdirs())
-                throw new IllegalStateException("Couldn't create directory: " + parent);
+            if (! parentDir.exists())
+                Files.createDirectories(parent);
+
             for (Path someParent = parent; !someParent.equals(root); someParent = someParent.getParent()) {
                 File someParentFile = someParent.toFile();
                 if (! someParentFile.canWrite()) {
