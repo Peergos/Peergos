@@ -228,6 +228,31 @@ server {
 
 ```
 
+Usage - self hosting (with S3 compatible blockstore)
+-----
+Follow the instructions for self hosting but add the following parameters (either on the command line, or in the .peergos/config file after first run):
+```
+-use-s3 true
+-authed-s3-reads true
+-direct-s3-writes true
+-s3.accessKey $ACCESS_KEY
+-s3.bucket $BUCKET
+-s3.region $REGION
+-s3.region.endpoint $ENDPOINT (e.g. us-east-1.linodeobjects.com)
+-s3.secretKey #SECRET_KEY
+```
+
+Usage - self hosting (with Postgres instead of sqlite)
+-----
+Follow the instructions for self hosting but add the following parameters (either on the command line, or in the .peergos/config file after first run):
+```
+-use-postgres true
+-postgres.database $DATABASE
+-postgres.host $HOST
+-postgres.password $PASSWORD
+-postgres.username $USERNAME
+```
+
 ### CLI
 There are a range of commands available from a command line. You can run -help to find the available commands or details on any command. Most users should only need the *daemon* and *shell* commands, and maybe *fuse*. You can use the *migrate* command to move all your data to a new server (where the command is run). 
 
