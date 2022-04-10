@@ -56,7 +56,8 @@ public interface SqlSupplier {
                 "body text NOT NULL," +
                 "priorid " + sqlInteger() + "," +
                 "dismissed boolean" +
-                ");";
+                ");" +
+                "CREATE UNIQUE INDEX IF NOT EXISTS server_msg_index ON messages (username);";
     }
 
     String insertOrIgnoreCommand(String prefix, String suffix);
