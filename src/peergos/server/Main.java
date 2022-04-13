@@ -172,7 +172,7 @@ public class Main extends Builder {
                     new Command.Arg("mirror.bat", "BatWithId to enable mirroring a user's private data", false),
                     new Command.Arg("login-keypair", "The keypair used to mirror the login data for a user (use with 'mirror.username' arg)", false),
                     new Command.Arg("public-server", "Are we a public server? (allow http GETs to API)", false, "false"),
-                    new Command.Arg("run-gateway", "Run a local Peergos gateway", false, "true"),
+                    new Command.Arg("run-gateway", "Run a local Peergos gateway", false),
                     new Command.Arg("gateway-port", "Port to run a local gateway on", false, "9000"),
                     new Command.Arg("collect-metrics", "Export aggregated metrics", false, "false"),
                     new Command.Arg("metrics.address", "Listen address for serving aggregated metrics", false, "localhost"),
@@ -498,14 +498,15 @@ public class Main extends Builder {
             )
     );
 
-    public static UserService startPeergos(Args a) {
+    public static UserService startPeergos(Args args) {
         try {
             Crypto crypto = initCrypto();
             Hasher hasher = crypto.hasher;
             PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, crypto.signer);
-            MultiAddress localP2PApi = new MultiAddress(a.getArg("proxy-target"));
 
-            boolean useIPFS = a.getBoolean("useIPFS");
+
+            boolean useIPFS = args.getBoolean("useIPFS");
+            Args a = S3Config.useS3(args) && useIPFS ? args.setArg("ipfs-plugins", "go-ds-s3") : args;
             IpfsWrapper ipfsWrapper = null;
             if (useIPFS) {
                 ENSURE_IPFS_INSTALLED.main(a);
@@ -517,6 +518,7 @@ public class Main extends Builder {
                 String exporterAddress = a.getArg("metrics.address");
                 AggregatedMetrics.startExporter(exporterAddress, exporterPort);
             }
+            MultiAddress localP2PApi = new MultiAddress(a.getArg("proxy-target"));
 
             Multihash pkiServerNodeId = getPkiServerId(a);
             String domain = a.getArg("domain");
@@ -697,7 +699,7 @@ public class Main extends Builder {
                     }
                 }).start();
             }
-            if (a.getBoolean("run-gateway")) {
+            if (a.getBoolean("run-gateway", false) && ! isPublicServer) {
                 Args gatewayArgs = a.with("port", a.getArg("gateway-port"))
                         .with("peergos-url", "http://localhost:" + a.getArg("port"));
                 GATEWAY.main(gatewayArgs);
