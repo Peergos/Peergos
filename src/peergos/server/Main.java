@@ -37,6 +37,7 @@ import java.nio.file.*;
 import java.sql.*;
 import java.time.*;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.function.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -550,10 +551,13 @@ public class Main extends Builder {
             boolean enableGC = a.getBoolean("enable-gc", false);
             GarbageCollector gc = null;
             if (enableGC) {
-                if (S3Config.useS3(a))
-                    throw new IllegalStateException("GC should be run separately when using S3!");
                 gc = new GarbageCollector(localStorage, rawPointers, usageStore);
-                gc.start(a.getInt("gc.period.millis", 60 * 60 * 1000), s -> Futures.of(true));
+                Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver =
+                        S3Config.useS3(a) ?
+                                ((S3BlockStorage) localStorage)::savePointerSnapshot :
+                                s -> Futures.of(true);
+                int gcInterval = 12 * 60 * 60 * 1000;
+                gc.start(a.getInt("gc.period.millis", gcInterval), snapshotSaver);
             }
 
             JdbcIpnsAndSocial rawSocial = new JdbcIpnsAndSocial(getDBConnector(a, "social-sql-file", dbConnectionPool), sqlCommands);

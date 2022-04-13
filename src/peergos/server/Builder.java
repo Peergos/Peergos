@@ -152,34 +152,47 @@ public class Builder {
         return args.fromPeergosDir("blockstore_dir", "blockstore");
     }
 
+    private static BlockStoreProperties buildS3Properties(Args a) {
+        S3Config config = S3Config.build(a);
+        Optional<String> publicReadUrl = S3Config.getPublicReadUrl(a);
+        boolean directWrites = a.getBoolean("direct-s3-writes", false);
+        boolean publicReads = a.getBoolean("public-s3-reads", false);
+        boolean authedReads = a.getBoolean("authed-s3-reads", false);
+        Optional<String> authedUrl = Optional.of("https://" + config.getHost() + "/");
+        return new BlockStoreProperties(directWrites, publicReads, authedReads, publicReadUrl, authedUrl);
+    }
+
     public static DeletableContentAddressedStorage buildLocalStorage(Args a,
                                                                      TransactionStore transactions,
                                                                      BlockRequestAuthoriser authoriser,
                                                                      Hasher hasher) {
         boolean useIPFS = a.getBoolean("useIPFS");
         boolean enableGC = a.getBoolean("enable-gc", false);
+        boolean useS3 = S3Config.useS3(a);
         JavaPoster ipfsApi = buildIpfsApi(a);
         if (useIPFS) {
             DeletableContentAddressedStorage.HTTP ipfs = new DeletableContentAddressedStorage.HTTP(ipfsApi, false, hasher);
-            if (enableGC) {
+            if (useS3) {
+                // IPFS is already running separately, we can still use an S3BlockStorage
+                S3Config config = S3Config.build(a);
+                BlockStoreProperties props = buildS3Properties(a);
+                TransactionalIpfs p2pBlockRetriever = new TransactionalIpfs(ipfs, transactions, authoriser, ipfs.id().join(), hasher);
+
+                return new S3BlockStorage(config, ipfs.id().join(), props, transactions, authoriser, hasher, p2pBlockRetriever);
+            } else if (enableGC) {
                 return new TransactionalIpfs(ipfs, transactions, authoriser, ipfs.id().join(), hasher);
             } else
                 return new AuthedStorage(ipfs, authoriser, hasher);
         } else {
             // In S3 mode of operation we require the ipfs id to be supplied as we don't have a local ipfs running
-            if (S3Config.useS3(a)) {
+            if (useS3) {
                 if (enableGC)
                     throw new IllegalStateException("GC should be run separately when using S3!");
                 DeletableContentAddressedStorage.HTTP ipfs = new DeletableContentAddressedStorage.HTTP(ipfsApi, false, hasher);
                 Cid ourId = Cid.decode(a.getArg("ipfs.id"));
                 TransactionalIpfs p2pBlockRetriever = new TransactionalIpfs(ipfs, transactions, authoriser, ipfs.id().join(), hasher);
-                Optional<String> publicReadUrl = S3Config.getPublicReadUrl(a);
-                boolean directWrites = a.getBoolean("direct-s3-writes", false);
-                boolean publicReads = a.getBoolean("public-s3-reads", false);
-                boolean authedReads = a.getBoolean("authed-s3-reads", false);
                 S3Config config = S3Config.build(a);
-                Optional<String> authedUrl = Optional.of("https://" + config.getHost() + "/");
-                BlockStoreProperties props = new BlockStoreProperties(directWrites, publicReads, authedReads, publicReadUrl, authedUrl);
+                BlockStoreProperties props = buildS3Properties(a);
 
                 return new S3BlockStorage(config, ourId, props, transactions, authoriser, hasher, p2pBlockRetriever);
             } else {
