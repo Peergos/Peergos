@@ -498,14 +498,15 @@ public class Main extends Builder {
             )
     );
 
-    public static UserService startPeergos(Args a) {
+    public static UserService startPeergos(Args args) {
         try {
             Crypto crypto = initCrypto();
             Hasher hasher = crypto.hasher;
             PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, crypto.signer);
-            MultiAddress localP2PApi = new MultiAddress(a.getArg("proxy-target"));
 
-            boolean useIPFS = a.getBoolean("useIPFS");
+
+            boolean useIPFS = args.getBoolean("useIPFS");
+            Args a = S3Config.useS3(args) && useIPFS ? args.setArg("ipfs-plugins", "go-ds-s3") : args;
             IpfsWrapper ipfsWrapper = null;
             if (useIPFS) {
                 ENSURE_IPFS_INSTALLED.main(a);
@@ -517,6 +518,7 @@ public class Main extends Builder {
                 String exporterAddress = a.getArg("metrics.address");
                 AggregatedMetrics.startExporter(exporterAddress, exporterPort);
             }
+            MultiAddress localP2PApi = new MultiAddress(a.getArg("proxy-target"));
 
             Multihash pkiServerNodeId = getPkiServerId(a);
             String domain = a.getArg("domain");
