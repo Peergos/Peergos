@@ -172,7 +172,7 @@ public class Main extends Builder {
                     new Command.Arg("mirror.bat", "BatWithId to enable mirroring a user's private data", false),
                     new Command.Arg("login-keypair", "The keypair used to mirror the login data for a user (use with 'mirror.username' arg)", false),
                     new Command.Arg("public-server", "Are we a public server? (allow http GETs to API)", false, "false"),
-                    new Command.Arg("run-gateway", "Run a local Peergos gateway", false, "true"),
+                    new Command.Arg("run-gateway", "Run a local Peergos gateway", false),
                     new Command.Arg("gateway-port", "Port to run a local gateway on", false, "9000"),
                     new Command.Arg("collect-metrics", "Export aggregated metrics", false, "false"),
                     new Command.Arg("metrics.address", "Listen address for serving aggregated metrics", false, "localhost"),
@@ -697,7 +697,7 @@ public class Main extends Builder {
                     }
                 }).start();
             }
-            if (a.getBoolean("run-gateway")) {
+            if (a.getBoolean("run-gateway", false) && ! isPublicServer) {
                 Args gatewayArgs = a.with("port", a.getArg("gateway-port"))
                         .with("peergos-url", "http://localhost:" + a.getArg("port"));
                 GATEWAY.main(gatewayArgs);
