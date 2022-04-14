@@ -242,6 +242,23 @@ Follow the instructions for self hosting but add the following parameters (eithe
 -s3.secretKey #SECRET_KEY
 ```
 
+You will also need to set the cors.xml for the bucket to the following:
+```
+<CORSConfiguration>
+  <CORSRule>
+    <AllowedOrigin>https://$YOUR_DOMAIN</AllowedOrigin>
+    <AllowedMethod>HEAD</AllowedMethod>
+    <AllowedMethod>GET</AllowedMethod>
+    <AllowedMethod>PUT</AllowedMethod>
+    <AllowedHeader>*</AllowedHeader>
+    <ExposeHeader>ETag</ExposeHeader>
+    <ExposeHeader>Content-Length</ExposeHeader>
+    <MaxAgeSeconds>3600</MaxAgeSeconds>
+  </CORSRule>
+</CORSConfiguration>
+```
+
+
 Usage - self hosting (with Postgres instead of sqlite)
 -----
 Follow the instructions for self hosting but add the following parameters (either on the command line, or in the .peergos/config file after first run):
