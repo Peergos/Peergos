@@ -184,7 +184,7 @@ public class Args {
 
     private static Map<String, String> parseFile(Map<String, String> args, Map<String, String> env) {
         Path toFile = (args.containsKey(Main.PEERGOS_PATH) ?
-                PathUtil.get(args.get(Main.PEERGOS_PATH)) :
+                Paths.get(args.get(Main.PEERGOS_PATH)) :
                 Main.DEFAULT_PEERGOS_DIR_PATH).resolve(CONFIG_FILENAME);
         return parseFile(toFile);
     }
