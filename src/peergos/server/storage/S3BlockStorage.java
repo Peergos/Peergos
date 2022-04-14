@@ -313,7 +313,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         GarbageCollector.collect(this, pointers, usage, this::savePointerSnapshot);
     }
 
-    private CompletableFuture<Boolean> savePointerSnapshot(Stream<Map.Entry<PublicKeyHash, byte[]>> pointers) {
+    public CompletableFuture<Boolean> savePointerSnapshot(Stream<Map.Entry<PublicKeyHash, byte[]>> pointers) {
         // Save pointers snapshot to file
         Path pointerSnapshotFile = PathUtil.get("pointers-snapshot-" + LocalDateTime.now() + ".txt");
         pointers.forEach(entry -> {
