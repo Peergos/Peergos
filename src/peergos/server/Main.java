@@ -410,6 +410,16 @@ public class Main extends Builder {
             ).collect(Collectors.toList())
     );
 
+    public static final Command<InstanceAdmin.VersionInfo> VERSION = new Command<>("version",
+            "Print the Peergos version",
+            a -> {
+                InstanceAdmin.VersionInfo version = new InstanceAdmin.VersionInfo(UserService.CURRENT_VERSION, Admin.getSourceVersion());
+                System.out.println("Version: " + version);
+                return version;
+            },
+            Collections.emptyList()
+    );
+
     public static final Command<PublicGateway> GATEWAY = new Command<>("gateway",
             "Serve websites directly from Peergos",
             Main::startGateway,
@@ -855,7 +865,10 @@ public class Main extends Builder {
     public static final Command<Void> MAIN = new Command<>("Main",
             "Run a Peergos command",
             args -> {
-                System.out.println("Run with -help to show options");
+                if (args.hasArg("version")) {
+                    VERSION.main(args);
+                } else
+                    System.out.println("Run with -help to show options");
                 return null;
             },
             Collections.emptyList(),
@@ -868,6 +881,7 @@ public class Main extends Builder {
                     GATEWAY,
                     Mirror.MIRROR,
                     MIGRATE,
+                    VERSION,
                     IDENTITY,
                     INSTALL_AND_RUN_IPFS,
                     PKI,

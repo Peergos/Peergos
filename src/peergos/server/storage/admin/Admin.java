@@ -49,16 +49,20 @@ public class Admin implements InstanceAdmin {
             this.numberWaiting = 0;
         }
 
-        String version = "";
+        this.sourceVersion = getSourceVersion();
+    }
+
+    public static String getSourceVersion() {
         try {
             StaticHandler.Asset manifest = JarHandler.getAsset("META-INF/MANIFEST.MF", PathUtil.get("/"), false);
-            version = Arrays.stream(new String(manifest.data).split("\n"))
+            return Arrays.stream(new String(manifest.data).split("\n"))
                     .filter(line -> line.startsWith("Version"))
                     .findFirst()
                     .map(line -> line.substring("Version:".length()).trim())
                     .orElse("");
-        } catch (Exception e) {}
-        this.sourceVersion = version;
+        } catch (Exception e) {
+            return "";
+        }
     }
 
     @Override
