@@ -307,7 +307,9 @@ Migrate
 To migrate to another server first ensure you have sufficient quota on it, then run the migrate command on it. 
 > java -jar Peergos.jar migrate
 
-It will ask for your username and password, mirror all your data locally, and then update the PKI to make this your home server.
+It will ask for your username and password, mirror all your data locally, and then update the PKI to make this your home server. 
+
+After migration, your identity is unchanged, all links to your data continue to work, and you keep your social graph without needing to tell anyone. 
 
 Development
 --------
