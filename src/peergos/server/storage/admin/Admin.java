@@ -53,16 +53,7 @@ public class Admin implements InstanceAdmin {
     }
 
     public static String getSourceVersion() {
-        try {
-            StaticHandler.Asset manifest = JarHandler.getAsset("META-INF/MANIFEST.MF", PathUtil.get("/"), false);
-            return Arrays.stream(new String(manifest.data).split("\n"))
-                    .filter(line -> line.startsWith("Version"))
-                    .findFirst()
-                    .map(line -> line.substring("Version:".length()).trim())
-                    .orElse("");
-        } catch (Exception e) {
-            return "";
-        }
+        return Admin.class.getPackage().getImplementationVersion();
     }
 
     @Override
