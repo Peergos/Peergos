@@ -199,7 +199,6 @@ public class MultiNodeNetworkTests {
 
         UserContext friend = ensureSignedUp(generateUsername(random), password, node1, crypto);
         friend.sendInitialFollowRequest(username).join();
-        long usageVia1 = user.getSpaceUsage().join();
 
         // migrate to node2
         List<UserPublicKeyLink> existing = user.network.coreNode.getChain(username).join();
@@ -209,6 +208,7 @@ public class MultiNodeNetworkTests {
         List<BatWithId> batsViaNewNode = node2.batCave.getUserBats(username, userViaNewServer.signer).join();
         Assert.assertTrue(bats.equals(batsViaNewNode));
         Optional<BatWithId> mirrorBat = Optional.of(bats.get(bats.size() - 1));
+        long usageVia1 = user.getSpaceUsage().join();
         userViaNewServer.network.coreNode.migrateUser(username, newChain, originalNodeId, mirrorBat).join();
 
         List<UserPublicKeyLink> chain = userViaNewServer.network.coreNode.getChain(username).join();
