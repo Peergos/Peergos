@@ -104,6 +104,8 @@ public class HttpUtil {
                     return conn.getHeaderFields();
                 if (respCode == 503)
                     throw new RateLimitException();
+                if (respCode == 404)
+                    throw new FileNotFoundException();
                 throw new IllegalStateException("HTTP " + respCode);
             } catch (IOException e) {
                 InputStream err = conn.getErrorStream();
