@@ -379,7 +379,8 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
 
             Timespec access = timespecs[0], modified = timespecs[1];
             long epochSeconds = modified.tv_sec.longValue();
-            Instant instant = Instant.ofEpochSecond(epochSeconds);
+            long nanos = modified.tv_nsec.longValue();
+            Instant instant = Instant.ofEpochSecond(epochSeconds).plusNanos(nanos);
             LocalDateTime lastModified = LocalDateTime.ofInstant(instant, ZoneId.systemDefault());
 
             FileProperties updated = stat.properties.withModified(lastModified);
@@ -587,7 +588,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
                 }
             } else
                 file.treeNode.truncate(size, context.network, context.crypto).get();
-            return (int) size;
+            return 0;
         } catch (Throwable t) {
             LOG.log(Level.WARNING, t.getMessage(), t);
             return -ErrorCodes.ENOENT();
