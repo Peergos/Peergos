@@ -109,6 +109,8 @@ public class HttpUtil {
                 throw new IllegalStateException("HTTP " + respCode);
             } catch (IOException e) {
                 InputStream err = conn.getErrorStream();
+                if (err == null)
+                    throw e;
                 byte[] errBody = Serialize.readFully(err);
                 throw new IOException(new String(errBody));
             }
