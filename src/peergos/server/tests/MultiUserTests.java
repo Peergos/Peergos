@@ -171,6 +171,11 @@ public class MultiUserTests {
     }
 
     @Test
+    public void grantWriteToFileAndDeleteParent() throws IOException {
+        PeergosNetworkUtils.grantWriteToFileAndDeleteParent(network, random);
+    }
+
+    @Test
     public void grantAndRevokeWriteThenReadAccessToFolder() throws IOException {
         PeergosNetworkUtils.grantAndRevokeWriteThenReadAccessToFolder(network, random);
     }
