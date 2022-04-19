@@ -2,9 +2,9 @@ package peergos.shared.storage.auth;
 
 import peergos.shared.cbor.*;
 import peergos.shared.io.ipfs.cid.*;
-import peergos.shared.io.ipfs.multibase.*;
 import peergos.shared.util.*;
 
+import java.time.*;
 import java.util.*;
 
 public class BlockAuth implements Cborable {
@@ -29,6 +29,17 @@ public class BlockAuth implements Cborable {
 
     public String encode() {
         return ArrayOps.bytesToHex(serialize());
+    }
+
+    public LocalDateTime timestamp() {
+        return LocalDateTime.of(
+                Integer.parseInt(awsDatetime.substring(0, 4)),
+                Integer.parseInt(awsDatetime.substring(4, 6)),
+                Integer.parseInt(awsDatetime.substring(6, 8)),
+                Integer.parseInt(awsDatetime.substring(9, 11)),
+                Integer.parseInt(awsDatetime.substring(11, 13)),
+                Integer.parseInt(awsDatetime.substring(13, 15))
+        );
     }
 
     public static BlockAuth fromString(String in) {

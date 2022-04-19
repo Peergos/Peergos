@@ -30,7 +30,7 @@ public class LocalDate implements Comparable<LocalDate>{
 	public static final LocalDate MAX = LocalDate.of(YEAR_MAX_VALUE, 12, 31);
 	public static final LocalDate MIN = LocalDate.of(YEAR_MIN_VALUE, 1, 1);
 	
-    private LocalDate(int year, int month, int dayOfMonth) {
+    public LocalDate(int year, int month, int dayOfMonth) {
         this.year = year;
         this.month = (short) month;
         this.day = (short) dayOfMonth;

@@ -18,12 +18,24 @@ public interface BlockRequestAuthoriser {
         S3Request req = new S3Request("GET", sourceNode.toBase58(), "api/v0/block/get?arg=" + block.toBase58(), S3Request.UNSIGNED,
                 Optional.of(auth.expirySeconds), false, true,
                 Collections.emptyMap(), Collections.emptyMap(), auth.batId.toBase58(), "eu-central-1", t);
-        Instant timestamp = Instant.parse(String.format("%s-%s-%sT%s:%s:%sZ", t.substring(0, 4), t.substring(4, 6), t.substring(6, 8), t.substring(9, 11), t.substring(11, 13), t.substring(13, 15)));
-        Instant expiry = timestamp.plusSeconds(auth.expirySeconds);
-        if (expiry.isBefore(Instant.now()))
+        LocalDateTime timestamp = auth.timestamp();
+        LocalDateTime expiry = timestamp.plusSeconds(auth.expirySeconds);
+        LocalDateTime now = LocalDateTime.now();
+        if (expiry.isBefore(now))
             return false;
         String signature = S3Request.computeSignature(req, bat.encodeSecret(), h).join();
         String expected = ArrayOps.bytesToHex(auth.signature);
         return signature.equals(expected);
+    }
+
+    static String invalidReason(BlockAuth auth, Cid block, Cid sourceNode, Bat bat, Hasher h) {
+        String t = auth.awsDatetime;
+        LocalDateTime timestamp = auth.timestamp();
+        LocalDateTime expiry = timestamp.plusSeconds(auth.expirySeconds);
+        LocalDateTime now = LocalDateTime.now();
+        // INVALID AUTH: Expired: 2022-04-19T08:05:34Z is before now: 2022-04-19T13:00:34.679482Z
+        if (expiry.isBefore(now))
+            return "Expired: " + expiry + " is before now: " + now;
+        return "Invalid signature";
     }
 }

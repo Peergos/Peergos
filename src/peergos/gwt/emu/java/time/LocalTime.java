@@ -37,7 +37,7 @@ public class LocalTime implements Comparable<LocalTime>{
     private final byte second;
     private final int nano;
     
-    private LocalTime(int hour, int minute, int second, int nanoOfSecond) {
+    public LocalTime(int hour, int minute, int second, int nanoOfSecond) {
         this.hour = (byte) hour;
         this.minute = (byte) minute;
         this.second = (byte) second;

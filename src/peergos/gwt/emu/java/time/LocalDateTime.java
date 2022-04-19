@@ -86,6 +86,10 @@ public class LocalDateTime implements Comparable<LocalDateTime>{
     	return null;
     }
 
+    public static LocalDateTime of(int year, int month, int dayOfMonth, int hour, int minute, int second) {
+    	return new LocalDateTime(new LocalDate(year, month, dayOfMonth), new LocalTime(hour, minute, second, 0));
+    }
+
     public Instant toInstant(ZoneOffset offset) {
         return null;
     }
