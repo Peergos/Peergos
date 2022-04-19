@@ -167,7 +167,7 @@ public class FileProperties implements Cborable {
         long size = m.getLong("s");
         long modifiedEpochSeconds = m.getLong("t");
         int modifiedNano = m.getOptionalLong("tn").orElse(0L).intValue();
-        long createdEpochSeconds = m.getLong("c");
+        long createdEpochSeconds = m.getOptionalLong("c").orElse(modifiedEpochSeconds);
         int createdNano = m.getOptionalLong("cn").orElse(0L).intValue();
         boolean isHidden = m.getBoolean("h");
         Optional<byte[]> thumbnailData = m.getOptionalByteArray("i");
