@@ -221,8 +221,7 @@ public class MultiNodeNetworkTests {
         long usageVia2 = postMigration.getSpaceUsage().join();
         // Note we currently don't remove the old pointer after changing password,
         // so there is a 5kib reduction after migration per password change
-        // Takes into account FileProperties padding. CryptreeNode.META_DATA_PADDING_BLOCKSIZE = 16;
-        Assert.assertTrue((usageVia2 == usageVia1 + 16 + 1) || (nPasswordChanges > 0 && usageVia2 < usageVia1));
+        Assert.assertTrue(usageVia2 == usageVia1 || (nPasswordChanges > 0 && usageVia2 < usageVia1));
 
         // check pending followRequest was transferred
         List<FollowRequestWithCipherText> followRequests = postMigration.processFollowRequests().join();
