@@ -18,14 +18,7 @@ public interface BlockRequestAuthoriser {
         S3Request req = new S3Request("GET", sourceNode.toBase58(), "api/v0/block/get?arg=" + block.toBase58(), S3Request.UNSIGNED,
                 Optional.of(auth.expirySeconds), false, true,
                 Collections.emptyMap(), Collections.emptyMap(), auth.batId.toBase58(), "eu-central-1", t);
-        LocalDateTime timestamp = LocalDateTime.of(
-                Integer.parseInt(t.substring(0, 4)),
-                Integer.parseInt(t.substring(4, 6)),
-                Integer.parseInt(t.substring(6, 8)),
-                Integer.parseInt(t.substring(9, 11)),
-                Integer.parseInt(t.substring(11, 13)),
-                Integer.parseInt(t.substring(13, 15))
-        );
+        LocalDateTime timestamp = auth.timestamp();
         LocalDateTime expiry = timestamp.plusSeconds(auth.expirySeconds);
         LocalDateTime now = LocalDateTime.now();
         if (expiry.isBefore(now))
@@ -37,14 +30,7 @@ public interface BlockRequestAuthoriser {
 
     static String invalidReason(BlockAuth auth, Cid block, Cid sourceNode, Bat bat, Hasher h) {
         String t = auth.awsDatetime;
-        LocalDateTime timestamp = LocalDateTime.of(
-                Integer.parseInt(t.substring(0, 4)),
-                Integer.parseInt(t.substring(4, 6)),
-                Integer.parseInt(t.substring(6, 8)),
-                Integer.parseInt(t.substring(9, 11)),
-                Integer.parseInt(t.substring(11, 13)),
-                Integer.parseInt(t.substring(13, 15))
-        );
+        LocalDateTime timestamp = auth.timestamp();
         LocalDateTime expiry = timestamp.plusSeconds(auth.expirySeconds);
         LocalDateTime now = LocalDateTime.now();
         // INVALID AUTH: Expired: 2022-04-19T08:05:34Z is before now: 2022-04-19T13:00:34.679482Z
