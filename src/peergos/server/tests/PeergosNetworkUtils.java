@@ -1167,7 +1167,7 @@ public class PeergosNetworkUtils {
 
         UserContext sharer = PeergosNetworkUtils.ensureSignedUp(generateUsername(random), password, network, crypto);
 
-        List<UserContext> shareeUsers = getUserContextsForNode(network, random, 1, Arrays.asList(password, password));
+        List<UserContext> shareeUsers = getUserContextsForNode(network.clear(), random, 1, Arrays.asList(password, password));
         UserContext a = shareeUsers.get(0);
 
         // friend sharer with others
@@ -1202,8 +1202,7 @@ public class PeergosNetworkUtils {
         Assert.assertEquals(sharedFolder.getFileProperties().name, filename);
 
         // delete the parent folder
-        Path folderPath = Paths.get(sharer.username, folderName);
-        sharer.getByPath(folderPath).join().get().remove(sharer.getUserRoot().join(), folderPath, sharer).join();
+        sharer.getByPath(dirPath).join().get().remove(sharer.getUserRoot().join(), dirPath, sharer).join();
         // check 'a' can't see the shared directory
         FileWrapper unsharedLocation = a.getByPath(sharer.username).join().get();
         Set<FileWrapper> children = unsharedLocation.getChildren(crypto.hasher, sharer.network).join();

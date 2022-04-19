@@ -160,22 +160,35 @@ public class BufferedStorage extends DelegatingStorage {
 
     public synchronized CompletableFuture<Boolean> commit(PublicKeyHash owner, TransactionId tid) {
         // write blocks in batches of up to 50 all in 1 transaction
+        // make sure batches only include a single writer
+        Map<PublicKeyHash, List<OpLog.BlockWrite>> byWriter = new EfficientHashMap<>();
+        for (Map.Entry<Cid, OpLog.BlockWrite> e : storage.entrySet()) {
+            if (! byWriter.containsKey(e.getValue().writer))
+                byWriter.put(e.getValue().writer, new ArrayList<>());
+            byWriter.get(e.getValue().writer).add(e.getValue());
+        }
         int maxBlocksPerBatch = ContentAddressedStorage.MAX_BLOCK_AUTHS;
         List<List<OpLog.BlockWrite>> cborBatches = new ArrayList<>();
         List<List<OpLog.BlockWrite>> rawBatches = new ArrayList<>();
-        int cborCount = 0, rawcount=0;
-        for (Map.Entry<Cid, OpLog.BlockWrite> e : storage.entrySet()) {
-            OpLog.BlockWrite val = e.getValue();
-            List<List<OpLog.BlockWrite>> batches = val.isRaw ? rawBatches : cborBatches;
-            int count = val.isRaw ? rawcount : cborCount;
-            if (count % maxBlocksPerBatch == 0)
-                batches.add(new ArrayList<>());
-            batches.get(batches.size() - 1).add(val);
-            count = (count + 1) % maxBlocksPerBatch;
-            if (val.isRaw)
-                rawcount = count;
-            else
-                cborCount = count;
+
+        for (Map.Entry<PublicKeyHash, List<OpLog.BlockWrite>> d : byWriter.entrySet()) {
+            int cborCount = 0, rawcount = 0;
+            if (! cborBatches.isEmpty() && ! cborBatches.get(cborBatches.size() - 1).isEmpty())
+                cborBatches.add(new ArrayList<>());
+            if (! rawBatches.isEmpty() && ! rawBatches.get(rawBatches.size() - 1).isEmpty())
+                rawBatches.add(new ArrayList<>());
+            for (OpLog.BlockWrite val : d.getValue()) {
+                List<List<OpLog.BlockWrite>> batches = val.isRaw ? rawBatches : cborBatches;
+                int count = val.isRaw ? rawcount : cborCount;
+                if (count % maxBlocksPerBatch == 0)
+                    batches.add(new ArrayList<>());
+                batches.get(batches.size() - 1).add(val);
+                count = (count + 1) % maxBlocksPerBatch;
+                if (val.isRaw)
+                    rawcount = count;
+                else
+                    cborCount = count;
+            }
         }
         return Futures.combineAllInOrder(rawBatches.stream()
                 .map(batch -> target.putRaw(owner, batch.get(0).writer,
