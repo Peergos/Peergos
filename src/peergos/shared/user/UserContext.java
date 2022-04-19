@@ -901,8 +901,9 @@ public class UserContext {
                                 long t2 = System.currentTimeMillis();
                                 RelativeCapability nextChunk =
                                         RelativeCapability.buildSubsequentChunk(crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random)), rootRKey);
+                                LocalDateTime timestamp = LocalDateTime.now();
                                 return CryptreeNode.createEmptyDir(MaybeMultihash.empty(), rootRKey, rootWKey, Optional.of(writerPair),
-                                                new FileProperties(directoryName, true, false, "", 0, LocalDateTime.now(),
+                                                new FileProperties(directoryName, true, false, "", 0, timestamp, timestamp,
                                                         false, Optional.empty(), Optional.empty()),
                                                 Optional.empty(), SymmetricKey.random(), nextChunk, rootBat, mirrorBatId, crypto.random, crypto.hasher)
                                         .thenCompose(root -> {

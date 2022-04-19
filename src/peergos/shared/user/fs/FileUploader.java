@@ -49,11 +49,13 @@ public class FileUploader implements AutoCloseable {
                         byte[] firstLocation,
                         Optional<Bat> firstBat) {
         long length = (lengthLow & 0xFFFFFFFFL) + ((lengthHi & 0xFFFFFFFFL) << 32);
-        if (fileProperties == null)
-            this.props = new FileProperties(name, false, false, mimeType, length, LocalDateTime.now(),
+        if (fileProperties == null) {
+            LocalDateTime timestamp = LocalDateTime.now();
+            this.props = new FileProperties(name, false, false, mimeType, length, timestamp, timestamp,
                     false, Optional.empty(), Optional.empty());
-        else
+        } else {
             this.props = fileProperties;
+        }
         if (baseKey == null) baseKey = SymmetricKey.random();
 
         long offset = (offsetLow & 0xFFFFFFFFL) + ((offsetHi & 0xFFFFFFFFL) << 32);
