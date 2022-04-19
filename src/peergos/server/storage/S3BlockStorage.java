@@ -246,6 +246,10 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             return true;
         } catch (IOException e) {
             String msg = e.getMessage();
+            if (msg == null) {
+                LOG.info("Error checking for " + hash + ": " + e);
+                return false;
+            }
             boolean rateLimited = msg.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>SlowDown</Code>");
             if (rateLimited) {
                 throw new RateLimitException();
