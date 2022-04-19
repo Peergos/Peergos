@@ -11,7 +11,9 @@ import peergos.shared.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.storage.*;
+import peergos.shared.user.*;
 
+import java.io.*;
 import java.net.*;
 import java.nio.file.*;
 import java.util.*;
@@ -112,6 +114,11 @@ public class S3UserTests extends UserTests {
     private static NetworkAccess buildApi(Args args) throws Exception {
         URL local = new URL("http://localhost:" + args.getInt("port"));
         return Builder.buildNonCachingJavaNetworkAccess(local, false, Optional.empty()).get();
+    }
+
+    @Test
+    public void grantWriteToFileAndDeleteParent() throws IOException {
+        PeergosNetworkUtils.grantWriteToFileAndDeleteParent(network, new Random(1));
     }
 
     @AfterClass
