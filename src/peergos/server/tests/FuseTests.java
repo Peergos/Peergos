@@ -280,7 +280,8 @@ public class FuseTests {
             FileTime fileTime = FileTime.from(zdt.toInstant());
             Path path1 = Files.setLastModifiedTime(path, fileTime);
             FileTime found = Files.getLastModifiedTime(path);
-            assertEquals("get(set(time)) = time for time = "+ zdt, fileTime.toMillis() / 1000 + zdt.getOffset().getTotalSeconds(), found.toMillis() / 1000);
+            int timeZoneDiff = zdt.getOffset().getTotalSeconds() - now.getOffset().getTotalSeconds();
+            assertEquals("get(set(time)) = time for time = "+ zdt, fileTime.toMillis() + 1000 * timeZoneDiff, found.toMillis());
         }
     }
 

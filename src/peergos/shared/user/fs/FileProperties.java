@@ -141,6 +141,7 @@ public class FileProperties implements Cborable {
         state.put("m", new CborObject.CborString(mimeType));
         state.put("s", new CborObject.CborLong(size));
         state.put("t", new CborObject.CborLong(modified.toEpochSecond(ZoneOffset.UTC)));
+        state.put("tn", new CborObject.CborLong(modified.getNano()));
         state.put("h", new CborObject.CborBoolean(isHidden));
         thumbnail.ifPresent(thumb -> state.put("i", new CborObject.CborByteArray(thumb.data)));
         thumbnail.ifPresent(thumb -> state.put("im", new CborObject.CborString(thumb.mimeType)));
@@ -158,13 +159,14 @@ public class FileProperties implements Cborable {
         String name = m.getString("n");
         String mimeType = m.getString("m");
         long size = m.getLong("s");
-        long modifiedEpochMillis = m.getLong("t");
+        long modifiedEpochSeconds = m.getLong("t");
+        int modifiedNano = m.getOptionalLong("tn").orElse(0L).intValue();
         boolean isHidden = m.getBoolean("h");
         Optional<byte[]> thumbnailData = m.getOptionalByteArray("i");
         Optional<Thumbnail> thumbnail = thumbnailData.map(d -> new Thumbnail(m.getString("im", "image/png"), d));
         Optional<byte[]> streamSecret = m.getOptionalByteArray("p");
 
-        LocalDateTime modified = LocalDateTime.ofEpochSecond(modifiedEpochMillis, 0, ZoneOffset.UTC);
+        LocalDateTime modified = LocalDateTime.ofEpochSecond(modifiedEpochSeconds, modifiedNano, ZoneOffset.UTC);
         return new FileProperties(name, isDirectory, isLink, mimeType, size, modified, isHidden, thumbnail, streamSecret);
     }
 
