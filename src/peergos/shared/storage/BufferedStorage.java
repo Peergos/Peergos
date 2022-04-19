@@ -191,11 +191,13 @@ public class BufferedStorage extends DelegatingStorage {
             }
         }
         return Futures.combineAllInOrder(rawBatches.stream()
-                .map(batch -> target.putRaw(owner, batch.get(0).writer,
-                        batch.stream().map(w -> w.signature).collect(Collectors.toList()),
-                        batch.stream().map(w -> w.block).collect(Collectors.toList()), tid, x-> {}))
-                .collect(Collectors.toList()))
+                        .filter(b -> ! b.isEmpty())
+                        .map(batch -> target.putRaw(owner, batch.get(0).writer,
+                                batch.stream().map(w -> w.signature).collect(Collectors.toList()),
+                                batch.stream().map(w -> w.block).collect(Collectors.toList()), tid, x-> {}))
+                        .collect(Collectors.toList()))
                 .thenCompose(a -> Futures.combineAllInOrder(cborBatches.stream()
+                        .filter(b -> ! b.isEmpty())
                         .map(batch -> target.put(owner, batch.get(0).writer,
                                 batch.stream().map(w -> w.signature).collect(Collectors.toList()),
                                 batch.stream().map(w -> w.block).collect(Collectors.toList()), tid))
