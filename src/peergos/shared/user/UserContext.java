@@ -731,10 +731,6 @@ public class UserContext {
         });
     }
 
-    public CompletableFuture<Long> getTotalSpaceUsed() {
-        return network.spaceUsage.getUsage(signer.publicKeyHash);
-    }
-
     public CompletableFuture<SecretGenerationAlgorithm> getKeyGenAlgorithm() {
         return getWriterData(network, signer.publicKeyHash, signer.publicKeyHash)
                 .thenApply(wd -> wd.props.generationAlgorithm

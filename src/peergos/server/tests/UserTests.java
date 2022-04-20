@@ -1101,7 +1101,7 @@ public abstract class UserTests {
 
         // check used space
         PublicKeyHash signer = context.signer.publicKeyHash;
-        long totalSpaceUsed = context.getTotalSpaceUsed().get();
+        long totalSpaceUsed = context.getSpaceUsage().get();
         Assert.assertTrue("Correct used space", totalSpaceUsed > 10*1024*1024);
 
         // check second chunk BAT is different from first

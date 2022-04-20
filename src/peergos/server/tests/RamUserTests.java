@@ -124,6 +124,10 @@ public class RamUserTests extends UserTests {
                     context.mirrorBatId(), network, crypto, x -> {}, txns).join();
         } catch (Exception e) {}
         long usageAfterFail = context.getSpaceUsage().join();
+        if (usageAfterFail <= size / 2) { // give server a chance to recalculate usage
+            Thread.sleep(2_000);
+            usageAfterFail = context.getSpaceUsage().join();
+        }
         Assert.assertTrue(usageAfterFail > size / 2);
         context.cleanPartialUploads(t -> true).join();
         Thread.sleep(20_000);
