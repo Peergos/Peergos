@@ -116,7 +116,7 @@ public class EmailBridgeClient {
                     .uploadFileSection(s, c, m.id + ".cbor", AsyncReader.build(rawCipherText), false, 0,
                             rawCipherText.length, Optional.empty(), true, true,
                             context.network, context.crypto, x -> {}, context.crypto.random.randomBytes(32),
-                            Optional.of(Bat.random(context.crypto.random)), inbox.mirrorBatId());
+                            Optional.empty(), Optional.of(Bat.random(context.crypto.random)), inbox.mirrorBatId());
         }).join();
     }
 

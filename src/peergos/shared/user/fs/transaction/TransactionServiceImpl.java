@@ -50,7 +50,7 @@ public class TransactionServiceImpl implements TransactionService {
         return updatedTransactionDir(version).thenCompose(dir ->
                 dir.uploadFileSection(version, committer, transaction.name(), asyncReader, false,
                         0, data.length, Optional.empty(), false, false, networkAccess,
-                        crypto, VOID_PROGRESS, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random)), dir.mirrorBatId()));
+                        crypto, VOID_PROGRESS, crypto.random.randomBytes(32), Optional.empty(), Optional.of(Bat.random(crypto.random)), dir.mirrorBatId()));
     }
 
     @Override
@@ -67,10 +67,10 @@ public class TransactionServiceImpl implements TransactionService {
 
     @Override
     public CompletableFuture<Snapshot> clear(Snapshot version, Committer committer, Transaction transaction) {
-        return transaction.clear(version, committer, networkAccess);
+        return transaction.clear(version, committer, networkAccess, crypto.hasher);
     }
 
-    private CompletableFuture<Transaction> read(Snapshot version, FileWrapper txnFile) {
+    private CompletableFuture<Optional<Transaction>> read(Snapshot version, FileWrapper txnFile) {
         FileProperties props = txnFile.getFileProperties();
         int size = (int) props.size;
         byte[] data = new byte[size];
@@ -78,7 +78,8 @@ public class TransactionServiceImpl implements TransactionService {
         CommittedWriterData cwd = version.get(txnFile.writer());
         return txnFile.getInputStream(cwd.props, networkAccess, crypto, VOID_PROGRESS)
                 .thenApply(reader -> Serialize.readFullArray(reader, data))
-                .thenApply(done -> Transaction.deserialize(data));
+                .thenApply(done -> Optional.of(Transaction.deserialize(data)))
+                .exceptionally(t -> Optional.empty());
     }
 
     @Override
@@ -86,10 +87,13 @@ public class TransactionServiceImpl implements TransactionService {
         return updatedTransactionDir(version)
                 .thenCompose(dir -> dir.getChildren(crypto.hasher, networkAccess)
                         .thenCompose(children -> {
-                            List<CompletableFuture<Transaction>> collect = children.stream()
+                            List<CompletableFuture<Optional<Transaction>>> collect = children.stream()
                                     .map(c -> read(version, c))
                                     .collect(Collectors.toList());
-                            return Futures.combineAll(collect);
+                            return Futures.combineAll(collect)
+                                    .thenApply(opts -> opts.stream()
+                                            .flatMap(Optional::stream)
+                                            .collect(Collectors.toSet()));
                         })
                 );
     }

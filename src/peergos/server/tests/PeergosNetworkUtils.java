@@ -274,7 +274,7 @@ public class PeergosNetworkUtils {
         FileWrapper parent = updatedSharerUser.getByPath(updatedSharerUser.username).join().get();
         parent.uploadFileSection(filename, suffixStream, false, originalFileContents.length, originalFileContents.length + suffix.length,
                 Optional.empty(), true, updatedSharerUser.network, crypto, l -> {},
-                null, null, parent.mirrorBatId()).join();
+                null, Optional.empty(), null, parent.mirrorBatId()).join();
         AsyncReader extendedContents = updatedSharerUser.getByPath(sharerUser.username + "/" + filename).join().get()
                 .getInputStream(updatedSharerUser.network, crypto, l -> {}).join();
         byte[] newFileContents = Serialize.readFully(extendedContents, originalFileContents.length + suffix.length).join();
@@ -440,7 +440,7 @@ public class PeergosNetworkUtils {
         FileWrapper parent = updatedSharerUser.getByPath(updatedSharerUser.username).join().get();
         parent.uploadFileSection(filename, suffixStream, false, originalFileContents.length, originalFileContents.length + suffix.length,
                 Optional.empty(), true, updatedSharerUser.network, crypto, l -> {},
-                null, null, parent.mirrorBatId()).join();
+                null, Optional.empty(), null, parent.mirrorBatId()).join();
         AsyncReader extendedContents = updatedSharerUser.getByPath(filePath).join().get().getInputStream(updatedSharerUser.network,
                 updatedSharerUser.crypto, l -> {}).join();
         byte[] newFileContents = Serialize.readFully(extendedContents, originalFileContents.length + suffix.length).join();
@@ -456,7 +456,7 @@ public class PeergosNetworkUtils {
                 originalFileContents.length + suffix.length,
                 originalFileContents.length + suffix.length + suffix2.length,
                 Optional.empty(), true, shareeNode, crypto, l -> {},
-                null, null, parent.mirrorBatId()).join();
+                null, Optional.empty(), null, parent.mirrorBatId()).join();
         AsyncReader extendedContents2 = sharee.getByPath(filePath).join().get()
                 .getInputStream(updatedSharerUser.network,
                 updatedSharerUser.crypto, l -> {}).join();
@@ -770,7 +770,7 @@ public class PeergosNetworkUtils {
             parent.uploadFileSection(filename, suffixStream, false, originalFileContents.length,
                     originalFileContents.length + suffix.length, Optional.empty(), true,
                     updatedSharer.network, crypto, l -> {},
-                    null, null, parent.mirrorBatId()).join();
+                    null, Optional.empty(), null, parent.mirrorBatId()).join();
             FileWrapper extendedFile = updatedSharer.getByPath(originalFilePath).join().get();
             AsyncReader extendedContents = extendedFile.getInputStream(updatedSharer.network, crypto, l -> {}).join();
             byte[] newFileContents = Serialize.readFully(extendedContents, extendedFile.getSize()).join();
@@ -913,7 +913,7 @@ public class PeergosNetworkUtils {
             parent.uploadFileSection(filename, suffixStream, false, originalFileContents.length,
                     originalFileContents.length + suffix.length, Optional.empty(), true,
                     updatedSharer.network, crypto, l -> {},
-                    null, null, parent.mirrorBatId()).join();
+                    null, Optional.empty(), null, parent.mirrorBatId()).join();
             FileWrapper extendedFile = updatedSharer.getByPath(originalFilePath).join().get();
             AsyncReader extendedContents = extendedFile.getInputStream(updatedSharer.network, updatedSharer.crypto, l -> {
             }).join();
@@ -1037,7 +1037,7 @@ public class PeergosNetworkUtils {
         parent.uploadFileSection(filename, suffixStream, false, data.length,
                 data.length + suffix.length, Optional.empty(), true,
                 updatedSharer.network, crypto, l -> {},
-                null, null, parent.mirrorBatId()).join();
+                null, Optional.empty(), null, parent.mirrorBatId()).join();
         FileWrapper extendedFile = updatedSharer.getByPath(originalFilePath).join().get();
         AsyncReader extendedContents = extendedFile.getInputStream(updatedSharer.network, updatedSharer.crypto, l -> {}).join();
         byte[] newFileContents = Serialize.readFully(extendedContents, extendedFile.getSize()).join();

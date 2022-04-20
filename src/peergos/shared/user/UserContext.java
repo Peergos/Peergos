@@ -8,8 +8,7 @@ import peergos.shared.inode.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.fs.cryptree.*;
-import peergos.shared.user.fs.transaction.TransactionService;
-import peergos.shared.user.fs.transaction.TransactionServiceImpl;
+import peergos.shared.user.fs.transaction.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
@@ -1139,19 +1138,20 @@ public class UserContext {
                 }
             }
             return getUserRoot().thenCompose(home -> home.uploadFileSection(
-                    FRIEND_ANNOTATIONS_FILE_NAME,
-                    AsyncReader.build(serialized.toByteArray()),
-                    true,
-                    0,
-                    serialized.size(),
-                    Optional.empty(),
-                    true,
-                    network,
-                    crypto,
-                    x -> {},
-                    crypto.random.randomBytes(32),
-                    Optional.of(Bat.random(crypto.random)),
-                    mirrorBatId()))
+                            FRIEND_ANNOTATIONS_FILE_NAME,
+                            AsyncReader.build(serialized.toByteArray()),
+                            true,
+                            0,
+                            serialized.size(),
+                            Optional.empty(),
+                            true,
+                            network,
+                            crypto,
+                            x -> {},
+                            crypto.random.randomBytes(32),
+                            Optional.empty(),
+                            Optional.of(Bat.random(crypto.random)),
+                            mirrorBatId()))
                     .thenApply(x -> true);
         });
     }
@@ -1381,9 +1381,9 @@ public class UserContext {
                                                     PendingSocialState updated = pending.withPending(targetUsername);
                                                     byte[] raw = updated.toCbor().serialize();
                                                     return getUserRoot().thenCompose(home -> home.uploadFileSection(
-                                                            SOCIAL_STATE_FILENAME, AsyncReader.build(raw), true, 0, raw.length, Optional.empty(),
-                                                            true, network, crypto, x -> {}, crypto.random.randomBytes(32),
-                                                            Optional.of(Bat.random(crypto.random)), mirrorBatId()))
+                                                                    SOCIAL_STATE_FILENAME, AsyncReader.build(raw), true, 0, raw.length, Optional.empty(),
+                                                                    true, network, crypto, x -> {}, crypto.random.randomBytes(32),
+                                                                    Optional.empty(), Optional.of(Bat.random(crypto.random)), mirrorBatId()))
                                                             .thenApply(x -> b);
                                                 }));
                             });
@@ -1847,7 +1847,7 @@ public class UserContext {
                     return getUserRoot().thenCompose(home ->
                             home.uploadFileSection(filename, reader, true, offset,
                                     offset + data.length, base, true, network, crypto, x -> {},
-                                    crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random)), mirrorBatId()));
+                                    crypto.random.randomBytes(32), Optional.empty(), Optional.of(Bat.random(crypto.random)), mirrorBatId()));
                 });
     }
 
@@ -2133,6 +2133,7 @@ public class UserContext {
                             return home.uploadFileSection(ENTRY_POINTS_FROM_FRIENDS_GROUPS_FILENAME, reader, true,
                                     0, raw.length, Optional.empty(), false, network, crypto, x -> {},
                                     crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH),
+                                    Optional.empty(),
                                     Optional.of(Bat.random(crypto.random)), mirrorBatId());
                         })).thenApply(x -> true);
     }
@@ -2294,10 +2295,15 @@ public class UserContext {
 
     @JsMethod
     public CompletableFuture<Snapshot> cleanPartialUploads() {
+        // clear any partial upload started more than a day ago
+        return cleanPartialUploads(t -> t.startTimeEpochMillis() < System.currentTimeMillis() - 24*3600_000L);
+    }
+
+    public CompletableFuture<Snapshot> cleanPartialUploads(Predicate<Transaction> filter) {
         TransactionService txns = getTransactionService();
         return getUserRoot().thenCompose(home -> network.synchronizer
                 .applyComplexUpdate(home.owner(), txns.getSigner(),
-                        (s, comitter) -> txns.clearAndClosePendingTransactions(s, comitter)));
+                        (s, comitter) -> txns.clearAndClosePendingTransactions(s, comitter, filter)));
     }
 
     public void logout() {

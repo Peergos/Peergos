@@ -1,16 +1,12 @@
 package peergos.shared.user.fs.transaction;
 
-import jsinterop.annotations.JsMethod;
-import peergos.shared.NetworkAccess;
-import peergos.shared.cbor.CborObject;
-import peergos.shared.cbor.Cborable;
-import peergos.shared.crypto.SigningPrivateKeyAndPublicHash;
+import peergos.shared.*;
+import peergos.shared.cbor.*;
+import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 
-import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 public interface Transaction extends Cborable {
@@ -22,7 +18,7 @@ public interface Transaction extends Cborable {
     /**
      * Clear data associated with this transaction
      */
-    CompletableFuture<Snapshot> clear(Snapshot version, Committer committer, NetworkAccess network);
+    CompletableFuture<Snapshot> clear(Snapshot version, Committer committer, NetworkAccess network, Hasher h);
 
     static Transaction deserialize(byte[] data) {
         CborObject cborObject = CborObject.fromByteArray(data);
@@ -40,22 +36,12 @@ public interface Transaction extends Cborable {
         FILE_UPLOAD
     }
 
-    @JsMethod
-    static CompletableFuture<FileUploadTransaction> buildFileUploadTransaction(String path,
-                                                                               int fileSizeLo,
-                                                                               int fileSizeHi,
-                                                                               AsyncReader fileData,
-                                                                               SigningPrivateKeyAndPublicHash writer,
-                                                                               List<Location> locations) {
-        return buildFileUploadTransaction(path, fileSizeLo & 0xFFFFFFFFL | (((long) fileSizeHi)) << 32,
-                fileData, writer, locations);
-    }
-
     static CompletableFuture<FileUploadTransaction> buildFileUploadTransaction(String path,
                                                                                long fileSize,
+                                                                               byte[] streamSecret,
                                                                                AsyncReader fileData,
                                                                                SigningPrivateKeyAndPublicHash writer,
-                                                                               List<Location> locations) {
-        return CompletableFuture.completedFuture(new FileUploadTransaction(System.currentTimeMillis(), path, writer, locations));
+                                                                               Location firstChunkLocation) {
+        return CompletableFuture.completedFuture(new FileUploadTransaction(System.currentTimeMillis(), path, writer, firstChunkLocation, fileSize, streamSecret));
     }
 }

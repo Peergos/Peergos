@@ -4,62 +4,59 @@ import peergos.shared.NetworkAccess;
 import peergos.shared.cbor.CborObject;
 import peergos.shared.cbor.Cborable;
 import peergos.shared.crypto.SigningPrivateKeyAndPublicHash;
-import peergos.shared.crypto.hash.PublicKeyHash;
-import peergos.shared.io.ipfs.multihash.*;
-import peergos.shared.storage.IpfsTransaction;
-import peergos.shared.storage.TransactionId;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.user.*;
-import peergos.shared.user.fs.Location;
-import peergos.shared.user.fs.cryptree.CryptreeNode;
-import peergos.shared.util.Futures;
+import peergos.shared.user.fs.*;
+import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
-import java.util.function.Function;
-import java.util.stream.Collectors;
+import java.util.stream.*;
 
 public class FileUploadTransaction implements Transaction {
     private final long startTimeEpochMillis;
     private final String path;
-    //  common to whole file
     private final PublicKeyHash owner;
     private final SigningPrivateKeyAndPublicHash writer;
-    private final List<Location> locations;
+    private final Location firstChunk;
+    private final long size;
+    private final byte[] streamSecret;
 
     public FileUploadTransaction(long startTimeEpochMillis,
                                  String path,
                                  SigningPrivateKeyAndPublicHash writer,
-                                 List<Location> locations) {
-        ensureValid(locations, writer);
-
+                                 Location firstChunk,
+                                 long size,
+                                 byte[] streamSecret) {
         this.startTimeEpochMillis = startTimeEpochMillis;
         this.path = path;
         this.writer = writer;
-        this.locations = locations;
-        this.owner = locations.get(0).owner;
+        this.firstChunk = firstChunk;
+        this.size = size;
+        this.streamSecret = streamSecret;
+        this.owner = firstChunk.owner;
     }
 
-    private void ensureValid(List<Location> locations, SigningPrivateKeyAndPublicHash writer) {
-        long distinctOWners = locations.stream().map(e -> e.owner).distinct().count();
-        if (distinctOWners != 1)
-            throw new IllegalStateException("All locations for transaction must have the same owner");
-        long distinctWriters = locations.stream().map(e -> e.writer).distinct().count();
-        if (distinctWriters != 1)
-            throw new IllegalStateException("All locations for transaction must have the same writer");
-        if (! locations.get(0).writer.equals(writer.publicKeyHash))
-            throw new IllegalStateException("All locations for transaction must have the same writer as the supplied signing pair");
+    public byte[] streamSecret() {
+        return streamSecret;
     }
 
-    public List<Location> getLocations() {
-        return locations;
+    public Location getFirstLocation() {
+        return firstChunk;
     }
 
     private CompletableFuture<Snapshot> clear(Snapshot version, Committer committer, NetworkAccess networkAccess, Location location) {
         return networkAccess.deleteChunkIfPresent(version, committer, location.owner, writer, location.getMapKey());
     }
 
-    public CompletableFuture<Snapshot> clear(Snapshot version, Committer committer, NetworkAccess network) {
-        return Futures.reduceAll(locations, version, (s, loc) -> clear(s, committer, network, loc), (a, b) -> b);
+    public CompletableFuture<Snapshot> clear(Snapshot version, Committer committer, NetworkAccess network, Hasher h) {
+        return Futures.reduceAll(LongStream.range(0, (size + Chunk.MAX_SIZE - 1)/Chunk.MAX_SIZE).boxed(),
+                        new Pair<>(version, firstChunk),
+                        (p, i) -> clear(p.left, committer, network, p.right)
+                                .thenCompose(s -> FileProperties.calculateNextMapKey(streamSecret, p.right.getMapKey(), Optional.empty(), h)
+                                        .thenApply(mapKey -> new Pair<>(s, firstChunk.withMapKey(mapKey.left)))),
+                        (a, b) -> b)
+                .thenApply(p -> p.left);
     }
 
     @Override
@@ -80,11 +77,9 @@ public class FileUploadTransaction implements Transaction {
         map.put("startTimeEpochMs", new CborObject.CborLong(startTimeEpochMillis()));
         map.put("owner", owner);
         map.put("writer", writer);
-        CborObject.CborList mapKeys = new CborObject.CborList(
-                locations.stream()
-                        .map(e -> new CborObject.CborByteArray(e.getMapKey()))
-                        .collect(Collectors.toList()));
-        map.put("mapKeys", mapKeys);
+        map.put("mapKey", new CborObject.CborByteArray(firstChunk.getMapKey()));
+        map.put("streamSecret", new CborObject.CborByteArray(streamSecret));
+        map.put("size", new CborObject.CborLong(size));
 
         return CborObject.CborMap.build(map);
     }
@@ -97,16 +92,16 @@ public class FileUploadTransaction implements Transaction {
 
         PublicKeyHash owner = map.getObject("owner", PublicKeyHash::fromCbor);
         SigningPrivateKeyAndPublicHash writer = map.getObject("writer", SigningPrivateKeyAndPublicHash::fromCbor);
-        List<byte[]> mapKeys = map.getList("mapKeys", (cborable -> ((CborObject.CborByteArray) cborable).value));
 
-        List<Location> locations = mapKeys.stream()
-                .map(mapKey -> new Location(owner, writer.publicKeyHash, mapKey))
-                .collect(Collectors.toList());
+        if (! map.containsKey("streamSecret"))
+            throw new IllegalStateException("Invalid upload transaction");
 
         return new FileUploadTransaction(
                 map.getLong("startTimeEpochMs"),
                 map.getString("path"),
                 writer,
-                locations);
+                new Location(owner, writer.publicKeyHash, map.getByteArray("mapKey")),
+                map.getLong("size"),
+                map.getByteArray("streamSecret"));
     }
 }

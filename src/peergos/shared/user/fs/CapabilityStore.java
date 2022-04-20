@@ -59,7 +59,7 @@ public class CapabilityStore {
                     return sharedDir.uploadFileSection(sharedDir.version, c, capStoreFilename, newCapability, false,
                             startIndex, startIndex + serializedCapability.length, Optional.empty(), true,
                             false, network, crypto, x -> {}, crypto.random.randomBytes(32),
-                            Optional.of(Bat.random(crypto.random)), sharedDir.mirrorBatId());
+                            Optional.empty(), Optional.of(Bat.random(crypto.random)), sharedDir.mirrorBatId());
                 });
     }
 
