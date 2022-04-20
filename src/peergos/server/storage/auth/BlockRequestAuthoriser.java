@@ -14,10 +14,9 @@ public interface BlockRequestAuthoriser {
     CompletableFuture<Boolean> allowRead(Cid block, byte[] blockData, Cid sourceNodeId, String auth);
 
     static boolean isValidAuth(BlockAuth auth, Cid block, Cid sourceNode, Bat bat, Hasher h) {
-        String t = auth.awsDatetime;
         S3Request req = new S3Request("GET", sourceNode.toBase58(), "api/v0/block/get?arg=" + block.toBase58(), S3Request.UNSIGNED,
                 Optional.of(auth.expirySeconds), false, true,
-                Collections.emptyMap(), Collections.emptyMap(), auth.batId.toBase58(), "eu-central-1", t);
+                Collections.emptyMap(), Collections.emptyMap(), auth.batId.toBase58(), "eu-central-1", auth.awsDatetime);
         LocalDateTime timestamp = auth.timestamp();
         LocalDateTime expiry = timestamp.plusSeconds(auth.expirySeconds);
         LocalDateTime now = LocalDateTime.now();
@@ -28,8 +27,15 @@ public interface BlockRequestAuthoriser {
         return signature.equals(expected);
     }
 
-    static String invalidReason(BlockAuth auth, Cid block, Cid sourceNode, Bat bat, Hasher h) {
-        String t = auth.awsDatetime;
+    static String invalidReason(BlockAuth auth, Cid block, Cid sourceNode, List<BatId> batids, Hasher h) {
+        // careful here to avoid a timing attack on inline bats
+        Optional<BatId> match = batids.stream()
+                .filter(bid -> (! bid.isInline() && bid.id.equals(auth.batId)) ||
+                        (bid.isInline() && auth.batId.equals(h.hash(bid.getInline().get().serialize(), false).join())))
+                .findFirst();
+        if (match.isEmpty())
+            return "No matching BAT ID in block";
+
         LocalDateTime timestamp = auth.timestamp();
         LocalDateTime expiry = timestamp.plusSeconds(auth.expirySeconds);
         LocalDateTime now = LocalDateTime.now();

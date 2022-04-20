@@ -253,10 +253,7 @@ public class Builder {
                                 return ALLOW;
                         }
                         if (! batids.isEmpty()) {
-                            BatId first = batids.get(0);
-                            Optional<Bat> inline = first.getInline();
-                            if (inline.isPresent())
-                                Logging.LOG().info("INVALID AUTH: " + BlockRequestAuthoriser.invalidReason(blockAuth, b, s, inline.get(), hasher));
+                            Logging.LOG().info("INVALID AUTH: " + BlockRequestAuthoriser.invalidReason(blockAuth, b, s, batids, hasher));
                         }
                         return BLOCK;
                     } else return ALLOW; // This is a public block
