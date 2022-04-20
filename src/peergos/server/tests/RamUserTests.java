@@ -7,9 +7,9 @@ import peergos.server.*;
 import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.social.*;
-import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
+import peergos.shared.user.fs.transaction.*;
 import peergos.shared.util.*;
 
 import java.io.*;
@@ -91,6 +91,44 @@ public class RamUserTests extends UserTests {
         Assert.assertTrue(Arrays.equals(retrieved, data));
 
         publicGateway.shutdown();
+    }
+
+    private static class NonClosingTransactionService extends TransactionServiceImpl {
+
+        public NonClosingTransactionService(NetworkAccess network,
+                                            Crypto crypto,
+                                            FileWrapper transactionsDir) {
+            super(network, crypto, transactionsDir);
+        }
+
+        @Override
+        public CompletableFuture<Snapshot> close(Snapshot version, Committer committer, Transaction transaction) {
+            return Futures.of(version);
+        }
+    }
+
+    @Test
+    public void cleanupFailedUploads() throws Exception {
+        String username = generateUsername();
+        String password = "terriblepassword";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        FileWrapper userRoot = context.getUserRoot().join();
+        long initialUsage = context.getSpaceUsage().join();
+        int size = 100*1024*1024;
+        byte[] data = new byte[size];
+        AsyncReader thrower = new ThrowingStream(data, size/2);
+        try {
+            FileWrapper txnDir = context.getByPath(Paths.get(username, UserContext.TRANSACTIONS_DIR_NAME)).join().get();
+            TransactionService txns = new NonClosingTransactionService(network, crypto, txnDir);
+            userRoot.uploadFileJS("somefile", thrower, 0, size, false, false,
+                    context.mirrorBatId(), network, crypto, x -> {}, txns).join();
+        } catch (Exception e) {}
+        long usageAfterFail = context.getSpaceUsage().join();
+        Assert.assertTrue(usageAfterFail > size / 2);
+        context.cleanPartialUploads().join();
+        Thread.sleep(10_000);
+        long usageAfterCleanup = context.getSpaceUsage().join();
+        Assert.assertTrue(usageAfterCleanup < initialUsage + 1024);
     }
 
     private static byte[] get(URL target) throws IOException {
