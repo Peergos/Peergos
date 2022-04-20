@@ -53,7 +53,7 @@ public class Admin implements InstanceAdmin {
     }
 
     public static String getSourceVersion() {
-        return Admin.class.getPackage().getImplementationVersion();
+        return Optional.ofNullable(Admin.class.getPackage().getImplementationVersion()).orElse("");
     }
 
     @Override
