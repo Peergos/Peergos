@@ -63,14 +63,14 @@ public class CLI implements Runnable {
     }
 
     public Path resolveToPath(String arg, Path pathToResolveTo) {
-        Path p = PathUtil.get(arg);
+        Path p = Paths.get(arg);
         if (p.isAbsolute())
             return p;
         return pathToResolveTo.resolve(p).normalize();
     }
 
     public Path resolveToPath(String arg) {
-        return resolveToPath(arg, PathUtil.get(""));
+        return resolveToPath(arg, Paths.get(""));
     }
 
     public static ParsedCommand fromLine(String line) {
