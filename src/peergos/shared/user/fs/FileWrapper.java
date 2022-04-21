@@ -798,7 +798,7 @@ public class FileWrapper {
                                     .thenCompose(v ->
                                             parent.uploadFileSection(v, c, f.filename, f.fileData, Optional.empty(), false, 0, f.length,
                                                     Optional.empty(), f.overwriteExisting, true, network, crypto, f.monitor,
-                                                    crypto.random.randomBytes(32), Optional.of(txn.streamSecret()), Optional.of(Bat.random(crypto.random)), mirrorBat)
+                                                    txn.getFirstLocation().getMapKey(), Optional.of(txn.streamSecret()), Optional.of(Bat.random(crypto.random)), mirrorBat)
                                                     .thenCompose(pair -> transactions.close(pair.left, c, txn)
                                                             .thenApply(s -> new Pair<>(s, Stream.concat(p.right.stream(), pair.right.stream()).collect(Collectors.toList())))))
                             );

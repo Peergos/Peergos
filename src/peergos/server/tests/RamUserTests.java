@@ -17,6 +17,7 @@ import java.net.*;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.stream.*;
 
 @RunWith(Parameterized.class)
 public class RamUserTests extends UserTests {
@@ -117,10 +118,15 @@ public class RamUserTests extends UserTests {
         int size = 100*1024*1024;
         byte[] data = new byte[size];
         AsyncReader thrower = new ThrowingStream(data, size/2);
+        FileWrapper txnDir = context.getByPath(Paths.get(username, UserContext.TRANSACTIONS_DIR_NAME)).join().get();
+        TransactionService txns = new NonClosingTransactionService(network, crypto, txnDir);
         try {
-            FileWrapper txnDir = context.getByPath(Paths.get(username, UserContext.TRANSACTIONS_DIR_NAME)).join().get();
-            TransactionService txns = new NonClosingTransactionService(network, crypto, txnDir);
-            userRoot.uploadFileJS("somefile", thrower, 0, size, false, false,
+            FileWrapper.FileUploadProperties fileUpload = new FileWrapper.FileUploadProperties("somefile", thrower, 0, size, false, x -> {});
+            FileWrapper.FolderUploadProperties dirUploads = new FileWrapper.FolderUploadProperties(Arrays.asList(username), Arrays.asList(fileUpload));
+            userRoot.uploadSubtree(Stream.of(dirUploads), context.mirrorBatId(), network, crypto, txns, () -> true).join();
+        } catch (Exception e) {}
+        try {
+            context.getUserRoot().join().uploadFileJS("anotherfile", thrower, 0, size, false, false,
                     context.mirrorBatId(), network, crypto, x -> {}, txns).join();
         } catch (Exception e) {}
         long usageAfterFail = context.getSpaceUsage().join();
@@ -132,7 +138,7 @@ public class RamUserTests extends UserTests {
         context.cleanPartialUploads(t -> true).join();
         Thread.sleep(20_000);
         long usageAfterCleanup = context.getSpaceUsage().join();
-        Assert.assertTrue(usageAfterCleanup < initialUsage + 6000); // TODO: investigate why 6000 more
+        Assert.assertTrue(usageAfterCleanup < initialUsage + 16000); // TODO: investigate why 16000 more (open transactions in db referencing blocks?)
     }
 
     private static byte[] get(URL target) throws IOException {
