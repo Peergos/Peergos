@@ -328,7 +328,7 @@ public class SocialFeed {
                                             false, 0, data.length, Optional.empty(), false,
                                             false, network, crypto, x -> {},
                                             crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH),
-                                            Optional.of(Bat.random(crypto.random)), updated.mirrorBatId());
+                                            Optional.empty(),  Optional.of(Bat.random(crypto.random)), updated.mirrorBatId());
                                 if (feedOpt.get().getSize() != feedSizeBytes)
                                     throw new IllegalStateException("Feed size incorrect!");
                                 return feedOpt.get().append(data, network, crypto, c, x -> {});

@@ -110,7 +110,7 @@ public abstract class UserTests {
                                                                     Crypto crypto,
                                                                     ProgressConsumer<Long> monitor) {
         return parent.uploadFileSection(filename, fileData, false, startIndex, endIndex, Optional.empty(),
-                true, network, crypto, monitor, crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random)),
+                true, network, crypto, monitor, crypto.random.randomBytes(32), Optional.empty(), Optional.of(Bat.random(crypto.random)),
                 parent.mirrorBatId());
     }
 
@@ -879,46 +879,6 @@ public abstract class UserTests {
     }
 
     @Test
-    public void cleanupFailedUpload() throws Exception {
-        String username = generateUsername();
-        String password = "test01";
-        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
-        FileWrapper userRoot = context.getUserRoot().get();
-
-        String filename = "small.txt";
-        byte[] data = new byte[2*5*1024*1024];
-        ThrowingStream throwingReader = new ThrowingStream(data, 5 * 1024 * 1024);
-        Path filePath = PathUtil.get(username, filename);
-        FileUploadTransaction transaction = Transaction.buildFileUploadTransaction(filePath.toString(), data.length,
-                AsyncReader.build(data), userRoot.signingPair(), userRoot.generateChildLocationsFromSize(data.length,
-                        context.crypto.random)).join();
-        int prior = context.getTotalSpaceUsed().get().intValue();
-
-        TransactionService transactions = context.getTransactionService();
-        context.network.synchronizer.applyComplexUpdate(userRoot.owner(), transactions.getSigner(),
-                (s, committer) -> transactions.open(s, committer, transaction)).join();
-        try {
-            userRoot.uploadOrReplaceFile(filename, throwingReader, data.length, context.network,
-                    context.crypto, l -> {}, transaction.getLocations().get(0).getMapKey(), Optional.of(Bat.random(crypto.random)), userRoot.mirrorBatId()).get();
-        } catch (Exception e) {}
-        int during = context.getTotalSpaceUsed().get().intValue();
-        if (during <= 5*1024*1024) { // give server a chance to recalculate usage
-            Thread.sleep(2_000);
-            during = context.getTotalSpaceUsed().get().intValue();
-        }
-        Assert.assertTrue("One chunk uploaded", during > 5 * 1024*1024);
-
-        context.network.synchronizer.applyComplexUpdate(userRoot.owner(), transactions.getSigner(),
-                (current, committer) -> {
-                    Set<Transaction> pending = transactions.getOpenTransactions(current).join();
-                    return Futures.reduceAll(pending, current,
-                            (version, t) -> transactions.clearAndClose(version, committer, t), (a, b) -> b);
-                }).join();
-        int post = context.getTotalSpaceUsed().get().intValue();
-        Assert.assertTrue("Space from failed upload reclaimed", post < prior + 5000); //TODO these should be equal figure out why not
-    }
-
-    @Test
     public void repeatFailedUpload() throws Exception {
         String username = generateUsername();
         String password = "test01";
@@ -1141,7 +1101,7 @@ public abstract class UserTests {
 
         // check used space
         PublicKeyHash signer = context.signer.publicKeyHash;
-        long totalSpaceUsed = context.getTotalSpaceUsed().get();
+        long totalSpaceUsed = context.getSpaceUsage().get();
         Assert.assertTrue("Correct used space", totalSpaceUsed > 10*1024*1024);
 
         // check second chunk BAT is different from first

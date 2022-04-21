@@ -15,9 +15,9 @@ public class Cleaner {
         Console console = System.console();
         String password = new String(console.readPassword("Enter password for " + username + ":"));
         UserContext context = UserContext.signIn(username, password, network, crypto).get();
-        long prior = context.getTotalSpaceUsed().join();
+        long prior = context.getSpaceUsage().join();
         context.cleanPartialUploads().join();
-        long post = context.getTotalSpaceUsed().join();
+        long post = context.getSpaceUsage().join();
         System.out.println("Cleaned partial uploads successfully! Reducing space used from " + prior + " to " + post);
     }
 }

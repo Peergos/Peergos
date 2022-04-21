@@ -9,6 +9,7 @@ import peergos.shared.util.Futures;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.*;
 import java.util.stream.Collectors;
 
 public interface TransactionService {
@@ -37,12 +38,11 @@ public interface TransactionService {
                 .thenCompose(s -> close(s, committer, transaction));
     }
 
-    default CompletableFuture<Snapshot> clearAndClosePendingTransactions(Snapshot version, Committer committer) {
-        // clear any partial upload started more than a day ago
+    default CompletableFuture<Snapshot> clearAndClosePendingTransactions(Snapshot version, Committer committer, Predicate<Transaction> filter) {
         return getOpenTransactions(version)
                 .thenCompose(openTransactions -> {
                     List<Transaction> toClose = openTransactions.stream()
-                            .filter(e -> e.startTimeEpochMillis() < System.currentTimeMillis() - 24*3600_000L)
+                            .filter(filter)
                             .collect(Collectors.toList());
                     System.out.println("Open file upload transactions: " + openTransactions.size());
                     System.out.println("Stale file upload transactions: " + toClose.size());
