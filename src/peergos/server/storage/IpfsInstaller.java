@@ -188,7 +188,7 @@ public class IpfsInstaller {
 
     private static String canonicaliseArchitecture(String arch) {
         System.out.println("Looking up architecture: " + arch);
-        if (arch.startsWith("arm64"))
+        if (arch.startsWith("arm64") || arch.startsWith("aarch64"))
             return "arm64";
         if (arch.startsWith("arm"))
             return "arm";
