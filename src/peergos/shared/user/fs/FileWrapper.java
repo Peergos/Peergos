@@ -1803,7 +1803,8 @@ public class FileWrapper {
                                             writableParent ?
                                                     parent.signingPair() :
                                                     signingPair(), tid, hasher, buffered, v, condenser), buffered.dhtClient)
-                                    .thenCompose(s -> userContext.sharedWithCache.clearSharedWith(ourPath, s, condenser, buffered)))
+                                    .thenCompose(s -> userContext.isSecretLink() ? Futures.of(s) :
+                    userContext.sharedWithCache.clearSharedWith(ourPath, s, condenser, buffered)))
                             .thenCompose(res -> buffered.commit().thenApply(b -> res));
                 })
                 .thenCompose(s -> parent.getUpdated(s, buffered));

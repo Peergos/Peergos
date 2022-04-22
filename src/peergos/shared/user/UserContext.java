@@ -400,6 +400,11 @@ public class UserContext {
     }
 
     @JsMethod
+    public boolean isSecretLink() {
+        return username == null;
+    }
+
+    @JsMethod
     public static CompletableFuture<UserContext> fromSecretLink(String link, NetworkAccess network, Crypto crypto) {
         AbsoluteCapability cap;
         try {
