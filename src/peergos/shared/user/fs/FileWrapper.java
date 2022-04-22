@@ -1494,8 +1494,9 @@ public class FileWrapper {
                                     .thenCompose(updated -> parent.updateChildLinks(updated, committer,
                                             Arrays.asList(new Pair<>(us, new NamedAbsoluteCapability(newFilename, us))),
                                             userContext.network, userContext.crypto.random, userContext.crypto.hasher))
-                            .thenCompose(v -> userContext.sharedWithCache
-                                    .rename(ourPath, ourPath.getParent().resolve(newFilename), v, committer, userContext.network))
+                                    .thenCompose(v -> userContext.isSecretLink() ? Futures.of(v) :
+                                            userContext.sharedWithCache.rename(ourPath,
+                                                    ourPath.getParent().resolve(newFilename), v, committer, userContext.network))
                     ).thenCompose(newVersion -> parent.getUpdated(newVersion, userContext.network));
                 });
     }
