@@ -20,7 +20,7 @@ import java.time.ZoneOffset;
 import java.util.*;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
-import java.util.stream.Collectors;
+import java.util.stream.*;
 
 public class NativeFileSystemImpl implements FileSystem {
 
@@ -88,6 +88,11 @@ public class NativeFileSystemImpl implements FileSystem {
         } catch (IOException ioe) {
             throw new IllegalStateException(ioe);
         }
+    }
+
+    @Override
+    public void writeSubtree(Path path, Stream<FileWrapper.FolderUploadProperties> folders) {
+        throw new IllegalStateException("Unimplemented!");
     }
 
     @Override
