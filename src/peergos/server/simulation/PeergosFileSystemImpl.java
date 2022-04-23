@@ -55,9 +55,14 @@ public class PeergosFileSystemImpl implements FileSystem {
         AsyncReader resetableFileInputStream = new AsyncReader.ArrayBacked(data);
         String fileName = path.getFileName().toString();
         ProgressConsumer<Long> pc  = l -> progressConsumer.accept(l);
-        FileWrapper fileWrapper = directory.uploadOrReplaceFile(fileName, resetableFileInputStream, data.length,
-                userContext.network, userContext.crypto, pc).join();
+        FileWrapper fileWrapper = directory.uploadFileJS(fileName, resetableFileInputStream, (int)(data.length >> 32), (int) data.length,
+                true, true, userContext.mirrorBatId(), userContext.network, userContext.crypto, pc, userContext.getTransactionService()).join();
+    }
 
+    @Override
+    public void writeSubtree(Path path, Stream<FileWrapper.FolderUploadProperties> folders) {
+        FileWrapper parentDir = getPath(path);
+        parentDir.uploadSubtree(folders, userContext.mirrorBatId(), userContext.network, userContext.crypto, userContext.getTransactionService(), () -> true).join();
     }
 
     @Override

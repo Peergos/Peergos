@@ -184,7 +184,7 @@ public class FileUploader implements AutoCloseable {
             SafeRandom random,
             Hasher hasher,
             boolean isJS) {
-        System.out.println("encrypting chunk: "+chunkIndex + " of "+name);
+        Logger.getGlobal().info("encrypting chunk: "+chunkIndex + " of "+name);
         long position = chunkIndex * Chunk.MAX_SIZE;
 
         long fileLength = length;
@@ -230,7 +230,7 @@ public class FileUploader implements AutoCloseable {
         CappedProgressConsumer progress = new CappedProgressConsumer(monitor, chunk.chunk.length());
         if (fragments.size() < file.fragments.size() || fragments.isEmpty())
             progress.accept((long) chunk.chunk.length());
-        System.out.println("Uploading chunk with " + fragments.size() + " fragments to mapkey " + chunk.location.toString() + "\n");
+        Logger.getGlobal().info("Uploading chunk with " + fragments.size() + " fragments to mapkey " + chunk.location.toString() + "\n");
         return IpfsTransaction.call(chunk.location.owner,
                 tid -> network.uploadFragments(fragments, chunk.location.owner, writer, progress, tid)
                         .thenCompose(hashes -> network.uploadChunk(current, committer, metadata, chunk.location.owner,

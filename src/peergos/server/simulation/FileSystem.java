@@ -1,7 +1,7 @@
 package peergos.server.simulation;
 
 
-import peergos.shared.user.fs.FileProperties;
+import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
 import java.nio.file.Path;
@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Random;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.stream.*;
 
 public interface FileSystem {
 /**
@@ -32,6 +33,8 @@ public interface FileSystem {
     }
 
     void write(Path path, byte[] data, Consumer<Long> progressConsumer);
+
+    void writeSubtree(Path path, Stream<FileWrapper.FolderUploadProperties> folders);
 
     void modify(Path path, byte[] data, Consumer<Long> progressConsumer);
 

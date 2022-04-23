@@ -15,15 +15,14 @@ import peergos.shared.*;
 import peergos.shared.social.FollowRequestWithCipherText;
 import peergos.shared.user.SocialState;
 import peergos.shared.user.UserContext;
+import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
-import java.io.IOException;
-import java.io.PrintWriter;
+import java.io.*;
 import java.net.*;
 import java.nio.file.*;
 import java.util.*;
-import java.util.function.BiConsumer;
-import java.util.function.Consumer;
+import java.util.function.*;
 import java.util.logging.Level;
 import java.util.stream.*;
 
@@ -208,28 +207,61 @@ public class CLI implements Runnable {
         return "Downloaded " + remotePath + " to " + localPath;
     }
 
+    private List<String> convert(Path p) {
+        List<String> res = new ArrayList<>();
+        for (int i=0; i < p.getNameCount(); i++)
+            res.add(p.getName(i).toString());
+        return res;
+    }
+
+    private AsyncReader reader(File f) {
+        try {
+            return new FileAsyncReader(f);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private Stream<FileWrapper.FolderUploadProperties> parseLocalFolder(Path remoteRelativeDir,
+                                                                        Path localDir,
+                                                                        Function<Long, ProgressConsumer<Long>> progressCreator) {
+        try {
+            List<FileWrapper.FileUploadProperties> files = Files.list(localDir).filter(p -> p.toFile().isFile())
+                    .map(p -> new FileWrapper.FileUploadProperties(p.getFileName().toString(), reader(p.toFile()),
+                            (int) (p.toFile().length() >> 32), (int) p.toFile().length(), true, progressCreator.apply(p.toFile().length())))
+                    .collect(Collectors.toList());
+            FileWrapper.FolderUploadProperties dir = new FileWrapper.FolderUploadProperties(convert(remoteRelativeDir), files);
+            return Stream.concat(Stream.of(dir),
+                    Files.list(localDir)
+                            .filter(p -> p.toFile().isDirectory())
+                            .flatMap(p -> parseLocalFolder(remoteRelativeDir.resolve(p.getFileName()), localDir.resolve(p.getFileName()), progressCreator)));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     public String put(ParsedCommand cmd, PrintWriter writerForProgress) throws IOException {
         String localPathArg = cmd.firstArgument();
         Path localPath = resolveToPath(localPathArg).toAbsolutePath().normalize();
 
-        // TODO
-        if (localPath.toFile().isDirectory())
-            throw new IllegalStateException("Cannot upload directory: this is not supported");
-
-        if (!localPath.toFile().isFile())
-            throw new IllegalStateException("Could not find specified local file '" + localPath + "'");
-
-
-        String remotePathS = cmd.hasSecondArgument() ? cmd.secondArgument() : cliContext.pwd.resolve(localPath.getFileName()).toString();
-        Path remotePath = resolvedRemotePath(remotePathS);
-
-        byte[] data = Files.readAllBytes(localPath);
-        ProgressBar pb = new ProgressBar();
-        Consumer<Long> progressConsumer = bytesSoFar -> pb.update(writerForProgress, bytesSoFar, data.length);
-        peergosFileSystem.write(remotePath, data, progressConsumer);
-        writerForProgress.println();
-        writerForProgress.flush();
-        return "Successfully uploaded " + localPath + " to remote " + remotePath;
+        if (localPath.toFile().isDirectory()) {
+            Path remotePath = cmd.hasSecondArgument() ? cliContext.pwd.resolve(Paths.get(cmd.secondArgument())) : cliContext.pwd;
+            peergosFileSystem.writeSubtree(remotePath, parseLocalFolder(localPath.getFileName(), localPath, size -> {
+                ProgressBar pb = new ProgressBar();
+                return bytesWritten -> pb.update(writerForProgress, bytesWritten, size);
+            }));
+            return "Successfully uploaded " + localPath + " to remote " + remotePath;
+        } else {
+            String remotePathS = cmd.hasSecondArgument() ? cmd.secondArgument() : cliContext.pwd.resolve(localPath.getFileName()).toString();
+            Path remotePath = resolvedRemotePath(remotePathS);
+            byte[] data = Files.readAllBytes(localPath);
+            ProgressBar pb = new ProgressBar();
+            Consumer<Long> progressConsumer = bytesSoFar -> pb.update(writerForProgress, bytesSoFar, data.length);
+            peergosFileSystem.write(remotePath, data, progressConsumer);
+            writerForProgress.println();
+            writerForProgress.flush();
+            return "Successfully uploaded " + localPath + " to remote " + remotePath;
+        }
     }
 
     public String rm(ParsedCommand cmd) {

@@ -14,6 +14,7 @@ import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.logging.*;
 import java.util.stream.*;
 
 public class DirectS3BlockStore implements ContentAddressedStorage {
@@ -123,7 +124,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                             List<Multihash> storageProviders = chain.get(chain.size() - 1).claim.storageProviders;
                             Multihash mainNode = storageProviders.get(0);
                             storageNodeByOwner.put(owner, mainNode);
-                            System.out.println("Are we on owner's node? " + mainNode + " == " + nodeId);
+                            Logger.getGlobal().info("Are we on owner's node? " + mainNode + " == " + nodeId);
                             return mainNode.equals(nodeId);
                         }));
     }
