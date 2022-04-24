@@ -82,6 +82,8 @@ public class HttpUtil {
                 return Serialize.readFully(in);
             } catch (IOException e) {
                 InputStream err = conn.getErrorStream();
+                if (err == null)
+                    throw e;
                 byte[] errBody = Serialize.readFully(err);
                 throw new IOException(new String(errBody), e);
             }
