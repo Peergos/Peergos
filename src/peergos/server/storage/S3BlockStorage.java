@@ -19,6 +19,7 @@ import peergos.shared.storage.auth.*;
 import peergos.shared.util.*;
 
 import java.io.*;
+import java.net.*;
 import java.nio.file.*;
 import java.sql.*;
 import java.time.*;
@@ -212,6 +213,9 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             if (enforceAuth && ! authoriser.allowRead(hash, block, id, auth).join())
                 throw new IllegalStateException("Unauthorised!");
             return Futures.of(Optional.of(block));
+        } catch (SocketTimeoutException e) {
+            // S3 can't handle the load so treat this as a rate limit and slow down
+            throw new RateLimitException();
         } catch (IOException e) {
             String msg = e.getMessage();
             boolean rateLimited = msg.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>SlowDown</Code>");
