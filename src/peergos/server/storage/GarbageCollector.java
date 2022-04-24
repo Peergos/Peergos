@@ -95,18 +95,24 @@ public class GarbageCollector {
                 .map(r -> markPool.submit(() -> markReachable(storage, (Cid)r, toIndex, reachable)))
                 .collect(Collectors.toList());
         usageMarked.forEach(f -> f.join());
-        List<ForkJoinTask<Boolean>> marked = allPointers.entrySet().stream()
-                .map(e -> markPool.submit(() -> markReachable(e.getKey(), e.getValue(), reachable, toIndex, storage)))
-                .collect(Collectors.toList());
-        marked.forEach(f -> f.join());
+        long t4 = System.nanoTime();
+        System.out.println("Marking reachable from "+usageRoots.size()+" usage roots took " + (t4-t3)/1_000_000_000 + "s");
 
+        Set<Multihash> fromUsage = new HashSet<>(usageRoots);
+        List<ForkJoinTask<Boolean>> marked = allPointers.entrySet().stream()
+                .map(e -> markPool.submit(() -> markReachable(e.getKey(), e.getValue(), reachable, toIndex, storage, fromUsage)))
+                .collect(Collectors.toList());
+        long rootsProcessed = marked.stream().filter(ForkJoinTask::join).count();
+
+        long t5 = System.nanoTime();
+        System.out.println("Marking reachable from "+rootsProcessed+" pointers took " + (t5-t4)/1_000_000_000 + "s");
         for (Multihash additional : pending) {
             int index = toIndex.getOrDefault(additional, -1);
             if (index >= 0)
                 reachable.set(index);
         }
-        long t4 = System.nanoTime();
-        System.out.println("Marking reachable took " + (t4-t3)/1_000_000_000 + "s");
+        long t6 = System.nanoTime();
+        System.out.println("Marking "+pending.size()+" pending blocks reachable took " + (t6-t5)/1_000_000_000 + "s");
 
         // Save pointers snapshot
         snapshotSaver.apply(allPointers.entrySet().stream()).join();
@@ -124,8 +130,8 @@ public class GarbageCollector {
                 .get();
         long deletedBlocks = deleted.left;
         long deletedSize = deleted.right;
-        long t5 = System.nanoTime();
-        System.out.println("Deleting blocks took " + (t5-t4)/1_000_000_000 + "s");
+        long t7 = System.nanoTime();
+        System.out.println("Deleting blocks took " + (t7-t6)/1_000_000_000 + "s");
         System.out.println("GC complete. Freed " + deletedBlocks + " blocks totalling " + deletedSize + " bytes in " + (t5-t0)/1_000_000_000 + "s");
     }
 
@@ -133,14 +139,17 @@ public class GarbageCollector {
                                          byte[] signedRawCas,
                                          BitSet reachable,
                                          Map<Multihash, Integer> toIndex,
-                                         DeletableContentAddressedStorage storage) {
+                                         DeletableContentAddressedStorage storage,
+                                         Set<Multihash> done) {
         PublicSigningKey writer = getWithBackoff(() -> storage.getSigningKey(writerHash).join().get());
         byte[] bothHashes = writer.unsignMessage(signedRawCas);
         HashCasPair cas = HashCasPair.fromCbor(CborObject.fromByteArray(bothHashes));
         MaybeMultihash updated = cas.updated;
-        if (updated.isPresent())
+        if (updated.isPresent() && ! done.contains(updated.get())) {
             markReachable(storage, (Cid) updated.get(), toIndex, reachable);
-        return true;
+            return true;
+        }
+        return false;
     }
 
     private static Pair<Long, Long> deleteUnreachableBlocks(int startIndex,
