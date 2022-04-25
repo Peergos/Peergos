@@ -271,7 +271,7 @@ Follow the instructions for self hosting but add the following parameters (eithe
 ```
 
 ### CLI
-There are a range of commands available from a command line. You can run -help to find the available commands or details on any command. Most users should only need the *daemon* and *shell* commands, and maybe *fuse*. You can use the *migrate* command to move all your data to a new server (where the command is run). 
+There are a range of commands available from a command line. You can run -help to find the available commands or details on any command or sub-command. Most users should only need the *daemon* and *shell* commands, and maybe *identity* or *fuse*. You can use the *migrate* command to move all your data to a new server (where the command is run). 
 
 ```
 >> java -Djava.library.path=native-lib -jar Peergos.jar -help
@@ -288,6 +288,15 @@ Sub commands:
 	ipfs: Install, configure and start IPFS daemon
 	pki: Start the Peergos PKI Server that has already been bootstrapped
 	pki-init: Bootstrap and start the Peergos PKI Server
+```
+or
+```
+>> java -Djava.library.path=native-lib -jar Peergos.jar identity -help
+identity: Create or verify an identity proof
+
+Sub commands:
+	link: Link your Peergos identity to an account on another service.
+	verify: Verify an identity link post from another service.
 ```
 
 Mirror
