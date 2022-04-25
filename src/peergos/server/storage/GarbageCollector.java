@@ -128,11 +128,11 @@ public class GarbageCollector {
         Pair<Long, Long> deleted = futures.stream()
                 .map(ForkJoinTask::join).reduce((a, b) -> new Pair<>(a.left + b.left, a.right + b.right))
                 .get();
-        long deletedBlocks = deleted.left;
-        long deletedSize = deleted.right;
+        long deletedCborBlocks = deleted.left;
+        long deletedRawBlocks = deleted.right;
         long t7 = System.nanoTime();
         System.out.println("Deleting blocks took " + (t7-t6)/1_000_000_000 + "s");
-        System.out.println("GC complete. Freed " + deletedBlocks + " blocks totalling " + deletedSize + " bytes in " + (t5-t0)/1_000_000_000 + "s");
+        System.out.println("GC complete. Freed " + deletedCborBlocks + " cbor blocks and " + deletedRawBlocks + " raw blocks in " + (t5-t0)/1_000_000_000 + "s");
     }
 
     private static boolean markReachable(PublicKeyHash writerHash,
@@ -158,29 +158,20 @@ public class GarbageCollector {
                                                             List<Multihash> present,
                                                             AtomicLong progress,
                                                             DeletableContentAddressedStorage storage) {
-        long deletedBlocks = 0, deletedSize = 0;
+        long deletedCborBlocks = 0, deletedRawBlocks = 0;
         long logPoint = startIndex;
         final int maxDeleteCount = 1000;
-        long pendingDeleteSize = 0;
-        long ignoredBlocks = 0;
         List<Multihash> pendingDeletes = new ArrayList<>();
         for (int i = reachable.nextClearBit(startIndex); i >= startIndex && i < endIndex; i = reachable.nextClearBit(i + 1)) {
             Multihash hash = present.get(i);
-            try {
-                int size = getWithBackoff(() -> storage.getSize(hash).join().get());
-                deletedBlocks++;
-                pendingDeleteSize += size;
-                pendingDeletes.add(hash);
-            } catch (Exception e) {
-                ignoredBlocks++;
-                if (ignoredBlocks < 10)
-                    e.printStackTrace();
-            }
+            if (hash instanceof Cid && ((Cid) hash).isRaw())
+                deletedRawBlocks++;
+            else
+                deletedCborBlocks++;
+            pendingDeletes.add(hash);
+
             if (pendingDeletes.size() >= maxDeleteCount) {
                 getWithBackoff(() -> {storage.bulkDelete(pendingDeletes); return true;});
-                deletedSize += pendingDeleteSize;
-                pendingDeleteSize = 0;
-                deletedBlocks += pendingDeletes.size();
                 pendingDeletes.clear();
             }
 
@@ -194,13 +185,9 @@ public class GarbageCollector {
         }
         if (pendingDeletes.size() > 0) {
             getWithBackoff(() -> {storage.bulkDelete(pendingDeletes); return true;});
-            deletedSize += pendingDeleteSize;
-            deletedBlocks += pendingDeletes.size();
         }
 
-        if (ignoredBlocks > 0)
-            System.out.println("Ignored blocks in delete phase: " + ignoredBlocks);
-        return new Pair<>(deletedBlocks, deletedSize);
+        return new Pair<>(deletedCborBlocks, deletedRawBlocks);
     }
 
     private static boolean markReachable(DeletableContentAddressedStorage storage,
