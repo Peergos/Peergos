@@ -51,6 +51,16 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             .help("Number of block gets which fell back to p2p retrieval")
             .register();
 
+    private static final Counter getRateLimited = Counter.build()
+            .name("s3_get_rate_limited")
+            .help("Number of times we get a http 429 rate limit response during a block get")
+            .register();
+
+    private static final Counter rateLimited = Counter.build()
+            .name("s3_rate_limited")
+            .help("Number of times we get a http 429 rate limit response")
+            .register();
+
     private final Cid id, p2pGetId;
     private final String region, bucket, folder, regionEndpoint, host;
     private final boolean useHttps;
@@ -220,6 +230,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             String msg = e.getMessage();
             boolean rateLimited = msg.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>SlowDown</Code>");
             if (rateLimited) {
+                getRateLimited.inc();
+                S3BlockStorage.rateLimited.inc();
                 throw new RateLimitException();
             }
             boolean notFound = msg.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>NoSuchKey</Code>");
@@ -256,6 +268,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             }
             boolean rateLimited = msg.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>SlowDown</Code>");
             if (rateLimited) {
+                S3BlockStorage.rateLimited.inc();
                 throw new RateLimitException();
             }
             boolean notFound = msg.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>NoSuchKey</Code>");
@@ -369,6 +382,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             String msg = e.getMessage();
             boolean rateLimited = msg.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>SlowDown</Code>");
             if (rateLimited) {
+                S3BlockStorage.rateLimited.inc();
                 throw new RateLimitException();
             }
             boolean notFound = msg.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>NoSuchKey</Code>");
@@ -570,6 +584,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                         String msg = e.getMessage();
                         boolean rateLimited = msg.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>SlowDown</Code>");
                         if (rateLimited) {
+                            S3BlockStorage.rateLimited.inc();
                             throw new RateLimitException();
                         }
                         throw new RuntimeException(e);
