@@ -299,6 +299,7 @@ public class MirrorCoreNode implements CoreNode {
         Optional<RequiredDifficulty> pkiResult = writeTarget.updateChain(username, Arrays.asList(chain), proof, token).join();
         if (pkiResult.isPresent()) { // signup rejected
             LOG.info("Rejecting signup: required " + pkiResult.get());
+            AggregatedMetrics.PKI_RATE_LIMITED.inc();
             return Futures.of(pkiResult);
         }
 
