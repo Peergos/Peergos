@@ -1,6 +1,8 @@
 package peergos.server.net;
+import java.util.function.Supplier;
 import java.util.logging.*;
 
+import io.prometheus.client.*;
 import peergos.server.AggregatedMetrics;
 import peergos.server.util.*;
 
@@ -119,16 +121,21 @@ public class DHTHandler implements HttpHandler {
                 }
                 case CHAMP_GET: {
                     AggregatedMetrics.DHT_CHAMP_GET.inc();
+                    Histogram.Timer timer = AggregatedMetrics.DHT_CHAMP_GET_DURATION.labels("duration").startTimer();
                     PublicKeyHash ownerHash = PublicKeyHash.fromString(last.apply("owner"));
                     Cid root = Cid.decode(args.get(0));
                     byte[] champKey = ArrayOps.hexToBytes(args.get(1));
                     Optional<BatWithId> bat = params.containsKey("bat") ?
                             Optional.of(BatWithId.decode(last.apply("bat"))) :
                             Optional.empty();
-                    dht.getChampLookup(ownerHash, root, champKey, bat).thenAccept(blocks -> {
-                        replyBytes(httpExchange, new CborObject.CborList(blocks.stream()
-                                .map(CborObject.CborByteArray::new).collect(Collectors.toList())).serialize(), Optional.of(root));
-                    }).exceptionally(Futures::logAndThrow).get();
+                    try {
+                        dht.getChampLookup(ownerHash, root, champKey, bat).thenAccept(blocks -> {
+                            replyBytes(httpExchange, new CborObject.CborList(blocks.stream()
+                                    .map(CborObject.CborByteArray::new).collect(Collectors.toList())).serialize(), Optional.of(root));
+                        }).exceptionally(Futures::logAndThrow).get();
+                    } finally {
+                        timer.observeDuration();
+                    }
                     break;
                 }
                 case BLOCK_PUT: {

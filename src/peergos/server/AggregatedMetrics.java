@@ -30,6 +30,12 @@ public class AggregatedMetrics {
     public static final Counter DHT_TRANSACTION_START  = build("dht_transaction_start", "Total DHT transaction starts.");
     public static final Counter DHT_TRANSACTION_CLOSE  = build("dht_transaction_close", "Total DHT transaction closes.");
     public static final Counter DHT_CHAMP_GET  = build("dht_champ_get", "Total champ gets");
+    public static final Histogram DHT_CHAMP_GET_DURATION = Histogram.build()
+            .labelNames("duration")
+            .name("champ_get_duration")
+            .help("Time to respond to a champ.get call")
+            .exponentialBuckets(0.01, 2, 16)
+            .register();
 
     public static final Counter MUTABLE_POINTERS_SET  = build("mutable_pointers_set", "Total mutable-pointers set calls.");
     public static final Counter MUTABLE_POINTERS_GET  = build("mutable_pointers_get", "Total mutable-pointers get calls.");
