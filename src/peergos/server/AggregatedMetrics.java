@@ -48,19 +48,6 @@ public class AggregatedMetrics {
     public static final Counter SIGNUP  = build("core_node_signup", "Total signup calls.");
     public static final Counter MIGRATE_USER  = build("core_node_migrate_user", "Total migrate-user calls.");
 
-    public static final Histogram IPFS_PRE_GC_DURATION = Histogram.build()
-            .name("ipfs_pre_gc")
-            .exponentialBuckets(1, 2, 20)
-            .help("Time (ms) to wait to start IPFS GC")
-            .register();
-    public static final Histogram IPFS_GC_DURATION  = Histogram.build()
-            .name("ipfs_gc_duration")
-            .exponentialBuckets(1, 2, 20)
-            .help("IPFS GC Duration (ms).")
-            .register();
-
-
-
     public static void startExporter(String address, int port) throws IOException {
         Logging.LOG().info("Starting metrics server at " + address + ":" + port);
         HTTPServer server = new HTTPServer(address, port);
