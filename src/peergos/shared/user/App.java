@@ -142,11 +142,38 @@ public class App implements StoreAppData {
         });
     }
     @JsMethod
+    public CompletableFuture<String> mimeTypeInternal(Path relativePath, String username) {
+        Path path = relativePath == null ?
+                PathUtil.get(username == null ? ctx.username : username).resolve(appDataDirectoryWithoutUser)
+                : fullPath(relativePath, username);
+        return ctx.getByPath(path).thenApply(fileOpt -> {
+            if(fileOpt.isEmpty()) {
+                return "";
+            }
+            return fileOpt.get().getFileProperties().mimeType;
+        });
+    }
+
+    @JsMethod
     public CompletableFuture<Boolean> createDirectoryInternal(Path relativePath, String username) {
         Path base = PathUtil.get(username == null ? ctx.username : username).resolve(appDataDirectoryWithoutUser);
         return ctx.getByPath(base)
                 .thenCompose(baseOpt -> baseOpt.get().getOrMkdirs(normalisePath(relativePath), ctx.network, false, baseOpt.get().mirrorBatId(), ctx.crypto)
                 .thenApply(fw -> true));
+    }
+    /*
+    Tests if a path exists
+    @return -1 Does not exist (or not accessible), 0 File, 1 Directory
+     */
+    @JsMethod
+    public CompletableFuture<Integer> existsInternal(Path relativePath, String username) {
+        Path path = fullPath(relativePath, username);
+        return ctx.getByPath(path).thenCompose(opt -> {
+            if(opt.isEmpty()) {
+                return Futures.of(Integer.valueOf(-1));
+            }
+            return Futures.of(opt.get().getFileProperties().isDirectory ? 1 : 0);
+        });
     }
 }
 

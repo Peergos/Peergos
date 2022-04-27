@@ -668,6 +668,24 @@ public class FileWrapper {
                         .thenCompose(childOpt -> childOpt.get().truncate(length, network, crypto)));
     }
 
+
+    @JsMethod
+    //fixme this is not a good implementation!
+    public CompletableFuture<FileWrapper> replaceFile(FileWrapper srcFile,
+                                                        NetworkAccess network,
+                                                        Crypto crypto,
+                                                        ProgressConsumer<Long> monitor) {
+        return srcFile.getInputStream(network, crypto, val -> {})
+	        .thenCompose(reader -> {
+            byte[] data = new byte[(int)srcFile.props.size];
+            return reader.readIntoArray(data, 0, data.length).thenCompose(read -> {
+                AsyncReader asyncReader = peergos.shared.user.fs.AsyncReader.build(data);
+                return overwriteFileJS(asyncReader, srcFile.props.sizeHigh(), srcFile.props.sizeLow(),
+                        network, crypto, monitor);
+            });
+        });
+    }
+
     @JsMethod
     public CompletableFuture<FileWrapper> overwriteFileJS(AsyncReader fileData,
                                                           int endHigh,
