@@ -83,6 +83,15 @@ public class App implements StoreAppData {
         return result;
     }
 
+    private CompletableFuture<Boolean> appendFileContents(Path path, byte[] data) {
+        Path pathWithoutUsername = path.subpath(1, path.getNameCount());
+        return ctx.getByPath(ctx.username).thenCompose(userRoot -> userRoot.get().getOrMkdirs(pathWithoutUsername.getParent(), ctx.network, true, userRoot.get().mirrorBatId(), ctx.crypto)
+                .thenCompose(dir -> dir.appendFileJS(path.getFileName().toString(), AsyncReader.build(data),
+                                0,data.length, ctx.network, ctx.crypto, x -> {})
+                        .thenApply(fw -> true)
+                ));
+    }
+
     private CompletableFuture<Boolean> writeFileContents(Path path, byte[] data) {
         Path pathWithoutUsername = path.subpath(1, path.getNameCount());
         return ctx.getByPath(ctx.username).thenCompose(userRoot -> userRoot.get().getOrMkdirs(pathWithoutUsername.getParent(), ctx.network, true, userRoot.get().mirrorBatId(), ctx.crypto)
@@ -109,6 +118,11 @@ public class App implements StoreAppData {
         });
     }
 
+    @JsMethod
+    public CompletableFuture<Boolean> appendInternal(Path relativePath, byte[] data, String username) {
+        Path path = fullPath(relativePath, username);
+        return appendFileContents(path, data);
+    }
     @JsMethod
     public CompletableFuture<Boolean> writeInternal(Path relativePath, byte[] data, String username) {
         Path path = fullPath(relativePath, username);

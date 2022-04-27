@@ -555,6 +555,32 @@ public class FileWrapper {
     }
 
     @JsMethod
+    public CompletableFuture<FileWrapper> appendFileJS(String filename,
+                                                       AsyncReader fileData,
+                                                       int lengthHi,
+                                                       int lengthLow,
+                                                       NetworkAccess network,
+                                                       Crypto crypto,
+                                                       ProgressConsumer<Long> monitor) {
+        long fileSize = LongUtil.intsToLong(lengthHi, lengthLow);
+        return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
+                (s, committer) -> getChild(s, filename, network).thenCompose(childOpt -> {
+                if (childOpt.isEmpty()) {
+                    throw new IllegalStateException("File does not exists with name " + filename);
+                } else {
+                    FileProperties props = childOpt.get().getFileProperties();
+                    if (props.isHidden) {
+                        throw new IllegalStateException("File is hidden " + filename);
+                    }
+                    long startIndex = props.size;
+                    return uploadFileSection(s, committer, filename, fileData,
+                            false, startIndex, startIndex + fileSize, Optional.empty(), false, true, false,
+                            network, crypto, monitor, crypto.random.randomBytes(32), Optional.empty(),
+                            Optional.of(Bat.random(crypto.random)), mirrorBatId());
+                }
+        })).thenCompose(finished -> getUpdated(finished, network));
+    }
+        @JsMethod
     public CompletableFuture<FileWrapper> uploadFileJS(String filename,
                                                        AsyncReader fileData,
                                                        int lengthHi,

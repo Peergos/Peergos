@@ -22,4 +22,6 @@ public interface StoreAppData {
     CompletableFuture<String> mimeTypeInternal(Path relativePath, String username);
 
     CompletableFuture<Boolean> createDirectoryInternal(Path relativePath, String username);
+
+    CompletableFuture<Boolean> appendInternal(Path relativePath, byte[] data, String username);
 }

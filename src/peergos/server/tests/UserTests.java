@@ -593,24 +593,27 @@ public abstract class UserTests {
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
 
         String filename = "somefile";
-        int size = 30*1024*1024;
+        int size = 30 * 1024 * 1024;
         byte[] data = new byte[size];
         random.nextBytes(data);
-        AsyncReader thrower = new ThrowingStream(data, size/2);
+        AsyncReader thrower = new ThrowingStream(data, size / 2);
         FileWrapper txnDir = context.getByPath(Paths.get(username, UserContext.TRANSACTIONS_DIR_NAME)).join().get();
         TransactionService txns = new NonClosingTransactionService(network, crypto, txnDir);
         String subdir = "dir";
         try {
-            FileWrapper.FileUploadProperties fileUpload = new FileWrapper.FileUploadProperties(filename, thrower, 0, size, false, false, x -> {});
+            FileWrapper.FileUploadProperties fileUpload = new FileWrapper.FileUploadProperties(filename, thrower, 0, size, false, false, x -> {
+            });
             FileWrapper.FolderUploadProperties dirUploads = new FileWrapper.FolderUploadProperties(Arrays.asList(subdir), Arrays.asList(fileUpload));
             context.getUserRoot().join().uploadSubtree(Stream.of(dirUploads), context.mirrorBatId(), network, crypto, txns, f -> Futures.of(false), () -> true).join();
-        } catch (Exception e) {}
+        } catch (Exception e) {
+        }
         FileWrapper home = context.getUserRoot().join();
         Set<Transaction> open = context.getTransactionService().getOpenTransactions(home.version).join();
         Assert.assertTrue(open.size() > 0);
         // Now try again, with confirmation from the user to resume upload
         FileWrapper parent = context.getByPath(Paths.get(username, subdir)).join().get();
-        parent.uploadFileJS(filename, AsyncReader.build(data), 0, size, false, context.mirrorBatId(), network, crypto, x -> {}, txns, f -> Futures.of(true)).join();
+        parent.uploadFileJS(filename, AsyncReader.build(data), 0, size, false, context.mirrorBatId(), network, crypto, x -> {
+        }, txns, f -> Futures.of(true)).join();
         checkFileContents(data, context.getByPath(Paths.get(username, subdir, filename)).join().get(), context);
     }
 
@@ -661,6 +664,28 @@ public abstract class UserTests {
         } catch (Exception e) {
         }
         Assert.assertTrue("bulkMonitor", monitor2Val[0] == monitorVal[0]);
+    }
+
+    @Test
+    public void appendToFile() {
+        String username = generateUsername();
+        String password = "test";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        FileWrapper userRoot = context.getUserRoot().join();
+        FileWrapper userRootCopy = context.getUserRoot().join();
+
+        String filename = "file1.txt";
+        String contents = "Hello ";
+        byte[] data = contents.getBytes();
+        userRootCopy = userRoot.uploadFileJS(filename, new AsyncReader.ArrayBacked(data), 0,data.length, false,
+                userRoot.mirrorBatId(), network, crypto, l -> {}, context.getTransactionService(), f -> Futures.of(false)).join();
+        checkFileContents(data, context.getUserRoot().join().getDescendentByPath(filename, crypto.hasher, context.network).join().get(), context);
+
+        contents = "World!";
+        data = contents.getBytes();
+        userRootCopy = userRootCopy.appendFileJS(filename, new AsyncReader.ArrayBacked(data), 0,data.length, network, crypto, l -> {}).join();
+        checkFileContents("Hello World!".getBytes(), context.getUserRoot().join().getDescendentByPath(filename, crypto.hasher, context.network).join().get(), context);
+
     }
 
     @Test
