@@ -4,6 +4,7 @@ import org.junit.*;
 import org.junit.runner.*;
 import org.junit.runners.*;
 import peergos.server.*;
+import peergos.server.tests.util.*;
 import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.social.*;
@@ -92,20 +93,6 @@ public class RamUserTests extends UserTests {
         Assert.assertTrue(Arrays.equals(retrieved, data));
 
         publicGateway.shutdown();
-    }
-
-    private static class NonClosingTransactionService extends TransactionServiceImpl {
-
-        public NonClosingTransactionService(NetworkAccess network,
-                                            Crypto crypto,
-                                            FileWrapper transactionsDir) {
-            super(network, crypto, transactionsDir);
-        }
-
-        @Override
-        public CompletableFuture<Snapshot> close(Snapshot version, Committer committer, Transaction transaction) {
-            return Futures.of(version);
-        }
     }
 
     @Test

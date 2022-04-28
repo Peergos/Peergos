@@ -7,6 +7,7 @@ import peergos.server.crypto.asymmetric.curve25519.*;
 import peergos.server.crypto.hash.*;
 import peergos.server.crypto.random.*;
 import peergos.server.crypto.symmetric.*;
+import peergos.server.tests.util.*;
 import peergos.server.util.*;
 
 import org.junit.*;
@@ -579,6 +580,30 @@ public abstract class UserTests {
             FileWrapper file = fileOpt.get();
             checkFileContentsChunked(e.getValue(), file, context, 5);
         }
+    }
+
+    @Test
+    public void resumeFailedUploads() {
+        String username = generateUsername();
+        String password = "terriblepassword";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+
+        String filename = "somefile";
+        int size = 20*1024*1024;
+        byte[] data = new byte[size];
+        random.nextBytes(data);
+        AsyncReader thrower = new ThrowingStream(data, size/2);
+        FileWrapper txnDir = context.getByPath(Paths.get(username, UserContext.TRANSACTIONS_DIR_NAME)).join().get();
+        TransactionService txns = new NonClosingTransactionService(network, crypto, txnDir);
+        try {
+            FileWrapper.FileUploadProperties fileUpload = new FileWrapper.FileUploadProperties(filename, thrower, 0, size, false, x -> {});
+            FileWrapper.FolderUploadProperties dirUploads = new FileWrapper.FolderUploadProperties(Arrays.asList(username), Arrays.asList(fileUpload));
+            context.getUserRoot().join().uploadSubtree(Stream.of(dirUploads), context.mirrorBatId(), network, crypto, txns, () -> true).join();
+        } catch (Exception e) {}
+        // Now try again, with confirmation from the user to resume upload
+        context.getUserRoot().join().uploadFileJS(filename, AsyncReader.build(data), 0, size, false, false,
+                context.mirrorBatId(), network, crypto, x -> {}, txns).join();
+        checkFileContents(data, context.getByPath(Paths.get(username, filename)).join().get(), context);
     }
 
     @Test
