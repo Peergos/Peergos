@@ -405,7 +405,7 @@ public class Main extends Builder {
             Stream.of(
                     new Command.Arg("username", "Peergos username", true),
                     new Command.Arg("password", "Peergos password", true),
-                    new Command.Arg("webport", "Peergos service address port", false, "8000"),
+                    new Command.Arg("peergos-url", "Peergos service address", false, "https://peergos.net"),
                     new Command.Arg("mountPoint", "The directory to mount the Peergos filesystem in", true, "peergos")
             ).collect(Collectors.toList())
     );
@@ -771,20 +771,21 @@ public class Main extends Builder {
         String username = a.getArg("username");
         String password = a.getArg("password");
 
-        int webPort = a.getInt("webport");
         try {
             Files.createTempDirectory("peergos").toString();
         } catch (IOException ioe) {
             throw new IllegalStateException(ioe);
         }
         String mountPath = a.getArg("mountPoint");
-        Path path = PathUtil.get(mountPath);
+        Path path = Paths.get(mountPath);
 
         path.toFile().mkdirs();
 
-        System.out.println("\n\nPeergos mounted at " + path + "\n\n");
         try {
-            NetworkAccess network = Builder.buildLocalJavaNetworkAccess(webPort).get();
+            String peergosUrl = a.getArg("peergos-url");
+            URL api = new URL(peergosUrl);
+            NetworkAccess network = buildJavaNetworkAccess(api, ! peergosUrl.startsWith("http://localhost")).join();
+
             Crypto crypto = initCrypto();
             UserContext userContext = UserContext.signIn(username, password, network, crypto).join();
             PeergosFS peergosFS = new PeergosFS(userContext);
@@ -793,6 +794,7 @@ public class Main extends Builder {
             Runtime.getRuntime().addShutdownHook(new Thread(() -> fuseProcess.close(), "Fuse shutdown"));
 
             fuseProcess.start();
+            System.out.println("\n\nPeergos mounted at " + path + "\n\n");
             return fuseProcess;
         } catch (Exception ex) {
             throw new IllegalStateException(ex);
