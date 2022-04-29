@@ -124,6 +124,7 @@
     </div>
     <div class="col m9 col s8" role="main" style="overflow-x:auto; padding-bottom: 10px;">
     <h1 class="page-header main-title">Atomic access control</h1>
+    <h3 class="main-title">Published: Fri 15 November 2019</h3>
     <div class="bs-docs-section">
     <p>At Peergos we care deeply about your privacy, and the core of privacy is access control. Controlling who can see what. We've made some big improvements in this area for our new <a href="https://alpha.peergos.net/public/peergos/releases/v0.1.4">v0.1.4</a> release, so let's learn some more about them.</p>
 <p>We have totally rewritten our access revocation implementation. Previously there were some issues with nested write access which could cause data loss. Now in the new version, revoking write access is a single pass over the files and directories you are revoking access to, rather than 3. We've also made it atomic. This means your machine can crash at any point and your file system is in a consistent state with all data present. </p>

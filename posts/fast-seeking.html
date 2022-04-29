@@ -124,6 +124,7 @@
     </div>
     <div class="col m9 col s8" role="main" style="overflow-x:auto; padding-bottom: 10px;">
     <h1 class="page-header main-title">Fast seeking and encrypted history</h1>
+    <h3 class="main-title">Published: Thu 01 August 2019</h3>
     <div class="bs-docs-section">
     <p>Another week, another set of cool new Peergos features. We've been hard at work and wanted to tell you about our latest new features: super fast seeking within a file, encrypted history (fix the back button), and storage usage and quota display. </p>
 <p>Imagine you were watching a long movie in Peergos using our built in streaming video player, and wanted to skip ahead to where you left off last time, around two hours in. Previously this involved downloading the encrypted metadata for every 5MiB chunk of the file (a few network requests), decrypting the location of the next chunk, and repeating this until you reach the desired offset. The links between the chunks are encrypted so that the outside world (or the server) can't deduce the size of your files. This was SLOOOOOW. To seek a gigabyte or so in took about 5 minutes, or more depending on your internet connection latency! No one wants to wait around that long. so we came up with a new scheme for deterministic, but still private subsequent chunk locations. Before this change each chunk location was 32 random bytes. In the new scheme we calculate the location of a subsequent chunk as the following, where the secret is 32 random bytes that are stored in the encrypted metadata of the first chunk of the file:</p>
