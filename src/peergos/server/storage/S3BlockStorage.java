@@ -46,6 +46,16 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             .help("Time to write a block to immutable storage")
             .exponentialBuckets(0.01, 2, 16)
             .register();
+    private static final Counter blockPuts = Counter.build()
+            .name("s3_block_puts")
+            .help("Number of block puts to S3")
+            .register();
+    private static final Histogram blockPutBytes = Histogram.build()
+            .labelNames("size")
+            .name("s3_block_put_bytes")
+            .help("Number of bytes written to S3")
+            .exponentialBuckets(0.01, 2, 16)
+            .register();
     private static final Counter nonLocalGets = Counter.build()
             .name("p2p_block_gets")
             .help("Number of block gets which fell back to p2p retrieval")
@@ -470,6 +480,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             PresignedUrl putUrl = S3Request.preSignPut(s3Key, data.length, contentHash, false,
                     S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, extraHeaders, region, accessKeyId, secretKey, useHttps, hasher).join();
             HttpUtil.put(putUrl, data);
+            blockPuts.inc();
+            blockPutBytes.labels("size").observe(data.length);
             return cid;
         } catch (IOException e) {
             LOG.log(Level.SEVERE, e.getMessage(), e);
