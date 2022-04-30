@@ -320,6 +320,37 @@ It will ask for your username and password, mirror all your data locally, and th
 
 After migration, your identity is unchanged, all links to your data continue to work, and you keep your social graph without needing to tell anyone. 
 
+Shell
+--------
+Various operation can be done using the shell.
+```shell
+java -jar Peergos.jar shell
+```
+
+To connect to a server you will need to provide the Server address (including http/https), Username and Password.
+```shell
+Enter Server address
+> https://peergos.net
+Enter username
+> demo
+Enter password for 'demo'
+> **************************************
+Generating keys
+Logging in
+Retrieving Friends
+demo@https://peergos.net >
+```
+
+To show all available commands
+```shell
+demo@https://peergos.net > help
+```
+
+Hint: The following command might be useful to do a initial upload for larger folders.
+```shell
+put local_path remote_path 
+```
+
 Development
 --------
 ### Dependencies
