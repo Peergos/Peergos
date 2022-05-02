@@ -135,7 +135,7 @@ public class GatewayHandler implements HttpHandler {
             if (asset.isDirectory()) {
                 Optional<FileWrapper> index = asset.getChild("index.html", crypto.hasher, network).join();
                 if (index.isPresent())
-                    assetOpt = index;
+                    asset = index.get();
                 else {
                     serve404(httpExchange, webRootEntry.webRoot);
                     return;
