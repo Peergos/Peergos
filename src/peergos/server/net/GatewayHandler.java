@@ -205,7 +205,7 @@ public class GatewayHandler implements HttpHandler {
 
         if (size < MAX_ASSET_SIZE_CACHE) {
             byte[] body = Serialize.readFully(reader, size).join();
-            addContentType(httpExchange, path, body);
+            addContentType(httpExchange, path, props, body);
             httpExchange.sendResponseHeaders(200, size);
             OutputStream resp = httpExchange.getResponseBody();
             resp.write(body);
@@ -213,7 +213,7 @@ public class GatewayHandler implements HttpHandler {
             return Optional.of(body);
         }
 
-        addContentType(httpExchange, path, null);
+        addContentType(httpExchange, path, props, null);
         httpExchange.sendResponseHeaders(200, size);
         OutputStream resp = httpExchange.getResponseBody();
         byte[] buf = buffer.get();
@@ -227,7 +227,9 @@ public class GatewayHandler implements HttpHandler {
         return Optional.empty();
     }
 
-    private void addContentType(HttpExchange httpExchange, String path, byte[] start) {
+    private void addContentType(HttpExchange httpExchange, String path, FileProperties props, byte[] start) {
+        if (! path.endsWith(props.name))
+            path = props.name;
         if (path.endsWith(".js"))
             httpExchange.getResponseHeaders().set("Content-Type", "text/javascript");
         else if (path.endsWith(".html"))
