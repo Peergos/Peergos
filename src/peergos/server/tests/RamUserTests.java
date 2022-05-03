@@ -108,13 +108,13 @@ public class RamUserTests extends UserTests {
         FileWrapper txnDir = context.getByPath(Paths.get(username, UserContext.TRANSACTIONS_DIR_NAME)).join().get();
         TransactionService txns = new NonClosingTransactionService(network, crypto, txnDir);
         try {
-            FileWrapper.FileUploadProperties fileUpload = new FileWrapper.FileUploadProperties("somefile", thrower, 0, size, false, x -> {});
+            FileWrapper.FileUploadProperties fileUpload = new FileWrapper.FileUploadProperties("somefile", thrower, 0, size, false, false, x -> {});
             FileWrapper.FolderUploadProperties dirUploads = new FileWrapper.FolderUploadProperties(Arrays.asList(username), Arrays.asList(fileUpload));
-            userRoot.uploadSubtree(Stream.of(dirUploads), context.mirrorBatId(), network, crypto, txns, () -> true).join();
+            userRoot.uploadSubtree(Stream.of(dirUploads), context.mirrorBatId(), network, crypto, txns, f -> Futures.of(false), () -> true).join();
         } catch (Exception e) {}
         try {
             context.getUserRoot().join().uploadFileJS("anotherfile", thrower, 0, size, false, false,
-                    context.mirrorBatId(), network, crypto, x -> {}, txns).join();
+                    context.mirrorBatId(), network, crypto, x -> {}, txns, f -> Futures.of(false)).join();
         } catch (Exception e) {}
         long usageAfterFail = context.getSpaceUsage().join();
         if (usageAfterFail <= size / 2) { // give server a chance to recalculate usage

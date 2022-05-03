@@ -4,13 +4,13 @@ import peergos.shared.social.FollowRequestWithCipherText;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
-import peergos.shared.util.ProgressConsumer;
-import peergos.shared.util.Serialize;
+import peergos.shared.user.fs.transaction.*;
+import peergos.shared.util.*;
 
 import java.nio.file.Path;
 import java.util.*;
-import java.util.function.BiConsumer;
-import java.util.function.Consumer;
+import java.util.concurrent.*;
+import java.util.function.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -56,13 +56,13 @@ public class PeergosFileSystemImpl implements FileSystem {
         String fileName = path.getFileName().toString();
         ProgressConsumer<Long> pc  = l -> progressConsumer.accept(l);
         FileWrapper fileWrapper = directory.uploadFileJS(fileName, resetableFileInputStream, (int)(data.length >> 32), (int) data.length,
-                true, true, userContext.mirrorBatId(), userContext.network, userContext.crypto, pc, userContext.getTransactionService()).join();
+                true, true, userContext.mirrorBatId(), userContext.network, userContext.crypto, pc, userContext.getTransactionService(), f -> Futures.of(false)).join();
     }
 
     @Override
-    public void writeSubtree(Path path, Stream<FileWrapper.FolderUploadProperties> folders) {
+    public void writeSubtree(Path path, Stream<FileWrapper.FolderUploadProperties> folders, Function<FileUploadTransaction, CompletableFuture<Boolean>> resumeFile) {
         FileWrapper parentDir = getPath(path);
-        parentDir.uploadSubtree(folders, userContext.mirrorBatId(), userContext.network, userContext.crypto, userContext.getTransactionService(), () -> true).join();
+        parentDir.uploadSubtree(folders, userContext.mirrorBatId(), userContext.network, userContext.crypto, userContext.getTransactionService(), resumeFile, () -> true).join();
     }
 
     @Override

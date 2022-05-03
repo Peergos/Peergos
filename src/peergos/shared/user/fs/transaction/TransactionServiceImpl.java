@@ -5,9 +5,7 @@ import peergos.shared.crypto.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
-import peergos.shared.util.Futures;
-import peergos.shared.util.ProgressConsumer;
-import peergos.shared.util.Serialize;
+import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -44,13 +42,30 @@ public class TransactionServiceImpl implements TransactionService {
     }
 
     @Override
-    public CompletableFuture<Snapshot> open(Snapshot version, Committer committer, Transaction transaction) {
+    public CompletableFuture<Either<Snapshot, FileUploadTransaction>> open(Snapshot version,
+                                                                           Committer committer,
+                                                                           Transaction transaction) {
         byte[] data = transaction.serialize();
         AsyncReader asyncReader = AsyncReader.build(data);
         return updatedTransactionDir(version).thenCompose(dir ->
-                dir.uploadFileSection(version, committer, transaction.name(), asyncReader, false,
-                        0, data.length, Optional.empty(), false, false, networkAccess,
-                        crypto, VOID_PROGRESS, crypto.random.randomBytes(32), Optional.empty(), Optional.of(Bat.random(crypto.random)), dir.mirrorBatId()));
+                Futures.asyncExceptionally(
+                        () -> dir.uploadFileSection(version, committer, transaction.name(), asyncReader, false,
+                                0, data.length, Optional.empty(), false, false, false, networkAccess,
+                                crypto, VOID_PROGRESS, crypto.random.randomBytes(32), Optional.empty(), Optional.of(Bat.random(crypto.random)), dir.mirrorBatId())
+                                .thenApply(Either::a),
+                        t -> {
+                            if (!(t instanceof FileExistsException))
+                                throw new RuntimeException(t);
+                            return dir.getChild(transaction.name(), crypto.hasher, networkAccess)
+                                    .thenCompose(fopt -> read(version, fopt.get()))
+                                    .thenApply(Optional::get)
+                                    .thenApply(txn -> {
+                                        if (txn instanceof FileUploadTransaction) {
+                                            return Either.b((FileUploadTransaction) txn);
+                                        }
+                                        throw new RuntimeException(t);
+                                    });
+                        }));
     }
 
     @Override

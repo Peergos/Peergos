@@ -325,7 +325,7 @@ public class SocialFeed {
                             updated.getChild(FEED_FILE, crypto.hasher, network).thenCompose(feedOpt -> {
                                 if (feedOpt.isEmpty())
                                     return updated.uploadFileSection(updated.version, c, FEED_FILE, AsyncReader.build(data),
-                                            false, 0, data.length, Optional.empty(), false,
+                                            false, 0, data.length, Optional.empty(), false, false,
                                             false, network, crypto, x -> {},
                                             crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH),
                                             Optional.empty(),  Optional.of(Bat.random(crypto.random)), updated.mirrorBatId());

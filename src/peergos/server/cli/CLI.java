@@ -224,17 +224,18 @@ public class CLI implements Runnable {
 
     private Stream<FileWrapper.FolderUploadProperties> parseLocalFolder(Path remoteRelativeDir,
                                                                         Path localDir,
+                                                                        boolean skipExisting,
                                                                         Function<Long, ProgressConsumer<Long>> progressCreator) {
         try {
             List<FileWrapper.FileUploadProperties> files = Files.list(localDir).filter(p -> p.toFile().isFile())
                     .map(p -> new FileWrapper.FileUploadProperties(p.getFileName().toString(), reader(p.toFile()),
-                            (int) (p.toFile().length() >> 32), (int) p.toFile().length(), true, progressCreator.apply(p.toFile().length())))
+                            (int) (p.toFile().length() >> 32), (int) p.toFile().length(), skipExisting, true, progressCreator.apply(p.toFile().length())))
                     .collect(Collectors.toList());
             FileWrapper.FolderUploadProperties dir = new FileWrapper.FolderUploadProperties(convert(remoteRelativeDir), files);
             return Stream.concat(Stream.of(dir),
                     Files.list(localDir)
                             .filter(p -> p.toFile().isDirectory())
-                            .flatMap(p -> parseLocalFolder(remoteRelativeDir.resolve(p.getFileName()), localDir.resolve(p.getFileName()), progressCreator)));
+                            .flatMap(p -> parseLocalFolder(remoteRelativeDir.resolve(p.getFileName()), localDir.resolve(p.getFileName()), skipExisting, progressCreator)));
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -246,10 +247,11 @@ public class CLI implements Runnable {
 
         if (localPath.toFile().isDirectory()) {
             Path remotePath = cmd.hasSecondArgument() ? cliContext.pwd.resolve(Paths.get(cmd.secondArgument())) : cliContext.pwd;
-            peergosFileSystem.writeSubtree(remotePath, parseLocalFolder(localPath.getFileName(), localPath, size -> {
+            boolean skipExisting = cmd.hasThirdArgument() && cmd.thirdArgument().equalsIgnoreCase("true");
+            peergosFileSystem.writeSubtree(remotePath, parseLocalFolder(localPath.getFileName(), localPath, skipExisting, size -> {
                 ProgressBar pb = new ProgressBar();
                 return bytesWritten -> pb.update(writerForProgress, bytesWritten, size);
-            }));
+            }), f -> Futures.of(true));
             return "Successfully uploaded " + localPath + " to remote " + remotePath;
         } else {
             String remotePathS = cmd.hasSecondArgument() ? cmd.secondArgument() : cliContext.pwd.resolve(localPath.getFileName()).toString();

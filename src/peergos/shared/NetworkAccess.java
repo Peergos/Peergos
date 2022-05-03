@@ -580,6 +580,15 @@ public class NetworkAccess {
                 .thenApply(committed -> current.withVersion(writer.publicKeyHash, committed.get(writer)));
     }
 
+    public CompletableFuture<Boolean> chunkIsPresent(Snapshot current,
+                                                     PublicKeyHash owner,
+                                                     PublicKeyHash writer,
+                                                     byte[] mapKey) {
+        CommittedWriterData version = current.get(writer);
+        return tree.get(version.props, owner, writer, mapKey)
+                .thenApply(valueHash -> valueHash.isPresent());
+    }
+
     public static CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Cid> hashes,
                                                                               List<BatWithId> bats,
                                                                               ContentAddressedStorage dhtClient,

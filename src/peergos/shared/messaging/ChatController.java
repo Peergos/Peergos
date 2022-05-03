@@ -215,7 +215,7 @@ public class ChatController {
                         .thenApply(Optional::get))
                 .thenCompose(f -> f.getInputStream(f.version.get(f.writer()).props, context.network, context.crypto, x -> {})
                         .thenCompose(r -> dir.uploadFileSection(v, c, f.getName(), r, false, 0, f.getSize(),
-                                Optional.empty(), false, false, context.network, context.crypto, x -> {},
+                                Optional.empty(), false, false, false, context.network, context.crypto, x -> {},
                                 context.crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH), Optional.empty(),
                                 Optional.of(Bat.random(context.crypto.random)), dir.mirrorBatId())));
     }
@@ -297,7 +297,7 @@ public class ChatController {
         byte[] rawPrivateChatState = priv.get().serialize();
         return chatRoot.uploadFileSection(in, c, ChatController.PRIVATE_CHAT_STATE,
                 AsyncReader.build(rawPrivateChatState), false, 0, rawPrivateChatState.length,
-                Optional.empty(), true, true, network, crypto, x -> {},
+                Optional.empty(), false, true, true, network, crypto, x -> {},
                 crypto.random.randomBytes(32), Optional.empty(), Optional.of(Bat.random(crypto.random)), chatRoot.mirrorBatId());
     }
 

@@ -37,6 +37,10 @@ public class FileUploadTransaction implements Transaction {
         this.owner = firstChunk.owner;
     }
 
+    public long size() {
+        return size;
+    }
+
     public byte[] streamSecret() {
         return streamSecret;
     }
