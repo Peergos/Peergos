@@ -582,6 +582,7 @@ public abstract class UserTests {
         }
     }
 
+    @Ignore
     @Test
     public void resumeFailedUploads() {
         String username = generateUsername();
