@@ -847,7 +847,7 @@ public class FileWrapper {
                 .thenCompose(latest -> latest.addChildPointers(in, c, childLinks, network.disableCommits(), crypto))
                 .thenCompose(res -> Futures.reduceAll(toClose, res, (v, f) -> transactions.close(v, c, f), (a, b) -> b))
                 .thenCompose(s -> network.enableCommits().commit().thenApply(b -> s))
-                .thenApply(s -> new Pair<>(s, Collections.emptyList()));
+                .thenApply(s -> new Pair<>(s, Collections.<NamedRelativeCapability>emptyList()));
     }
 
     public Optional<BatId> mirrorBatId() {
