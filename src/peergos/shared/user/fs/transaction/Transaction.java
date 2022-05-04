@@ -20,13 +20,13 @@ public interface Transaction extends Cborable {
      */
     CompletableFuture<Snapshot> clear(Snapshot version, Committer committer, NetworkAccess network, Hasher h);
 
-    static Transaction deserialize(byte[] data) {
+    static Transaction deserialize(byte[] data, String filename) {
         CborObject cborObject = CborObject.fromByteArray(data);
         CborObject.CborMap map =  (CborObject.CborMap) cborObject;
         Type type = Type.valueOf(map.getString("type"));
         switch (type)  {
             case FILE_UPLOAD:
-                return FileUploadTransaction.fromCbor(map);
+                return FileUploadTransaction.fromCbor(map, filename);
             default:
                 throw new IllegalStateException("Unimplemented type "+ type);
         }

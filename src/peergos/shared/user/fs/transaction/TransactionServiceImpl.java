@@ -93,7 +93,7 @@ public class TransactionServiceImpl implements TransactionService {
         CommittedWriterData cwd = version.get(txnFile.writer());
         return txnFile.getInputStream(cwd.props, networkAccess, crypto, VOID_PROGRESS)
                 .thenApply(reader -> Serialize.readFullArray(reader, data))
-                .thenApply(done -> Optional.of(Transaction.deserialize(data)))
+                .thenApply(done -> Optional.of(Transaction.deserialize(data, txnFile.getName())))
                 .exceptionally(t -> Optional.empty());
     }
 
