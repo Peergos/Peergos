@@ -796,7 +796,7 @@ public class FileWrapper {
                             network.enableCommits();
                             List<FileUploadTransaction> toClose = new ArrayList<>();
                             return Transaction.buildFileUploadTransaction(toParent.resolve(f.filename).toString(), f.length, crypto.random.randomBytes(32), f.fileData, parent.signingPair(),
-                                            new Location(parent.owner(), parent.writer(), crypto.random.randomBytes(32)))
+                                            new Location(parent.owner(), parent.writer(), crypto.random.randomBytes(32)), crypto.hasher)
                                     .thenCompose(txn -> transactions.open(p.left, c, txn)
                                             .thenCompose(r -> {
                                                 if (r.isB())

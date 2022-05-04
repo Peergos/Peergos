@@ -16,7 +16,7 @@ import java.util.stream.*;
 
 public class FileUploadTransaction implements Transaction {
     private final long startTimeEpochMillis;
-    private final String path;
+    private final String path, name;
     private final PublicKeyHash owner;
     private final SigningPrivateKeyAndPublicHash writer;
     private final Location firstChunk;
@@ -25,12 +25,14 @@ public class FileUploadTransaction implements Transaction {
 
     public FileUploadTransaction(long startTimeEpochMillis,
                                  String path,
+                                 String name,
                                  SigningPrivateKeyAndPublicHash writer,
                                  Location firstChunk,
                                  long size,
                                  byte[] streamSecret) {
         this.startTimeEpochMillis = startTimeEpochMillis;
         this.path = path;
+        this.name = name;
         this.writer = writer;
         this.firstChunk = firstChunk;
         this.size = size;
@@ -84,6 +86,7 @@ public class FileUploadTransaction implements Transaction {
         Map<String, Cborable> map = new HashMap<>();
         map.put("type", new CborObject.CborString(Type.FILE_UPLOAD.name()));
         map.put("path", new CborObject.CborString(path));
+        map.put("name", new CborObject.CborString(name));
         map.put("startTimeEpochMs", new CborObject.CborLong(startTimeEpochMillis()));
         map.put("owner", owner);
         map.put("writer", writer);
@@ -109,6 +112,7 @@ public class FileUploadTransaction implements Transaction {
         return new FileUploadTransaction(
                 map.getLong("startTimeEpochMs"),
                 map.getString("path"),
+                map.getString("name"),
                 writer,
                 new Location(owner, writer.publicKeyHash, map.getByteArray("mapKey")),
                 map.getLong("size"),

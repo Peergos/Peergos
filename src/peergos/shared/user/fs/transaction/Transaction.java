@@ -41,7 +41,9 @@ public interface Transaction extends Cborable {
                                                                                byte[] streamSecret,
                                                                                AsyncReader fileData,
                                                                                SigningPrivateKeyAndPublicHash writer,
-                                                                               Location firstChunkLocation) {
-        return CompletableFuture.completedFuture(new FileUploadTransaction(System.currentTimeMillis(), path, writer, firstChunkLocation, fileSize, streamSecret));
+                                                                               Location firstChunkLocation,
+                                                                               Hasher h) {
+        return h.hash(path.getBytes(), true)
+                .thenApply(cid -> new FileUploadTransaction(System.currentTimeMillis(), path, cid.toString(), writer, firstChunkLocation, fileSize, streamSecret));
     }
 }
