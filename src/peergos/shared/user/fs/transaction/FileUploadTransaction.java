@@ -6,6 +6,8 @@ import peergos.shared.cbor.CborObject;
 import peergos.shared.cbor.Cborable;
 import peergos.shared.crypto.SigningPrivateKeyAndPublicHash;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.crypto.symmetric.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
@@ -21,24 +23,39 @@ public class FileUploadTransaction implements Transaction {
     private final PublicKeyHash owner;
     private final SigningPrivateKeyAndPublicHash writer;
     private final Location firstChunk;
+    public final FileProperties props;
+    public final Optional<Bat> firstBat;
+    public final SymmetricKey baseKey, dataKey;
     private final long size;
     private final byte[] streamSecret;
 
     public FileUploadTransaction(long startTimeEpochMillis,
                                  String path,
                                  String name,
+                                 FileProperties props,
                                  SigningPrivateKeyAndPublicHash writer,
                                  Location firstChunk,
+                                 Optional<Bat> firstBat,
                                  long size,
+                                 SymmetricKey baseKey,
+                                 SymmetricKey dataKey,
                                  byte[] streamSecret) {
         this.startTimeEpochMillis = startTimeEpochMillis;
         this.path = path;
         this.name = name;
+        this.props = props;
         this.writer = writer;
         this.firstChunk = firstChunk;
+        this.firstBat = firstBat;
         this.size = size;
+        this.baseKey = baseKey;
+        this.dataKey = dataKey;
         this.streamSecret = streamSecret;
         this.owner = firstChunk.owner;
+    }
+
+    public boolean isLegacy() {
+        return props == null;
     }
 
     public long size() {
@@ -51,6 +68,10 @@ public class FileUploadTransaction implements Transaction {
 
     public Location getFirstLocation() {
         return firstChunk;
+    }
+
+    public byte[] firstMapKey() {
+        return firstChunk.getMapKey();
     }
 
     private CompletableFuture<Snapshot> clear(Snapshot version, Committer committer, NetworkAccess networkAccess, Location location) {
@@ -74,7 +95,7 @@ public class FileUploadTransaction implements Transaction {
 
     @Override
     public String name() {
-        return "" + path.hashCode();
+        return name;
     }
 
     @JsMethod
@@ -96,6 +117,10 @@ public class FileUploadTransaction implements Transaction {
         map.put("startTimeEpochMs", new CborObject.CborLong(startTimeEpochMillis()));
         map.put("owner", owner);
         map.put("writer", writer);
+        map.put("baseKey", baseKey);
+        map.put("dataKey", dataKey);
+        map.put("props", props);
+        firstBat.ifPresent(b -> map.put("firstBat", b));
         map.put("mapKey", new CborObject.CborByteArray(firstChunk.getMapKey()));
         map.put("streamSecret", new CborObject.CborByteArray(streamSecret));
         map.put("size", new CborObject.CborLong(size));
@@ -115,13 +140,35 @@ public class FileUploadTransaction implements Transaction {
         if (! map.containsKey("streamSecret"))
             throw new IllegalStateException("Invalid upload transaction");
 
+        long startTimeEpochMs = map.getLong("startTimeEpochMs");
+        String path = map.getString("path");
+        long size = map.getLong("size");
+        byte[] streamSecrets = map.getByteArray("streamSecret");
+        if (! map.containsKey("props")) // legacy transactions have enough information to delete, but not to continue
+            return new FileUploadTransaction(
+                    startTimeEpochMs,
+                    path,
+                    filename,
+                    null,
+                    writer,
+                    new Location(owner, writer.publicKeyHash, map.getByteArray("mapKey")),
+                    null,
+                    size,
+                    null,
+                    null,
+                    streamSecrets);
+
         return new FileUploadTransaction(
-                map.getLong("startTimeEpochMs"),
-                map.getString("path"),
+                startTimeEpochMs,
+                path,
                 filename,
+                map.get("props", FileProperties::fromCbor),
                 writer,
                 new Location(owner, writer.publicKeyHash, map.getByteArray("mapKey")),
-                map.getLong("size"),
-                map.getByteArray("streamSecret"));
+                map.getOptional("firstBat", Bat::fromCbor),
+                size,
+                map.getObject("baseKey", SymmetricKey::fromCbor),
+                map.getObject("dataKey", SymmetricKey::fromCbor),
+                streamSecrets);
     }
 }

@@ -4,9 +4,12 @@ import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.crypto.symmetric.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
 public interface Transaction extends Cborable {
@@ -38,12 +41,16 @@ public interface Transaction extends Cborable {
 
     static CompletableFuture<FileUploadTransaction> buildFileUploadTransaction(String path,
                                                                                long fileSize,
+                                                                               FileProperties props,
                                                                                byte[] streamSecret,
-                                                                               AsyncReader fileData,
+                                                                               SymmetricKey baseKey,
+                                                                               SymmetricKey dataKey,
                                                                                SigningPrivateKeyAndPublicHash writer,
                                                                                Location firstChunkLocation,
+                                                                               Optional<Bat> firstBat,
                                                                                Hasher h) {
         return h.hash(path.getBytes(), true)
-                .thenApply(cid -> new FileUploadTransaction(System.currentTimeMillis(), path, cid.toString(), writer, firstChunkLocation, fileSize, streamSecret));
+                .thenApply(cid -> new FileUploadTransaction(System.currentTimeMillis(), path, cid.toString(), props, writer,
+                        firstChunkLocation, firstBat, fileSize, baseKey, dataKey, streamSecret));
     }
 }
