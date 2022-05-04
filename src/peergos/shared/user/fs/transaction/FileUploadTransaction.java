@@ -1,5 +1,6 @@
 package peergos.shared.user.fs.transaction;
 
+import jsinterop.annotations.JsMethod;
 import peergos.shared.NetworkAccess;
 import peergos.shared.cbor.CborObject;
 import peergos.shared.cbor.Cborable;
@@ -61,6 +62,11 @@ public class FileUploadTransaction implements Transaction {
                                         .thenApply(mapKey -> new Pair<>(s, firstChunk.withMapKey(mapKey.left)))),
                         (a, b) -> b)
                 .thenApply(p -> p.left);
+    }
+
+    @JsMethod
+    public String getPath() {
+        return path;
     }
 
     @Override
