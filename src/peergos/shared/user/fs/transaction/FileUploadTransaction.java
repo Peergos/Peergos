@@ -10,6 +10,7 @@ import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
+import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.*;
@@ -74,6 +75,12 @@ public class FileUploadTransaction implements Transaction {
     @Override
     public String name() {
         return "" + path.hashCode();
+    }
+
+    @JsMethod
+    public String targetFilename() {
+        Path path = PathUtil.get(this.path);
+        return path.getFileName().toString();
     }
 
     @Override
