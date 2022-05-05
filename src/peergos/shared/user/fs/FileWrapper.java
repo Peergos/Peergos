@@ -815,8 +815,8 @@ public class FileWrapper {
                                                 crypto.random.randomBytes(32)), Optional.of(Bat.random(crypto.random)), crypto.hasher);
                             }).thenCompose(txn -> transactions.open(p.left, c, txn)
                                             .thenCompose(r -> {
-                                                if (r.isB()) // we must clear legacy transactions which can't be resumed
-                                                    return (r.b().isLegacy() ? Futures.of(false) : resumeFile.apply(r.b()))
+                                                if (r.isB()) // we must clear legacy transactions which can't be resumed or ones whose parent has rotated writer
+                                                    return (r.b().isLegacy() || ! parent.writer().equals(r.b().writer()) ? Futures.of(false) : resumeFile.apply(r.b()))
                                                             .thenCompose(resume -> {
                                                                 if (resume) {
                                                                     toClose.add(r.b());

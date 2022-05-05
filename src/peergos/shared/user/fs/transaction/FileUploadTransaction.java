@@ -73,6 +73,10 @@ public class FileUploadTransaction implements Transaction {
         return firstChunk;
     }
 
+    public PublicKeyHash writer() {
+        return writer.publicKeyHash;
+    }
+
     public byte[] firstMapKey() {
         return firstChunk.getMapKey();
     }
