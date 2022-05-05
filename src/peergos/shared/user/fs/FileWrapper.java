@@ -581,6 +581,7 @@ public class FileWrapper {
         // first find how many chunks were already uploaded, then seek reader to that offset and continue
         return findFirstAbsentChunkIndex(0, txn.streamSecret(), txn.getFirstLocation(), s, network, crypto)
                 .thenCompose(startChunkIndex -> {
+                    monitor.accept(startChunkIndex * Chunk.MAX_SIZE);
                     FileUploader uploader = new FileUploader(txn.targetFilename(), data, startChunkIndex*Chunk.MAX_SIZE,
                             txn.size(), txn.baseKey, txn.dataKey, getLocation(), getPointer().capability.bat, getParentKey(),
                             monitor, props, txn.getFirstLocation().getMapKey(), txn.firstBat);
